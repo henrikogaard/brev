@@ -15,6 +15,7 @@ import BrevBackend
 import BrevCalendar
 import BrevDesign
 import BrevThemes
+import OSLog
 import QuickLook
 import SwiftUI
 import UniformTypeIdentifiers
@@ -34,6 +35,10 @@ import UIKit
 /// font prefs drive typography via `MessageBodyStyle`.
 public struct MessageDetailView: View {
     private static let bodyLoadTimeoutNanoseconds: UInt64 = 15_000_000_000
+    private static let bodyLoadLogger = Logger(
+        subsystem: "eu.brevmail.brev",
+        category: "MessageBodyLoad"
+    )
 
     @Environment(\.brevTheme) private var theme
     private let backend: any MailBackend
@@ -55,6 +60,7 @@ public struct MessageDetailView: View {
     @State private var renderedHTML: AttributedString?
     @State private var isLoading = false
     @State private var errorMessage: String?
+    @State private var bodyLoadFallbackNotice: String?
     @State private var needsReloadAfterWorkUnblocks = false
     @State private var activeLoadRequest: MessageDetailLoadRequest?
     @State private var activeOpenReadRequest: MessageOpenReadRequest?
@@ -513,6 +519,8 @@ public struct MessageDetailView: View {
                     }
 
                     senderAuthWarningBanner(for: header)
+
+                    bodyLoadFallbackNoticeBanner
 
                     bodyContent(for: header)
 
@@ -1617,6 +1625,21 @@ public struct MessageDetailView: View {
         return "paperclip"
     }
 
+    /// Warns that only the cached snippet is on screen after the full body
+    /// load failed. Without this the reader is indistinguishable from a
+    /// genuinely short message; the underlying error goes to `bodyLoadLogger`.
+    @ViewBuilder
+    private var bodyLoadFallbackNoticeBanner: some View {
+        if bodyLoadFallbackNotice != nil {
+            BrevStatusBanner(
+                style: .warning,
+                title: "Showing a preview only",
+                message: "The full message couldn't be downloaded.",
+                action: (label: "Try Again", handler: { Task { await reload() } })
+            )
+        }
+    }
+
     @ViewBuilder
     private func senderAuthWarningBanner(for header: MessageHeader) -> some View {
         let warning = MessageHeaderAnalyzer.warning(
@@ -1997,11 +2020,19 @@ public struct MessageDetailView: View {
         } catch {
             guard canApplyOrFinishLoad(request) else { return }
             failMessageOpenTiming(messageID: header.id, error: error)
-            if messageBody == nil {
+            switch MessageDetailPresentation.bodyLoadFailureOutcome(
+                error: error,
+                hasDisplayedFallbackBody: messageBody != nil
+            ) {
+            case .surfaceError(let message):
                 resetState(for: .bodyLoadFailed)
-                errorMessage = MessageDetailPresentation.bodyLoadErrorMessage(for: error)
-            } else {
+                errorMessage = message
+            case .surfaceFallbackNotice(let reason):
                 errorMessage = nil
+                bodyLoadFallbackNotice = reason
+                Self.bodyLoadLogger.error(
+                    "Body load failed; keeping snippet fallback: \(reason, privacy: .private)"
+                )
             }
             finishLoad(request)
         }
@@ -2134,6 +2165,8 @@ public struct MessageDetailView: View {
                 renderedHTML = nil
             case .bodyLoadError:
                 errorMessage = nil
+            case .bodyLoadFallbackNotice:
+                bodyLoadFallbackNotice = nil
             case .loading:
                 isLoading = false
             case .readStatus:

@@ -102,6 +102,11 @@ enum MessageDetailBodyPresentation: Equatable {
     }
 }
 
+enum MessageDetailBodyLoadFailureOutcome: Equatable {
+    case surfaceError(String)
+    case surfaceFallbackNotice(String)
+}
+
 enum MessageOpenVisibilityStage: Equatable {
     case bodyState
     case webView
@@ -187,6 +192,21 @@ enum MessageDetailPresentation {
 
     static func bodyLoadErrorMessage(for error: any Error) -> String {
         localizedMessage(for: error, fallback: "Couldn't load message body.")
+    }
+
+    /// Decides how a failed body load is surfaced. A failure with no displayed
+    /// body replaces the reader with the error state; a failure while the
+    /// snippet fallback is on screen keeps the snippet but must still surface
+    /// a visible notice — silently keeping the snippet made live fetch
+    /// failures indistinguishable from short messages.
+    static func bodyLoadFailureOutcome(
+        error: any Error,
+        hasDisplayedFallbackBody: Bool
+    ) -> MessageDetailBodyLoadFailureOutcome {
+        let reason = bodyLoadErrorMessage(for: error)
+        return hasDisplayedFallbackBody
+            ? .surfaceFallbackNotice(reason)
+            : .surfaceError(reason)
     }
 
     static func attachmentDisplayName(_ filename: String) -> String {

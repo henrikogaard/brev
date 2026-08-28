@@ -14,6 +14,11 @@ All notable changes to Brev are documented here.
   next operation reconnects and logs in again. The structured-body
   fallback path also logs the error it previously swallowed (subsystem
   `eu.brevmail.brev`, category `IMAPBodyFetch`).
+- The reader now shows a visible "Showing a preview only" notice with a
+  retry action when the full message body fails to download; previously
+  the failure was silent and the cached snippet looked like the whole
+  message. The underlying error is logged to the `eu.brevmail.brev`
+  subsystem (category `MessageBodyLoad`).
 
 ## [0.1.0] - 2026-08-28
 

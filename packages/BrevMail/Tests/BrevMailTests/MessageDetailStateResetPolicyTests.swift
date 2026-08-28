@@ -42,6 +42,7 @@ struct MessageDetailStateResetPolicyTests {
         #expect(fields.contains(.inviteResponseProgress))
         #expect(fields.contains(.listUnsubscribeConfirmation))
         #expect(fields.contains(.quickLookPreview))
+        #expect(fields.contains(.bodyLoadFallbackNotice))
         #expect(!fields.contains(.loading))
     }
 
@@ -55,6 +56,7 @@ struct MessageDetailStateResetPolicyTests {
         #expect(fields.contains(.remoteContentOverride))
         #expect(fields.contains(.listUnsubscribeConfirmation))
         #expect(fields.contains(.quickLookPreview))
+        #expect(fields.contains(.bodyLoadFallbackNotice))
         #expect(!fields.contains(.bodyLoadError))
         #expect(!fields.contains(.loading))
     }
