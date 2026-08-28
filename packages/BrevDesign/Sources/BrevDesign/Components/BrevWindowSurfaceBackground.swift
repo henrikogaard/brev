@@ -306,8 +306,16 @@ public struct BrevSplitViewColumnTransparencyFixer: NSViewRepresentable {
 }
 
 struct SplitViewTransparencyPassState {
+    /// Ceiling on settled passes the coordinator may arm on its own after one
+    /// external trigger. Each re-arm requires the previous pass to have
+    /// actually cleared a restored fill, so the chain reaches a fixpoint; the
+    /// cap only guards against SwiftUI pathologically restoring chrome on
+    /// every pass.
+    static let maxSettledReArms = 5
+
     private(set) var isImmediatePassPending = false
     private var settledPassGeneration = 0
+    private var consecutiveSettledReArms = 0
 
     mutating func requestImmediatePass() -> Bool {
         guard !isImmediatePassPending else { return false }
@@ -326,6 +334,16 @@ struct SplitViewTransparencyPassState {
 
     func shouldRunSettledPass(_ generation: Int) -> Bool {
         generation == settledPassGeneration
+    }
+
+    mutating func noteExternalTrigger() {
+        consecutiveSettledReArms = 0
+    }
+
+    mutating func requestSettledReArm() -> Bool {
+        guard consecutiveSettledReArms < Self.maxSettledReArms else { return false }
+        consecutiveSettledReArms += 1
+        return true
     }
 }
 
@@ -361,7 +379,10 @@ private final class SplitViewTransparencyProbe: NSView {
 /// Pane surfaces install probes independently, but only one recursive walk per
 /// split view is useful during a layout turn.
 final class SplitViewTransparencyPassCoordinator {
-    typealias ApplyPass = (NSSplitView) -> Void
+    /// Returns whether the pass cleared at least one restored opaque fill —
+    /// the signal that SwiftUI rebuilt split-view chrome since the last pass
+    /// and a verification pass is worth arming.
+    typealias ApplyPass = (NSSplitView) -> Bool
 
     static let shared = SplitViewTransparencyPassCoordinator()
 
@@ -405,18 +426,33 @@ final class SplitViewTransparencyPassCoordinator {
             return entry
         }()
 
+        entry.passState.noteExternalTrigger()
+
         if entry.passState.requestImmediatePass() {
             DispatchQueue.main.async { [weak self, weak splitView] in
                 guard let self, let splitView,
                       let entry = self.entry(for: splitView, identifier: identifier) else { return }
                 entry.passState.completeImmediatePass()
-                applyPass(splitView)
+                _ = applyPass(splitView)
             }
         }
 
         // SwiftUI can restore split-view chrome after a layout burst. Keep one
-        // final pass after resizing settles. Generation validation is required
-        // because canceling an already submitted DispatchWorkItem is advisory.
+        // final pass after resizing settles.
+        scheduleSettledPass(for: splitView, identifier: identifier, entry: entry)
+    }
+
+    /// Arms the settled pass. When it runs and still finds restored opaque
+    /// fills, it re-arms itself (budgeted per external trigger) so a chrome
+    /// rebuild landing after the last layout burst cannot leave columns
+    /// opaque — the failure mode behind readers/lists losing translucency.
+    /// Generation validation is required because canceling an already
+    /// submitted DispatchWorkItem is advisory.
+    private func scheduleSettledPass(
+        for splitView: NSSplitView,
+        identifier: ObjectIdentifier,
+        entry: Entry
+    ) {
         entry.settledPass?.cancel()
         let generation = entry.passState.requestSettledPass()
         let settledPass = DispatchWorkItem { [weak self, weak splitView] in
@@ -424,7 +460,10 @@ final class SplitViewTransparencyPassCoordinator {
                   let entry = self.entry(for: splitView, identifier: identifier),
                   entry.passState.shouldRunSettledPass(generation) else { return }
             entry.settledPass = nil
-            applyPass(splitView)
+            let clearedRestoredFills = applyPass(splitView)
+            if clearedRestoredFills, entry.passState.requestSettledReArm() {
+                scheduleSettledPass(for: splitView, identifier: identifier, entry: entry)
+            }
         }
         entry.settledPass = settledPass
         DispatchQueue.main.asyncAfter(
@@ -445,25 +484,36 @@ final class SplitViewTransparencyPassCoordinator {
         entries = entries.filter { $0.value.splitView != nil }
     }
 
-    private static func clearOpaqueFills(in root: NSView) {
+    /// Returns whether any visible fill was actually cleared. Already-clear
+    /// layers don't count as work — the settled pass re-arms on this signal,
+    /// and counting no-op writes would make every pass look like a restore.
+    @discardableResult
+    private static func clearOpaqueFills(in root: NSView) -> Bool {
+        var clearedFill = false
         if !(root is NSVisualEffectView) {
-            if root.layer?.backgroundColor != nil {
+            if let background = root.layer?.backgroundColor, background.alpha > 0 {
                 root.wantsLayer = true
                 root.layer?.backgroundColor = NSColor.clear.cgColor
+                clearedFill = true
             }
-            if let clipView = root as? NSClipView {
+            if let clipView = root as? NSClipView, clipView.drawsBackground {
                 clipView.drawsBackground = false
                 clipView.backgroundColor = .clear
+                clearedFill = true
             }
-            if let scrollView = root as? NSScrollView {
+            if let scrollView = root as? NSScrollView, scrollView.drawsBackground {
                 scrollView.drawsBackground = false
                 scrollView.backgroundColor = .clear
+                clearedFill = true
             }
         }
 
         for child in root.subviews {
-            clearOpaqueFills(in: child)
+            if clearOpaqueFills(in: child) {
+                clearedFill = true
+            }
         }
+        return clearedFill
     }
 }
 
