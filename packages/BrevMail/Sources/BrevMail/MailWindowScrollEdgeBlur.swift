@@ -12,6 +12,7 @@
 
 #if os(macOS)
 import AppKit
+import OSLog
 #endif
 import SwiftUI
 
@@ -69,6 +70,25 @@ struct MailWindowScrollEdgeBlur: NSViewRepresentable {
     }
 
     func updateNSView(_ nsView: MailScrollEdgeBlurView, context: Context) {}
+}
+
+/// Budget for the self-scheduled reduction retries a single trigger may
+/// spend while waiting for the material's layer tree to materialize.
+struct MailScrollEdgeBlurRetryState {
+    /// Total reduction attempts allowed per trigger, the first one included.
+    static let maxAttempts = 5
+
+    private var attemptsMade = 0
+
+    /// Records a failed attempt; returns whether another retry is allowed.
+    mutating func noteAttemptFailed() -> Bool {
+        attemptsMade += 1
+        return attemptsMade < Self.maxAttempts
+    }
+
+    mutating func reset() {
+        attemptsMade = 0
+    }
 }
 
 /// The blurred band: a tint-stripped within-window backdrop under a gradient
@@ -147,11 +167,22 @@ final class MailScrollEdgeBlurView: NSView {
         scheduleReduction()
     }
 
+    private static let logger = Logger(
+        subsystem: "eu.brevmail.brev",
+        category: "ScrollEdgeBlur"
+    )
+    /// Delay between self-scheduled reduction retries while the material's
+    /// layer tree is still building.
+    private static let retryDelay: DispatchTimeInterval = .milliseconds(100)
+
+    private var retryState = MailScrollEdgeBlurRetryState()
+
     /// The material builds its layer tree lazily, after it joins a window, so
     /// reduction runs on the next turn — and is cheap enough to re-run on
     /// every trigger.
     private func scheduleReduction() {
         guard window != nil else { return }
+        retryState.reset()
         DispatchQueue.main.async { [weak self] in
             self?.reduceToBareBackdrop()
         }
@@ -161,9 +192,16 @@ final class MailScrollEdgeBlurView: NSView {
     /// backdrop's filters down to the gaussian blur at the design radius.
     /// The layer names here are Core Animation internals; if they ever stop
     /// matching, the strip hides itself rather than show the stock material.
+    ///
+    /// A missing backdrop is retried on a short ladder before giving up:
+    /// under optimized builds the material can materialize its layers after
+    /// the first post-join turn, and without an external trigger a one-shot
+    /// check would hide the band permanently. Exhausting the ladder logs the
+    /// fail-closed outcome so a silent visual regression stays diagnosable.
     private func reduceToBareBackdrop() {
+        guard window != nil else { return }
         guard let root = effectView.layer else {
-            isHidden = true
+            failReductionAttempt(reason: "effect view has no layer")
             return
         }
         var foundBackdrop = false
@@ -190,7 +228,27 @@ final class MailScrollEdgeBlurView: NSView {
             }
             return !isBackdrop
         }
-        isHidden = !foundBackdrop
+        if foundBackdrop {
+            retryState.reset()
+            isHidden = false
+        } else {
+            failReductionAttempt(reason: "no backdrop layer with a gaussian blur filter")
+        }
+    }
+
+    /// Fail closed for this attempt, retry while the ladder has budget, and
+    /// log once when it runs out.
+    private func failReductionAttempt(reason: StaticString) {
+        isHidden = true
+        if retryState.noteAttemptFailed() {
+            DispatchQueue.main.asyncAfter(deadline: .now() + Self.retryDelay) { [weak self] in
+                self?.reduceToBareBackdrop()
+            }
+        } else {
+            Self.logger.error(
+                "Scroll edge blur disabled after \(MailScrollEdgeBlurRetryState.maxAttempts) attempts: \(reason)"
+            )
+        }
     }
 
     /// Depth-first walk; the closure returns whether to descend further.
