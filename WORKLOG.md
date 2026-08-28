@@ -59,4 +59,7 @@ platform and test-runtime boundaries.
   visual tests passed on a compatible macOS 27 host.
 - Preference-sync coalescing stress loop: 20/20 focused runs passed with a
   locked counter and deadline-based observation.
+- BrevMail hosted-runner split: the main behavior suite and all six
+  ContactsAccessPolicy tests pass in separate processes, eliminating global
+  demo-gate state leakage without dropping coverage.
 - BrevDesign CI suites: 35 tests passed.

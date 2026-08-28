@@ -143,6 +143,12 @@ jobs:
           fi
 
           test_args=(--package-path packages/${{ matrix.package }})
+          if [[ '${{ matrix.package }}' == 'BrevMail' ]]; then
+            # ContactsAccessPolicy uses an intentional process-wide launch
+            # gate. Run that suite in a fresh process after the main suite so
+            # concurrent AppSession demo tests cannot leak global state into it.
+            test_args+=(--skip 'BrevMailTests\.ContactsAccessPolicyTests')
+          fi
           if [[ '${{ matrix.package }}' == 'BrevMail' ]] &&
               (( $(sw_vers -productVersion | cut -d. -f1) < 26 )); then
             # Pixel baselines are recorded on macOS 26+. Keep model/behavior
@@ -159,6 +165,10 @@ jobs:
           fi
           swift test "${test_args[@]}" \
             || (echo "::error::tests failed for ${{ matrix.package }}"; exit 1)
+          if [[ '${{ matrix.package }}' == 'BrevMail' ]]; then
+            swift test --package-path packages/BrevMail --filter ContactsAccessPolicyTests \
+              || (echo "::error::tests failed for BrevMail/ContactsAccessPolicyTests"; exit 1)
+          fi
 
   snapshot-test:
     runs-on: macos-15
