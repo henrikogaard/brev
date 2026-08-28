@@ -239,8 +239,12 @@ final class MailScrollEdgeBlurView: NSView {
             // strip resolved.
             if !hasLoggedActiveOutcome {
                 hasLoggedActiveOutcome = true
+                // Captured outside the log macro's autoclosure: the release
+                // compiler requires explicit self there, and SwiftFormat
+                // strips the explicit self right back out.
+                let paneWidth = bounds.width
                 Self.logger.notice(
-                    "Scroll edge blur active in \(bounds.width, format: .fixed(precision: 0), privacy: .public)pt pane"
+                    "Scroll edge blur active in \(paneWidth, format: .fixed(precision: 0), privacy: .public)pt pane"
                 )
             }
         } else {
