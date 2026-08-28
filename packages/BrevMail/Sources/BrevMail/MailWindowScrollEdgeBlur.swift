@@ -176,6 +176,7 @@ final class MailScrollEdgeBlurView: NSView {
     private static let retryDelay: DispatchTimeInterval = .milliseconds(100)
 
     private var retryState = MailScrollEdgeBlurRetryState()
+    private var hasLoggedActiveOutcome = false
 
     /// The material builds its layer tree lazily, after it joins a window, so
     /// reduction runs on the next turn — and is cheap enough to re-run on
@@ -231,6 +232,17 @@ final class MailScrollEdgeBlurView: NSView {
         if foundBackdrop {
             retryState.reset()
             isHidden = false
+            // One notice per band instance: reading "active" (or the
+            // fail-closed error) from the unified log is the only way to
+            // tell a working band from a never-mounted one on a release
+            // install, where nothing else records that this decorative
+            // strip resolved.
+            if !hasLoggedActiveOutcome {
+                hasLoggedActiveOutcome = true
+                Self.logger.notice(
+                    "Scroll edge blur active in \(self.bounds.width, format: .fixed(precision: 0), privacy: .public)pt pane"
+                )
+            }
         } else {
             failReductionAttempt(reason: "no backdrop layer with a gaussian blur filter")
         }
