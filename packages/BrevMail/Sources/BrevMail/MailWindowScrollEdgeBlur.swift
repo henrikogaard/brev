@@ -240,7 +240,7 @@ final class MailScrollEdgeBlurView: NSView {
             if !hasLoggedActiveOutcome {
                 hasLoggedActiveOutcome = true
                 Self.logger.notice(
-                    "Scroll edge blur active in \(self.bounds.width, format: .fixed(precision: 0), privacy: .public)pt pane"
+                    "Scroll edge blur active in \(bounds.width, format: .fixed(precision: 0), privacy: .public)pt pane"
                 )
             }
         } else {
