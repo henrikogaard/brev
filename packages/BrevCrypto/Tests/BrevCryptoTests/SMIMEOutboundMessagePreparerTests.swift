@@ -14,7 +14,7 @@
 @testable import BrevBackend
 @testable import BrevCrypto
 import Foundation
-import Security
+@preconcurrency import Security
 import Testing
 
 private let smimeEmail = "smime-test@brev.example"
@@ -33,6 +33,11 @@ private struct StubSMIMEResolver: SMIMEIdentityResolving {
         }
         return out
     }
+}
+
+private struct NoopSMIMEResolver: SMIMEIdentityResolving {
+    func signingIdentity(forSenderEmail email: String) async -> SecIdentity? { nil }
+    func encryptionCertificates(forRecipients emails: [String]) async -> [String: SecCertificate] { [:] }
 }
 
 private func loadFixture() throws -> (SecIdentity, SecCertificate) {
@@ -62,7 +67,7 @@ private func request(_ mode: OutboundMessageSecurityMode) -> OutboundMessageSecu
     OutboundMessageSecurityRequest(senderEmail: smimeEmail, to: [smimeEmail], mode: mode)
 }
 
-@Suite("SMIMEOutboundMessagePreparer")
+@Suite("SMIMEOutboundMessagePreparer", .serialized)
 struct SMIMEOutboundMessagePreparerTests {
     @Test("signs into multipart/signed and the CMS signature verifies")
     func signRoundTrips() async throws {
@@ -96,8 +101,7 @@ struct SMIMEOutboundMessagePreparerTests {
 
     @Test("mode .none passes the plaintext through")
     func noneMode() async throws {
-        let (identity, cert) = try loadFixture()
-        let engine = SMIMEOutboundMessagePreparer(resolver: StubSMIMEResolver(identity: identity, certificate: cert))
+        let engine = SMIMEOutboundMessagePreparer(resolver: NoopSMIMEResolver())
         let out = try await engine.prepare(mimeData: message, request: request(.none))
         #expect(out == message)
     }

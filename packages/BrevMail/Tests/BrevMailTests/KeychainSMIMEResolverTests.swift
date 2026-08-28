@@ -14,7 +14,7 @@
 @testable import BrevMail
 import BrevSettings
 import Foundation
-import Security
+@preconcurrency import Security
 import Testing
 
 /// In-memory `SecurityKeyMaterialStore` so the resolver's record-filtering and
@@ -54,7 +54,7 @@ private func settings(_ records: [SecurityKeyMaterialSettings.Record]) -> Securi
     SecurityKeyMaterialSettings(records: records, importExport: .defaults)
 }
 
-@Suite("KeychainSMIMEResolver")
+@Suite("KeychainSMIMEResolver", .serialized)
 struct KeychainSMIMEResolverTests {
     @Test("resolves a signing identity from a trusted S/MIME PKCS#12 record")
     func resolvesSigningIdentity() async throws {
