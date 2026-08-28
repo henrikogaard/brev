@@ -101,6 +101,16 @@ visible (`containerBackground(for: .navigationSplitView)` is iOS-only).
 Transparent window chrome must never reveal AppKit's default window color
 behind short or empty mailbox/sidebar content.
 
+Because SwiftUI can restore those opaque fills after the last layout
+trigger, the coalesced repair is self-verifying: each settled pass
+reports whether it actually cleared a restored fill, and while it keeps
+finding work it re-arms itself, bounded per external trigger, until a
+pass finds a clean tree. Repair passes must reach a fixpoint rather than
+poll on a timer, and translucency machinery that has to disable itself
+(for example the scroll-edge blur reduction when the material's layer
+tree never exposes a backdrop) must log the fail-closed reason instead
+of degrading silently.
+
 The `glass` mode is a user-facing design choice, but implementation
 must be availability-gated. When newer Liquid Glass APIs are not
 available, Brev falls back to the strongest supported system material
