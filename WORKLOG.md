@@ -1,5 +1,53 @@
 # Worklog
 
+## 2026-08-28 — Claude — Gmail empty-body root cause and band diagnostics
+
+### Goal
+
+Henrik reported the reader still showed only the snippet after PRs 16–18
+merged and the daily driver was rebuilt, and the translucent overlay was
+still missing.
+
+### Findings
+
+- The rebuilt release `Brev.app` is sandboxed and runs the live account on
+  the native Gmail API adapter (`gmail.sqlite` open in the process), not
+  the IMAP path — so PR #16 fixed a real bug in a backend this account no
+  longer uses. The previous daily driver predated the adapter (merged
+  Aug 25); today's rebuild switched the account's backend.
+- Root cause of the snippet symptom on Gmail: `GmailSyncReconciler` stores
+  `format=metadata` messages (payload = headers only), and
+  `GmailAPIBackend.body(for:)` treated any non-nil payload as complete,
+  returning an empty `MessageBody` without error — so the reader's snippet
+  fallback rendered and no failure banner fired. Fixed in PR #19 with a
+  red-first regression test (`upgradesMetadataPayloadMessage`); full
+  BrevGmail suite 95/95.
+- The `log` CLI is shadowed by zsh's builtin in this shell; every earlier
+  "no logs" observation was wrong. `/usr/bin/log` works.
+- The Aug 16 release-main installs failed to launch (entitlement macros),
+  so the previous daily driver was effectively a Debug build; today's is
+  the first launched Release daily driver. Mock/demo mode is developer-
+  build-only, so the blur band could not be probed headlessly in Release —
+  PR #20 adds a one-time "band active" notice per pane. After the rebuild,
+  the release app logs all three bands active (240/280/1273pt panes), so
+  the band mounts and reduces correctly under Release; visual confirmation
+  of the fade is back with Henrik.
+
+### Verification
+
+- BrevGmail 95/95 with the new regression test; format + strict lint +
+  ADR gate pass on both PR branches; daily driver rebuilt from clean
+  origin/main via release-main and relaunched live.
+- Post-relaunch unified log: three ScrollEdgeBlur "active" notices, no
+  MessageBodyLoad or IMAPBodyFetch errors.
+
+### Handoff
+
+- Live Gmail adapter QA (issue #2) remains open; this bug shipped through
+  that gap.
+- If the overlay still looks wrong to Henrik despite "band active" logs,
+  the next probe is visual (mask/geometry), not mounting.
+
 ## 2026-08-28 — Claude — Mail reader regressions triage (diagnosis only)
 
 ### Goal
