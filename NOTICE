@@ -1,0 +1,12 @@
+Brev - Modern, open-source mail client for macOS and iOS.
+Copyright (c) 2026 Henrik Ø. Gaard.
+
+Brev is licensed under the MIT License. See `LICENSE`.
+
+---
+
+## Third-Party Notices
+
+See `THIRD_PARTY_LICENSES.md` for bundled theme palette notices and
+licenses. Third-party Swift packages retain their own licenses in the
+package sources resolved by Swift Package Manager and Tuist.

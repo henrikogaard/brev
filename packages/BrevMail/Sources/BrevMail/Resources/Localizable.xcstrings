@@ -1,0 +1,1233 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Cancel sign-in" : {},
+    "Apple Calendar is unavailable." : {
+      "extractionState" : "manual"
+    },
+    "Apple Reminders is unavailable." : {
+      "extractionState" : "manual"
+    },
+    "Brev does not have permission to create calendar events." : {
+      "extractionState" : "manual"
+    },
+    "Brev does not have permission to create reminders." : {
+      "extractionState" : "manual"
+    },
+    "Choose a location to save the message as an .eml file." : {
+      "extractionState" : "manual"
+    },
+    "Choose an image to insert inline." : {
+      "extractionState" : "manual"
+    },
+    "Event created in Calendar." : {
+      "extractionState" : "manual"
+    },
+    "Export Message as PDF" : {
+      "extractionState" : "manual"
+    },
+    "Message content is taking too long to load. Check the connection and try again." : {
+      "extractionState" : "manual"
+    },
+    "PDF export failed" : {
+      "extractionState" : "manual"
+    },
+    "Retry or remove failed attachments before saving or sending." : {
+      "extractionState" : "manual"
+    },
+    "Save Message As" : {
+      "extractionState" : "manual"
+    },
+    "Save the current message as a template\\nto reuse it in future conversations." : {
+      "extractionState" : "manual"
+    },
+    "Task created in Reminders." : {
+      "extractionState" : "manual"
+    },
+    "This account does not support importing mail." : {
+      "extractionState" : "manual"
+    },
+    "This task handoff target is unavailable." : {
+      "extractionState" : "manual"
+    },
+    "(No body)" : {
+      "extractionState" : "manual"
+    },
+    "AI Writer" : {
+      "extractionState" : "manual"
+    },
+    "Add Note" : {
+      "extractionState" : "manual"
+    },
+    "Add due date" : {
+      "extractionState" : "manual"
+    },
+    "Add profile" : {
+      "extractionState" : "manual"
+    },
+    "Add saved search" : {
+      "extractionState" : "manual"
+    },
+    "All" : {
+      "extractionState" : "manual"
+    },
+    "Archive" : {
+      "extractionState" : "manual"
+    },
+    "Archives" : {
+      "extractionState" : "manual"
+    },
+    "Ask for a sender-scoped mailbox action" : {
+      "extractionState" : "manual"
+    },
+    "Attachments" : {
+      "extractionState" : "manual"
+    },
+    "Attachments from your cached messages will appear here." : {
+      "extractionState" : "manual"
+    },
+    "Authentication" : {
+      "extractionState" : "manual"
+    },
+    "Back to messages" : {
+      "extractionState" : "manual"
+    },
+    "Block" : {
+      "extractionState" : "manual"
+    },
+    "Block Sender?" : {
+      "extractionState" : "manual"
+    },
+    "Block this sender?" : {
+      "extractionState" : "manual"
+    },
+    "Blocked sender" : {
+      "extractionState" : "manual"
+    },
+    "Brev finds IMAP/SMTP settings from your email, with Sign in shortcuts for Google and Outlook when you need them." : {
+      "extractionState" : "manual"
+    },
+    "Brev finds IMAP and SMTP settings from your email, or lets you enter them yourself." : {
+      "extractionState" : "manual"
+    },
+    "Choose how to connect" : {
+      "extractionState" : "manual"
+    },
+    "For Fastmail and other IMAP/SMTP providers." : {
+      "extractionState" : "manual"
+    },
+    "Gmail, Google Workspace, and standard IMAP accounts in one place." : {
+      "extractionState" : "manual"
+    },
+    "Preview Brev with sample mail" : {
+      "extractionState" : "manual"
+    },
+    "Reconnect your mailbox" : {
+      "extractionState" : "manual"
+    },
+    "Repair the saved account or choose another sign-in method." : {
+      "extractionState" : "manual"
+    },
+    "Use another mail account" : {
+      "extractionState" : "manual"
+    },
+    "Uses Google's secure sign-in and the Gmail API." : {
+      "extractionState" : "manual"
+    },
+    "Uses Google's secure sign-in to connect this mailbox." : {
+      "extractionState" : "manual"
+    },
+    "Brev will use this endpoint only when you choose to sync rules from Settings. It sends your account credentials and generated Sieve script to the configured mail provider." : {
+      "extractionState" : "manual"
+    },
+    "Calendar invite" : {
+      "extractionState" : "manual"
+    },
+    "Cancel" : {
+      "extractionState" : "manual"
+    },
+    "Category" : {
+      "extractionState" : "manual"
+    },
+    "Change Follow-Up Reminder…" : {
+      "extractionState" : "manual"
+    },
+    "Changes you make while offline will appear here and sync automatically when you reconnect." : {
+      "extractionState" : "manual"
+    },
+    "Choose Mailboxes" : {
+      "extractionState" : "manual"
+    },
+    "Choose a conversation from the list to read it here." : {
+      "extractionState" : "manual"
+    },
+    "Clear Filters" : {
+      "extractionState" : "manual"
+    },
+    "Clear search" : {
+      "extractionState" : "manual"
+    },
+    "Close" : {
+      "extractionState" : "manual"
+    },
+    "Close schedule sheet" : {
+      "extractionState" : "manual"
+    },
+    "Compose" : {
+      "extractionState" : "manual"
+    },
+    "Compose unavailable." : {
+      "extractionState" : "manual"
+    },
+    "Connect an account" : {
+      "extractionState" : "manual"
+    },
+    "Connect your mailbox." : {
+      "extractionState" : "manual"
+    },
+    "Confirmation" : {
+      "extractionState" : "manual"
+    },
+    "Connect your mailbox and keep mail direct." : {
+      "extractionState" : "manual"
+    },
+    "Connecting to your mailbox…" : {
+      "extractionState" : "manual"
+    },
+    "Continue with Google" : {
+      "extractionState" : "manual"
+    },
+    "Contains secondary compose actions." : {
+      "extractionState" : "manual"
+    },
+    "Copy" : {
+      "extractionState" : "manual"
+    },
+    "Couldn’t load sender history" : {
+      "extractionState" : "manual"
+    },
+    "Create Meeting" : {
+      "extractionState" : "manual"
+    },
+    "Create Task" : {
+      "extractionState" : "manual"
+    },
+    "Create a profile to show a focused set of mailboxes without disconnecting the rest." : {
+      "extractionState" : "manual"
+    },
+    "Current" : {
+      "extractionState" : "manual"
+    },
+    "Custom Date & Time" : {
+      "extractionState" : "manual"
+    },
+    "Date" : {
+      "extractionState" : "manual"
+    },
+    "Delete" : {
+      "extractionState" : "manual"
+    },
+    "Delete Message?" : {
+      "extractionState" : "manual"
+    },
+    "Delete Saved Search" : {
+      "extractionState" : "manual"
+    },
+    "Delete this message?" : {
+      "extractionState" : "manual"
+    },
+    "Discard" : {
+      "extractionState" : "manual"
+    },
+    "Discard All Pending Changes" : {
+      "extractionState" : "manual"
+    },
+    "Documents" : {
+      "extractionState" : "manual"
+    },
+    "Done" : {
+      "extractionState" : "manual"
+    },
+    "Draft" : {
+      "extractionState" : "manual"
+    },
+    "Draft with AI" : {
+      "extractionState" : "manual"
+    },
+    "Drag left or right to resize the AI Sidebar." : {
+      "extractionState" : "manual"
+    },
+    "Drag up or down to resize sender context and mailbox chat." : {
+      "extractionState" : "manual"
+    },
+    "Due date" : {
+      "extractionState" : "manual"
+    },
+    "Edit" : {
+      "extractionState" : "manual"
+    },
+    "Editor Appearance" : {
+      "extractionState" : "manual"
+    },
+    "Enable" : {
+      "extractionState" : "manual"
+    },
+    "Enable AI Thread Summaries?" : {
+      "extractionState" : "manual"
+    },
+    "Enable AI Writer?" : {
+      "extractionState" : "manual"
+    },
+    "Enable AI..." : {
+      "extractionState" : "manual"
+    },
+    "Encrypt message" : {
+      "extractionState" : "manual"
+    },
+    "Ends" : {
+      "extractionState" : "manual"
+    },
+    "Export PDF" : {
+      "extractionState" : "manual"
+    },
+    "Export as PDF…" : {
+      "extractionState" : "manual"
+    },
+    "File type" : {
+      "extractionState" : "manual"
+    },
+    "Filter By" : {
+      "extractionState" : "manual"
+    },
+    "Flagged" : {
+      "extractionState" : "manual"
+    },
+    "Focus Search" : {
+      "extractionState" : "manual"
+    },
+    "Follow Up" : {
+      "extractionState" : "manual"
+    },
+    "Follow up on this message." : {
+      "extractionState" : "manual"
+    },
+    "Follow-Up Reminder" : {
+      "extractionState" : "manual"
+    },
+    "Follow-up date" : {
+      "extractionState" : "manual"
+    },
+    "Follow-up reminder due" : {
+      "extractionState" : "manual"
+    },
+    "Follow-up reminder set" : {
+      "extractionState" : "manual"
+    },
+    "Format" : {
+      "extractionState" : "manual"
+    },
+    "Forward" : {
+      "extractionState" : "manual"
+    },
+    "From" : {
+      "extractionState" : "manual"
+    },
+    "Generating preview" : {
+      "extractionState" : "manual"
+    },
+    "Get New Mail" : {
+      "extractionState" : "manual"
+    },
+    "HTML preview" : {
+      "extractionState" : "manual"
+    },
+    "Has attachments" : {
+      "extractionState" : "manual"
+    },
+    "Hide search options" : {
+      "extractionState" : "manual"
+    },
+    "Images" : {
+      "extractionState" : "manual"
+    },
+    "Insert" : {
+      "extractionState" : "manual"
+    },
+    "Insert Link" : {
+      "extractionState" : "manual"
+    },
+    "Insert at Cursor" : {
+      "extractionState" : "manual"
+    },
+    "Kind" : {
+      "extractionState" : "manual"
+    },
+    "Labels" : {
+      "extractionState" : "manual"
+    },
+    "Later Today" : {
+      "extractionState" : "manual"
+    },
+    "Loading local sender history…" : {
+      "extractionState" : "manual"
+    },
+    "Mail account setup is not available in this build. Use the demo mailbox for local UI testing." : {
+      "extractionState" : "manual"
+    },
+    "Mailbox Assistant" : {
+      "extractionState" : "manual"
+    },
+    "Manage Profiles" : {
+      "extractionState" : "manual"
+    },
+    "Matched messages" : {
+      "extractionState" : "manual"
+    },
+    "Meeting title" : {
+      "extractionState" : "manual"
+    },
+    "Message Options" : {
+      "extractionState" : "manual"
+    },
+    "Message Properties" : {
+      "extractionState" : "manual"
+    },
+    "Message Security" : {
+      "extractionState" : "manual"
+    },
+    "Message Tools" : {
+      "extractionState" : "manual"
+    },
+    "Message unavailable." : {
+      "extractionState" : "manual"
+    },
+    "Messages" : {
+      "extractionState" : "manual"
+    },
+    "More attachment actions" : {
+      "extractionState" : "manual"
+    },
+    "More bulk actions" : {
+      "extractionState" : "manual"
+    },
+    "More message actions" : {
+      "extractionState" : "manual"
+    },
+    "Move" : {
+      "extractionState" : "manual"
+    },
+    "Move to Folder" : {
+      "extractionState" : "manual"
+    },
+    "Name" : {
+      "extractionState" : "manual"
+    },
+    "Name shown on the account" : {
+      "extractionState" : "manual"
+    },
+    "New Message" : {
+      "extractionState" : "manual"
+    },
+    "Next Message" : {
+      "extractionState" : "manual"
+    },
+    "Next Week" : {
+      "extractionState" : "manual"
+    },
+    "No Pending Changes" : {
+      "extractionState" : "manual"
+    },
+    "No attachments" : {
+      "extractionState" : "manual"
+    },
+    "No body content." : {
+      "extractionState" : "manual"
+    },
+    "No custom profiles" : {
+      "extractionState" : "manual"
+    },
+    "No local history yet" : {
+      "extractionState" : "manual"
+    },
+    "No message selected" : {
+      "extractionState" : "manual"
+    },
+    "No trusted encryption identities available." : {
+      "extractionState" : "manual"
+    },
+    "No trusted signing identities available." : {
+      "extractionState" : "manual"
+    },
+    "Note" : {
+      "extractionState" : "manual"
+    },
+    "Note body" : {
+      "extractionState" : "manual"
+    },
+    "OK" : {
+      "extractionState" : "manual"
+    },
+    "Open in New Window" : {
+      "extractionState" : "manual"
+    },
+    "Opens this message." : {
+      "extractionState" : "manual"
+    },
+    "Optional — uses URL if left blank" : {
+      "extractionState" : "manual"
+    },
+    "Original" : {
+      "extractionState" : "manual"
+    },
+    "Other" : {
+      "extractionState" : "manual"
+    },
+    "Outbox" : {
+      "extractionState" : "manual"
+    },
+    "PDF" : {
+      "extractionState" : "manual"
+    },
+    "Pinned" : {
+      "extractionState" : "manual"
+    },
+    "Predicates" : {
+      "extractionState" : "manual"
+    },
+    "Preview" : {
+      "extractionState" : "manual"
+    },
+    "Previous Message" : {
+      "extractionState" : "manual"
+    },
+    "Print" : {
+      "extractionState" : "manual"
+    },
+    "Print / Export" : {
+      "extractionState" : "manual"
+    },
+    "Print / Export Failed" : {
+      "extractionState" : "manual"
+    },
+    "Profile" : {
+      "extractionState" : "manual"
+    },
+    "Profiles" : {
+      "extractionState" : "manual"
+    },
+    "Prompt" : {
+      "extractionState" : "manual"
+    },
+    "Query" : {
+      "extractionState" : "manual"
+    },
+    "Refresh" : {
+      "extractionState" : "manual"
+    },
+    "Remote content blocked" : {
+      "extractionState" : "manual"
+    },
+    "Remove Follow-Up Reminder" : {
+      "extractionState" : "manual"
+    },
+    "Remove Link" : {
+      "extractionState" : "manual"
+    },
+    "Removes the local note from this message" : {
+      "extractionState" : "manual"
+    },
+    "Reply All" : {
+      "extractionState" : "manual"
+    },
+    "Request" : {
+      "extractionState" : "manual"
+    },
+    "Request read receipt" : {
+      "extractionState" : "manual"
+    },
+    "Resize AI Sidebar" : {
+      "extractionState" : "manual"
+    },
+    "Resize AI Sidebar panels" : {
+      "extractionState" : "manual"
+    },
+    "Retry" : {
+      "extractionState" : "manual"
+    },
+    "Retry All" : {
+      "extractionState" : "manual"
+    },
+    "Review" : {
+      "extractionState" : "manual"
+    },
+    "Review details" : {
+      "extractionState" : "manual"
+    },
+    "Rewrite Selection" : {
+      "extractionState" : "manual"
+    },
+    "Save" : {
+      "extractionState" : "manual"
+    },
+    "Save current message as template…" : {
+      "extractionState" : "manual"
+    },
+    "Save the current message as a template\\nto reuse it in future conversations." : {
+      "extractionState" : "manual"
+    },
+    "Saved Search" : {
+      "extractionState" : "manual"
+    },
+    "Saved Searches" : {
+      "extractionState" : "manual"
+    },
+    "Saves the note body to local message workflow state" : {
+      "extractionState" : "manual"
+    },
+    "Schedule send" : {
+      "extractionState" : "manual"
+    },
+    "Search attachments" : {
+      "extractionState" : "manual"
+    },
+    "Search folders" : {
+      "extractionState" : "manual"
+    },
+    "Search help" : {
+      "extractionState" : "manual"
+    },
+    "Search help: %@" : {
+      "extractionState" : "manual"
+    },
+    "Search scope" : {
+      "extractionState" : "manual"
+    },
+    "Search templates" : {
+      "extractionState" : "manual"
+    },
+    "Show %@ search operators" : {
+      "extractionState" : "manual"
+    },
+    "Security" : {
+      "extractionState" : "manual"
+    },
+    "Select a message to see sender details. Mailbox chat below works without one." : {
+      "extractionState" : "manual"
+    },
+    "Send Anyway" : {
+      "extractionState" : "manual"
+    },
+    "Send at" : {
+      "extractionState" : "manual"
+    },
+    "Server-side filters" : {
+      "extractionState" : "manual"
+    },
+    "Set Follow-Up Reminder" : {
+      "extractionState" : "manual"
+    },
+    "Settings" : {
+      "extractionState" : "manual"
+    },
+    "Share" : {
+      "extractionState" : "manual"
+    },
+    "Show all from sender" : {
+      "extractionState" : "manual"
+    },
+    "Show search options" : {
+      "extractionState" : "manual"
+    },
+    "Show server settings" : {
+      "extractionState" : "manual"
+    },
+    "Sign message" : {
+      "extractionState" : "manual"
+    },
+    "Signature" : {
+      "extractionState" : "manual"
+    },
+    "Built-in Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "Collapse Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "Custom Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "Delete Smart View" : {
+      "extractionState" : "manual"
+    },
+    "Edit Smart View" : {
+      "extractionState" : "manual"
+    },
+    "Expand Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "Hide" : {
+      "extractionState" : "manual"
+    },
+    "Manage Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "New Smart View" : {
+      "extractionState" : "manual"
+    },
+    "Show in sidebar" : {
+      "extractionState" : "manual"
+    },
+    "Smart View" : {
+      "extractionState" : "manual"
+    },
+    "Smart Views" : {
+      "extractionState" : "manual"
+    },
+    "Starred only" : {
+      "extractionState" : "manual"
+    },
+    "Unread only" : {
+      "extractionState" : "manual"
+    },
+    "Snooze Message" : {
+      "extractionState" : "manual"
+    },
+    "Snooze…" : {
+      "extractionState" : "manual"
+    },
+    "Sort By" : {
+      "extractionState" : "manual"
+    },
+    "Spreadsheets" : {
+      "extractionState" : "manual"
+    },
+    "Start with your mail account" : {
+      "extractionState" : "manual"
+    },
+    "Starts" : {
+      "extractionState" : "manual"
+    },
+    "Stored locally in Keychain" : {
+      "extractionState" : "manual"
+    },
+    "Subject" : {
+      "extractionState" : "manual"
+    },
+    "Summarize" : {
+      "extractionState" : "manual"
+    },
+    "Summarize Thread" : {
+      "extractionState" : "manual"
+    },
+    "Sync compatible local rules to a Brev-owned ManageSieve script." : {
+      "extractionState" : "manual"
+    },
+    "Target" : {
+      "extractionState" : "manual"
+    },
+    "Task title" : {
+      "extractionState" : "manual"
+    },
+    "Template name" : {
+      "extractionState" : "manual"
+    },
+    "Templates" : {
+      "extractionState" : "manual"
+    },
+    "Theme" : {
+      "extractionState" : "manual"
+    },
+    "This sender has no cached messages beyond the current selection." : {
+      "extractionState" : "manual"
+    },
+    "See your inbox in one calm place, with your credentials kept on this device." : {
+      "extractionState" : "manual"
+    },
+    "Thread summary" : {
+      "extractionState" : "manual"
+    },
+    "To" : {
+      "extractionState" : "manual"
+    },
+    "Toggle to search across every folder" : {
+      "extractionState" : "manual"
+    },
+    "Tomorrow" : {
+      "extractionState" : "manual"
+    },
+    "Try Again" : {
+      "extractionState" : "manual"
+    },
+    "Unflag" : {
+      "extractionState" : "manual"
+    },
+    "Unstar" : {
+      "extractionState" : "manual"
+    },
+    "Use app password instead" : {
+      "extractionState" : "manual"
+    },
+    "Use automatic category" : {
+      "extractionState" : "manual"
+    },
+    "VISIBLE MAILBOXES" : {
+      "extractionState" : "manual"
+    },
+    "Wake at" : {
+      "extractionState" : "manual"
+    },
+    "Your credentials stay in the Keychain. Brev connects directly to your provider." : {
+      "extractionState" : "manual"
+    },
+    "Your credentials stay in the Keychain. Brev connects directly to your mail provider." : {
+      "extractionState" : "manual"
+    },
+    "https://example.com or email@example.com" : {
+      "extractionState" : "manual"
+    },
+    "Brev checks message contents page by page; this may fetch message data because you asked for an attachment search. No background fetch is running." : {
+      "extractionState" : "manual"
+    },
+    "Open Brev to review the message and try again." : {
+      "extractionState" : "manual"
+    },
+    "Opens a local sample mailbox without connecting an account." : {
+      "extractionState" : "manual"
+    },
+    "Other mail account" : {
+      "extractionState" : "manual"
+    },
+    "Reply" : {
+      "extractionState" : "manual"
+    },
+    "Reply not sent" : {
+      "extractionState" : "manual"
+    },
+    "Searching attachments" : {
+      "extractionState" : "manual"
+    },
+    "Send" : {
+      "extractionState" : "manual"
+    },
+    "Your reply is saved in Drafts. Open Brev to try again." : {
+      "extractionState" : "manual"
+    },
+    "Add account" : {
+      "extractionState" : "manual"
+    },
+    "Add mail account" : {
+      "extractionState" : "manual"
+    },
+    "Adding..." : {
+      "extractionState" : "manual"
+    },
+    "Couldn't load one mailbox account." : {
+      "extractionState" : "manual"
+    },
+    "Couldn't load mailboxes for %@." : {
+      "extractionState" : "manual"
+    },
+    "Couldn't load mailboxes for %@: %@" : {
+      "extractionState" : "manual"
+    },
+    "Couldn't load mailboxes for %lld accounts." : {
+      "extractionState" : "manual"
+    },
+    "Find settings" : {
+      "extractionState" : "manual"
+    },
+    "Finding..." : {
+      "extractionState" : "manual"
+    },
+    "Google sign-in not available" : {
+      "extractionState" : "manual"
+    },
+    "Google sign-in not configured" : {
+      "extractionState" : "manual"
+    },
+    "Google opens its own secure sign-in, then Brev brings in your inbox." : {
+      "extractionState" : "manual"
+    },
+    "Use Google IMAP/SMTP instead" : {
+      "extractionState" : "manual"
+    },
+    "Manual IMAP/SMTP" : {
+      "extractionState" : "manual"
+    },
+    "Microsoft sign-in not available" : {
+      "extractionState" : "manual"
+    },
+    "Microsoft sign-in not configured" : {
+      "extractionState" : "manual"
+    },
+    "Retry saved session" : {
+      "extractionState" : "manual"
+    },
+    "Sign in with Google" : {
+      "extractionState" : "manual"
+    },
+    "Sign in with Microsoft" : {
+      "extractionState" : "manual"
+    },
+    "Test connection" : {
+      "extractionState" : "manual"
+    },
+    "Testing..." : {
+      "extractionState" : "manual"
+    },
+    "Try demo mailbox" : {
+      "extractionState" : "manual"
+    },
+    "Update password for %@" : {
+      "extractionState" : "manual"
+    },
+    "%@ uses Google OAuth2. Prefer Sign in with Google when this build has a Google OAuth client ID, or use a Google app password from a 2-Step Verification-enabled account." : {
+      "extractionState" : "manual"
+    },
+    "%@ uses Microsoft OAuth2. Prefer Sign in with Microsoft when this build has a Microsoft OAuth client ID. Manual password IMAP/SMTP setup is usually blocked for Outlook and Microsoft 365 mailboxes." : {
+      "extractionState" : "manual"
+    },
+    "%@ uses OAuth2. Prefer Sign in with Google or Microsoft when configured for this build, or use an IMAP/SMTP app password if your provider supports one." : {
+      "extractionState" : "manual"
+    },
+    "%@ uses encrypted-password challenge authentication, which Brev does not support yet. Change it to Password or App Password over TLS/STARTTLS before adding the account." : {
+      "extractionState" : "manual"
+    },
+    "A Microsoft OAuth client ID is needed before Brev can open Microsoft IMAP/SMTP sign-in. If your Microsoft 365 tenant has IMAP disabled, wait for future native Exchange support." : {
+      "extractionState" : "manual"
+    },
+    "A platform-specific Google OAuth client ID is needed before Brev can open Google sign-in. Configure a Desktop client for macOS or an iOS client with its reversed callback in Google Cloud Console, then rebuild Brev." : {
+      "extractionState" : "manual"
+    },
+    "AOL requires an app password — not your login password. Generate one in AOL → Account Security → Generate app password." : {
+      "extractionState" : "manual"
+    },
+    "Accounts without authentication are not supported." : {
+      "extractionState" : "manual"
+    },
+    "App password" : {
+      "extractionState" : "manual"
+    },
+    "Automatic settings discovery is not available in this build. Enter IMAP and SMTP settings manually." : {
+      "extractionState" : "manual"
+    },
+    "Brev found Google OAuth2 settings for %@. Prefer Sign in with Google when configured, or use manual IMAP/SMTP settings with a Google app password if the mailbox has 2-Step Verification enabled." : {
+      "extractionState" : "manual"
+    },
+    "Brev found Microsoft OAuth2 settings for %@. Prefer Sign in with Microsoft when configured; manual password IMAP/SMTP setup is usually blocked for Outlook and Microsoft 365 accounts." : {
+      "extractionState" : "manual"
+    },
+    "Brev found OAuth2 settings for %@. Prefer Sign in with Google or Microsoft when configured, or use manual IMAP/SMTP settings with an app password if your provider supports one." : {
+      "extractionState" : "manual"
+    },
+    "Brev found encrypted-password challenge settings, which are not supported yet. Edit the account to use Password or App Password over TLS/STARTTLS before adding it." : {
+      "extractionState" : "manual"
+    },
+    "Brev will open Google sign-in and request IMAP/SMTP access for this mailbox." : {
+      "extractionState" : "manual"
+    },
+    "Brev will open Microsoft sign-in and request IMAP/SMTP access for this mailbox. Tenants that disable IMAP will need future native Exchange support." : {
+      "extractionState" : "manual"
+    },
+    "Brev's current Microsoft sign-in uses IMAP and SMTP. Where IMAP is disabled for a Microsoft 365 tenant, this mailbox will need future native Exchange support through Microsoft Graph, with EWS compatibility evaluated for on-prem or hybrid accounts." : {
+      "extractionState" : "manual"
+    },
+    "Connection testing is not available in this build." : {
+      "extractionState" : "manual"
+    },
+    "Could not load %@ settings." : {
+      "extractionState" : "manual"
+    },
+    "Couldn't find settings automatically. Open Advanced setup to enter IMAP and SMTP details." : {
+      "extractionState" : "manual"
+    },
+    "Create app-specific password" : {
+      "extractionState" : "manual"
+    },
+    "Credentials are stored in Keychain. Brev connects directly to your mail provider." : {
+      "extractionState" : "manual"
+    },
+    "Display name (optional)" : {
+      "extractionState" : "manual"
+    },
+    "Explore the demo mailbox" : {
+      "extractionState" : "manual"
+    },
+    "Email address" : {
+      "extractionState" : "manual"
+    },
+    "Encrypted password" : {
+      "extractionState" : "manual"
+    },
+    "Enter a valid email address before editing IMAP/SMTP settings." : {
+      "extractionState" : "manual"
+    },
+    "Enter a valid email address before skipping to %@." : {
+      "extractionState" : "manual"
+    },
+    "Enter a valid email address before using Find settings." : {
+      "extractionState" : "manual"
+    },
+    "Enter your email and Brev will find the right connection settings." : {
+      "extractionState" : "manual"
+    },
+    "Enter your email, then choose Find settings." : {
+      "extractionState" : "manual"
+    },
+    "Choose a provider shortcut or enter server details yourself." : {
+      "extractionState" : "manual"
+    },
+    "Advanced setup" : {
+      "extractionState" : "manual"
+    },
+    "Fastmail requires an app password — not your login password. Create one in Fastmail → Settings → Privacy & Security → Connected apps & app passwords." : {
+      "extractionState" : "manual"
+    },
+    "Find settings uses DNS records for your domain first. If needed, provider HTTPS autoconfig may receive your full email address to return IMAP/SMTP settings." : {
+      "extractionState" : "manual"
+    },
+    "Found %@ from your domain's mail records." : {
+      "extractionState" : "manual"
+    },
+    "Found settings for %@." : {
+      "extractionState" : "manual"
+    },
+    "Found settings from your domain's DNS records." : {
+      "extractionState" : "manual"
+    },
+    "Found your provider's settings." : {
+      "extractionState" : "manual"
+    },
+    "Google" : {
+      "extractionState" : "manual"
+    },
+    "Host" : {
+      "extractionState" : "manual"
+    },
+    "IMAP and SMTP connection test succeeded. No account was saved." : {
+      "extractionState" : "manual"
+    },
+    "IMAP authentication failed. Check the email address and app password, then try again." : {
+      "extractionState" : "manual"
+    },
+    "Incoming IMAP" : {
+      "extractionState" : "manual"
+    },
+    "Native Exchange support is planned" : {
+      "extractionState" : "manual"
+    },
+    "None" : {
+      "extractionState" : "manual"
+    },
+    "OAuth sign-in is not available in this build." : {
+      "extractionState" : "manual"
+    },
+    "Saved account settings are incomplete. Add the account again or update it in Settings." : {
+      "extractionState" : "manual"
+    },
+    "Couldn't sign in." : { "extractionState" : "manual" },
+    "Couldn't restore your session." : { "extractionState" : "manual" },
+    "Mac Keychain is locked. Unlock your Mac or disable automatic login, then restart Brev." : {
+      "extractionState" : "manual"
+    },
+    "OAuth2" : {
+      "extractionState" : "manual"
+    },
+    "Outgoing SMTP" : {
+      "extractionState" : "manual"
+    },
+    "Outlook" : {
+      "extractionState" : "manual"
+    },
+    "Password" : {
+      "extractionState" : "manual"
+    },
+    "Password or app password" : {
+      "extractionState" : "manual"
+    },
+    "Password or app password contains an invalid character." : {
+      "extractionState" : "manual"
+    },
+    "Port" : {
+      "extractionState" : "manual"
+    },
+    "Review the IMAP and SMTP settings before adding the account." : {
+      "extractionState" : "manual"
+    },
+    "Review the IMAP and SMTP settings before testing the connection." : {
+      "extractionState" : "manual"
+    },
+    "Review the discovered IMAP and SMTP settings before adding the account." : {
+      "extractionState" : "manual"
+    },
+    "SMTP authentication failed. Check the email address and app password, then try again." : {
+      "extractionState" : "manual"
+    },
+    "The mail server has too many open connections right now. Wait a moment and try again." : {
+      "extractionState" : "manual"
+    },
+    "The server rejected these credentials. Check the email address and app password, then try again." : {
+      "extractionState" : "manual"
+    },
+    "This provider expects a provider-generated app password. Enter that app password here, not your normal mailbox password." : {
+      "extractionState" : "manual"
+    },
+    "Update mail password" : {
+      "extractionState" : "manual"
+    },
+    "Username template" : {
+      "extractionState" : "manual"
+    },
+    "username templates cannot contain line breaks or invalid characters." : {
+      "extractionState" : "manual"
+    },
+    "Yahoo requires an app password — not your login password. Generate one in Yahoo → Account Security → Generate app password." : {
+      "extractionState" : "manual"
+    },
+    "iCloud Mail requires an app-specific password — not your Apple ID password. Create one at appleid.apple.com → Sign-In and Security → App-Specific Passwords." : {
+      "extractionState" : "manual"
+    },
+    "your provider" : {
+      "extractionState" : "manual"
+    },
+    "New Subfolder" : { "extractionState" : "manual" },
+    "Rename Folder" : { "extractionState" : "manual" },
+    "Set Local Name" : { "extractionState" : "manual" },
+    "Create" : { "extractionState" : "manual" },
+    "Couldn't retry sync." : { "extractionState" : "manual" },
+    "Rename" : { "extractionState" : "manual" },
+    "Recovered from a stuck mail operation and reloaded the current mailbox." : { "extractionState" : "manual" },
+    "Save" : { "extractionState" : "manual" },
+    "Name" : { "extractionState" : "manual" },
+    "New name" : { "extractionState" : "manual" },
+    "Local name" : { "extractionState" : "manual" },
+    "Parent folder: %@" : { "extractionState" : "manual" },
+    "Folder: %@" : { "extractionState" : "manual" },
+    "Delete Folder?" : { "extractionState" : "manual" },
+    "folder.emptyTrash.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Empty Trash?" } } }
+    },
+    "folder.deleteJunk.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Delete Junk Mail?" } } }
+    },
+    "folder.empty.title" : {
+      "extractionState" : "manual",
+      "localizations" : { "en" : { "stringUnit" : { "state" : "translated", "value" : "Empty Folder?" } } }
+    },
+    "Empty Trash" : { "extractionState" : "manual" },
+    "Delete Junk Mail" : { "extractionState" : "manual" },
+    "Empty Folder" : { "extractionState" : "manual" },
+    "Delete \"%@\" and all subfolders?" : { "extractionState" : "manual" },
+    "Permanently remove all messages from \"%@\"." : { "extractionState" : "manual" },
+    "Delete all junk messages from \"%@\"." : { "extractionState" : "manual" },
+    "Delete all messages from \"%@\"." : { "extractionState" : "manual" },
+    "Imported %lld %@ into %@." : { "extractionState" : "manual" },
+    "Imported %lld %@ into %@ with %lld %@." : { "extractionState" : "manual" },
+    "Couldn't update folder." : { "extractionState" : "manual" },
+    "Copy To" : { "extractionState" : "manual" },
+    "You're offline. Changes are queued." : { "extractionState" : "manual" },
+    "Couldn't import mail." : { "extractionState" : "manual" },
+    "Pinned" : { "extractionState" : "manual" },
+    "Today" : { "extractionState" : "manual" },
+    "Yesterday" : { "extractionState" : "manual" },
+    "Future" : { "extractionState" : "manual" },
+    "This week" : { "extractionState" : "manual" },
+    "Last week" : { "extractionState" : "manual" },
+    "Two weeks ago" : { "extractionState" : "manual" },
+    "Earlier this month" : { "extractionState" : "manual" },
+    "One month ago" : { "extractionState" : "manual" },
+    "%lld months ago" : { "extractionState" : "manual" },
+    "One year ago" : { "extractionState" : "manual" },
+    "%lld years ago" : { "extractionState" : "manual" },
+    "Match Theme" : { "extractionState" : "manual" },
+    "Light" : { "extractionState" : "manual" },
+    "Dark" : { "extractionState" : "manual" },
+    "Original" : { "extractionState" : "manual" },
+    "Switch to dark reading mode" : { "extractionState" : "manual" },
+    "Switch to the email's original styling" : { "extractionState" : "manual" },
+    "Bold" : { "extractionState" : "manual" },
+    "Italic" : { "extractionState" : "manual" },
+    "Underline" : { "extractionState" : "manual" },
+    "Insert Link" : { "extractionState" : "manual" },
+    "Bulleted List" : { "extractionState" : "manual" },
+    "Numbered List" : { "extractionState" : "manual" },
+    "Insert Image" : { "extractionState" : "manual" },
+    "Clear Formatting" : { "extractionState" : "manual" },
+    "Saving Draft" : { "extractionState" : "manual" },
+    "Edit scheduled send" : { "extractionState" : "manual" },
+    "Cancel Send" : { "extractionState" : "manual" },
+    "Sending" : { "extractionState" : "manual" },
+    "Send" : { "extractionState" : "manual" },
+    "Choose sender" : { "extractionState" : "manual" },
+    "Send from a different alias" : { "extractionState" : "manual" },
+    "None" : { "extractionState" : "manual" },
+    "Signature: %@" : { "extractionState" : "manual" },
+    "No signature" : { "extractionState" : "manual" },
+    "Read receipt requested." : { "extractionState" : "manual" },
+    "No read receipt requested." : { "extractionState" : "manual" },
+    "To" : { "extractionState" : "manual" },
+    "Cc" : { "extractionState" : "manual" },
+    "Bcc" : { "extractionState" : "manual" },
+    "Subject" : { "extractionState" : "manual" },
+    "From" : { "extractionState" : "manual" },
+    "Clear" : { "extractionState" : "manual" },
+    "Draft recovered from a previous session." : { "extractionState" : "manual" },
+    "Sending in %llds…" : { "extractionState" : "manual" },
+    "Format" : { "extractionState" : "manual" },
+    "Edit" : { "extractionState" : "manual" },
+    "Preview" : { "extractionState" : "manual" },
+    "Unavailable" : { "extractionState" : "manual" },
+    "Available" : { "extractionState" : "manual" },
+    "Account Settings…" : { "extractionState" : "manual" },
+    "All Attachments" : { "extractionState" : "manual" },
+    "All Inboxes" : { "extractionState" : "manual" },
+    "All Mailboxes" : { "extractionState" : "manual" },
+    "Attach" : { "extractionState" : "manual" },
+    "Compose actions" : { "extractionState" : "manual" },
+    "Collapse All" : { "extractionState" : "manual" },
+    "Expand All" : { "extractionState" : "manual" },
+    "Collapsed" : { "extractionState" : "manual" },
+    "Expanded" : { "extractionState" : "manual" },
+    "Finishing current action…" : { "extractionState" : "manual" },
+    "Switching mailbox…" : { "extractionState" : "manual" },
+    "Mark All as Read" : { "extractionState" : "manual" },
+    "Hide from Mailbox List" : { "extractionState" : "manual" },
+    "Show in Profile…" : { "extractionState" : "manual" },
+    "Properties…" : { "extractionState" : "manual" },
+    "Offline" : { "extractionState" : "manual" },
+    "Couldn't load folders" : { "extractionState" : "manual" },
+    "Showing cached folders" : { "extractionState" : "manual" },
+    "Folders may be stale" : { "extractionState" : "manual" },
+    "Showing cached folders while Brev retries: %@" : { "extractionState" : "manual" },
+    "Setting up your Inbox" : { "extractionState" : "manual" },
+    "Brev is checking this account for folders. Your mail will appear here when the first sync finishes." : { "extractionState" : "manual" },
+    "Check Again" : { "extractionState" : "manual" },
+    "Mailbox" : { "extractionState" : "manual" },
+    "Move To" : { "extractionState" : "manual" },
+    "No folders available" : { "extractionState" : "manual" },
+    "No matching folders" : { "extractionState" : "manual" },
+    "Current" : { "extractionState" : "manual" },
+    "No Templates" : { "extractionState" : "manual" },
+    "No templates match your search" : { "extractionState" : "manual" },
+    "Add Note" : { "extractionState" : "manual" },
+    "Edit Note" : { "extractionState" : "manual" },
+    "No subject" : { "extractionState" : "manual" },
+    "Delete Note" : { "extractionState" : "manual" },
+    "Unread" : { "extractionState" : "manual" },
+    "From me" : { "extractionState" : "manual" },
+    "Snoozed" : { "extractionState" : "manual" },
+    "Done" : { "extractionState" : "manual" },
+    "VIP" : { "extractionState" : "manual" },
+    "Filter" : { "extractionState" : "manual" },
+    "%lld Filters" : { "extractionState" : "manual" },
+    "sorted %@" : { "extractionState" : "manual" },
+    "Sort and filter, %@" : { "extractionState" : "manual" },
+    "Sort and filter, 1 filter active, %@" : { "extractionState" : "manual" },
+    "Sort and filter, %lld filters active, %@" : { "extractionState" : "manual" },
+    "Sort order: %@" : { "extractionState" : "manual" },
+    "Templates" : { "extractionState" : "manual" }
+  },
+  "version" : "1.0"
+}

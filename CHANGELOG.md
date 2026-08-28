@@ -1,0 +1,17 @@
+# Changelog
+
+All notable changes to Brev are documented here.
+
+## [Unreleased]
+
+## [0.1.0] - 2026-08-28
+
+### Added
+
+- Initial public source baseline for the native macOS and iOS apps.
+- Native Gmail API support for Gmail and Google Workspace accounts.
+- Standards-based IMAP/SMTP support for other mail providers.
+- Local-first mail storage, search, compose, settings, and privacy controls.
+
+[Unreleased]: https://github.com/henrikogaard/brev/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/henrikogaard/brev/releases/tag/v0.1.0

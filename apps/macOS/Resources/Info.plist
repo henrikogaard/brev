@@ -1,0 +1,88 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>$(DEVELOPMENT_LANGUAGE)</string>
+	<key>CFBundleDisplayName</key>
+	<string>Brev</string>
+	<key>CFBundleExecutable</key>
+	<string>$(EXECUTABLE_NAME)</string>
+	<key>CFBundleIdentifier</key>
+	<string>$(PRODUCT_BUNDLE_IDENTIFIER)</string>
+	<key>CFBundleInfoDictionaryVersion</key>
+	<string>6.0</string>
+	<key>CFBundleName</key>
+	<string>Brev</string>
+	<key>CFBundlePackageType</key>
+	<string>$(PRODUCT_BUNDLE_PACKAGE_TYPE)</string>
+	<key>CFBundleShortVersionString</key>
+	<string>$(MARKETING_VERSION)</string>
+	<key>CFBundleVersion</key>
+	<string>$(CURRENT_PROJECT_VERSION)</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>$(MACOSX_DEPLOYMENT_TARGET)</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Henrik Øgård. Licensed under MIT.</string>
+	<key>NSCalendarsFullAccessUsageDescription</key>
+	<string>Brev creates calendar events only when you choose Create Meeting from a message.</string>
+	<key>NSCalendarsUsageDescription</key>
+	<string>Brev creates calendar events only when you choose Create Meeting from a message.</string>
+	<key>NSContactsUsageDescription</key>
+	<string>Brev reads your contacts only to show matching recipients and sender details in mail.</string>
+	<key>NSRemindersFullAccessUsageDescription</key>
+	<string>Brev creates reminders only when you choose Create Task from a message.</string>
+	<key>NSRemindersUsageDescription</key>
+	<string>Brev creates reminders only when you choose Create Task from a message.</string>
+	<key>BREVGoogleOAuthMacOSClientID</key>
+	<string>$(BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID)</string>
+	<key>BREVGoogleOAuthMacOSRedirectURI</key>
+	<string>$(BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI)</string>
+	<key>BREVGoogleOAuthMacOSCallbackScheme</key>
+	<string>$(BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME)</string>
+	<key>BREVGoogleOAuthClientSecret</key>
+	<string>$(BREV_GOOGLE_OAUTH_CLIENT_SECRET)</string>
+	<key>BREVMicrosoftOAuthClientID</key>
+	<string>$(BREV_MICROSOFT_OAUTH_CLIENT_ID)</string>
+	<key>NSSupportsAutomaticTermination</key>
+	<true/>
+	<key>BRDistributionChannel</key>
+	<string>direct-download</string>
+	<key>SUFeedURL</key>
+	<string>https://updates.brevmail.eu/appcast.xml</string>
+	<key>SUPublicEDKey</key>
+	<string>$(BREV_SPARKLE_PUBLIC_ED_KEY)</string>
+	<key>SUEnableAutomaticChecks</key>
+	<false/>
+	<key>SUScheduledCheckInterval</key>
+	<integer>86400</integer>
+	<key>SUEnableInstallerLauncherService</key>
+	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLName</key>
+			<string>brev.deep-links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>brev</string>
+				<string>eu.brevmail.brev</string>
+			</array>
+		</dict>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>Email Address URL</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>mailto</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

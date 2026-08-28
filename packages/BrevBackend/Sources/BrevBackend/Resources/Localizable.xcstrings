@@ -1,0 +1,7 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Google rejected the token exchange%@ (HTTP %@)." : {}
+  },
+  "version" : "1.0"
+}

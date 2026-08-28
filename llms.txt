@@ -1,0 +1,42 @@
+# Brev
+
+> Modern, open-source mail client for macOS and iOS. Standalone app with
+> Brev-owned mail, UI, and provider layers. Native on each platform,
+> IDE-style theming, zero telemetry. By Henrik Ø. Gaard.
+
+## Reading order for LLMs
+
+Read in this order before designing anything:
+
+1. AGENTS.md — the contract for AI agents in this repo
+2. ADRs/README.md — the index of architectural decisions
+3. ADRs/0028-mail-provider-architecture.md — the north star
+4. ADRs/0001 through 0012 — the foundational decisions
+
+## Repository map
+
+- ADRs/ — architecture decisions (canonical for design)
+- prompts/ — agent prompt templates for common tasks
+- packages/ — Swift packages (BrevBackend, BrevMail, BrevDesign,
+  BrevThemes, BrevAvatars, BrevCalendar, BrevAI, BrevGmail,
+  BrevSyncEngine)
+- apps/ — macOS and iOS app targets
+- themes/ — JSON theme files
+- docs/ — human-facing documentation
+
+## Hard rules (mechanically enforced)
+
+- No literal Color values in views. Use theme tokens.
+- No Matomo, Sentry, or other telemetry libraries.
+- Views never see Realm types.
+- Capability-driven UI, not backend type-checks.
+- ADR required for protected-path changes (see ADRs/0005).
+
+## Status
+
+Pre-alpha. The current repo supports generic IMAP/SMTP and a native Gmail
+adapter. Microsoft Graph/Exchange is future provider scope.
+
+## License
+
+MIT.

@@ -1,0 +1,204 @@
+# SwiftLint configuration for Brev.
+#
+# Brev adds custom rules from ADR-0005 enforcing the invariants in ADR-0028.
+#
+# Authoritative rule documentation lives in:
+#   - ADR-0002 (theme system)
+#   - ADR-0005 (enforcement)
+#   - ADR-0006 (telemetry and privacy)
+#   - ADR-0028 (roadmap and invariants)
+
+disabled_rules:
+  - line_length
+  - identifier_name
+  - type_body_length
+  - function_body_length
+  - file_length
+  - type_name
+  - force_cast
+  - force_try
+  - cyclomatic_complexity
+  - inclusive_language
+  - for_where
+  - optional_data_string_conversion
+  # Legacy production sources are now included so custom privacy/architecture
+  # rules cover every shipping package. Keep style-only debt out of the gate
+  # until those packages are normalized.
+  - closure_end_indentation
+  - contains_over_range_nil_comparison
+  - empty_count
+  - empty_string
+  - first_where
+  - function_parameter_count
+  - large_tuple
+  - multiple_closures_with_trailing_closure
+  - nesting
+  - non_optional_string_data_conversion
+  - trailing_closure
+  - trailing_comma
+  - unneeded_synthesized_initializer
+
+opt_in_rules:
+  - closure_spacing
+  - collection_alignment
+  - contains_over_filter_count
+  - contains_over_first_not_nil
+  - empty_collection_literal
+  - identical_operands
+  - last_where
+  - operator_usage_whitespace
+  - overridden_super_call
+  - prefer_zero_over_explicit_init
+  - prohibited_super_call
+  - redundant_type_annotation
+  - toggle_bool
+  - unneeded_parentheses_in_closure_argument
+
+analyzer_rules:
+  - unused_import
+
+included:
+  - apps/macOS/Sources
+  - apps/iOS/Sources
+  - packages/BrevAI/Sources
+  - packages/BrevAvatars/Sources
+  - packages/BrevBackend/Sources
+  - packages/BrevCalendar/Sources
+  - packages/BrevCrypto/Sources
+  - packages/BrevDesign/Sources
+  - packages/BrevMail/Sources
+  - packages/BrevPlugins/Sources
+  - packages/BrevSettings/Sources
+  - packages/BrevSyncEngine/Sources
+  - packages/BrevThemes/Sources
+  - Plugins
+  - apps/iOS/BrevShareExtension
+  - apps/iOS/BrevNotificationContent
+  - Tuist/Package.swift
+  - Tuist/ProjectDescriptionHelpers
+  - Workspace.swift
+
+excluded:
+  # Generated artifacts.
+  - "**/.build"
+  - "**/Derived"
+  - "**/DerivedData"
+  - Tuist/.build
+
+custom_rules:
+  # --- Swift style rules -----------------------------------------------------
+
+  private_state:
+    included:
+      - ".*\\.swift"
+    regex: "(?<!@Previewable\\s)@State\\s+var"
+    message: "State should be private"
+  private_state_object:
+    included:
+      - ".*\\.swift"
+    regex: "(?<!@Previewable\\s)@StateObject\\s+var"
+    message: "StateObject should be private"
+  private_modal_state:
+    included:
+      - ".*\\.swift"
+    regex: "(?<!@Previewable\\s)@ModalState\\s+var"
+    message: "ModalState should be private"
+  private_environment:
+    included:
+      - ".*\\.swift"
+    regex: "@Environment\\([^)]*\\)\\s+var"
+    message: "Environment should be private"
+  private_environment_object:
+    included:
+      - ".*\\.swift"
+    regex: "@EnvironmentObject\\s+var"
+    message: "EnvironmentObject should be private"
+
+  # --- Brev rules (ADR-0005) -------------------------------------------------
+
+  no_literal_colors_in_views:
+    name: "No literal colors in view code"
+    # Word-boundary lookbehinds keep NSColor.* / UIColor.* / SomeColor.* from
+    # accidentally matching the `Color.X` pattern.
+    regex: '(?<![A-Za-z0-9_])Color\.(?!clear\b)\w+|(?<![A-Za-z0-9_])Color\(red:|(?<![A-Za-z0-9_])Color\(#'
+    message: "Use theme.<token>.color — see ADR-0002. Only Color.clear is allowed."
+    severity: error
+    included:
+      - "apps/macOS/Sources/.*\\.swift"
+      - "apps/iOS/Sources/.*\\.swift"
+      - "apps/iOS/BrevShareExtension/.*\\.swift"
+      - "apps/iOS/BrevNotificationContent/.*\\.swift"
+      - "packages/BrevDesign/Sources/.*\\.swift"
+      - "Plugins/.*/Sources/.*\\.swift"
+
+  no_telemetry_imports:
+    name: "No telemetry library imports"
+    regex: '^\s*import\s+(Matomo|Sentry|FirebaseAnalytics|Mixpanel|Amplitude)\b'
+    message: "Brev ships zero telemetry — see ADR-0006. Never add telemetry libraries."
+    severity: error
+
+  no_matomo_calls:
+    name: "No Matomo tracking calls"
+    regex: '\bMatomoUtils\b|\bmatomo\w*\.(track|setUserId|setView)\b'
+    message: "Matomo is stripped from Brev — see ADR-0006."
+    severity: error
+
+  no_sentry_calls:
+    name: "No Sentry calls"
+    regex: '\bSentrySDK\b|\bSentry\.capture\b|\bsentryDelegate\b'
+    message: "Sentry is stripped from Brev — see ADR-0006. Errors are logged locally only."
+    severity: error
+
+  no_hardcoded_view_strings:
+    name: "No hardcoded user-facing strings in views"
+    # Only match the no-argument literal form. Package views that explicitly
+    # pass `bundle: .module` are already localized and must not be flagged.
+    regex: '(?:Text|Button|Toggle)\("[A-Z][^"]{2,}"\)'
+    message: "Use MailResourcesStrings or BrevStrings — localizable. Mark debug-only strings with `// debug` on the same line."
+    severity: warning
+    included:
+      - "apps/.*\\.swift"
+      - "Plugins/.*/Sources/.*\\.swift"
+
+  package_text_missing_module_bundle:
+    name: "Text(\"literal\") in a package needs bundle: .module"
+    # Matches only the exact single-line `Text("...")` call with no other
+    # arguments — i.e. no `bundle:` was passed. Deliberately does not match
+    # `Text(verbatim: "...")` or `Text(someVariable)` (neither starts with
+    # `Text("`), and does not match multi-line calls or calls that already
+    # pass another argument (e.g. `Text("...", bundle: .module)`).
+    regex: '(?<![A-Za-z0-9_.])Text\("[^"]*"\)'
+    message: "SPM packages must resolve their own String Catalog — use Text(\"...\", bundle: .module). See ADR-0058."
+    severity: warning
+    included:
+      - "packages/BrevDesign/Sources/.*\\.swift"
+      - "packages/BrevBackend/Sources/.*\\.swift"
+      - "packages/BrevAI/Sources/.*\\.swift"
+      - "packages/BrevCalendar/Sources/.*\\.swift"
+      - "packages/BrevCrypto/Sources/.*\\.swift"
+      - "packages/BrevMail/Sources/.*\\.swift"
+      - "Plugins/.*/Sources/.*\\.swift"
+    # BrevSettings is tracked by a separate localization batch; keep it out
+    # until its residual inventory is converted under the same convention.
+
+  no_realm_in_views:
+    name: "Views don't see Realm"
+    regex: '^\s*import\s+RealmSwift\b'
+    message: "View code never imports RealmSwift — BrevBackend exposes plain Swift domain models. See ADR-0028 invariant 5."
+    severity: error
+    included:
+      - "apps/.*\\.swift"
+      - "packages/BrevDesign/.*\\.swift"
+      - "packages/BrevThemes/.*\\.swift"
+      - "packages/BrevAvatars/.*\\.swift"
+      - "packages/BrevCalendar/.*\\.swift"
+      - "packages/BrevAI/.*\\.swift"
+
+  no_backend_type_checks:
+    name: "Capability-driven UI, not backend type-checks"
+    regex: '\bis\s+InfomaniakBackend\b|\bas\?\s+InfomaniakBackend\b'
+    message: "Switch on backend.capabilities, not concrete backend types. See ADR-0001 / ADR-0028 invariant 2."
+    severity: error
+    included:
+      - "apps/.*\\.swift"
+      - "packages/Brev.*/Sources/.*\\.swift"

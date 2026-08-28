@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<true/>
+	<key>com.apple.security.network.server</key>
+	<true/>
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<!-- Required for "Create Meeting" / "Create Task" from a message (ADR-0007);
+	     a sandboxed app needs this before EventKit will grant Calendar/Reminders
+	     access. Covers both Calendar and Reminders. -->
+	<key>com.apple.security.personal-information.calendars</key>
+	<true/>
+	<!-- Required before the sandbox can grant the local Contacts access declared
+	     in Info.plist for recipient and sender suggestions. -->
+	<key>com.apple.security.personal-information.addressbook</key>
+	<true/>
+	<!-- Opt-in iCloud Key-Value preference sync (ADR-0056). Requires
+	     iCloud → Key-value storage on the App ID; unsigned local builds
+	     get a store that never leaves the device. -->
+	<key>com.apple.developer.ubiquity-kvstore-identifier</key>
+	<string>$(TeamIdentifierPrefix)$(CFBundleIdentifier)</string>
+</dict>
+</plist>

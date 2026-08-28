@@ -1,0 +1,10 @@
+{
+  "sourceLanguage" : "en",
+  "strings" : {
+    "Account error" : { "extractionState" : "manual" },
+    "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account." : {
+      "extractionState" : "manual"
+    }
+  },
+  "version" : "1.0"
+}
