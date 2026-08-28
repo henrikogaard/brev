@@ -155,7 +155,7 @@ jobs:
             # Pixel and image snapshots are recorded on macOS 26+. Run the
             # behavior suites on older hosted runners and leave renderer
             # comparisons to compatible local/hosted systems.
-            test_args+=(--skip 'BrevSettingsTests\.(CompactSettingsViewSmokeTests|BrevSettingsSnapshotTests)')
+            test_args+=(--skip 'BrevSettingsTests\.(CompactSettingsViewSmokeTests|BrevSettingsSnapshotTests|AIWriterSectionMacSnapshotTests)')
           fi
           swift test "${test_args[@]}" \
             || (echo "::error::tests failed for ${{ matrix.package }}"; exit 1)

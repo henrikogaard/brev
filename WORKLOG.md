@@ -55,5 +55,6 @@ platform and test-runtime boundaries.
 - `scripts/test.sh --self-tests-only`: passed.
 - BrevCrypto: 10 tests passed.
 - KeychainSMIMEResolver: 5 tests passed.
-- BrevSettings hosted-runner slice: 306 tests passed.
+- BrevSettings hosted-runner slice: 304 behavior tests passed; the 10 deferred
+  visual tests passed on a compatible macOS 27 host.
 - BrevDesign CI suites: 35 tests passed.
