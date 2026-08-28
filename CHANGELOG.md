@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The message list's scroll-edge blur now sits on the list's own scroll
+  viewport instead of the pane top, so rows fade out where they actually
+  clip — below the inbox category, bulk-action, and search bars when
+  those are shown. On accounts without those bars the band keeps its
+  previous position under the toolbar.
+
 - Gmail accounts on the native Gmail API adapter no longer open messages
   as an empty body showing only the list snippet. Label sync stores
   metadata-format messages (headers without body parts), and the body

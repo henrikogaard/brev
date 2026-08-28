@@ -223,7 +223,15 @@ public struct MessageListView: View {
             }
             Group {
                 if folder != nil {
+                    // The scroll edge blur is mounted on the list itself, not
+                    // on the pane: bars above it (inbox categories, bulk
+                    // actions, search options) push the scroll viewport down,
+                    // and a pane-top band sits above where rows actually clip.
+                    // Anchored here, the band hugs the viewport's top edge and
+                    // still extends into the toolbar safe area when no bar is
+                    // present — the same visual as the old pane mount.
                     listContent(presentation: presentation)
+                        .brevMailPaneScrollEdgeBlur()
                 } else {
                     MessageListEmptyStateView(
                         status: MessageListPresentation.noFolderStatus()
