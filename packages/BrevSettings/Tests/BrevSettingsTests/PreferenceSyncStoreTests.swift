@@ -24,7 +24,11 @@ private final class FakeKeyValueTransport: PreferenceSyncTransport, @unchecked S
     private var storage: [String: Any] = [:]
     private(set) var writtenKeys: [String] = []
     private(set) var removedKeys: [String] = []
-    private(set) var synchronizeCount = 0
+    private var storedSynchronizeCount = 0
+
+    var synchronizeCount: Int {
+        lock.withLock { storedSynchronizeCount }
+    }
 
     func object(forKey key: String) -> Any? {
         lock.withLock { storage[key] }
@@ -50,7 +54,7 @@ private final class FakeKeyValueTransport: PreferenceSyncTransport, @unchecked S
 
     @discardableResult
     func synchronize() -> Bool {
-        lock.withLock { synchronizeCount += 1 }
+        lock.withLock { storedSynchronizeCount += 1 }
         return true
     }
 
@@ -222,9 +226,16 @@ struct PreferenceSyncStoreTests {
 
         defaults.set("plain", forKey: "compose.messageFormat")
         defaults.set(false, forKey: "folders.showTrash")
-        try await Task.sleep(nanoseconds: 150_000_000)
 
-        #expect(transport.synchronizeCount == syncsAfterStart + 1)
+        let expectedSynchronizeCount = syncsAfterStart + 1
+        for _ in 0 ..< 100 {
+            if transport.synchronizeCount >= expectedSynchronizeCount {
+                break
+            }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+
+        #expect(transport.synchronizeCount == expectedSynchronizeCount)
         #expect(transport.object(forKey: "brev.prefs.v1.compose.messageFormat") as? String == "plain")
         #expect(transport.object(forKey: "brev.prefs.v1.folders.showTrash") as? Bool == false)
     }

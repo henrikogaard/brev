@@ -57,4 +57,6 @@ platform and test-runtime boundaries.
 - KeychainSMIMEResolver: 5 tests passed.
 - BrevSettings hosted-runner slice: 304 behavior tests passed; the 10 deferred
   visual tests passed on a compatible macOS 27 host.
+- Preference-sync coalescing stress loop: 20/20 focused runs passed with a
+  locked counter and deadline-based observation.
 - BrevDesign CI suites: 35 tests passed.
