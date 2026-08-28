@@ -364,12 +364,24 @@ release_branch_output="$(
 )"
 release_branch_status=$?
 set -e
-if [[ $release_branch_status -eq 0 ]] || {
+current_branch="$(git -C "$ROOT" branch --show-current)"
+current_head="$(git -C "$ROOT" rev-parse HEAD)"
+remote_main="$(git -C "$ROOT" rev-parse refs/remotes/origin/main 2>/dev/null || true)"
+checkout_status="$(git -C "$ROOT" status --porcelain)"
+if { [[ "$current_branch" == "main" ]] || [[ -z "$current_branch" ]]; } &&
+    [[ -z "$checkout_status" ]] && [[ -n "$remote_main" ]] && [[ "$current_head" == "$remote_main" ]]; then
+  if [[ $release_branch_status -ne 0 ]] ||
+      [[ "$release_branch_output" != *"preflight: release from current origin/main with live IMAP/SMTP ready"* ]]; then
+    echo "expected release-main to accept clean current origin/main" >&2
+    exit 1
+  fi
+elif [[ $release_branch_status -eq 0 ]] || {
     [[ "$release_branch_output" != *"release-main builds require the main branch"* ]] &&
+        [[ "$release_branch_output" != *"release-main builds require a clean checkout"* ]] &&
         [[ "$release_branch_output" != *"release-main checkout is stale or diverged from origin/main"* ]]
 }; then
-    echo "expected release-main to reject non-main checkouts" >&2
-    exit 1
+  echo "expected release-main to reject non-main or stale checkouts" >&2
+  exit 1
 fi
 
 if grep -Eq '^[[:space:]]+PRODUCT_NAME="\$APP_NAME"$' "$ROOT/script/build_and_run.sh" ||
