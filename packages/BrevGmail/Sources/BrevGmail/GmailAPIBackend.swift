@@ -329,7 +329,13 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
         let cachedMessage = try await store.message(accountID: account.id, messageID: messageID)
         let message: GmailMessage
-        if let cachedMessage, cachedMessage.payload != nil {
+        // A non-nil payload is not enough: label sync stores format=metadata
+        // messages whose payload carries only headers. Serving those here
+        // returned an empty body with no error, so the reader silently kept
+        // the list snippet. Only a payload that yields actual content (or
+        // attachments) can satisfy a body read without a full fetch.
+        if let cachedMessage, cachedMessage.payload != nil,
+           Self.hasBodyContent(Self.body(from: cachedMessage)) {
             message = cachedMessage
         } else {
             let fetched = try await transport.getMessage(messageID: messageID, format: .full)

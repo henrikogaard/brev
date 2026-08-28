@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Gmail accounts on the native Gmail API adapter no longer open messages
+  as an empty body showing only the list snippet. Label sync stores
+  metadata-format messages (headers without body parts), and the body
+  read wrongly treated any stored payload as complete; it now performs
+  a full-format fetch whenever the stored payload yields no content.
+
 - Opening a message no longer poisons the shared IMAP session. Cancelling
   an in-flight background read (which every message open does) tore down
   the connection while leaving it marked authenticated, so the next body

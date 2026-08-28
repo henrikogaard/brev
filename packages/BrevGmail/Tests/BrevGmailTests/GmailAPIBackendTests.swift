@@ -174,6 +174,50 @@ struct GmailAPIBackendTests {
         #expect(try await store.cachedBody(accountID: Self.account.id, messageID: "message-upgrade") == body)
     }
 
+    @Test("upgrades a cached message whose payload is metadata-only headers")
+    func upgradesMetadataPayloadMessage() async throws {
+        // Label sync stores messages fetched with format=metadata: the payload
+        // exists but carries only headers — no parts and no body data. Serving
+        // it as the message body must trigger a full fetch, not return an
+        // empty body without error.
+        let fullMessage = Self.message(
+            id: "message-metadata",
+            threadID: "thread-metadata",
+            labels: ["INBOX"],
+            payload: GmailMessagePart(
+                mimeType: "text/plain",
+                body: GmailMessageBody(data: Self.base64URL("Fetched full body"))
+            )
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(
+                id: "message-metadata",
+                threadID: "thread-metadata",
+                labels: ["INBOX"],
+                payload: GmailMessagePart(
+                    mimeType: "multipart/alternative",
+                    headers: [
+                        GmailMessageHeader(name: "From", value: "Alice Example <alice@example.com>"),
+                        GmailMessageHeader(name: "Subject", value: "Metadata only")
+                    ]
+                )
+            )
+        ]))
+        let transport = StubGmailTransport(
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")],
+            messages: [fullMessage]
+        )
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let mailBackend: any MailBackend = backend
+        try await mailBackend.connect()
+
+        let body = try await mailBackend.body(for: "message-metadata")
+
+        #expect(body.plainText == "Fetched full body")
+        #expect(await transport.fullMessageRequestCount() == 1)
+    }
+
     @Test("uses Gmail q syntax for server search and deduplicates results")
     func searchesWithGmailQuery() async throws {
         let message = Self.message(id: "message-3", threadID: "thread-3", labels: ["INBOX"])
