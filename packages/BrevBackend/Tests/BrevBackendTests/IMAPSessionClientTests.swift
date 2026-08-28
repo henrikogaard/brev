@@ -1958,6 +1958,65 @@ struct IMAPSessionClientTests {
         ])
     }
 
+    @Test("cancelled command read invalidates the reused session so the next operation logs in again")
+    func cancelledCommandReadInvalidatesReusedSession() async throws {
+        let transport = ScriptedIMAPTransport(
+            lines: [
+                "* OK IMAP4rev1 ready",
+                "A0001 OK LOGIN completed",
+                "A0002 OK [READ-WRITE] SELECT completed",
+            ],
+            suspendsWhenOutOfLines: true
+        )
+        let client = IMAPSessionClient(transport: transport, reusesAuthenticatedSession: true)
+
+        let hungFetch = Task {
+            try await client.loginAndFetchMessageBody(
+                configuration: Self.configuration(),
+                credential: Self.credential(),
+                messageID: "INBOX:91",
+                folderPath: "INBOX",
+                uid: 91
+            )
+        }
+        var sentFetch = false
+        for _ in 0 ..< 500 where !sentFetch {
+            sentFetch = await transport.sentLines.contains { $0.contains("UID FETCH") }
+            if !sentFetch { try await Task.sleep(nanoseconds: 10_000_000) }
+        }
+        #expect(sentFetch)
+
+        hungFetch.cancel()
+        _ = try? await hungFetch.value
+
+        // Cancellation tears the shared transport down out of band; wait for
+        // the unstructured teardown task to land before the next operation.
+        var disconnected = false
+        for _ in 0 ..< 500 where !disconnected {
+            disconnected = await transport.disconnectCount >= 1
+            if !disconnected { try await Task.sleep(nanoseconds: 10_000_000) }
+        }
+        #expect(disconnected)
+
+        // The next operation must not assume the authenticated session
+        // survived the teardown: it has to reconnect and log in again
+        // instead of issuing commands on presumed-live session state.
+        await transport.appendLines([
+            "* OK IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
+            "A0002 OK LIST completed",
+        ])
+        _ = try await client.loginAndListFolders(
+            configuration: Self.configuration(),
+            credential: Self.credential()
+        )
+
+        #expect(await transport.connectCount == 2)
+        let loginCount = await transport.sentLines.filter { $0.contains(" LOGIN ") }.count
+        #expect(loginCount == 2)
+    }
+
     @Test("persistent client reconnects when the OAuth secret rotates")
     func persistentClientReconnectsWhenOAuthSecretRotates() async throws {
         let transport = ScriptedIMAPTransport(lines: [
@@ -2257,5 +2316,11 @@ private actor ScriptedIMAPTransport: IMAPSessionTransport {
 
     func disconnect() async {
         disconnectCount += 1
+    }
+
+    /// Extends the script after the fact — for tests that interrupt one
+    /// operation mid-read and then drive a follow-up operation.
+    func appendLines(_ newLines: [String]) {
+        lines.append(contentsOf: newLines)
     }
 }

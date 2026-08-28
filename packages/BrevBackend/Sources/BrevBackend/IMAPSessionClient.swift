@@ -2646,8 +2646,17 @@ public actor IMAPSessionClient {
     }
 
     private func disconnectTransportIfCurrent(generation: Int?) async {
-        if let generation, generation != idleSessionGeneration { return }
-        await transport.disconnect()
+        if let generation {
+            guard generation == idleSessionGeneration else { return }
+            await transport.disconnect()
+            return
+        }
+        // A command-session read torn down out of band takes the shared
+        // authenticated session with it. Clearing only the socket left
+        // `authenticatedSessionIdentity` set, so the next operation skipped
+        // login and issued commands on a dead transport — every message open
+        // that cancelled background work poisoned the following body fetch.
+        await resetAuthenticatedSession()
     }
 
     private func runIdleSession(
