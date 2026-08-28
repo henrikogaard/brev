@@ -1267,7 +1267,10 @@ public struct BrevMailRootView: View {
         // window-level item re-lays out and collapses to a magnifying glass on
         // its own whenever the AI Sidebar column appears.
         .brevMailFallbackToolbar { toolbarList }
-        .brevMailPaneScrollEdgeBlur()
+        // No pane-level scroll edge blur here: the message list mounts the
+        // band on its own scroll viewport (see MessageListView), which sits
+        // below the inbox category and action bars when those are present. A
+        // pane-top band would float above where rows actually clip.
         #if os(macOS)
             // Edit > Search Mail has to open the collapsed control, not just
             // ask an unrendered field for focus.
