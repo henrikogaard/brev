@@ -4,6 +4,17 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening a message no longer poisons the shared IMAP session. Cancelling
+  an in-flight background read (which every message open does) tore down
+  the connection while leaving it marked authenticated, so the next body
+  fetch ran on a dead socket and the reader silently kept the list
+  snippet. The cancellation teardown now invalidates the session so the
+  next operation reconnects and logs in again. The structured-body
+  fallback path also logs the error it previously swallowed (subsystem
+  `eu.brevmail.brev`, category `IMAPBodyFetch`).
+
 ## [0.1.0] - 2026-08-28
 
 ### Added

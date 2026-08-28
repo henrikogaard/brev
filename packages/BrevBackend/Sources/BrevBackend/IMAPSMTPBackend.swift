@@ -11,6 +11,7 @@
  */
 
 import Foundation
+import OSLog
 
 enum IMAPBackgroundRefreshPolicy {
     /// Cached pages are already usable. Briefly yield the sole command session so
@@ -21,6 +22,10 @@ enum IMAPBackgroundRefreshPolicy {
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
     OutboxManaging, ScheduledSendManaging, CardDAVContactSyncSupporting, MessageLabelManaging, @unchecked Sendable {
+    private static let bodyFetchLogger = Logger(
+        subsystem: "eu.brevmail.brev",
+        category: "IMAPBodyFetch"
+    )
     private static let initialIDLEResubscribeDelayNanoseconds: UInt64 = 100_000_000
     private static let maximumIDLEResubscribeDelayNanoseconds: UInt64 = 30_000_000_000
     private static let idlePollIntervalNanoseconds: UInt64 = 60_000_000_000
@@ -1286,6 +1291,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 // BODYSTRUCTURE is optional in practice: malformed or unusual
                 // signed/encrypted MIME intentionally falls back to the proven
                 // full-source parser so compatibility is never traded for speed.
+                // The swallowed reason must still reach the log — transport and
+                // auth failures land here too, and silently retrying them as a
+                // full-source fetch hid every live body-load failure.
+                Self.bodyFetchLogger.error(
+                    "Structured body fetch failed; falling back to full source: \(String(describing: error), privacy: .private)"
+                )
             }
         }
 
