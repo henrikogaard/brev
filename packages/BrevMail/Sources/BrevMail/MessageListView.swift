@@ -202,9 +202,6 @@ public struct MessageListView: View {
                     }
                 )
             }
-            if showsInboxCategoryBar {
-                InboxCategoryBar(activeCategory: $activeInboxCategory)
-            }
             if !trimmedSearchText.isEmpty {
                 CollapsibleOptionsStrip(
                     isExpanded: $isSearchOptionsExpanded,
@@ -224,14 +221,20 @@ public struct MessageListView: View {
             Group {
                 if folder != nil {
                     // The scroll edge blur is mounted on the list itself, not
-                    // on the pane: bars above it (inbox categories, bulk
-                    // actions, search options) push the scroll viewport down,
-                    // and a pane-top band sits above where rows actually clip.
-                    // Anchored here, the band hugs the viewport's top edge and
-                    // still extends into the toolbar safe area when no bar is
-                    // present — the same visual as the old pane mount.
+                    // on the pane: transient bars above it (bulk actions,
+                    // search options) push the scroll viewport down, and a
+                    // pane-top band would sit above where rows actually clip.
+                    // The inbox category bar instead floats as a safe-area
+                    // inset over the list, so rows slide beneath it and the
+                    // band blurs them behind its clear background — the same
+                    // "behind translucent chrome" reading as the toolbar edge.
                     listContent(presentation: presentation)
                         .brevMailPaneScrollEdgeBlur()
+                        .safeAreaInset(edge: .top, spacing: 0) {
+                            if showsInboxCategoryBar {
+                                InboxCategoryBar(activeCategory: $activeInboxCategory)
+                            }
+                        }
                 } else {
                     MessageListEmptyStateView(
                         status: MessageListPresentation.noFolderStatus()

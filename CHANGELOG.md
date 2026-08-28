@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The inbox category bar now floats over the message list instead of
+  sitting above it, so rows scroll beneath it and fade out behind its
+  translucent chrome — restoring the "list hides behind the blur"
+  reading at the top of the list on accounts with Gmail categories.
+
 - The message list's scroll-edge blur now sits on the list's own scroll
   viewport instead of the pane top, so rows fade out where they actually
   clip — below the inbox category, bulk-action, and search bars when
