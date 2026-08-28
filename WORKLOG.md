@@ -1,5 +1,37 @@
 # Worklog
 
+## 2026-08-28 — Claude — Scroll-edge blur anchored to the list viewport
+
+### Goal
+
+Henrik confirmed rows still hard-cut at the top of the message list even
+though the band logged "active" in the release app.
+
+### Root cause and fix
+
+The band was mounted at the pane top, which matched the list's clip edge
+only when nothing sat above the list. The native Gmail account renders
+the inbox category chips bar above the list, pushing the scroll viewport
+down; rows clipped at the chips' bottom edge while the band floated in
+the toolbar zone. PR #22 mounts the band on the list content itself —
+below any bars when present, extending into the toolbar safe area when
+absent (previous look preserved for accounts without bars), and removes
+the pane-level mount for the list pane.
+
+Follow-ups in the same round: #23 (SwiftFormat cleanliness on main) and
+#24 — the release compiler requires explicit `self` inside the OSLog
+autoclosure while SwiftFormat strips it; the band log now hoists the
+width into a local. Lesson: never reference instance members directly
+inside OSLog message interpolations.
+
+### Verification
+
+Full BrevMail suite 1,493 passed; `swift build -c release` for BrevMail
+compiles; format + strict lint pass; daily driver rebuilt from clean
+origin/main and relaunched live — unified log shows all bands active,
+including the list band on its new anchor. Visual fade confirmation is
+with Henrik.
+
 ## 2026-08-28 — Claude — Gmail empty-body root cause and band diagnostics
 
 ### Goal
