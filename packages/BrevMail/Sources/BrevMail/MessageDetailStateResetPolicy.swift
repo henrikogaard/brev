@@ -16,6 +16,7 @@ enum MessageDetailTransientField: CaseIterable, Hashable, Sendable {
     case messageBody
     case renderedHTML
     case bodyLoadError
+    case bodyLoadFallbackNotice
     case loading
     case readStatus
     case downloadingAttachment
@@ -57,6 +58,7 @@ enum MessageDetailStateResetPolicy {
         .messageBody,
         .renderedHTML,
         .bodyLoadError,
+        .bodyLoadFallbackNotice,
         .readStatus,
         .downloadingAttachment,
         .attachmentError,

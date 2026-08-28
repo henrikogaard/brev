@@ -135,6 +135,22 @@ struct MessageDetailPresentationTests {
         ) == "Network error: offline")
     }
 
+    @Test("body load failure without a displayed body surfaces the error state")
+    func bodyLoadFailureWithoutDisplayedBodySurfacesErrorState() {
+        #expect(MessageDetailPresentation.bodyLoadFailureOutcome(
+            error: MailBackendError.network(underlying: "offline"),
+            hasDisplayedFallbackBody: false
+        ) == .surfaceError("Network error: offline"))
+    }
+
+    @Test("body load failure over a shown snippet surfaces a visible fallback notice")
+    func bodyLoadFailureOverShownSnippetSurfacesVisibleFallbackNotice() {
+        #expect(MessageDetailPresentation.bodyLoadFailureOutcome(
+            error: MailBackendError.network(underlying: "offline"),
+            hasDisplayedFallbackBody: true
+        ) == .surfaceFallbackNotice("Network error: offline"))
+    }
+
     @Test("empty body falls back to selected header snippet")
     func emptyBodyFallsBackToSelectedHeaderSnippet() {
         #expect(MessageDetailPresentation.displayPlainText(
