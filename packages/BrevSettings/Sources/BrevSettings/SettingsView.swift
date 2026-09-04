@@ -354,13 +354,15 @@ public struct SettingsView: View {
         #if os(macOS)
             .background(BrevSplitViewColumnTransparencyFixer())
             .onMoveCommand { direction in
-                guard normalizedSearchText.isEmpty else { return }
+                guard normalizedSearchText.isEmpty, direction == .up || direction == .down else { return }
                 let sections = filteredSettingsGroups
                     .filter { $0.group != .advanced || isAdvancedExpanded }
                     .flatMap(\.sections)
                 guard let index = sections.firstIndex(of: navigation.selected) else { return }
                 let offset = direction == .down ? 1 : direction == .up ? -1 : 0
                 let next = min(max(index + offset, 0), sections.count - 1)
+                selectedPluginContribution = nil
+                searchTarget = nil
                 navigation.select(sections[next])
             }
         #endif

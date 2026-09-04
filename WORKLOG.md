@@ -415,3 +415,7 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   light/dark Folder Sync workspace captures with the visible mailbox identity.
 - This improves automated rendered evidence while leaving the locked-Mac native
   interaction limitation explicit. No screenshot was substituted for native QA.
+
+- Final keyboard-path inspection aligned arrow navigation with pointer
+  selection: leaving an extension page clears its contribution and any old
+  search anchor. Left/right arrows remain available to native controls.
