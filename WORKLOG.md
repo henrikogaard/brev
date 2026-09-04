@@ -352,3 +352,13 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   use calculated contrast and rendered snapshots rather than logic-only tests.
 - Settings-specific changes are intentionally outside this implementation;
   its requested assessment follows the verified mail UI pass.
+
+### Hosted compiler follow-up
+
+- Hosted macOS compilation passed at 654f9acf. The new BrevThemes contrast test
+  hit an older-compiler type-check limit in chained channel calculations.
+  Replaced that expression with typed scalar steps; all eight focused tests
+  pass locally. This changes test compilation only, not production colors.
+- The committed dated mock build installed and launched successfully. Settings
+  was assessed read-only across Accounts, Appearance, Mailbox View, and Folder
+  Sync; no account preferences or Settings implementation were changed.

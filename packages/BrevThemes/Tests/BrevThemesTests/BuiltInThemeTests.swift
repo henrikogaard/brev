@@ -32,10 +32,17 @@ struct BuiltInThemeTests {
     private static func contrast(_ first: BrevColor, _ second: BrevColor) -> Double {
         func luminance(_ color: BrevColor) -> Double {
             let rgb = UInt32(color.hex.dropFirst(), radix: 16)!
-            let channels = [Double((rgb >> 16) & 255), Double((rgb >> 8) & 255), Double(rgb & 255)]
-                .map { $0 / 255 }
-                .map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
-            return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+            func linearChannel(_ value: UInt32) -> Double {
+                let normalized = Double(value) / 255.0
+                if normalized <= 0.04045 {
+                    return normalized / 12.92
+                }
+                return pow((normalized + 0.055) / 1.055, 2.4)
+            }
+            let red = linearChannel((rgb >> 16) & 255)
+            let green = linearChannel((rgb >> 8) & 255)
+            let blue = linearChannel(rgb & 255)
+            return red * 0.2126 + green * 0.7152 + blue * 0.0722
         }
         let a = luminance(first), b = luminance(second)
         return (max(a, b) + 0.05) / (min(a, b) + 0.05)
