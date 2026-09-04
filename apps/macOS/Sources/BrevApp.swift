@@ -166,6 +166,7 @@ struct BrevApp: App {
                 consumePendingBrevURL()
             }
         }
+        .defaultSize(width: 1440, height: 820)
         .windowStyle(.titleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}

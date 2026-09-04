@@ -11,10 +11,36 @@
  */
 
 @testable import BrevThemes
+import Foundation
 import Testing
 
 @Suite("Built-in themes")
 struct BuiltInThemeTests {
+    @Test("default themes keep small text readable across normal, hover, and selected surfaces",
+          arguments: [BrevTheme.brevMonoLight, BrevTheme.brevMonoDark])
+    func defaultContrast(theme: BrevTheme) {
+        for background in [theme.bgPrimary, theme.bgSecondary, theme.bgTertiary, theme.selection] {
+            for foreground in [theme.textPrimary, theme.textSecondary, theme.textTertiary] {
+                #expect(Self.contrast(foreground, background) >= 4.5,
+                        "\(theme.id): \(foreground.hex) on \(background.hex)")
+            }
+        }
+        #expect(Self.contrast(theme.textPrimary, theme.selection) >= 3)
+        #expect(Self.contrast(theme.textSecondary, theme.selection) >= 3)
+    }
+
+    private static func contrast(_ first: BrevColor, _ second: BrevColor) -> Double {
+        func luminance(_ color: BrevColor) -> Double {
+            let rgb = UInt32(color.hex.dropFirst(), radix: 16)!
+            let channels = [Double((rgb >> 16) & 255), Double((rgb >> 8) & 255), Double(rgb & 255)]
+                .map { $0 / 255 }
+                .map { $0 <= 0.04045 ? $0 / 12.92 : pow(($0 + 0.055) / 1.055, 2.4) }
+            return channels[0] * 0.2126 + channels[1] * 0.7152 + channels[2] * 0.0722
+        }
+        let a = luminance(first), b = luminance(second)
+        return (max(a, b) + 0.05) / (min(a, b) + 0.05)
+    }
+
     @Test("built-in theme IDs stay unique")
     func builtInThemeIDsStayUnique() {
         let ids = BrevTheme.brevBuiltIns.map(\.id)

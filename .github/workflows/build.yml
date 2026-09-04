@@ -154,7 +154,7 @@ jobs:
             # Pixel baselines are recorded on macOS 26+. Keep model/behavior
             # suites running on older hosted runners while the dedicated
             # snapshot job below owns compatible-renderer comparisons.
-            test_args+=(--skip 'BrevMailTests\.(ConversationWorkspaceSnapshotTests|DetachedMessageWindowSnapshotTests|FolderSidebarSnapshotTests|LoginViewSnapshotTests|MailContextColumnSnapshotTests|MailRootStatusRailSnapshotTests|MessageListRowSnapshotTests|SavedSearchEditorViewSnapshotTests|ServerSearchSyntaxHintSnapshotTests|ThreadInlineChildRowSnapshotTests)')
+            test_args+=(--skip 'BrevMailTests\.(MonoMailSelectionSnapshotTests|ConversationWorkspaceSnapshotTests|DetachedMessageWindowSnapshotTests|FolderSidebarSnapshotTests|LoginViewSnapshotTests|MailContextColumnSnapshotTests|MailRootStatusRailSnapshotTests|MessageListRowSnapshotTests|SavedSearchEditorViewSnapshotTests|ServerSearchSyntaxHintSnapshotTests|ThreadInlineChildRowSnapshotTests)')
           fi
           if [[ '${{ matrix.package }}' == 'BrevSettings' ]] &&
               (( $(sw_vers -productVersion | cut -d. -f1) < 26 )); then

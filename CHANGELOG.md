@@ -6,6 +6,15 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Default Mono Light and Mono Dark metadata now meets 4.5:1 contrast across
+  normal, hover, and selected surfaces. Mail rows use opaque selection fills
+  with separate indicators; custom accents no longer wash out selected text.
+- New macOS windows prefer a 1440x820 layout and a 420-point message list.
+  Conversations use a bounded 840-point reading column, tighter headers, and
+  a message display menu. Dark reading canvases match the app background.
+- Split the root view's modifier chain to avoid hosted-compiler type-check
+  timeouts while preserving its lifecycle and presentation behavior.
+
 - Reading a message keeps Unified Inbox, smart views, and saved searches open.
   Late list/page responses no longer replace a different profile or search.
 - Bulk actions retain successful account changes when another account fails;

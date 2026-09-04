@@ -307,3 +307,48 @@ so the performance improvement is cache-first indexed reads and four concurrent
 cold requests, not elimination of all cold payload transfer. Legacy pins remain
 recoverable as original records but require reassignment. These limits belong in
 the PR. Open a non-draft PR to main; do not merge or replace `/Applications/Brev.app`.
+
+
+## 2026-09-05 — Codex — PR #27 contrast and reading layout follow-up
+
+### Goal
+
+Implement the approved contrast, proportions, selection, typography, and
+conversation-density recommendations; assess Settings afterward without
+changing its specific screens. Continue `fix/multi-account-workspace` from
+`604c8c81`, targeting the existing PR #27 to main.
+
+### Changes
+
+- Revised only the default monochrome text tokens, keeping all theme IDs,
+  custom palettes, and custom accent settings intact. Added a 24-pair contrast
+  matrix with a 4.5:1 text threshold and selection indicator checks.
+- Shared opaque selection roles across main rows, thread children, and folders.
+  Active/inactive selection keeps readable foregrounds. Removed blocked-sender
+  row dimming while preserving its status indicator; raised essential metadata
+  size and retained subject/sender emphasis.
+- Added a 420-point preferred desktop list and 1440x820 new-window default while
+  preserving the 960-point compact minimum and saved geometry. Bounded thread
+  content to 840 points and reduced header/body gaps.
+- Moved thread display-mode switching into its header menu. Dark-mode WebKit
+  canvases explicitly match bgPrimary; original message styling remains an
+  available mode. Body line height is 1.5.
+- PR #27's hosted failures were all the root view expression exceeding the CI
+  compiler's type-check budget. Split it into smaller opaque view expressions
+  and extracted the backend-session observer, without changing modifier order.
+
+### Verification and handoff
+
+- Contrast, preferred-width, and body-canvas tests failed before the fixes.
+  Final focused behavior tests passed. Rendered default light/dark active and
+  inactive selections, wide conversations, and affected existing snapshots.
+- BrevThemes: 8 tests passed. BrevMail: 1,506 plus the isolated six Contacts
+  policy tests passed. Lint/format and repository self-tests passed.
+- Native mock launch and compact/wide rendering were checked with the dated
+  test identity. iOS/hosted builds are checked separately in the PR handoff.
+- Updated ADR-0069 because BuiltIns.swift is protected; no new public theme
+  fields or network behavior. README/PRIVACY/AGENTS need no change for this
+  visual and compiler follow-up. Palette/configuration and visual-layout edits
+  use calculated contrast and rendered snapshots rather than logic-only tests.
+- Settings-specific changes are intentionally outside this implementation;
+  its requested assessment follows the verified mail UI pass.

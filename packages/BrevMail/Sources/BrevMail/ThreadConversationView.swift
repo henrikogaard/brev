@@ -145,63 +145,67 @@ public struct ThreadConversationView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // Thread subject header
-                if let subject = threadHeaders.last?.subject {
-                    Text(subject)
-                        .font(.system(.title2, design: .default, weight: .semibold))
-                        .foregroundStyle(theme.textPrimary.color)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Thread subject header
+                    if let subject = threadHeaders.last?.subject {
+                        Text(subject)
+                            .font(.system(.title2, design: .default, weight: .semibold))
+                            .foregroundStyle(theme.textPrimary.color)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.top, BrevSpacing.lg)
+                            .padding(.bottom, BrevSpacing.sm)
+                            .dynamicTypeSize(denseChromeDynamicTypeRange)
+                    }
+
+                    Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, BrevSpacing.md)
-                        .padding(.top, BrevSpacing.lg)
                         .padding(.bottom, BrevSpacing.sm)
+
+                    conversationControlsRow
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
-                }
 
-                Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, BrevSpacing.md)
-                    .padding(.bottom, BrevSpacing.md)
+                    if let aiSummaryState {
+                        ThreadAISummaryPanel(state: aiSummaryState)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.bottom, BrevSpacing.sm)
+                    }
 
-                conversationControlsRow
-                    .dynamicTypeSize(denseChromeDynamicTypeRange)
-
-                if let aiSummaryState {
-                    ThreadAISummaryPanel(state: aiSummaryState)
-                        .padding(.horizontal, BrevSpacing.md)
-                        .padding(.bottom, BrevSpacing.sm)
-                }
-
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleHeaders) { header in
-                        ThreadMessageCard(
-                            header: header,
-                            isExpanded: expandedMessageIDs.contains(header.id),
-                            isSelected: navigation.selectedMessageID == header.id,
-                            backend: backend,
-                            sourceID: sourceID,
-                            showsAvatar: showsAvatars,
-                            isWorkBlocked: isWorkBlocked,
-                            dateTextOverride: dateTextProvider?(header),
-                            initialRenderedBody: preloadedBodies[header.id]
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                if expandedMessageIDs.contains(header.id) {
-                                    expandedMessageIDs.remove(header.id)
-                                } else {
-                                    expandedMessageIDs.insert(header.id)
+                    LazyVStack(spacing: 0) {
+                        ForEach(visibleHeaders) { header in
+                            ThreadMessageCard(
+                                header: header,
+                                isExpanded: expandedMessageIDs.contains(header.id),
+                                isSelected: navigation.selectedMessageID == header.id,
+                                backend: backend,
+                                sourceID: sourceID,
+                                showsAvatar: showsAvatars,
+                                isWorkBlocked: isWorkBlocked,
+                                dateTextOverride: dateTextProvider?(header),
+                                initialRenderedBody: preloadedBodies[header.id]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if expandedMessageIDs.contains(header.id) {
+                                        expandedMessageIDs.remove(header.id)
+                                    } else {
+                                        expandedMessageIDs.insert(header.id)
+                                    }
                                 }
                             }
+                            .id(header.id)
                         }
-                        .id(header.id)
-                    }
 
-                    if hiddenReadCount > 0 {
-                        hiddenReadMessagesFooter
+                        if hiddenReadCount > 0 {
+                            hiddenReadMessagesFooter
+                        }
                     }
+                    .padding(.bottom, BrevSpacing.lg)
                 }
-                .padding(.bottom, BrevSpacing.lg)
+                .frame(maxWidth: 840)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
             .onAppear {
@@ -511,7 +515,7 @@ public struct ThreadConversationView: View {
                     showUnreadOnly ? "Show All" : "Unread Only",
                     systemImage: showUnreadOnly ? "envelope.open" : "envelope.badge"
                 )
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(showUnreadOnly ? theme.accent.color : theme.textSecondary.color)
             }
             .buttonStyle(.plain)
@@ -530,7 +534,7 @@ public struct ThreadConversationView: View {
                     areAllExpanded ? "Collapse All" : "Expand All",
                     systemImage: areAllExpanded ? "chevron.up.2" : "chevron.down.2"
                 )
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
             }
             .buttonStyle(.plain)
@@ -562,7 +566,7 @@ public struct ThreadConversationView: View {
             }
         } label: {
             Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(aiSummaryState?.isLoading == true ? theme.accent.color : theme.textSecondary.color)
         }
         .menuStyle(.borderlessButton)
@@ -594,7 +598,7 @@ public struct ThreadConversationView: View {
 
     private var participantSummary: some View {
         Text("\(threadHeaders.count) messages", bundle: .module)
-            .brevFont(.caption)
+            .brevFont(.footnote)
             .foregroundStyle(theme.textSecondary.color)
             .accessibilityLabel(String(
                 localized: "\(threadHeaders.count) messages from \(uniqueParticipants.count) participants",
@@ -611,7 +615,7 @@ public struct ThreadConversationView: View {
                 .foregroundStyle(theme.textTertiary.color)
                 .font(.system(size: 12))
             Text("\(hiddenReadCount) hidden read message\(hiddenReadCount == 1 ? "" : "s")", bundle: .module)
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(theme.textTertiary.color)
         }
         .padding(.horizontal, BrevSpacing.md)
@@ -642,7 +646,7 @@ private struct ThreadAISummaryPanel: View {
             switch state {
             case .loading(let providerLabel):
                 Text(providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             case .success(let presentation):
                 ThreadAISummarySection(title: "Summary", bullets: presentation.summaryBullets)
@@ -651,18 +655,18 @@ private struct ThreadAISummaryPanel: View {
                 }
                 if let contextNote = presentation.contextNote {
                     Text(contextNote)
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textTertiary.color)
                 }
                 Text(presentation.providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             case .failure(let message, let providerLabel):
                 Text(message)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.danger.color)
                 Text(providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             }
         }
@@ -680,7 +684,7 @@ private struct ThreadAISummarySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             Text(title)
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.textPrimary.color)
             ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
@@ -688,7 +692,7 @@ private struct ThreadAISummarySection: View {
                     Text(verbatim: "•")
                         .foregroundStyle(theme.textTertiary.color)
                     Text(bullet)
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }

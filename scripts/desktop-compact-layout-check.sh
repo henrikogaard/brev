@@ -181,7 +181,7 @@ require_multiline_pattern "static func folderSidebar\\(platform: MailPanePlatfor
 require_pattern "MailPaneColumnWidth\\(minimum: 200, ideal: 240" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected sidebar layout policy to keep a 200px compact minimum"
-require_pattern "\\.frame\\(minWidth: 320, idealWidth: 380\\)" \
+require_pattern "\\.frame\\(minWidth: 320, idealWidth: 420\\)" \
   "$MAIL_ROOT_FILE" \
   "expected message list to keep a 320px compact minimum"
 require_pattern "static func readerMinimumWidth" \

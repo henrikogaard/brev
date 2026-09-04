@@ -525,7 +525,7 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private var mailRootPresentationContent: some View {
+    private var mailRootCacheContent: some View {
         mailRootStatusLayout
             .task(id: visibleSelectedSourceID) {
                 await observeImportSyncHealth()
@@ -554,28 +554,12 @@ public struct BrevMailRootView: View {
             .onChange(of: localMessageWorkflowStateData) { _, data in
                 cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.decode(data) ?? .defaults
             }
+    }
+
+    private var mailRootLoadingContent: some View {
+        mailRootCacheContent
             .task { monitor.start() }
-            .onChange(of: backendSessionIDs) {
-                sourceSectionsRevision += 1
-                invalidateSourceLoading()
-                backgroundAccountRefreshTask?.cancel()
-                backgroundAccountRefreshTask = nil
-                activeBackgroundAccountRefreshRequestID = nil
-                pendingBackgroundAccountIDs.removeAll()
-                let available = Set(sourceSections.filter { backendAccountIDs.contains($0.account.id) }.map(\.id))
-                if let source = navigation.selectedSourceID, !backendAccountIDs.contains(source.accountID) {
-                    navigation.presentedSheet = nil
-                }
-                navigation.reconcileReaderSources(available)
-                sourceSections.removeAll { !backendAccountIDs.contains($0.account.id) }
-                if let section = selectedSourceSection {
-                    applySelectedSourceSection(section)
-                } else {
-                    folders = []
-                    mailboxes = []
-                    activeMailboxID = nil
-                }
-            }
+            .onChange(of: backendSessionIDs) { handleBackendSessionChange() }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
             .task(id: fetchIntervalRaw) { await runPeriodicFetchScheduler() }
             .task(id: rootWorkBlockSnapshot) {
@@ -595,6 +579,32 @@ public struct BrevMailRootView: View {
                 await startDeferredBackendStartupWorkIfNeeded()
                 await observeMailboxSyncSettingsChanges()
             }
+    }
+
+    private func handleBackendSessionChange() {
+        sourceSectionsRevision += 1
+        invalidateSourceLoading()
+        backgroundAccountRefreshTask?.cancel()
+        backgroundAccountRefreshTask = nil
+        activeBackgroundAccountRefreshRequestID = nil
+        pendingBackgroundAccountIDs.removeAll()
+        let available = Set(sourceSections.filter { backendAccountIDs.contains($0.account.id) }.map(\.id))
+        if let source = navigation.selectedSourceID, !backendAccountIDs.contains(source.accountID) {
+            navigation.presentedSheet = nil
+        }
+        navigation.reconcileReaderSources(available)
+        sourceSections.removeAll { !backendAccountIDs.contains($0.account.id) }
+        if let section = selectedSourceSection {
+            applySelectedSourceSection(section)
+        } else {
+            folders = []
+            mailboxes = []
+            activeMailboxID = nil
+        }
+    }
+
+    private var mailRootObservedContent: some View {
+        mailRootLoadingContent
             .modifier(externalInputConsumer)
             .onChange(of: navigation.composePresentationID) {
                 handleComposePresentationChange()
@@ -631,6 +641,10 @@ public struct BrevMailRootView: View {
                 }
                 #endif
             }
+    }
+
+    private var mailRootPresentationContent: some View {
+        mailRootObservedContent
             .accessibilityHidden(isMailBackgroundAccessibilityHidden)
             .modifier(
                 MailAuxiliaryPresentationModifier(sheet: sheetBinding) { sheet, close in
@@ -1295,7 +1309,7 @@ public struct BrevMailRootView: View {
                 )
             }
         }
-        .frame(minWidth: 320, idealWidth: 380)
+        .frame(minWidth: 320, idealWidth: 420)
         .brevMailPaneSurface(.content)
         // iOS gives search its own full-width band above the list (see
         // `MessageListSearchBand`, rendered by the list views), so the field

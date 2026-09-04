@@ -66,3 +66,20 @@ colors would reduce comprehension rather than improve restraint.
 - `packages/BrevThemes/Sources/BrevThemes/BuiltIns.swift`
 - `packages/BrevSettings/Sources/BrevSettings/AppearanceThemeSettings.swift`
 - `packages/BrevMail/Sources/BrevMail/ComposeBodyAppearance.swift`
+
+## Amendment (2026-09-05): readable mail interaction states
+
+The default monochrome pair must retain at least 4.5:1 contrast for primary,
+secondary, and tertiary text on its primary, secondary, tertiary, and selected
+surfaces. Small metadata uses an opaque foreground. Selection uses the existing
+`selection` token, with primary/secondary foregrounds and an opaque indicator;
+an accent-opacity wash must not silently replace that background. Custom accent
+overrides therefore cannot lower selected-row text contrast. Inactive selection
+keeps readable text and uses a quieter indicator rather than dimming the row.
+
+This refines existing palette values and mail presentation roles; it adds no
+public theme fields, changes no saved theme IDs, and does not migrate custom
+palettes. Snapshot coverage includes default light/dark selected states. New macOS windows prefer 1440 by 820 points while preserving saved window
+geometry and the existing 960-point minimum. The mail
+list receives a wider preferred column, while conversation content is bounded
+and display-mode actions move into the message header.

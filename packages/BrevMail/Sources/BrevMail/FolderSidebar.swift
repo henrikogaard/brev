@@ -37,6 +37,17 @@ enum FolderSidebarDestinationActivation {
 /// icon and unread count. Selection writes back to the shared
 /// navigation state; the parent observes that to update the list pane.
 public struct FolderSidebar: View {
+    #if os(macOS)
+    @Environment(\.controlActiveState) private var controlActiveState
+    #endif
+    private var selectionPalette: MailSelectionPalette {
+        #if os(macOS)
+        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
+        #else
+        MailSelectionPalette(theme: theme)
+        #endif
+    }
+
     @Environment(\.brevTheme) private var theme
     @Environment(\.networkMonitor) private var monitor
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
@@ -920,6 +931,10 @@ public struct FolderSidebar: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(globalActionSelectionColor)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
+                            .frame(width: 2).padding(.vertical, BrevSpacing.xs)
+                    }
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
@@ -932,11 +947,11 @@ public struct FolderSidebar: View {
     }
 
     private var globalActionSelectionColor: Color {
-        theme.accent.color.opacity(FolderSidebarSelectionPresentation.globalActionOpacity)
+        selectionPalette.background.color
     }
 
     private var folderSelectionColor: Color {
-        theme.accent.color.opacity(FolderSidebarSelectionPresentation.folderOpacity)
+        selectionPalette.background.color
     }
 
     @ViewBuilder
@@ -964,7 +979,7 @@ public struct FolderSidebar: View {
                         .lineLimit(2)
                         .multilineTextAlignment(.leading)
                     Text(verbatim: section.subtitle)
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                         .truncationMode(.middle)
@@ -973,7 +988,7 @@ public struct FolderSidebar: View {
                 let unread = section.folders.first(where: { $0.role == .inbox })?.unreadCount ?? 0
                 if unread > 0 {
                     Text(unread.formatted())
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .monospacedDigit()
                         .foregroundStyle(theme.textSecondary.color)
                 }
@@ -1156,6 +1171,10 @@ public struct FolderSidebar: View {
             if isSelected(folder, in: sourceID) {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(folderSelectionColor)
+                    .overlay(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
+                            .frame(width: 2).padding(.vertical, BrevSpacing.xs)
+                    }
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))

@@ -54,6 +54,16 @@ struct ConversationWorkspaceSnapshotTests {
 
     @Test("conversation hierarchy is readable in narrow and wide panes", arguments: [400, 760])
     func conversationLayout(width: Int) throws {
+        try assertConversation(width: width, theme: .brevSlate, name: "conversation-\(width)")
+    }
+
+    @Test("wide conversations keep a bounded reading column in the default themes",
+          arguments: [BrevTheme.brevMonoLight, BrevTheme.brevMonoDark])
+    func wideDefaultConversation(theme: BrevTheme) throws {
+        try assertConversation(width: 1200, theme: theme, name: "wide-\(theme.id)")
+    }
+
+    private func assertConversation(width: Int, theme: BrevTheme, name: String) throws {
         let source = MailSourceID(accountID: "work", mailboxID: "work")
         let headers = [
             MessageHeader(
@@ -93,10 +103,9 @@ struct ConversationWorkspaceSnapshotTests {
                 )
             )
         })
-        let theme = BrevTheme.brevSlate
-        let defaults = try #require(UserDefaults(suiteName: "ConversationWorkspaceSnapshotTests-\(width)"))
-        defaults.removePersistentDomain(forName: "ConversationWorkspaceSnapshotTests-\(width)")
-        defer { defaults.removePersistentDomain(forName: "ConversationWorkspaceSnapshotTests-\(width)") }
+        let defaults = try #require(UserDefaults(suiteName: "ConversationWorkspaceSnapshotTests-\(width)-\(theme.id)"))
+        defaults.removePersistentDomain(forName: "ConversationWorkspaceSnapshotTests-\(width)-\(theme.id)")
+        defer { defaults.removePersistentDomain(forName: "ConversationWorkspaceSnapshotTests-\(width)-\(theme.id)") }
         let view = ThreadConversationView(
             threadHeaders: headers,
             backend: MockBackend(),
@@ -117,7 +126,7 @@ struct ConversationWorkspaceSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(size: CGSize(width: width, height: 600)),
-            named: "conversation-\(width)",
+            named: name,
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
