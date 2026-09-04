@@ -209,20 +209,20 @@ require_fit "compose height" 560 "$HEIGHT"
 echo "    OK (680x560 <= ${WIDTH}x${HEIGHT})"
 
 echo "==> settings compact contract"
-require_pattern "\\.frame\\(minWidth: 190, idealWidth: 210\\)" \
+require_pattern "\\.frame\\(minWidth: 236, idealWidth: 248\\)" \
   "$SETTINGS_FILE" \
-  "expected settings sidebar to keep a 190px compact minimum"
+  "expected settings sidebar to keep a 236px readable minimum"
 require_pattern "\\.frame\\(minWidth: 620, idealWidth: 740, minHeight: 540\\)" \
   "$SETTINGS_FILE" \
   "expected settings detail pane to keep a 620x540 compact minimum"
-require_pattern "\\.frame\\(minWidth: 860, minHeight: 600\\)" \
+require_pattern "\\.frame\\(minWidth: 900, minHeight: 600\\)" \
   "$SETTINGS_FILE" \
-  "expected settings window to keep an 860x600 compact minimum"
-settings_required_width=$((190 + 620))
-require_fit "settings split panes" "$settings_required_width" 860
-require_fit "settings window width" 860 "$WIDTH"
+  "expected settings window to keep a 900x600 compact minimum"
+settings_required_width=$((236 + 620))
+require_fit "settings split panes" "$settings_required_width" 900
+require_fit "settings window width" 900 "$WIDTH"
 require_fit "settings window height" 600 "$HEIGHT"
-echo "    OK (${settings_required_width}px <= 860px <= ${WIDTH}px)"
+echo "    OK (${settings_required_width}px <= 900px <= ${WIDTH}px)"
 
 if [[ "$RUN_RUNTIME" -ne 1 ]]; then
   echo "desktop-compact-layout-check.sh: static OK"

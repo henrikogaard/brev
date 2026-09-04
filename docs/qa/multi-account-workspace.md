@@ -50,3 +50,35 @@ Legacy pins cannot be assigned safely because their stored value contains no
 account identity. The original records remain intact, and the UI explains that
 messages must be pinned again. The new 500-pin global limit reports an error
 rather than pruning another profile's pins.
+
+
+## Settings consistency follow-up
+
+The Settings window receives explicit mailbox identity and cached folders from
+Mail. Folder Sync has a visible mailbox selector. Source changes reset the
+folder editor; same-source cache updates refresh it without a provider-current
+mailbox fallback. Retention overrides use SourceFolderID, including an explicit
+Default choice that supersedes legacy folder-only preferences for that source.
+
+Regression coverage includes duplicate INBOX identifiers across accounts and
+mailboxes, retention persistence, retention sweep targets, search control names
+and destinations, and malformed folder hierarchy handling. Snapshot coverage
+includes light/dark Accounts, Appearance, Mailbox View, and wide/narrow Folder
+Sync. The compact table uses native labeled controls and a folder filter.
+
+Native acceptance sequence after unlocking the Mac:
+
+1. Select Private in Mail, open Folder Sync, and verify Private's identity and
+   folders. Change to Work in Mail, reopen Settings, and verify Work's folders.
+2. Change the Settings mailbox selector and confirm both identity and folder
+   contents change without changing the account's default.
+3. Search for font, text size, remote images, and fetch schedule. Open a result
+   and confirm the named control is visible in the appropriate pane.
+4. Filter nested folders, edit retention/visibility in the mock account, switch
+   mailboxes, and verify no preference crosses to an identically named folder.
+5. Navigate Settings and its search results with the keyboard; check VoiceOver
+   announces each folder's retention and visibility controls unambiguously.
+
+The Mac locked during native verification. Accounts/navigation inspection and
+rendered snapshots were completed; the remaining sequence above is explicitly
+pending, not inferred from package tests.

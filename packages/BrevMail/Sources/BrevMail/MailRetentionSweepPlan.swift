@@ -65,7 +65,7 @@ enum MailRetentionSweepPlan {
         to targets: inout [MailRetentionSweepTarget]
     ) {
         for folder in folders {
-            let policy = settings.policy(for: folder.id)
+            let policy = settings.policy(for: folder.id, sourceID: sourceID)
             targets.append(MailRetentionSweepTarget(
                 sourceID: sourceID,
                 accountID: sourceID.accountID,

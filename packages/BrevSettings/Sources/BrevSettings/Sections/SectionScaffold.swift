@@ -18,6 +18,7 @@ import SwiftUI
 /// region beneath, padded by the standard rhythm.
 struct SectionScaffold<Content: View>: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsSearchTarget) private var searchTarget
     let title: String
     let subtitle: String?
     let content: Content
@@ -33,7 +34,7 @@ struct SectionScaffold<Content: View>: View {
     }
 
     var body: some View {
-        GeometryReader { _ in
+        ScrollViewReader { proxy in
             ScrollView {
                 // Pane title, then groups. The gap below the title is wider
                 // than the gap between groups so the pane reads as titled
@@ -57,6 +58,11 @@ struct SectionScaffold<Content: View>: View {
                 .padding(.top, topPadding)
                 .padding(.bottom, BrevSpacing.xl)
                 .frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+            .task(id: searchTarget) {
+                guard let searchTarget else { return }
+                await Task.yield()
+                proxy.scrollTo(searchTarget, anchor: .top)
             }
         }
         .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())

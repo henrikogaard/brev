@@ -10,19 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevThemes
+import BrevDesign
 
-/// Shared opaque selection roles; accent overrides never change text contrast.
-struct MailSelectionPalette: Equatable {
-    let background: BrevColor
-    let text: BrevColor
-    let detail: BrevColor
-    let indicator: BrevColor
-
-    init(theme: BrevTheme, isActive: Bool = true) {
-        background = theme.selection
-        text = theme.textPrimary
-        detail = theme.textSecondary
-        indicator = isActive ? theme.textPrimary : theme.textSecondary
-    }
-}
+/// Mail uses the same selection colors as Settings.
+typealias MailSelectionPalette = BrevSelectionPalette

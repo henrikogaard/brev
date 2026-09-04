@@ -38,6 +38,7 @@ struct BrevApp: App {
     @State private var updateController = MacUpdateController()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var sessionRestoreAttempted = false
+    @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
@@ -68,6 +69,7 @@ struct BrevApp: App {
                         onOpenSettings: {
                             openWindow(id: BrevWindowID.settings)
                         },
+                        onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
                         },
@@ -193,6 +195,7 @@ struct BrevApp: App {
                 sectionAvailability: settingsSectionAvailability,
                 initialAccounts: session.visibleBackends.map(\.account),
                 initialCurrentAccountID: session.backend?.account.id,
+                mailboxContext: settingsMailboxContext,
                 updateActions: updateController.settingsActions,
                 developerActions: DeveloperSettingsActions { _ in
                     restartForDeveloperModeChange()

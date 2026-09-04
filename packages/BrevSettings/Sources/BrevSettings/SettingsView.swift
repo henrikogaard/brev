@@ -34,6 +34,9 @@ public struct SettingsView: View {
     @State private var accounts: [BrevAccount] = []
     @State private var currentAccountID: BrevAccount.ID?
     @State private var searchText = ""
+    @State private var searchTarget: String?
+    @State private var selectedSourceID: MailSourceID?
+    private let mailboxContext: SettingsMailboxContext
     @State private var isAdvancedExpanded: Bool
 
     private let accountStore: any AccountStore
@@ -61,6 +64,7 @@ public struct SettingsView: View {
         initialSection: SettingsSection = .accounts,
         initialAccounts: [BrevAccount] = [],
         initialCurrentAccountID: BrevAccount.ID? = nil,
+        mailboxContext: SettingsMailboxContext = .init(),
         settingsStore: SettingsPersistenceStore = .standard,
         updateActions: SettingsUpdateActions = .unavailable,
         developerActions: DeveloperSettingsActions = .unavailable,
@@ -76,6 +80,8 @@ public struct SettingsView: View {
         onClose: (() -> Void)? = nil
     ) {
         self.accountStore = accountStore
+        self.mailboxContext = mailboxContext
+        _selectedSourceID = State(initialValue: mailboxContext.selectedSourceID)
         self.settingsStore = settingsStore
         self.updateActions = updateActions
         self.developerActions = developerActions
@@ -115,7 +121,9 @@ public struct SettingsView: View {
         settingsContent
             .background(BrevWindowSurfaceBackground(role: .settings).ignoresSafeArea())
             .tint(theme.accent.color)
-            .accessibilityAddTraits(.isModal)
+            .onChange(of: mailboxContext) { previous, next in
+                selectedSourceID = next.selection(replacing: previous, current: selectedSourceID)
+            }
             .task {
                 accounts = await accountStore.accounts
                 currentAccountID = await accountStore.current?.id
@@ -188,7 +196,7 @@ public struct SettingsView: View {
         #else
         NavigationSplitView {
             sidebar
-                .frame(minWidth: 190, idealWidth: 210)
+                .frame(minWidth: 236, idealWidth: 248)
                 // SwiftUI adds a sidebar toggle to any macOS
                 // `NavigationSplitView`. Settings windows do not have one —
                 // System Settings, Mail, and Xcode all keep the pane list
@@ -201,15 +209,30 @@ public struct SettingsView: View {
             selectedDetail
                 .frame(minWidth: 620, idealWidth: 740, minHeight: 540)
         }
-        .frame(minWidth: 860, minHeight: 600)
+        .frame(minWidth: 900, minHeight: 600)
         #endif
     }
 
     private var compactSettingsContent: some View {
         NavigationStack {
             List {
-                ForEach(filteredSettingsGroups, id: \.group) { entry in
-                    compactSettingsGroup(entry.group, sections: entry.sections)
+                if !normalizedSearchText.isEmpty {
+                    ForEach(searchResults) { result in
+                        NavigationLink {
+                            scopedDetail(for: result.section)
+                                .environment(\.settingsSearchTarget, result.target)
+                                .navigationTitle(result.section.title)
+                        } label: {
+                            VStack(alignment: .leading) {
+                                Text(result.title)
+                                Text(result.section.title).brevFont(.footnote)
+                            }
+                        }
+                    }
+                } else {
+                    ForEach(filteredSettingsGroups, id: \.group) { entry in
+                        compactSettingsGroup(entry.group, sections: entry.sections)
+                    }
                 }
                 if filteredSettingsGroups.isEmpty {
                     settingsSearchEmptyState
@@ -267,7 +290,7 @@ public struct SettingsView: View {
     private func compactSettingsRows(for sections: [SettingsSection]) -> some View {
         ForEach(sections) { section in
             NavigationLink {
-                detail(for: section)
+                scopedDetail(for: section)
                     .navigationTitle(section.title)
                 #if os(iOS)
                     .toolbar { settingsDismissToolbar }
@@ -286,31 +309,39 @@ public struct SettingsView: View {
     @ViewBuilder
     private var sidebar: some View {
         Group {
-            #if os(iOS)
-            List {
-                ForEach(filteredSettingsGroups, id: \.group) { entry in
-                    sidebarGroup(entry.group, sections: entry.sections)
+            if !normalizedSearchText.isEmpty {
+                List {
+                    if searchResults.isEmpty { settingsSearchEmptyState }
+                    ForEach(searchResults) { result in
+                        Button {
+                            searchTarget = result.target
+                            selectedPluginContribution = nil
+                            navigation.select(result.section)
+                        } label: {
+                            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                                Text(result.title).foregroundStyle(theme.textPrimary.color)
+                                Text(result.section.title)
+                                    .brevFont(.footnote)
+                                    .foregroundStyle(theme.textSecondary.color)
+                            }
+                            .padding(.vertical, BrevSpacing.xs)
+                        }
+                        .buttonStyle(.plain)
+                    }
                 }
-                if filteredSettingsGroups.isEmpty {
-                    settingsSearchEmptyState
-                }
-                if normalizedSearchText.isEmpty {
-                    pluginSettingsGroup
+            } else {
+                List {
+                    ForEach(filteredSettingsGroups, id: \.group) { entry in
+                        sidebarGroup(entry.group, sections: entry.sections)
+                    }
+                    if filteredSettingsGroups.isEmpty {
+                        settingsSearchEmptyState
+                    }
+                    if normalizedSearchText.isEmpty {
+                        pluginSettingsGroup
+                    }
                 }
             }
-            #else
-            List(selection: sidebarBinding) {
-                ForEach(filteredSettingsGroups, id: \.group) { entry in
-                    sidebarGroup(entry.group, sections: entry.sections)
-                }
-                if filteredSettingsGroups.isEmpty {
-                    settingsSearchEmptyState
-                }
-                if normalizedSearchText.isEmpty {
-                    pluginSettingsGroup
-                }
-            }
-            #endif
         }
         .listStyle(.sidebar)
         .searchable(
@@ -322,6 +353,16 @@ public struct SettingsView: View {
         .background(BrevWindowSurfaceBackground(role: .sidebar).ignoresSafeArea())
         #if os(macOS)
             .background(BrevSplitViewColumnTransparencyFixer())
+            .onMoveCommand { direction in
+                guard normalizedSearchText.isEmpty else { return }
+                let sections = filteredSettingsGroups
+                    .filter { $0.group != .advanced || isAdvancedExpanded }
+                    .flatMap(\.sections)
+                guard let index = sections.firstIndex(of: navigation.selected) else { return }
+                let offset = direction == .down ? 1 : direction == .up ? -1 : 0
+                let next = min(max(index + offset, 0), sections.count - 1)
+                navigation.select(sections[next])
+            }
         #endif
     }
 
@@ -344,8 +385,12 @@ public struct SettingsView: View {
                 }
             }
         } else if let header = group.headerLabel {
-            Section(header) {
+            Section {
                 sidebarRows(for: sections)
+            } header: {
+                Text(header)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
             }
         } else {
             sidebarRows(for: sections)
@@ -369,11 +414,28 @@ public struct SettingsView: View {
                 navigation.selected == section ? theme.selection.color : Color.clear
             )
             #else
-            sectionRow(section)
-                .tag(section)
-                .simultaneousGesture(TapGesture().onEnded {
-                    selectedPluginContribution = nil
-                })
+            Button {
+                selectedPluginContribution = nil
+                searchTarget = nil
+                navigation.select(section)
+            } label: {
+                sectionRow(section)
+                    .padding(.horizontal, BrevSpacing.sm)
+                    .padding(.vertical, BrevSpacing.xxs)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .background(navigation.selected == section ? theme.selection.color : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+                    .overlay(alignment: .leading) {
+                        if navigation.selected == section {
+                            RoundedRectangle(cornerRadius: 1)
+                                .fill(BrevSelectionPalette(theme: theme).indicator.color)
+                                .frame(width: 2, height: 18)
+                        }
+                    }
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(navigation.selected == section ? .isSelected : [])
+            .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
             #endif
         }
     }
@@ -421,16 +483,6 @@ public struct SettingsView: View {
         .contentShape(Rectangle())
     }
 
-    private var sidebarBinding: Binding<SettingsSection?> {
-        Binding(
-            get: { navigation.selected },
-            set: {
-                selectedPluginContribution = nil
-                if let s = $0 { navigation.select(s) }
-            }
-        )
-    }
-
     @ViewBuilder
     private func detail(for section: SettingsSection) -> some View {
         switch section {
@@ -465,36 +517,38 @@ public struct SettingsView: View {
             RulesSection(
                 settingsStore: settingsStore,
                 accounts: accounts,
-                currentAccountID: currentAccountID,
+                currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
                 backendProvider: backendProvider
             )
         case .autoReply:
             VacationResponderSection(
                 settingsStore: settingsStore,
                 accounts: accounts,
-                currentAccountID: currentAccountID,
+                currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
                 backendProvider: backendProvider
             )
         case .folderSync:
             FolderSyncSettingsSection(
-                folders: allFolders,
-                sourceID: currentFolderSourceID,
+                folders: selectedMailbox?.folders ?? allFolders,
+                sourceID: selectedMailbox?.id ?? currentFolderSourceID,
                 backend: currentBackend,
                 settingsStore: settingsStore
             )
+            .id(selectedSourceID)
         case .mailStorage:
             MailStorageSection(
                 account: currentAccount,
                 backend: currentBackend,
                 settingsStore: settingsStore
             )
+            .id(selectedSourceID?.accountID)
         case .calendarContacts:
             CalendarContactsSection()
         case .importExport:
             ImportExportSection(
                 backendProvider: backendProvider,
                 accounts: accounts,
-                currentAccountID: currentAccountID,
+                currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
                 allFolders: allFolders
             )
         case .security:
@@ -528,7 +582,67 @@ public struct SettingsView: View {
             view
                 .environment(\.brevTheme, theme)
         } else {
-            detail(for: navigation.selected)
+            scopedDetail(for: navigation.selected)
+                .environment(\.settingsSearchTarget, searchTarget)
+        }
+    }
+
+    private func scopedDetail(for section: SettingsSection) -> some View {
+        VStack(spacing: 0) {
+            settingsScope(for: section)
+            detail(for: section)
+        }
+    }
+
+    private var selectedMailbox: SettingsMailbox? {
+        mailboxContext.mailboxes.first { $0.id == selectedSourceID }
+    }
+
+    @ViewBuilder
+    private func settingsScope(for section: SettingsSection) -> some View {
+        if section == .mailStorage {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(currentAccount?.emailAddress ?? String(localized: "No account selected", bundle: .module))
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Text("Storage and repair actions apply to this entire account.", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, BrevSpacing.xl)
+            .padding(.vertical, BrevSpacing.sm)
+            .background(theme.bgSecondary.color)
+        } else if section == .folderSync {
+            HStack(spacing: BrevSpacing.md) {
+                Image(systemName: "tray")
+                if mailboxContext.mailboxes.isEmpty {
+                    Text("Open a mailbox in Mail to choose its settings.", bundle: .module)
+                } else {
+                    Picker(String(localized: "Mailbox", bundle: .module), selection: $selectedSourceID) {
+                        if selectedMailbox == nil {
+                            Text("Choose mailbox", bundle: .module).tag(MailSourceID?.none)
+                        }
+                        ForEach(mailboxContext.mailboxes) { item in
+                            Text(verbatim: "\(item.mailbox.displayName) · \(item.mailbox.email)")
+                                .tag(Optional(item.id))
+                        }
+                    }
+                    .accessibilityLabel(String(localized: "Settings mailbox", bundle: .module))
+                }
+            }
+            .brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
+            .padding(.horizontal, BrevSpacing.xl)
+            .padding(.vertical, BrevSpacing.md)
+            .background(theme.bgSecondary.color)
+        } else if [.appearance, .mailboxView, .compose, .vipAndReminders].contains(section) {
+            Text("Applies to all mailboxes", bundle: .module)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.horizontal, BrevSpacing.xl)
+                .padding(.top, BrevSpacing.sm)
         }
     }
 
@@ -538,7 +652,7 @@ public struct SettingsView: View {
     }
 
     private var currentAccount: BrevAccount? {
-        guard let currentAccountID else { return accounts.first }
+        guard let currentAccountID = selectedSourceID?.accountID ?? currentAccountID else { return accounts.first }
         return accounts.first { $0.id == currentAccountID }
     }
 
@@ -555,6 +669,10 @@ public struct SettingsView: View {
                 .foregroundStyle(theme.textPrimary.color)
         }
         .settingsTouchTarget()
+    }
+
+    private var searchResults: [SettingsSearchResult] {
+        SettingsSearchResult.results(for: normalizedSearchText, sections: navigation.availability.visibleSections)
     }
 
     private var normalizedSearchText: String {

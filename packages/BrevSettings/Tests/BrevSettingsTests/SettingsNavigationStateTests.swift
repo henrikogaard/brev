@@ -17,6 +17,23 @@ import Testing
 @Suite("SettingsNavigationState")
 @MainActor
 struct SettingsNavigationStateTests {
+    @Test("search results name the matching control and its scroll target")
+    func searchDestinations() throws {
+        let results = SettingsSearchResult.results(for: "font", sections: [.accounts, .mailboxView])
+        let font = try #require(results.first { $0.title == "Message font" })
+        #expect(font.section == .mailboxView)
+        #expect(font.target == "Message font")
+        #expect(SettingsSearchResult.results(for: "nonexistent-setting-xyz", sections: [.accounts, .mailboxView]).isEmpty)
+    }
+
+    @Test("search finds actual controls instead of only section titles")
+    func searchFindsControls() {
+        #expect(SettingsSection.mailboxView.matches(searchQuery: "font"))
+        #expect(SettingsSection.mailboxView.matches(searchQuery: "text size"))
+        #expect(SettingsSection.mailboxView.matches(searchQuery: "remote images"))
+        #expect(SettingsSection.accounts.matches(searchQuery: "fetch schedule"))
+    }
+
     @Test("Default section is Accounts")
     func defaultSection() {
         let nav = SettingsNavigationState()

@@ -41,6 +41,7 @@ struct BrevApp: App {
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var sessionRestoreAttempted = false
+    @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var showRestoreErrorAlert = false
     private let browserLinkOpener = BrowserLinkOpener()
@@ -66,6 +67,7 @@ struct BrevApp: App {
                             activeAppIcon: appIconBinding,
                             initialAccounts: session.visibleBackends.map(\.account),
                             initialCurrentAccountID: session.backend?.account.id,
+                            mailboxContext: settingsMailboxContext,
                             backendProvider: { accountID in session.backends[accountID] },
                             onAddAccount: { isShowingAddAccountSheet = true },
                             onSignOut: { account in await session.signOut(account: account) },
@@ -88,6 +90,7 @@ struct BrevApp: App {
                             onOpenSettings: {
                                 showSettings = true
                             },
+                            onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                             signatureContextProvider: { account in
                                 AppSessionFactory.composeSignatureContext(for: account)
                             },

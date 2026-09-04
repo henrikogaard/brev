@@ -187,7 +187,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     public func matches(searchQuery query: String) -> Bool {
         let normalizedQuery = Self.normalizedSearchText(query)
         guard !normalizedQuery.isEmpty else { return true }
-        let terms = [title, group.headerLabel ?? ""] + searchKeywords
+        let terms = [title, group.headerLabel ?? ""] + searchKeywords + searchableControlTitles
         return terms.contains { Self.normalizedSearchText($0).contains(normalizedQuery) }
     }
 

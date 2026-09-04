@@ -10,12 +10,43 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 @testable import BrevSettings
 import Foundation
 import Testing
 
 @Suite("AccountMailboxSyncSettings")
 struct AccountMailboxSyncSettingsTests {
+    @Test("source overrides survive reload and explicit Default replaces legacy policy only for that source")
+    func sourceOverridePersistence() throws {
+        let name = "ScopedRetention-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        let work = MailSourceID(accountID: "account", mailboxID: "work")
+        let personal = MailSourceID(accountID: "account", mailboxID: "personal")
+        var settings = AccountMailboxSyncSettings.defaults
+        settings.setRetentionPolicy(.keep7Days, forFolderID: "INBOX")
+        settings.setRetentionPolicy(nil, forFolderID: "INBOX", sourceID: work)
+        settings.save(to: defaults)
+        let loaded = AccountMailboxSyncSettings.load(from: defaults)
+        #expect(loaded.policy(for: "INBOX", sourceID: work) == .keep90Days)
+        #expect(loaded.policy(for: "INBOX", sourceID: personal) == .keep7Days)
+    }
+
+    @Test("folder retention overrides stay inside their account and mailbox")
+    func sourceScopedRetention() {
+        let work = MailSourceID(accountID: "account", mailboxID: "work")
+        let personal = MailSourceID(accountID: "account", mailboxID: "personal")
+        let otherAccount = MailSourceID(accountID: "other", mailboxID: "work")
+        var settings = AccountMailboxSyncSettings.defaults
+        settings.setRetentionPolicy(.headersOnly, forFolderID: "INBOX", sourceID: work)
+        #expect(settings.policy(for: "INBOX", sourceID: work) == .headersOnly)
+        #expect(settings.policy(for: "INBOX", sourceID: personal) == .keep90Days)
+        #expect(settings.policy(for: "INBOX", sourceID: otherAccount) == .keep90Days)
+        settings.setRetentionPolicy(nil, forFolderID: "INBOX", sourceID: work)
+        #expect(settings.policy(for: "INBOX", sourceID: work) == .keep90Days)
+    }
+
     @Test("defaults use all-folders sync with 90-day retention semantics")
     func defaults() throws {
         let defaults = try Self.makeDefaults()

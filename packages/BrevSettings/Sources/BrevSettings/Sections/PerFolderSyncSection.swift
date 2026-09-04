@@ -19,11 +19,14 @@ public struct PerFolderSyncSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AccountMailboxSyncSettings
     @State private var visibilityPreferences: FolderVisibilityPreferences
+    @State private var filter = ""
 
     private let folders: [Folder]
     private let sourceID: MailSourceID?
     private let settingsStore: SettingsPersistenceStore
     private let emptyFolderMessage: String
+    private let onReload: (() -> Void)?
+    private let isLoading: Bool
     private let onPolicyChanged: ((Folder) -> Void)?
     private let onVisibilityChanged: ((Folder) -> Void)?
 
@@ -33,10 +36,14 @@ public struct PerFolderSyncSection: View {
         settings: AccountMailboxSyncSettings,
         settingsStore: SettingsPersistenceStore = .standard,
         emptyFolderMessage: String? = nil,
+        isLoading: Bool = false,
+        onReload: (() -> Void)? = nil,
         onPolicyChanged: ((Folder) -> Void)? = nil,
         onVisibilityChanged: ((Folder) -> Void)? = nil
     ) {
         self.folders = folders
+        self.isLoading = isLoading
+        self.onReload = onReload
         self.sourceID = sourceID
         self.settingsStore = settingsStore
         self.emptyFolderMessage = emptyFolderMessage ?? String(
@@ -52,7 +59,7 @@ public struct PerFolderSyncSection: View {
     public var body: some View {
         SectionScaffold(
             title: String(localized: "Folder Sync", bundle: .module),
-            subtitle: String(localized: "Override the account's cache and visibility settings per folder.", bundle: .module)
+            subtitle: String(localized: "Choose offline retention and sidebar visibility for this mailbox.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 folderOverridesGroup
@@ -61,89 +68,127 @@ public struct PerFolderSyncSection: View {
     }
 
     private var folderOverridesGroup: some View {
-        SettingsGroup(
-            title: String(localized: "Per-folder overrides", bundle: .module),
-            subtitle: String(localized: "Fine-tune caching and sync for each folder.", bundle: .module),
-            symbolName: "folder.badge.gearshape"
-        ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                if folders.isEmpty {
-                    SettingsInfoCallout(
-                        symbolName: "folder.badge.questionmark",
-                        message: emptyFolderMessage,
-                        tone: .info
-                    )
-                } else {
-                    ForEach(folders) { folder in
-                        folderRow(folder)
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            HStack {
+                TextField(String(localized: "Filter folders", bundle: .module), text: $filter)
+                    .textFieldStyle(.roundedBorder)
+                    .accessibilityLabel(String(localized: "Filter folders", bundle: .module))
+                if let onReload {
+                    Button(action: onReload) {
+                        Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
                     }
+                    .disabled(isLoading)
                 }
             }
+            if isLoading { ProgressView().controlSize(.small) }
+            if folders.isEmpty {
+                Text(emptyFolderMessage)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .padding(.vertical, BrevSpacing.lg)
+            } else {
+                HStack {
+                    Text("Folder", bundle: .module)
+                    Spacer()
+                    Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
+                    Text("Show", bundle: .module).frame(width: 44)
+                }
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .padding(.horizontal, BrevSpacing.sm)
+                LazyVStack(spacing: 0) {
+                    ForEach(visibleRows) { row in
+                        folderRow(row)
+                        Rectangle().fill(theme.separator.color).frame(height: 1)
+                    }
+                }
+                if visibleRows.isEmpty {
+                    Text("No matching folders", bundle: .module)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .padding(.vertical, BrevSpacing.md)
+                }
+            }
+            Text("Default follows the app's retention preference. Visibility only changes the sidebar.", bundle: .module)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
         }
     }
 
-    private func folderRow(_ folder: Folder) -> some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
-                Image(systemName: folderIcon(for: folder.role))
-                    .foregroundStyle(theme.textSecondary.color)
-                    .frame(width: 18, alignment: .center)
+    private var visibleRows: [FolderSyncRow] {
+        let rows = FolderSyncRows.make(folders)
+        let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
+        return query.isEmpty ? rows : rows.filter { $0.folder.name.localizedStandardContains(query) }
+    }
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(folder.name)
-                        .brevFont(.body)
-                        .foregroundStyle(theme.textPrimary.color)
-                    Text("Unread: \(folder.unreadCount)", bundle: .module)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textTertiary.color)
-                }
-
-                Spacer(minLength: BrevSpacing.md)
+    private func folderRow(_ row: FolderSyncRow) -> some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: BrevSpacing.sm) {
+                folderIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                retentionPicker(row.folder)
+                visibilityToggle(row.folder).frame(width: 44)
             }
-
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
-                Text("Retention", bundle: .module)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
-                    .frame(width: 80, alignment: .leading)
-
-                Picker(String(localized: "Retention", bundle: .module), selection: retentionBinding(for: folder)) {
-                    Text("Default", bundle: .module).tag(OfflineRetentionPolicy?.none)
-                    ForEach(OfflineRetentionPolicy.allCases) { policy in
-                        Text(policy.displayName).tag(Optional(policy))
-                    }
+            HStack(alignment: .top) {
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    folderIdentity(row)
+                    retentionPicker(row.folder)
                 }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            if sourceID != nil {
-                SettingsToggleRow(
-                    symbolName: "sidebar.left",
-                    title: String(localized: "Show in mailbox list", bundle: .module),
-                    subtitle: String(
-                        localized: "Hide this folder from mailbox navigation without changing sync.",
-                        bundle: .module
-                    ),
-                    isOn: mailboxListVisibilityBinding(for: folder)
-                )
+                Spacer(minLength: BrevSpacing.sm)
+                visibilityToggle(row.folder).frame(width: 44)
             }
         }
-        .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
+        .frame(minHeight: 40)
+        .padding(.horizontal, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.xxs)
+        .background(theme.bgPrimary.color)
+    }
+
+    private func folderIdentity(_ row: FolderSyncRow) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            Image(systemName: folderIcon(for: row.folder.role))
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(width: 18)
+            Text(row.folder.name)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(2)
+                .help(row.folder.name)
         }
+        .padding(.leading, CGFloat(min(row.depth, 6)) * 14)
+    }
+
+    private func retentionPicker(_ folder: Folder) -> some View {
+        Picker(String(localized: "Offline retention for \(folder.name)", bundle: .module),
+               selection: retentionBinding(for: folder)) {
+            Text("Default", bundle: .module).tag(OfflineRetentionPolicy?.none)
+            ForEach(OfflineRetentionPolicy.allCases) { policy in
+                Text(policy.displayName).tag(Optional(policy))
+            }
+        }
+        .labelsHidden()
+        .frame(width: 132)
+        .accessibilityLabel(String(localized: "Offline retention for \(folder.name)", bundle: .module))
+    }
+
+    private func visibilityToggle(_ folder: Folder) -> some View {
+        Toggle(String(localized: "Show \(folder.name) in sidebar", bundle: .module),
+               isOn: mailboxListVisibilityBinding(for: folder))
+            .labelsHidden()
+        #if os(macOS)
+            .toggleStyle(.checkbox)
+        #else
+            .toggleStyle(.switch)
+        #endif
+            .disabled(sourceID == nil)
+            .accessibilityLabel(String(localized: "Show \(folder.name) in sidebar", bundle: .module))
+            .help(String(localized: "Show \(folder.name) in sidebar", bundle: .module))
     }
 
     private func retentionBinding(for folder: Folder) -> Binding<OfflineRetentionPolicy?> {
         Binding(
-            get: { settings.folderOverrides[folder.id]?.retentionPolicy },
+            get: { settings.override(for: folder.id, sourceID: sourceID)?.retentionPolicy },
             set: { newValue in
-                settings.setRetentionPolicy(newValue, forFolderID: folder.id)
+                settings = settingsStore.accountMailboxSyncSettings()
+                settings.setRetentionPolicy(newValue, forFolderID: folder.id, sourceID: sourceID)
                 settingsStore.save(settings)
                 NotificationCenter.default.post(name: .brevMailboxSyncSettingsDidChange, object: nil)
                 onPolicyChanged?(folder)
@@ -167,7 +212,7 @@ public struct PerFolderSyncSection: View {
                     !newValue,
                     folderID: folder.id,
                     sourceID: sourceID,
-                    in: visibilityPreferences
+                    in: settingsStore.folderVisibilityPreferences()
                 )
                 visibilityPreferences = next
                 settingsStore.save(next)
@@ -199,6 +244,7 @@ struct FolderSyncSettingsSection: View {
     @State private var isLoading = false
     @State private var loadErrorMessage: String?
 
+    private let cachedFolders: [Folder]
     private let backend: (any MailBackend)?
     private let settingsStore: SettingsPersistenceStore
 
@@ -209,6 +255,7 @@ struct FolderSyncSettingsSection: View {
         settingsStore: SettingsPersistenceStore
     ) {
         self.backend = backend
+        cachedFolders = folders
         self.settingsStore = settingsStore
         _folders = State(initialValue: folders)
         _sourceID = State(initialValue: sourceID)
@@ -221,26 +268,15 @@ struct FolderSyncSettingsSection: View {
                 sourceID: sourceID,
                 settings: settingsStore.accountMailboxSyncSettings(),
                 settingsStore: settingsStore,
-                emptyFolderMessage: emptyFolderMessage
+                emptyFolderMessage: emptyFolderMessage,
+                isLoading: isLoading,
+                onReload: backend != nil && sourceID != nil ? { Task { await loadFolders() } } : nil
             )
-
-            if shouldShowLoadButton {
-                BrevButton(
-                    isLoading ? String(localized: "Loading...", bundle: .module) : String(
-                        localized: "Load Folders",
-                        bundle: .module
-                    ),
-                    style: .secondary
-                ) {
-                    Task { await loadFolders() }
-                }
-                .disabled(isLoading)
-            }
         }
-    }
-
-    private var shouldShowLoadButton: Bool {
-        backend != nil && (folders.isEmpty || sourceID == nil)
+        .onChange(of: cachedFolders) { _, latest in folders = latest }
+        .task(id: sourceID) {
+            if folders.isEmpty, sourceID != nil { await loadFolders() }
+        }
     }
 
     private var emptyFolderMessage: String {
@@ -250,26 +286,53 @@ struct FolderSyncSettingsSection: View {
         if let loadErrorMessage {
             return String(localized: "Couldn't load folders: \(loadErrorMessage)", bundle: .module)
         }
-        if backend != nil {
-            return String(localized: "Load folders for the current mailbox to configure per-folder sync.", bundle: .module)
+        if sourceID == nil {
+            return String(localized: "Choose a mailbox above to configure its folders.", bundle: .module)
         }
         return String(localized: "No folders available. Open a mailbox to configure per-folder sync.", bundle: .module)
     }
 
     private func loadFolders() async {
-        guard let backend else { return }
+        guard let backend, let sourceID else { return }
 
         isLoading = true
         loadErrorMessage = nil
         do {
-            let mailbox = try await backend.currentMailbox()
-            let resolvedSourceID = backend.sourceID(for: mailbox)
-            folders = try await backend.folders(in: resolvedSourceID)
-            sourceID = resolvedSourceID
+            let loaded = try await backend.folders(in: sourceID)
+            guard !Task.isCancelled else { return }
+            folders = loaded
         } catch {
+            guard !Task.isCancelled else { return }
             let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
             loadErrorMessage = message.isEmpty ? String(localized: "Unknown error", bundle: .module) : message
         }
         isLoading = false
+    }
+}
+
+struct FolderSyncRow: Identifiable {
+    let folder: Folder
+    let depth: Int
+    var id: Folder.ID { folder.id }
+}
+
+enum FolderSyncRows {
+    static func make(_ folders: [Folder]) -> [FolderSyncRow] {
+        let ids = Set(folders.map(\.id))
+        let children = Dictionary(grouping: folders, by: { $0.parentID ?? "" })
+        let roots = folders.filter { $0.parentID == nil || !ids.contains($0.parentID!) }
+        var seen = Set<Folder.ID>()
+        var result: [FolderSyncRow] = []
+        for root in roots + folders {
+            var pending: [(Folder, Int)] = [(root, 0)]
+            while let (folder, depth) = pending.popLast() {
+                guard seen.insert(folder.id).inserted else { continue }
+                result.append(FolderSyncRow(folder: folder, depth: depth))
+                for child in (children[folder.id] ?? []).reversed() {
+                    pending.append((child, depth + 1))
+                }
+            }
+        }
+        return result
     }
 }

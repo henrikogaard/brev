@@ -167,3 +167,15 @@ Inherits the same posture as `BrevMail` (ADR-0011):
 - ADR-0028 — Roadmap and invariants
 - ADR-0011 — BrevMail package
 - ADR-0066 — retired provider adapter adapter
+
+### 2026-09-05 Settings workspace consistency
+
+Settings receives explicit mailbox identities and cached folder collections from
+Mail. Source changes refresh scoped pages; a visible mailbox selector makes any
+manual Settings choice explicit. Folder retention overrides use SourceFolderID;
+legacy folder-only values remain as fallback until overridden for that source.
+No provider endpoints, opt-ins, or account defaults change through navigation.
+
+Mail and Settings share opaque selection roles in BrevDesign. Settings search
+indexes control labels and scrolls to the matching control. Folder Sync uses
+compact hierarchical rows with labeled retention and visibility controls.

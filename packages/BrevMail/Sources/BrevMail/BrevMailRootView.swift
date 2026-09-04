@@ -356,6 +356,7 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    private let onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)?
     private let signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)?
     private let composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)?
     private let trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)?
@@ -375,6 +376,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
         trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
@@ -392,6 +394,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onSettingsMailboxContextChange: onSettingsMailboxContextChange,
             signatureContextProvider: signatureContextProvider,
             composeSecurityDefaultsProvider: composeSecurityDefaultsProvider,
             trustedSigningIdentityCountProvider: trustedSigningIdentityCountProvider,
@@ -412,6 +415,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
         trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
@@ -435,6 +439,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
         self.trustedSigningIdentityCountProvider = trustedSigningIdentityCountProvider
@@ -605,6 +610,9 @@ public struct BrevMailRootView: View {
 
     private var mailRootObservedContent: some View {
         mailRootLoadingContent
+            .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
+                onSettingsMailboxContextChange?(settingsMailboxContext)
+            }
             .modifier(externalInputConsumer)
             .onChange(of: navigation.composePresentationID) {
                 handleComposePresentationChange()
@@ -624,6 +632,7 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
+                onSettingsMailboxContextChange?(settingsMailboxContext)
             }
             .onChange(of: monitor.isOnline) { wasOnline, isOnline in
                 handleNetworkStatusChange(wasOnline: wasOnline, isOnline: isOnline)
@@ -2428,6 +2437,15 @@ public struct BrevMailRootView: View {
         }
         #endif
         navigation.presentNewMessage()
+    }
+
+    private var settingsMailboxContext: SettingsMailboxContext {
+        SettingsMailboxContext(
+            selectedSourceID: navigation.selectedSourceID,
+            mailboxes: sourceSections.map {
+                SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders)
+            }
+        )
     }
 
     private func presentSettings() {

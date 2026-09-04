@@ -6,6 +6,16 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Settings follows the selected mailbox with an explicit source selector in
+  Folder Sync. New retention overrides are isolated by account, mailbox, and
+  folder; legacy preferences remain available until overridden.
+- Folder Sync uses compact hierarchical rows, a folder filter, and labeled
+  retention and visibility controls. Settings navigation shares Mail's
+  selection palette, with clearer account and mailbox defaults.
+- Settings search finds control names and opens the matching location.
+  Appearance includes a sample-mail preview and expandable window details;
+  Mailbox View separates reading, list, folder, and sender-image preferences.
+
 - Default Mono Light and Mono Dark metadata now meets 4.5:1 contrast across
   normal, hover, and selected surfaces. Mail rows use opaque selection fills
   with separate indicators; custom accents no longer wash out selected text.

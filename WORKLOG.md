@@ -362,3 +362,45 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - The committed dated mock build installed and launched successfully. Settings
   was assessed read-only across Accounts, Appearance, Mailbox View, and Folder
   Sync; no account preferences or Settings implementation were changed.
+
+
+## 2026-09-05 — Codex — PR #27 Settings consistency follow-up
+
+### Goal and changes
+
+- Fixed the seven Settings assessment findings on the existing
+  fix/multi-account-workspace branch, targeting main through PR #27.
+- Mail publishes explicit mailbox context only when its source selection or
+  workspace revision changes. Folder Sync follows that context, labels its
+  current mailbox, reuses cached folders, and loads only the requested source.
+- Folder retention now persists SourceFolderID overrides. Legacy folder-only
+  values remain fallback; choosing Default overrides that legacy value for
+  the selected source without affecting other mailboxes. Retention sweeps and
+  storage repair use the same source-aware resolution.
+- Folder Sync uses lazy compact rows, parent/child indentation, filtering,
+  native retention pickers, and explicit visibility labels. Narrow layouts
+  stack controls when needed. Settings search indexes visible control labels
+  and scrolls to a chosen result, including the appropriate Mailbox View pane.
+- Shared selection roles live in BrevDesign. Settings navigation is wider and
+  uses the same opaque selected-row styling as Mail. Account actions are in a
+  menu; default-account and default-mailbox states have distinct labels.
+- Appearance puts a sample-mail preview before optional window detail controls.
+  Mailbox View is grouped into Reading, Message list, Folders, and Sender images.
+  Storage/repair account scope and app-wide retention defaults are explicit.
+
+### Verification and handoff
+
+- Failing tests established source isolation, search omissions, missing source
+  context/hierarchy APIs, and scoped override summaries before implementation.
+- Settings and Mail package suites, separate Contacts tests, default light/dark
+  snapshots at regular/narrow sizes, macOS test installation, iOS Simulator
+  build, lint/format, and privacy checks were run. Final counts and hosted
+  results are recorded in the PR handoff.
+- Native Settings Accounts and navigation were inspected. The Mac locked during
+  Folder Sync navigation; the tool requested a manual unlock. End-to-end native
+  mailbox switching, search scrolling, and keyboard/VoiceOver checks remain
+  unavailable until unlocked. Offscreen rendered snapshots are verified.
+- Updated ADR-0012 for the shared selection/context contract and CHANGELOG for
+  the visible behavior. README, PRIVACY, and AGENTS need no changes: setup,
+  workflow, providers, and external network behavior are unchanged.
+- No merge, release, version change, issue closure, or daily-driver replacement.
