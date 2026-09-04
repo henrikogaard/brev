@@ -24,8 +24,12 @@ struct UnifiedInboxItem: Identifiable, Equatable, Sendable {
         "\(sourceID.accountID):\(sourceID.mailboxID):\(header.id)"
     }
 
+    var pinID: String {
+        MailPinnedMessages.key(sourceID: sourceID, messageID: header.id)
+    }
+
     var sourceContext: String {
-        sourceSubtitle.isEmpty ? sourceTitle : "\(sourceTitle) · \(sourceSubtitle)"
+        sourceTitle.isEmpty ? sourceSubtitle : sourceTitle
     }
 
     var dragRepresentation: String {

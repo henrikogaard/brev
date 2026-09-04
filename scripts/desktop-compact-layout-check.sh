@@ -181,16 +181,16 @@ require_multiline_pattern "static func folderSidebar\\(platform: MailPanePlatfor
 require_pattern "MailPaneColumnWidth\\(minimum: 200, ideal: 240" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected sidebar layout policy to keep a 200px compact minimum"
-require_pattern "\\.frame\\(minWidth: 280, idealWidth: 360\\)" \
+require_pattern "\\.frame\\(minWidth: 320, idealWidth: 380\\)" \
   "$MAIL_ROOT_FILE" \
-  "expected message list to keep a 280px compact minimum"
+  "expected message list to keep a 320px compact minimum"
 require_pattern "static func readerMinimumWidth" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected reading pane policy to define a compact minimum"
 require_multiline_pattern "case \\.macOS:[[:space:]]*420" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected reading pane detail to keep a 420px compact minimum"
-mail_required_width=$((200 + 280 + 420))
+mail_required_width=$((200 + 320 + 420))
 require_fit "mail root panes" "$mail_required_width" "$WIDTH"
 echo "    OK (${mail_required_width}px <= ${WIDTH}px)"
 

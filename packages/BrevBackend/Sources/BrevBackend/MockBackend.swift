@@ -1840,8 +1840,8 @@ private actor Store {
     private static func previewBodyFallback(for messageID: String) -> MessageBody {
         MessageBody(
             messageID: messageID,
-            html: "<p>Preview body for <code>\(messageID)</code>.</p>",
-            plainText: "Preview body for \(messageID).",
+            html: "<p>Hi team,</p><p>Thanks for the update. The plan looks good from my side.</p><p>I will share any final changes before our next check-in.</p><p>Best regards</p>",
+            plainText: "Hi team,\n\nThanks for the update. The plan looks good from my side.\n\nI will share any final changes before our next check-in.\n\nBest regards",
             attachments: [],
             listUnsubscribe: messageID == "m7"
                 ? ListUnsubscribeOptions.parse(

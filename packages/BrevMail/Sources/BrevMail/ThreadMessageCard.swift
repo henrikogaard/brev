@@ -94,32 +94,31 @@ struct ThreadMessageCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Card header — always visible, tappable to toggle
-            cardHeader
-                .dynamicTypeSize(denseChromeDynamicTypeRange)
-                .contentShape(Rectangle())
-                .onTapGesture { onToggle() }
+            Button(action: onToggle) {
+                cardHeader
+                    .dynamicTypeSize(denseChromeDynamicTypeRange)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(header.from.displayName)
+            .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
+                localized: "Collapsed message",
+                bundle: .module
+            ))
 
-            // Card body — shown only when expanded
             if isExpanded {
-                Divider()
                 cardBody
-                    .padding(BrevSpacing.sm)
+                    .padding(.horizontal, BrevSpacing.lg)
+                    .padding(.bottom, BrevSpacing.lg)
+                    .padding(.top, BrevSpacing.sm)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                .fill(cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                .stroke(
-                    isSelected ? theme.accent.color : theme.border.color.opacity(0.45),
-                    lineWidth: isSelected ? 1.5 : 0.5
-                )
-        )
-        .padding(.horizontal, BrevSpacing.sm)
-        .padding(.vertical, BrevSpacing.xxs)
+        .background(isExpanded ? theme.bgSecondary.color.opacity(0.18) : Color.clear)
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.textPrimary.color.opacity(0.10)).frame(height: 0.5)
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
         .task(id: isExpanded) {
             guard isExpanded, !isLoading else { return }
             if renderedBody == nil {
@@ -172,7 +171,7 @@ struct ThreadMessageCard: View {
                 BrevAvatarView(
                     email: header.from.email,
                     displayName: header.from.name,
-                    size: 40
+                    size: 32
                 )
             }
 
@@ -180,7 +179,7 @@ struct ThreadMessageCard: View {
                 HStack {
                     Text(header.from.name ?? header.from.email)
                         .font(.subheadline)
-                        .fontWeight(header.isRead ? .regular : .semibold)
+                        .fontWeight(.semibold)
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
 
@@ -191,7 +190,7 @@ struct ThreadMessageCard: View {
                             .font(.caption)
                             .foregroundStyle(theme.textTertiary.color)
                     } else {
-                        Text(header.date, style: .relative)
+                        Text(MessageListDatePresentation.label(for: header.date, showsAbsoluteArrivalTime: true))
                             .font(.caption)
                             .foregroundStyle(theme.textTertiary.color)
                     }
@@ -211,13 +210,13 @@ struct ThreadMessageCard: View {
                 .font(.caption2)
                 .foregroundStyle(theme.textTertiary.color)
         }
-        .padding(BrevSpacing.sm)
-    }
-
-    private var cardBackground: Color {
-        if isSelected { return theme.selection.color }
-        if isExpanded { return theme.bgSecondary.color.opacity(0.42) }
-        return Color.clear
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.md)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2, height: 24)
+            }
+        }
     }
 
     @ViewBuilder

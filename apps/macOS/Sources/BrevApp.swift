@@ -88,7 +88,6 @@ struct BrevApp: App {
                     .frame(minWidth: 960, minHeight: 600)
                     .environment(\.openURL, browserOpenURLAction)
                     .networkMonitor(networkMonitor)
-                    .id(mailRootIdentity)
                 } else if AppSessionRestorePresentationPolicy.shouldShowRestoreProgress(
                     visibleBackendCount: session.visibleBackends.count,
                     isRestoringSession: session.isRestoringSession,
@@ -232,13 +231,6 @@ struct BrevApp: App {
             }
             return browserLinkOpener.open(url)
         }
-    }
-
-    private var mailRootIdentity: String {
-        session.visibleBackends
-            .map(\.account.id)
-            .sorted()
-            .joined(separator: "|")
     }
 
     /// Turns a `mailto:` URL handed to the app delegate (Brev as default

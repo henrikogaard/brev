@@ -119,6 +119,7 @@ struct PreferenceSyncStoreTests {
         #expect(keys.contains("message.workflowState.v1"))
         #expect(keys.contains("vip.senders"))
         #expect(keys.contains("list.inboxCategoryOverrides"))
+        #expect(keys.contains("list.pinnedSourceMessageIDs.v2"))
         for key in keys {
             #expect(!key.hasPrefix("avatar."), "consent flag \(key) must not sync")
             #expect(!key.hasPrefix("notifications."), "per-device key \(key) must not sync")

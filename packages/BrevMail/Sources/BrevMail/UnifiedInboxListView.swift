@@ -64,11 +64,15 @@ struct UnifiedInboxListView: View {
     private let savedSearchID: String?
     private let savedSearchTitle: String?
     private let savedSearchQuery: SearchQuery?
+    private let isMutationWorkBlocked: Bool
     private let isWorkBlocked: Bool
     private let composeActions: MailComposePresentationActions
     private let onSelectMessage: ((MessageHeader) -> Void)?
     private let onMutation: (MailEvent) async -> Void
 
+    @State private var requestedScope: String?
+    @State private var loadedContentKey: String?
+    @State private var loadOwnership = MailListLoadOwnership()
     @State private var items: [UnifiedInboxItem] = []
     @State private var isLoading = false
     @State private var isMutating = false
@@ -101,7 +105,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
         InboxClassificationMode.off.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByThread) private var groupByThread = true
-    @AppStorage("list.pinnedMessageIDs") private var pinnedMessageIDsRaw = ""
+    @AppStorage(MailPinnedMessages.storageKey) private var pinnedMessageIDsRaw = ""
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
@@ -123,6 +127,7 @@ struct UnifiedInboxListView: View {
         savedSearchQuery: SearchQuery? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
         isWorkBlocked: Bool,
+        isMutationWorkBlocked: Bool = false,
         composeActions: MailComposePresentationActions,
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in }
@@ -137,6 +142,7 @@ struct UnifiedInboxListView: View {
         self.savedSearchTitle = savedSearchTitle
         self.savedSearchQuery = savedSearchQuery
         self.isWorkBlocked = isWorkBlocked
+        self.isMutationWorkBlocked = isMutationWorkBlocked
         self.composeActions = composeActions
         self.onSelectMessage = onSelectMessage
         self.onMutation = onMutation
@@ -160,6 +166,7 @@ struct UnifiedInboxListView: View {
     var body: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
+            LegacyPinNotice()
             #if os(iOS)
             MessageListSearchBand(navigation: navigation)
             #endif
@@ -272,32 +279,39 @@ struct UnifiedInboxListView: View {
                 MessageListFolderStatsFooter(presentation: folderStatsFooterPresentation)
             }
         }
-        .task(id: reloadKey) {
-            navigation.bulkSelection.removeAll()
+        .task(id: loadKey) {
+            let scope = "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)"
+            if requestedScope != scope {
+                loadOwnership.invalidate()
+                requestedScope = scope
+            }
+            guard !isWorkBlocked, !isMutating else { return }
+            let request = loadOwnership.begin()
             selectedItemIDs.removeAll()
-            expandedThreadKeys.removeAll()
-            isSearchOptionsExpanded = false
+            navigation.bulkSelection.removeAll()
             reconcileSearchExecutionWithVisibleSources()
             followUpSettings = FollowUpSettings.load()
+            if !trimmedSearchText.isEmpty {
+                guard await loadOwnership.debounceSearch(request) else { return }
+            }
+            guard loadOwnership.accepts(request) else { return }
+            activeSearchRequest = nil
             await reloadVisibleItems()
         }
         .onAppear { refreshPinnedMessageIDSet() }
+        .onDisappear {
+            loadOwnership.invalidate()
+            activeSearchRequest = nil
+            isLoading = false
+            isLoadingMore = false
+        }
+        .onChange(of: reloadKey) {
+            expandedThreadKeys.removeAll()
+            isSearchOptionsExpanded = false
+        }
         .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
         .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
             followUpSettings = FollowUpSettings.load()
-        }
-        .task(id: navigation.searchText) {
-            navigation.bulkSelection.removeAll()
-            selectedItemIDs.removeAll()
-            await reloadVisibleItems()
-        }
-        .task(id: navigation.searchExecution) {
-            guard !trimmedSearchText.isEmpty else { return }
-            await reloadVisibleItems()
-        }
-        .onChange(of: isWorkBlocked) { oldValue, newValue in
-            guard oldValue, !newValue else { return }
-            Task { await reloadVisibleItems() }
         }
         .onChange(of: searchCapabilityKey) {
             reconcileSearchExecutionWithVisibleSources()
@@ -374,6 +388,10 @@ struct UnifiedInboxListView: View {
         performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
         defer { pendingDeleteItemID = nil }
         await delete(item)
+    }
+
+    private var loadKey: String {
+        "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(navigation.reloadRequestID)|\(isWorkBlocked)|\(isMutating)"
     }
 
     private var reloadKey: String {
@@ -569,7 +587,7 @@ struct UnifiedInboxListView: View {
                 unreadCount: max(unifiedInboxUnreadCount, items.filter { !$0.header.isRead }.count),
                 loadedCount: items.count,
                 visibleCount: presentation.visibleItems.count,
-                pinnedCount: items.filter { presentation.pinnedMessageIDs.contains($0.header.id) }.count,
+                pinnedCount: items.filter { presentation.pinnedMessageIDs.contains($0.pinID) }.count,
                 isThreaded: false,
                 isConstrained: navigation.mailboxFilter.isActive || !trimmedSearchText.isEmpty
             ),
@@ -685,7 +703,7 @@ struct UnifiedInboxListView: View {
     }
 
     private var isMutationActionBlocked: Bool {
-        isMutating || isWorkBlocked
+        isMutating || isWorkBlocked || isMutationWorkBlocked
     }
 
     private func reconcileSearchExecutionWithVisibleSources() {
@@ -865,7 +883,7 @@ struct UnifiedInboxListView: View {
                 && navigation.selectedMessageID == item.header.id,
             isChecked: selectedItemIDs.contains(item.id),
             isInSelectionMode: !selectedItemIDs.isEmpty,
-            isPinned: pinnedMessageIDs.contains(item.header.id),
+            isPinned: pinnedMessageIDs.contains(item.pinID),
             isThreadExpanded: expandedThreadKeys.contains(threadKey),
             showAvatar: showSenderAvatars,
             previewLineCount: mailboxPreviewLineCount.visibleLineCount,
@@ -903,6 +921,8 @@ struct UnifiedInboxListView: View {
                 )
             }
         }
+        .help("\(item.sourceTitle)\n\(item.sourceSubtitle)")
+        .accessibilityHint(item.sourceSubtitle)
         .draggable(item.dragRepresentation)
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
@@ -937,7 +957,7 @@ struct UnifiedInboxListView: View {
         let menu = MessageCommandPresentation.contextMenu(
             for: item.header,
             isSelected: selectedItemIDs.contains(item.id),
-            isPinned: pinnedMessageIDs.contains(item.header.id),
+            isPinned: pinnedMessageIDs.contains(item.pinID),
             isSnoozed: isSnoozed(item),
             isDone: isDone(item),
             isKeptOffline: isKeptOffline(item),
@@ -1286,16 +1306,21 @@ struct UnifiedInboxListView: View {
     }
 
     private func reload() async {
-        guard !isWorkBlocked else { return }
+        guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
+        let loadRequest = loadOwnership.begin()
+        defer { if loadOwnership.current == loadRequest { isLoading = false } }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []
+        let contentKey = "folder:\(reloadKey)"
+        if loadedContentKey != contentKey { items = [] }
+        loadedContentKey = contentKey
         isLoading = true
         isLoadingMore = false
         errorMessage = nil
         pageCursors = [:]
         partialLoadErrorStatus = nil
         loadMoreErrorStatus = nil
-        var loadedItems: [UnifiedInboxItem] = []
+        var loadedItems = items
         var nextCursors: [MailSourceID: UnifiedInboxPageCursor] = [:]
         var firstError: (any Error)?
         let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Reload")
@@ -1304,7 +1329,7 @@ struct UnifiedInboxListView: View {
         let backendsByAccountID = backends.reduce(into: [BrevAccount.ID: any MailBackend]()) {
             $0[$1.account.id] = $1
         }
-        let results: [UnifiedInboxInitialLoadResult] = await MailConcurrentWork.map(sourceSections) { section in
+        await MailConcurrentWork.forEachResult(sourceSections) { section -> UnifiedInboxInitialLoadResult in
             guard let inbox = section.folders.first(where: { $0.role == .inbox }),
                   let backend = backendsByAccountID[section.account.id]
             else {
@@ -1325,12 +1350,12 @@ struct UnifiedInboxListView: View {
             } catch {
                 return .failure(message: error.localizedDescription)
             }
-        }
-
-        for result in results {
+        } receive: { _, result in
+            guard loadOwnership.accepts(loadRequest) else { return }
             switch result {
             case .page(let section, let inbox, let headers, let nextPageToken):
                 recordRecentRecipients(headers, account: section.account)
+                loadedItems.removeAll { $0.sourceID == section.id }
                 loadedItems.append(contentsOf: headers.map {
                     UnifiedInboxItem(
                         sourceID: section.id,
@@ -1351,17 +1376,14 @@ struct UnifiedInboxListView: View {
             case .failure(let message):
                 firstError = firstError ?? MailBackendError.backendSpecific(message: message)
             case .skipped:
-                continue
+                break
             }
+            items = UnifiedInboxPagination.sortedItems(loadedItems)
+            reconcileNavigationAfterItemsChanged()
         }
 
+        guard loadOwnership.accepts(loadRequest) else { return }
         items = UnifiedInboxPagination.sortedItems(loadedItems)
-        if firstError == nil {
-            reconcilePinnedMessageIDs(
-                loadedItems: items,
-                isComplete: nextCursors.isEmpty
-            )
-        }
         reconcileNavigationAfterItemsChanged()
         pageCursors = nextCursors
         if items.isEmpty, let firstError {
@@ -1418,14 +1440,19 @@ struct UnifiedInboxListView: View {
     }
 
     private func search(query: String) async {
-        guard !isWorkBlocked else { return }
+        guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
+        let contentKey = "search:\(reloadKey):\(query):\(navigation.searchExecution)"
+        if loadedContentKey != contentKey { items = [] }
+        loadedContentKey = contentKey
         let sourceIDs = sourceSections.map(\.id)
         let request = UnifiedInboxSearchRequest(
             query: query,
             sourceIDs: sourceIDs,
             execution: navigation.searchExecution
         )
-        guard activeSearchRequest != request else { return }
+        guard activeSearchRequest != request || !isLoading else { return }
+        let loadRequest = loadOwnership.begin()
+        defer { if loadOwnership.current == loadRequest { isLoading = false } }
         activeSearchRequest = request
         activeAttachmentSearchQueries = []
         isLoading = true
@@ -1467,6 +1494,7 @@ struct UnifiedInboxListView: View {
                 return UnifiedInboxSearchLoadResult.failure(error.localizedDescription)
             }
         }
+        guard loadOwnership.accepts(loadRequest) else { return }
         for result in results {
             switch result {
             case .results(let sourceItems):
@@ -1481,7 +1509,7 @@ struct UnifiedInboxListView: View {
             }
         }
 
-        guard UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+        guard loadOwnership.accepts(loadRequest), UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
             request: request,
             activeRequest: activeSearchRequest,
             currentSearchText: navigation.searchText,
@@ -1548,8 +1576,11 @@ struct UnifiedInboxListView: View {
         guard !isWorkBlocked,
               !pageCursors.isEmpty,
               !isLoadingMore,
+              !isLoading,
               MessageListReloadPolicy.operation(forSearchText: navigation.searchText) == .folder
         else { return }
+        let loadRequest = loadOwnership.current
+        defer { if loadOwnership.current == loadRequest { isLoadingMore = false } }
         isLoadingMore = true
         loadMoreErrorStatus = nil
         var updatedCursors = pageCursors
@@ -1580,6 +1611,7 @@ struct UnifiedInboxListView: View {
                 return UnifiedInboxMoreLoadResult.failure(error.localizedDescription)
             }
         }
+        guard loadOwnership.accepts(loadRequest) else { return }
         for (cursor, result) in zip(orderedCursors, results) {
             switch result {
             case .page(let sourceID, let headers, let nextPageToken):
@@ -1617,9 +1649,6 @@ struct UnifiedInboxListView: View {
                 )
             }
             pageCursors = updatedCursors
-            if pageCursors.isEmpty {
-                reconcilePinnedMessageIDs(loadedItems: items, isComplete: true)
-            }
             MailUIPerformanceDiagnostics.logListFinished(
                 surface: .unifiedInbox,
                 path: .loadMore,
@@ -1645,13 +1674,11 @@ struct UnifiedInboxListView: View {
     }
 
     private func selectMessage(_ item: UnifiedInboxItem) {
-        navigation.selectedSourceID = item.sourceID
-        navigation.selectedFolderID = item.folder.id
-        navigation.selectedMessageID = item.header.id
-        navigation.currentFolderHeaders = items
-            .filter { $0.sourceID == item.sourceID }
-            .map(\.header)
-        navigation.bulkSelection.removeAll()
+        navigation.selectMessage(
+            item.header,
+            in: item.sourceID,
+            headers: items.filter { $0.sourceID == item.sourceID }.map(\.header)
+        )
         selectedItemIDs.removeAll()
         onSelectMessage?(item.header)
     }
@@ -1682,39 +1709,18 @@ struct UnifiedInboxListView: View {
     }
 
     private func togglePinned(_ item: UnifiedInboxItem) {
-        var ids = pinnedMessageIDs
-        if ids.contains(item.header.id) {
-            ids.remove(item.header.id)
-        } else {
-            ids.insert(item.header.id)
+        do {
+            pinnedMessageIDsRaw = try MailPinnedMessages.toggling(
+                sourceID: item.sourceID, messageID: item.header.id, in: pinnedMessageIDsRaw
+            )
+            refreshPinnedMessageIDSet()
+        } catch {
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
         }
-        pinnedMessageIDSet = ids
-        pinnedMessageIDsRaw = ids.sorted().joined(separator: "\n")
     }
 
     private func refreshPinnedMessageIDSet() {
         pinnedMessageIDSet = UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw)
-    }
-
-    /// Reconcile persisted pins only after a complete mailbox projection is
-    /// known. Partial pages must retain IDs that may appear on a later page.
-    private func reconcilePinnedMessageIDs(
-        loadedItems: [UnifiedInboxItem],
-        isComplete: Bool
-    ) {
-        let stored = UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw)
-        let loaded = Set(loadedItems.map { $0.header.id })
-        let reconciled = UnifiedInboxPinnedMessagePersistence.reconciledIDs(
-            stored: stored,
-            loaded: loaded,
-            isComplete: isComplete
-        )
-        guard reconciled != stored else {
-            pinnedMessageIDSet = reconciled
-            return
-        }
-        pinnedMessageIDSet = reconciled
-        pinnedMessageIDsRaw = reconciled.sorted().joined(separator: "\n")
     }
 
     private func bulkSetRead(_ isRead: Bool) async {
@@ -2051,26 +2057,58 @@ struct UnifiedInboxListView: View {
         } else {
             for index in items.indices where targetIDs.contains(items[index].id) {
                 optimisticUpdate(&items[index])
-                navigation.updateHeader(id: items[index].header.id) { header in
+                navigation.updateHeader(id: items[index].header.id, sourceID: items[index].sourceID) { header in
                     header = items[index].header
                 }
             }
         }
         selectedItemIDs.subtract(targetIDs)
+        let selectionRevision = navigation.readerSelectionRevision
 
-        do {
-            let grouped = Dictionary(grouping: targetItems, by: \.sourceID)
-            for (sourceID, sourceItems) in grouped {
+        let request = loadOwnership.begin()
+        isLoading = false
+        isLoadingMore = false
+        let grouped = Dictionary(grouping: targetItems, by: \.sourceID)
+        var failedSources: Set<MailSourceID> = []
+        var firstError: (any Error)?
+        var successfulCount = 0
+        for sourceID in targetItems.map(\.sourceID).reduce(into: [MailSourceID](), { ids, id in
+            if !ids.contains(id) { ids.append(id) }
+        }) {
+            guard let sourceItems = grouped[sourceID] else { continue }
+            do {
                 try await operation(sourceID, sourceItems.map(\.header.id))
+                successfulCount += sourceItems.count
+                for item in sourceItems {
+                    await onMutation(event(item))
+                }
+            } catch {
+                failedSources.insert(sourceID)
+                firstError = firstError ?? error
             }
-            for item in targetItems {
-                await onMutation(event(item))
-            }
-        } catch {
-            let restored = rollback.restore(navigation: navigation)
+        }
+        guard loadOwnership.accepts(request) else {
+            isMutating = false
+            return
+        }
+        if let firstError {
+            let restored = rollback.restoring(failedSources: failedSources, in: items)
             items = restored.items
             selectedItemIDs = restored.selectedItemIDs
-            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
+            rollback.restoreFailedReader(
+                in: navigation,
+                failedSources: failedSources,
+                expectedSelectionRevision: selectionRevision
+            )
+            reconcileNavigationAfterItemsChanged()
+            let failedCount = targetItems.filter { failedSources.contains($0.sourceID) }.count
+            mutationErrorStatus = MessageListFooterStatus(
+                message: String(
+                    localized: "Updated \(successfulCount) messages; \(failedCount) failed. \(firstError.localizedDescription)",
+                    bundle: .module
+                ),
+                actionTitle: String(localized: "Refresh", bundle: .module)
+            )
         }
         isMutating = false
     }

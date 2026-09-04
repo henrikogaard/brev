@@ -6,6 +6,19 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Reading a message keeps Unified Inbox, smart views, and saved searches open.
+  Late list/page responses no longer replace a different profile or search.
+- Bulk actions retain successful account changes when another account fails;
+  failed messages remain selected with partial-success feedback.
+- Profiles retain unavailable mailbox memberships and their active selection.
+  Account restoration updates the workspace without resetting navigation.
+- Pins are now scoped to account, mailbox, and message. Profile loads never
+  prune pins elsewhere. Legacy unscoped records are retained; an in-app notice
+  explains that older messages must be pinned again to assign their mailbox.
+- Gmail lists cached headers before reconciliation and bounds missing-message
+  requests to four at a time. Unified Inbox publishes healthy sources as they
+  finish, keeps cached content readable during refresh, and debounces searches.
+
 - The inbox category bar now floats over the message list instead of
   sitting above it, so rows scroll beneath it and fade out behind its
   translucent chrome — restoring the "list hides behind the blur"

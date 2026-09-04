@@ -46,6 +46,7 @@ public struct ThreadConversationView: View {
     let threadHeaders: [MessageHeader]
     let backend: any MailBackend
     let sourceID: MailSourceID?
+    let mailboxLabel: String?
     let navigation: MailNavigationState
     let isWorkBlocked: Bool
     let preloadedBodies: [MessageHeader.ID: RenderedBody]
@@ -73,6 +74,7 @@ public struct ThreadConversationView: View {
         threadHeaders: [MessageHeader],
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
+        mailboxLabel: String? = nil,
         navigation: MailNavigationState,
         isWorkBlocked: Bool = false,
         aiBackend: (any AIBackend)? = nil,
@@ -84,6 +86,7 @@ public struct ThreadConversationView: View {
         self.threadHeaders = threadHeaders
         self.backend = backend
         self.sourceID = sourceID
+        self.mailboxLabel = mailboxLabel
         self.navigation = navigation
         self.isWorkBlocked = isWorkBlocked
         self.aiBackend = aiBackend
@@ -145,16 +148,22 @@ public struct ThreadConversationView: View {
                 // Thread subject header
                 if let subject = threadHeaders.last?.subject {
                     Text(subject)
-                        .font(.headline)
+                        .font(.system(.title2, design: .default, weight: .semibold))
                         .foregroundStyle(theme.textPrimary.color)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, BrevSpacing.md)
-                        .padding(.top, BrevSpacing.md)
-                        .padding(.bottom, BrevSpacing.xs)
+                        .padding(.top, BrevSpacing.lg)
+                        .padding(.bottom, BrevSpacing.sm)
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
                 }
 
-                // Conversation controls toolbar
+                Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, BrevSpacing.md)
+                    .padding(.bottom, BrevSpacing.md)
+
                 conversationControlsRow
                     .dynamicTypeSize(denseChromeDynamicTypeRange)
 
@@ -528,7 +537,7 @@ public struct ThreadConversationView: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
-        .background(theme.bgSecondary.color)
+        .padding(.bottom, BrevSpacing.sm)
     }
 
     @ViewBuilder
@@ -583,27 +592,14 @@ public struct ThreadConversationView: View {
 
     // MARK: - Participant summary
 
-    @ViewBuilder
     private var participantSummary: some View {
-        HStack(spacing: -6) {
-            let previewParticipants = Array(uniqueParticipants.prefix(3))
-            ForEach(Array(previewParticipants.enumerated()), id: \.offset) { index, participant in
-                BrevAvatarView(
-                    email: participant.email,
-                    displayName: participant.name,
-                    size: 20
-                )
-                .zIndex(Double(3 - index))
-            }
-        }
-        Text(participantCountLabel)
+        Text("\(threadHeaders.count) messages", bundle: .module)
             .brevFont(.caption)
             .foregroundStyle(theme.textSecondary.color)
-    }
-
-    private var participantCountLabel: String {
-        let count = uniqueParticipants.count
-        return count == 1 ? "1 participant" : "\(count) participants"
+            .accessibilityLabel(String(
+                localized: "\(threadHeaders.count) messages from \(uniqueParticipants.count) participants",
+                bundle: .module
+            ))
     }
 
     // MARK: - Hidden read messages footer

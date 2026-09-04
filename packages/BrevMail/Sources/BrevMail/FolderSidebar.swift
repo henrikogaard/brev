@@ -173,7 +173,7 @@ public struct FolderSidebar: View {
     public var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
-                if !sourceSections.isEmpty {
+                if !sourceSections.isEmpty || showsProfilePicker {
                     sourceTree
                 } else if mailboxes.count > 1 {
                     mailboxHeader
@@ -276,22 +276,34 @@ public struct FolderSidebar: View {
         }
         .padding(.bottom, BrevSpacing.sm)
 
+        if sourceSections.isEmpty {
+            Text("No available mailboxes in this profile. Check Accounts in Settings or choose another profile.", bundle: .module)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .padding(.vertical, BrevSpacing.sm)
+        }
+
+        if !sourceSections.isEmpty {
+            Text("Mailboxes", bundle: .module)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+                .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
+                .padding(.top, BrevSpacing.sm)
+        }
         ForEach(sourceSections) { section in
-            let isExpanded = expandedSourceIDs.contains(section.id)
-            VStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
-                sourceHeader(section, isExpanded: isExpanded)
-                if isExpanded {
-                    folderList(
-                        folders: section.folders,
-                        sourceID: section.id,
-                        loadError: section.loadError
-                    )
-                }
-            }
-            .padding(
-                .bottom,
-                section.id == sourceSections.last?.id ? 0 : BrevSpacing.xs
+            sourceHeader(
+                section,
+                isSelected: navigation.selectedSourceID == section.id && navigation.selectedCollectionFolderID == nil
             )
+        }
+        if let section = sourceSections.first(where: { $0.id == navigation.selectedSourceID })
+            ?? sourceSections.first(where: { expandedSourceIDs.contains($0.id) }) {
+            Text("Folders · \(section.title)", bundle: .module)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+                .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
+                .padding(.top, BrevSpacing.md)
+            folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
         }
         // Plugin-contributed sidebar panels live at the bottom, after the user's
         // own mailboxes and folders, so third-party extensions never sit above
@@ -306,7 +318,7 @@ public struct FolderSidebar: View {
     }
 
     private var showsProfilePicker: Bool {
-        FolderSidebarPresentation.shouldShowProfilePicker(profiles: profiles)
+        FolderSidebarPresentation.shouldShowProfilePicker(profiles: profiles) || sourceSections.count > 1
     }
 
     private var showsSmartViews: Bool {
@@ -333,13 +345,16 @@ public struct FolderSidebar: View {
                 Text(verbatim: activeProfileName)
             }
         case .menu:
-            Menu {
-                profilePickerActions
-            } label: {
-                profilePickerLabel
-            }
-            .menuStyle(.borderlessButton)
-            .menuIndicator(.hidden)
+            Button { isProfilePickerDialogPresented = true } label: { profilePickerLabel }
+                .buttonStyle(.plain)
+                .popover(isPresented: $isProfilePickerDialogPresented, arrowEdge: .bottom) {
+                    VStack(alignment: .leading, spacing: BrevSpacing.md) { profilePickerActions }
+                        .buttonStyle(.plain)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .padding(BrevSpacing.md)
+                        .frame(minWidth: 220, alignment: .leading)
+                        .background(theme.bgPrimary.color)
+                }
         }
     }
 
@@ -347,6 +362,7 @@ public struct FolderSidebar: View {
     private var profilePickerActions: some View {
         ForEach(profiles) { profile in
             Button {
+                isProfilePickerDialogPresented = false
                 onSelectProfile?(profile.id)
             } label: {
                 if profile.id == normalizedActiveProfileID {
@@ -362,6 +378,7 @@ public struct FolderSidebar: View {
         }
         Divider()
         Button {
+            isProfilePickerDialogPresented = false
             onManageProfiles?()
         } label: {
             Label(String(localized: "Manage Profiles", bundle: .module), systemImage: "person.crop.rectangle.stack")
@@ -397,10 +414,6 @@ public struct FolderSidebar: View {
         .background {
             RoundedRectangle(cornerRadius: BrevRadius.md)
                 .fill(theme.bgSecondary.color.opacity(0.42))
-        }
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
         }
         .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
         .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
@@ -929,81 +942,56 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private func sourceHeader(
         _ section: MailSourceSection,
-        isExpanded: Bool
+        isSelected: Bool
     ) -> some View {
         Button {
-            withAnimation(.easeInOut(duration: 0.16)) {
-                expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(
-                    section.id,
-                    in: expandedSourceIDs
-                )
+            expandedSourceIDs = [section.id]
+            if let inbox = section.folders.first(where: { $0.role == .inbox }) {
+                navigation.selectFolder(inbox.id, in: section.id)
+                onOpenMessages?()
             }
         } label: {
-            #if os(iOS)
             HStack(alignment: .center, spacing: BrevSpacing.sm) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                Image(systemName: isSelected ? "tray.fill" : "tray")
+                    .font(.system(size: 13, weight: .medium))
                     .foregroundStyle(theme.textTertiary.color)
-                    .frame(width: sidebarMetrics.disclosureHitSize, alignment: .center)
-                Image(systemName: section.mailbox.isPrimary ? "tray.2" : "mail.stack")
-                    .foregroundStyle(theme.textSecondary.color)
-                    .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                VStack(alignment: .leading, spacing: 2) {
+                    .frame(width: sidebarMetrics.disclosureHitSize)
+                VStack(alignment: .leading, spacing: 3) {
                     Text(verbatim: section.title)
                         .brevFont(.footnote)
+                        .fontWeight(.semibold)
                         .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
+                        .lineLimit(2)
+                        .multilineTextAlignment(.leading)
                     Text(verbatim: section.subtitle)
                         .brevFont(.caption)
-                        .foregroundStyle(theme.textTertiary.color)
+                        .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                Spacer(minLength: 0)
+                let unread = section.folders.first(where: { $0.role == .inbox })?.unreadCount ?? 0
+                if unread > 0 {
+                    Text(unread.formatted())
+                        .brevFont(.caption)
+                        .monospacedDigit()
+                        .foregroundStyle(theme.textSecondary.color)
                 }
             }
             .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: sidebarMetrics.sourceHeaderMinimumHeight,
-                alignment: .leading
-            )
-            .background(theme.bgTertiary.color)
+            .padding(.vertical, BrevSpacing.sm)
+            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
+            .background(isSelected ? theme.selection.color.opacity(0.55) : Color.clear)
             .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-            #else
-            HStack(alignment: .center, spacing: BrevSpacing.xs) {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 9, weight: .semibold))
-                    .foregroundStyle(theme.textTertiary.color)
-                    .frame(width: sidebarMetrics.disclosureHitSize, alignment: .center)
-                Text(verbatim: section.title)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                    .layoutPriority(1)
-                Text(verbatim: section.subtitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
-                    .lineLimit(1)
-                    .truncationMode(.tail)
-                Spacer(minLength: 0)
-            }
-            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: sidebarMetrics.sourceHeaderMinimumHeight,
-                alignment: .leading
-            )
             .contentShape(Rectangle())
-            #endif
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(section.title)
+        .accessibilityLabel("\(section.title), \(section.subtitle)")
         .accessibilityValue(
-            isExpanded
-                ? String(localized: "Expanded", bundle: .module)
-                : String(localized: "Collapsed", bundle: .module)
+            isSelected
+                ? String(localized: "Selected mailbox", bundle: .module)
+                : String(localized: "Open mailbox", bundle: .module)
         )
     }
 
@@ -1220,7 +1208,7 @@ public struct FolderSidebar: View {
             if let sourceID {
                 navigation.selectFolder(folder.id, in: sourceID)
             } else {
-                navigation.selectedFolderID = folder.id
+                navigation.selectFolder(folder.id, in: nil)
                 navigation.selectedMessageID = nil
             }
         }
@@ -1333,7 +1321,8 @@ public struct FolderSidebar: View {
     }
 
     private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {
-        navigation.selectedFolderID == folder.id
+        navigation.selectedCollectionFolderID == nil
+            && navigation.selectedFolderID == folder.id
             && navigation.selectedSourceID == sourceID
     }
 

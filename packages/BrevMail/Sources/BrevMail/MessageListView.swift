@@ -59,6 +59,7 @@ public struct MessageListView: View {
     private let folderDisplayName: String?
     private let allFolders: [Folder]
     private let searchSyntaxDescription: ServerSearchSyntaxDescription?
+    private let isMutationWorkBlocked: Bool
     private let isWorkBlocked: Bool
     private let composeActions: MailComposePresentationActions
     private let onSelectMessage: ((MessageHeader) -> Void)?
@@ -121,7 +122,7 @@ public struct MessageListView: View {
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
         InboxClassificationMode.off.rawValue
-    @AppStorage("list.pinnedMessageIDs") private var pinnedMessageIDsRaw = ""
+    @AppStorage(MailPinnedMessages.storageKey) private var pinnedMessageIDsRaw = ""
     @AppStorage(LocalRulesSettings.Key.isAutomaticExecutionEnabled)
     private var isAutomaticLocalRulesEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
@@ -152,6 +153,7 @@ public struct MessageListView: View {
         searchSyntaxDescription: ServerSearchSyntaxDescription? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
         isWorkBlocked: Bool = false,
+        isMutationWorkBlocked: Bool = false,
         composeActions: MailComposePresentationActions,
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in },
@@ -168,6 +170,7 @@ public struct MessageListView: View {
         self.allFolders = allFolders
         self.searchSyntaxDescription = searchSyntaxDescription
         self.isWorkBlocked = isWorkBlocked
+        self.isMutationWorkBlocked = isMutationWorkBlocked
         self.composeActions = composeActions
         self.onSelectMessage = onSelectMessage
         self.onMutation = onMutation
@@ -183,6 +186,7 @@ public struct MessageListView: View {
     public var body: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
+            LegacyPinNotice()
             #if os(iOS)
             MessageListSearchBand(navigation: navigation)
             #endif
@@ -259,6 +263,7 @@ public struct MessageListView: View {
             followUpSettings = FollowUpSettings.load()
         }
         .onChange(of: headers) {
+            refreshPinnedMessageIDSet()
             scheduleDebouncedThreadCountsRebuild()
         }
         .task(id: navigation.searchText) { await reloadForSearchChange() }
@@ -462,7 +467,7 @@ public struct MessageListView: View {
     }
 
     private var isMutationActionBlocked: Bool {
-        isPerformingMutation || isWorkBlocked
+        isPerformingMutation || isWorkBlocked || isMutationWorkBlocked
     }
 
     private var archiveFolder: Folder? {
@@ -1254,7 +1259,7 @@ public struct MessageListView: View {
                     isSelected: navigation.selectedMessageID == child.id
                 ) {
                     if navigation.bulkSelection.isEmpty {
-                        navigation.selectedMessageID = child.id
+                        selectMessage(child)
                     } else {
                         toggleSelection(for: child)
                     }
@@ -1656,13 +1661,14 @@ public struct MessageListView: View {
     }
 
     private func togglePinned(_ header: MessageHeader) {
-        var ids = pinnedMessageIDs
-        if ids.contains(header.id) {
-            ids.remove(header.id)
-        } else {
-            ids.insert(header.id)
+        do {
+            pinnedMessageIDsRaw = try MailPinnedMessages.toggling(
+                sourceID: workflowSourceID, messageID: header.id, in: pinnedMessageIDsRaw
+            )
+            refreshPinnedMessageIDSet()
+        } catch {
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
         }
-        pinnedMessageIDsRaw = ids.sorted().joined(separator: "\n")
     }
 
     private func toggleDateSection(_ sectionID: MessageListDateSection.ID) {
@@ -1683,7 +1689,7 @@ public struct MessageListView: View {
     }
 
     private func selectMessage(_ header: MessageHeader) {
-        navigation.selectedMessageID = header.id
+        navigation.selectMessage(header, from: navigationHeaders(for: headers))
         onSelectMessage?(header)
     }
 
@@ -1728,7 +1734,10 @@ public struct MessageListView: View {
 
     /// Re-parses the pinned-message identifier list from its stored string form.
     private func refreshPinnedMessageIDSet() {
-        pinnedMessageIDSet = Set(pinnedMessageIDsRaw.split(separator: "\n").map(String.init))
+        let keys = Set(pinnedMessageIDsRaw.split(separator: "\n").map(String.init))
+        pinnedMessageIDSet = Set(headers.filter {
+            keys.contains(MailPinnedMessages.key(sourceID: workflowSourceID, messageID: $0.id))
+        }.map(\.id))
     }
 
     private func reload() async {

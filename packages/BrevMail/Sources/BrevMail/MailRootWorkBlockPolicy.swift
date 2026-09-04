@@ -69,18 +69,24 @@ enum MailRootWorkBlockRecoveryPolicy {
 }
 
 enum MailRootWorkBlockPolicy {
+    static func hasMailContext(visibleSourceCount: Int, hasAnySources: Bool, hasFallbackFolders: Bool,
+                               isAllMailboxesProfile: Bool) -> Bool {
+        visibleSourceCount > 0 || (!hasAnySources && hasFallbackFolders && isAllMailboxesProfile)
+    }
+
     static func isMessageWorkBlocked(
         hasPresentedSheet: Bool,
         activeFolderLoadRequest: MailRootFolderLoadRequest?,
         activeMailboxLoadRequest: MailRootMailboxLoadRequest?,
         activeRefreshRequest: MailRootRefreshRequest?,
         activeMailboxSwitchRequest: MailRootMailboxSwitchRequest?,
-        activeCommandMutationRequest: MailRootCommandMutationRequest?
+        activeCommandMutationRequest: MailRootCommandMutationRequest?,
+        hasUsableContent: Bool = false
     ) -> Bool {
         hasPresentedSheet || isRootMailWorkActive(
-            activeFolderLoadRequest: activeFolderLoadRequest,
-            activeMailboxLoadRequest: activeMailboxLoadRequest,
-            activeRefreshRequest: activeRefreshRequest,
+            activeFolderLoadRequest: hasUsableContent ? nil : activeFolderLoadRequest,
+            activeMailboxLoadRequest: hasUsableContent ? nil : activeMailboxLoadRequest,
+            activeRefreshRequest: hasUsableContent ? nil : activeRefreshRequest,
             activeMailboxSwitchRequest: activeMailboxSwitchRequest,
             activeCommandMutationRequest: activeCommandMutationRequest
         )

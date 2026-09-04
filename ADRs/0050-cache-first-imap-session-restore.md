@@ -50,6 +50,25 @@ applies the completed results in source order. Sender avatar data is decoded
 and downsampled off the main actor, with a bounded decoded-image cache, so
 list-row redraws do not repeatedly decode raw image bytes.
 
+### 2026-09-04 multi-account publication safeguards
+
+Account-set changes restart account subscriptions without recreating the mail
+root. Virtual browsing location remains separate from the source/folder used
+by the reader. Profiles retain membership when sources are unavailable.
+
+Workspace discovery and Unified Inbox publish completed source results while
+other sources remain pending. Request generations and cancellation guard every
+list/page publication. A source discovery does not take the global mutation
+lock, and existing cached message content remains readable during refresh.
+
+The Gmail adapter projects cached account-store rows before remote listing,
+then reconciles in the background. Missing message fetches use at most four concurrent requests. Full MIME data is
+retained for accurate attachment indicators; metadata-only responses cannot
+provide those indicators. SQLite label pages use an indexed timestamp query
+and decode only the requested rows; body reads retain their existing upgrade.
+Partial cached pages retain a remote pagination continuation, while a complete
+canonical snapshot can be paginated offline. No endpoint or opt-in changes.
+
 ## Rationale
 
 Local folder and header snapshots are already the fastest path for message

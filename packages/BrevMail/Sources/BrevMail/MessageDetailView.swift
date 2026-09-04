@@ -46,6 +46,8 @@ public struct MessageDetailView: View {
     private let header: MessageHeader?
     private let navigation: MailNavigationState?
     private let allFolders: [Folder]
+    private let isMutationWorkBlocked: Bool
+    private var areActionsBlocked: Bool { isWorkBlocked || isMutationWorkBlocked }
     private let isWorkBlocked: Bool
     /// When present, the view is shown in a standalone window and renders an
     /// in-content action bar; destructive actions invoke this to close the window.
@@ -118,6 +120,7 @@ public struct MessageDetailView: View {
         navigation: MailNavigationState? = nil,
         allFolders: [Folder] = [],
         isWorkBlocked: Bool = false,
+        isMutationWorkBlocked: Bool = false,
         closeWindow: (() -> Void)? = nil
     ) {
         self.backend = backend
@@ -126,6 +129,7 @@ public struct MessageDetailView: View {
         self.navigation = navigation
         self.allFolders = allFolders
         self.isWorkBlocked = isWorkBlocked
+        self.isMutationWorkBlocked = isMutationWorkBlocked
         self.closeWindow = closeWindow
     }
 
@@ -555,7 +559,7 @@ public struct MessageDetailView: View {
                         } label: {
                             Label(String(localized: "Move", bundle: .module), systemImage: "folder")
                         }
-                        .disabled(isWorkBlocked)
+                        .disabled(areActionsBlocked)
                     }
                     Button {
                         printCurrentMessage()
@@ -666,7 +670,7 @@ public struct MessageDetailView: View {
                 } label: {
                     Label(String(localized: "Move to Folder", bundle: .module), systemImage: "folder")
                 }
-                .disabled(isWorkBlocked)
+                .disabled(areActionsBlocked)
             }
         }
         if let junkTitle = MessageCommandPresentation.junkActionTitle(
@@ -679,13 +683,13 @@ public struct MessageDetailView: View {
             } label: {
                 Label(junkTitle, systemImage: "exclamationmark.octagon")
             }
-            .disabled(isWorkBlocked)
+            .disabled(areActionsBlocked)
         }
     }
 
     private var isCreateTaskDisabled: Bool {
         guard let navigation else { return true }
-        return isWorkBlocked || navigation.presentedSheet != nil
+        return areActionsBlocked || navigation.presentedSheet != nil
     }
 
     /// Notes are local-only (no backend mutation), so the only gate is whether
@@ -716,7 +720,7 @@ public struct MessageDetailView: View {
     }
 
     private func presentMoveToFolder(for header: MessageHeader) {
-        guard let navigation, !isWorkBlocked else { return }
+        guard let navigation, !areActionsBlocked else { return }
         navigation.presentedSheet = .moveTo(
             messageIDs: [header.id],
             sourceID: sourceID,
@@ -792,7 +796,7 @@ public struct MessageDetailView: View {
         .buttonStyle(.plain)
         .help(title)
         .accessibilityLabel(title)
-        .disabled(isWorkBlocked)
+        .disabled(areActionsBlocked)
     }
 
     private func messageSecurityAnalysis(for header: MessageHeader) -> MessageSecurityAnalysis {
@@ -968,7 +972,7 @@ public struct MessageDetailView: View {
                 ) {
                     Task { await sendReadReceipt(request, for: header) }
                 }
-                .disabled(isSendingReadReceipt || isWorkBlocked)
+                .disabled(isSendingReadReceipt || areActionsBlocked)
 
                 BrevButton(prompt.declineTitle, style: .secondary) {
                     declineReadReceipt(for: header)
@@ -1274,12 +1278,12 @@ public struct MessageDetailView: View {
     private func canStartInviteResponse() -> Bool {
         CalendarInviteResponseStartPolicy.canStartResponse(
             activeRequest: activeInviteResponseRequest,
-            isBlocked: isWorkBlocked
+            isBlocked: areActionsBlocked
         )
     }
 
     private var isInviteResponseActionBlocked: Bool {
-        isRespondingToInvite || isWorkBlocked
+        isRespondingToInvite || areActionsBlocked
     }
 
     private var dateLabel: String {

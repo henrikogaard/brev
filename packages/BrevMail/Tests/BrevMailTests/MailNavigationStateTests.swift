@@ -19,6 +19,58 @@ import Testing
 @Suite("MailNavigationState")
 @MainActor
 struct MailNavigationStateTests {
+    @Test("a row selection repairs cleared reader headers without changing folder scope")
+    func rowSelectionRestoresReaderContext() {
+        let source = MailSourceID(accountID: "work", mailboxID: "work")
+        let state = MailNavigationState(selectedSourceID: source, selectedFolderID: "search-folder")
+        let header = Self.makeHeader(id: "message")
+        state.selectMessage(header, from: [header])
+        #expect(state.selectedHeader == header)
+        #expect(state.selectedSourceID == source)
+        #expect(state.selectedFolderID == "search-folder")
+    }
+
+    @Test("excluding the reader account preserves the collection and clears its private content")
+    func excludedReaderIsCleared() {
+        let state = MailNavigationState()
+        let source = MailSourceID(accountID: "work", mailboxID: "work")
+        let header = Self.makeHeader(id: "message")
+        state.selectUnifiedInbox()
+        state.selectMessage(header, in: source, headers: [header])
+        state.reconcileReaderSources([])
+        #expect(state.isUnifiedInboxSelected)
+        #expect(state.selectedSourceID == nil)
+        #expect(state.selectedHeader == nil)
+        #expect(state.currentFolderHeaders.isEmpty)
+    }
+
+    @Test("reading a unified message preserves the collection and routes the reader to its owner")
+    func readingUnifiedMessagePreservesCollection() {
+        let state = MailNavigationState()
+        let source = MailSourceID(accountID: "work", mailboxID: "work")
+        let header = Self.makeHeader(id: "message")
+        state.selectUnifiedInbox()
+        state.selectMessage(header, in: source, headers: [header])
+        #expect(state.isUnifiedInboxSelected)
+        #expect(state.selectedSourceID == source)
+        #expect(state.selectedHeader == header)
+        state.selectFolder("sent", in: source)
+        #expect(!state.isUnifiedInboxSelected)
+    }
+
+    @Test("reading a saved search result preserves the saved search")
+    func readingSavedSearchPreservesCollection() {
+        let state = MailNavigationState()
+        let source = MailSourceID(accountID: "work", mailboxID: "work")
+        let header = Self.makeHeader(id: "message")
+        state.selectSavedSearch(id: "invoices")
+        state.selectMessage(header, in: source, headers: [header])
+        #expect(state.selectedSavedSearchID == "invoices")
+        state.selectFlaggedSmartView()
+        state.selectMessage(header, in: source, headers: [header])
+        #expect(state.isFlaggedSmartViewSelected)
+    }
+
     @Test("selectedHeader returns nil when no selection is set")
     func selectedHeaderNilWithoutSelection() {
         let state = MailNavigationState()

@@ -67,3 +67,14 @@ covers the reading surface only (and the complementary inline list expansion).
 - Snapshot tests required for `ThreadConversationView` and `ThreadMessageCard`.
 - Unit tests required for `ThreadMessageDerivation` and expansion state logic.
 - `MessageDetailView` is untouched; rollback is safe.
+
+## Amendment (2026-09-04): conversation hierarchy
+
+The reader uses a larger subject, an explicit mailbox address, a quiet control
+row, and message sections separated by hairlines. Selection is a narrow header
+marker instead of a full card border. Sender headers are native buttons with
+expanded/collapsed accessibility values; timestamps use stable absolute labels.
+The sidebar keeps mailbox selectors above the selected mailbox's folder tree,
+with names and addresses on separate lines. The profile control stays visible
+for multi-mailbox workspaces. These are presentation changes within existing
+capability, theme, and source identity boundaries.

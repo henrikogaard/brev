@@ -237,3 +237,73 @@ platform and test-runtime boundaries.
   ContactsAccessPolicy tests pass in separate processes, eliminating global
   demo-gate state leakage without dropping coverage.
 - BrevDesign CI suites: 35 tests passed.
+
+
+## 2026-09-04 — Codex — Multi-account review remediation and UI redesign
+
+### Goal
+
+Address the nine reviewed multi-account reliability/performance findings, then
+apply the requested conversation-reader and multi-mailbox sidebar redesign.
+Baseline: `0902c93e`; branch: `fix/multi-account-workspace`; target: `main`.
+The initial canonical checkout was clean and had no open PR.
+
+### Changes
+
+- Separated virtual collection browsing from source-owned reader selection;
+  explicit row selection restores its headers after auxiliary presentation.
+- Guarded reload/search/page publication by request ownership and cancellation;
+  root folder/mailbox/command responses and optimistic reader updates also
+  reject a different account when raw folder/message IDs collide.
+  debounced search and bounded source work. Source discovery publishes progress,
+  retains failed cached accounts, has a timeout/retry, and cancels superseded work.
+- Settled bulk mutation outcomes per source, preserving successes and restoring
+  a failed reader only when the user has not selected another message.
+- Preserved temporarily unavailable profile membership and added explicit
+  removal of unavailable memberships. Empty profiles cannot compose through an
+  unrelated account, while the existing single-account folder fallback works.
+- Scoped pins to account/mailbox/message, preserved legacy data with a visible
+  reassignment notice, and kept a global 500-pin limit with explicit feedback.
+  Added the v2 key to the existing opt-in preference-sync allowlist.
+- Kept mail roots mounted across account changes; subscriptions use backend
+  instance identity, and removed/replaced account work cannot restore stale rows.
+- Added indexed SQLite Gmail label pagination, cache-first reads, bounded cold
+  fetches, and coalesced account refresh tasks that cancel on disconnect.
+- Kept mailbox selectors above the folder tree, shortened row source labels,
+  made the profile picker discoverable, and flattened conversation sections.
+  Native profile actions now stay inside the auxiliary window instead of
+  leaving title/toolbar state in the main mail window.
+- Corrected a pre-existing test-thread race by isolating native NSToolbar tests
+  to the main actor. Updated the compact-layout contract and snapshot CI routing.
+
+### Verification
+
+- Red/green regressions covered collection preservation, stale/cancelled loads,
+  partial rollback, unavailable profiles, pin collisions, cached Gmail failures,
+  indexed pagination including 120 rows across three pages, progressive source
+  publication, search debounce, fallback context, and reader header recovery.
+- BrevMail: 1,503 tests plus six isolated ContactsAccessPolicy tests passed.
+  BrevBackend: 1,010; BrevGmail: 99; BrevSettings: 314 passed.
+- The unsplit Contacts run exposed the known process-global demo gate race;
+  final runs use the existing CI split. A native toolbar test crash exposed
+  off-main AppKit creation; the main-actor correction passed the full suite.
+- Format, strict lint, self-tests, privacy audit, and git diff checks passed.
+- Native mock build/launch and rendered interaction checks passed. The profile
+  toolbar leak and blank-reader row selection were reproduced during native QA
+  before their fixes. Updated snapshots cover sidebar, reader, and profile UI.
+- macOS and iOS Simulator builds passed. Existing app-delegate/SDK warnings are
+  distinct from build success. No physical-device or live-provider acceptance
+  is claimed; issue #2 remains outside this mock verification.
+
+### Documentation and handoff
+
+CHANGELOG, PRIVACY, ADR-0020, ADR-0050, ADR-0056, and the focused QA matrix were
+updated. README and AGENTS need no change because setup, repository layout, and
+workflow remain the same. Demo body text is fixture-only; layout changes were
+verified by rendered snapshots/native checks rather than logic-only TDD.
+
+Cold Gmail reads intentionally retain full MIME data for attachment correctness,
+so the performance improvement is cache-first indexed reads and four concurrent
+cold requests, not elimination of all cold payload transfer. Legacy pins remain
+recoverable as original records but require reassignment. These limits belong in
+the PR. Open a non-draft PR to main; do not merge or replace `/Applications/Brev.app`.

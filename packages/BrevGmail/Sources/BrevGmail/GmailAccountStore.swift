@@ -148,6 +148,8 @@ public protocol GmailAccountStore: Sendable {
     func apply(_ delta: GmailStoreDelta) async throws
     /// Lists account-wide messages without duplicating label projections.
     func messages(accountID: String) async throws -> [GmailMessage]
+    /// Reads a bounded label page, newest first, without decoding the whole account.
+    func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage]
     /// Looks up one account-wide Gmail message.
     func message(accountID: String, messageID: String) async throws -> GmailMessage?
     /// Lists the current label catalog.
@@ -471,5 +473,20 @@ func validate(snapshot: GmailAccountSnapshot) throws {
     }
     for message in snapshot.messages {
         try validate(message: message)
+    }
+}
+
+public extension GmailAccountStore {
+    /// Default projection for in-memory/custom stores; SQLite overrides with an indexed query.
+    func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage] {
+        guard limit > 0 else { return [] }
+        return try await Array(messages(accountID: accountID)
+            .filter { $0.labelIDs.contains(labelID) }
+            .sorted {
+                let left = Int64($0.internalDate ?? "") ?? 0
+                let right = Int64($1.internalDate ?? "") ?? 0
+                return left == right ? $0.id < $1.id : left > right
+            }
+            .dropFirst(max(0, offset)).prefix(limit))
     }
 }

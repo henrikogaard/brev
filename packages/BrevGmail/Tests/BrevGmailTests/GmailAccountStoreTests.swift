@@ -17,6 +17,24 @@ import Testing
 
 @Suite("Gmail account store")
 struct GmailAccountStoreTests {
+    @Test("SQLite pages filter labels and order numeric dates before applying the limit")
+    func sqliteLabelPagesAreBounded() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-label-page-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store: any GmailAccountStore = try SQLiteGmailAccountStore(databaseURL: url)
+        try await store.replaceSnapshot(Self.snapshot(
+            labels: [GmailLabel(id: "INBOX", name: "Inbox"), GmailLabel(id: "SENT", name: "Sent")],
+            messages: [
+                GmailMessage(id: "old", labelIDs: ["INBOX"], internalDate: "9"),
+                GmailMessage(id: "new", labelIDs: ["INBOX"], internalDate: "100"),
+                GmailMessage(id: "sent", labelIDs: ["SENT"], internalDate: "1000")
+            ]
+        ))
+        #expect(try await store.messages(accountID: "acct-1", labelID: "INBOX", offset: 0, limit: 1).map(\.id) == ["new"])
+        #expect(try await store.messages(accountID: "acct-1", labelID: "INBOX", offset: 1, limit: 1).map(\.id) == ["old"])
+        #expect(try await store.messages(accountID: "absent", labelID: "INBOX", offset: 0, limit: 1).isEmpty)
+    }
+
     @Test("stores one message once while retaining two label joins")
     func storesManyToManyMessageLabels() async throws {
         let store = InMemoryGmailAccountStore()

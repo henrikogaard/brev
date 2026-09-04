@@ -60,6 +60,7 @@ public enum PreferenceSyncAllowlist {
         "list.inboxCategoryOverrides",
         // Pinned messages (BrevMail).
         "list.pinnedMessageIDs",
+        "list.pinnedSourceMessageIDs.v2",
         // Blocked senders.
         "blockedSenders.emails",
         // Follow-up reminders.

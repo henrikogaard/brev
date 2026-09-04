@@ -136,14 +136,14 @@ struct UnifiedInboxPresentationSnapshot {
         calendar: Calendar
     ) -> [UnifiedInboxDateSection] {
         var groupedItems: [(title: String, items: [UnifiedInboxItem])] = []
-        let pinnedItems = items.filter { pinnedMessageIDs.contains($0.header.id) }
+        let pinnedItems = items.filter { pinnedMessageIDs.contains($0.pinID) }
         if !pinnedItems.isEmpty {
             groupedItems.append((title: "Pinned", items: pinnedItems))
         }
 
         var currentTitle: String?
         var currentItems: [UnifiedInboxItem] = []
-        for item in items where !pinnedMessageIDs.contains(item.header.id) {
+        for item in items where !pinnedMessageIDs.contains(item.pinID) {
             let title = MessageListDateGrouping.sectionTitle(
                 for: item.header.date,
                 referenceDate: referenceDate,
@@ -177,20 +177,5 @@ struct UnifiedInboxPresentationSnapshot {
     ) {
         guard let title, !items.isEmpty else { return }
         groups.append((title: title, items: items))
-    }
-}
-
-/// Keeps the local pinned-message preference bounded without pruning IDs that
-/// may simply belong to a later page of a partial unified-inbox load.
-enum UnifiedInboxPinnedMessagePersistence {
-    static let maximumPersistedCount = 500
-
-    static func reconciledIDs(
-        stored: Set<MessageHeader.ID>,
-        loaded: Set<MessageHeader.ID>,
-        isComplete: Bool
-    ) -> Set<MessageHeader.ID> {
-        let candidates = isComplete ? stored.intersection(loaded) : stored
-        return Set(candidates.sorted().prefix(maximumPersistedCount))
     }
 }
