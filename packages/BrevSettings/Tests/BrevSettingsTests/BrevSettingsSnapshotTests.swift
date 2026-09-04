@@ -246,6 +246,15 @@ struct AIWriterSectionMacSnapshotTests {
             Folder(id: "sent", name: "Sent", role: .sent),
             Folder(id: "drafts", name: "Drafts", role: .drafts)
         ]
+        let account = BrevAccount(id: "account", displayName: "Personal", emailAddress: "personal@example.org")
+        let mailbox = Mailbox(id: "personal", email: "personal@example.org", displayName: "Personal")
+        let context = SettingsMailboxContext(
+            selectedSourceID: MailSourceID(accountID: account.id, mailboxID: mailbox.id),
+            mailboxes: [SettingsMailbox(account: account, mailbox: mailbox, folders: folders)]
+        )
+        capture(SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                             initialSection: .folderSync, mailboxContext: context, settingsStore: store),
+                theme: theme, name: "folder-workspace-" + mode, size: CGSize(width: 900, height: 650))
         capture(PerFolderSyncSection(folders: folders,
                                      sourceID: MailSourceID(accountID: "account", mailboxID: "personal"),
                                      settings: .defaults, settingsStore: store),
@@ -269,10 +278,11 @@ struct AIWriterSectionMacSnapshotTests {
     }
 
     private func capture<V: View>(_ view: V, theme: BrevTheme, name: String, size: CGSize) {
-        let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme).environment(
-            \.colorScheme,
-            theme.mode.colorScheme
-        ))
+        let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme)
+            .tint(theme.accent.color).environment(
+                \.colorScheme,
+                theme.mode.colorScheme
+            ))
         assertSnapshot(of: Self.retinaImage(of: host, size: size), as: .image, named: name,
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES")
     }
@@ -324,6 +334,14 @@ struct AIWriterSectionMacSnapshotTests {
         of host: NSHostingController<Content>,
         size: CGSize
     ) -> NSImage {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = host
+        window.layoutIfNeeded()
+        // AppKit-backed SwiftUI lists finish constructing their rows on the run loop.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        defer { window.contentViewController = nil; window.close() }
         let view = host.view
         let originalSize = view.frame.size
         view.frame.size = size

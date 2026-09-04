@@ -635,6 +635,7 @@ public struct SettingsView: View {
             .foregroundStyle(theme.textPrimary.color)
             .padding(.horizontal, BrevSpacing.xl)
             .padding(.vertical, BrevSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .background(theme.bgSecondary.color)
         } else if [.appearance, .mailboxView, .compose, .vipAndReminders].contains(section) {
             Text("Applies to all mailboxes", bundle: .module)

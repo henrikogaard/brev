@@ -404,3 +404,14 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   the visible behavior. README, PRIVACY, and AGENTS need no changes: setup,
   workflow, providers, and external network behavior are unchanged.
 - No merge, release, version change, issue closure, or daily-driver replacement.
+
+
+### Final rendered polish
+
+- Narrow Folder Sync rows keep the retention label beside their stacked picker;
+  the mailbox scope header fills and aligns with the Settings content column.
+- Snapshot hosting now attaches an offscreen NSWindow and drains AppKit layout,
+  so the navigation list and native controls are actually rendered. Added full
+  light/dark Folder Sync workspace captures with the visible mailbox identity.
+- This improves automated rendered evidence while leaving the locked-Mac native
+  interaction limitation explicit. No screenshot was substituted for native QA.

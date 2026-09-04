@@ -87,11 +87,17 @@ public struct PerFolderSyncSection: View {
                     .foregroundStyle(theme.textSecondary.color)
                     .padding(.vertical, BrevSpacing.lg)
             } else {
-                HStack {
-                    Text("Folder", bundle: .module)
-                    Spacer()
-                    Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
-                    Text("Show", bundle: .module).frame(width: 44)
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: BrevSpacing.sm) {
+                        Text("Folder", bundle: .module).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                        Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
+                        Text("Show", bundle: .module).frame(width: 44)
+                    }
+                    HStack {
+                        Text("Folder", bundle: .module)
+                        Spacer()
+                        Text("Show", bundle: .module).frame(width: 44)
+                    }
                 }
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
@@ -130,7 +136,12 @@ public struct PerFolderSyncSection: View {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                     folderIdentity(row)
-                    retentionPicker(row.folder)
+                    HStack(spacing: BrevSpacing.sm) {
+                        Text("Keep offline", bundle: .module)
+                            .brevFont(.footnote)
+                            .foregroundStyle(theme.textSecondary.color)
+                        retentionPicker(row.folder)
+                    }
                 }
                 Spacer(minLength: BrevSpacing.sm)
                 visibilityToggle(row.folder).frame(width: 44)
