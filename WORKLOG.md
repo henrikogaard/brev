@@ -447,3 +447,37 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Final tests, builds, lint, self-tests, and hosted checks are recorded in the
   PR handoff. ADR-0012/0053 and CHANGELOG updated; README/PRIVACY/AGENTS do not
   need changes because setup, network behavior, and workflow are unchanged.
+
+
+## 2026-09-05 — Codex — PR #27 profile-filtered mailbox groups
+
+- Implemented the clarified profile model after the user's Apple Mail/eM Client
+  comparison: profiles choose which mailbox groups are visible; the groups
+  stack vertically and can be expanded independently. The profile chooser is
+  a compact native menu, and All Inboxes/Smart Views remain global shortcuts.
+- Removed two-line account cards, the redundant Mailboxes heading, and the
+  separate folder-owner caption. Each mailbox header owns its indented tree.
+  Addresses remain in help/accessibility labels; collapsed headers show counts.
+- Expansion is stored locally under mailbox.disclosureState. Saved empty state
+  is respected and hidden profile members retain their expansion choice.
+  Reading a virtual collection does not expand a mailbox; physical folder
+  selection reveals its source without closing others.
+- The two-expanded-mailbox snapshot exposed duplicate provider folder IDs being
+  reused by SwiftUI. Rows now use SourceFolderID; both Inbox trees render and
+  only the selected source/folder highlights. Snapshot stores are isolated so
+  saved disclosure state cannot pollute another fixture.
+- Updated profile-management copy to say mailboxes, and recorded the final
+  interaction model in DESIGN.md. Existing provider/profile filtering and
+  account connections remain unchanged; no new network calls or dependencies.
+- Unit and rendered checks cover independent groups, persistence, empty saved
+  state, hidden profile members, both themes, filtered profiles, and identical
+  folder IDs. Final package/build/lint/CI evidence is in the PR handoff.
+- The initial compact-menu trial was exercised natively (38-message aggregate,
+  9-message Work inbox, and Manage Profiles). The final stacked-group native
+  check was blocked when the Mac locked; an unlock was requested while code
+  checks continued. Do not count the superseded trial as native verification
+  of the final layout.
+- Documentation sweep: CHANGELOG, DESIGN, WORKLOG, and QA notes updated.
+  README/PRIVACY/AGENTS/ADRs need no change: setup, architecture, workflow,
+  theme schema, and external network behavior are unchanged. Existing ADRs
+  0002/0004/0017/0028 were consulted for layout and source ownership.

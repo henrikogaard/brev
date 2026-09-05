@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Profiles now sit above independently collapsible mailbox groups. Multiple
+  inbox/folder trees can stay open together, and expansion choices are saved
+  locally across profile changes and relaunches.
+- Mailbox headers are compact single lines, with addresses available on hover
+  and unread counts on collapsed groups. All Inboxes uses the active profile.
+- Folder rows use source-scoped identities so identical provider folder IDs
+  remain distinct when several mailboxes are expanded together.
+
 - Mail split gaps and the AI Sidebar resize gutter now paint themed backdrops,
   preventing bright window backing from showing as thick white dividers.
 - AI Sidebar resizing uses stable pointer coordinates, responds immediately

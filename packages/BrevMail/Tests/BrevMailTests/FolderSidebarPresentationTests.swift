@@ -119,13 +119,6 @@ struct FolderSidebarPresentationTests {
         #expect(presentation.canMarkAllAsRead)
     }
 
-    @Test("profile picker uses a dialog on touch platforms")
-    func profilePickerUsesDialogOnTouchPlatforms() {
-        #expect(FolderSidebarPresentation.profilePickerPresentation(for: .iPhone) == .dialog)
-        #expect(FolderSidebarPresentation.profilePickerPresentation(for: .iPad) == .dialog)
-        #expect(FolderSidebarPresentation.profilePickerPresentation(for: .macOS) == .menu)
-    }
-
     @Test("selected sidebar rows use the compact control radius")
     func selectedSidebarRowsUseCompactControlRadius() {
         #expect(FolderSidebarSelectionPresentation.cornerRadius == BrevRadius.md)
@@ -143,18 +136,6 @@ struct FolderSidebarPresentationTests {
                 < FolderSidebarSelectionPresentation.folderOpacity
         )
         #expect(FolderSidebarSelectionPresentation.folderOpacity < 1)
-    }
-
-    @Test("system mailbox profile does not add redundant sidebar chrome")
-    func systemMailboxProfileDoesNotShowProfilePicker() {
-        let sourceID = MailSourceID(accountID: "personal", mailboxID: "primary")
-        let allMailboxes = MailProfile.allMailboxes(sourceIDs: [sourceID])
-        let focused = MailProfile(id: "focused", name: "Focused", sourceIDs: [sourceID])
-
-        #expect(!FolderSidebarPresentation.shouldShowProfilePicker(profiles: [allMailboxes]))
-        #expect(FolderSidebarPresentation.shouldShowProfilePicker(
-            profiles: [allMailboxes, focused]
-        ))
     }
 
     @Test("sidebar controls keep reliable touch targets")

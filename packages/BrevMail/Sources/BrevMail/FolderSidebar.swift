@@ -51,6 +51,7 @@ public struct FolderSidebar: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.networkMonitor) private var monitor
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
+    @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
     /// In-memory copy of the disclosure state used for rendering. Decoding the
     /// stored JSON on every render (once per source section) made expand/collapse
@@ -67,7 +68,6 @@ public struct FolderSidebar: View {
         disclosureStateData = (try? JSONEncoder().encode(state)) ?? Data()
     }
 
-    @State private var isProfilePickerDialogPresented = false
     @State private var selectedPluginContribution: RegisteredContribution?
     /// Progressive disclosure for built-in and custom Smart Views.
     /// `nil` until the user works the disclosure control; their choice wins from
@@ -184,7 +184,7 @@ public struct FolderSidebar: View {
     public var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
-                if !sourceSections.isEmpty || showsProfilePicker {
+                if !sourceSections.isEmpty || !profiles.isEmpty {
                     sourceTree
                 } else if mailboxes.count > 1 {
                     mailboxHeader
@@ -207,11 +207,19 @@ public struct FolderSidebar: View {
         #endif
             .onAppear {
                 disclosureState = loadDisclosureState()
-                seedSourceExpansionIfNeeded()
+                restoreSourceExpansion()
             }
             .onChange(of: disclosureStateData) { disclosureState = loadDisclosureState() }
+            .onChange(of: expandedSourceIDs) {
+                mailboxDisclosureData = (try? JSONEncoder().encode(expandedSourceIDs)) ?? Data()
+            }
+            .onChange(of: mailboxDisclosureData) {
+                if let saved = try? JSONDecoder().decode(Set<MailSourceID>.self, from: mailboxDisclosureData) {
+                    expandedSourceIDs = saved
+                }
+            }
             .onChange(of: navigation.selectedSourceID) { _, selectedSourceID in
-                guard let selectedSourceID else { return }
+                guard let selectedSourceID, navigation.browsingFolderID == nil else { return }
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.expandingSelection(
                     selectedSourceID,
                     in: expandedSourceIDs
@@ -272,13 +280,13 @@ public struct FolderSidebar: View {
 
     @ViewBuilder
     private var sourceTree: some View {
-        if showsProfilePicker {
-            profilePicker
+        if !profiles.isEmpty || onManageProfiles != nil {
+            profileSwitcher
                 .padding(.bottom, BrevSpacing.xs)
         }
         VStack(alignment: .leading, spacing: 0) {
-            if showsUnifiedInbox {
-                unifiedInboxButton
+            if sourceSections.count > 1 {
+                unifiedInboxShortcut
             }
             if showsSmartViews {
                 smartViewsSection
@@ -288,33 +296,31 @@ public struct FolderSidebar: View {
         .padding(.bottom, BrevSpacing.sm)
 
         if sourceSections.isEmpty {
-            Text("No available mailboxes in this profile. Check Accounts in Settings or choose another profile.", bundle: .module)
+            if normalizedActiveProfileID == MailProfile.allMailboxesID {
+                // Preserve the existing startup/cache/error presentation while
+                // the all-mailbox workspace is still discovering its sources.
+                folderList(folders: folders, sourceID: nil, loadError: loadError)
+            } else {
+                Text(
+                    "No available mailboxes in this profile. Check Accounts in Settings or choose another profile.",
+                    bundle: .module
+                )
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
                 .padding(.vertical, BrevSpacing.sm)
+            }
         }
 
-        if !sourceSections.isEmpty {
-            Text("Mailboxes", bundle: .module)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textTertiary.color)
-                .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-                .padding(.top, BrevSpacing.sm)
-        }
         ForEach(sourceSections) { section in
-            sourceHeader(
-                section,
-                isSelected: navigation.selectedSourceID == section.id && navigation.selectedCollectionFolderID == nil
-            )
-        }
-        if let section = sourceSections.first(where: { $0.id == navigation.selectedSourceID })
-            ?? sourceSections.first(where: { expandedSourceIDs.contains($0.id) }) {
-            Text("Folders · \(section.title)", bundle: .module)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textTertiary.color)
-                .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-                .padding(.top, BrevSpacing.md)
-            folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+            Section {
+                if expandedSourceIDs.contains(section.id) {
+                    folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                        .padding(.leading, sidebarMetrics.folderRowDepthIndent)
+                }
+            } header: {
+                mailboxDisclosureHeader(section)
+                    .padding(.top, BrevSpacing.sm)
+            }
         }
         // Plugin-contributed sidebar panels live at the bottom, after the user's
         // own mailboxes and folders, so third-party extensions never sit above
@@ -322,123 +328,114 @@ public struct FolderSidebar: View {
         pluginSidebarItems
     }
 
-    private var showsUnifiedInbox: Bool {
-        sourceSections.filter { section in
-            section.folders.contains { $0.role == .inbox }
-        }.count > 1
-    }
+    private var showsSmartViews: Bool { !sourceSections.isEmpty }
 
-    private var showsProfilePicker: Bool {
-        FolderSidebarPresentation.shouldShowProfilePicker(profiles: profiles) || sourceSections.count > 1
-    }
-
-    private var showsSmartViews: Bool {
-        !sourceSections.isEmpty
-    }
-
-    @ViewBuilder
-    private var profilePicker: some View {
-        switch profilePickerPresentation {
-        case .dialog:
-            Button {
-                isProfilePickerDialogPresented = true
-            } label: {
-                profilePickerLabel
-            }
-            .buttonStyle(.plain)
-            .confirmationDialog(
-                String(localized: "Profile", bundle: .module),
-                isPresented: $isProfilePickerDialogPresented,
-                titleVisibility: .visible
-            ) {
-                profilePickerActions
-            } message: {
-                Text(verbatim: activeProfileName)
-            }
-        case .menu:
-            Button { isProfilePickerDialogPresented = true } label: { profilePickerLabel }
-                .buttonStyle(.plain)
-                .popover(isPresented: $isProfilePickerDialogPresented, arrowEdge: .bottom) {
-                    VStack(alignment: .leading, spacing: BrevSpacing.md) { profilePickerActions }
-                        .buttonStyle(.plain)
-                        .foregroundStyle(theme.textPrimary.color)
-                        .padding(BrevSpacing.md)
-                        .frame(minWidth: 220, alignment: .leading)
-                        .background(theme.bgPrimary.color)
+    private var profileSwitcher: some View {
+        Menu {
+            ForEach(profiles) { profile in
+                Button { onSelectProfile?(profile.id) } label: {
+                    menuChoice(profile.name, isSelected: profile.id == normalizedActiveProfileID)
                 }
-        }
-    }
-
-    @ViewBuilder
-    private var profilePickerActions: some View {
-        ForEach(profiles) { profile in
-            Button {
-                isProfilePickerDialogPresented = false
-                onSelectProfile?(profile.id)
-            } label: {
-                if profile.id == normalizedActiveProfileID {
-                    Label {
-                        Text(verbatim: profile.name)
-                    } icon: {
-                        Image(systemName: "checkmark")
-                    }
-                } else {
-                    Text(verbatim: profile.name)
+                .disabled(onSelectProfile == nil)
+            }
+            if let onManageProfiles {
+                Divider()
+                Button(action: onManageProfiles) {
+                    Label(String(localized: "Manage Profiles", bundle: .module), systemImage: "person.crop.rectangle.stack")
                 }
             }
-        }
-        Divider()
-        Button {
-            isProfilePickerDialogPresented = false
-            onManageProfiles?()
         } label: {
-            Label(String(localized: "Manage Profiles", bundle: .module), systemImage: "person.crop.rectangle.stack")
-        }
-    }
-
-    private var profilePickerLabel: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: "person.crop.rectangle.stack")
-                .foregroundStyle(theme.accent.color)
-                .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-            VStack(alignment: .leading, spacing: 2) {
+            HStack(spacing: BrevSpacing.sm) {
+                Image(systemName: "person.crop.rectangle.stack")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: sidebarMetrics.iconWidth)
                 Text(verbatim: activeProfileName)
-                    .brevFont(.footnote)
+                    .brevFont(.body)
+                    .fontWeight(.semibold)
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
-                Text("Profile", bundle: .module)
+                Spacer(minLength: 0)
+                #if os(iOS)
+                Image(systemName: "chevron.down")
                     .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
+                    .foregroundStyle(theme.textSecondary.color)
+                #endif
             }
-            Spacer(minLength: 0)
-            Image(systemName: "chevron.down")
-                .font(.system(size: 10, weight: .semibold))
-                .foregroundStyle(theme.textTertiary.color)
+            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
+            .padding(.vertical, BrevSpacing.xs)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.profilePickerMinimumHeight, alignment: .leading)
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.sm)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: sidebarMetrics.profilePickerMinimumHeight,
-            alignment: .leading
-        )
-        .background {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .fill(theme.bgSecondary.color.opacity(0.42))
-        }
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .accessibilityElement(children: .ignore)
+        #if os(macOS)
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.visible)
+        #endif
+        .menuOrder(.fixed)
         .accessibilityLabel(String(localized: "Profile", bundle: .module))
         .accessibilityValue(activeProfileName)
+        .help(String(localized: "Choose which mailboxes are visible", bundle: .module))
     }
 
-    private var profilePickerPresentation: FolderSidebarProfilePickerPresentation {
-        #if os(iOS)
-        FolderSidebarPresentation.profilePickerPresentation(for: .iPhone)
-        #else
-        FolderSidebarPresentation.profilePickerPresentation(for: .macOS)
-        #endif
+    private var unifiedInboxShortcut: some View {
+        Button {
+            activateDestination { navigation.selectUnifiedInbox() }
+        } label: {
+            sidebarActionRow(title: String(localized: "All Inboxes", bundle: .module),
+                             isSelected: navigation.isUnifiedInboxSelected, alignment: .sourceHeader) {
+                Image(systemName: "tray.full")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: sidebarMetrics.iconWidth)
+            } trailing: {
+                unreadBadge(unifiedUnreadCount)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private func menuChoice(_ title: String, isSelected: Bool) -> some View {
+        if isSelected {
+            Label { Text(verbatim: title) } icon: { Image(systemName: "checkmark") }
+        } else {
+            Text(verbatim: title)
+        }
+    }
+
+    private func mailboxDisclosureHeader(_ section: MailSourceSection) -> some View {
+        let isExpanded = expandedSourceIDs.contains(section.id)
+        return Button {
+            expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
+        } label: {
+            HStack(spacing: BrevSpacing.xs) {
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: sidebarMetrics.disclosureHitSize)
+                Image(systemName: "tray")
+                    .frame(width: sidebarMetrics.iconWidth)
+                Text(verbatim: section.title)
+                    .brevFont(.subheadline)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+                if section.loadError != nil {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(theme.warning.color)
+                } else if !isExpanded {
+                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
+                }
+            }
+            .foregroundStyle(theme.textSecondary.color)
+            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
+            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(section.subtitle)
+        .accessibilityLabel("\(section.title), \(section.subtitle)")
+        .accessibilityValue(isExpanded
+            ? String(localized: "Expanded mailbox", bundle: .module)
+            : String(localized: "Collapsed mailbox", bundle: .module))
     }
 
     private var normalizedActiveProfileID: MailProfile.ID {
@@ -448,45 +445,6 @@ public struct FolderSidebar: View {
     private var activeProfileName: String {
         profiles.first { $0.id == normalizedActiveProfileID }?.name
             ?? String(localized: "All Mailboxes", bundle: .module)
-    }
-
-    @ViewBuilder
-    private var unifiedInboxButton: some View {
-        Button {
-            activateDestination { navigation.selectUnifiedInbox() }
-        } label: {
-            #if os(iOS)
-            BrevListRow(
-                title: String(localized: "All Inboxes", bundle: .module),
-                isSelected: navigation.isUnifiedInboxSelected,
-                leading: {
-                    Image(systemName: "tray.full")
-                        .foregroundStyle(theme.textSecondary.color)
-                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                },
-                trailing: {
-                    unreadBadge(unifiedUnreadCount)
-                }
-            )
-            #else
-            sidebarActionRow(
-                title: String(localized: "All Inboxes", bundle: .module),
-                isSelected: navigation.isUnifiedInboxSelected,
-                alignment: .sourceHeader,
-                leading: {
-                    Image(systemName: "tray.full")
-                        .foregroundStyle(theme.textSecondary.color)
-                        .imageScale(.small)
-                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                },
-                trailing: {
-                    unreadBadge(unifiedUnreadCount)
-                }
-            )
-            #endif
-        }
-        .buttonStyle(.plain)
-        .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
     }
 
     private var unifiedUnreadCount: Int {
@@ -955,64 +913,9 @@ public struct FolderSidebar: View {
     }
 
     @ViewBuilder
-    private func sourceHeader(
-        _ section: MailSourceSection,
-        isSelected: Bool
-    ) -> some View {
-        Button {
-            expandedSourceIDs = [section.id]
-            if let inbox = section.folders.first(where: { $0.role == .inbox }) {
-                navigation.selectFolder(inbox.id, in: section.id)
-                onOpenMessages?()
-            }
-        } label: {
-            HStack(alignment: .center, spacing: BrevSpacing.sm) {
-                Image(systemName: isSelected ? "tray.fill" : "tray")
-                    .font(.system(size: 13, weight: .medium))
-                    .foregroundStyle(theme.textTertiary.color)
-                    .frame(width: sidebarMetrics.disclosureHitSize)
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: section.title)
-                        .brevFont(.footnote)
-                        .fontWeight(.semibold)
-                        .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(2)
-                        .multilineTextAlignment(.leading)
-                    Text(verbatim: section.subtitle)
-                        .brevFont(.footnote)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                }
-                Spacer(minLength: 0)
-                let unread = section.folders.first(where: { $0.role == .inbox })?.unreadCount ?? 0
-                if unread > 0 {
-                    Text(unread.formatted())
-                        .brevFont(.footnote)
-                        .monospacedDigit()
-                        .foregroundStyle(theme.textSecondary.color)
-                }
-            }
-            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.vertical, BrevSpacing.sm)
-            .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
-            .background(isSelected ? theme.selection.color.opacity(0.55) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel("\(section.title), \(section.subtitle)")
-        .accessibilityValue(
-            isSelected
-                ? String(localized: "Selected mailbox", bundle: .module)
-                : String(localized: "Open mailbox", bundle: .module)
-        )
-    }
-
-    private func seedSourceExpansionIfNeeded() {
-        guard expandedSourceIDs.isEmpty else { return }
-        expandedSourceIDs = FolderSidebarSourceExpansionPolicy.initialExpandedSourceIDs(
+    private func restoreSourceExpansion() {
+        expandedSourceIDs = FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
+            from: mailboxDisclosureData,
             sourceIDs: sourceSections.map(\.id),
             selectedSourceID: navigation.selectedSourceID
         )
@@ -1127,10 +1030,23 @@ public struct FolderSidebar: View {
                 visibility: effectiveFolderVisibility(for: sourceID),
                 collapsedFolderIDs: collapsedFolderIDs(for: sourceID)
             )
-            ForEach(rows) { row in
-                folderRow(row, sourceID: sourceID)
+            if let sourceID {
+                ForEach(rows.map { ScopedFolderRow(row: $0, sourceID: sourceID) }) { scoped in
+                    folderRow(scoped.row, sourceID: sourceID)
+                }
+            } else {
+                ForEach(rows) { row in
+                    folderRow(row, sourceID: nil)
+                }
             }
         }
+    }
+
+    /// Provider folder IDs can repeat in another expanded mailbox.
+    private struct ScopedFolderRow: Identifiable {
+        let row: FolderSidebarRow
+        let sourceID: MailSourceID
+        var id: SourceFolderID { SourceFolderID(sourceID: sourceID, folderID: row.folder.id) }
     }
 
     private func folderRow(

@@ -97,3 +97,31 @@ matching headers and unindented rows. The Mac locked again before the older
 search-scroll and complete keyboard/VoiceOver acceptance sequence resumed.
 Those remaining checks are still pending; the current reported visual defects
 were verified in the running app.
+
+
+## Profile-filtered stacked mailbox groups
+
+Profiles choose the visible mailbox set; they do not act as an inbox or alter
+connections. Mailboxes have compact disclosure headers and separate folder
+trees. Local expansion state survives profile changes/relaunches. Duplicate
+folder IDs across sources have distinct rendered identities.
+
+Automated coverage includes two expanded mailboxes with identical Inbox IDs,
+selection in only one tree, a profile showing only one source, collapsed groups,
+and restoration including an intentionally empty set. Light/dark screenshots
+cover the final layout.
+
+Native acceptance after unlock:
+
+1. Expand Private and Work together. Select either Inbox; the other group must
+   remain expanded and the selected folder must belong to the correct source.
+2. Collapse Work, select All Inboxes, and open a Work message. Work must remain
+   collapsed while the aggregate remains selected.
+3. Change the active profile, then return. Its mailbox set must match the saved
+   membership and prior disclosure choices must return.
+4. Relaunch the dated mock app and confirm the disclosure choices restore.
+5. Open the profile menu by keyboard and reach Manage Profiles.
+
+The earlier single-menu trial passed native navigation checks, but those are
+not evidence for the final stacked layout. The Mac locked before this final
+native sequence; rendered and behavior tests are tracked separately.

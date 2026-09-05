@@ -174,7 +174,7 @@ struct MailProfileManagementSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             let helpText = "All Mailboxes is always available. Custom profiles choose which "
-                + "sources appear in the sidebar and Unified Inbox."
+                + "mailboxes appear in the sidebar and Unified Inbox."
             Text(helpText)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
