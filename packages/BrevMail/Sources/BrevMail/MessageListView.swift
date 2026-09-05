@@ -2782,6 +2782,7 @@ public struct MessageListView: View {
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
         MessageListNavigationHeaders.headers(
             from: workflowVisibleHeaders(from: headers),
+            threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
             pinnedIDs: pinnedMessageIDs
         )
     }
