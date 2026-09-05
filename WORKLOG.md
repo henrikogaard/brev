@@ -558,3 +558,9 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   this follow-up. Native interaction remains blocked by the locked Mac.
 - Updated ADR-0041 and the Unreleased notes to describe the final cache seam.
   No provider request, body fetch, external network behavior, release, or merge.
+
+- Saved-view search refinements use the existing natural-language parser and
+  expose only cache execution. This keeps visible chips consistent with actual
+  matching and avoids offering a server mode that saved conditions cannot run.
+  Existing parser tests and Mail build cover the reused parser; the search-menu
+  interaction is included in the pending native pass because the Mac is locked.

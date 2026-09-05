@@ -154,7 +154,9 @@ struct UnifiedInboxListView: View {
         if let smartViewQuery = smartView?.query, navigation.mailboxFilter != smartViewQuery {
             navigation.mailboxFilter = smartViewQuery
         }
-        if !navigation.hasUserSelectedSearchExecution {
+        if savedSearchQuery != nil {
+            navigation.searchExecution = .cacheOnly
+        } else if !navigation.hasUserSelectedSearchExecution {
             navigation.searchExecution = UnifiedInboxSearchPolicy.defaultExecution(
                 from: sourceSections,
                 capabilities: { sourceID in
@@ -491,6 +493,9 @@ struct UnifiedInboxListView: View {
             settings: inboxClassificationSettings,
             overrideStore: inboxCategoryOverrideStore
         )
+        let refinement = savedSearchQuery == nil ? nil : NaturalLanguageSearchPlanner.plan(
+            for: navigation.searchText, execution: .cacheOnly, now: now, calendar: calendar
+        ).query
         let filtered = categorized
             .filter { navigation.mailboxFilter.matches($0, now: now, calendar: calendar) }
             .filter { savedSearchQuery?.matches(
@@ -501,7 +506,7 @@ struct UnifiedInboxListView: View {
                 now: now,
                 calendar: calendar
             ) ?? true }
-            .filter { savedSearchQuery == nil || SearchQuery(text: navigation.searchText).matches($0.header) }
+            .filter { refinement?.matches($0.header) ?? true }
         let sorted = MessageListSortPolicy.sortedItems(
             filtered,
             by: mailboxSortOrder,
@@ -630,6 +635,9 @@ struct UnifiedInboxListView: View {
     }
 
     private var naturalLanguageSearchChips: [NaturalLanguageSearchChip] {
+        if savedSearchQuery != nil {
+            return NaturalLanguageSearchPlanner.plan(for: trimmedSearchText, execution: .cacheOnly).chips
+        }
         guard !trimmedSearchText.isEmpty,
               let inboxID = sourceSections.first?.folders.first(where: { $0.role == .inbox })?.id
         else { return [] }
@@ -663,12 +671,7 @@ struct UnifiedInboxListView: View {
     private var unifiedSearchExecutionBar: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrevSpacing.xs) {
-                ForEach(UnifiedInboxSearchPolicy.availableExecutions(
-                    from: sourceSections,
-                    capabilities: { sourceID in
-                        backend(for: sourceID)?.capabilities ?? []
-                    }
-                ), id: \.self) { execution in
+                ForEach(availableSearchExecutions, id: \.self) { execution in
                     unifiedSearchExecutionChip(execution)
                 }
                 if !naturalLanguageSearchChips.isEmpty {
@@ -724,7 +727,19 @@ struct UnifiedInboxListView: View {
         isMutating || isWorkBlocked || isMutationWorkBlocked
     }
 
+    private var availableSearchExecutions: [SearchExecution] {
+        if savedSearchQuery != nil { return [.cacheOnly] }
+        return UnifiedInboxSearchPolicy.availableExecutions(from: sourceSections) { sourceID in
+            backend(for: sourceID)?.capabilities ?? []
+        }
+    }
+
     private func reconcileSearchExecutionWithVisibleSources() {
+        if savedSearchQuery != nil {
+            navigation.searchExecution = .cacheOnly
+            navigation.hasUserSelectedSearchExecution = false
+            return
+        }
         let reconciled = UnifiedInboxSearchPolicy.reconciledExecution(
             current: navigation.searchExecution,
             hasUserSelection: navigation.hasUserSelectedSearchExecution,
