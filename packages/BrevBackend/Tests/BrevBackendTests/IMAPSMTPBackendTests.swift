@@ -2110,6 +2110,64 @@ struct IMAPSMTPBackendTests {
         #expect(secondPage.headers == Array(legacyHeaders[50 ..< 100]))
     }
 
+    @Test("Undo moves destination UIDs back and returns newly assigned source IDs")
+    func undoMoveUsesDestinationIdentity() async throws {
+        let probe = MoveIdentityProbe()
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Archive", displayName: "Archive", delimiter: "/", flags: [], role: .archive)
+            ] },
+            moveMessages: { _, _, _, _, _ in },
+            moveMessagesWithResult: { _, _, from, uids, to, generation in
+                await probe.move(from: from, uids: uids, to: to, generation: generation)
+            }
+        )
+        try await backend.connect()
+        let receipt = try #require(try await backend.moveWithUndo(
+            messageIDs: ["INBOX:43"], from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            to: Folder(id: "Archive", name: "Archive", role: .archive), sourceID: Self.sourceID
+        ))
+        let restored = try await receipt.restore()
+        #expect(restored == ["INBOX:43": "INBOX:99"])
+        #expect(await probe.calls == ["INBOX:43->Archive:nil", "Archive:81->INBOX:91"])
+    }
+
+    @Test("an uncertain move failure requests reconciliation for both folders")
+    func failedMoveRefreshesBothFolders() async throws {
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [
+                                          IMAPFolderListing(
+                                              path: "INBOX",
+                                              displayName: "Inbox",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .inbox
+                                          ),
+                                          IMAPFolderListing(
+                                              path: "Archive",
+                                              displayName: "Archive",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .archive
+                                          )
+                                      ] }, moveMessages: { _, _, _, _, _ in },
+                                      moveMessagesWithResult: { _, _, _, _, _, _ in
+                                          throw IMAPClientError.commandFailed(command: "UID MOVE", response: "A3 NO Partial move")
+                                      })
+        try await backend.connect()
+        let stream = backend.subscribeToChanges()
+        await #expect(throws: IMAPClientError.self) {
+            _ = try await backend.moveWithUndo(messageIDs: ["INBOX:43"],
+                                               from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+                                               to: Folder(id: "Archive", name: "Archive", role: .archive),
+                                               sourceID: Self.sourceID)
+        }
+        #expect(try await nextIMAPEvent(from: stream) == .folderRefreshed(folderID: "INBOX"))
+        #expect(try await nextIMAPEvent(from: stream) == .folderRefreshed(folderID: "Archive"))
+    }
+
     @Test("saved view candidates include cached headers beyond ordinary search limits while disconnected")
     func savedViewCacheEnumerationIsComplete() async throws {
         let index = LocalSearchIndexRecorder()
@@ -11543,5 +11601,14 @@ private actor GatedIMAPMessageSourceCache: IMAPMessageSourceCache {
 
     func clear(accountID: BrevAccount.ID) async {
         await inner.clear(accountID: accountID)
+    }
+}
+
+private actor MoveIdentityProbe {
+    private(set) var calls: [String] = []
+    func move(from: String, uids: [Int], to: String, generation: Int?) -> IMAPMoveResult {
+        calls.append("\(from):\(uids.map(String.init).joined(separator: ","))->\(to):\(generation.map(String.init) ?? "nil")")
+        if from == "INBOX" { return IMAPMoveResult(uidValidity: 91, uidMappings: [43: 81]) }
+        return IMAPMoveResult(uidValidity: 77, uidMappings: [81: 99])
     }
 }

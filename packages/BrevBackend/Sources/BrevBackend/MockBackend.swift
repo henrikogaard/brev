@@ -280,6 +280,17 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         try await blockSender(email: email)
     }
 
+    /// Moves preview messages with a reversal bound to their original mailbox.
+    public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                             sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        guard sourceFolder.id != destination.id, !messageIDs.isEmpty else { return nil }
+        try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+        return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
+            try await move(messageIDs: messageIDs, to: sourceFolder, sourceID: sourceID)
+            return Dictionary(messageIDs.map { ($0, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
     public func move(messageIDs: [String], to folder: Folder) async throws {
         await store.move(ids: messageIDs, to: folder.id)
     }

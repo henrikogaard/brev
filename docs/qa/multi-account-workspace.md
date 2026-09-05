@@ -149,3 +149,36 @@ native sequence; rendered and behavior tests are tracked separately.
 - Backend follow-up: automated tests now cover 120 cached IMAP headers beyond
   the normal 50-result search cap, Gmail secondary labels, duplicate rows,
   combined/negative folder membership, and Sent/Trash labels outside primary folders.
+
+
+### Issue #28 Undo acceptance
+
+- Compare toolbar, context-menu, swipe and bulk read/flag/archive/move/delete.
+  Verify the latest action remains available in Edit > Undo after the toast
+  disappears; Command-Z in search/compose text must use native text history.
+- Reverse an IMAP move and verify the restored message uses the new server UID;
+  repeat across folder/profile navigation and a mailbox replacement. A changed
+  UIDVALIDITY must fail safely without moving a different message.
+- Verify Gmail move Undo preserves existing custom labels and subsequent
+  unrelated flag updates. Retry a compound Undo after a partial failure and
+  confirm already restored batches are not moved again.
+- Remove/replace an account while a reversal is pending; no stale error or
+  action should reappear in the replacement session.
+- Native interaction and live-account checks remain pending. Unit/contract and
+  snapshot results do not establish those acceptance outcomes.
+
+### Issue #28 native Undo check, 2026-09-05
+
+Dated mock app from `feature/mail-client-parity`, launched with the guarded
+build script and inspected by CUA using its exact worktree bundle path:
+
+| Check | Observed result |
+| --- | --- |
+| Toolbar Archive | Selected mock bill left Inbox; 29 messages became 28 |
+| Native Undo after toast expiry | Edit menu retained Undo Mail Action; message returned and count became 29 |
+| Compose text Undo / Redo | Entered text cleared with Cmd-Z and returned with Shift-Cmd-Z |
+| Mail action after editor closes | Row flag remained during text editing and reverted with Cmd-Z after closing the empty composer |
+
+This verifies native routing and successful mock reversal. It does not prove
+live provider failures, offline replay, complete selection restoration, or
+multi-account/performance acceptance.

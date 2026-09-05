@@ -29,6 +29,7 @@ struct BrevMailCommands: Commands {
 
     var body: some Commands {
         MailCommands()
+        MailUndoCommands()
 
         // MARK: - macOS-only File menu additions
 

@@ -591,3 +591,87 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   and format passed. Independent standards and behavior reviews found a stale
   failure/new-action defect, fixed with a red-green regression and re-reviewed
   without remaining material findings. Native/live acceptance remains pending.
+
+
+## 2026-09-05 — Codex — Issue #28 move identities and native Undo
+
+- Added provider-bound move reversals. IMAP retains tagged/untagged COPYUID
+  mappings, bounds range parsing to requested UIDs, validates UIDVALIDITY before
+  a reversal even on an already-selected mailbox, and does not retry a possibly
+  partial NO response as COPY. Standard account provisioning forwards the result
+  operation. Gmail reverses the move's label delta while preserving unrelated
+  labels; preview backends preserve source ownership.
+- Toolbar, row and bulk read/flag/move/trash paths now register shared Undo.
+  Retry skips already completed move batches. Unchanged messages are excluded
+  from flag inverses. Ordinary bulk unread deltas use actual changed/unread
+  headers; label providers wait for their authoritative counts.
+- The latest mail Undo survives its toast; leased mutations suspend Undo until
+  their work finishes. Invocation order prevents older late results replacing
+  newer Undo. Retired backend sessions cancel/invalidate queued work and reject
+  late registrations or error publication.
+- macOS Edit Undo uses focused mail commands with explicit priority for native
+  text Undo managers. Settings/other windows retain native Undo/Redo. Menu state
+  observes editing, key-window and Undo notifications. An experimental responder
+  insertion was discarded after native tests demonstrated hosting/window routing
+  problems; no view responder chain is modified in the final implementation.
+- Tests were run red before fixes for silent errors, stale failures, partial
+  MOVE retries, destination IDs, UIDVALIDITY, bulk flag preservation, late
+  session callbacks, and native text/mail routing. Full checks and native QA
+  are pending for this slice. #28 remains In progress; #29 awaits ADR acceptance.
+- Additional finding for the migration/export slice: File-menu MBOX export
+  contains headers without bodies; Settings exports reconstruct MIME and omit
+  attachments. Repair these existing flows independently of new local archives.
+
+### 2026-09-05 — Codex — Issue #28 / PR #30 review fixes and native checks
+
+- Fixed review findings in the move/Undo batch: partial folder failures retain
+  completed receipts and restore only failed rows; unified mutations reconcile
+  per folder within each mailbox. Successful receipts are registered before
+  stale UI response guards, so navigation changes do not lose source-owned Undo.
+- Added shared junk reversal handling for root, rows and unified lists, native
+  text-priority Undo/Redo commands, no-op flag registration filtering, explicit
+  invalidation after non-reversible folder/label/block actions, and cancellation
+  checks between provider/batch operations. An already transmitted provider
+  request cannot be recalled; retired sessions suppress late UI publication.
+- Gmail Undo retries retain per-message completion. IMAP uncertain move failures
+  refresh source and destination; COPY fallback is limited to unsupported MOVE
+  syntax. Mixed irreversible/reversible bulk commands deliberately offer no
+  generic whole-command Undo.
+- Added byte-wise mboxrd escaping after a red test showed non-UTF8 source skipped
+  From-line escaping. Full MIME export wiring and raw-byte backend persistence
+  remain pending; no claim of complete migration support.
+- Build reproduced a Bash 3 empty OAuth argument-array failure after dependency
+  download recovered. Applied the same nounset-safe expansion already used for
+  optional build arguments. `scripts/test-build-run-env.sh` passed.
+- Native mock build launched through `script/build_and_run.sh --mock --verify`
+  using the dated test bundle in this worktree. CUA verified archive reduced
+  Inbox from 29 to 28 messages, native Edit > Undo remained enabled after toast
+  expiry, and Undo restored 29. Compose text Undo cleared entered test text;
+  Redo restored it. After clearing/closing the empty composer, Cmd-Z reversed
+  the earlier row flag action. No mail was sent.
+- The row/drop wiring uses the tested provider receipt path; direct SwiftUI
+  private action invocation is not an automated test seam. Native drag/drop,
+  source-switch-during-network, multi-folder partial provider failure, selection
+  restoration, offline queued Undo, and live IMAP/Gmail acceptance remain open.
+- Full package suites passed before the last review fixes; final reruns and
+  frozen review are recorded in the subsequent handoff. The app build warning
+  in BrevApp.swift about the existing delegate Sendable capture is unchanged.
+
+- Final local rerun passed 1,534 Mail tests, 1,020 Backend tests, and 102 Gmail
+  tests. The subsequent same-folder filtering and cancellation checkpoints
+  receive focused reruns. Lint/format passed. macOS test build and startup
+  passed; the daily-driver bundle was untouched.
+- Hosted checks for first-slice commit a72e3c1 showed Undo image differences on
+  macOS 15 and an existing BrevDesign WindowAppearancePreferences process crash.
+  Added Undo images to the established macOS 26+ snapshot group, retaining local
+  image comparisons and behavior tests. Workflow YAML parses. The isolated
+  WindowTrafficLightPolicy test passed using stable Xcode locally; the hosted
+  process failure is not claimed fixed and will be checked on the next commit.
+- Required summary-router / summary-tables skills were not installed in the
+  available catalog or searched skill roots. Used the repository's table format
+  directly for evidence reports.
+
+- Final review caught retirement before an Undo task starts. A deterministic
+  red test confirmed the canceled task still invoked the provider action.
+  Added a cancellation check before invocation; subsequent green evidence is
+  included in the final focused queue run.

@@ -2199,6 +2199,49 @@ public actor IMAPSessionClient {
         return "UID STORE \(uidSet(uids)) \(operation) (\(tokens.joined(separator: " ")))"
     }
 
+    /// Moves messages and retains provider-assigned destination identities for Undo.
+    public func loginAndMoveMessagesWithResult(
+        configuration: IMAPAccountConfiguration,
+        credential: MailAccountCredential,
+        sourceFolderPath: String,
+        uids: [Int],
+        destinationFolderPath: String,
+        expectedSourceUIDValidity: Int? = nil
+    ) async throws -> IMAPMoveResult {
+        guard configuration.incoming.kind == .imap else {
+            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
+        }
+        guard !uids.isEmpty, sourceFolderPath != destinationFolderPath else { return IMAPMoveResult() }
+        return try await withAuthenticatedSession(
+            configuration: configuration, credential: credential, retriesAfterDisconnect: false
+        ) { tagCounter in
+            let selected = try await select(folderPath: sourceFolderPath, tagCounter: &tagCounter,
+                                            force: expectedSourceUIDValidity != nil)
+            if let expectedSourceUIDValidity, selected.uidValidity != expectedSourceUIDValidity {
+                throw MailBackendError.backendSpecific(message: String(
+                    localized: "This mailbox changed on the server. Refresh before undoing the move.", bundle: .module
+                ))
+            }
+            try Task.checkCancellation()
+            do {
+                let responses = try await execute(
+                    tag: nextTag(&tagCounter), commandName: "UID MOVE",
+                    command: "UID MOVE \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))",
+                    includeTaggedResponse: true
+                )
+                return IMAPMoveResult.parse(responses: responses, requestedUIDs: uids)
+            } catch IMAPClientError.commandFailed(_, let response)
+                where response.split(separator: " ").dropFirst().first?.uppercased() == "BAD" {
+                    // A NO may follow a partial MOVE (RFC 6851). Only unsupported
+                    // command syntax may fall back to COPY, avoiding duplicate mail.
+                    return try await copyThenDeleteMessages(
+                        uids: uids, destinationFolderPath: destinationFolderPath, tagCounter: &tagCounter
+                    )
+                }
+        }
+    }
+
+    /// Moves messages while preserving the existing caller contract.
     public func loginAndMoveMessages(
         configuration: IMAPAccountConfiguration,
         credential: MailAccountCredential,
@@ -2206,32 +2249,10 @@ public actor IMAPSessionClient {
         uids: [Int],
         destinationFolderPath: String
     ) async throws {
-        guard configuration.incoming.kind == .imap else {
-            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
-        }
-        guard !uids.isEmpty, sourceFolderPath != destinationFolderPath else { return }
-
-        try await withAuthenticatedSession(
-            configuration: configuration,
-            credential: credential,
-            retriesAfterDisconnect: false
-        ) { tagCounter in
-            _ = try await select(folderPath: sourceFolderPath, tagCounter: &tagCounter)
-
-            do {
-                _ = try await execute(
-                    tag: nextTag(&tagCounter),
-                    commandName: "UID MOVE",
-                    command: "UID MOVE \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))"
-                )
-            } catch IMAPClientError.commandFailed {
-                try await copyThenDeleteMessages(
-                    uids: uids,
-                    destinationFolderPath: destinationFolderPath,
-                    tagCounter: &tagCounter
-                )
-            }
-        }
+        _ = try await loginAndMoveMessagesWithResult(
+            configuration: configuration, credential: credential, sourceFolderPath: sourceFolderPath,
+            uids: uids, destinationFolderPath: destinationFolderPath
+        )
     }
 
     public func loginAndCopyMessages(
@@ -2492,15 +2513,17 @@ public actor IMAPSessionClient {
     private func execute(
         tag: String,
         commandName: String,
-        command: String
+        command: String,
+        includeTaggedResponse: Bool = false
     ) async throws -> [String] {
         try await transport.writeLine("\(tag) \(command)")
-        return try await readTaggedResponses(tag: tag, commandName: commandName)
+        return try await readTaggedResponses(tag: tag, commandName: commandName, includeTaggedResponse: includeTaggedResponse)
     }
 
     private func readTaggedResponses(
         tag: String,
-        commandName: String
+        commandName: String,
+        includeTaggedResponse: Bool = false
     ) async throws -> [String] {
         var untaggedResponses: [String] = []
 
@@ -2524,7 +2547,7 @@ public actor IMAPSessionClient {
                 if commandName == "LOGIN" {
                     noteServerCapabilities(fromResponseLine: line)
                 }
-                return untaggedResponses
+                return includeTaggedResponse ? untaggedResponses + [line] : untaggedResponses
             }
             if commandName == "LOGIN",
                uppercasedResponse.hasPrefix("NO")
@@ -2820,9 +2843,10 @@ public actor IMAPSessionClient {
 
     private func select(
         folderPath: String,
-        tagCounter: inout Int
+        tagCounter: inout Int,
+        force: Bool = false
     ) async throws -> IMAPSelectedMailbox {
-        if reusesAuthenticatedSession,
+        if reusesAuthenticatedSession, !force,
            let selectedMailboxState,
            selectedMailboxState.folderPath == folderPath {
             return selectedMailboxState.mailbox
@@ -2872,23 +2896,20 @@ public actor IMAPSessionClient {
     }
 
     private func copyThenDeleteMessages(
-        uids: [Int],
-        destinationFolderPath: String,
-        tagCounter: inout Int
-    ) async throws {
+        uids: [Int], destinationFolderPath: String, tagCounter: inout Int
+    ) async throws -> IMAPMoveResult {
+        try Task.checkCancellation()
         try requireTargetedExpungeSupport()
-        try await copyMessages(
-            uids: uids,
-            destinationFolderPath: destinationFolderPath,
-            tagCounter: &tagCounter
+        let responses = try await execute(
+            tag: nextTag(&tagCounter), commandName: "UID COPY",
+            command: "UID COPY \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))",
+            includeTaggedResponse: true
         )
-        try await storeFlag(
-            uids: uids,
-            flag: .deleted,
-            isEnabled: true,
-            tagCounter: &tagCounter
-        )
+        try Task.checkCancellation()
+        try await storeFlag(uids: uids, flag: .deleted, isEnabled: true, tagCounter: &tagCounter)
+        try Task.checkCancellation()
         try await expungeDeletedMessages(uids: uids, tagCounter: &tagCounter)
+        return IMAPMoveResult.parse(responses: responses, requestedUIDs: uids)
     }
 
     private func copyMessages(

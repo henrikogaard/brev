@@ -668,6 +668,55 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         catch { guard await enqueueIfRetryable(.setJunk(isJunk), messageIDs: messageIDs, error: error) else { throw error } }
     }
 
+    /// Captures the label delta for this move so Undo preserves unrelated labels.
+    public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                             sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        try validateSource(sourceID)
+        guard sourceID.mailboxID == account.id else { throw MailBackendError.notFound(id: sourceID.mailboxID) }
+        guard !messageIDs.isEmpty, sourceFolder.id != destination.id else { return nil }
+        var originals: [String: Set<String>] = [:]
+        for id in messageIDs {
+            originals[id] = try await Set(canonicalMessage(id).labelIDs)
+        }
+        do { try await performMove(messageIDs: messageIDs, to: destination) }
+        catch {
+            if await enqueueIfRetryable(.move(folderID: destination.id), messageIDs: messageIDs, error: error) { return nil }
+            throw error
+        }
+        let capturedLabels = originals
+        let progress = GmailMoveUndoProgress()
+        let changes = Self.moveLabelChanges(to: destination)
+        return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
+            try requireConnected()
+            guard let client else { throw unsupported() }
+            try await progress.restore(messageIDs) { id in
+                let original = capturedLabels[id] ?? []
+                var add = original.intersection(changes.remove)
+                var remove = Set(changes.add).subtracting(original)
+                if remove.remove("TRASH") != nil {
+                    _ = try await client.untrashMessage(id: id)
+                    if !original.contains("INBOX") { remove.insert("INBOX") }
+                }
+                try Task.checkCancellation()
+                if add.remove("TRASH") != nil { _ = try await client.trashMessage(id: id) }
+                try Task.checkCancellation()
+                if !add.isEmpty || !remove.isEmpty {
+                    _ = try await client.modifyMessageLabels(id: id, addLabelIDs: add.sorted(), removeLabelIDs: remove.sorted())
+                }
+            }
+            try await refreshStoredMessages(messageIDs)
+            return Dictionary(messageIDs.map { ($0, $0) }, uniquingKeysWith: { first, _ in first })
+        }
+    }
+
+    private static func moveLabelChanges(to folder: Folder) -> (add: [String], remove: [String]) {
+        if folder.role == .trash || folder.id.uppercased() == "TRASH" { return (["TRASH"], ["INBOX"]) }
+        let remove = folder.role == .inbox || folder.id.uppercased() == "INBOX"
+            ? ["TRASH", "SPAM"] : ["INBOX", "TRASH", "SPAM"]
+        let add = folder.role == .allMail || folder.id.uppercased() == "ALL_MAIL" ? [] : [folder.id]
+        return (add, remove)
+    }
+
     public func move(messageIDs: [String], to folder: Folder) async throws {
         do { try await performMove(messageIDs: messageIDs, to: folder) }
         catch {
@@ -690,16 +739,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             if current.labelIDs.contains("TRASH") {
                 _ = try await client.untrashMessage(id: messageID)
             }
-            let remove = folder.role == .inbox || folder.id.uppercased() == "INBOX"
-                ? ["TRASH", "SPAM"]
-                : ["INBOX", "TRASH", "SPAM"]
-            let addLabels = folder.role == .allMail || folder.id.uppercased() == "ALL_MAIL"
-                ? []
-                : [folder.id]
+            let changes = Self.moveLabelChanges(to: folder)
             _ = try await client.modifyMessageLabels(
-                id: messageID,
-                addLabelIDs: addLabels,
-                removeLabelIDs: remove
+                id: messageID, addLabelIDs: changes.add, removeLabelIDs: changes.remove
             )
         }
         try await refreshStoredMessages(messageIDs)
@@ -1717,5 +1759,22 @@ private extension Array {
             index = end
         }
         return chunks
+    }
+}
+
+// Keeps provider-batch progress across explicit Undo retries.
+private actor GmailMoveUndoProgress {
+    private var restoredIDs: Set<String> = []
+    private var isRestoring = false
+
+    func restore(_ messageIDs: [String], operation: @Sendable (String) async throws -> Void) async throws {
+        guard !isRestoring else { throw GmailAPIError.invalidRequest }
+        isRestoring = true
+        defer { isRestoring = false }
+        for id in messageIDs where !restoredIDs.contains(id) {
+            try Task.checkCancellation()
+            try await operation(id)
+            restoredIDs.insert(id)
+        }
     }
 }

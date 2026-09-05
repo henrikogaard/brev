@@ -79,6 +79,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     public typealias MessageMoveOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID) async throws
             -> Void
+    /// Moves a batch while retaining UIDPLUS destination mapping and validating source generation.
+    public typealias MessageMoveWithResultOperation =
+        @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID, Int?) async throws
+            -> IMAPMoveResult
     public typealias MessageCopyOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID) async throws
             -> Void
@@ -152,6 +156,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private let setMessageFlagOperation: MessageFlagOperation?
     private let setMessageKeywordOperation: MessageKeywordOperation?
     private let setMessageLabelsOperation: MessageLabelOperation?
+    private let moveMessagesWithResultOperation: MessageMoveWithResultOperation?
     private let moveMessagesOperation: MessageMoveOperation?
     private let copyMessagesOperation: MessageCopyOperation?
     private let permanentlyDeleteMessagesOperation: MessagePermanentDeleteOperation?
@@ -257,6 +262,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         setMessageKeyword: MessageKeywordOperation? = nil,
         setMessageLabels: MessageLabelOperation? = nil,
         moveMessages: MessageMoveOperation? = nil,
+        moveMessagesWithResult: MessageMoveWithResultOperation? = nil,
         copyMessages: MessageCopyOperation? = nil,
         permanentlyDeleteMessages: MessagePermanentDeleteOperation? = nil,
         sendMessage: MessageSendOperation? = nil,
@@ -295,6 +301,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         setMessageKeywordOperation = setMessageKeyword
         setMessageLabelsOperation = setMessageLabels
         moveMessagesOperation = moveMessages
+        moveMessagesWithResultOperation = moveMessagesWithResult
         copyMessagesOperation = copyMessages
         permanentlyDeleteMessagesOperation = permanentlyDeleteMessages
         sendMessageOperation = sendMessage
@@ -1524,6 +1531,68 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
             throw error
         }
+    }
+
+    /// Moves a folder batch and captures UIDPLUS identifiers for a safe inverse move.
+    public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                             sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        try validateSourceID(sourceID)
+        guard !messageIDs.isEmpty, sourceFolder.id != destination.id else { return nil }
+        guard moveMessagesWithResultOperation != nil else {
+            try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+            return nil
+        }
+        let groups = try Self.messageReferencesByFolder(from: messageIDs)
+        guard groups.count == 1, let group = groups.first, group.folderID == sourceFolder.id else {
+            throw MailBackendError.notFound(id: sourceFolder.id)
+        }
+        let result: IMAPMoveResult
+        do {
+            result = try await performMoveWithResult(from: sourceFolder.id, uids: group.uids, to: destination.id)
+        } catch {
+            if try await enqueueOfflineMutation(
+                PendingMutation(kind: .move(folderID: destination.id), sourceID: sourceID, messageIDs: messageIDs), for: error
+            ) { return nil }
+            throw error
+        }
+        guard let generation = result.uidValidity,
+              Set(result.uidMappings.keys) == Set(group.uids) else { return nil }
+        return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
+            let restored = try await performMoveWithResult(
+                from: destination.id, uids: result.uidMappings.values.sorted(), to: sourceFolder.id,
+                expectedGeneration: generation
+            )
+            return result.uidMappings.reduce(into: [:]) { ids, mapping in
+                if let restoredUID = restored.uidMappings[mapping.value] {
+                    ids["\(sourceFolder.id):\(mapping.key)"] = "\(sourceFolder.id):\(restoredUID)"
+                }
+            }
+        }
+    }
+
+    private func performMoveWithResult(from source: Folder.ID, uids: [Int], to destination: Folder.ID,
+                                       expectedGeneration: Int? = nil) async throws -> IMAPMoveResult {
+        try await state.requireConnected()
+        guard let operation = moveMessagesWithResultOperation else { throw MailBackendError.notSupported(capabilities) }
+        try Task.checkCancellation()
+        let result: IMAPMoveResult
+        do {
+            result = try await withAuthenticatedOAuthRetry { credential in
+                try Task.checkCancellation()
+                return try await operation(self.configuration, credential, source, uids, destination, expectedGeneration)
+            }
+        } catch {
+            // MOVE can partially succeed before NO or a disconnect. Reconcile
+            // both folders instead of treating local rollback as server truth.
+            await state.emit(.folderRefreshed(folderID: source))
+            await state.emit(.folderRefreshed(folderID: destination))
+            throw error
+        }
+        await removeCachedMessageSources(folderID: source, uids: uids)
+        await removeCachedHeaders(folderID: source, uids: uids)
+        await state.emit(.messagesRemoved(folderID: source, messageIDs: uids.map { "\(source):\($0)" }))
+        await state.emit(.folderRefreshed(folderID: destination))
+        return result
     }
 
     public func move(messageIDs: [String], to folder: Folder) async throws {

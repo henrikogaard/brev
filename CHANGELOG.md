@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Mail Undo covers toolbar, row and bulk flag/move/trash actions using provider
+  destination identities. IMAP validates mailbox generations before reversing
+  moves; Gmail preserves unrelated labels. Native macOS Undo keeps text editing
+  separate, and account retirement invalidates pending Undo.
+- Partial bulk moves retain Undo for confirmed folder operations and restore only
+  failed rows. Moving to the current folder leaves the list unchanged.
+- MBOX escaping preserves non-UTF8 message bytes while quoting separator lines.
+
 - Failed mail Undo actions now show an error with Retry Undo instead of silently
   discarding the failure. Reversals run once at a time and refresh mail on success.
 

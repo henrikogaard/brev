@@ -762,6 +762,7 @@ public struct IMAPAccountConnector: Sendable {
     private let setMessageKeyword: IMAPSMTPBackend.MessageKeywordOperation?
     private let setMessageLabels: IMAPSMTPBackend.MessageLabelOperation?
     private let moveMessages: IMAPSMTPBackend.MessageMoveOperation?
+    private let moveMessagesWithResult: IMAPSMTPBackend.MessageMoveWithResultOperation?
     private let copyMessages: IMAPSMTPBackend.MessageCopyOperation?
     private let permanentlyDeleteMessages: IMAPSMTPBackend.MessagePermanentDeleteOperation?
     private let sendMessage: IMAPSMTPBackend.MessageSendOperation?
@@ -807,6 +808,7 @@ public struct IMAPAccountConnector: Sendable {
         setMessageKeyword: IMAPSMTPBackend.MessageKeywordOperation? = nil,
         setMessageLabels: IMAPSMTPBackend.MessageLabelOperation? = nil,
         moveMessages: IMAPSMTPBackend.MessageMoveOperation? = nil,
+        moveMessagesWithResult: IMAPSMTPBackend.MessageMoveWithResultOperation? = nil,
         copyMessages: IMAPSMTPBackend.MessageCopyOperation? = nil,
         permanentlyDeleteMessages: IMAPSMTPBackend.MessagePermanentDeleteOperation? = nil,
         sendMessage: IMAPSMTPBackend.MessageSendOperation? = nil,
@@ -852,6 +854,7 @@ public struct IMAPAccountConnector: Sendable {
         self.setMessageKeyword = setMessageKeyword
         self.setMessageLabels = setMessageLabels
         self.moveMessages = moveMessages
+        self.moveMessagesWithResult = moveMessagesWithResult
         self.copyMessages = copyMessages
         self.permanentlyDeleteMessages = permanentlyDeleteMessages
         self.sendMessage = sendMessage
@@ -1111,6 +1114,7 @@ public struct IMAPAccountConnector: Sendable {
             setMessageKeyword: setMessageKeyword,
             setMessageLabels: setMessageLabels,
             moveMessages: moveMessages,
+            moveMessagesWithResult: moveMessagesWithResult,
             copyMessages: copyMessages,
             permanentlyDeleteMessages: permanentlyDeleteMessages,
             sendMessage: sendMessage,

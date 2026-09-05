@@ -321,6 +321,10 @@ public protocol MailBackend: AnyObject, Sendable {
     /// or applying ordinary search result limits. Used by local condition evaluators.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader]
 
+    /// Moves one source-folder batch and returns a source-bound safe reversal when supported.
+    func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                      sourceID: MailSourceID) async throws -> MailMoveUndo?
+
     // MARK: Cached attachment enumeration
 
     /// Returns attachment-bearing messages already present in Brev's local
@@ -458,6 +462,13 @@ public extension MailBackend {
     /// Backends without a header cache cannot enumerate saved-view candidates.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         throw MailBackendError.notSupported(capabilities)
+    }
+
+    /// Legacy adapters still move mail, but never invent destination identities for Undo.
+    func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                      sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+        return nil
     }
 
     /// Default: no local body cache to prune, so retention is a no-op.

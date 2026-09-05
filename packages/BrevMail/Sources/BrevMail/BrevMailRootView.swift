@@ -564,7 +564,7 @@ public struct BrevMailRootView: View {
     private var mailRootLoadingContent: some View {
         mailRootCacheContent
             .task { monitor.start() }
-            .onChange(of: backendSessionIDs) { handleBackendSessionChange() }
+            .onChange(of: backendSessionIDs) { previous, _ in handleBackendSessionChange(previousIDs: previous) }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
             .task(id: fetchIntervalRaw) { await runPeriodicFetchScheduler() }
             .task(id: rootWorkBlockSnapshot) {
@@ -586,7 +586,8 @@ public struct BrevMailRootView: View {
             }
     }
 
-    private func handleBackendSessionChange() {
+    private func handleBackendSessionChange(previousIDs: [ObjectIdentifier]) {
+        if !Set(previousIDs).isSubset(of: Set(backendSessionIDs)) { undoQueue.discardAll() }
         sourceSectionsRevision += 1
         invalidateSourceLoading()
         backgroundAccountRefreshTask?.cancel()
@@ -732,6 +733,12 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailImportAction, mailImportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
             .environment(\.undoQueue, undoQueue)
+        #if os(macOS)
+            .focusedSceneValue(\.mailUndoActions, MailUndoCommandActions(
+                canUndo: { undoQueue.canUndo && !isCommandMutationBlocked && activeCommandMutationRequest == nil },
+                onUndo: { performUndo() }
+            ))
+        #endif
             .modifier(DetachedMessageCommandReceiver(handle: handleDetachedMessageCommand))
             .overlay(alignment: .bottom) {
                 undoToastOverlay
@@ -755,7 +762,7 @@ public struct BrevMailRootView: View {
         if undoQueue.isUndoing || undoQueue.errorMessage != nil || undoQueue.current != nil {
             MailUndoToast(
                 queue: undoQueue,
-                isBlocked: isCommandMutationBlocked || activeCommandMutationRequest != nil,
+                isBlocked: isCommandMutationBlocked || activeCommandMutationRequest != nil || undoQueue.isMutationInFlight,
                 onUndo: { performUndo() },
                 onRetry: { performUndo(retry: true) }
             )
@@ -2711,9 +2718,12 @@ public struct BrevMailRootView: View {
     ) async {
         guard canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: sourceFolderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         clearRootStatus()
         do {
             try await operation()
+            undoQueue.discardPendingUndo(lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4514,6 +4524,8 @@ public struct BrevMailRootView: View {
         let newValue = !header.isFlagged
         let originalValue = header.isFlagged
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
@@ -4522,14 +4534,7 @@ public struct BrevMailRootView: View {
         navigation.updateHeader(id: header.id) { $0.isFlagged = newValue }
         do {
             try await setFlagged(newValue, for: [header.id])
-            guard canApplyCommandMutationResponse(request) else {
-                finishCommandMutation(request)
-                return
-            }
-            navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
-            await loadFolders()
-            finishCommandMutation(request)
-            let description = newValue ? "Flagged" : "Unflagged"
+            let description = MailFlagUndo.description(.flagged, value: newValue)
             undoQueue.push(UndoableMutation(description: description) {
                 if let sourceID = capturedSourceID {
                     try await capturedBackend.setFlagged(
@@ -4540,7 +4545,15 @@ public struct BrevMailRootView: View {
                 } else {
                     try await capturedBackend.setFlagged(originalValue, for: capturedMessageIDs)
                 }
-            })
+            }, lease: undoLease)
+            guard canApplyCommandMutationResponse(request) else {
+                finishCommandMutation(request)
+                return
+            }
+            navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
+            await loadFolders()
+            finishCommandMutation(request)
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4556,6 +4569,8 @@ public struct BrevMailRootView: View {
         let newValue = !header.isRead
         let originalValue = header.isRead
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
@@ -4564,14 +4579,7 @@ public struct BrevMailRootView: View {
         navigation.updateHeader(id: header.id) { $0.isRead = newValue }
         do {
             try await setRead(newValue, for: [header.id])
-            guard canApplyCommandMutationResponse(request) else {
-                finishCommandMutation(request)
-                return
-            }
-            navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
-            await loadFolders()
-            finishCommandMutation(request)
-            let description = newValue ? "Marked as Read" : "Marked as Unread"
+            let description = MailFlagUndo.description(.read, value: newValue)
             undoQueue.push(UndoableMutation(description: description) {
                 if let sourceID = capturedSourceID {
                     try await capturedBackend.setRead(
@@ -4582,7 +4590,15 @@ public struct BrevMailRootView: View {
                 } else {
                     try await capturedBackend.setRead(originalValue, for: capturedMessageIDs)
                 }
-            })
+            }, lease: undoLease)
+            guard canApplyCommandMutationResponse(request) else {
+                finishCommandMutation(request)
+                return
+            }
+            navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
+            await loadFolders()
+            finishCommandMutation(request)
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4595,18 +4611,19 @@ public struct BrevMailRootView: View {
 
     private func archive(header: MessageHeader) async {
         guard canStartCommandMutation(),
-              let archive = folder(role: .archive) else { return }
+              let archive = folder(role: .archive), header.folderID != archive.id else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         // Capture original folder for undo before mutating navigation state.
         let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
-        let capturedBackend = selectedBackend
-        let capturedSourceID = navigation.selectedSourceID
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await move(messageIDs: [header.id], to: archive)
+            let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: archive)
+            undoQueue.registerMoves([receipt], description: String(localized: "Archived", bundle: .module), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4614,22 +4631,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                undoQueue.push(UndoableMutation(description: "Archived") {
-                    if let sourceID = capturedSourceID {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4641,17 +4643,22 @@ public struct BrevMailRootView: View {
     }
 
     private func move(header: MessageHeader, to destination: Folder) async {
-        guard canStartCommandMutation() else { return }
+        guard header.folderID != destination.id, canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
-        let capturedBackend = selectedBackend
-        let capturedSourceID = navigation.selectedSourceID
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await move(messageIDs: [header.id], to: destination)
+            let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: destination)
+            undoQueue.registerMoves(
+                [receipt],
+                description: String(localized: "Moved to \(destination.name)", bundle: .module),
+                lease: undoLease
+            )
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4659,23 +4666,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                let destName = destination.name
-                undoQueue.push(UndoableMutation(description: "Moved to \(destName)") {
-                    if let sourceID = capturedSourceID {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4689,15 +4680,23 @@ public struct BrevMailRootView: View {
     private func setJunk(_ isJunk: Bool, for header: MessageHeader) async {
         guard canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
-        let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await setJunkOrMoveToFallbackFolder(isJunk, for: header)
+            let source: MailSourceID
+            if let capturedSourceID {
+                source = capturedSourceID
+            } else {
+                source = try await capturedBackend.sourceID(for: capturedBackend.currentMailbox())
+            }
+            let action = try await MailJunkUndo.perform(isJunk, header: header, folders: folders,
+                                                        sourceID: source, backend: capturedBackend)
+            undoQueue.registerBatch([action], description: MailJunkUndo.description(isJunk), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4705,23 +4704,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                let description = isJunk ? "Reported Junk" : "Marked Not Junk"
-                undoQueue.push(UndoableMutation(description: description) {
-                    if let sourceID = capturedSourceID {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4732,38 +4715,17 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func setJunkOrMoveToFallbackFolder(_ isJunk: Bool, for header: MessageHeader) async throws {
-        do {
-            if let sourceID = navigation.selectedSourceID {
-                try await selectedBackend.setJunk(isJunk, for: [header.id], sourceID: sourceID)
-            } else {
-                try await selectedBackend.setJunk(isJunk, for: [header.id])
-            }
-        } catch MailBackendError.notSupported {
-            guard let fallbackFolder = MessageCommandPresentation.junkFallbackFolder(
-                isJunk: isJunk,
-                folders: folders
-            ) else {
-                throw MailBackendError.notSupported(selectedBackend.capabilities)
-            }
-            if let sourceID = navigation.selectedSourceID {
-                try await selectedBackend.move(messageIDs: [header.id], to: fallbackFolder, sourceID: sourceID)
-            } else {
-                try await selectedBackend.move(messageIDs: [header.id], to: fallbackFolder)
-            }
-        }
-    }
-
     private func trash(header: MessageHeader) async {
         guard canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         // Capture the original folder so we can move back on undo.
         // If the message is already in Trash, a permanent delete is implied
         // and we don't offer undo (the backend's `delete` is irreversible).
         let originalFolder = folders.first { $0.id == header.folderID }
-        let isAlreadyInTrash = originalFolder?.role == .trash
-        let capturedMessageIDs = [header.id]
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         let capturedBackend = selectedBackend
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
@@ -4771,7 +4733,16 @@ public struct BrevMailRootView: View {
         switch MessageDeletionOperation.operation(for: header) {
         case .delete(let messageIDs):
             do {
-                try await delete(messageIDs: messageIDs)
+                let source: MailSourceID
+                if let capturedSourceID {
+                    source = capturedSourceID
+                } else {
+                    source = try await capturedBackend.sourceID(for: capturedBackend.currentMailbox())
+                }
+                let receipt = try await MailUndoableDelete.perform(
+                    messageIDs: messageIDs, from: originalFolder, folders: folders, sourceID: source, backend: capturedBackend
+                )
+                undoQueue.registerMoves([receipt], description: String(localized: "Deleted", bundle: .module), lease: undoLease)
                 guard canApplyCommandMutationResponse(request) else {
                     finishCommandMutation(request)
                     return
@@ -4779,25 +4750,6 @@ public struct BrevMailRootView: View {
                 navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
                 await loadFolders()
                 finishCommandMutation(request)
-                // Only offer undo when the backend `delete` moves to Trash
-                // (i.e. message was NOT already in Trash). After `delete`
-                // the message lives in Trash; undo moves it back.
-                if !isAlreadyInTrash, let originalFolder {
-                    undoQueue.push(UndoableMutation(description: "Deleted") {
-                        if let sourceID = capturedSourceID {
-                            try await capturedBackend.move(
-                                messageIDs: capturedMessageIDs,
-                                to: originalFolder,
-                                sourceID: sourceID
-                            )
-                        } else {
-                            try await capturedBackend.move(
-                                messageIDs: capturedMessageIDs,
-                                to: originalFolder
-                            )
-                        }
-                    })
-                }
             } catch {
                 guard canApplyCommandMutationResponse(request) else {
                     finishCommandMutation(request)
@@ -5054,14 +5006,27 @@ public struct BrevMailRootView: View {
             from: sourceFolder,
             to: destinationFolder
         )
-        guard !events.isEmpty else { return }
+        guard !events.isEmpty, let sourceFolder else { return }
         guard canStartCommandMutation() else { return }
-        let request = startCommandMutationRequest(sourceFolderID: sourceFolder?.id)
+        let ownerSourceID = sourceID ?? navigation.selectedSourceID
+        let owner = ownerSourceID.map { backend(for: $0) } ?? selectedBackend
+        let request = startCommandMutationRequest(sourceFolderID: sourceFolder.id)
+        let undoLease = undoQueue.beginMutation()
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         clearRootStatus()
         navigation.removeHeaders(ids: Set(messageIDs))
         do {
-            try await move(messageIDs: messageIDs, to: destinationFolder, sourceID: sourceID)
+            let source: MailSourceID
+            if let ownerSourceID {
+                source = ownerSourceID
+            } else {
+                source = try await owner.sourceID(for: owner.currentMailbox())
+            }
+            let receipt = try await owner.moveWithUndo(
+                messageIDs: messageIDs, from: sourceFolder, to: destinationFolder, sourceID: source
+            )
+            undoQueue.registerMoves([receipt], description: String(localized: "Moved", bundle: .module), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -5071,6 +5036,7 @@ public struct BrevMailRootView: View {
             }
             await loadFolders()
             finishCommandMutation(request)
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -5101,16 +5067,16 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func move(
-        messageIDs: [String],
-        to folder: Folder,
-        sourceID explicitSourceID: MailSourceID? = nil
-    ) async throws {
-        if let sourceID = explicitSourceID ?? navigation.selectedSourceID {
-            try await backend(for: sourceID).move(messageIDs: messageIDs, to: folder, sourceID: sourceID)
+    private func moveWithUndo(messageIDs: [String], from sourceFolder: Folder,
+                              to destination: Folder) async throws -> MailMoveUndo? {
+        let owner = selectedBackend
+        let source: MailSourceID
+        if let selected = navigation.selectedSourceID {
+            source = selected
         } else {
-            try await selectedBackend.move(messageIDs: messageIDs, to: folder)
+            source = try await owner.sourceID(for: owner.currentMailbox())
         }
+        return try await owner.moveWithUndo(messageIDs: messageIDs, from: sourceFolder, to: destination, sourceID: source)
     }
 
     private func copy(
@@ -5528,7 +5494,7 @@ public struct BrevMailRootView: View {
     }
 
     private func canStartCommandMutation() -> Bool {
-        guard hasValidSelectedSourceBackend, hasMailContext else { return false }
+        guard hasValidSelectedSourceBackend, hasMailContext, !undoQueue.isUndoing else { return false }
         return MailRootCommandMutationStartPolicy.canStartMutation(
             activeRequest: activeCommandMutationRequest,
             activeFolderLoadRequest: activeFolderLoadRequest,

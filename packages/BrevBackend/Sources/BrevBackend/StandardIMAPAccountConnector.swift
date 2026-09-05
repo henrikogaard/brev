@@ -197,6 +197,13 @@ public extension IMAPAccountConnector {
                     destinationFolderPath: destinationFolderID
                 )
             },
+            moveMessagesWithResult: { configuration, credential, sourceFolderID, uids, destinationFolderID, generation in
+                let client = await imapSessionPool.client(for: configuration)
+                return try await client.loginAndMoveMessagesWithResult(
+                    configuration: configuration, credential: credential, sourceFolderPath: sourceFolderID,
+                    uids: uids, destinationFolderPath: destinationFolderID, expectedSourceUIDValidity: generation
+                )
+            },
             copyMessages: { configuration, credential, sourceFolderID, uids, destinationFolderID in
                 let client = await imapSessionPool.client(for: configuration)
                 try await client.loginAndCopyMessages(
