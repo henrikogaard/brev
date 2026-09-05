@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Undo reopens the restored message with its current provider ID, including older
+  mail outside the first refreshed page. It preserves a different folder or
+  message selected while the reversal was running.
+
 - Mail Undo covers toolbar, row and bulk flag/move/trash actions using provider
   destination identities. IMAP validates mailbox generations before reversing
   moves; Gmail preserves unrelated labels. Native macOS Undo keeps text editing

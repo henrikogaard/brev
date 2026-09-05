@@ -1834,7 +1834,7 @@ struct UnifiedInboxListView: View {
     private func setRead(_ isRead: Bool, for targetItems: [UnifiedInboxItem]) async {
         let targetItems = targetItems.filter { $0.header.isRead != isRead }
         guard !targetItems.isEmpty else { return }
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var actions: [UndoableMutation?] = []
         await performMutation(targetItems) { sourceID, messageIDs in
@@ -1861,7 +1861,7 @@ struct UnifiedInboxListView: View {
     private func setFlagged(_ isFlagged: Bool, for targetItems: [UnifiedInboxItem]) async {
         let targetItems = targetItems.filter { $0.header.isFlagged != isFlagged }
         guard !targetItems.isEmpty else { return }
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var actions: [UndoableMutation?] = []
         await performMutation(targetItems) { sourceID, messageIDs in
@@ -1925,7 +1925,7 @@ struct UnifiedInboxListView: View {
     private func move(_ targetItems: [UnifiedInboxItem], to destination: Folder) async {
         let targetItems = targetItems.filter { $0.folder.id != destination.id }
         guard !targetItems.isEmpty else { return }
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in
@@ -1959,7 +1959,7 @@ struct UnifiedInboxListView: View {
     private func archive(_ targetItems: [UnifiedInboxItem]) async {
         let targetItems = targetItems.filter { $0.folder.id != $0.archiveFolder?.id }
         guard !targetItems.isEmpty else { return }
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in
@@ -1986,7 +1986,7 @@ struct UnifiedInboxListView: View {
     }
 
     private func setJunk(_ isJunk: Bool, for item: UnifiedInboxItem) async {
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var actions: [UndoableMutation?] = []
         await performMutation([item], removeFromList: true) { sourceID, _ in
@@ -1995,7 +1995,7 @@ struct UnifiedInboxListView: View {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
             try await actions.append(MailJunkUndo.perform(isJunk, header: item.header, folders: section.folders,
-                                                          sourceID: sourceID, backend: backend))
+                                                          sourceID: sourceID, backend: backend, lease: undoLease))
         } optimisticUpdate: { _ in } event: {
             MessageCommandRefreshPolicy.removed($0.header)
         }
@@ -2007,7 +2007,7 @@ struct UnifiedInboxListView: View {
     }
 
     private func delete(_ targetItems: [UnifiedInboxItem]) async {
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in

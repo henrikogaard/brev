@@ -2203,7 +2203,7 @@ public struct MessageListView: View {
         guard canStartMutation() else { return }
         let newValue = !header.isRead
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2236,7 +2236,7 @@ public struct MessageListView: View {
         guard canStartMutation() else { return }
         let newValue = !header.isFlagged
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2272,7 +2272,7 @@ public struct MessageListView: View {
     private func setJunk(_ isJunk: Bool, for header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
@@ -2282,7 +2282,7 @@ public struct MessageListView: View {
         removeCachedHeaders(ids: ids)
         do {
             let action = try await MailJunkUndo.perform(isJunk, header: header, folders: allFolders,
-                                                        sourceID: workflowSourceID, backend: backend)
+                                                        sourceID: workflowSourceID, backend: backend, lease: undoLease)
             undoQueue?.registerBatch([action], description: MailJunkUndo.description(isJunk), lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
@@ -2307,7 +2307,7 @@ public struct MessageListView: View {
     private func blockSender(email: String, header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
@@ -2341,7 +2341,7 @@ public struct MessageListView: View {
     private func deleteRow(header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
@@ -2378,7 +2378,7 @@ public struct MessageListView: View {
               let archive = archiveFolder, header.folderID != archive.id
         else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
@@ -2412,7 +2412,7 @@ public struct MessageListView: View {
     private func moveRow(header: MessageHeader, to destination: Folder) async {
         guard header.folderID != destination.id, canStartMutation() else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
@@ -2463,7 +2463,7 @@ public struct MessageListView: View {
         let originals = headers.filter { idSet.contains($0.id) }
         guard originals.contains(where: { $0.isRead != value }) else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2514,7 +2514,7 @@ public struct MessageListView: View {
         let originals = headers.filter { idSet.contains($0.id) }
         guard originals.contains(where: { $0.isFlagged != value }) else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2565,7 +2565,7 @@ public struct MessageListView: View {
         let idSet = Set(ids)
         guard !ids.isEmpty else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2623,7 +2623,7 @@ public struct MessageListView: View {
         let idSet = Set(ids)
         let originals = headers.filter { idSet.contains($0.id) }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
@@ -2937,7 +2937,7 @@ public struct MessageListView: View {
     ) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
-        let undoLease = undoQueue?.beginMutation()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil

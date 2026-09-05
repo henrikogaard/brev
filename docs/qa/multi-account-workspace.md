@@ -182,3 +182,12 @@ build script and inspected by CUA using its exact worktree bundle path:
 This verifies native routing and successful mock reversal. It does not prove
 live provider failures, offline replay, complete selection restoration, or
 multi-account/performance acceptance.
+
+### Issue #28 restored reader, 2026-09-05
+
+The selection-restoration mock build passed startup verification. CUA selected
+the mock bill, archived it through the toolbar, and invoked Cmd-Z. Inbox returned
+from 28 to 29 messages and the reader reopened that same bill, with its matching
+sender context. Automated tests cover reassigned IMAP IDs, incomplete first-page
+refreshes, source collisions, All Inboxes, and navigation during reversal.
+Live-provider and offline queued-action acceptance remain separate.

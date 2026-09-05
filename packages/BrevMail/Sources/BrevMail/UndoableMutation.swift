@@ -19,6 +19,7 @@ public struct UndoMutationLease: Sendable {
     fileprivate let id: UUID
     fileprivate let scope: UUID
     fileprivate let order: UInt64
+    let selection: MailUndoSelectionRestorer?
 }
 
 // MARK: - UndoableMutation
@@ -82,9 +83,11 @@ public final class UndoQueue {
     private var activeTask: Task<Bool, Never>?
 
     /// Suspends Undo while an independently owned forward mutation runs.
-    public func beginMutation() -> UndoMutationLease {
+    /// Pass navigation to restore its selected message after a confirmed inverse move.
+    public func beginMutation(navigation: MailNavigationState? = nil) -> UndoMutationLease {
         nextOrder &+= 1
-        let lease = UndoMutationLease(id: UUID(), scope: scopeID, order: nextOrder)
+        let lease = UndoMutationLease(id: UUID(), scope: scopeID, order: nextOrder,
+                                      selection: navigation.flatMap { MailUndoSelectionRestorer(navigation: $0) })
         mutationTokens.insert(lease.id)
         expirationTask?.cancel()
         return lease

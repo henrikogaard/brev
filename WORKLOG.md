@@ -675,3 +675,36 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   red test confirmed the canceled task still invoked the provider action.
   Added a cancellation check before invocation; subsequent green evidence is
   included in the final focused queue run.
+
+## 2026-09-05 — Codex — Issue #28 / PR #30 Undo reader restoration
+
+- Verified c858d68 was pushed and its 19 hosted checks completed successfully,
+  including the earlier Design process failure and Mail snapshot configuration.
+  The parent issue remains In progress; no merge/release or architecture
+  acceptance was inferred.
+- Added navigation context to forward-operation leases. Move receipts now use
+  the provider's restored ID mapping to reselect the original reader message.
+  The selection is restored only in the original folder/search or aggregate
+  view and only if the user did not change selection while Undo was running.
+- The reader retains a confirmed restored header when the first refreshed page
+  contains only newer mail. A fetched header replaces that temporary copy;
+  explicit removal, navigation, or selection changes release it. Shared junk
+  actions use the same restoration path.
+- Red-green regressions proved the original next-message focus bug, older-page
+  loss after restoration, and junk fallback missing selection restoration.
+  Tests also cover other folders, same-view mid-Undo selection, colliding IDs
+  across sources, All Inboxes context, and releasing/replacing retained headers.
+- Public header identity remapping preserves recipients, flags, attachments,
+  RFC threading metadata, and the non-RFC provider-ID threading fallback.
+- Final package, lint, mock native checks and frozen review follow below.
+  Full MIME export, offline queued Undo, scheduling, complete conversation/
+  search coverage, live/performance acceptance, and proposed ADRs remain open.
+
+- Verification: 1,543 Mail tests and 1,020 Backend tests passed; formatter/lint
+  and diff checks passed. Both frozen reviewers found no material findings.
+  The dated mock build/startup passed. CUA verified selected mock bill ->
+  toolbar Archive -> Cmd-Z restored Inbox 28 -> 29 and reopened the same bill
+  in the reader. The settled screenshot showed matching sender details.
+- Documentation sweep: CHANGELOG and this log updated; README architecture,
+  privacy/network tables, ADRs and AGENTS are unchanged because this adds only
+  transient reader restoration within existing provider-bound actions.

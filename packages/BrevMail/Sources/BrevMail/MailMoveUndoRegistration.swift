@@ -18,7 +18,7 @@ extension UndoQueue {
     func registerMoves(_ receipts: [MailMoveUndo?], description: String, lease: UndoMutationLease? = nil) {
         registerBatch(receipts.map { receipt in
             receipt.map { receipt in
-                UndoableMutation(description: description) { _ = try await receipt.restore() }
+                UndoableMutation.move(receipt, description: description, lease: lease)
             }
         }, description: description, lease: lease)
     }
@@ -42,6 +42,18 @@ extension UndoQueue {
         }
         let batch = MailUndoBatch(actions: actions.compactMap { $0 })
         push(UndoableMutation(description: description) { try await batch.restore() }, lease: lease)
+    }
+}
+
+extension UndoableMutation {
+    static func move(_ receipt: MailMoveUndo, description: String, lease: UndoMutationLease?) -> UndoableMutation {
+        UndoableMutation(description: description) {
+            if let selection = lease?.selection {
+                try await selection.restore(using: receipt)
+            } else {
+                _ = try await receipt.restore()
+            }
+        }
     }
 }
 
@@ -110,7 +122,8 @@ enum MailJunkUndo {
     }
 
     static func perform(_ isJunk: Bool, header: MessageHeader, folders: [Folder],
-                        sourceID: MailSourceID, backend: any MailBackend) async throws -> UndoableMutation? {
+                        sourceID: MailSourceID, backend: any MailBackend,
+                        lease: UndoMutationLease? = nil) async throws -> UndoableMutation? {
         let title = description(isJunk)
         let destination = MessageCommandPresentation.junkFallbackFolder(isJunk: isJunk, folders: folders)
         // Label backends change mailbox membership when classifying junk. Their
@@ -118,9 +131,13 @@ enum MailJunkUndo {
         if !backend.capabilities.contains(.labels) {
             do {
                 try await backend.setJunk(isJunk, for: [header.id], sourceID: sourceID)
-                return UndoableMutation(description: title) {
+                let origin = folders.first { $0.id == header.folderID }
+                    ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+                let receipt = MailMoveUndo(sourceID: sourceID, originalFolder: origin) {
                     try await backend.setJunk(!isJunk, for: [header.id], sourceID: sourceID)
+                    return [header.id: header.id]
                 }
+                return .move(receipt, description: title, lease: lease)
             } catch MailBackendError.notSupported {
                 // Standards-only servers fall back to moving into Spam/Inbox.
             }
@@ -129,8 +146,6 @@ enum MailJunkUndo {
         let origin = folders.first { $0.id == header.folderID }
             ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         let receipt = try await backend.moveWithUndo(messageIDs: [header.id], from: origin, to: destination, sourceID: sourceID)
-        return receipt.map { receipt in
-            UndoableMutation(description: title) { _ = try await receipt.restore() }
-        }
+        return receipt.map { .move($0, description: title, lease: lease) }
     }
 }
