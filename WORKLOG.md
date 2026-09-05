@@ -567,3 +567,20 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Added a native-view initialization regression for repeated saved-list creation.
   It failed with the prior ordinary-search default and now retains cache mode;
   returning to the normal list restores the normal provider-aware default.
+
+
+## 2026-09-05 — Codex — Issue #28 parity architecture decisions
+
+- Created #28 with all comparison findings, ordered acceptance criteria, and
+  links to existing live-QA and Google/DAV issues. Added it to Brev project 9
+  as In progress.
+- Prepared Proposed ADRs 0070–0073 for opt-in macOS background mail, native
+  Microsoft mail/shared sources, calendar/contact authoring, and local archives
+  with portable backup/restore. These are reviewable design choices, not
+  implementations or account/OS consent grants.
+- Baseline is PR #27 at 1250634; this documentation branch stacks on
+  fix/multi-account-workspace and ultimately targets main. Core parity fixes
+  proceed independently in the mail-client-parity worktree.
+- Verification: documentation links/index and diff checked. TDD/builds are not
+  applicable to this documentation-only slice. Strategic implementations remain
+  gated by ADR acceptance under AGENTS.md and prompts/new-adr.md.
