@@ -2288,9 +2288,9 @@ struct UnifiedInboxListView: View {
                 guard let backend = backend(for: item.sourceID) else {
                     throw MailBackendError.notConnected
                 }
-                let rawSource = try await backend.rawSource(for: item.header.id, sourceID: item.sourceID)
+                let rawMessageData = try await backend.rawMessageData(for: item.header.id, sourceID: item.sourceID)
                 _ = try await MainActor.run {
-                    try MessageEMLExport.presentSavePanel(header: item.header, rawSource: rawSource)
+                    try MessageEMLExport.presentSavePanel(header: item.header, rawMessageData: rawMessageData)
                 }
             } catch {
                 mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)

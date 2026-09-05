@@ -363,7 +363,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             advertisedExtendedCapabilities.insert(.messageCopy)
         }
         if fetchMessageSource != nil {
-            advertisedExtendedCapabilities.insert(.rawMessageSource)
+            advertisedExtendedCapabilities.formUnion([.rawMessageSource, .rawMessageBytes])
         }
         extendedCapabilities = advertisedExtendedCapabilities
     }
@@ -1333,6 +1333,19 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     public func rawSource(for messageID: String, sourceID: MailSourceID) async throws -> String {
         try validateSourceID(sourceID)
         return try await rawSource(for: messageID)
+    }
+
+    /// Returns original cached bytes or fetches them when only legacy text is cached.
+    public func rawMessageData(for messageID: String) async throws -> Data {
+        let source = try await loadMessageSource(messageID: messageID, requiresOriginalBytes: true)
+        guard let data = source.rawMessageData else { throw MailBackendError.notSupported(capabilities) }
+        return data
+    }
+
+    /// Reads original bytes only from the explicitly owning mailbox.
+    public func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data {
+        try validateSourceID(sourceID)
+        return try await rawMessageData(for: messageID)
     }
 
     /// Read-only enumeration of attachment-bearing messages already in the
@@ -3907,19 +3920,22 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return headers.filter { currentFolderIDs.contains($0.folderID) }
     }
 
-    private func loadMessageSource(messageID: MessageHeader.ID) async throws -> IMAPMessageSource {
+    private func loadMessageSource(messageID: MessageHeader.ID,
+                                   requiresOriginalBytes: Bool = false) async throws -> IMAPMessageSource {
         let reference = try Self.messageReference(from: messageID)
         return try await loadMessageSource(
             messageID: messageID,
             folderID: reference.folderID,
-            uid: reference.uid
+            uid: reference.uid,
+            requiresOriginalBytes: requiresOriginalBytes
         )
     }
 
     private func loadMessageSource(
         messageID: MessageHeader.ID,
         folderID: Folder.ID,
-        uid: Int
+        uid: Int,
+        requiresOriginalBytes: Bool = false
     ) async throws -> IMAPMessageSource {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Message Source")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -3927,7 +3943,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             MailPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
         }
 
-        if let cached = await cachedMessageSource(messageID: messageID) {
+        if let cached = await cachedMessageSource(messageID: messageID, requiresOriginalBytes: requiresOriginalBytes),
+           !requiresOriginalBytes || cached.rawMessageData != nil {
             MailPerformanceDiagnostics.logBodySourceFinished(
                 path: .cacheHit,
                 durationMilliseconds: durationMilliseconds()
@@ -3958,7 +3975,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return source
         } catch {
             if Self.shouldUseCacheFallback(for: error),
-               let cached = await cachedMessageSource(messageID: messageID) {
+               let cached = await cachedMessageSource(messageID: messageID, requiresOriginalBytes: requiresOriginalBytes),
+               !requiresOriginalBytes || cached.rawMessageData != nil {
                 MailPerformanceDiagnostics.logBodySourceFinished(
                     path: .cacheFallback,
                     durationMilliseconds: durationMilliseconds()
@@ -3982,23 +4000,28 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             accountID: account.id,
             messageID: messageID
         )
-        await localSearchIndex?.storeRawMessage(
-            Data(source.rawMessage.utf8),
-            for: messageID,
-            account: account
-        )
+        if let data = source.rawMessageData {
+            await localSearchIndex?.storeOriginalRawMessage(data, for: messageID, account: account)
+        } else {
+            await localSearchIndex?.storeRawMessage(Data(source.rawMessage.utf8), for: messageID, account: account)
+        }
         // A freshly cached source may now carry a parseable date, so allow the
         // repair pass to re-attempt this message.
         clearUnrepairableDate(messageID)
     }
 
-    private func cachedMessageSource(messageID: MessageHeader.ID) async -> IMAPMessageSource? {
+    private func cachedMessageSource(messageID: MessageHeader.ID,
+                                     requiresOriginalBytes: Bool = false) async -> IMAPMessageSource? {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Body Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
         let source: IMAPMessageSource?
-        if let cached = await sourceCache?.source(accountID: account.id, messageID: messageID) {
+        if let cached = await sourceCache?.source(accountID: account.id, messageID: messageID),
+           !requiresOriginalBytes || cached.rawMessageData != nil {
             source = cached
-        } else if let rawData = await localSearchIndex?.cachedRawMessage(
+        } else if let original = await localSearchIndex?.cachedOriginalRawMessage(for: messageID, account: account),
+                  let reference = try? Self.messageReference(from: messageID) {
+            source = IMAPMessageSource(uid: reference.uid, rawMessageData: original)
+        } else if !requiresOriginalBytes, let rawData = await localSearchIndex?.cachedRawMessage(
             for: messageID,
             account: account
         ), let reference = try? Self.messageReference(from: messageID) {

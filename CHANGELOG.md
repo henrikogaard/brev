@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Save As writes the original MIME bytes for a message, preserving non-UTF8
+  content and attachments. It is offered only by backends with byte-preserving
+  export support.
+
+- IMAP and Gmail original-message retrieval preserves MIME encodings and
+  attachment bytes through the source cache. Byte-preserving reads refresh
+  older text-only entries and support cached source access while offline.
+
 - Undo reopens the restored message with its current provider ID, including older
   mail outside the first refreshed page. It preserves a different folder or
   message selected while the reversal was running.

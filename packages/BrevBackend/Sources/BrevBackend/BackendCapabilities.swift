@@ -175,7 +175,7 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     public static let messageCopy = BackendExtendedCapabilities(rawValue: 1 << 9)
 
     /// The backend can return a message's raw RFC822 source, gating View
-    /// Source, Save As (.eml), and Show Headers. See ADR-0045.
+    /// Source and Show Headers. Original-byte export uses rawMessageBytes.
     public static let rawMessageSource = BackendExtendedCapabilities(rawValue: 1 << 10)
 
     /// The backend groups messages into conversations itself, from RFC 5322
@@ -187,6 +187,9 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// Callers gate `CachedMessageHeaderProviding` on this flag before asking
     /// for the extension service (ADR-0028 invariant 2).
     public static let cachedMessageHeaders = BackendExtendedCapabilities(rawValue: 1 << 12)
+
+    /// The backend returns original MIME bytes for lossless message export.
+    public static let rawMessageBytes = BackendExtendedCapabilities(rawValue: 1 << 13)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.

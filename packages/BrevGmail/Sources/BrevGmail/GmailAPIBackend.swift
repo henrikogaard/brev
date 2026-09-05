@@ -144,11 +144,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// Extended provider capabilities for aliases and server signatures.
     public var extendedCapabilities: BackendExtendedCapabilities {
         lock.withLock {
-            guard isConnected else { return [] }
+            guard isConnected else { return [.rawMessageSource, .rawMessageBytes] }
             guard sendAsProbeCompleted, let aliases = sendAsAliases else {
-                return [.rawMessageSource]
+                return [.rawMessageSource, .rawMessageBytes]
             }
-            var result: BackendExtendedCapabilities = [.rawMessageSource, .serverAliases]
+            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .serverAliases]
             if aliases.contains(where: {
                 Self.isUsableSendAs($0) && !($0.signature ?? "").isEmpty
             }) {
@@ -418,17 +418,32 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     public func rawSource(for messageID: String) async throws -> String {
-        try requireConnected()
         if let cached = try await readCache?.cachedRawSource(accountID: account.id, messageID: messageID) {
             return cached
         }
+        let data = try await rawMessageData(for: messageID)
+        return IMAPMessageBodyParser().rawMessageString(from: data)
+    }
+
+    /// Returns original MIME octets, including offline cache reads and legacy-cache repair.
+    public func rawMessageData(for messageID: String) async throws -> Data {
+        if let cached = try await readCache?.cachedRawMessageData(accountID: account.id, messageID: messageID), !cached.isEmpty {
+            return cached
+        }
+        try requireConnected()
         let message = try await transport.getMessage(messageID: messageID, format: .raw)
-        guard let raw = message.raw, let data = Self.decodeBase64URL(raw) else {
+        guard let raw = message.raw, let data = Self.decodeBase64URL(raw), !data.isEmpty else {
             throw GmailAPIError.malformedResponse
         }
-        let source = IMAPMessageBodyParser().rawMessageString(from: data)
-        try await readCache?.storeRawSource(source, accountID: account.id, messageID: messageID)
-        return source
+        try await readCache?.storeRawMessageData(data, accountID: account.id, messageID: messageID)
+        return data
+    }
+
+    /// Restricts original source access to this Gmail account's own mailbox.
+    public func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data {
+        try validateSource(sourceID)
+        guard sourceID.mailboxID == account.id else { throw MailBackendError.notFound(id: sourceID.mailboxID) }
+        return try await rawMessageData(for: messageID)
     }
 
     public func downloadAttachment(_ attachment: Attachment) async throws -> Data {

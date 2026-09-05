@@ -154,7 +154,7 @@ final class BrevSyncEngineTests: XCTestCase {
     func testInMemoryStoreReportsCurrentSchemaVersion() async {
         let store = InMemorySyncStore()
         let version = await store.currentSchemaVersion
-        XCTAssertEqual(version, 3)
+        XCTAssertEqual(version, 4)
     }
 
     // MARK: cachedHeaders returns nil before first sync
@@ -906,7 +906,7 @@ final class BrevSyncEngineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let store = try SQLiteSyncStore(databaseURL: url)
-        XCTAssertEqual(store.currentSchemaVersion, 3)
+        XCTAssertEqual(store.currentSchemaVersion, 4)
 
         let accountID = "acc"
         try store.ensureAccount(id: accountID)
@@ -966,7 +966,7 @@ final class BrevSyncEngineTests: XCTestCase {
         )
 
         let store = try SQLiteSyncStore(databaseURL: url)
-        XCTAssertEqual(store.currentSchemaVersion, 3)
+        XCTAssertEqual(store.currentSchemaVersion, 4)
 
         let legacy = store.headers(accountID: "acc", folderID: "INBOX", limit: 10, offset: 0)
         XCTAssertEqual(legacy.map(\.id), ["INBOX:9"])
@@ -1676,7 +1676,7 @@ final class BrevSyncEngineTests: XCTestCase {
         let subjectMatches = await engine.search(SearchQuery(text: "Subject 9"), account: account)
         let bodyMatches = await engine.search(SearchQuery(text: "needle"), account: account)
 
-        XCTAssertEqual(store.currentSchemaVersion, 3)
+        XCTAssertEqual(store.currentSchemaVersion, 4)
         XCTAssertTrue(try Self.searchTableColumns(at: url).isSuperset(of: [
             "subject_normalized",
             "snippet_normalized",
@@ -1685,6 +1685,10 @@ final class BrevSyncEngineTests: XCTestCase {
         ]))
         XCTAssertEqual(subjectMatches.map(\.id), ["INBOX:9"])
         XCTAssertEqual(bodyMatches.map(\.id), ["INBOX:9"])
+        let originalBytes = await engine.cachedOriginalRawMessage(for: "INBOX:9", account: account)
+        let legacyBytes = await engine.cachedRawMessage(for: "INBOX:9", account: account)
+        XCTAssertNil(originalBytes)
+        XCTAssertEqual(legacyBytes, Data("From: sender@example.com\r\n\r\nMigrated body needle".utf8))
     }
 
     func testSQLiteV2MigrationAddsNormalizedSearchColumns() async throws {
@@ -1706,7 +1710,7 @@ final class BrevSyncEngineTests: XCTestCase {
         let headerMatches = await engine.search(SearchQuery(text: "moteplan"), account: account)
         let bodyMatches = await engine.search(SearchQuery(text: "mote flyttet"), account: account)
 
-        XCTAssertEqual(store.currentSchemaVersion, 3)
+        XCTAssertEqual(store.currentSchemaVersion, 4)
         XCTAssertTrue(try Self.searchTableColumns(at: url).isSuperset(of: [
             "subject_normalized",
             "snippet_normalized",

@@ -183,6 +183,9 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
             bind(accountID, to: statement, at: 1)
             bind(messageID, to: statement, at: 2)
             guard sqlite3_step(statement) == SQLITE_ROW else { return nil }
+            if sqlite3_column_type(statement, 0) == SQLITE_BLOB, let data = blob(statement, column: 0) {
+                return IMAPMessageBodyParser().rawMessageString(from: data)
+            }
             return string(statement, column: 0)
         }
     }
@@ -196,6 +199,33 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
             VALUES (?, ?, ?)
             ON CONFLICT(account_id, message_id) DO UPDATE SET raw_source = excluded.raw_source;
             """, bindings: [.text(accountID), .text(messageID), .text(source)])
+        }
+    }
+
+    /// Only BLOB entries preserve original octets; older TEXT entries remain rendering-only.
+    public func cachedRawMessageData(accountID: String, messageID: String) async throws -> Data? {
+        try validate(accountID: accountID)
+        try validate(messageID: messageID)
+        return try lock.withLock {
+            let statement = try prepare("SELECT raw_source FROM gmail_raw_sources WHERE account_id = ? AND message_id = ?;")
+            defer { sqlite3_finalize(statement) }
+            bind(accountID, to: statement, at: 1)
+            bind(messageID, to: statement, at: 2)
+            guard sqlite3_step(statement) == SQLITE_ROW, sqlite3_column_type(statement, 0) == SQLITE_BLOB else { return nil }
+            return blob(statement, column: 0)
+        }
+    }
+
+    /// Stores original MIME as BLOB in the existing cache table, preserving its purge lifecycle.
+    public func storeRawMessageData(_ data: Data, accountID: String, messageID: String) async throws {
+        try validate(accountID: accountID)
+        try validate(messageID: messageID)
+        try lock.withLock {
+            try execute("""
+            INSERT INTO gmail_raw_sources (account_id, message_id, raw_source)
+            VALUES (?, ?, ?)
+            ON CONFLICT(account_id, message_id) DO UPDATE SET raw_source = excluded.raw_source;
+            """, bindings: [.text(accountID), .text(messageID), .blob(data)])
         }
     }
 

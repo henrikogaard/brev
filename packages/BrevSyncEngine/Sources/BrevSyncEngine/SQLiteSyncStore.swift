@@ -31,11 +31,11 @@ enum SyncStoreError: Error {
 
 /// Persistent SQLite-backed implementation of `SyncStoreProtocol` (ADR-0030).
 ///
-/// Schema version 3. All writes use WAL journal mode for concurrent-read safety.
+/// Schema version 4. All writes use WAL journal mode for concurrent-read safety.
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 3
+    let currentSchemaVersion = 4
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -571,11 +571,19 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     // MARK: SyncStoreProtocol — message bodies
 
     func body(accountID: String, messageID: MessageHeader.ID) -> Data? {
+        body(accountID: accountID, messageID: messageID, requiresOriginal: false)
+    }
+
+    func originalBody(accountID: String, messageID: MessageHeader.ID) -> Data? {
+        body(accountID: accountID, messageID: messageID, requiresOriginal: true)
+    }
+
+    private func body(accountID: String, messageID: MessageHeader.ID, requiresOriginal: Bool) -> Data? {
         lock.withLock {
             var stmt: OpaquePointer?
             let sql = """
                 SELECT raw_source FROM message_bodies
-                WHERE account_id = ? AND message_id = ?
+                WHERE account_id = ? AND message_id = ? AND (? = 0 OR original_bytes = 1)
                 LIMIT 1;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return nil }
@@ -583,6 +591,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
             sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
             sqlite3_bind_text(stmt, 2, messageID, -1, Self.transient)
+            sqlite3_bind_int(stmt, 3, requiresOriginal ? 1 : 0)
             guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
             guard let bytes = sqlite3_column_blob(stmt, 0) else { return nil }
             return Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
@@ -590,15 +599,24 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     func storeBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
+        try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: false)
+    }
+
+    func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
+        try storeBody(data, accountID: accountID, messageID: messageID, isOriginal: true)
+    }
+
+    private func storeBody(_ data: Data, accountID: String, messageID: MessageHeader.ID, isOriginal: Bool) throws {
         try lock.withLock {
             var stmt: OpaquePointer?
             let sql = """
-                INSERT INTO message_bodies (account_id, message_id, raw_source, fetched_at, size_bytes)
-                VALUES (?, ?, ?, ?, ?)
+                INSERT INTO message_bodies (account_id, message_id, raw_source, fetched_at, size_bytes, original_bytes)
+                VALUES (?, ?, ?, ?, ?, ?)
                 ON CONFLICT(account_id, message_id) DO UPDATE SET
                     raw_source = excluded.raw_source,
                     fetched_at = excluded.fetched_at,
-                    size_bytes = excluded.size_bytes;
+                    size_bytes = excluded.size_bytes,
+                    original_bytes = excluded.original_bytes;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
                 throw SyncStoreError.prepareFailed(errMsg())
@@ -614,6 +632,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 }
                 sqlite3_bind_int64(stmt, 4, Int64(Date().timeIntervalSince1970))
                 sqlite3_bind_int64(stmt, 5, Int64(data.count))
+                sqlite3_bind_int(stmt, 6, isOriginal ? 1 : 0)
                 guard sqlite3_step(stmt) == SQLITE_DONE else {
                     throw SyncStoreError.executeFailed(errMsg())
                 }
@@ -808,6 +827,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 3;")
                 }
             }
+            if version < 4 {
+                try inTransaction {
+                    try execSQL("ALTER TABLE message_bodies ADD COLUMN original_bytes INTEGER NOT NULL DEFAULT 0;")
+                    try execSQL("PRAGMA user_version = 4;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -887,6 +912,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 raw_source  BLOB    NOT NULL,
                 fetched_at  INTEGER NOT NULL,
                 size_bytes  INTEGER NOT NULL,
+                original_bytes INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (account_id, message_id)
             );
         """)

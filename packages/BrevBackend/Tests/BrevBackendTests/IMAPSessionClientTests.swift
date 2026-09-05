@@ -1311,6 +1311,36 @@ struct IMAPSessionClientTests {
         #expect(source.rawMessage == rawMessage)
     }
 
+    @Test("legacy source cache remains readable without claiming original-byte fidelity")
+    func legacySourceCacheIsRenderingOnly() throws {
+        let data = Data(#"{"uid":43,"rawMessage":"Subject: Legacy\r\n\r\nReadable"}"#.utf8)
+        let source = try JSONDecoder().decode(IMAPMessageSource.self, from: data)
+        #expect(source.uid == 43)
+        #expect(source.rawMessage == "Subject: Legacy\r\n\r\nReadable")
+        #expect(source.rawMessageData == nil)
+    }
+
+    @Test("raw MIME retrieval and cache encoding preserve original non-UTF8 bytes")
+    func rawMIMEBytesSurviveFetchAndCache() async throws {
+        let raw = Data(("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n"
+                + "Subject: Original bytes\r\n\r\n--mail\r\nContent-Type: text/plain; charset=iso-8859-1\r\n"
+                + "Content-Transfer-Encoding: 8bit\r\n\r\n").utf8)
+            + Data([0xE5, 0xF8, 0xE6])
+            + Data(("\r\n--mail\r\nContent-Type: application/octet-stream\r\n"
+                    + "Content-Disposition: attachment; filename=bytes.bin\r\n"
+                    + "Content-Transfer-Encoding: base64\r\n\r\nAAECAwQ=\r\n--mail--\r\n").utf8)
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready", "A0001 OK LOGIN completed", "A0002 OK [READ-WRITE] SELECT completed",
+            "* 14 FETCH (UID 43 BODY[] {\(raw.count)}", ")", "A0003 OK FETCH completed"
+        ], dataReads: [raw])
+        let source = try await IMAPSessionClient(transport: transport).loginAndFetchMessageSource(
+            configuration: Self.configuration(), credential: Self.credential(), folderPath: "INBOX", uid: 43
+        )
+        #expect(source.rawMessageData == raw)
+        let cached = try JSONDecoder().decode(IMAPMessageSource.self, from: JSONEncoder().encode(source))
+        #expect(cached.rawMessageData == raw)
+    }
+
     @Test("raw message source accepts RFC822 literal labels")
     func rawMessageSourceAcceptsRFC822LiteralLabels() async throws {
         let rawMessage = [

@@ -207,6 +207,10 @@ public protocol MailBackend: AnyObject, Sendable {
     /// `BackendExtendedCapabilities.rawMessageSource`. See ADR-0045.
     func rawSource(for messageID: String) async throws -> String
 
+    /// Original RFC message bytes, including MIME attachments and original encodings.
+    /// Reconstructed text is not a valid fallback for this export contract.
+    func rawMessageData(for messageID: String) async throws -> Data
+
     /// Download the bytes for an attachment. Backends without a
     /// dedicated download endpoint may throw `.notSupported`.
     func downloadAttachment(_ attachment: Attachment) async throws -> Data
@@ -404,6 +408,8 @@ public protocol MailBackend: AnyObject, Sendable {
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?)
     func body(for messageID: String, sourceID: MailSourceID) async throws -> MessageBody
     func rawSource(for messageID: String, sourceID: MailSourceID) async throws -> String
+    /// Original message bytes within an explicitly owned mailbox.
+    func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data
     func downloadAttachment(_ attachment: Attachment, sourceID: MailSourceID) async throws -> Data
     func setRead(_ isRead: Bool, for messageIDs: [String], sourceID: MailSourceID) async throws
     func setFlagged(_ isFlagged: Bool, for messageIDs: [String], sourceID: MailSourceID) async throws
@@ -579,6 +585,11 @@ public extension MailBackend {
         throw MailBackendError.notSupported(capabilities)
     }
 
+    /// Backends must provide original bytes; text-only source is insufficient for export.
+    func rawMessageData(for messageID: String) async throws -> Data {
+        throw MailBackendError.notSupported(capabilities)
+    }
+
     /// Default: no local body cache, so there are no cached attachments to
     /// enumerate. Backends with a body cache (IMAP) override to read it.
     func cachedAttachmentMessages(in folders: [Folder]) async -> [CachedAttachmentMessage] {
@@ -747,6 +758,12 @@ public extension MailBackend {
     func rawSource(for messageID: String, sourceID: MailSourceID) async throws -> String {
         try await selectSourceIfNeeded(sourceID)
         return try await rawSource(for: messageID)
+    }
+
+    /// Default mailbox routing for backends that implement original source export.
+    func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data {
+        try await selectSourceIfNeeded(sourceID)
+        return try await rawMessageData(for: messageID)
     }
 
     func downloadAttachment(_ attachment: Attachment, sourceID: MailSourceID) async throws -> Data {

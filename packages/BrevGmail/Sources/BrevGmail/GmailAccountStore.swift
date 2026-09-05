@@ -172,6 +172,10 @@ public protocol GmailReadCacheStore: GmailAccountStore {
     func cachedRawSource(accountID: String, messageID: String) async throws -> String?
     /// Persists raw RFC 5322 source for cache-first reads.
     func storeRawSource(_ source: String, accountID: String, messageID: String) async throws
+    /// Returns original cached MIME bytes; legacy decoded text is excluded.
+    func cachedRawMessageData(accountID: String, messageID: String) async throws -> Data?
+    /// Persists original MIME bytes without decoding their content encodings.
+    func storeRawMessageData(_ data: Data, accountID: String, messageID: String) async throws
     /// Returns cached attachment bytes, when available.
     func cachedAttachment(accountID: String, attachmentID: String) async throws -> Data?
     /// Persists attachment bytes for cache-first download.
@@ -186,7 +190,12 @@ public protocol GmailReadCacheStore: GmailAccountStore {
 public actor InMemoryGmailAccountStore: GmailAccountStore {
     private var snapshots: [String: GmailAccountSnapshot] = [:]
     private var bodies: [String: MessageBody] = [:]
-    private var rawSources: [String: String] = [:]
+    private enum CachedSource: Sendable {
+        case legacyText(String)
+        case bytes(Data)
+    }
+
+    private var rawSources: [String: CachedSource] = [:]
     private var attachments: [String: Data] = [:]
 
     /// Creates an empty in-memory store.
@@ -313,13 +322,32 @@ public actor InMemoryGmailAccountStore: GmailAccountStore {
     public func cachedRawSource(accountID: String, messageID: String) async throws -> String? {
         try validate(accountID: accountID)
         try validate(messageID: messageID)
-        return rawSources[cacheKey(accountID: accountID, value: messageID)]
+        guard let source = rawSources[cacheKey(accountID: accountID, value: messageID)] else { return nil }
+        switch source {
+        case .legacyText(let text): return text
+        case .bytes(let data): return IMAPMessageBodyParser().rawMessageString(from: data)
+        }
     }
 
     public func storeRawSource(_ source: String, accountID: String, messageID: String) async throws {
         try validate(accountID: accountID)
         try validate(messageID: messageID)
-        rawSources[cacheKey(accountID: accountID, value: messageID)] = source
+        rawSources[cacheKey(accountID: accountID, value: messageID)] = .legacyText(source)
+    }
+
+    /// Reads source octets without accepting legacy text as byte-identical MIME.
+    public func cachedRawMessageData(accountID: String, messageID: String) async throws -> Data? {
+        try validate(accountID: accountID)
+        try validate(messageID: messageID)
+        guard case .bytes(let data) = rawSources[cacheKey(accountID: accountID, value: messageID)] else { return nil }
+        return data
+    }
+
+    /// Stores original source bytes in the existing account-scoped content cache.
+    public func storeRawMessageData(_ data: Data, accountID: String, messageID: String) async throws {
+        try validate(accountID: accountID)
+        try validate(messageID: messageID)
+        rawSources[cacheKey(accountID: accountID, value: messageID)] = .bytes(data)
     }
 
     public func cachedAttachment(accountID: String, attachmentID: String) async throws -> Data? {
@@ -432,6 +460,10 @@ public extension GmailAccountStore {
     func cachedRawSource(accountID: String, messageID: String) async throws -> String? { nil }
     /// Default no-op raw-source write.
     func storeRawSource(_ source: String, accountID: String, messageID: String) async throws {}
+    /// Metadata-only stores have no original MIME cache.
+    func cachedRawMessageData(accountID: String, messageID: String) async throws -> Data? { nil }
+    /// Metadata-only stores leave original MIME caching to their read adapter.
+    func storeRawMessageData(_ data: Data, accountID: String, messageID: String) async throws {}
     /// Default no-op attachment cache.
     func cachedAttachment(accountID: String, attachmentID: String) async throws -> Data? { nil }
     /// Default no-op attachment write.

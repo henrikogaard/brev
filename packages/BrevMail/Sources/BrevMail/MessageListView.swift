@@ -1218,14 +1218,14 @@ public struct MessageListView: View {
         #if canImport(AppKit)
         Task {
             do {
-                let rawSource: String
+                let rawMessageData: Data
                 if let sourceID {
-                    rawSource = try await backend.rawSource(for: header.id, sourceID: sourceID)
+                    rawMessageData = try await backend.rawMessageData(for: header.id, sourceID: sourceID)
                 } else {
-                    rawSource = try await backend.rawSource(for: header.id)
+                    rawMessageData = try await backend.rawMessageData(for: header.id)
                 }
                 _ = try await MainActor.run {
-                    try MessageEMLExport.presentSavePanel(header: header, rawSource: rawSource)
+                    try MessageEMLExport.presentSavePanel(header: header, rawMessageData: rawMessageData)
                 }
             } catch {
                 mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)

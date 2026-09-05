@@ -708,3 +708,51 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Documentation sweep: CHANGELOG and this log updated; README architecture,
   privacy/network tables, ADRs and AGENTS are unchanged because this adds only
   transient reader restoration within existing provider-bound actions.
+
+## 2026-09-05 — Codex — Issue #28 / PR #30 original MIME bytes
+
+- Added a provider-neutral original-byte export contract. IMAP fetch/cache now
+  keeps literal MIME bytes and derives text only for rendering, without storing
+  duplicate decoded and raw copies. Legacy text caches remain readable but are
+  refreshed from the server when original-byte export is requested.
+- Gmail stores original MIME in the existing source-cache table as BLOB;
+  legacy TEXT remains rendering-only. Cache account/message purge behavior is
+  unchanged. Original-byte cache reads work offline and validate source identity.
+- Red-green tests reproduced non-UTF8 MIME changing from 344 to 347 bytes,
+  proved literal/cache round-trip fidelity, verified IMAP legacy-cache refresh
+  followed by offline reads, and verified Gmail byte fidelity through SQLite
+  restart, legacy-cache replacement, and account-scope rejection.
+- This is the data foundation for complete export. File-menu and Settings
+  export callers still need conversion to the new API, streaming/progress/cancel
+  handling, and safe output publication. Their previous body/attachment gaps
+  are not claimed fixed.
+- Privacy/docs sweep: no new provider endpoint, account permission or cache
+  category is added; existing message-source retrieval and purge rules apply.
+  Original MIME remains in the existing provider-owned, evictable caches.
+
+- Review identified the secondary index-cache provenance gap. Added explicit
+  original-byte store/read methods and schema 4 provenance in BrevSyncEngine.
+  Migration leaves legacy rows unverified, original writes mark bytes atomically,
+  and legacy overwrites clear the marker. Account/message purges keep their
+  existing lifecycle.
+- A red integration test reproduced index-only offline failure after a fetch.
+  It is green with the real SQLite index across restart, and rejects a later
+  unverified overwrite. Added in-memory/SQLite marker lifecycle tests and legacy
+  migration assertions. ADR-0030 records this cache representation detail.
+
+- Connected single-message Save As in folder/unified lists to rawMessageData
+  and an atomic byte writer. New rawMessageBytes capability prevents text-only
+  adapters from offering an export they cannot preserve. IMAP/Gmail advertise
+  it; Gmail source actions remain available for offline cached messages.
+- Red-green EML output regression proved exact non-UTF8 bytes and menu gating.
+  Existing raw-source/attachment cache tests and Gmail offline source view pass.
+  ADR-0045 records the resolution of its previously documented String-fidelity
+  risk. Full folder File-menu/Settings export is still pending.
+
+- Final verification: 1,543 Mail, 1,023 Backend, 103 Gmail, 74 SyncEngine
+  XCTest tests and 2 SyncEngine Swift Testing tests passed. Lint/format,
+  diff checks, and the dated mock macOS build/startup passed. Both review axes
+  cleared the provenance and Save As consumer changes.
+- EML fidelity is verified by reading back temporary output bytes. Native Save
+  As against a live mailbox was not run; the mock backend intentionally lacks
+  original-source capability. No new view layout was introduced.

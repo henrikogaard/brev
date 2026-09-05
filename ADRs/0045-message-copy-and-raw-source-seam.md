@@ -241,3 +241,22 @@ dangling extended-flag documentation.
   `packages/BrevMail/Sources/BrevMail/MessageCommandPresentation.swift`,
   `MessageListView.swift`, `UnifiedInboxListView.swift`, `BrevMailRootView.swift`,
   `MoveToSheet.swift`
+
+## Implementation update, 2026-09-05
+
+A concrete MIME regression showed a 344-byte message becoming 347 bytes after
+text conversion. The original String-based export limitation is now addressed:
+
+- MailBackend exposes original-byte rawMessageData methods, with source-scoped
+  overloads. Backends without original-byte support throw unsupported.
+- The rawMessageBytes extended capability gates Save As. The existing
+  rawMessageSource flag still gates View Source and Show Headers.
+- Save As in the folder and unified lists fetches the owning message's original
+  bytes and writes them atomically as EML, preserving MIME attachments and content
+  encodings without rebuilding headers or body.
+- IMAP caches retain original literal bytes; Gmail caches distinguish original
+  BLOB values from legacy decoded TEXT. The local index records original-byte
+  provenance in schema 4 as described in ADR-0030. Legacy cache content remains
+  readable but is not exported as if it were byte-identical.
+- Cached source remains available offline. Fetching missing original bytes uses
+  the existing explicit source-read operation and adds no endpoint or permission.

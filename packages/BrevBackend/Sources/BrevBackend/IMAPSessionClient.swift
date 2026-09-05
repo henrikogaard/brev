@@ -1111,13 +1111,63 @@ public struct IMAPSelectedMailbox: Sendable, Hashable {
     }
 }
 
+/// Raw source for rendering and byte-preserving message export.
 public struct IMAPMessageSource: Sendable, Hashable, Codable {
     public let uid: Int
-    public let rawMessage: String
+    private let content: Content
 
+    private enum Content: Sendable, Hashable {
+        case bytes(Data)
+        case legacyText(String)
+    }
+
+    /// Decoded source for the existing renderer and header parser.
+    public var rawMessage: String {
+        switch content {
+        case .bytes(let data): IMAPMessageBodyParser().rawMessageString(from: data)
+        case .legacyText(let text): text
+        }
+    }
+
+    /// Original RFC message bytes; legacy text caches cannot prove byte fidelity.
+    public var rawMessageData: Data? {
+        guard case .bytes(let data) = content else { return nil }
+        return data
+    }
+
+    /// Creates source reconstructed as text, suitable for rendering.
     public init(uid: Int, rawMessage: String) {
         self.uid = uid
-        self.rawMessage = rawMessage
+        content = .legacyText(rawMessage)
+    }
+
+    /// Retains the original literal bytes without converting MIME encodings.
+    public init(uid: Int, rawMessageData: Data) {
+        self.uid = uid
+        content = .bytes(rawMessageData)
+    }
+
+    private enum CodingKeys: String, CodingKey { case uid, rawMessage, rawMessageData }
+
+    /// Reads original-byte caches and legacy text-only source files.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        uid = try values.decode(Int.self, forKey: .uid)
+        if let data = try values.decodeIfPresent(Data.self, forKey: .rawMessageData) {
+            content = .bytes(data)
+        } else {
+            content = try .legacyText(values.decode(String.self, forKey: .rawMessage))
+        }
+    }
+
+    /// Stores one representation, preserving original bytes when known.
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(uid, forKey: .uid)
+        switch content {
+        case .bytes(let data): try values.encode(data, forKey: .rawMessageData)
+        case .legacyText(let text): try values.encode(text, forKey: .rawMessage)
+        }
     }
 
     public static func parse(
@@ -1868,11 +1918,10 @@ public actor IMAPSessionClient {
                     commandName: "UID FETCH"
                 )
                 try await readFetchLiteralCompletion(tag: tag)
-                let rawMessage = IMAPMessageBodyParser().rawMessageString(from: literal)
-                guard !rawMessage.isEmpty else {
+                guard !literal.isEmpty else {
                     throw IMAPClientError.malformedResponse(line)
                 }
-                return IMAPMessageSource(uid: uid, rawMessage: rawMessage)
+                return IMAPMessageSource(uid: uid, rawMessageData: literal)
             }
 
             fetchResponses.append(line)

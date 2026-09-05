@@ -84,6 +84,11 @@ protocol SyncStoreProtocol: Sendable {
 
     func body(accountID: String, messageID: MessageHeader.ID) async -> Data?
 
+    /// Reads only rows explicitly written as original MIME bytes.
+    func originalBody(accountID: String, messageID: MessageHeader.ID) async -> Data?
+    /// Stores original MIME data and its provenance atomically.
+    func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) async throws
+
     func storeBody(
         _ data: Data,
         accountID: String,
@@ -117,6 +122,13 @@ protocol SyncStoreProtocol: Sendable {
     ) async -> [MessageHeader]
 }
 
+extension SyncStoreProtocol {
+    func originalBody(accountID: String, messageID: MessageHeader.ID) async -> Data? { nil }
+    func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) async throws {
+        try await storeBody(data, accountID: accountID, messageID: messageID)
+    }
+}
+
 // MARK: - In-memory implementation (for tests)
 
 /// Thread-safe in-memory implementation of `SyncStoreProtocol`.
@@ -124,12 +136,17 @@ protocol SyncStoreProtocol: Sendable {
 /// Used in unit tests so that `BrevSyncEngine` can be exercised without a
 /// real SQLite database file.
 actor InMemorySyncStore: SyncStoreProtocol {
-    let currentSchemaVersion = 3
+    let currentSchemaVersion = 4
 
     private var syncStates: [String: FolderSyncState] = [:]
     // ["\(accountID)|\(folderID)": [messageID: MessageHeader]]
     private var headersByFolder: [String: [String: MessageHeader]] = [:]
-    private var bodies: [String: Data] = [:]
+    private struct StoredBody {
+        let data: Data
+        let isOriginal: Bool
+    }
+
+    private var bodies: [String: StoredBody] = [:]
     // element format: "\(accountID)|\(messageID)"
     private var dirty: Set<String> = []
 
@@ -243,11 +260,20 @@ actor InMemorySyncStore: SyncStoreProtocol {
     }
 
     func body(accountID: String, messageID: MessageHeader.ID) -> Data? {
-        bodies["\(accountID)|\(messageID)"]
+        bodies["\(accountID)|\(messageID)"]?.data
+    }
+
+    func originalBody(accountID: String, messageID: MessageHeader.ID) -> Data? {
+        guard let body = bodies["\(accountID)|\(messageID)"], body.isOriginal else { return nil }
+        return body.data
+    }
+
+    func storeOriginalBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
+        bodies["\(accountID)|\(messageID)"] = StoredBody(data: data, isOriginal: true)
     }
 
     func storeBody(_ data: Data, accountID: String, messageID: MessageHeader.ID) throws {
-        bodies["\(accountID)|\(messageID)"] = data
+        bodies["\(accountID)|\(messageID)"] = StoredBody(data: data, isOriginal: false)
     }
 
     func deleteBodies(messageIDs: [MessageHeader.ID], accountID: String) throws {
@@ -306,7 +332,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         for (key, data) in bodies {
             guard key.hasPrefix(prefix) else { continue }
             let messageID = String(key.dropFirst(prefix.count))
-            bodyTextByID[messageID] = Self.searchableBodyText(from: data, messageID: messageID)
+            bodyTextByID[messageID] = Self.searchableBodyText(from: data.data, messageID: messageID)
         }
         var seen = Set<MessageHeader.ID>()
         let candidates = headersByFolder

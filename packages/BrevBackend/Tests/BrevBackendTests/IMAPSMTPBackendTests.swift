@@ -2110,6 +2110,39 @@ struct IMAPSMTPBackendTests {
         #expect(secondPage.headers == Array(legacyHeaders[50 ..< 100]))
     }
 
+    @Test("original-byte export refreshes legacy text and then works from cache offline")
+    func rawExportRefreshesLegacyText() async throws {
+        let raw = Data("Content-Type: text/plain; charset=iso-8859-1\r\n\r\n".utf8) + Data([0xE5, 0xF8, 0xE6])
+        let cache = InMemoryIMAPMessageSourceCache()
+        await cache.setSource(IMAPMessageSource(uid: 43, rawMessage: "Reconstructed legacy text"),
+                              accountID: Self.account.id, messageID: "INBOX:43")
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [
+                                          IMAPFolderListing(
+                                              path: "INBOX",
+                                              displayName: "Inbox",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .inbox
+                                          )
+                                      ] }, fetchMessageSource: { _, _, folderID, uid in
+                                          #expect(folderID == "INBOX")
+                                          #expect(uid == 43)
+                                          return IMAPMessageSource(uid: uid, rawMessageData: raw)
+                                      }, sourceCache: cache)
+        try await backend.connect()
+        let mailBackend: any MailBackend = backend
+        #expect(mailBackend.extendedCapabilities.contains(.rawMessageBytes))
+        #expect(try await mailBackend.rawMessageData(for: "INBOX:43", sourceID: Self.sourceID) == raw)
+        #expect(await cache.source(accountID: Self.account.id, messageID: "INBOX:43")?.rawMessageData == raw)
+        await backend.disconnect()
+        #expect(try await mailBackend.rawMessageData(for: "INBOX:43", sourceID: Self.sourceID) == raw)
+        await #expect(throws: MailBackendError.self) {
+            _ = try await mailBackend.rawMessageData(for: "INBOX:43",
+                                                     sourceID: MailSourceID(accountID: "other", mailboxID: "other"))
+        }
+    }
+
     @Test("Undo moves destination UIDs back and returns newly assigned source IDs")
     func undoMoveUsesDestinationIdentity() async throws {
         let probe = MoveIdentityProbe()
