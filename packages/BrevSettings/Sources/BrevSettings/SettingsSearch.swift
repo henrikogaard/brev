@@ -110,6 +110,11 @@ extension SettingsSection {
                 String(localized: "Blocked senders", bundle: .module),
                 String(localized: "Follow-up reminders", bundle: .module),
             ]
+        case .smartViews: return [
+                String(localized: "Show Smart Views in sidebar", bundle: .module),
+                String(localized: "Display order", bundle: .module),
+                String(localized: "New Smart View", bundle: .module),
+            ]
         case .rules: return [
                 String(localized: "Rules", bundle: .module),
                 String(localized: "Server rules", bundle: .module),

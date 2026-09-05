@@ -125,3 +125,23 @@ Native acceptance after unlock:
 The earlier single-menu trial passed native navigation checks, but those are
 not evidence for the final stacked layout. The Mac locked before this final
 native sequence; rendered and behavior tests are tracked separately.
+
+
+### Thread selection and Smart Views follow-up
+
+- Reproduction captured in the native test app: select Private Inbox, enable
+  Flagged, expand Kitchen drawings, select Kari's unflagged reply. The old
+  reader became empty. The regression test now retains the reply and thread
+  context across header reconciliation.
+- Verify the same flow after installing this revision, including direct
+  selection of each inline child and refresh while it remains selected.
+- Open Smart Views from the sidebar control and Settings > Smart Views. Create
+  a named view with any matching, a sender rule and subject rule; add a negative
+  comparison, a date, a mailbox and a source-owned folder. Verify Save validation
+  rejects blank criteria and that Cancel leaves the stored view unchanged.
+- Verify an archived cached message matches a folder rule; exclude/include Sent
+  and Trash; switch profiles and confirm only their mailbox sources are searched.
+- Hide a built-in view and a custom view, reorder both, close/reopen Settings,
+  and restore visibility. Hide the whole section and restore it from Settings.
+- Final native follow-up was interrupted by the Mac locking after installation;
+  package tests and light/dark hosted-view snapshots remain the automated evidence.

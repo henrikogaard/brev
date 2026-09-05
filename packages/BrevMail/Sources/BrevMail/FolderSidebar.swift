@@ -76,6 +76,7 @@ public struct FolderSidebar: View {
     /// Mirrors the persisted saved-search store purely to trigger a re-render
     /// when the editor saves; actual data is read via `SmartMailboxSettings.load()`.
     @AppStorage(SmartMailboxSettings.storageKey) private var smartMailboxData = Data()
+    @State private var showsSmartViewSettings = false
     @State private var savedSearchEditorTarget: SavedSearchEditorTarget?
     @Bindable private var navigation: MailNavigationState
     private let folders: [Folder]
@@ -225,12 +226,37 @@ public struct FolderSidebar: View {
                     in: expandedSourceIDs
                 )
             }
+            .onChange(of: smartMailboxData) {
+                let settings = smartViewSettings
+                let selectedHidden = !settings.showInSidebar && hasSelectedSmartView
+                    || MailboxSmartView.builtIns.contains { $0.isSelected(in: navigation) && !settings.isBuiltInEnabled($0.id) }
+                    || navigation.isAllAttachmentsSelected && !settings.isBuiltInEnabled(Self.allAttachmentsSmartViewVisibilityID)
+                    || SavedSearchSidebarPresentation.shouldLeaveSelection(
+                        selectedID: navigation.selectedSavedSearchID, mailboxes: settings.mailboxes
+                    )
+                leaveHiddenSmartViewIfNeeded(isSelected: selectedHidden)
+            }
+            .sheet(isPresented: $showsSmartViewSettings) {
+                VStack(spacing: 0) {
+                    SmartViewsSection(mailboxes: smartViewMailboxes)
+                    HStack {
+                        Spacer()
+                        Button(String(localized: "Done", bundle: .module)) { showsSmartViewSettings = false }
+                            .keyboardShortcut(.defaultAction)
+                    }
+                    .padding(BrevSpacing.lg)
+                }
+                .background(theme.bgPrimary.color)
+                #if os(macOS)
+                    .frame(width: 680, height: 570)
+                #endif
+            }
             .sheet(item: $savedSearchEditorTarget) { target in
                 switch target {
                 case .create:
-                    SavedSearchEditorView(onFinished: finishSavedSearchEditor)
+                    SavedSearchEditorView(mailboxes: smartViewMailboxes, onFinished: finishSavedSearchEditor)
                 case .edit(let mailbox):
-                    SavedSearchEditorView(editing: mailbox, onFinished: finishSavedSearchEditor)
+                    SavedSearchEditorView(editing: mailbox, mailboxes: smartViewMailboxes, onFinished: finishSavedSearchEditor)
                 }
             }
     }
@@ -288,7 +314,7 @@ public struct FolderSidebar: View {
             if sourceSections.count > 1 {
                 unifiedInboxShortcut
             }
-            if showsSmartViews {
+            if showsSmartViews, smartViewSettings.showInSidebar {
                 smartViewsSection
             }
             outboxButton
@@ -543,18 +569,28 @@ public struct FolderSidebar: View {
             .accessibilityLabel(String(localized: "New Smart View", bundle: .module))
             .help(String(localized: "New Smart View", bundle: .module))
 
-            smartViewManagementMenu(settings: settings)
+            smartViewManagementButton
         }
         .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
         .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
 
         if isExpanded {
-            smartViewButtons(settings: settings)
-            if settings.isBuiltInEnabled(Self.allAttachmentsSmartViewVisibilityID) {
-                allAttachmentsButton
+            ForEach(settings.orderedEntries.filter(\.isEnabled)) { entry in
+                if let builtInID = entry.builtInID {
+                    if builtInID == Self.allAttachmentsSmartViewVisibilityID {
+                        allAttachmentsButton
+                    } else if let smartView = MailboxSmartView.builtIns.first(where: { $0.id == builtInID }) {
+                        smartViewButton(smartView)
+                    }
+                } else if let mailbox = entry.mailbox {
+                    customSmartViewButtons(settings: SmartMailboxSettings(mailboxes: [mailbox]))
+                }
             }
-            customSmartViewButtons(settings: settings)
         }
+    }
+
+    private var smartViewMailboxes: [SettingsMailbox] {
+        sourceSections.map { SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders) }
     }
 
     private static let allAttachmentsSmartViewVisibilityID = "all-attachments"
@@ -571,40 +607,38 @@ public struct FolderSidebar: View {
     }
 
     @ViewBuilder
-    private func smartViewButtons(settings: SmartMailboxSettings) -> some View {
-        ForEach(MailboxSmartView.builtIns.filter { settings.isBuiltInEnabled($0.id) }) { smartView in
-            Button {
-                activateDestination { smartView.select(in: navigation) }
-            } label: {
-                #if os(iOS)
-                BrevListRow(
-                    title: smartView.title,
-                    isSelected: smartView.isSelected(in: navigation),
-                    leading: {
-                        Image(systemName: smartView.symbolName)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                    }
-                )
-                #else
-                sidebarActionRow(
-                    title: smartView.title,
-                    isSelected: smartView.isSelected(in: navigation),
-                    leading: {
-                        Image(systemName: smartView.symbolName)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .imageScale(.small)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                    },
-                    trailing: {
-                        EmptyView()
-                    }
-                )
-                #endif
-            }
-            .buttonStyle(.plain)
-            .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+    private func smartViewButton(_ smartView: MailboxSmartView) -> some View {
+        Button {
+            activateDestination { smartView.select(in: navigation) }
+        } label: {
+            #if os(iOS)
+            BrevListRow(
+                title: smartView.title,
+                isSelected: smartView.isSelected(in: navigation),
+                leading: {
+                    Image(systemName: smartView.symbolName)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                }
+            )
+            #else
+            sidebarActionRow(
+                title: smartView.title,
+                isSelected: smartView.isSelected(in: navigation),
+                leading: {
+                    Image(systemName: smartView.symbolName)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .imageScale(.small)
+                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                },
+                trailing: {
+                    EmptyView()
+                }
+            )
+            #endif
         }
+        .buttonStyle(.plain)
+        .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
     }
 
     @ViewBuilder
@@ -696,89 +730,16 @@ public struct FolderSidebar: View {
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
     }
 
-    private func smartViewManagementMenu(settings: SmartMailboxSettings) -> some View {
-        Menu {
-            Section(String(localized: "Built-in Smart Views", bundle: .module)) {
-                ForEach(MailboxSmartView.builtIns) { smartView in
-                    smartViewVisibilityButton(
-                        title: smartView.title,
-                        isEnabled: settings.isBuiltInEnabled(smartView.id)
-                    ) {
-                        toggleBuiltInSmartView(smartView)
-                    }
-                }
-                smartViewVisibilityButton(
-                    title: String(localized: "All Attachments", bundle: .module),
-                    isEnabled: settings.isBuiltInEnabled(Self.allAttachmentsSmartViewVisibilityID)
-                ) {
-                    toggleAllAttachmentsSmartView()
-                }
-            }
-
-            if !settings.mailboxes.isEmpty {
-                Section(String(localized: "Custom Smart Views", bundle: .module)) {
-                    ForEach(settings.mailboxes) { mailbox in
-                        smartViewVisibilityButton(
-                            title: mailbox.name,
-                            isEnabled: mailbox.isEnabled
-                        ) {
-                            toggleCustomSmartView(id: mailbox.id)
-                        }
-                    }
-                }
-            }
-
-            Divider()
-
-            Button {
-                savedSearchEditorTarget = .create
-            } label: {
-                Label(String(localized: "New Smart View", bundle: .module), systemImage: "plus")
-            }
-        } label: {
+    private var smartViewManagementButton: some View {
+        Button { showsSmartViewSettings = true } label: {
             Image(systemName: "slider.horizontal.3")
                 .foregroundStyle(theme.textSecondary.color)
                 .imageScale(.small)
                 .folderSidebarSquareTouchTarget(size: sidebarMetrics.disclosureHitSize)
         }
-        .menuStyle(.borderlessButton)
-        .menuIndicator(.hidden)
+        .buttonStyle(.plain)
         .accessibilityLabel(String(localized: "Manage Smart Views", bundle: .module))
         .help(String(localized: "Manage Smart Views", bundle: .module))
-    }
-
-    private func smartViewVisibilityButton(
-        title: String,
-        isEnabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            if isEnabled {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(verbatim: title)
-            }
-        }
-    }
-
-    private func toggleBuiltInSmartView(_ smartView: MailboxSmartView) {
-        var settings = smartViewSettings
-        let willEnable = !settings.isBuiltInEnabled(smartView.id)
-        settings.setBuiltIn(smartView.id, isEnabled: willEnable)
-        settings.save()
-        if !willEnable {
-            leaveHiddenSmartViewIfNeeded(isSelected: smartView.isSelected(in: navigation))
-        }
-    }
-
-    private func toggleAllAttachmentsSmartView() {
-        var settings = smartViewSettings
-        let willEnable = !settings.isBuiltInEnabled(Self.allAttachmentsSmartViewVisibilityID)
-        settings.setBuiltIn(Self.allAttachmentsSmartViewVisibilityID, isEnabled: willEnable)
-        settings.save()
-        if !willEnable {
-            leaveHiddenSmartViewIfNeeded(isSelected: navigation.isAllAttachmentsSelected)
-        }
     }
 
     private func toggleCustomSmartView(id: SmartMailbox.ID) {

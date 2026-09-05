@@ -6,6 +6,16 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Selecting an unflagged reply inside a filtered conversation keeps the reader
+  open with that reply and the conversation context.
+- Smart Views share a compact condition editor in Mail and Settings, with
+  all/any matching, text comparisons, dates, status, mailbox, and folder rules.
+  Existing saved filters retain their scope when edited.
+- Smart Views settings can hide the entire sidebar section, show or hide each
+  built-in/custom view, and reorder them together without deleting definitions.
+- Saved message views search cached folders across the active profile, with
+  explicit Sent/Trash inclusion and duplicate handling for label providers.
+
 - Profiles now sit above independently collapsible mailbox groups. Multiple
   inbox/folder trees can stay open together, and expansion choices are saved
   locally across profile changes and relaunches.

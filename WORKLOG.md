@@ -489,3 +489,51 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   helper when the old account-header view was removed. Removed the annotation;
   restoration is an ordinary Void method. This has no layout or state-policy
   change and is verified by the existing disclosure tests and rebuilt targets.
+
+
+### Preference-sync test isolation
+
+- The next hosted run passed both builds and Mail tests but exposed a parallel
+  Settings test race: an observer accepted another store's global notification.
+- Added a deterministic unrelated notification to reproduce the wrong-key
+  assertion, then restricted that observer to its own store. The production
+  notification center and local/remote sync behavior remain unchanged.
+
+
+## 2026-09-05 — Codex — PR #27 thread selection and Smart Views
+
+- Goal: repair inline reply selection and replace the clipped Smart View form
+  with consistent condition editing, visibility controls, and display ordering.
+- Reproduced the reported native blank reader with Flagged active, expanded
+  Kitchen drawings, and Kari's unflagged child selected. The reader used the
+  filtered header set while inline rows used full thread context. Added a red
+  regression, then retained context for matching threads across reconciliation.
+- Moved the saved-view editor into BrevSettings so Settings and Mail use the
+  same compact sheet. Added all/any condition groups, compatible comparisons,
+  cached header date/status predicates, source-owned mailbox/folder choices,
+  Sent/Trash inclusion, and legacy predicate migration. Name and every condition
+  must be valid before Save; long groups scroll above the fixed action footer.
+- Added Settings > Smart Views and a matching sidebar management sheet. The
+  entire section or individual built-in/custom entries can be hidden. Shared
+  display order persists separately from visibility and retains hidden entries.
+- Saved message views now use existing source-scoped cache-only search across
+  profile folders. Cache results retain thread context, deduplicate label aliases
+  while keeping a matching folder membership, and use the existing load ownership
+  guard. Query changes participate in task cancellation; typing filters completed
+  cached results without re-reading folders. No new backend API or network call.
+- Regression checks: filtered child selection failed before the fix; any/all,
+  negative/status/date/source conditions and display-order tests failed before
+  their implementations; a label-alias test caught duplicate IDs before deduplication.
+- Verification: BrevMail 1,511 tests plus the separate six ContactsAccessPolicy
+  checks pass; BrevSettings 333 tests pass. Light/dark editor, management,
+  sidebar and Settings-navigation snapshots were inspected and updated. macOS
+  test install/launch, iOS Simulator build, lint/format, and repository self-tests
+  pass. Final short status labels are covered by the focused editor snapshot run.
+- Native limitation: the Mac locked after the initial reproduction and before
+  final click-through verification. The dated mock test app is installed; final
+  reply-selection, Smart View save/cancel, reorder/hide/restore and live-provider
+  acceptance remain manual checks in docs/qa/multi-account-workspace.md.
+- Documentation sweep: updated README, CHANGELOG Unreleased, DESIGN, ADR-0041
+  implementation status and QA notes. Privacy and agent workflow are unchanged.
+  Branch remains fix/multi-account-workspace with PR #27 targeting main; no
+  merge, release, version change, or issue closure is authorized.

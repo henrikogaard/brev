@@ -497,6 +497,8 @@ public struct SettingsView: View {
             TemplatesSection(settingsStore: settingsStore, accounts: accounts)
         case .vipAndReminders:
             VIPAndRemindersSection(settingsStore: settingsStore)
+        case .smartViews:
+            SmartViewsSection(mailboxes: mailboxContext.mailboxes, settingsStore: settingsStore)
         case .rules:
             RulesSection(
                 settingsStore: settingsStore,

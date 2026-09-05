@@ -135,3 +135,14 @@ and aggregates only the active profile. Smart Views remain collapsible.
 Use a native borderless menu with a visible disclosure indicator on macOS.
 Touch platforms retain at least a 44-point target. Reuse the existing navigation
 and profile callbacks; profile changes never disconnect accounts.
+
+
+Smart Views use one condition editor from both Mail and Settings. Each row
+contains a field, a compatible comparison, and the required input. Use
+"all / any" matching and explicit Sent/Trash scope. Keep Save and Cancel
+outside the scrolling conditions, and grow the compact sheet up to a bounded
+height. Label preview-text matching honestly; do not claim full-body search.
+
+Settings > Smart Views lists built-in and custom entries together. Visibility
+and order are separate controls; hiding a view retains its definition and
+position. The whole section can be hidden and restored from Settings.

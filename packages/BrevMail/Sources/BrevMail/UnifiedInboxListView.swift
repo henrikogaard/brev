@@ -63,7 +63,7 @@ struct UnifiedInboxListView: View {
     /// items are additionally filtered by `savedSearchQuery` (ADR-0041).
     private let savedSearchID: String?
     private let savedSearchTitle: String?
-    private let savedSearchQuery: SearchQuery?
+    private let savedSearchQuery: SmartMailbox.SavedQuery?
     private let isMutationWorkBlocked: Bool
     private let isWorkBlocked: Bool
     private let composeActions: MailComposePresentationActions
@@ -81,6 +81,7 @@ struct UnifiedInboxListView: View {
     @State private var pageCursors: [MailSourceID: UnifiedInboxPageCursor] = [:]
     @State private var isLoadingMore = false
     @State private var activeSearchRequest: UnifiedInboxSearchRequest?
+    @State private var loadedSavedQuery: SmartMailbox.SavedQuery?
     @State private var activeAttachmentSearchQueries: [SearchQuery] = []
     @State private var partialLoadErrorStatus: MessageListFooterStatus?
     @State private var mutationErrorStatus: MessageListFooterStatus?
@@ -124,7 +125,7 @@ struct UnifiedInboxListView: View {
         smartView: MailboxSmartView? = nil,
         savedSearchID: String? = nil,
         savedSearchTitle: String? = nil,
-        savedSearchQuery: SearchQuery? = nil,
+        savedSearchQuery: SmartMailbox.SavedQuery? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
         isWorkBlocked: Bool,
         isMutationWorkBlocked: Bool = false,
@@ -390,8 +391,16 @@ struct UnifiedInboxListView: View {
         await delete(item)
     }
 
-    private var loadKey: String {
-        "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(navigation.reloadRequestID)|\(isWorkBlocked)|\(isMutating)"
+    private struct LoadKey: Equatable {
+        let context: String
+        let savedQuery: SmartMailbox.SavedQuery?
+    }
+
+    private var loadKey: LoadKey {
+        LoadKey(
+            context: "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)|\(navigation.reloadRequestID)|\(isWorkBlocked)|\(isMutating)",
+            savedQuery: savedSearchQuery
+        )
     }
 
     private var reloadKey: String {
@@ -431,6 +440,7 @@ struct UnifiedInboxListView: View {
             workflowVisibilityMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
             mailboxFilter: navigation.mailboxFilter,
+            savedSearchText: navigation.searchText,
             savedSearchQuery: savedSearchQuery,
             mailboxSortOrder: mailboxSortOrder,
             temporalInvalidationKey: temporalInvalidationKey,
@@ -483,7 +493,9 @@ struct UnifiedInboxListView: View {
         )
         let filtered = categorized
             .filter { navigation.mailboxFilter.matches($0, now: now, calendar: calendar) }
-            .filter { savedSearchQuery?.matches($0.header) ?? true }
+            .filter { savedSearchQuery?.matches($0.header, sourceID: $0.sourceID,
+                                                folderRole: $0.folder.role, now: now, calendar: calendar) ?? true }
+            .filter { savedSearchQuery == nil || SearchQuery(text: navigation.searchText).matches($0.header) }
         let sorted = MessageListSortPolicy.sortedItems(
             filtered,
             by: mailboxSortOrder,
@@ -1306,6 +1318,10 @@ struct UnifiedInboxListView: View {
     }
 
     private func reload() async {
+        if let savedSearchQuery {
+            await reloadSavedSearch(savedSearchQuery)
+            return
+        }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
         let loadRequest = loadOwnership.begin()
         defer { if loadOwnership.current == loadRequest { isLoading = false } }
@@ -1417,6 +1433,51 @@ struct UnifiedInboxListView: View {
         isLoading = false
     }
 
+    private func reloadSavedSearch(_ query: SmartMailbox.SavedQuery) async {
+        guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
+        let request = loadOwnership.begin()
+        defer { if loadOwnership.current == request { isLoading = false } }
+        activeSearchRequest = nil
+        activeAttachmentSearchQueries = []
+        let contentKey = "saved:\(reloadKey)"
+        if loadedContentKey != contentKey { items = [] }
+        loadedContentKey = contentKey
+        loadedSavedQuery = nil
+        isLoading = true
+        isLoadingMore = false
+        errorMessage = nil
+        partialLoadErrorStatus = nil
+        loadMoreErrorStatus = nil
+        pageCursors = [:]
+        var loaded: [UnifiedInboxItem] = []
+        var firstError: String?
+        let byAccount = Dictionary(backends.map { ($0.account.id, $0) }, uniquingKeysWith: { first, _ in first })
+        await MailConcurrentWork.forEachResult(sourceSections) { section -> ([UnifiedInboxItem], String?) in
+            guard let backend = byAccount[section.account.id] else { return ([], nil) }
+            do {
+                return try await (SavedSearchMessageLoader.load(section: section, backend: backend, query: query), nil)
+            } catch {
+                return ([], error.localizedDescription)
+            }
+        } receive: { _, result in
+            guard loadOwnership.accepts(request) else { return }
+            loaded.append(contentsOf: result.0)
+            firstError = firstError ?? result.1
+        }
+        guard loadOwnership.accepts(request) else { return }
+        items = UnifiedInboxPagination.sortedItems(loaded)
+        loadedSavedQuery = firstError == nil ? query : nil
+        reconcileNavigationAfterItemsChanged()
+        if let firstError {
+            let error = MailBackendError.backendSpecific(message: firstError)
+            if items.isEmpty {
+                errorMessage = MessageListPresentation.loadErrorMessage(for: error)
+            } else {
+                partialLoadErrorStatus = MessageListPresentation.partialLoadErrorStatus(for: error)
+            }
+        }
+    }
+
     private func recordRecentRecipients(_ headers: [MessageHeader], account: BrevAccount) {
         let observations = RecentRecipientObservationBuilder.observations(
             from: headers,
@@ -1440,6 +1501,12 @@ struct UnifiedInboxListView: View {
     }
 
     private func search(query: String) async {
+        if let savedSearchQuery {
+            if loadedContentKey != "saved:\(reloadKey)" || loadedSavedQuery != savedSearchQuery {
+                await reloadSavedSearch(savedSearchQuery)
+            }
+            return
+        }
         guard !isWorkBlocked, !isMutating, !Task.isCancelled else { return }
         let contentKey = "search:\(reloadKey):\(query):\(navigation.searchExecution)"
         if loadedContentKey != contentKey { items = [] }

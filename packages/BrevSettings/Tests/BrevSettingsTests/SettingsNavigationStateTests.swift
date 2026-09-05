@@ -263,7 +263,7 @@ struct SettingsNavigationStateTests {
     @Test("Organization contains recurring mailbox workflow controls")
     func organizationGroupOrder() {
         let sections = SettingsSection.allCases.filter { $0.group == .organization }
-        #expect(sections == [.vipAndReminders, .rules, .autoReply, .calendarContacts])
+        #expect(sections == [.vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts])
     }
 
     @Test("Sync & Storage group contains folder sync, mail storage, and import/export")
@@ -301,7 +301,7 @@ struct SettingsNavigationStateTests {
         #expect(reading == [.notifications, .mailboxView, .compose, .signature, .templates, .aiWriter])
 
         let organization = grouped.first { $0.group == .organization }?.sections
-        #expect(organization == [.vipAndReminders, .rules, .autoReply, .calendarContacts])
+        #expect(organization == [.vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts])
 
         let sync = grouped.first { $0.group == .syncStorage }?.sections
         #expect(sync == [.folderSync, .mailStorage, .importExport])

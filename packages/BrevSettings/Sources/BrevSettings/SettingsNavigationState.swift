@@ -42,6 +42,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     case aiWriter
     /// VIP senders and follow-up reminders.
     case vipAndReminders
+    /// Saved search conditions, sidebar visibility, and display order.
+    case smartViews
     /// Server-side and local mail rules.
     case rules
     /// Vacation auto-reply.
@@ -78,6 +80,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .compose: return String(localized: "Compose", bundle: .module)
         case .templates: return String(localized: "Templates", bundle: .module)
         case .vipAndReminders: return String(localized: "VIP & Reminders", bundle: .module)
+        case .smartViews: return String(localized: "Smart Views", bundle: .module)
         case .rules: return String(localized: "Rules", bundle: .module)
         case .autoReply: return String(localized: "Auto-Reply", bundle: .module)
         case .folderSync: return String(localized: "Folder Sync", bundle: .module)
@@ -103,6 +106,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .compose: return "square.and.pencil"
         case .templates: return "doc.text"
         case .vipAndReminders: return "star"
+        case .smartViews: return "line.3.horizontal.decrease.circle"
         case .rules: return "line.3.horizontal.decrease.circle"
         case .autoReply: return "airplane.departure"
         case .folderSync: return "folder.badge.gearshape"
@@ -126,7 +130,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .security:
             return .shipped
         case .accounts, .appearance, .mailboxView, .signature, .compose,
-             .templates, .vipAndReminders, .rules, .autoReply,
+             .templates, .vipAndReminders, .smartViews, .rules, .autoReply,
              .folderSync, .mailStorage, .calendarContacts, .importExport, .privacy,
              .notifications, .aiWriter, .about:
             return .shipped
@@ -144,7 +148,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .accounts, .appearance: return .app
         case .notifications, .mailboxView, .compose, .signature, .templates, .aiWriter:
             return .readingComposing
-        case .vipAndReminders, .rules, .autoReply, .calendarContacts:
+        case .vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts:
             return .organization
         case .folderSync, .mailStorage, .importExport: return .syncStorage
         case .privacy, .security: return .privacySecurity
@@ -165,6 +169,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .templates: return ["snippets", "canned replies"]
         case .aiWriter: return ["writing", "assistant", "provider"]
         case .vipAndReminders: return ["important senders", "follow up", "reminders"]
+        case .smartViews: return ["saved search", "conditions", "filter", "display order", "hide", "sidebar"]
         case .rules: return ["filters", "automation", "sieve"]
         case .autoReply: return ["vacation", "out of office"]
         case .calendarContacts: return ["invites", "address book", "autocomplete"]

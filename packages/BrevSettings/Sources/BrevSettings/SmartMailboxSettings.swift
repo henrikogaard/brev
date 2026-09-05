@@ -64,6 +64,11 @@ public struct SmartMailbox: Codable, Equatable, Sendable, Identifiable {
         public var isUnread: Bool?
         public var isStarred: Bool?
         public var folderID: String?
+        /// Nil identifies a legacy query; a condition group replaces the legacy predicates.
+        public var conditions: [SmartViewCondition]?
+        public var matchMode: SmartViewMatchMode?
+        public var includeTrash: Bool?
+        public var includeSent: Bool?
 
         public init(
             text: String,
@@ -72,7 +77,11 @@ public struct SmartMailbox: Codable, Equatable, Sendable, Identifiable {
             hasAttachment: Bool? = nil,
             isUnread: Bool? = nil,
             isStarred: Bool? = nil,
-            folderID: String? = nil
+            folderID: String? = nil,
+            conditions: [SmartViewCondition]? = nil,
+            matchMode: SmartViewMatchMode? = nil,
+            includeTrash: Bool? = nil,
+            includeSent: Bool? = nil
         ) {
             self.text = text
             self.from = from
@@ -81,6 +90,10 @@ public struct SmartMailbox: Codable, Equatable, Sendable, Identifiable {
             self.isUnread = isUnread
             self.isStarred = isStarred
             self.folderID = folderID
+            self.conditions = conditions
+            self.matchMode = matchMode
+            self.includeTrash = includeTrash
+            self.includeSent = includeSent
         }
     }
 }
@@ -98,18 +111,27 @@ public struct SmartMailboxSettings: Codable, Equatable, Sendable {
     /// Built-in Smart View identifiers the user has hidden. Persisting only
     /// disabled IDs keeps newly added built-ins enabled by default.
     public var disabledBuiltInIDs: Set<String>
+    /// Hides the entire sidebar section while retaining all saved definitions.
+    public var showInSidebar: Bool
+    /// Stable entry identifiers, including hidden views, in the user's chosen order.
+    public var displayOrder: [String]
 
     public static let defaults = SmartMailboxSettings(mailboxes: [])
 
     /// Creates persisted Smart View settings with built-ins enabled unless explicitly hidden.
-    public init(mailboxes: [SmartMailbox], disabledBuiltInIDs: Set<String> = []) {
+    public init(mailboxes: [SmartMailbox], disabledBuiltInIDs: Set<String> = [],
+                showInSidebar: Bool = true, displayOrder: [String] = []) {
         self.mailboxes = mailboxes
         self.disabledBuiltInIDs = disabledBuiltInIDs
+        self.showInSidebar = showInSidebar
+        self.displayOrder = displayOrder
     }
 
     private enum CodingKeys: String, CodingKey {
         case mailboxes
         case disabledBuiltInIDs
+        case showInSidebar
+        case displayOrder
     }
 
     /// Decodes current and legacy settings, defaulting absent built-in visibility to enabled.
@@ -120,6 +142,8 @@ public struct SmartMailboxSettings: Codable, Equatable, Sendable {
             Set<String>.self,
             forKey: .disabledBuiltInIDs
         ) ?? []
+        showInSidebar = try container.decodeIfPresent(Bool.self, forKey: .showInSidebar) ?? true
+        displayOrder = try container.decodeIfPresent([String].self, forKey: .displayOrder) ?? []
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> SmartMailboxSettings {
@@ -169,8 +193,8 @@ struct SmartMailboxExecution: Equatable, Sendable {
 }
 
 public extension SmartMailbox.SavedQuery {
-    /// The persisted saved query as a backend `SearchQuery`, so a selected saved
-    /// search can be executed against cached/loaded headers (ADR-0041).
+    /// Legacy predicates as a backend query. Condition groups use `matches`
+    /// because their operators and any/all semantics are evaluated locally.
     var searchQuery: SearchQuery {
         SearchQuery(
             text: text,
@@ -197,7 +221,7 @@ extension SmartMailboxSettings {
             guard mailbox.isEnabled else { return nil }
             guard mailbox.kind == .messageSearch else { return nil }
             let matchedIDs = orderedHeaders
-                .filter { mailbox.query.searchQuery.matches($0) }
+                .filter { mailbox.query.matches($0) }
                 .map(\.id)
             return SmartMailboxExecution(mailboxID: mailbox.id, messageIDs: matchedIDs)
         }

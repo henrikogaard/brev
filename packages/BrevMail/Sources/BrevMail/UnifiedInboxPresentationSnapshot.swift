@@ -29,7 +29,8 @@ final class UnifiedInboxPresentationSnapshotCache {
         let workflowVisibilityMode: LocalMessageWorkflowVisibilityMode
         let workflowState: LocalMessageWorkflowState
         let mailboxFilter: MailboxFilterQuery
-        let savedSearchQuery: SearchQuery?
+        var savedSearchText = ""
+        let savedSearchQuery: SmartMailbox.SavedQuery?
         let mailboxSortOrder: MailboxSortOrder
         let temporalInvalidationKey: MailboxListTemporalInvalidationKey
         let calendarDay: Date

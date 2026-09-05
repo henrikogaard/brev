@@ -1237,7 +1237,7 @@ public struct BrevMailRootView: View {
                 sourceSections: visibleSourceSections,
                 savedSearchID: mailbox.id,
                 savedSearchTitle: mailbox.name,
-                savedSearchQuery: mailbox.query.searchQuery,
+                savedSearchQuery: mailbox.query,
                 localMessageWorkflowState: localMessageWorkflowStateBinding,
                 isWorkBlocked: isMessageWorkBlocked,
                 isMutationWorkBlocked: isCommandMutationBlocked,
