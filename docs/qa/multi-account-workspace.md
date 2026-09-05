@@ -145,3 +145,7 @@ native sequence; rendered and behavior tests are tracked separately.
   and restore visibility. Hide the whole section and restore it from Settings.
 - Final native follow-up was interrupted by the Mac locking after installation;
   package tests and light/dark hosted-view snapshots remain the automated evidence.
+
+- Backend follow-up: automated tests now cover 120 cached IMAP headers beyond
+  the normal 50-result search cap, Gmail secondary labels, duplicate rows,
+  combined/negative folder membership, and Sent/Trash labels outside primary folders.

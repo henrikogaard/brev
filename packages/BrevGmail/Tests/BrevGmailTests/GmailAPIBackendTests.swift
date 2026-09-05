@@ -17,6 +17,33 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("saved views enumerate secondary label membership without fetching messages")
+    func savedViewUsesCachedLabelMembership() async throws {
+        let transport = StubGmailTransport()
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress),
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system"),
+                     GmailLabel(id: "projects", name: "Projects", type: "user")],
+            messages: [Self.message(id: "both", threadID: "thread", labels: ["INBOX", "projects"])]
+        ))
+        await transport.failListings()
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let results = try await backend.cachedMessageHeaders(
+            in: Folder(id: "projects", name: "Projects", role: .custom), sourceID: source
+        )
+        #expect(results.map(\.id) == ["both"])
+        #expect(results.first?.folderID == "projects")
+        #expect(await transport.fullMessageRequestCount() == 0)
+        await #expect(throws: MailBackendError.self) {
+            try await backend.cachedMessageHeaders(in: Folder(id: "projects", name: "Projects", role: .custom),
+                                                   sourceID: MailSourceID(accountID: Self.account.id, mailboxID: "other"))
+        }
+    }
+
     @Test("cached folder pagination returns every row once across multiple pages")
     func cachedPaginationDoesNotApplyOffsetTwice() async throws {
         let transport = StubGmailTransport(labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")])

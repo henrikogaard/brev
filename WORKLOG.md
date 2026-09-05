@@ -537,3 +537,24 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   implementation status and QA notes. Privacy and agent workflow are unchanged.
   Branch remains fix/multi-account-workspace with PR #27 targeting main; no
   merge, release, version change, or issue closure is authorized.
+
+
+## 2026-09-05 — Codex — PR #27 complete cached Smart View candidates
+
+- Final backend inspection found two correctness gaps in ordinary cache search:
+  IMAP truncates results at 50, and Gmail filters only the primary folder.
+  Added failing regressions for 120 cached IMAP headers and a secondary Gmail
+  label before replacing the saved-view candidate path.
+- Added the source-scoped, read-only `cachedMessageHeaders` protocol seam.
+  IMAP merges cached/indexed headers without the search cap; Gmail reads the
+  requested label from its indexed local store; mock data follows the same scope.
+  The fallback reports unsupported enumeration and never connects or fetches.
+- Saved rows retain all cached folder memberships. All/any and negative folder
+  conditions evaluate that set, while Sent/Trash exclusions also use reserved
+  system labels. Tests first exposed multi-label negation and scope leaks.
+- Verification: Backend 1,011, Gmail 100, Settings 335, and Mail 1,511 tests pass;
+  the separate six Contacts tests passed earlier in this unchanged test area.
+  Lint and format pass. Both app builds and final hosted checks are repeated for
+  this follow-up. Native interaction remains blocked by the locked Mac.
+- Updated ADR-0041 and the Unreleased notes to describe the final cache seam.
+  No provider request, body fetch, external network behavior, release, or merge.

@@ -72,6 +72,32 @@ struct SmartViewConditionTests {
         #expect(query.matches(header, folderRole: .inbox))
     }
 
+    @Test("scope exclusions also apply to system labels outside their primary folder")
+    func excludedLabels() {
+        let query = SmartMailbox.SavedQuery(text: "", conditions: [.init(field: .isRead, comparison: .isTrue)],
+                                            includeTrash: false, includeSent: false)
+        var sent = header
+        sent.labels = ["\\Sent"]
+        var trashed = header
+        trashed.labels = ["\\Trash"]
+        #expect(!query.matches(sent, folderRole: .allMail))
+        #expect(!query.matches(trashed, folderRole: .custom))
+    }
+
+    @Test("folder conditions evaluate complete label membership")
+    func multipleFolderMemberships() {
+        let query = SmartMailbox.SavedQuery(text: "", conditions: [
+            .init(field: .folder, comparison: .equals, value: "inbox", sourceID: work),
+            .init(field: .folder, comparison: .equals, value: "projects", sourceID: work)
+        ], matchMode: .all)
+        #expect(query.matches(header, sourceID: work, folderIDs: ["inbox", "projects"]))
+        let negative = SmartMailbox.SavedQuery(text: "", conditions: [
+            .init(field: .folder, comparison: .notEquals, value: "projects", sourceID: work)
+        ])
+        #expect(!negative.matches(header, sourceID: work, folderIDs: ["inbox", "projects"]))
+        #expect(negative.matches(header, sourceID: work, folderIDs: ["inbox"]))
+    }
+
     @Test("legacy filters and condition groups survive encoding")
     func persistence() throws {
         let legacy = SmartMailbox.SavedQuery(text: "plans", isUnread: false, isStarred: false, folderID: "inbox")

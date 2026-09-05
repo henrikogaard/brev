@@ -22,9 +22,7 @@ enum SavedSearchMessageLoader {
             try Task.checkCancellation()
             if query.includeTrash == false, folder.role == .trash { continue }
             if query.includeSent == false, folder.role == .sent { continue }
-            let headers = try await backend.search(
-                SearchQuery(folderID: folder.id, execution: .cacheOnly), sourceID: section.id
-            )
+            let headers = try await backend.cachedMessageHeaders(in: folder, sourceID: section.id)
             items.append(contentsOf: headers.map {
                 UnifiedInboxItem(sourceID: section.id, folder: folder, header: $0,
                                  sourceTitle: section.title, sourceSubtitle: section.subtitle,
@@ -35,7 +33,9 @@ enum SavedSearchMessageLoader {
         // one row, preferring the membership that satisfies a folder condition.
         var indexes: [MessageHeader.ID: Int] = [:]
         var unique: [UnifiedInboxItem] = []
+        var memberships: [MessageHeader.ID: Set<Folder.ID>] = [:]
         for item in items {
+            memberships[item.header.id, default: []].insert(item.folder.id)
             if let index = indexes[item.header.id] {
                 let previous = unique[index]
                 if query.matches(item.header, sourceID: item.sourceID, folderRole: item.folder.role),
@@ -46,6 +46,9 @@ enum SavedSearchMessageLoader {
                 indexes[item.header.id] = unique.count
                 unique.append(item)
             }
+        }
+        for index in unique.indices {
+            unique[index].folderMembershipIDs = memberships[unique[index].header.id]
         }
         return unique
     }

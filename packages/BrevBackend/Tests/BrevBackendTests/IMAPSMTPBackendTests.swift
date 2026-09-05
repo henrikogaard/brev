@@ -2110,6 +2110,30 @@ struct IMAPSMTPBackendTests {
         #expect(secondPage.headers == Array(legacyHeaders[50 ..< 100]))
     }
 
+    @Test("saved view candidates include cached headers beyond ordinary search limits while disconnected")
+    func savedViewCacheEnumerationIsComplete() async throws {
+        let index = LocalSearchIndexRecorder()
+        let headers = (0 ..< 120).map {
+            Self.retentionHeader(id: "INBOX:\($0)", date: Date(timeIntervalSince1970: Double($0)))
+        }
+        await index.setSearchResults(headers)
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration,
+                                      credential: Self.credential, listFolders: { _, _ in
+                                          Issue.record("Cache enumeration must not connect")
+                                          return []
+                                      }, localSearchIndex: index)
+        let results = try await backend.cachedMessageHeaders(
+            in: Folder(id: "INBOX", name: "Inbox", role: .inbox), sourceID: Self.sourceID
+        )
+        #expect(results.count == 120)
+        #expect(Set(results.map(\.id)) == Set(headers.map(\.id)))
+        #expect(await index.searchRequests.last?.limit == Int.max)
+        await #expect(throws: MailBackendError.self) {
+            try await backend.cachedMessageHeaders(in: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+                                                   sourceID: MailSourceID(accountID: "other", mailboxID: "other"))
+        }
+    }
+
     @Test("cache-only search reads local search index results")
     func cacheOnlySearchReadsLocalSearchIndexResults() async throws {
         let localIndex = LocalSearchIndexRecorder()

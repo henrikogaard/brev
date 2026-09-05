@@ -136,12 +136,19 @@ Saved message views now store an optional condition group with all/any
 matching. Legacy predicates still decode and migrate into editable conditions,
 including false booleans and folder scope. Supported conditions use existing
 header metadata and source IDs; mailbox/folder choices never use display names
-as identity. No provider protocol or network behavior is added.
+as identity. The read-only `MailBackend.cachedMessageHeaders(in:sourceID:)`
+seam returns complete cached header candidates without connecting, fetching,
+or applying ordinary search result limits. Backends without an implementation
+report unsupported enumeration. No external network behavior is added.
 
-Saved message views enumerate the existing source-scoped cache-only search for
-each cached folder in the active profile. Sent and Trash inclusion is explicit
+Saved message views enumerate source-scoped cached headers for each cached
+folder in the active profile. IMAP includes the local index and header cache
+without its ordinary 50-result search cap. Gmail reads actual label memberships
+from the local store instead of testing only a primary folder. Sent and Trash inclusion is explicit
 for new views. Duplicate message IDs from label memberships produce one row,
-preferentially retaining a membership that satisfies the saved condition.
+preferentially retaining a membership that satisfies the saved condition. The
+row retains all cached membership IDs so all/any and negative folder rules
+remain accurate. Sent/Trash exclusions also inspect reserved system labels.
 Attachment views retain their separate metadata query path.
 
 Mail and Settings share the same editor and visibility/order panel. Built-in

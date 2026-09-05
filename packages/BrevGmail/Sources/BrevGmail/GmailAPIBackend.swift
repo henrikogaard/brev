@@ -446,6 +446,22 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         )
     }
 
+    /// Reads cached label membership without fetching MIME data or using the primary folder.
+    public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        try validateSource(sourceID)
+        guard sourceID.mailboxID == account.id else { throw MailBackendError.notFound(id: sourceID.mailboxID) }
+        let labels = try await store.labels(accountID: account.id)
+        let cached: [GmailMessage]
+        if folder.role == .allMail {
+            cached = try await store.messages(accountID: account.id).filter {
+                !$0.labelIDs.contains("TRASH") && !$0.labelIDs.contains("SPAM")
+            }
+        } else {
+            cached = try await store.messages(accountID: account.id, labelID: folder.id, offset: 0, limit: Int.max)
+        }
+        return cached.map { Self.header(from: $0, folderID: folder.id, labels: labels) }
+    }
+
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         try requireConnected()
         if query.execution == .cacheOnly {

@@ -2157,6 +2157,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
     }
 
+    /// Enumerates cached headers without connecting or truncating saved-view candidates.
+    public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        try validateSourceID(sourceID)
+        return await cachedSearchResults(
+            for: SearchQuery(folderID: folder.id, execution: .cacheOnly), folders: [folder], limit: Int.max
+        )
+    }
+
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -3751,7 +3759,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
     private func cachedSearchResults(
         for query: SearchQuery,
-        folders: [Folder]
+        folders: [Folder],
+        limit: Int = IMAPSMTPBackend.searchResultLimit
     ) async -> [MessageHeader] {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -3773,7 +3782,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             if let indexedResults = await localSearchIndex?.search(
                 localIndexQuery,
                 account: account,
-                limit: Self.searchResultLimit
+                limit: limit
             ), !indexedResults.isEmpty {
                 headers.append(contentsOf: Self.scopedIndexedSearchResults(
                     indexedResults,
@@ -3784,7 +3793,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
 
         guard headerCache != nil else {
-            let results = Self.sortedSearchResults(headers)
+            let results = Array(Self.sortedHeaders(headers).prefix(limit))
             logResult(results)
             return results
         }
@@ -3800,7 +3809,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 headers.append(contentsOf: cached.filter { query.matches($0) })
             }
         }
-        let results = Self.sortedSearchResults(Self.deduplicatedByID(headers))
+        let results = Array(Self.sortedHeaders(Self.deduplicatedByID(headers)).prefix(limit))
         logResult(results)
         return results
     }

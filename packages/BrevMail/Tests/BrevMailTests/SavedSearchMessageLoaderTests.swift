@@ -54,6 +54,7 @@ struct SavedSearchMessageLoaderTests {
                                                             query: query)
         #expect(items.count == 1)
         #expect(items.first?.folder.id == "archive")
+        #expect(items.first?.folderMembershipIDs == ["inbox", "archive"])
         #expect(items.first.map { query.matches($0.header, sourceID: $0.sourceID) } == true)
     }
 }
@@ -65,6 +66,10 @@ private final class StubSearchBackend: MailBackend, @unchecked Sendable {
     init(account: BrevAccount, duplicateIDs: Bool = false) {
         self.account = account
         self.duplicateIDs = duplicateIDs
+    }
+
+    func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        try await search(SearchQuery(folderID: folder.id, execution: .cacheOnly), sourceID: sourceID)
     }
 
     func connect() async throws {}

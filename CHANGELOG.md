@@ -15,6 +15,8 @@ All notable changes to Brev are documented here.
   built-in/custom view, and reorder them together without deleting definitions.
 - Saved message views search cached folders across the active profile, with
   explicit Sent/Trash inclusion and duplicate handling for label providers.
+  They use all cached IMAP headers rather than the ordinary search-result cap,
+  and preserve complete Gmail label membership for positive/negative folder rules.
 
 - Profiles now sit above independently collapsible mailbox groups. Multiple
   inbox/folder trees can stay open together, and expansion choices are saved

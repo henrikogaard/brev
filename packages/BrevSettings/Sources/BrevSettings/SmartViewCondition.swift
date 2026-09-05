@@ -65,7 +65,7 @@ public struct SmartViewCondition: Codable, Equatable, Sendable, Identifiable {
 
     /// Evaluates this condition using only cached header metadata.
     public func matches(_ header: MessageHeader, sourceID: MailSourceID? = nil,
-                        now: Date = Date(), calendar: Calendar = .current) -> Bool {
+                        folderIDs: Set<String>? = nil, now: Date = Date(), calendar: Calendar = .current) -> Bool {
         guard isValid else { return false }
         switch field {
         case .isRead: return header.isRead == (comparison == .isTrue)
@@ -76,7 +76,8 @@ public struct SmartViewCondition: Codable, Equatable, Sendable, Identifiable {
             let matches = self.sourceID == sourceID
             return comparison == .notEquals ? !matches : matches
         case .folder:
-            let matches = header.folderID == value && (self.sourceID == nil || self.sourceID == sourceID)
+            let inFolder = folderIDs?.contains(value) ?? (header.folderID == value)
+            let matches = inFolder && (self.sourceID == nil || self.sourceID == sourceID)
             return comparison == .notEquals ? !matches : matches
         case .received:
             let day = calendar.startOfDay(for: header.date)
@@ -141,13 +142,14 @@ public extension SmartViewCondition.Field {
 public extension SmartMailbox.SavedQuery {
     /// Evaluates current condition groups or a legacy saved search without server calls.
     func matches(_ header: MessageHeader, sourceID: MailSourceID? = nil,
-                 folderRole: FolderRole? = nil, now: Date = Date(), calendar: Calendar = .current) -> Bool {
-        if includeTrash == false, folderRole == .trash { return false }
-        if includeSent == false, folderRole == .sent { return false }
+                 folderRole: FolderRole? = nil, folderIDs: Set<String>? = nil, now: Date = Date(),
+                 calendar: Calendar = .current) -> Bool {
+        if includeTrash == false, folderRole == .trash || header.labels.contains("\\Trash") { return false }
+        if includeSent == false, folderRole == .sent || header.labels.contains("\\Sent") { return false }
         guard let conditions else { return searchQuery.matches(header) }
         guard !conditions.isEmpty, conditions.allSatisfy(\.isValid) else { return false }
         let matches: (SmartViewCondition) -> Bool = {
-            $0.matches(header, sourceID: sourceID, now: now, calendar: calendar)
+            $0.matches(header, sourceID: sourceID, folderIDs: folderIDs, now: now, calendar: calendar)
         }
         return matchMode == .any ? conditions.contains(where: matches) : conditions.allSatisfy(matches)
     }

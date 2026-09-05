@@ -19,6 +19,8 @@ struct UnifiedInboxItem: Identifiable, Equatable, Sendable {
     let sourceTitle: String
     let sourceSubtitle: String
     let archiveFolder: Folder?
+    /// Cached memberships for label-backed messages shown once in a saved view.
+    var folderMembershipIDs: Set<Folder.ID>?
 
     var id: String {
         "\(sourceID.accountID):\(sourceID.mailboxID):\(header.id)"

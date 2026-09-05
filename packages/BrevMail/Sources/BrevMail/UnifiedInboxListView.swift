@@ -493,8 +493,14 @@ struct UnifiedInboxListView: View {
         )
         let filtered = categorized
             .filter { navigation.mailboxFilter.matches($0, now: now, calendar: calendar) }
-            .filter { savedSearchQuery?.matches($0.header, sourceID: $0.sourceID,
-                                                folderRole: $0.folder.role, now: now, calendar: calendar) ?? true }
+            .filter { savedSearchQuery?.matches(
+                $0.header,
+                sourceID: $0.sourceID,
+                folderRole: $0.folder.role,
+                folderIDs: $0.folderMembershipIDs,
+                now: now,
+                calendar: calendar
+            ) ?? true }
             .filter { savedSearchQuery == nil || SearchQuery(text: navigation.searchText).matches($0.header) }
         let sorted = MessageListSortPolicy.sortedItems(
             filtered,
