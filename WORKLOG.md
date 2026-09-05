@@ -564,3 +564,6 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   matching and avoids offering a server mode that saved conditions cannot run.
   Existing parser tests and Mail build cover the reused parser; the search-menu
   interaction is included in the pending native pass because the Mac is locked.
+- Added a native-view initialization regression for repeated saved-list creation.
+  It failed with the prior ordinary-search default and now retains cache mode;
+  returning to the normal list restores the normal provider-aware default.

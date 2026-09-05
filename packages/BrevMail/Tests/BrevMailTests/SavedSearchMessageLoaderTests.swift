@@ -18,6 +18,27 @@ import Testing
 
 @Suite("Saved search cached folders")
 struct SavedSearchMessageLoaderTests {
+    @Test("recreating a saved-view list never restores server search mode")
+    @MainActor
+    func savedViewRecreationKeepsCacheMode() {
+        let account = BrevAccount(id: "account", displayName: "Account", emailAddress: "test@example.com")
+        let mailbox = Mailbox(id: "account", email: "test@example.com", displayName: "Work", isPrimary: true)
+        let section = MailSourceSection(id: .init(accountID: account.id, mailboxID: mailbox.id),
+                                        account: account, mailbox: mailbox,
+                                        folders: [Folder(id: "inbox", name: "Inbox", role: .inbox)])
+        let navigation = MailNavigationState()
+        let backend = MockBackend(account: account)
+        let actions = MailComposePresentationActions(newMessage: {}, reply: { _ in }, replyAll: { _ in }, forward: { _ in })
+        for _ in 0 ..< 2 {
+            _ = UnifiedInboxListView(navigation: navigation, backends: [backend], sourceSections: [section],
+                                     savedSearchQuery: .init(text: "invoice"), isWorkBlocked: false, composeActions: actions)
+            #expect(navigation.searchExecution == .cacheOnly)
+        }
+        _ = UnifiedInboxListView(navigation: navigation, backends: [backend], sourceSections: [section],
+                                 isWorkBlocked: false, composeActions: actions)
+        #expect(navigation.searchExecution == .cacheThenServer)
+    }
+
     @Test("searches cached folders with mailbox ownership and honors sent/trash exclusions")
     func cacheScope() async throws {
         let account = BrevAccount(id: "account", displayName: "Account", emailAddress: "test@example.com")
