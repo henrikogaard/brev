@@ -251,7 +251,7 @@ struct PreferenceSyncStoreTests {
         var notifiedKeys: [String] = []
         let token = NotificationCenter.default.addObserver(
             forName: PreferenceSync.didApplyRemoteChangesNotification,
-            object: nil,
+            object: store,
             queue: nil
         ) { note in
             notifiedKeys = note.userInfo?[PreferenceSync.changedKeysUserInfoKey] as? [String] ?? []
@@ -265,6 +265,14 @@ struct PreferenceSyncStoreTests {
             "brev.prefs.v1.mail.reader.lastPaneWidth": 999.0,
             "unrelated.key": "x"
         ])
+
+        // Parallel stores publish on the same center. Their events must not
+        // overwrite the observation for the store under test.
+        NotificationCenter.default.post(
+            name: PreferenceSync.didApplyRemoteChangesNotification,
+            object: NSObject(),
+            userInfo: [PreferenceSync.changedKeysUserInfoKey: ["compose.messageFormat"]]
+        )
 
         #expect(defaults.data(forKey: "vip.senders") == payload)
         #expect(defaults.object(forKey: "folders.showTrash") as? Bool == false)
