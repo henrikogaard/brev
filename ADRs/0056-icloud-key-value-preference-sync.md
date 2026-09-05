@@ -72,7 +72,8 @@ Constraints from earlier ADRs:
    | `message.workflowState.v1` | snoozes, done markers, and local notes keyed by account/mailbox/message ID |
    | `vip.senders` | VIP sender list |
    | `list.inboxCategoryOverrides` | manual inbox category overrides |
-   | `list.pinnedMessageIDs` | pinned message IDs |
+   | `list.pinnedMessageIDs` | retained legacy unscoped pin IDs |
+   | `list.pinnedSourceMessageIDs.v2` | pins scoped to account, mailbox, and message |
    | `blockedSenders.emails` | blocked sender list |
    | `followUp.reminders` | follow-up reminders |
    | `signature.settings` | signatures |

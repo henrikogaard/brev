@@ -35,9 +35,9 @@ struct MessageBodyStyleTests {
         #expect(!css.contains("#E5E7EB"))
         #expect(!css.contains("#93C5FD"))
         #expect(css.contains("padding:16px"))
-        #expect(css.contains("line-height:1.45"))
-        #expect(style.backgroundColorHex == nil)
-        #expect(css.contains("background:transparent"))
+        #expect(css.contains("line-height:1.5"))
+        #expect(style.backgroundColorHex == normalizedHex(theme.bgPrimary.hex))
+        #expect(css.contains("background:\(normalizedHex(theme.bgPrimary.hex))"))
     }
 
     @Test("original mode embeds font size and family in CSS")

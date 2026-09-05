@@ -10,7 +10,6 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevSettings
 import Foundation
 
 struct SavedSearchEditorPresentation: Equatable, Sendable {
@@ -18,11 +17,12 @@ struct SavedSearchEditorPresentation: Equatable, Sendable {
     var kind: SmartMailboxKind
     var queryText = ""
     var fromText = ""
-    var toText = ""
-    var hasAttachment = false
-    var isUnread = false
-    var isStarred = false
     var isEnabled = true
+    var conditions: [SmartViewCondition] = [.init()]
+    var matchMode: SmartViewMatchMode = .all
+    var includeTrash = false
+    var includeSent = false
+    var folderID: String?
 
     private var editingID: SmartMailbox.ID?
 
@@ -35,19 +35,18 @@ struct SavedSearchEditorPresentation: Equatable, Sendable {
         kind = mailbox.kind
         queryText = mailbox.query.text
         fromText = mailbox.query.from ?? ""
-        toText = mailbox.query.to ?? ""
-        hasAttachment = mailbox.query.hasAttachment == true
-        isUnread = mailbox.query.isUnread == true
-        isStarred = mailbox.query.isStarred == true
         editingID = mailbox.id
         isEnabled = mailbox.isEnabled
+        conditions = mailbox.query.editableConditions
+        matchMode = mailbox.query.matchMode ?? .all
+        includeTrash = mailbox.query.includeTrash ?? true
+        includeSent = mailbox.query.includeSent ?? true
+        folderID = mailbox.query.folderID
     }
 
     var isValid: Bool {
-        let hasTextPredicate = [queryText, fromText, toText].contains { !trimmed($0).isEmpty }
-        let hasTogglePredicate = hasAttachment || isUnread || isStarred
-        return !trimmed(name).isEmpty
-            && (kind == .attachmentSearch || hasTextPredicate || hasTogglePredicate)
+        !trimmed(name).isEmpty && (kind == .attachmentSearch
+            || (!conditions.isEmpty && conditions.allSatisfy(\.isValid)))
     }
 
     func makeSmartMailbox() -> SmartMailbox {
@@ -56,12 +55,17 @@ struct SavedSearchEditorPresentation: Equatable, Sendable {
             name: trimmed(name),
             kind: kind,
             query: SmartMailbox.SavedQuery(
-                text: trimmed(queryText),
-                from: nilIfEmpty(fromText),
-                to: kind == .messageSearch ? nilIfEmpty(toText) : nil,
-                hasAttachment: kind == .attachmentSearch || hasAttachment ? true : nil,
-                isUnread: kind == .messageSearch && isUnread ? true : nil,
-                isStarred: kind == .messageSearch && isStarred ? true : nil
+                text: kind == .attachmentSearch ? trimmed(queryText) : "",
+                from: kind == .attachmentSearch ? nilIfEmpty(fromText) : nil,
+                to: nil,
+                hasAttachment: kind == .attachmentSearch ? true : nil,
+                isUnread: nil,
+                isStarred: nil,
+                folderID: kind == .attachmentSearch ? folderID : nil,
+                conditions: kind == .messageSearch ? conditions : nil,
+                matchMode: kind == .messageSearch ? matchMode : nil,
+                includeTrash: kind == .messageSearch ? includeTrash : nil,
+                includeSent: kind == .messageSearch ? includeSent : nil
             ),
             isEnabled: isEnabled
         )

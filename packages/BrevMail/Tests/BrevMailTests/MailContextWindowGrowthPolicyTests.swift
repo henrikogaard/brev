@@ -114,6 +114,27 @@ struct MailContextWindowGrowthPolicyTests {
 struct MailContextColumnWidthPolicyTests {
     private let bounds = MailPaneColumnWidth(minimum: 280, ideal: 320, maximum: 420)
 
+    @Test("reversing at the width limit follows the pointer immediately")
+    func reversalAtLimit() {
+        var drag = MailContextColumnResizeState()
+        drag.update(pointerX: 950, startX: 1000, initialWidth: 420, bounds: bounds)
+        #expect(drag.width == 420)
+        drag.update(pointerX: 960, startX: 1000, initialWidth: 420, bounds: bounds)
+        #expect(drag.width == 410)
+        #expect(drag.finish() == 410)
+        #expect(drag.width == nil)
+    }
+
+    @Test("resize samples use pointer deltas and retain the last release position")
+    func dragSamples() {
+        var drag = MailContextColumnResizeState()
+        drag.update(pointerX: 980, startX: 1000, initialWidth: 320, bounds: bounds)
+        drag.update(pointerX: 950, startX: 1000, initialWidth: 320, bounds: bounds)
+        #expect(drag.width == 370)
+        drag.update(pointerX: 965, startX: 1000, initialWidth: 320, bounds: bounds)
+        #expect(drag.finish() == 355)
+    }
+
     @Test("a stored width inside the bounds is used as-is")
     func aStoredWidthInsideTheBoundsIsUsedAsIs() {
         #expect(MailContextColumnWidthPolicy.width(preferred: 360, bounds: bounds) == 360)

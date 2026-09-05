@@ -94,32 +94,46 @@ struct ThreadMessageCard: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            // Card header — always visible, tappable to toggle
-            cardHeader
-                .dynamicTypeSize(denseChromeDynamicTypeRange)
-                .contentShape(Rectangle())
-                .onTapGesture { onToggle() }
+            HStack(spacing: 0) {
+                Button(action: onToggle) {
+                    cardHeader
+                        .dynamicTypeSize(denseChromeDynamicTypeRange)
+                        .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(header.from.displayName)
+                .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
+                    localized: "Collapsed message",
+                    bundle: .module
+                ))
+                if isExpanded, renderedBody?.html?.isEmpty == false {
+                    Menu {
+                        Button(htmlRenderingMode.toggleAccessibilityLabel) { toggleHTMLRenderingMode() }
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(width: 24, height: 28)
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .help(String(localized: "Message display", bundle: .module))
+                    .accessibilityLabel(String(localized: "Message display", bundle: .module))
+                    .padding(.trailing, BrevSpacing.md)
+                }
+            }
 
-            // Card body — shown only when expanded
             if isExpanded {
-                Divider()
                 cardBody
-                    .padding(BrevSpacing.sm)
+                    .padding(.horizontal, BrevSpacing.lg)
+                    .padding(.bottom, BrevSpacing.lg)
+                    .padding(.top, BrevSpacing.xxs)
             }
         }
-        .background(
-            RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                .fill(cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
-                .stroke(
-                    isSelected ? theme.accent.color : theme.border.color.opacity(0.45),
-                    lineWidth: isSelected ? 1.5 : 0.5
-                )
-        )
-        .padding(.horizontal, BrevSpacing.sm)
-        .padding(.vertical, BrevSpacing.xxs)
+        .overlay(alignment: .top) {
+            Rectangle().fill(theme.textPrimary.color.opacity(0.10)).frame(height: 0.5)
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
         .task(id: isExpanded) {
             guard isExpanded, !isLoading else { return }
             if renderedBody == nil {
@@ -172,7 +186,7 @@ struct ThreadMessageCard: View {
                 BrevAvatarView(
                     email: header.from.email,
                     displayName: header.from.name,
-                    size: 40
+                    size: 32
                 )
             }
 
@@ -180,7 +194,7 @@ struct ThreadMessageCard: View {
                 HStack {
                     Text(header.from.name ?? header.from.email)
                         .font(.subheadline)
-                        .fontWeight(header.isRead ? .regular : .semibold)
+                        .fontWeight(.semibold)
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
 
@@ -188,18 +202,18 @@ struct ThreadMessageCard: View {
 
                     if let dateTextOverride {
                         Text(dateTextOverride)
-                            .font(.caption)
+                            .font(.footnote)
                             .foregroundStyle(theme.textTertiary.color)
                     } else {
-                        Text(header.date, style: .relative)
-                            .font(.caption)
+                        Text(MessageListDatePresentation.label(for: header.date, showsAbsoluteArrivalTime: true))
+                            .font(.footnote)
                             .foregroundStyle(theme.textTertiary.color)
                     }
                 }
 
                 if !isExpanded {
                     Text(header.snippet)
-                        .font(.caption)
+                        .font(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 } else {
@@ -211,13 +225,13 @@ struct ThreadMessageCard: View {
                 .font(.caption2)
                 .foregroundStyle(theme.textTertiary.color)
         }
-        .padding(BrevSpacing.sm)
-    }
-
-    private var cardBackground: Color {
-        if isSelected { return theme.selection.color }
-        if isExpanded { return theme.bgSecondary.color.opacity(0.42) }
-        return Color.clear
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.sm)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2, height: 24)
+            }
+        }
     }
 
     @ViewBuilder
@@ -225,7 +239,7 @@ struct ThreadMessageCard: View {
         let toText = header.to.map { $0.name ?? $0.email }.joined(separator: ", ")
         if !toText.isEmpty {
             Text("To: \(toText)", bundle: .module)
-                .font(.caption)
+                .font(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .lineLimit(1)
         }
@@ -309,15 +323,6 @@ struct ThreadMessageCard: View {
 
         case .richHTML(let html, let allowRemoteContent, let showsRemoteContentBanner):
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                HStack {
-                    Spacer(minLength: BrevSpacing.sm)
-                    HTMLBodyRenderingModeToggleButton(
-                        mode: htmlRenderingMode
-                    ) {
-                        toggleHTMLRenderingMode()
-                    }
-                }
-
                 if showsRemoteContentBanner {
                     HStack(spacing: BrevSpacing.xs) {
                         Image(systemName: "eye.slash")

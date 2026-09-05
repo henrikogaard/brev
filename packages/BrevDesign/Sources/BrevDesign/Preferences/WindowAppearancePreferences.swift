@@ -62,7 +62,7 @@ public enum WindowTranslucencyScope: String, Sendable, Hashable, CaseIterable, I
     public var title: String {
         switch self {
         case .sidebarOnly: return String(localized: "Sidebar", bundle: .module)
-        case .mainWindow: return String(localized: "Main window", bundle: .module)
+        case .mainWindow: return String(localized: "Mail and Settings", bundle: .module)
         case .allWindows: return String(localized: "All windows", bundle: .module)
         }
     }

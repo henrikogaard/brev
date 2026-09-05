@@ -70,11 +70,9 @@ enum MailPaneColumnWidthPolicy {
         case .iPhone:
             nil
         case .macOS:
-            // Deliberately unconstrained. A `maximum` here does not survive a
-            // divider drag — AppKit hands the space over anyway — so what keeps
-            // the list from swallowing the reader is `readerMinimumWidth`, on
-            // the other side of the divider.
-            nil
+            // A wide preferred list gives subjects room without increasing the
+            // compact minimum; the reader's own floor still protects divider drags.
+            MailPaneColumnWidth(minimum: 320, ideal: 420, maximum: 720)
         }
     }
 

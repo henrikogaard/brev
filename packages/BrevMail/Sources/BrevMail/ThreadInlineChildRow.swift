@@ -27,6 +27,17 @@ enum ThreadInlineChildRowPresentation {
 /// Tapping the row calls `onSelect`. The row is visually lighter than a top-level
 /// `MessageListRow` to indicate subordinate status.
 struct ThreadInlineChildRow: View {
+    #if os(macOS)
+    @Environment(\.controlActiveState) private var controlActiveState
+    #endif
+    private var selectionPalette: MailSelectionPalette {
+        #if os(macOS)
+        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
+        #else
+        MailSelectionPalette(theme: theme)
+        #endif
+    }
+
     @Environment(\.brevTheme) private var theme
     // Read from the environment so locale/time-zone overrides reach the row
     // and snapshots stay deterministic, matching MessageListRow.
@@ -45,7 +56,7 @@ struct ThreadInlineChildRow: View {
         HStack(spacing: BrevSpacing.sm) {
             // Unread indicator
             Circle()
-                .fill(header.isRead ? Color.clear : theme.accent.color)
+                .fill(header.isRead ? Color.clear : theme.textPrimary.color)
                 .frame(width: 7, height: 7)
 
             // Sender avatar
@@ -67,12 +78,12 @@ struct ThreadInlineChildRow: View {
                     Spacer()
 
                     Text(dateLabel)
-                        .font(.caption)
-                        .foregroundStyle(theme.textTertiary.color)
+                        .font(.footnote)
+                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                 }
 
                 Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
-                    .font(.caption)
+                    .font(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
             }
@@ -80,6 +91,13 @@ struct ThreadInlineChildRow: View {
         .padding(.vertical, BrevSpacing.xs)
         .padding(.horizontal, BrevSpacing.md)
         .background(rowBackground)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
+                    .frame(width: 2).padding(.vertical, BrevSpacing.xs)
+                    .padding(.leading, ThreadInlineChildRowPresentation.selectionHorizontalInset)
+            }
+        }
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .accessibilityElement(children: .combine)
@@ -125,7 +143,7 @@ struct ThreadInlineChildRow: View {
                 cornerRadius: ThreadInlineChildRowPresentation.selectionCornerRadius,
                 style: .continuous
             )
-            .fill(theme.selection.color)
+            .fill(selectionPalette.background.color)
             .padding(.horizontal, ThreadInlineChildRowPresentation.selectionHorizontalInset)
         } else {
             Color.clear

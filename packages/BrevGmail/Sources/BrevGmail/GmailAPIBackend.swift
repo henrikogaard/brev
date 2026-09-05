@@ -65,6 +65,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private var sendAsAliases: [GmailSendAs]?
     private var sendAsProbeCompleted = false
     private var replayConflictCount = 0
+    private var refreshedCachedFolders: [Folder.ID: Date] = [:]
+    private var cachedFolderRefreshTasks: [Folder.ID: Task<Void, Never>] = [:]
 
     /// Creates a Gmail API backend with injected REST and canonical-store seams.
     public init(
@@ -214,6 +216,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             lock.withLock {
                 lastSyncError = error.localizedDescription
                 isConnected = false
+                cachedFolderRefreshTasks.values.forEach { $0.cancel() }
+                cachedFolderRefreshTasks.removeAll()
+                refreshedCachedFolders.removeAll()
             }
             throw Self.providerNeutralError(error)
         }
@@ -223,6 +228,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     public func disconnect() async {
         let continuations = lock.withLock { () -> [AsyncStream<MailEvent>.Continuation] in
             isConnected = false
+            cachedFolderRefreshTasks.values.forEach { $0.cancel() }
+            cachedFolderRefreshTasks.removeAll()
+            refreshedCachedFolders.removeAll()
             let values = Array(subscribers.values)
             subscribers.removeAll()
             return values
@@ -244,9 +252,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                 try await reconcile(syncReconciler)
                 return
             }
-            _ = try await messages(in: folder, pageToken: nil)
+            let page = try await remoteMessages(in: folder, pageToken: nil)
+            emit(.messagesUpdated(folderID: folder.id, messageIDs: page.headers.map(\.id)))
         } catch {
-            recordSyncFailure(error)
+            if !Task.isCancelled, !(error is CancellationError) { recordSyncFailure(error) }
             throw Self.providerNeutralError(error)
         }
     }
@@ -298,6 +307,50 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     public func messages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?) {
         try requireConnected()
+        let cacheOffset = pageToken.flatMap { token in
+            token.hasPrefix("cached:") ? Int(token.dropFirst("cached:".count)) : nil
+        }
+        if pageToken == nil || cacheOffset != nil {
+            let offset = max(0, cacheOffset ?? 0)
+            let cached = try await store.messages(accountID: account.id, labelID: folder.id,
+                                                  offset: offset, limit: Self.pageSize + 1)
+            let complete = try await store.accountState(accountID: account.id)?.lastFullSyncAt != nil
+            if !cached.isEmpty || complete {
+                let labels = lock.withLock { labelCatalog }
+                let headers = cached.prefix(Self.pageSize).map { Self.header(from: $0, folderID: folder.id, labels: labels) }
+                let next = cached.count > Self.pageSize ? "cached:\(offset + Self.pageSize)" : (complete ? nil : "remote:")
+                if pageToken == nil { refreshCachedFolderInBackground(folder) }
+                return (headers, next)
+            }
+        }
+        return try await remoteMessages(in: folder, pageToken: pageToken == "remote:" ? nil : pageToken)
+    }
+
+    private func refreshCachedFolderInBackground(_ folder: Folder) {
+        let refreshKey = syncReconciler == nil ? folder.id : "__account__"
+        lock.withLock {
+            let startedAt = Date()
+            guard isConnected, cachedFolderRefreshTasks[refreshKey] == nil,
+                  startedAt.timeIntervalSince(refreshedCachedFolders[refreshKey] ?? .distantPast) >= 30 else { return }
+            refreshedCachedFolders[refreshKey] = startedAt
+            cachedFolderRefreshTasks[refreshKey] = Task { [weak self] in
+                guard let self else { return }
+                defer {
+                    self.lock.withLock {
+                        if self.refreshedCachedFolders[refreshKey] == startedAt {
+                            self.cachedFolderRefreshTasks.removeValue(forKey: refreshKey)
+                        }
+                    }
+                }
+                do { try await refresh(folder: folder) }
+                catch { if !Task.isCancelled { recordSyncFailure(error) } }
+            }
+        }
+    }
+
+    private func remoteMessages(in folder: Folder, pageToken: String?) async throws
+        -> (headers: [MessageHeader], nextPageToken: String?) {
+        try requireConnected()
         let page = try await transport.listMessages(
             labelID: folder.id,
             query: nil,
@@ -305,19 +358,34 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             maxResults: Self.pageSize,
             includeSpamTrash: folder.role == .spam || folder.role == .trash
         )
-        var headers: [MessageHeader] = []
         var seen = Set<MessageHeader.ID>()
-        for reference in page.messages {
-            guard seen.insert(reference.id).inserted else { continue }
-            let message = try await message(reference.id)
-            headers.append(Self.header(from: message, folderID: folder.id, labels: labelCatalog))
+        let references = page.messages.filter { seen.insert($0.id).inserted }
+        let labels = lock.withLock { labelCatalog }
+        let headers = try await withThrowingTaskGroup(of: (Int, MessageHeader).self) { group in
+            var next = 0
+            var results: [Int: MessageHeader] = [:]
+            func enqueue(_ index: Int) {
+                group.addTask { [self] in
+                    let message = try await message(references[index].id)
+                    return (index, Self.header(from: message, folderID: folder.id, labels: labels))
+                }
+            }
+            while next < min(4, references.count) {
+                enqueue(next); next += 1
+            }
+            while let (index, header) = try await group.next() {
+                try Task.checkCancellation()
+                results[index] = header
+                if next < references.count { enqueue(next); next += 1 }
+            }
+            return references.indices.compactMap { results[$0] }
         }
         return (headers, page.nextPageToken)
     }
 
     public func enumerateMessages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?) {
-        try await messages(in: folder, pageToken: pageToken)
+        try await remoteMessages(in: folder, pageToken: pageToken)
     }
 
     // MARK: Read operations
@@ -376,6 +444,22 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             attachmentID: String(resource[resource.index(after: separator)...]),
             cacheID: attachment.id
         )
+    }
+
+    /// Reads cached label membership without fetching MIME data or using the primary folder.
+    public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        try validateSource(sourceID)
+        guard sourceID.mailboxID == account.id else { throw MailBackendError.notFound(id: sourceID.mailboxID) }
+        let labels = try await store.labels(accountID: account.id)
+        let cached: [GmailMessage]
+        if folder.role == .allMail {
+            cached = try await store.messages(accountID: account.id).filter {
+                !$0.labelIDs.contains("TRASH") && !$0.labelIDs.contains("SPAM")
+            }
+        } else {
+            cached = try await store.messages(accountID: account.id, labelID: folder.id, offset: 0, limit: Int.max)
+        }
+        return cached.map { Self.header(from: $0, folderID: folder.id, labels: labels) }
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
@@ -1243,6 +1327,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             return cached
         }
         let fetched = try await transport.getMessage(messageID: messageID, format: .full)
+        try Task.checkCancellation()
         if try await store.accountState(accountID: account.id) != nil {
             try await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: [fetched]))
         }

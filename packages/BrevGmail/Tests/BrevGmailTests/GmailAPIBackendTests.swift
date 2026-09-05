@@ -17,6 +17,94 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("saved views enumerate secondary label membership without fetching messages")
+    func savedViewUsesCachedLabelMembership() async throws {
+        let transport = StubGmailTransport()
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress),
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system"),
+                     GmailLabel(id: "projects", name: "Projects", type: "user")],
+            messages: [Self.message(id: "both", threadID: "thread", labels: ["INBOX", "projects"])]
+        ))
+        await transport.failListings()
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let results = try await backend.cachedMessageHeaders(
+            in: Folder(id: "projects", name: "Projects", role: .custom), sourceID: source
+        )
+        #expect(results.map(\.id) == ["both"])
+        #expect(results.first?.folderID == "projects")
+        #expect(await transport.fullMessageRequestCount() == 0)
+        await #expect(throws: MailBackendError.self) {
+            try await backend.cachedMessageHeaders(in: Folder(id: "projects", name: "Projects", role: .custom),
+                                                   sourceID: MailSourceID(accountID: Self.account.id, mailboxID: "other"))
+        }
+    }
+
+    @Test("cached folder pagination returns every row once across multiple pages")
+    func cachedPaginationDoesNotApplyOffsetTwice() async throws {
+        let transport = StubGmailTransport(labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")])
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        let messages = (0 ..< 120).map { Self.message(id: String(format: "m%03d", $0), threadID: "thread", labels: ["INBOX"]) }
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress, lastFullSyncAt: Date()),
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")],
+            messages: messages
+        ))
+        await transport.failListings()
+        let folder = Folder(id: "INBOX", name: "Inbox", role: .inbox)
+        let first = try await backend.messages(in: folder, pageToken: nil)
+        let second = try await backend.messages(in: folder, pageToken: first.nextPageToken)
+        let third = try await backend.messages(in: folder, pageToken: second.nextPageToken)
+        #expect(first.headers.count == 50)
+        #expect(second.headers.count == 50)
+        #expect(third.headers.count == 20)
+        #expect((first.headers + second.headers + third.headers).map(\.id) == messages.map(\.id))
+        #expect(third.nextPageToken == nil)
+    }
+
+    @Test("folder rows fetch missing MIME data with bounded concurrency")
+    func folderRowsUseConcurrentMetadata() async throws {
+        let messages = (0 ..< 8).map { Self.message(id: "m\($0)", threadID: "t\($0)", labels: ["INBOX"]) }
+        let transport = StubGmailTransport(
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")],
+            pages: [GmailMessagePage(messages: messages.map { GmailMessageReference(id: $0.id) })],
+            messages: messages,
+            messageDelay: 20_000_000
+        )
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore())
+        try await backend.connect()
+        let page = try await backend.messages(in: Folder(id: "INBOX", name: "Inbox", role: .inbox), pageToken: nil)
+        #expect(page.headers.map(\.id) == messages.map(\.id))
+        #expect(await transport.fullMessageRequestCount() == 8)
+        #expect(await transport.maximumConcurrentRequests() > 1)
+        #expect(await transport.maximumConcurrentRequests() <= 4)
+    }
+
+    @Test("cached folder rows remain readable when the remote listing fails")
+    func cachedFolderSurvivesListingFailure() async throws {
+        let transport = StubGmailTransport(labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")])
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress, lastFullSyncAt: Date()),
+            labels: [GmailLabel(id: "INBOX", name: "Inbox", type: "system")],
+            messages: [Self.message(id: "cached", threadID: "thread", labels: ["INBOX"])]
+        ))
+        await transport.failListings()
+        let page = try await backend.messages(in: Folder(id: "INBOX", name: "Inbox", role: .inbox), pageToken: nil)
+        #expect(page.headers.map(\.id) == ["cached"])
+        #expect(page.nextPageToken == nil)
+    }
+
     @Test("maps Workspace labels, display identity, and native capabilities")
     func mapsWorkspaceLabelsAndCapabilities() async throws {
         let transport = StubGmailTransport(
@@ -412,6 +500,12 @@ private actor StubGmailTransport: GmailAPITransporting {
     private let labelsValue: [GmailLabel]
     private let pages: [GmailMessagePage]
     private let messages: [String: GmailMessage]
+    private var listingFailure = false
+    private let messageDelay: UInt64
+    private var concurrentRequests = 0
+    private var maximumRequests = 0
+    func failListings() { listingFailure = true }
+    func maximumConcurrentRequests() -> Int { maximumRequests }
     private var nextPageIndex = 0
     private var query: String?
     private var fullRequests = 0
@@ -423,8 +517,10 @@ private actor StubGmailTransport: GmailAPITransporting {
         profile: GmailProfile = GmailProfile(emailAddress: "henrik@example.work", historyID: "history-1"),
         labels: [GmailLabel] = [],
         pages: [GmailMessagePage] = [],
-        messages: [GmailMessage] = []
+        messages: [GmailMessage] = [],
+        messageDelay: UInt64 = 0
     ) {
+        self.messageDelay = messageDelay
         profileValue = profile
         labelsValue = labels
         self.pages = pages
@@ -440,6 +536,7 @@ private actor StubGmailTransport: GmailAPITransporting {
         pageToken: String?,
         maxResults: Int
     ) async throws -> GmailMessagePage {
+        if listingFailure { throw URLError(.notConnectedToInternet) }
         self.query = query
         includeSpamTrash = false
         if let pageToken, let index = Int(pageToken) {
@@ -461,6 +558,10 @@ private actor StubGmailTransport: GmailAPITransporting {
     }
 
     func getMessage(messageID: String, format: GmailMessageFormat) async throws -> GmailMessage {
+        concurrentRequests += 1
+        maximumRequests = max(maximumRequests, concurrentRequests)
+        defer { concurrentRequests -= 1 }
+        if messageDelay > 0 { try await Task.sleep(nanoseconds: messageDelay) }
         if format == .full { fullRequests += 1 }
         if format == .raw { rawRequests += 1 }
         guard let message = messages[messageID] else { throw GmailAPIError.httpFailure(statusCode: 404) }

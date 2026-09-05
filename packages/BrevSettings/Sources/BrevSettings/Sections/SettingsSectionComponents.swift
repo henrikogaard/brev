@@ -46,6 +46,7 @@ struct SettingsGroup<Content: View>: View {
                 SettingsSymbol(symbolName: symbolName)
                 VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                     Text(title)
+                        .id(title)
                         .brevFont(.headline)
                         .foregroundStyle(theme.textPrimary.color)
                     Text(subtitle)
@@ -89,6 +90,9 @@ struct SettingsToggleRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .toggleStyle(.switch)
+        .accessibilityLabel(title)
+        .accessibilityHint(subtitle)
+        .help(subtitle)
         .tint(theme.accent.color)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
@@ -250,6 +254,7 @@ private struct SettingsRowLabel: View {
             // controls reading as secondary to the sidebar next to them.
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text(title)
+                    .id(title)
                     .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
                 Text(subtitle)

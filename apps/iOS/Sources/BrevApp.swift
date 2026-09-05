@@ -41,6 +41,7 @@ struct BrevApp: App {
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var sessionRestoreAttempted = false
+    @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var showRestoreErrorAlert = false
     private let browserLinkOpener = BrowserLinkOpener()
@@ -66,6 +67,7 @@ struct BrevApp: App {
                             activeAppIcon: appIconBinding,
                             initialAccounts: session.visibleBackends.map(\.account),
                             initialCurrentAccountID: session.backend?.account.id,
+                            mailboxContext: settingsMailboxContext,
                             backendProvider: { accountID in session.backends[accountID] },
                             onAddAccount: { isShowingAddAccountSheet = true },
                             onSignOut: { account in await session.signOut(account: account) },
@@ -88,6 +90,7 @@ struct BrevApp: App {
                             onOpenSettings: {
                                 showSettings = true
                             },
+                            onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                             signatureContextProvider: { account in
                                 AppSessionFactory.composeSignatureContext(for: account)
                             },
@@ -107,12 +110,6 @@ struct BrevApp: App {
                         )
                         .environment(\.openURL, browserOpenURLAction)
                         .networkMonitor(networkMonitor)
-                        // Recreate the root (and restart its per-backend
-                        // subscribeToChanges()/IDLE tasks) whenever the account set
-                        // changes — without this, adding/removing an account left the
-                        // old backends' streams running and skipped new accounts.
-                        // Mirrors the macOS root. (#round9 lifecycle finding)
-                        .id(mailRootIdentity)
                     }
                 } else if AppSessionRestorePresentationPolicy.shouldShowRestoreProgress(
                     visibleBackendCount: session.visibleBackends.count,
@@ -249,16 +246,6 @@ struct BrevApp: App {
             }
             return browserLinkOpener.open(url)
         }
-    }
-
-    /// Stable identity for the mail root, derived from the visible account set.
-    /// Changing it recreates the root so per-backend `.task` subscriptions
-    /// restart for the new account set (mirrors macOS).
-    private var mailRootIdentity: String {
-        session.visibleBackends
-            .map(\.account.id)
-            .sorted()
-            .joined(separator: "|")
     }
 
     private func handleIncomingURL(_ url: URL) {

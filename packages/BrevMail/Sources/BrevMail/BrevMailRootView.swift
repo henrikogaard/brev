@@ -258,8 +258,7 @@ public struct BrevMailRootView: View {
     @State private var didRunInitialRetentionSweep = false
     /// Startup phase controller: cold → cachedUsable → interactive → background.
     @State private var startupPhase = MailStartupPhaseController()
-    @State private var didStartDeferredBackendStartupWork = false
-    @State private var didStartLiveChangeSubscription = false
+    @State private var deferredStartupAccountIDs: Set<ObjectIdentifier> = []
     /// Determinate progress of the visible account's multi-folder refresh,
     /// or `nil` when no sync is in flight. Drives the download indicator.
     @State private var syncProgress: MailSyncProgress?
@@ -299,6 +298,10 @@ public struct BrevMailRootView: View {
     @State private var nextBackgroundAccountRefreshRequestID = 0
     @State private var activeBackgroundAccountRefreshRequestID: Int?
     @State private var sourceSectionsRevision = 0
+    @State private var sourceLoadOwnership = MailListLoadOwnership()
+    @State private var isLoadingSources = false
+    @State private var sourceLoadWorkTask: Task<Void, Never>?
+    @State private var sourceLoadTimeoutTask: Task<Void, Never>?
     /// Monotonic heartbeat: bumped whenever outstanding root work makes progress
     /// (a backend event arrives, an operation hits a milestone). The stale-work
     /// watchdog watches this so a slow-but-progressing operation isn't recovered.
@@ -353,6 +356,7 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    private let onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)?
     private let signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)?
     private let composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)?
     private let trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)?
@@ -372,6 +376,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
         trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
@@ -389,6 +394,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onSettingsMailboxContextChange: onSettingsMailboxContextChange,
             signatureContextProvider: signatureContextProvider,
             composeSecurityDefaultsProvider: composeSecurityDefaultsProvider,
             trustedSigningIdentityCountProvider: trustedSigningIdentityCountProvider,
@@ -409,6 +415,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
         trustedSigningIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
@@ -432,6 +439,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
         self.trustedSigningIdentityCountProvider = trustedSigningIdentityCountProvider
@@ -522,7 +530,7 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private var mailRootPresentationContent: some View {
+    private var mailRootCacheContent: some View {
         mailRootStatusLayout
             .task(id: visibleSelectedSourceID) {
                 await observeImportSyncHealth()
@@ -530,6 +538,8 @@ public struct BrevMailRootView: View {
             }
             .onDisappear {
                 stopImportSyncHealthPolling()
+                sourceLoadTimeoutTask?.cancel()
+                sourceLoadWorkTask?.cancel()
                 backendEventRefreshTask?.cancel()
                 backendEventRefreshTask = nil
                 backgroundAccountRefreshTask?.cancel()
@@ -549,25 +559,59 @@ public struct BrevMailRootView: View {
             .onChange(of: localMessageWorkflowStateData) { _, data in
                 cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.decode(data) ?? .defaults
             }
+    }
+
+    private var mailRootLoadingContent: some View {
+        mailRootCacheContent
             .task { monitor.start() }
-            .task { await loadWorkspace() }
+            .onChange(of: backendSessionIDs) { handleBackendSessionChange() }
+            .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
             .task(id: fetchIntervalRaw) { await runPeriodicFetchScheduler() }
             .task(id: rootWorkBlockSnapshot) {
                 await recoverFromStaleRootWorkBlockIfNeeded(snapshot: rootWorkBlockSnapshot)
             }
             // Live IMAP change streams start only after first usable content.
-            .task(id: startupPhase.phase) {
+            .task(id: backendTaskID) {
                 guard startupPhase.allows(.interactive) else { return }
                 await startLiveChangeSubscriptionIfNeeded()
             }
             // Non-critical startup work waits for background phase.
-            .task(id: startupPhase.phase) {
+            .task(id: backendTaskID) {
                 guard startupPhase.allows(.background) else { return }
                 await bootstrapAvatarPreferences()
                 await setupNotifications()
                 await refreshOutboxCount()
-                await observeMailboxSyncSettingsChanges()
                 await startDeferredBackendStartupWorkIfNeeded()
+                await observeMailboxSyncSettingsChanges()
+            }
+    }
+
+    private func handleBackendSessionChange() {
+        sourceSectionsRevision += 1
+        invalidateSourceLoading()
+        backgroundAccountRefreshTask?.cancel()
+        backgroundAccountRefreshTask = nil
+        activeBackgroundAccountRefreshRequestID = nil
+        pendingBackgroundAccountIDs.removeAll()
+        let available = Set(sourceSections.filter { backendAccountIDs.contains($0.account.id) }.map(\.id))
+        if let source = navigation.selectedSourceID, !backendAccountIDs.contains(source.accountID) {
+            navigation.presentedSheet = nil
+        }
+        navigation.reconcileReaderSources(available)
+        sourceSections.removeAll { !backendAccountIDs.contains($0.account.id) }
+        if let section = selectedSourceSection {
+            applySelectedSourceSection(section)
+        } else {
+            folders = []
+            mailboxes = []
+            activeMailboxID = nil
+        }
+    }
+
+    private var mailRootObservedContent: some View {
+        mailRootLoadingContent
+            .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
+                onSettingsMailboxContextChange?(settingsMailboxContext)
             }
             .modifier(externalInputConsumer)
             .onChange(of: navigation.composePresentationID) {
@@ -588,6 +632,7 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
+                onSettingsMailboxContextChange?(settingsMailboxContext)
             }
             .onChange(of: monitor.isOnline) { wasOnline, isOnline in
                 handleNetworkStatusChange(wasOnline: wasOnline, isOnline: isOnline)
@@ -605,6 +650,10 @@ public struct BrevMailRootView: View {
                 }
                 #endif
             }
+    }
+
+    private var mailRootPresentationContent: some View {
+        mailRootObservedContent
             .accessibilityHidden(isMailBackgroundAccessibilityHidden)
             .modifier(
                 MailAuxiliaryPresentationModifier(sheet: sheetBinding) { sheet, close in
@@ -858,6 +907,11 @@ public struct BrevMailRootView: View {
     }
 
     private func handleSelectedSourceChange() {
+        if activeFolderLoadRequest?.sourceID != navigation.selectedSourceID { activeFolderLoadRequest = nil }
+        if activeMailboxLoadRequest?.sourceID != navigation.selectedSourceID { activeMailboxLoadRequest = nil }
+        if let request = activeCommandMutationRequest, request.sourceID != navigation.selectedSourceID {
+            finishCommandMutation(request)
+        }
         // Drop any in-flight sync indicator from the previous account so it
         // doesn't linger over the newly selected one.
         syncProgress = nil
@@ -921,6 +975,7 @@ public struct BrevMailRootView: View {
         // `brevMailPaneScrollEdgeBlur`), not as one overlay here: a full-width
         // band backdrop-sampled the split divider too and blurred away its top.
         mailSplitView
+            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
     }
 
     private var sidebarPane: some View {
@@ -1043,14 +1098,18 @@ public struct BrevMailRootView: View {
     private func readingPaneContent(fallbackHeader: MessageHeader? = nil) -> some View {
         Group {
             let threadHeaders = threadHeadersForSelection(fallbackHeader: fallbackHeader)
-            if selectedBackend.groupsMessagesIntoThreads,
-               threadHeaders.count > 1 {
+            if !hasValidSelectedSourceBackend {
+                Text("This mailbox is no longer connected.", bundle: .module)
+                    .foregroundStyle(theme.textSecondary.color)
+            } else if selectedBackend.groupsMessagesIntoThreads,
+                      threadHeaders.count > 1 {
                 ThreadConversationView(
                     threadHeaders: threadHeaders,
                     backend: selectedBackend,
                     sourceID: navigation.selectedSourceID,
+                    mailboxLabel: selectedSourceSection?.mailbox.email,
                     navigation: navigation,
-                    isWorkBlocked: isMessageWorkBlocked
+                    isWorkBlocked: isCommandMutationBlocked
                 )
             } else {
                 MessageDetailView(
@@ -1059,7 +1118,8 @@ public struct BrevMailRootView: View {
                     header: navigation.selectedHeader ?? fallbackHeader,
                     navigation: navigation,
                     allFolders: folders,
-                    isWorkBlocked: isMessageWorkBlocked
+                    isWorkBlocked: isMessageWorkBlocked,
+                    isMutationWorkBlocked: isCommandMutationBlocked
                 )
             }
         }
@@ -1177,9 +1237,10 @@ public struct BrevMailRootView: View {
                 sourceSections: visibleSourceSections,
                 savedSearchID: mailbox.id,
                 savedSearchTitle: mailbox.name,
-                savedSearchQuery: mailbox.query.searchQuery,
+                savedSearchQuery: mailbox.query,
                 localMessageWorkflowState: localMessageWorkflowStateBinding,
                 isWorkBlocked: isMessageWorkBlocked,
+                isMutationWorkBlocked: isCommandMutationBlocked,
                 composeActions: composePresentationActions,
                 onSelectMessage: { header in
                     #if os(iOS)
@@ -1217,6 +1278,7 @@ public struct BrevMailRootView: View {
                     smartView: selectedSmartView,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
                     isWorkBlocked: isMessageWorkBlocked,
+                    isMutationWorkBlocked: isCommandMutationBlocked,
                     composeActions: composePresentationActions,
                     onSelectMessage: { header in
                         #if os(iOS)
@@ -1240,6 +1302,7 @@ public struct BrevMailRootView: View {
                     searchSyntaxDescription: selectedSearchSyntaxDescription,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
                     isWorkBlocked: isMessageWorkBlocked,
+                    isMutationWorkBlocked: isCommandMutationBlocked,
                     composeActions: composePresentationActions,
                     onSelectMessage: { header in
                         #if os(iOS)
@@ -1256,7 +1319,7 @@ public struct BrevMailRootView: View {
                 )
             }
         }
-        .frame(minWidth: 280, idealWidth: 360)
+        .frame(minWidth: 320, idealWidth: 420)
         .brevMailPaneSurface(.content)
         // iOS gives search its own full-width band above the list (see
         // `MessageListSearchBand`, rendered by the list views), so the field
@@ -2004,7 +2067,8 @@ public struct BrevMailRootView: View {
     }
 
     private var selectedBackend: any MailBackend {
-        backend(for: navigation.selectedSourceID)
+        let sourceID = navigation.selectedSourceID ?? preferredDefaultSection(in: visibleSourceSections)?.id
+        return backends.first { $0.account.id == sourceID?.accountID } ?? backend
     }
 
     private var selectedAIBackend: (any AIBackend)? {
@@ -2022,7 +2086,7 @@ public struct BrevMailRootView: View {
     private func backend(for sourceID: MailSourceID?) -> any MailBackend {
         guard let sourceID,
               let match = backends.first(where: { $0.account.id == sourceID.accountID })
-        else { return backend }
+        else { return selectedBackend }
         return match
     }
 
@@ -2230,8 +2294,18 @@ public struct BrevMailRootView: View {
             || navigation.presentedSheet != nil
     }
 
+    private var hasMailContext: Bool {
+        MailRootWorkBlockPolicy.hasMailContext(
+            visibleSourceCount: visibleSourceSections.count,
+            hasAnySources: !sourceSections.isEmpty,
+            hasFallbackFolders: !folders.isEmpty,
+            isAllMailboxesProfile: normalizedActiveProfileID == MailProfile.allMailboxesID
+        )
+    }
+
     private var isCommandMutationBlocked: Bool {
-        activeFolderLoadRequest != nil
+        if !hasMailContext { return true }
+        return activeFolderLoadRequest != nil
             || activeMailboxLoadRequest != nil
             || activeRefreshRequest != nil
             || activeMailboxSwitchRequest != nil
@@ -2259,13 +2333,15 @@ public struct BrevMailRootView: View {
     }
 
     private var isMessageWorkBlocked: Bool {
-        MailRootWorkBlockPolicy.isMessageWorkBlocked(
+        if !hasMailContext { return true }
+        return MailRootWorkBlockPolicy.isMessageWorkBlocked(
             hasPresentedSheet: navigation.presentedSheet != nil,
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
             activeRefreshRequest: activeRefreshRequest,
             activeMailboxSwitchRequest: activeMailboxSwitchRequest,
-            activeCommandMutationRequest: activeCommandMutationRequest
+            activeCommandMutationRequest: activeCommandMutationRequest,
+            hasUsableContent: !navigation.currentFolderHeaders.isEmpty || !visibleSourceSections.isEmpty
         )
     }
 
@@ -2322,7 +2398,8 @@ public struct BrevMailRootView: View {
     }
 
     private var isComposeWorkBlocked: Bool {
-        MailRootWorkBlockPolicy.isComposeWorkBlocked(
+        if !hasMailContext { return true }
+        return MailRootWorkBlockPolicy.isComposeWorkBlocked(
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
             activeRefreshRequest: activeRefreshRequest,
@@ -2332,7 +2409,8 @@ public struct BrevMailRootView: View {
     }
 
     private func canPresentCompose() -> Bool {
-        MailRootComposePresentationPolicy.canPresentCompose(
+        guard hasMailContext else { return false }
+        return MailRootComposePresentationPolicy.canPresentCompose(
             hasPresentedSheet: navigation.presentedSheet != nil,
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
@@ -2360,6 +2438,15 @@ public struct BrevMailRootView: View {
         }
         #endif
         navigation.presentNewMessage()
+    }
+
+    private var settingsMailboxContext: SettingsMailboxContext {
+        SettingsMailboxContext(
+            selectedSourceID: navigation.selectedSourceID,
+            mailboxes: sourceSections.map {
+                SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders)
+            }
+        )
     }
 
     private func presentSettings() {
@@ -2550,7 +2637,7 @@ public struct BrevMailRootView: View {
                 if let sourceID = target.sourceID {
                     navigation.selectFolder(created.id, in: sourceID)
                 } else {
-                    navigation.selectedFolderID = created.id
+                    navigation.selectFolder(created.id, in: nil)
                     navigation.selectedMessageID = nil
                     navigation.currentFolderHeaders = []
                     navigation.bulkSelection.removeAll()
@@ -2660,7 +2747,7 @@ public struct BrevMailRootView: View {
             if summary.messageCount == 0 {
                 throw MailRootImportError.emptySource(importRequest.url.lastPathComponent)
             }
-            navigation.selectedFolderID = destination.id
+            navigation.selectFolder(destination.id, in: navigation.selectedSourceID)
             navigation.requestReload()
             await reloadFoldersAfterSidebarMutation()
             rootStatus = MailRootStatus(
@@ -3155,10 +3242,16 @@ public struct BrevMailRootView: View {
         return SourceMessageID(sourceID: sourceID, messageID: header.id)
     }
 
-    private func loadWorkspace() async {
+    private var backendAccountIDs: [BrevAccount.ID] { backends.map(\.account.id).sorted() }
+
+    private var backendSessionIDs: [ObjectIdentifier] { backends.map(ObjectIdentifier.init) }
+
+    private var backendTaskID: String { "\(backendSessionIDs):\(startupPhase.phase)" }
+
+    private func loadWorkspace(supersedingActiveLoads: Bool = false) async {
         let startedAt = Date()
         await MailRootWorkspaceLoader.load(
-            loadSourceSections: { await loadSourceSections() },
+            loadSourceSections: { await loadSourceSections(supersedingActiveLoads: supersedingActiveLoads) },
             loadMailboxes: { await loadMailboxes() },
             loadFolders: { await loadFolders() },
             sourceSectionsEmpty: { sourceSections.isEmpty },
@@ -3190,15 +3283,14 @@ public struct BrevMailRootView: View {
     }
 
     private func startLiveChangeSubscriptionIfNeeded() async {
-        guard !didStartLiveChangeSubscription else { return }
-        didStartLiveChangeSubscription = true
         await subscribeToChanges()
     }
 
     private func startDeferredBackendStartupWorkIfNeeded() async {
-        guard !didStartDeferredBackendStartupWork else { return }
-        didStartDeferredBackendStartupWork = true
-        MailRootDeferredStartup.startBackendWork(backends: backends)
+        let pending = backends.filter { !deferredStartupAccountIDs.contains(ObjectIdentifier($0)) }
+        deferredStartupAccountIDs.formIntersection(backendSessionIDs)
+        deferredStartupAccountIDs.formUnion(pending.map(ObjectIdentifier.init))
+        MailRootDeferredStartup.startBackendWork(backends: pending)
     }
 
     /// Re-run the retention sweep whenever a settings surface changes the
@@ -3340,55 +3432,108 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private func invalidateSourceLoading() {
+        sourceLoadWorkTask?.cancel()
+        sourceLoadWorkTask = nil
+        sourceLoadOwnership.invalidate()
+        isLoadingSources = false
+        sourceLoadTimeoutTask?.cancel()
+        sourceLoadTimeoutTask = nil
+    }
+
     private func loadSourceSections(supersedingActiveLoads: Bool = false) async {
-        guard MailRootMailboxLoadStartPolicy.canStartLoad(
-            activeRequest: activeMailboxLoadRequest,
-            activeMailboxSwitchRequest: activeMailboxSwitchRequest,
-            supersedingActiveRequest: supersedingActiveLoads
-        ), MailRootFolderLoadStartPolicy.canStartLoad(
-            activeRequest: activeFolderLoadRequest,
-            activeMailboxSwitchRequest: activeMailboxSwitchRequest,
-            supersedingActiveRequest: supersedingActiveLoads
-        ) else { return }
-        let mailboxRequest = startMailboxLoadRequest()
-        let folderRequest = startFolderLoadRequest()
+        guard !isLoadingSources || supersedingActiveLoads else { return }
+        let sourceRequest = sourceLoadOwnership.begin()
+        isLoadingSources = true
+        sourceLoadTimeoutTask?.cancel()
+        sourceLoadTimeoutTask = Task { @MainActor in
+            do { try await Task.sleep(nanoseconds: 30_000_000_000) } catch { return }
+            guard sourceLoadOwnership.accepts(sourceRequest), isLoadingSources else { return }
+            invalidateSourceLoading()
+            shouldRetryMailboxLoad = true
+            shouldRetrySourceSections = true
+            rootStatus = MailRootStatus(
+                message: String(localized: "Some mailboxes are taking longer than expected. Available mail is still usable.",
+                                bundle: .module),
+                tone: .warning,
+                actionTitle: String(localized: "Try Again", bundle: .module)
+            )
+        }
+        defer {
+            if sourceLoadOwnership.current == sourceRequest {
+                isLoadingSources = false
+                sourceLoadTimeoutTask?.cancel()
+                sourceLoadTimeoutTask = nil
+            }
+        }
         let wasRetryingMailboxLoad = shouldRetryMailboxLoad
         var loadedSections: [MailSourceSection] = []
         var firstError: (any Error)?
 
-        let loadResults: [MailRootSourceLoadResult] = await MailConcurrentWork.map(backends) { backend in
-            do {
-                let mailboxes = try await backend.mailboxes()
-                let sections = await MailConcurrentWork.map(mailboxes) { mailbox in
-                    let sourceID = backend.sourceID(for: mailbox)
-                    do {
-                        let folders = try await backend.folders(in: sourceID)
-                        return MailSourceSection(
-                            id: sourceID,
-                            account: backend.account,
-                            mailbox: mailbox,
-                            folders: Self.sorted(folders)
-                        )
-                    } catch {
-                        return MailSourceSection(
-                            id: sourceID,
-                            account: backend.account,
-                            mailbox: mailbox,
-                            folders: [],
-                            loadError: FolderSidebarPresentation.loadErrorInfo(for: error)
-                        )
+        var loadResults: [Int: MailRootSourceLoadResult] = [:]
+        var sectionsByAccount = Dictionary(grouping: sourceSections, by: { $0.account.id })
+        let work = Task { @MainActor in
+            await MailConcurrentWork.forEachResult(backends) { backend -> MailRootSourceLoadResult in
+                do {
+                    let mailboxes = try await backend.mailboxes()
+                    let sections = await MailConcurrentWork.map(mailboxes) { mailbox in
+                        let sourceID = backend.sourceID(for: mailbox)
+                        do {
+                            let folders = try await backend.folders(in: sourceID)
+                            return MailSourceSection(
+                                id: sourceID,
+                                account: backend.account,
+                                mailbox: mailbox,
+                                folders: Self.sorted(folders)
+                            )
+                        } catch {
+                            return MailSourceSection(
+                                id: sourceID,
+                                account: backend.account,
+                                mailbox: mailbox,
+                                folders: [],
+                                loadError: FolderSidebarPresentation.loadErrorInfo(for: error)
+                            )
+                        }
+                    }
+                    return MailRootSourceLoadResult.sections(sections)
+                } catch {
+                    return MailRootSourceLoadResult.failure(
+                        accountEmail: backend.account.emailAddress,
+                        message: error.localizedDescription
+                    )
+                }
+            } receive: { index, result in
+                guard sourceLoadOwnership.accepts(sourceRequest) else { return }
+                loadResults[index] = result
+                if case .failure(_, let message) = result {
+                    let accountID = backends[index].account.id
+                    sectionsByAccount[accountID] = (sectionsByAccount[accountID] ?? []).map { section in
+                        MailSourceSection(id: section.id, account: section.account, mailbox: section.mailbox,
+                                          folders: section.folders,
+                                          loadError: FolderSidebarPresentation
+                                              .loadErrorInfo(for: MailBackendError.backendSpecific(message: message)))
                     }
                 }
-                return MailRootSourceLoadResult.sections(sections)
-            } catch {
-                return MailRootSourceLoadResult.failure(
-                    accountEmail: backend.account.emailAddress,
-                    message: error.localizedDescription
-                )
+                if case .sections(let sections) = result {
+                    let oldSections = sectionsByAccount[backends[index].account.id] ?? []
+                    sectionsByAccount[backends[index].account.id] = sections.map { section in
+                        guard section.loadError != nil,
+                              let old = oldSections.first(where: { $0.id == section.id }) else { return section }
+                        return MailSourceSection(id: section.id, account: section.account, mailbox: section.mailbox,
+                                                 folders: old.folders, loadError: section.loadError)
+                    }
+                }
+                let available = backends.flatMap { sectionsByAccount[$0.account.id] ?? [] }
+                applyLoadedSourceSections(available)
+                advanceStartupPhaseAfterWorkspaceLoad()
             }
         }
-        let loadSummary = MailRootSourceLoadPresentation.summary(for: loadResults)
-        loadedSections = loadSummary.sections
+        sourceLoadWorkTask = work
+        await work.value
+        guard sourceLoadOwnership.accepts(sourceRequest) else { return }
+        let loadSummary = MailRootSourceLoadPresentation.summary(for: backends.indices.compactMap { loadResults[$0] })
+        loadedSections = backends.flatMap { sectionsByAccount[$0.account.id] ?? [] }
         for section in loadedSections {
             if let loadError = section.loadError {
                 firstError = firstError ?? MailBackendError.backendSpecific(message: loadError.message)
@@ -3398,9 +3543,7 @@ public struct BrevMailRootView: View {
             firstError = firstError ?? MailBackendError.backendSpecific(message: failure.message)
         }
 
-        guard canApplyMailboxLoadResponse(mailboxRequest),
-              canApplyFolderLoadResponse(folderRequest)
-        else { return }
+        guard sourceLoadOwnership.accepts(sourceRequest) else { return }
 
         if loadedSections.isEmpty, let firstError {
             sourceSectionsRevision += 1
@@ -3420,12 +3563,13 @@ public struct BrevMailRootView: View {
             shouldRetryFolderLoad = false
             if let partialFailureStatus = MailRootSourceLoadPresentation.partialFailureStatus(for: loadSummary) {
                 rootStatus = partialFailureStatus
+            } else if let failure = loadSummary.failures.first {
+                rootStatus = MailboxLoadPresentation
+                    .loadErrorStatus(for: MailBackendError.backendSpecific(message: failure.message))
             } else if wasRetryingMailboxLoad {
                 rootStatus = nil
             }
         }
-        finishFolderLoad(folderRequest)
-        finishMailboxLoad(mailboxRequest)
     }
 
     /// Refresh folder counts for a non-selected account without replacing the
@@ -3519,6 +3663,7 @@ public struct BrevMailRootView: View {
     private func loadFolders() async {
         guard canStartFolderLoad() else { return }
         let request = startFolderLoadRequest()
+        defer { finishFolderLoad(request) }
         do {
             let result: [Folder]
             let sourceID = visibleSelectedSourceID
@@ -3552,8 +3697,9 @@ public struct BrevMailRootView: View {
     }
 
     private func startFolderLoadRequest() -> MailRootFolderLoadRequest {
+        invalidateSourceLoading()
         nextFolderLoadRequestID += 1
-        let request = MailRootFolderLoadRequest(id: nextFolderLoadRequestID)
+        let request = MailRootFolderLoadRequest(id: nextFolderLoadRequestID, sourceID: navigation.selectedSourceID)
         activeFolderLoadRequest = request
         return request
     }
@@ -3561,7 +3707,8 @@ public struct BrevMailRootView: View {
     private func canApplyFolderLoadResponse(_ request: MailRootFolderLoadRequest) -> Bool {
         MailRootFolderLoadResponsePolicy.canApplyResponse(
             request: request,
-            activeRequest: activeFolderLoadRequest
+            activeRequest: activeFolderLoadRequest,
+            currentSourceID: navigation.selectedSourceID
         )
     }
 
@@ -3599,6 +3746,7 @@ public struct BrevMailRootView: View {
     private func loadMailboxes() async {
         guard canStartMailboxLoad() else { return }
         let request = startMailboxLoadRequest()
+        defer { finishMailboxLoad(request) }
         let wasRetryingMailboxLoad = shouldRetryMailboxLoad
         do {
             let all = try await selectedBackend.mailboxes()
@@ -3631,7 +3779,7 @@ public struct BrevMailRootView: View {
 
     private func startMailboxLoadRequest() -> MailRootMailboxLoadRequest {
         nextMailboxLoadRequestID += 1
-        let request = MailRootMailboxLoadRequest(id: nextMailboxLoadRequestID)
+        let request = MailRootMailboxLoadRequest(id: nextMailboxLoadRequestID, sourceID: navigation.selectedSourceID)
         activeMailboxLoadRequest = request
         return request
     }
@@ -3639,7 +3787,8 @@ public struct BrevMailRootView: View {
     private func canApplyMailboxLoadResponse(_ request: MailRootMailboxLoadRequest) -> Bool {
         MailRootMailboxLoadResponsePolicy.canApplyResponse(
             request: request,
-            activeRequest: activeMailboxLoadRequest
+            activeRequest: activeMailboxLoadRequest,
+            currentSourceID: navigation.selectedSourceID
         )
     }
 
@@ -3683,14 +3832,14 @@ public struct BrevMailRootView: View {
         presentInitialMailboxSelectionIfNeeded(for: sections)
         activeProfileID = normalizedActiveProfileID
         let visibleSections = visibleSourceSections
+        navigation.reconcileReaderSources(Set(visibleSections.map(\.id)))
         if let selectedSourceID = navigation.selectedSourceID,
            let selected = visibleSections.first(where: { $0.id == selectedSourceID }) {
             applySelectedSourceSection(selected)
             return
         }
 
-        if navigation.isUnifiedInboxSelected,
-           visibleSections.filter({ $0.folders.contains { $0.role == .inbox } }).count > 1 {
+        if navigation.isUnifiedInboxSelected {
             folders = []
             folderLoadError = nil
             mailboxes = visibleSections.map(\.mailbox)
@@ -3698,7 +3847,7 @@ public struct BrevMailRootView: View {
             return
         }
 
-        if navigation.isSmartViewSelected, !visibleSections.isEmpty {
+        if navigation.isSmartViewSelected {
             folders = []
             folderLoadError = nil
             mailboxes = visibleSections.map(\.mailbox)
@@ -3706,7 +3855,7 @@ public struct BrevMailRootView: View {
             return
         }
 
-        if navigation.isAllAttachmentsSelected, !visibleSections.isEmpty {
+        if navigation.isAllAttachmentsSelected {
             folders = []
             folderLoadError = nil
             mailboxes = visibleSections.map(\.mailbox)
@@ -3729,6 +3878,7 @@ public struct BrevMailRootView: View {
             afterLoading: visibleFolders(fallback.folders, sourceID: fallback.id),
             currentID: nil
         )
+        navigation.resetForMailboxSwitch()
         navigation.selectedSourceID = fallback.id
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
@@ -3982,19 +4132,20 @@ public struct BrevMailRootView: View {
 
     private func applyActiveProfileSelection() {
         let visibleSections = visibleSourceSections
+        navigation.reconcileReaderSources(Set(visibleSections.map(\.id)))
         if let selectedSourceID = navigation.selectedSourceID,
            let selected = visibleSections.first(where: { $0.id == selectedSourceID }) {
             applySelectedSourceSection(selected)
             return
         }
-        if navigation.isSmartViewSelected, !visibleSections.isEmpty {
+        if navigation.isSmartViewSelected {
             folders = []
             folderLoadError = nil
             mailboxes = visibleSections.map(\.mailbox)
             activeMailboxID = nil
             return
         }
-        if navigation.isAllAttachmentsSelected, !visibleSections.isEmpty {
+        if navigation.isAllAttachmentsSelected {
             folders = []
             folderLoadError = nil
             mailboxes = visibleSections.map(\.mailbox)
@@ -4026,6 +4177,7 @@ public struct BrevMailRootView: View {
             afterLoading: visibleFolders(fallback.folders, sourceID: fallback.id),
             currentID: nil
         )
+        navigation.resetForMailboxSwitch()
         navigation.selectedSourceID = fallback.id
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
@@ -4311,8 +4463,7 @@ public struct BrevMailRootView: View {
             if let matchingSection {
                 navigation.selectFolder(folderID, in: matchingSection.id)
             } else {
-                navigation.selectedSourceID = nil
-                navigation.selectedFolderID = folderID
+                navigation.selectFolder(folderID, in: nil)
                 navigation.currentFolderHeaders = []
             }
             navigation.selectedMessageID = messageID
@@ -4320,8 +4471,7 @@ public struct BrevMailRootView: View {
             if let matchingSection {
                 navigation.selectFolder(folderID, in: matchingSection.id)
             } else {
-                navigation.selectedSourceID = nil
-                navigation.selectedFolderID = folderID
+                navigation.selectFolder(folderID, in: nil)
                 navigation.selectedMessageID = nil
                 navigation.currentFolderHeaders = []
             }
@@ -4860,7 +5010,7 @@ public struct BrevMailRootView: View {
         if let sourceID = item.sourceID ?? navigation.selectedSourceID {
             navigation.selectFolder(item.folderID, in: sourceID)
         } else {
-            navigation.selectedFolderID = item.folderID
+            navigation.selectFolder(item.folderID, in: nil)
             navigation.currentFolderHeaders = []
         }
         navigation.selectedMessageID = item.id
@@ -5194,6 +5344,7 @@ public struct BrevMailRootView: View {
     }
 
     private func startMailboxSwitchRequest(mailboxID: Mailbox.ID) -> MailRootMailboxSwitchRequest {
+        invalidateSourceLoading()
         nextMailboxSwitchRequestID += 1
         let request = MailRootMailboxSwitchRequest(
             id: nextMailboxSwitchRequestID,
@@ -5319,10 +5470,12 @@ public struct BrevMailRootView: View {
     }
 
     private func startCommandMutationRequest(sourceFolderID: Folder.ID?) -> MailRootCommandMutationRequest {
+        invalidateSourceLoading()
         nextCommandMutationRequestID += 1
         let request = MailRootCommandMutationRequest(
             id: nextCommandMutationRequestID,
-            sourceFolderID: sourceFolderID
+            sourceFolderID: sourceFolderID,
+            sourceID: navigation.selectedSourceID
         )
         activeCommandMutationRequest = request
         startCommandMutationWatchdog(for: request)
@@ -5359,8 +5512,13 @@ public struct BrevMailRootView: View {
     /// complete normally; short enough that a true hang recovers without relaunch.
     private static let commandMutationWatchdogTimeoutNanoseconds: UInt64 = 60_000_000_000 // 60s
 
+    private var hasValidSelectedSourceBackend: Bool {
+        navigation.selectedSourceID.map { backendAccountIDs.contains($0.accountID) } ?? true
+    }
+
     private func canStartCommandMutation() -> Bool {
-        MailRootCommandMutationStartPolicy.canStartMutation(
+        guard hasValidSelectedSourceBackend, hasMailContext else { return false }
+        return MailRootCommandMutationStartPolicy.canStartMutation(
             activeRequest: activeCommandMutationRequest,
             activeFolderLoadRequest: activeFolderLoadRequest,
             activeMailboxLoadRequest: activeMailboxLoadRequest,
@@ -5375,7 +5533,8 @@ public struct BrevMailRootView: View {
         MailRootCommandMutationResponsePolicy.canApplyResponse(
             request: request,
             activeRequest: activeCommandMutationRequest,
-            currentSelectedFolderID: navigation.selectedFolderID
+            currentSelectedFolderID: navigation.selectedFolderID,
+            currentSourceID: navigation.selectedSourceID
         )
     }
 
@@ -5395,6 +5554,7 @@ public struct BrevMailRootView: View {
     private func refreshFolderMetadataAfterChange() async {
         guard canStartFolderLoad() else { return }
         let request = startFolderLoadRequest()
+        defer { finishFolderLoad(request) }
         do {
             let result: [Folder]
             let sourceID = visibleSelectedSourceID

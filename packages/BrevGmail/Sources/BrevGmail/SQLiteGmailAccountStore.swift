@@ -92,6 +92,39 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
         return try readMessages(accountID: accountID)
     }
 
+    /// Reads only one label page in received-date order, with Gmail ID as a stable tie-breaker.
+    public func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage] {
+        try validate(accountID: accountID)
+        guard limit > 0 else { return [] }
+        return try lock.withLock {
+            let statement = try prepare("""
+            SELECT m.message_json FROM gmail_messages AS m
+            WHERE m.account_id = ? AND EXISTS (
+                SELECT 1 FROM gmail_message_labels AS l
+                WHERE l.account_id = m.account_id AND l.message_id = m.message_id AND l.label_id = ?
+            )
+            ORDER BY CAST(json_extract(CAST(m.message_json AS TEXT), '$.internalDate') AS INTEGER) DESC, m.message_id
+            LIMIT ? OFFSET ?;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(accountID, to: statement, at: 1)
+            bind(labelID, to: statement, at: 2)
+            sqlite3_bind_int64(statement, 3, Int64(limit))
+            sqlite3_bind_int64(statement, 4, Int64(max(0, offset)))
+            var messages: [GmailMessage] = []
+            var status = sqlite3_step(statement)
+            while status == SQLITE_ROW {
+                guard let data = blob(statement, column: 0),
+                      let message = try? JSONDecoder().decode(GmailMessage.self, from: data)
+                else { throw GmailAccountStoreError.malformedStoredMessage }
+                messages.append(message)
+                status = sqlite3_step(statement)
+            }
+            guard status == SQLITE_DONE else { throw GmailAccountStoreError.malformedStoredMessage }
+            return messages
+        }
+    }
+
     /// Looks up one account-wide message.
     public func message(accountID: String, messageID: String) async throws -> GmailMessage? {
         try validate(accountID: accountID)
@@ -769,6 +802,8 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
     );
     CREATE INDEX IF NOT EXISTS gmail_messages_thread_idx
         ON gmail_messages(account_id, thread_id);
+    CREATE INDEX IF NOT EXISTS gmail_messages_received_idx
+        ON gmail_messages(account_id, CAST(json_extract(CAST(message_json AS TEXT), '$.internalDate') AS INTEGER) DESC, message_id);
     CREATE TABLE IF NOT EXISTS gmail_bodies (
         account_id TEXT NOT NULL,
         message_id TEXT NOT NULL,

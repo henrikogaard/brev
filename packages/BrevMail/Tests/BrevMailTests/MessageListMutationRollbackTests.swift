@@ -80,6 +80,24 @@ struct MessageListMutationRollbackTests {
         #expect(navigation.bulkSelection == [original.header.id])
     }
 
+    @Test("partial rollback preserves a successful archive in another account")
+    func partialRollbackPreservesSuccess() {
+        let firstSource = MailSourceID(accountID: "a", mailboxID: "a")
+        let secondSource = MailSourceID(accountID: "b", mailboxID: "b")
+        let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let first = Self.makeUnifiedItem(sourceID: firstSource, folder: folder, header: Self.makeHeader(id: "same"))
+        let second = Self.makeUnifiedItem(sourceID: secondSource, folder: folder, header: Self.makeHeader(id: "same"))
+        let navigation = MailNavigationState()
+        let rollback = UnifiedInboxMutationRollback(
+            items: [first, second],
+            selectedItemIDs: [first.id, second.id],
+            navigation: navigation
+        )
+        let restored = rollback.restoring(failedSources: [secondSource], in: [])
+        #expect(restored.items == [second])
+        #expect(restored.selectedItemIDs == [second.id])
+    }
+
     private static func makeUnifiedItem(
         sourceID: MailSourceID,
         folder: Folder,

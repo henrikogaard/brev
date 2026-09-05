@@ -128,10 +128,18 @@ enum MessageListVisibleHeaders {
 enum MessageListNavigationHeaders {
     static func headers(
         from headers: [MessageHeader],
+        threadContext: [MessageHeader] = [],
         pinnedIDs: Set<MessageHeader.ID> = []
     ) -> [MessageHeader] {
-        MessageListVisibleHeaders.headers(
-            from: headers,
+        // A matching conversation exposes its replies inline, even when those
+        // replies do not match the list filter. Keep the same context in the reader.
+        let threadIDs = Set(headers.map(\.threadID))
+        let matchedIDs = Set(headers.map(\.id))
+        let replies = threadContext.filter {
+            threadIDs.contains($0.threadID) && !matchedIDs.contains($0.id)
+        }
+        return MessageListVisibleHeaders.headers(
+            from: headers + replies,
             groupByThread: false,
             pinnedIDs: pinnedIDs
         )

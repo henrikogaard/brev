@@ -156,7 +156,7 @@ public enum MessageCommandPresentation {
             action: .pinToTop,
             title: "Pin to Top / Unpin",
             enabledCondition: "always available",
-            wiring: .visible(handler: "togglePinned", dependency: "list.pinnedMessageIDs", platforms: "macOS, iOS")
+            wiring: .visible(handler: "togglePinned", dependency: MailPinnedMessages.storageKey, platforms: "macOS, iOS")
         ),
         .init(
             action: .toggleRead,

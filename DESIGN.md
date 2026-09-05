@@ -23,7 +23,7 @@ values locally.
 | Canvas | `#FFFFFF` | `#101010` | `theme.bgPrimary` |
 | Quiet surface | `#F5F5F5` | `#1A1A1A` | `theme.bgSecondary` |
 | Primary ink | `#151515` | `#F2F2F2` | `theme.textPrimary` |
-| Secondary ink | `#5F5F5F` | `#A8A8A8` | `theme.textSecondary` |
+| Secondary ink | `#505050` | `#B8B8B8` | `theme.textSecondary` |
 | Primary action | `#1F1F1F` | `#E6E6E6` | `theme.accent` |
 | Hairline | `#D8D8D8` | `#333333` | `theme.border` |
 
@@ -111,3 +111,38 @@ decorative route or extra boundary.
 - Let content scroll at compact heights and under large Dynamic Type sizes.
 - Respect the active Brev theme and Reduced Motion; onboarding does not require
   ambient animation.
+
+
+## Mailbox navigation
+
+Profiles are saved sets of mailboxes, such as Work or Private. Use one compact,
+stable profile menu at the top of the sidebar, with profile choices and Manage
+Profiles directly inside it. A mailbox click or opened message must not rename
+that profile control or change the active profile.
+
+Stack the profile's mailboxes as independently collapsible groups. Each has a
+compact one-line header and its own folder tree, so users can keep several
+inboxes and folder sets visible together. Preserve expansion choices locally
+across profile changes and relaunches. Selecting a folder does not collapse
+other mailboxes; reading a message from a global view does not expand a group.
+
+Addresses belong in tooltips and accessibility labels. Omit the extra Mailboxes
+heading, permanent email-address lines, and a separate folder-owner caption:
+the mailbox group owns its tree. Show unread counts beside folders and on
+collapsed mailbox headers. All Inboxes appears for multiple visible mailboxes
+and aggregates only the active profile. Smart Views remain collapsible.
+
+Use a native borderless menu with a visible disclosure indicator on macOS.
+Touch platforms retain at least a 44-point target. Reuse the existing navigation
+and profile callbacks; profile changes never disconnect accounts.
+
+
+Smart Views use one condition editor from both Mail and Settings. Each row
+contains a field, a compatible comparison, and the required input. Use
+"all / any" matching and explicit Sent/Trash scope. Keep Save and Cancel
+outside the scrolling conditions, and grow the compact sheet up to a bounded
+height. Label preview-text matching honestly; do not claim full-body search.
+
+Settings > Smart Views lists built-in and custom entries together. Visibility
+and order are separate controls; hiding a view retains its definition and
+position. The whole section can be hidden and restored from Settings.

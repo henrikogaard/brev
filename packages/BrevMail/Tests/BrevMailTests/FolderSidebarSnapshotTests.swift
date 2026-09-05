@@ -24,8 +24,54 @@ import Testing
 @Suite("Folder sidebar snapshots")
 @MainActor
 struct FolderSidebarSnapshotTests {
+    @Test("profiles show independently expanded mailbox groups", arguments: ["light", "dark"])
+    func compactProfileScopes(_ mode: String) throws {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let account = BrevAccount(id: "account", displayName: "Demo", emailAddress: "me@example.org")
+        let privateBox = Mailbox(id: "private", email: "me@example.org", displayName: "Private")
+        let workBox = Mailbox(id: "work", email: "me@work.example", displayName: "Work")
+        let privateSource = MailSourceID(accountID: account.id, mailboxID: privateBox.id)
+        let workSource = MailSourceID(accountID: account.id, mailboxID: workBox.id)
+        let folders = [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 5),
+                       Folder(id: "drafts", name: "Drafts", role: .drafts),
+                       Folder(id: "sent", name: "Sent", role: .sent),
+                       Folder(id: "archive", name: "Archive", role: .archive)]
+        let sources = [MailSourceSection(id: privateSource, account: account, mailbox: privateBox, folders: folders),
+                       MailSourceSection(id: workSource, account: account, mailbox: workBox, folders: folders)]
+        let focused = MailProfile(id: "focused", name: "Focused", sourceIDs: [workSource])
+        let profiles = [MailProfile.allMailboxes(sourceIDs: [privateSource, workSource]), focused]
+        for scope in ["aggregate", "mailbox", "profile", "collapsed"] {
+            let suiteName = "MailboxGroupSnapshots-" + UUID().uuidString
+            let defaults = try #require(UserDefaults(suiteName: suiteName))
+            defer { defaults.removePersistentDomain(forName: suiteName) }
+            let expanded: Set<MailSourceID> = scope == "collapsed" ? [] : [privateSource, workSource]
+            try defaults.set(JSONEncoder().encode(expanded), forKey: "mailbox.disclosureState")
+            let nav = MailNavigationState()
+            if scope == "mailbox" { nav.selectFolder("inbox", in: workSource) }
+            else { nav.selectUnifiedInbox() }
+            let view = FolderSidebar(navigation: nav, folders: [],
+                                     sourceSections: scope == "profile" ? [sources[1]] : sources,
+                                     profiles: profiles,
+                                     activeProfileID: scope == "profile" ? focused.id : MailProfile.allMailboxesID,
+                                     onSelectProfile: { _ in }, onManageProfiles: {})
+                .frame(width: 240, height: 520)
+                .background(theme.bgSecondary.color)
+                .brevTheme(theme)
+                .environment(\.colorScheme, theme.mode.colorScheme)
+                .defaultAppStorage(defaults)
+            let host = NSHostingController(rootView: view)
+            host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+            assertSnapshot(of: host, as: .image(size: CGSize(width: 240, height: 520)),
+                           named: scope + "-" + mode,
+                           record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+        }
+    }
+
     @Test("Smart Views expose Today plus create and manage controls")
     func smartViewsExposeTodayAndManagement() throws {
+        let suiteName = "FolderSidebarSnapshots-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let account = BrevAccount.preview
         let mailbox = try #require(MockBackend.previewMailboxes(for: account).first)
         let sourceID = MailSourceID(accountID: account.id, mailboxID: mailbox.id)
@@ -48,6 +94,7 @@ struct FolderSidebarSnapshotTests {
         .frame(width: 260, height: 420)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .defaultAppStorage(defaults)
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 260, height: 420)
@@ -62,6 +109,9 @@ struct FolderSidebarSnapshotTests {
 
     @Test("All Inboxes aligns with the account-level sidebar content")
     func allInboxesGlobalAlignment() throws {
+        let suiteName = "FolderSidebarSnapshots-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let personal = BrevAccount.preview
         let personalMailbox = try #require(MockBackend.previewMailboxes(for: personal).first)
         let personalSourceID = MailSourceID(
@@ -107,6 +157,7 @@ struct FolderSidebarSnapshotTests {
         .frame(width: 240, height: 320)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .defaultAppStorage(defaults)
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 320)
@@ -121,6 +172,9 @@ struct FolderSidebarSnapshotTests {
 
     @Test("Gmail-native source shows provider mailbox names and All Mail")
     func gmailNativeSourceUsesProviderSidebarNames() throws {
+        let suiteName = "FolderSidebarSnapshots-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
         let account = BrevAccount(
             id: "gmail-api:subject",
             displayName: "Henrik Ogard",
@@ -166,6 +220,7 @@ struct FolderSidebarSnapshotTests {
         .frame(width: 260, height: 360)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .defaultAppStorage(defaults)
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 260, height: 360)

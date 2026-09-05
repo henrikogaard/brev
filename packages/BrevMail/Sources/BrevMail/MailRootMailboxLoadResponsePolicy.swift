@@ -10,8 +10,16 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
+
 struct MailRootMailboxLoadRequest: Equatable, Sendable {
     let id: Int
+    let sourceID: MailSourceID?
+
+    init(id: Int, sourceID: MailSourceID? = nil) {
+        self.id = id
+        self.sourceID = sourceID
+    }
 }
 
 enum MailRootMailboxLoadStartPolicy {
@@ -28,8 +36,9 @@ enum MailRootMailboxLoadStartPolicy {
 enum MailRootMailboxLoadResponsePolicy {
     static func canApplyResponse(
         request: MailRootMailboxLoadRequest,
-        activeRequest: MailRootMailboxLoadRequest?
+        activeRequest: MailRootMailboxLoadRequest?,
+        currentSourceID: MailSourceID? = nil
     ) -> Bool {
-        activeRequest == request
+        activeRequest == request && request.sourceID == currentSourceID
     }
 }

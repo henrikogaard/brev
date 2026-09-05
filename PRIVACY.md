@@ -74,6 +74,15 @@ iCloud". Defaults to off. Turning it off stops reading and writing on
 that device; values already in your iCloud account remain there until
 overwritten by another device that still syncs.
 
+### Local profiles and pins
+
+Profiles preserve mailbox membership while an account is unavailable. Pins use
+account, mailbox, and message identifiers so one mailbox cannot pin another's
+message. The source-scoped pin preference follows the existing optional iCloud
+preference-sync setting. Legacy pin IDs have no reliable account ownership;
+Brev retains those records and asks the user to pin the messages again rather
+than assigning them to an arbitrary account. No message bodies are included.
+
 ### Local mail notifications
 
 Brev does not register an APNS device token for mail delivery and does not

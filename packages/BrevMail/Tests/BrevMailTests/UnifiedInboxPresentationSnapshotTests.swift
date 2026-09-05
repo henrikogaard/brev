@@ -76,7 +76,7 @@ struct UnifiedInboxPresentationSnapshotTests {
 
         let snapshot = UnifiedInboxPresentationSnapshot(
             visibleItems: [pinned, regular],
-            pinnedMessageIDsRaw: "pinned\n",
+            pinnedMessageIDsRaw: pinned.pinID,
             groupByDate: true,
             collapsedDateSectionIDs: ["Pinned"],
             referenceDate: referenceDate
@@ -84,7 +84,7 @@ struct UnifiedInboxPresentationSnapshotTests {
         let pinnedSection = try #require(snapshot.dateSections.first)
         let regularSection = try #require(snapshot.dateSections.dropFirst().first)
 
-        #expect(snapshot.pinnedMessageIDs == ["pinned"])
+        #expect(snapshot.pinnedMessageIDs == [pinned.pinID])
         #expect(pinnedSection.title == "Pinned")
         #expect(pinnedSection.totalCount == 1)
         #expect(pinnedSection.isCollapsed)
@@ -116,46 +116,5 @@ struct UnifiedInboxPresentationSnapshotTests {
             sourceSubtitle: "\(accountID)@example.org",
             archiveFolder: nil
         )
-    }
-}
-
-@Suite("UnifiedInbox pinned message persistence")
-struct UnifiedInboxPinnedMessagePersistenceTests {
-    @Test("complete loads remove pins for messages no longer present")
-    func completeLoadPrunesMissingIDs() {
-        let result = UnifiedInboxPinnedMessagePersistence.reconciledIDs(
-            stored: ["present", "missing"],
-            loaded: ["present"],
-            isComplete: true
-        )
-
-        #expect(result == ["present"])
-    }
-
-    @Test("partial loads retain pins outside the loaded page")
-    func partialLoadRetainsUnknownIDs() {
-        let result = UnifiedInboxPinnedMessagePersistence.reconciledIDs(
-            stored: ["loaded", "not-yet-loaded"],
-            loaded: ["loaded"],
-            isComplete: false
-        )
-
-        #expect(result == ["loaded", "not-yet-loaded"])
-    }
-
-    @Test("persisted pins are capped deterministically")
-    func persistenceIsBounded() {
-        let ids = Set((0 ..< UnifiedInboxPinnedMessagePersistence.maximumPersistedCount + 20).map {
-            String(format: "id-%04d", $0)
-        })
-        let result = UnifiedInboxPinnedMessagePersistence.reconciledIDs(
-            stored: ids,
-            loaded: [],
-            isComplete: false
-        )
-
-        #expect(result.count == UnifiedInboxPinnedMessagePersistence.maximumPersistedCount)
-        #expect(result.contains("id-0000"))
-        #expect(!result.contains("id-0519"))
     }
 }

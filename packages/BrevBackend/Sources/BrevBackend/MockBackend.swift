@@ -355,6 +355,12 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
         return SendResult(sentMessageID: messageID, scheduledFor: draft.scheduledFor)
     }
 
+    /// Returns every seeded header owned by the requested mailbox and folder.
+    public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        let all = try await store.allMessages(in: mailboxID(for: sourceID))
+        return all.filter { $0.folderID == folder.id }
+    }
+
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
         guard query.hasSearchCriteria else { return [] }
         let all = await store.allMessages
@@ -1840,8 +1846,8 @@ private actor Store {
     private static func previewBodyFallback(for messageID: String) -> MessageBody {
         MessageBody(
             messageID: messageID,
-            html: "<p>Preview body for <code>\(messageID)</code>.</p>",
-            plainText: "Preview body for \(messageID).",
+            html: "<p>Hi team,</p><p>Thanks for the update. The plan looks good from my side.</p><p>I will share any final changes before our next check-in.</p><p>Best regards</p>",
+            plainText: "Hi team,\n\nThanks for the update. The plan looks good from my side.\n\nI will share any final changes before our next check-in.\n\nBest regards",
             attachments: [],
             listUnsubscribe: messageID == "m7"
                 ? ListUnsubscribeOptions.parse(
