@@ -21,15 +21,16 @@ import SwiftUI
 /// Call sites capture all state they need inside `undoAction`; the
 /// `UndoQueue` treats the closure as opaque.
 public struct UndoableMutation: @unchecked Sendable {
+    let id = UUID()
     /// Human-readable description shown in the "Undo" toast (e.g. "Archive").
     public let description: String
 
-    /// Async closure that reverses the mutation. Must be safe to call
-    /// concurrently with other mutations (the `UndoQueue` fires it on
-    /// the `@MainActor` task that owns the queue).
-    let undoAction: @Sendable () async -> Void
+    /// Reverses the captured mutation. The owning queue serializes reversals
+    /// and retains thrown failures for an explicit retry.
+    let undoAction: @Sendable () async throws -> Void
 
-    public init(description: String, undoAction: @escaping @Sendable () async -> Void) {
+    /// Creates an undo action with the original mailbox context captured by its caller.
+    public init(description: String, undoAction: @escaping @Sendable () async throws -> Void) {
         self.description = description
         self.undoAction = undoAction
     }
@@ -41,9 +42,9 @@ public struct UndoableMutation: @unchecked Sendable {
 /// `timeout` seconds.
 ///
 /// Rules:
-/// - `push(_:)` replaces any pending mutation and restarts the timer.
-/// - `undo()` cancels the timer, fires the action, and clears the queue.
-/// - `dismiss()` cancels the timer and clears without executing the action.
+/// - `push(_:)` replaces pending work and clears a settled failure.
+/// - `undo()` runs once; a thrown failure remains visible and retryable.
+/// - `dismiss()` clears pending work; `dismissFailure()` clears only the failure.
 ///
 /// The queue is owned by `BrevMailRootView` and injected into the
 /// environment via `\.undoQueue` so descendant views can both push
@@ -53,6 +54,14 @@ public struct UndoableMutation: @unchecked Sendable {
 public final class UndoQueue {
     /// The pending mutation, or `nil` when the queue is empty.
     public private(set) var current: UndoableMutation?
+    /// Most recent undo failure, shown to the user instead of discarded.
+    public private(set) var errorMessage: String?
+    /// Whether a reversal is currently running.
+    public private(set) var isUndoing = false
+    /// The latest failure is retryable until dismissed or another reversal is chosen.
+    public var canRetry: Bool { failedMutation != nil && !isUndoing }
+
+    private var failedMutation: UndoableMutation?
 
     private var expirationTask: Task<Void, Never>?
     private let timeout: Double
@@ -65,21 +74,50 @@ public final class UndoQueue {
     public func push(_ mutation: UndoableMutation) {
         expirationTask?.cancel()
         current = mutation
+        if !isUndoing {
+            failedMutation = nil
+            errorMessage = nil
+        }
         let timeoutNS = UInt64(timeout * 1_000_000_000)
         expirationTask = Task { [weak self] in
             try? await Task.sleep(nanoseconds: timeoutNS)
             guard !Task.isCancelled else { return }
-            await MainActor.run { self?.current = nil }
+            if self?.current?.id == mutation.id { self?.current = nil }
         }
     }
 
-    /// Execute the pending undo action immediately and clear the queue.
-    public func undo() {
+    /// Runs the pending reversal once; the task returns whether that specific reversal succeeded.
+    @discardableResult
+    public func undo() -> Task<Bool, Never>? {
+        guard !isUndoing, let mutation = current else { return nil }
         expirationTask?.cancel()
         expirationTask = nil
-        guard let mutation = current else { return }
         current = nil
-        Task { await mutation.undoAction() }
+        return execute(mutation)
+    }
+
+    /// Retries the exact failed reversal with its originally captured mailbox context.
+    @discardableResult
+    public func retry() -> Task<Bool, Never>? {
+        guard !isUndoing, let mutation = failedMutation else { return nil }
+        return execute(mutation)
+    }
+
+    private func execute(_ mutation: UndoableMutation) -> Task<Bool, Never> {
+        isUndoing = true
+        errorMessage = nil
+        failedMutation = nil
+        return Task { [weak self] in
+            defer { self?.isUndoing = false }
+            do {
+                try await mutation.undoAction()
+                return true
+            } catch {
+                self?.failedMutation = mutation
+                self?.errorMessage = error.localizedDescription
+                return false
+            }
+        }
     }
 
     /// Dismiss the toast without executing the action.
@@ -87,6 +125,12 @@ public final class UndoQueue {
         expirationTask?.cancel()
         expirationTask = nil
         current = nil
+    }
+
+    /// Dismisses failed reversal feedback without consuming a newer pending action.
+    public func dismissFailure() {
+        failedMutation = nil
+        errorMessage = nil
     }
 }
 

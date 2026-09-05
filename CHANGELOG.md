@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Failed mail Undo actions now show an error with Retry Undo instead of silently
+  discarding the failure. Reversals run once at a time and refresh mail on success.
+
 - Selecting an unflagged reply inside a filtered conversation keeps the reader
   open with that reply and the conversation context.
 - Smart Views share a compact condition editor in Mail and Settings, with

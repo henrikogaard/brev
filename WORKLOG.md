@@ -567,3 +567,27 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Added a native-view initialization regression for repeated saved-list creation.
   It failed with the prior ordinary-search default and now retains cache mode;
   returning to the normal list restores the normal provider-aware default.
+
+
+## 2026-09-05 — Codex — Issue #28 core parity implementation
+
+- Established an isolated feature/mail-client-parity worktree at #27's
+  1250634 baseline. Integration will stack on fix/multi-account-workspace and
+  eventually main. The umbrella is In progress on project 9; architecture
+  proposals are separately reviewable in #29.
+- First slice: make Undo failures visible and retryable, prevent overlapping
+  reversals, preserve a later pending action, and refresh after a successful
+  reversal. Existing root Undo closures now propagate errors to the queue.
+- Tests exercise the existing public UndoQueue action boundary. A failed
+  reversal test was red before implementation; retry, single-flight, and dismiss
+  cases are covered. Light/dark failure feedback snapshots were added.
+- Remaining work includes consistent registration across entry points, provider
+  move identities, native Undo integration, scheduling/provider parity,
+  conversation/search completeness, performance and live QA, and accepted-ADR
+  implementation. This slice does not claim completion of #28.
+
+- Undo slice verification: 1,518 BrevMail tests passed excluding the separate
+  Contacts process; focused queue/error snapshots passed in both themes. Lint
+  and format passed. Independent standards and behavior reviews found a stale
+  failure/new-action defect, fixed with a red-green regression and re-reviewed
+  without remaining material findings. Native/live acceptance remains pending.

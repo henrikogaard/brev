@@ -738,20 +738,30 @@ public struct BrevMailRootView: View {
             }
     }
 
+    private func performUndo(retry: Bool = false) {
+        guard !isCommandMutationBlocked, activeCommandMutationRequest == nil else { return }
+        let task = retry ? undoQueue.retry() : undoQueue.undo()
+        guard let task else { return }
+        Task {
+            if await task.value {
+                navigation.requestReload()
+                await loadFolders()
+            }
+        }
+    }
+
     @ViewBuilder
     private var undoToastOverlay: some View {
-        if let mutation = undoQueue.current {
-            BrevToast(
-                message: mutation.description,
-                tone: .info,
-                actionTitle: String(localized: "Undo", bundle: .module),
-                onAction: { undoQueue.undo() },
-                onDismiss: { undoQueue.dismiss() }
+        if undoQueue.isUndoing || undoQueue.errorMessage != nil || undoQueue.current != nil {
+            MailUndoToast(
+                queue: undoQueue,
+                isBlocked: isCommandMutationBlocked || activeCommandMutationRequest != nil,
+                onUndo: { performUndo() },
+                onRetry: { performUndo(retry: true) }
             )
             .padding(.horizontal, BrevSpacing.lg)
             .padding(.bottom, BrevSpacing.xl)
             .transition(.move(edge: .bottom).combined(with: .opacity))
-            .animation(.easeInOut(duration: 0.2), value: undoQueue.current != nil)
         } else if let ephemeralToast {
             BrevToast(
                 message: ephemeralToast.message,
@@ -2305,7 +2315,8 @@ public struct BrevMailRootView: View {
 
     private var isCommandMutationBlocked: Bool {
         if !hasMailContext { return true }
-        return activeFolderLoadRequest != nil
+        return undoQueue.isUndoing
+            || activeFolderLoadRequest != nil
             || activeMailboxLoadRequest != nil
             || activeRefreshRequest != nil
             || activeMailboxSwitchRequest != nil
@@ -4521,13 +4532,13 @@ public struct BrevMailRootView: View {
             let description = newValue ? "Flagged" : "Unflagged"
             undoQueue.push(UndoableMutation(description: description) {
                 if let sourceID = capturedSourceID {
-                    try? await capturedBackend.setFlagged(
+                    try await capturedBackend.setFlagged(
                         originalValue,
                         for: capturedMessageIDs,
                         sourceID: sourceID
                     )
                 } else {
-                    try? await capturedBackend.setFlagged(originalValue, for: capturedMessageIDs)
+                    try await capturedBackend.setFlagged(originalValue, for: capturedMessageIDs)
                 }
             })
         } catch {
@@ -4563,13 +4574,13 @@ public struct BrevMailRootView: View {
             let description = newValue ? "Marked as Read" : "Marked as Unread"
             undoQueue.push(UndoableMutation(description: description) {
                 if let sourceID = capturedSourceID {
-                    try? await capturedBackend.setRead(
+                    try await capturedBackend.setRead(
                         originalValue,
                         for: capturedMessageIDs,
                         sourceID: sourceID
                     )
                 } else {
-                    try? await capturedBackend.setRead(originalValue, for: capturedMessageIDs)
+                    try await capturedBackend.setRead(originalValue, for: capturedMessageIDs)
                 }
             })
         } catch {
@@ -4606,13 +4617,13 @@ public struct BrevMailRootView: View {
             if let originalFolder {
                 undoQueue.push(UndoableMutation(description: "Archived") {
                     if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder,
                             sourceID: sourceID
                         )
                     } else {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder
                         )
@@ -4652,13 +4663,13 @@ public struct BrevMailRootView: View {
                 let destName = destination.name
                 undoQueue.push(UndoableMutation(description: "Moved to \(destName)") {
                     if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder,
                             sourceID: sourceID
                         )
                     } else {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder
                         )
@@ -4698,13 +4709,13 @@ public struct BrevMailRootView: View {
                 let description = isJunk ? "Reported Junk" : "Marked Not Junk"
                 undoQueue.push(UndoableMutation(description: description) {
                     if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder,
                             sourceID: sourceID
                         )
                     } else {
-                        try? await capturedBackend.move(
+                        try await capturedBackend.move(
                             messageIDs: capturedMessageIDs,
                             to: originalFolder
                         )
@@ -4774,13 +4785,13 @@ public struct BrevMailRootView: View {
                 if !isAlreadyInTrash, let originalFolder {
                     undoQueue.push(UndoableMutation(description: "Deleted") {
                         if let sourceID = capturedSourceID {
-                            try? await capturedBackend.move(
+                            try await capturedBackend.move(
                                 messageIDs: capturedMessageIDs,
                                 to: originalFolder,
                                 sourceID: sourceID
                             )
                         } else {
-                            try? await capturedBackend.move(
+                            try await capturedBackend.move(
                                 messageIDs: capturedMessageIDs,
                                 to: originalFolder
                             )
