@@ -756,3 +756,77 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - EML fidelity is verified by reading back temporary output bytes. Native Save
   As against a live mailbox was not run; the mock backend intentionally lacks
   original-source capability. No new view layout was introduced.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 full-folder export
+
+- Replaced the File menu's metadata-only path and Settings' reconstructed-body
+  exports with a shared original-MIME exporter. It streams pages/messages,
+  follows empty intermediate pages, deduplicates IDs, detects repeated cursors,
+  and captures the source mailbox/folder before destination selection.
+- MBOX is staged and atomically replaces the approved output only on success.
+  EML files are grouped into a new collision-safe directory with byte-bounded,
+  safe names. Unapproved replacements are rejected, including destination-folder
+  selection on iOS. Security-scoped folder access is held through the operation.
+- Added shared compact status/cancel controls for Mail and Settings. Background
+  file work is separate from UI updates, which are limited to 10 Hz. Completed,
+  failed and canceled exports allow another attempt. Pending picker callbacks
+  are invalidated when their mailbox session retires.
+- Settings has independent export mailbox/folder selection and cancellable,
+  identity-bound catalog loading. File export status reserves footer space.
+  iOS uses the system folder picker; macOS uses native save/open panels.
+- Corrected privacy text claiming no export network activity. Missing original
+  messages may be downloaded. No new provider endpoint or permission is added.
+- Tests reproduced page truncation/missing MIME, late cancellation replacing
+  old output, unapproved overwrite, and a retired picker starting stale work.
+  Green coverage includes full payloads, attachments/non-UTF8, EML collisions,
+  Unicode names, controller completion/cancel/retry, and session retirement.
+- Rendered/inspected light and dark status snapshots. Final package/native
+  checks and review follow. Live provider/native iOS picker acceptance remains
+  separate from local tests and builds.
+- Additional area 9 finding: real IMAP/Gmail adapters currently do not expose
+  MailImporting; only MockBackend does. The old Settings import buttons offered
+  predictable unsupported operations and terminal states prevented retry.
+  Unsupported import is now explained/disabled; real source-owned import remains
+  required work under the parent goal.
+
+- iOS package compilation passed for the document-picker implementation with
+  security-scoped destination access. Native picker interaction is still a
+  device acceptance check. Interactive controls have 44-point iOS targets.
+- Export catalog retries now refresh the SwiftUI task identity instead of
+  launching an unowned task, so an old-account retry cannot populate a new
+  account's picker. Session tokens reject destinations selected after retirement.
+- UTC mbox envelope timestamps use ctime day padding; the MIME payload remains
+  byte-preserving mboxrd output. See RFC 4155 Appendix A for envelope context.
+
+- Verification: 1,030 Backend, 1,543 Mail and 6 separate Contacts tests passed.
+  Settings passed 338 tests excluding the older AI Writer macOS snapshot suite.
+  Its 3 tests produce 9 pixel mismatches here and on unchanged canonical base
+  1250634; the old baselines were preserved. New export snapshots passed.
+  The dated September 6 macOS build/startup and iOS Settings package compilation
+  passed. Native CUA inspection was unavailable because the Mac was locked.
+  Privacy audit and diff checks passed.
+- Review identified an additional Settings retirement race: after switching
+  from account A to B, replacing backend A did not invalidate A's pending export.
+  Settings now observes all account backend identities, using the same
+  reconciliation rule as Mail. Added replacement and reorder/addition tests.
+- Behavior review found the legacy macOS platform gate still disabled File-menu
+  export despite the new source action. A failing policy test reproduced it;
+  macOS now permits the command while folder/source/raw-byte capability and
+  operation-state checks determine availability. The iOS menu remains absent.
+- Settings now owns the export controller above individual sections. Navigating
+  to another section keeps the task and footer controls alive; backend retirement
+  is observed at that same level. The former section-owned controller canceled
+  work on deallocation. Controller behavior is automated, but mounted page-switch
+  lifetime/interaction remains native QA: the Mac is locked and this package has
+  no mounted-view introspection fixture. No new testing dependency was added for
+  that structural ownership change.
+- A real-cache regression reproduced successful publication of a partial folder
+  while offline. IMAP bulk enumeration now bypasses cache/transport fallbacks
+  and follows server pages or throws, matching Gmail; ordinary message browsing
+  keeps its existing offline behavior. Tests cover disconnected partial caches
+  and transport loss on a later page without replacing prior output. ADR-0045
+  and PRIVACY document this full-folder completeness requirement.
+- Documentation sweep: updated CHANGELOG, PRIVACY, this worklog and the existing
+  multi-account QA checklist. No new endpoint, provider permission, architectural
+  archive service, setup, build target or release is introduced, so README,
+  AGENTS and a new ADR do not need changes for this export slice.

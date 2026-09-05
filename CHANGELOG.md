@@ -6,6 +6,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Folder exports include every page and preserve original message bodies and
+  attachments. Shared progress and cancellation controls identify the mailbox
+  being exported; failed or canceled work leaves existing output intact.
+- Settings offers an independent export mailbox selector, and EML exports create
+  a new folder without overwriting previous files. Export privacy copy now
+  explains when original messages are downloaded.
+
 - Save As writes the original MIME bytes for a message, preserving non-UTF8
   content and attachments. It is offered only by backends with byte-preserving
   export support.

@@ -784,7 +784,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         in folder: Folder,
         pageToken: String?
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
-        try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false)
+        try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false, allowsCacheFallback: false)
     }
 
     public func enumerateMessages(
@@ -793,7 +793,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         pageToken: String?
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         try validateSourceID(sourceID)
-        return try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false)
+        return try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false, allowsCacheFallback: false)
     }
 
     /// Every listing path — live FETCH, header cache, search index, offline
@@ -802,12 +802,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func messages(
         in folder: Folder,
         pageToken: String?,
-        recordsActiveFolder: Bool
+        recordsActiveFolder: Bool,
+        allowsCacheFallback: Bool = true
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         let page = try await unthreadedMessages(
             in: folder,
             pageToken: pageToken,
-            recordsActiveFolder: recordsActiveFolder
+            recordsActiveFolder: recordsActiveFolder,
+            allowsCacheFallback: allowsCacheFallback
         )
         return await (
             headers: threadedHeaders(page.headers, folderID: folder.id),
@@ -846,7 +848,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func unthreadedMessages(
         in folder: Folder,
         pageToken: String?,
-        recordsActiveFolder: Bool
+        recordsActiveFolder: Bool,
+        allowsCacheFallback: Bool
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Messages Page")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -871,7 +874,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         if pageToken == nil, recordsActiveFolder {
             await state.recordActiveMessageFolder(folder.id)
         }
-        if let cachedPage = await cachedMessagePage(in: folder, pageToken: pageToken) {
+        if allowsCacheFallback, let cachedPage = await cachedMessagePage(in: folder, pageToken: pageToken) {
             await state.recordListedMessageIDs(
                 cachedPage.headers.map(\.id),
                 folderID: folder.id,
@@ -891,6 +894,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         do {
             try await state.requireConnected()
         } catch {
+            // Bulk enumeration must not report a partial offline cache as the full folder.
+            guard allowsCacheFallback else { throw error }
             if let indexedPage = await localSearchIndex?.cachedHeaders(
                 for: folder,
                 account: account,
@@ -924,7 +929,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             throw error
         }
         guard listMessagesOperation != nil else {
-            if pageToken == nil,
+            if allowsCacheFallback, pageToken == nil,
                let cachedSnapshot = await cachedHeaderSnapshot(folderID: folder.id) {
                 let repairedSnapshot = await repairedCachedHeaderSnapshotIfNeeded(
                     cachedSnapshot,
@@ -1010,7 +1015,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 nextPageToken: page.nextPageToken
             )
         } catch {
-            if pageToken == nil,
+            if allowsCacheFallback, pageToken == nil,
                Self.shouldUseCacheFallback(for: error),
                let cachedSnapshot = await cachedHeaderSnapshot(folderID: folder.id) {
                 let repairedSnapshot = await repairedCachedHeaderSnapshotIfNeeded(
@@ -1034,7 +1039,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
             // Connection lost mid-pagination — stop gracefully rather than
             // throwing, leaving the already-shown cached headers in place.
-            if pageToken != nil, Self.shouldUseCacheFallback(for: error) {
+            if allowsCacheFallback, pageToken != nil, Self.shouldUseCacheFallback(for: error) {
                 logFinished(path: .offlinePaginationEnd, headers: [], nextPageToken: nil)
                 return (headers: [], nextPageToken: nil)
             }

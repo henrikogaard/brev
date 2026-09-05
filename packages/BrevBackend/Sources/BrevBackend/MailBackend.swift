@@ -195,6 +195,8 @@ public protocol MailBackend: AnyObject, Sendable {
     /// active folder for live (IDLE) watching. Use for bulk or background
     /// enumeration — local rules, import/export — that must not hijack the
     /// folder the user is currently viewing.
+    /// Server-backed adapters enumerate server pages or throw; a partial offline
+    /// cache must not be reported as the exhausted folder.
     func enumerateMessages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?)
 

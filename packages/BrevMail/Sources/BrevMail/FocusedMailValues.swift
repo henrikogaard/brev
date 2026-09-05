@@ -323,6 +323,34 @@ public struct MailImportAction {
     }
 }
 
+/// Source-owned folder export action handed to the native file picker.
+public struct MailFolderExportAction {
+    public let folderName: String
+    public let sourceTitle: String
+    public let isAvailable: Bool
+    private let action: @MainActor (URL) -> Void
+
+    /// Captures source details and availability before a save panel opens.
+    public init(folderName: String, sourceTitle: String, isAvailable: Bool,
+                action: @escaping @MainActor (URL) -> Void) {
+        self.folderName = folderName
+        self.sourceTitle = sourceTitle
+        self.isAvailable = isAvailable
+        self.action = action
+    }
+
+    /// Starts the captured export when the user chooses a destination.
+    @MainActor
+    public func callAsFunction(_ destination: URL) {
+        guard isAvailable else { return }
+        action(destination)
+    }
+}
+
+private struct FocusedFolderExportKey: FocusedValueKey {
+    typealias Value = MailFolderExportAction
+}
+
 /// Print/export actions published by the active message detail view so
 /// macOS File-menu commands operate on the visible message.
 public struct MailPrintExportActions {
@@ -466,6 +494,12 @@ public extension FocusedValues {
     var mailPrintExportActions: MailPrintExportActions? {
         get { self[FocusedPrintExportActionsKey.self] }
         set { self[FocusedPrintExportActionsKey.self] = newValue }
+    }
+
+    /// Folder export for the focused mailbox workspace.
+    var mailFolderExportAction: MailFolderExportAction? {
+        get { self[FocusedFolderExportKey.self] }
+        set { self[FocusedFolderExportKey.self] = newValue }
     }
 
     var mailImportAction: MailImportAction? {

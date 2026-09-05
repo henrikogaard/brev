@@ -308,6 +308,7 @@ public struct BrevMailRootView: View {
     @State private var rootWorkProgressTick = 0
     @State private var shouldRefreshAfterSheetDismissal = false
     @State private var undoQueue = UndoQueue()
+    @State private var folderExportController = MailFolderExportController()
     @State private var showOfflineBanner = false
     @State private var outboxPendingCount = 0
     @State private var folderNamePrompt: MailFolderNamePrompt?
@@ -587,7 +588,10 @@ public struct BrevMailRootView: View {
     }
 
     private func handleBackendSessionChange(previousIDs: [ObjectIdentifier]) {
-        if !Set(previousIDs).isSubset(of: Set(backendSessionIDs)) { undoQueue.discardAll() }
+        if !Set(previousIDs).isSubset(of: Set(backendSessionIDs)) {
+            undoQueue.discardAll()
+        }
+        folderExportController.reconcileSessions(previous: previousIDs, current: backendSessionIDs)
         sourceSectionsRevision += 1
         invalidateSourceLoading()
         backgroundAccountRefreshTask?.cancel()
@@ -731,6 +735,7 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailMessageCommandActions, mailMessageCommandActions)
             .focusedSceneValue(\.mailComposePresentationActions, composePresentationActions)
             .focusedSceneValue(\.mailImportAction, mailImportAction)
+            .focusedSceneValue(\.mailFolderExportAction, mailFolderExportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
             .environment(\.undoQueue, undoQueue)
         #if os(macOS)
@@ -740,8 +745,17 @@ public struct BrevMailRootView: View {
             ))
         #endif
             .modifier(DetachedMessageCommandReceiver(handle: handleDetachedMessageCommand))
-            .overlay(alignment: .bottom) {
-                undoToastOverlay
+            .overlay(alignment: .bottom) { undoToastOverlay }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if folderExportController.state != .idle {
+                    MailFolderExportStatusView(
+                        state: folderExportController.state, sourceTitle: folderExportController.sourceTitle,
+                        onCancel: { folderExportController.cancel() }, onDismiss: { folderExportController.dismiss() }
+                    )
+                    .frame(maxWidth: 640)
+                    .padding(BrevSpacing.sm)
+                    .frame(maxWidth: .infinity)
+                }
             }
     }
 
@@ -891,6 +905,20 @@ public struct BrevMailRootView: View {
                 await trash(header: header)
             }
         )
+    }
+
+    private var mailFolderExportAction: MailFolderExportAction? {
+        guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
+              let folder = selectedFolder, let section = selectedSourceSection else { return nil }
+        let owner = backend(for: section.id)
+        let exporter = MailFolderExporter(backend: owner, sourceID: section.id, folder: folder)
+        let title = "\(folder.name) · \(section.title)"
+        let sessionToken = folderExportController.sessionToken
+        return MailFolderExportAction(folderName: folder.name, sourceTitle: title,
+                                      isAvailable: owner.extendedCapabilities.contains(.rawMessageBytes)
+                                          && !folderExportController.isRunning && !isCommandMutationBlocked) { url in
+            folderExportController.start(exporter, to: url, format: .mbox, sourceTitle: title, sessionToken: sessionToken)
+        }
     }
 
     private var mailImportAction: MailImportAction {

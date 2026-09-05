@@ -191,3 +191,40 @@ from 28 to 29 messages and the reader reopened that same bill, with its matching
 sender context. Automated tests cover reassigned IMAP IDs, incomplete first-page
 refreshes, source collisions, All Inboxes, and navigation during reversal.
 Live-provider and offline queued-action acceptance remain separate.
+
+### Issue #28 full-folder export, 2026-09-06
+
+The exporter reads original MIME data from every server page in one captured
+mailbox/folder. Full-folder enumeration requires a connection and fails on an
+incomplete offline cache or later-page connection loss. Ordinary offline browsing
+and cached single-message Save As remain available. Automated tests verify
+attachment and non-UTF8 payloads, empty
+intermediate pages, cancellation/failure preserving an existing archive, EML
+directory collisions, bounded Unicode filenames, and retired picker rejection.
+The controller reports progress, cancellation and retryable failure independently
+of navigation. Account additions/reordering preserve the request; backend
+retirement invalidates it even after Settings switches to another account.
+
+Local evidence:
+
+| Check | Result |
+| --- | --- |
+| Backend and Mail suites | 1,030 Backend, 1,543 Mail, and 6 separately run Contacts tests passed |
+| Export feedback | Light/dark status snapshots passed and were inspected |
+| Settings | 338 tests passed excluding the older AI Writer macOS snapshot suite; its 3 tests reported 9 pixel mismatches, also reproduced on unchanged base `1250634` |
+| macOS | Dated September 6 mock build and startup passed |
+| iOS | Settings package compiled for iOS Simulator; no app installation or Files-provider interaction |
+| Native interaction | CUA could not inspect the app because the Mac was locked |
+
+Remaining acceptance: export a real IMAP and Gmail folder larger than one page,
+read the archive in another mail client, compare message/attachment counts, and
+cancel during a slow source fetch. Exercise both native destination pickers,
+including an iOS Files provider, denial/revocation of destination access, and
+account removal/replacement while a picker is open. Verify Settings account and
+mailbox selection, File-menu availability, progress/footer layout, and retry.
+Switch between Settings sections during export and confirm its footer remains
+visible and the same export continues. Verify window/sheet dismissal and task
+release separately on each platform.
+The mock backend intentionally does not offer original-source export. These
+tests do not establish real provider import, local archive, backup, or restore
+support.

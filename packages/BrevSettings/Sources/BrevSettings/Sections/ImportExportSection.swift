@@ -14,9 +14,9 @@ import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
+import UniformTypeIdentifiers
 #if os(macOS)
 import AppKit
-import UniformTypeIdentifiers
 #endif
 
 /// Whether the folder pickers can offer anything, and why not when they can't.
@@ -52,27 +52,44 @@ struct ImportExportSection: View {
     private let backendProvider: @MainActor (BrevAccount.ID) -> (any MailBackend)?
     private let accounts: [BrevAccount]
     private let currentAccountID: BrevAccount.ID?
+    private let exportController: MailFolderExportController
 
     @State private var allFolders: [Folder]
     @State private var isLoadingFolders = false
     @State private var folderLoadErrorMessage: String?
     @State private var importState: ImportState = .idle
-    @State private var exportState: ExportState = .idle
+    @State private var exportMailboxes: [Mailbox] = []
+    @State private var exportMailboxAccountID: BrevAccount.ID?
+    @State private var exportMailboxID: Mailbox.ID?
+    @State private var exportFolders: [Folder] = []
+    @State private var exportFolderID: Folder.ID?
+    @State private var loadedExportSourceID: MailSourceID?
+    @State private var loadedImportSourceID: MailSourceID?
+    @State private var isLoadingExportFolders = false
+    @State private var exportFolderError: String?
+    @State private var exportReloadRevision = 0
     @State private var selectedFolderID: Folder.ID?
     @State private var importDestination: ImportDestination = .newFolder
+
+    #if os(iOS)
+    @State private var isChoosingExportFolder = false
+    @State private var mobileExportRequest: MobileExportRequest?
+
+    private struct MobileExportRequest: Sendable {
+        let id = UUID()
+        let exporter: MailFolderExporter
+        let title: String
+        let folderName: String
+        let format: MailFolderExportFormat
+        let sessionToken: MailFolderExportSessionToken
+    }
+    #endif
 
     enum ImportState: Equatable {
         case idle
         case parsing
         case importing(current: Int, total: Int?)
         case completed(count: Int, errors: [String])
-        case failed(String)
-    }
-
-    enum ExportState: Equatable {
-        case idle
-        case exporting(current: Int, total: Int)
-        case completed(count: Int)
         case failed(String)
     }
 
@@ -93,18 +110,23 @@ struct ImportExportSection: View {
         backendProvider: @MainActor @escaping (BrevAccount.ID) -> (any MailBackend)?,
         accounts: [BrevAccount],
         currentAccountID: BrevAccount.ID?,
+        exportController: MailFolderExportController,
         allFolders: [Folder] = []
     ) {
         self.backendProvider = backendProvider
         self.accounts = accounts
         self.currentAccountID = currentAccountID
+        self.exportController = exportController
         _allFolders = State(initialValue: allFolders)
     }
 
     var body: some View {
+        #if os(iOS)
+        let pickerRequest = mobileExportRequest
+        #endif
         SectionScaffold(
             title: String(localized: "Import / Export", bundle: .module),
-            subtitle: String(localized: "Move mail in and out of Brev. All processing stays on your Mac.", bundle: .module)
+            subtitle: String(localized: "Import mail into a mailbox or save a folder to files.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 importGroup
@@ -115,7 +137,39 @@ struct ImportExportSection: View {
         // The app hands this section no folders — nothing upstream keeps a
         // mailbox-wide folder list — so it loads its own from the selected
         // account, and reloads when that account changes.
-        .task(id: currentAccountID) { await loadFolders() }
+        .task(id: ExportLoadKey(backend: exportBackendIdentity, revision: exportReloadRevision)) {
+            await loadFolders()
+            guard !Task.isCancelled else { return }
+            await loadExportMailboxes()
+        }
+        .task(id: selectedExportSourceID) { await loadExportFolders() }
+        .onChange(of: accounts.map(\.id)) { previous, current in
+            if !Set(previous).isSubset(of: Set(current)) {
+                #if os(iOS)
+                mobileExportRequest = nil
+                isChoosingExportFolder = false
+                #endif
+            }
+        }
+        #if os(iOS)
+        .fileImporter(isPresented: $isChoosingExportFolder, allowedContentTypes: [.folder]) { result in
+            guard let request = pickerRequest, mobileExportRequest?.id == request.id else { return }
+            mobileExportRequest = nil
+            let directory: URL
+            switch result {
+            case .success(let url): directory = url
+            case .failure(let error):
+                if (error as? CocoaError)?.code != .userCancelled {
+                    exportController.reportSelectionFailure(error.localizedDescription, sourceTitle: request.title)
+                }
+                return
+            }
+            let target = request.format == .mbox
+                ? MailFolderExporter.availableArchiveURL(in: directory, folderName: request.folderName) : directory
+            exportController.start(request.exporter, to: target, format: request.format, sourceTitle: request.title,
+                                   replacingExistingFile: false, accessing: directory, sessionToken: request.sessionToken)
+        }
+        #endif
     }
 
     private var folderLoadStatus: ImportExportFolderLoadStatus {
@@ -149,10 +203,18 @@ struct ImportExportSection: View {
 
         isLoadingFolders = true
         folderLoadErrorMessage = nil
+        let previousSource = loadedImportSourceID
+        loadedImportSourceID = nil
         do {
             let mailbox = try await backend.currentMailbox()
-            allFolders = try await backend.folders(in: backend.sourceID(for: mailbox))
+            let source = backend.sourceID(for: mailbox)
+            let loaded = try await backend.folders(in: source)
+            guard !Task.isCancelled else { return }
+            allFolders = loaded
+            if previousSource != source { selectedFolderID = nil }
+            loadedImportSourceID = source
         } catch {
+            guard !Task.isCancelled else { return }
             let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
             folderLoadErrorMessage = message.isEmpty ? String(localized: "Unknown error", bundle: .module) : message
             allFolders = []
@@ -181,6 +243,17 @@ struct ImportExportSection: View {
                     .disabled(!canImport)
                 }
 
+                if currentBackend != nil && currentBackend?.extensionService(MailImporting.self) == nil {
+                    SettingsInfoCallout(symbolName: "info.circle",
+                                        message: String(
+                                            localized: "Mail import is not supported by this account yet.",
+                                            bundle: .module
+                                        ), tone: .info)
+                }
+                #if os(iOS)
+                Text("Mail import is currently available on Mac.", bundle: .module)
+                    .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
+                #endif
                 importProgressView
             }
         }
@@ -262,62 +335,65 @@ struct ImportExportSection: View {
     private var exportGroup: some View {
         SettingsGroup(
             title: String(localized: "Export mail", bundle: .module),
-            subtitle: String(localized: "Export messages to MBOX or individual EML files.", bundle: .module),
+            subtitle: String(
+                localized: "Save the entire folder, including attachments. EML files are grouped in a new folder.",
+                bundle: .module
+            ),
             symbolName: "tray.and.arrow.up"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                Picker(String(localized: "Source folder", bundle: .module), selection: $selectedFolderID) {
-                    Text("Select folder…", bundle: .module).tag(Folder.ID?.none)
-                    ForEach(allFolders) { folder in
-                        Text(folder.name).tag(Folder.ID?.some(folder.id))
+                if exportMailboxes.count > 1 {
+                    Picker(String(localized: "Mailbox", bundle: .module), selection: $exportMailboxID) {
+                        ForEach(exportMailboxes) { mailbox in
+                            Text(mailbox.displayName.isEmpty ? mailbox.email : mailbox.displayName)
+                                .tag(Mailbox.ID?.some(mailbox.id))
+                        }
                     }
                 }
-                .disabled(allFolders.isEmpty)
+                HStack(spacing: BrevSpacing.sm) {
+                    Picker(String(localized: "Source folder", bundle: .module), selection: $exportFolderID) {
+                        Text("Select folder…", bundle: .module).tag(Folder.ID?.none)
+                        ForEach(exportFolders) { folder in
+                            Text(folder.name).tag(Folder.ID?.some(folder.id))
+                        }
+                    }
+                    .disabled(exportFolders.isEmpty || isLoadingExportFolders)
+                    Button { exportReloadRevision &+= 1 } label: {
+                        Image(systemName: "arrow.clockwise").modifier(ExportControlHitTarget())
+                    }
+                    .help(String(localized: "Refresh folders", bundle: .module))
+                    .accessibilityLabel(String(localized: "Refresh export folders", bundle: .module))
+                    .disabled(currentBackend == nil || isLoadingExportFolders || isImporting)
+                }
 
-                folderStatusView
+                if isLoadingExportFolders {
+                    progressRow(symbol: "folder", text: String(localized: "Loading folders…", bundle: .module))
+                } else if let error = exportFolderError {
+                    SettingsInfoCallout(symbolName: "exclamationmark.triangle", message: error, tone: .warning)
+                    Button(String(localized: "Retry", bundle: .module)) { exportReloadRevision &+= 1 }
+                } else if let backend = currentBackend, !backend.extendedCapabilities.contains(.rawMessageBytes) {
+                    SettingsInfoCallout(symbolName: "info.circle",
+                                        message: String(
+                                            localized: "This account does not provide original message source for export.",
+                                            bundle: .module
+                                        ),
+                                        tone: .info)
+                } else if currentBackend == nil {
+                    SettingsInfoCallout(symbolName: "person.crop.circle",
+                                        message: String(localized: "Sign in to an account to export mail.", bundle: .module),
+                                        tone: .info)
+                }
 
                 HStack(spacing: BrevSpacing.sm) {
-                    Button(String(localized: "Export as MBOX…", bundle: .module)) {
-                        startExportMBOX()
+                    Button { startExportMBOX() } label: {
+                        Text("Export as MBOX…", bundle: .module).modifier(ExportControlHitTarget())
                     }
-                    .disabled(!canExport)
-
-                    Button(String(localized: "Export as EML…", bundle: .module)) {
-                        startExportEML()
+                    Button { startExportEML() } label: {
+                        Text("Export as EML…", bundle: .module).modifier(ExportControlHitTarget())
                     }
-                    .disabled(!canExport)
                 }
-
-                exportProgressView
+                .disabled(!canExport)
             }
-        }
-    }
-
-    @ViewBuilder
-    private var exportProgressView: some View {
-        switch exportState {
-        case .idle:
-            EmptyView()
-        case .exporting(let current, let total):
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                ProgressView(value: Double(current), total: Double(total))
-                    .tint(theme.accent.color)
-                Text("Exporting \(current) of \(total)…", bundle: .module)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-            }
-        case .completed(let count):
-            SettingsInfoCallout(
-                symbolName: "checkmark.circle",
-                message: String(localized: "Exported \(count) message\(count == 1 ? "" : "s").", bundle: .module),
-                tone: .success
-            )
-        case .failed(let reason):
-            SettingsInfoCallout(
-                symbolName: "xmark.circle",
-                message: String(localized: "Export failed: \(reason)", bundle: .module),
-                tone: .warning
-            )
         }
     }
 
@@ -325,10 +401,10 @@ struct ImportExportSection: View {
         SettingsInfoCallout(
             symbolName: "lock.shield",
             message: String(
-                localized: "Import and export run entirely on your Mac. No data leaves your device, and no network calls are made.",
+                localized: "Files are processed locally. Import adds messages to a mailbox; provider accounts may upload them. Export may download missing originals from your mail provider.",
                 bundle: .module
             ),
-            tone: .success
+            tone: .info
         )
     }
 
@@ -342,17 +418,117 @@ struct ImportExportSection: View {
         }
     }
 
+    private var isImporting: Bool {
+        switch importState {
+        case .parsing, .importing: true
+        default: false
+        }
+    }
+
     private var canImport: Bool {
-        guard case .idle = importState else { return false }
-        guard case .exporting = exportState else { return true }
-        return false
+        #if os(macOS)
+        !isImporting && !exportController.isRunning && !isLoadingFolders
+            && currentBackend?.extensionService(MailImporting.self) != nil
+        #else
+        false
+        #endif
     }
 
     private var canExport: Bool {
-        guard selectedFolderID != nil else { return false }
-        guard case .idle = exportState else { return false }
-        guard case .importing = importState else { return true }
-        return false
+        exportRequest != nil && !isImporting && !exportController.isRunning && !isLoadingExportFolders
+    }
+
+    private var selectedExportSourceID: MailSourceID? {
+        guard let accountID = currentAccountID, let mailboxID = exportMailboxID else { return nil }
+        return MailSourceID(accountID: accountID, mailboxID: mailboxID)
+    }
+
+    private struct AccountBackendIdentity: Equatable {
+        let accountID: BrevAccount.ID
+        let objectID: ObjectIdentifier
+    }
+
+    private struct ExportLoadKey: Equatable {
+        let backend: AccountBackendIdentity?
+        let revision: Int
+    }
+
+    private var exportBackendIdentity: AccountBackendIdentity? {
+        currentBackend.map { AccountBackendIdentity(accountID: $0.account.id, objectID: ObjectIdentifier($0)) }
+    }
+
+    private var exportRequest: (exporter: MailFolderExporter, title: String, folder: Folder,
+                                sessionToken: MailFolderExportSessionToken)? {
+        guard let source = selectedExportSourceID, loadedExportSourceID == source,
+              let folder = exportFolders.first(where: { $0.id == exportFolderID }),
+              let backend = currentBackend, backend.extendedCapabilities.contains(.rawMessageBytes) else { return nil }
+        let mailbox = exportMailboxes.first { $0.id == source.mailboxID }
+        let title = "\(folder.name) · \(mailbox?.displayName ?? backend.account.emailAddress)"
+        return (
+            MailFolderExporter(backend: backend, sourceID: source, folder: folder),
+            title,
+            folder,
+            exportController.sessionToken
+        )
+    }
+
+    private func loadExportMailboxes() async {
+        let preferred = exportMailboxAccountID == currentAccountID ? exportMailboxID : nil
+        exportMailboxes = []
+        exportMailboxID = nil
+        exportFolders = []
+        exportFolderID = nil
+        loadedExportSourceID = nil
+        exportFolderError = nil
+        isLoadingExportFolders = true
+        guard let backend = currentBackend else {
+            isLoadingExportFolders = false
+            return
+        }
+        do {
+            let mailboxes = try await backend.mailboxes()
+            let current = try await backend.currentMailbox()
+            guard !Task.isCancelled else { return }
+            exportMailboxes = mailboxes
+            exportMailboxAccountID = currentAccountID
+            exportMailboxID = mailboxes.first { $0.id == preferred }?.id
+                ?? mailboxes.first { $0.id == current.id }?.id ?? mailboxes.first?.id
+            if exportMailboxID == nil {
+                exportFolderError = String(localized: "No mailboxes are available for this account.", bundle: .module)
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            exportFolderError = error.localizedDescription
+        }
+        isLoadingExportFolders = false
+    }
+
+    private func loadExportFolders() async {
+        guard !Task.isCancelled else { return }
+        exportFolders = []
+        exportFolderID = nil
+        loadedExportSourceID = nil
+        guard let source = selectedExportSourceID, let backend = currentBackend else { return }
+        isLoadingExportFolders = true
+        exportFolderError = nil
+        do {
+            let loaded: [Folder]
+            if loadedImportSourceID == source {
+                loaded = allFolders
+            } else {
+                loaded = try await backend.folders(in: source)
+            }
+            guard !Task.isCancelled else { return }
+            exportFolders = loaded
+            loadedExportSourceID = source
+            if loaded.isEmpty {
+                exportFolderError = String(localized: "No folders are available in this mailbox.", bundle: .module)
+            }
+        } catch {
+            guard !Task.isCancelled else { return }
+            exportFolderError = error.localizedDescription
+        }
+        isLoadingExportFolders = false
     }
 
     private var currentBackend: (any MailBackend)? {
@@ -490,218 +666,66 @@ struct ImportExportSection: View {
 
     private func startExportMBOX() {
         #if os(macOS)
+        guard canExport, let request = exportRequest else { return }
         let panel = NSSavePanel()
         panel.title = String(localized: "Export as MBOX", bundle: .module)
-        panel.nameFieldStringValue = "export.mbox"
-        panel.allowedContentTypes = [UTType.data]
-
+        panel.message = String(localized: "Export every message from \(request.title).", bundle: .module)
+        panel.nameFieldStringValue = MailFolderExporter.suggestedArchiveName(for: request.folder.name)
+        panel.allowedContentTypes = [.mboxArchive]
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task {
-            await performMBOXExport(to: url)
-        }
+        exportController.start(
+            request.exporter,
+            to: url,
+            format: .mbox,
+            sourceTitle: request.title,
+            sessionToken: request.sessionToken
+        )
+        #elseif os(iOS)
+        chooseMobileExportFolder(format: .mbox)
         #endif
     }
 
     private func startExportEML() {
         #if os(macOS)
+        guard canExport, let request = exportRequest else { return }
         let panel = NSOpenPanel()
         panel.title = String(localized: "Select Destination Folder for EML Files", bundle: .module)
+        panel.message = String(
+            localized: "A new folder will contain the exported messages from \(request.title).",
+            bundle: .module
+        )
         panel.canChooseDirectories = true
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
-
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task {
-            await performEMLEXport(to: url)
-        }
+        exportController.start(
+            request.exporter,
+            to: url,
+            format: .emlDirectory,
+            sourceTitle: request.title,
+            sessionToken: request.sessionToken
+        )
+        #elseif os(iOS)
+        chooseMobileExportFolder(format: .emlDirectory)
         #endif
     }
 
-    private func performMBOXExport(to url: URL) async {
-        guard let folderID = selectedFolderID,
-              let folder = allFolders.first(where: { $0.id == folderID }) else {
-            exportState = .failed(String(localized: "Select a folder to export.", bundle: .module))
-            return
-        }
-
-        guard let backend = currentBackend else {
-            exportState = .failed(String(localized: "No account is signed in.", bundle: .module))
-            return
-        }
-
-        do {
-            // Exporting enumerates a folder in bulk; don't move the IDLE target.
-            // enumerateMessages is paginated, so loop until the folder is
-            // exhausted — otherwise a large mailbox exports only its first page
-            // and silently drops the rest (the count would still report success).
-            let headers = try await allHeaders(in: folder, from: backend)
-            let total = headers.count
-            exportState = .exporting(current: 0, total: total)
-
-            let exporter = MBOXExporter()
-            _ = FileManager.default.createFile(atPath: url.path, contents: nil)
-            guard let handle = try? FileHandle(forWritingTo: url) else {
-                throw MailExportError.cannotOpenFile(url.lastPathComponent)
-            }
-            defer { try? handle.close() }
-
-            for (index, header) in headers.enumerated() {
-                let body = try await backend.body(for: header.id)
-                let raw = buildRawMessage(header: header, body: body)
-                let msg = ImportedMessage(
-                    headers: headerToTuples(header),
-                    bodyData: raw
-                )
-                try exporter.append(message: msg, to: handle)
-                exportState = .exporting(current: index + 1, total: total)
-            }
-
-            exportState = .completed(count: total)
-        } catch {
-            exportState = .failed(error.localizedDescription)
-        }
+    #if os(iOS)
+    private func chooseMobileExportFolder(format: MailFolderExportFormat) {
+        guard canExport, let request = exportRequest else { return }
+        mobileExportRequest = MobileExportRequest(exporter: request.exporter, title: request.title,
+                                                  folderName: request.folder.name, format: format,
+                                                  sessionToken: request.sessionToken)
+        isChoosingExportFolder = true
     }
-
-    private func performEMLEXport(to directoryURL: URL) async {
-        guard let folderID = selectedFolderID,
-              let folder = allFolders.first(where: { $0.id == folderID }) else {
-            exportState = .failed(String(localized: "Select a folder to export.", bundle: .module))
-            return
-        }
-
-        guard let backend = currentBackend else {
-            exportState = .failed(String(localized: "No account is signed in.", bundle: .module))
-            return
-        }
-
-        do {
-            // Exporting enumerates a folder in bulk; don't move the IDLE target.
-            // Paginate to completion (see performMBOXExport) so a large mailbox
-            // isn't silently truncated to its first page.
-            let headers = try await allHeaders(in: folder, from: backend)
-            let total = headers.count
-            exportState = .exporting(current: 0, total: total)
-
-            let exporter = MBOXExporter()
-            // Two messages whose subjects sanitize to the same string would write
-            // to the same path and overwrite each other (silent data loss). Track
-            // used names and uniquify, case-insensitively for case-folding volumes.
-            var usedFilenames: Set<String> = []
-            for (index, header) in headers.enumerated() {
-                let body = try await backend.body(for: header.id)
-                // `exportToEML` writes the headers itself (from `headers`), then a
-                // blank line, then `bodyData`. Pass the BODY ONLY here — passing a
-                // full raw message (headers+body) would emit the header block twice
-                // and produce a malformed .eml.
-                let msg = ImportedMessage(
-                    headers: headerToTuples(header),
-                    bodyData: Data((body.plainText ?? body.html ?? "").utf8)
-                )
-                let base = MailExportFilename.sanitize(header.subject.isEmpty ? "message-\(index + 1)" : header.subject)
-                let filename = MailExportFilename.unique(base, ext: "eml", used: &usedFilenames)
-                let fileURL = directoryURL.appendingPathComponent(filename)
-                try exporter.exportToEML(message: msg, to: fileURL)
-                exportState = .exporting(current: index + 1, total: total)
-            }
-
-            exportState = .completed(count: total)
-        } catch {
-            exportState = .failed(error.localizedDescription)
-        }
-    }
-
-    /// Enumerates every header in `folder`, following `enumerateMessages`'
-    /// pagination to the end. The export feature is a backup/migration surface,
-    /// so it must never silently stop at the first page.
-    private func allHeaders(
-        in folder: Folder,
-        from backend: any MailBackend
-    ) async throws -> [MessageHeader] {
-        var headers: [MessageHeader] = []
-        var pageToken: String?
-        while true {
-            let (page, next) = try await backend.enumerateMessages(in: folder, pageToken: pageToken)
-            headers += page
-            guard let next, !page.isEmpty else { break }
-            pageToken = next
-        }
-        return headers
-    }
-
-    /// Returns `base.ext`, appending a ` (n)` counter before the extension until
-    private func buildRawMessage(header: MessageHeader, body: MessageBody) -> Data {
-        var result = Data()
-        for (name, value) in headerToTuples(header) {
-            if let line = "\(name): \(value)\n".data(using: .utf8) {
-                result.append(line)
-            }
-        }
-        result.append("\n".data(using: .utf8)!)
-        if let textBody = body.plainText {
-            result.append(Data(textBody.utf8))
-        } else if let htmlBody = body.html {
-            result.append(Data(htmlBody.utf8))
-        }
-        return result
-    }
-
-    private func headerToTuples(_ header: MessageHeader) -> [(name: String, value: String)] {
-        var tuples: [(String, String)] = []
-        tuples.append(("From", correspondentString(header.from)))
-        tuples.append(("To", header.to.map(correspondentString).joined(separator: ", ")))
-        tuples.append(("Subject", header.subject))
-        tuples.append(("Date", formatDate(header.date)))
-        if !header.cc.isEmpty {
-            tuples.append(("Cc", header.cc.map(correspondentString).joined(separator: ", ")))
-        }
-        tuples.append(("Message-ID", header.id))
-        return tuples
-    }
-
-    private func correspondentString(_ c: Correspondent) -> String {
-        if let name = c.name, !name.isEmpty {
-            return "\(name) <\(c.email)>"
-        }
-        return c.email
-    }
-
-    private func formatDate(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        return formatter.string(from: date)
-    }
+    #endif
 }
 
-/// Filename derivation for the per-message `.eml` export. Extracted so the
-/// sanitize + collision-uniquify rules can be unit-tested without the View.
-enum MailExportFilename {
-    /// Replaces filesystem-significant characters with `_`. Note this maps `/`
-    /// and `\` away, so a crafted subject can't introduce path separators.
-    static func sanitize(_ name: String) -> String {
-        let invalid = CharacterSet(charactersIn: ":/\\?%*|\"<>")
-        return name.components(separatedBy: invalid).joined(separator: "_")
-    }
-
-    /// Returns `base.ext`, appending a ` (n)` counter before the extension until
-    /// the name is unique within `used` (compared case-insensitively so a
-    /// case-folding filesystem can't still collide). Falls back to a safe stem
-    /// when `base` is empty/blank or a dot-only name, so two same-subject
-    /// messages never overwrite each other.
-    static func unique(_ base: String, ext: String, used: inout Set<String>) -> String {
-        let stem = base.trimmingCharacters(in: .whitespaces).isEmpty || base.allSatisfy { $0 == "." }
-            ? "message"
-            : base
-        var candidate = "\(stem).\(ext)"
-        var counter = 2
-        while used.contains(candidate.lowercased()) {
-            candidate = "\(stem) (\(counter)).\(ext)"
-            counter += 1
-        }
-        used.insert(candidate.lowercased())
-        return candidate
-    }
+#if os(macOS)
+private extension UTType {
+    static let mboxArchive = UTType(filenameExtension: "mbox") ?? .data
 }
+#endif
 
 private enum ImportExportOperationError: Error, LocalizedError {
     case noSignedInAccount

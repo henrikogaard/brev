@@ -36,6 +36,7 @@ public struct SettingsView: View {
     @State private var searchText = ""
     @State private var searchTarget: String?
     @State private var selectedSourceID: MailSourceID?
+    @State private var folderExportController = MailFolderExportController()
     private let mailboxContext: SettingsMailboxContext
 
     private let accountStore: any AccountStore
@@ -117,8 +118,20 @@ public struct SettingsView: View {
 
     public var body: some View {
         settingsContent
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if folderExportController.state != .idle {
+                    MailFolderExportStatusView(
+                        state: folderExportController.state, sourceTitle: folderExportController.sourceTitle,
+                        onCancel: { folderExportController.cancel() }, onDismiss: { folderExportController.dismiss() }
+                    )
+                    .padding(BrevSpacing.sm)
+                }
+            }
             .background(BrevWindowSurfaceBackground(role: .settings).ignoresSafeArea())
             .tint(theme.accent.color)
+            .onChange(of: exportBackendSessionIDs) { previous, current in
+                folderExportController.reconcileSessions(previous: previous, current: current)
+            }
             .onChange(of: mailboxContext) { previous, next in
                 selectedSourceID = next.selection(replacing: previous, current: selectedSourceID)
             }
@@ -130,6 +143,11 @@ public struct SettingsView: View {
                     currentAccountID = await accountStore.current?.id
                 }
             }
+    }
+
+    private var exportBackendSessionIDs: [ObjectIdentifier] {
+        // Export can still own account A after switching account or settings page.
+        accounts.compactMap { backendProvider($0.id).map { ObjectIdentifier($0) } }
     }
 
     @ViewBuilder
@@ -535,6 +553,7 @@ public struct SettingsView: View {
                 backendProvider: backendProvider,
                 accounts: accounts,
                 currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
+                exportController: folderExportController,
                 allFolders: allFolders
             )
         case .security:

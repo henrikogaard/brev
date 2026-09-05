@@ -260,3 +260,14 @@ text conversion. The original String-based export limitation is now addressed:
   readable but is not exported as if it were byte-identical.
 - Cached source remains available offline. Fetching missing original bytes uses
   the existing explicit source-read operation and adds no endpoint or permission.
+
+## Full-folder export, 2026-09-06
+
+File and Settings folder export reuse original-byte reads with background folder
+enumeration. IMAP enumeration now follows server pages or throws, matching the
+Gmail adapter, without changing the active folder or substituting partial cached
+pages. Normal message-list browsing keeps its cache-first/offline behavior.
+Single-message cached source reads remain available offline. This prevents an
+offline cache boundary from publishing a successful but incomplete MBOX/EML
+folder export. No new provider endpoint, permission, or archive storage model is
+introduced; exported files are user-selected snapshots, not a new local mailbox.

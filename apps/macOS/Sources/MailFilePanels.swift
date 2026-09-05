@@ -18,39 +18,19 @@ import UniformTypeIdentifiers
 
 // MARK: - Export
 
-/// Runs an `NSSavePanel` configured for `.mbox` output, then exports the
-/// given messages to the chosen destination.
-///
-/// Exported as a free function so `BrevMailCommands` can call it without
-/// owning state. AppKit must stay in the macOS app target — it must never
-/// reach into `BrevMail` or `BrevBackend`.
+/// Chooses the archive path; the root-owned action handles export and progress.
 @MainActor
-func presentExportMailPanel(
-    suggestedFolderName: String?,
-    messages: @escaping @Sendable () async throws -> [ImportedMessage]
-) {
+func presentExportMailPanel(suggestedFolderName: String, sourceTitle: String,
+                            onPick: @escaping @MainActor (URL) -> Void) {
     let panel = NSSavePanel()
     panel.title = String(localized: "Export Mail")
     panel.prompt = String(localized: "Export")
-    panel.message = String(localized: "Choose a location to save the mailbox archive.")
-    panel.nameFieldStringValue = suggestedFolderName.map { "\($0).mbox" } ?? "Mailbox.mbox"
+    panel.message = String(localized: "Export every message from \(sourceTitle) as an MBOX archive.")
+    panel.nameFieldStringValue = MailFolderExporter.suggestedArchiveName(for: suggestedFolderName)
     panel.allowedContentTypes = [.mbox]
     panel.canCreateDirectories = true
-
     guard panel.runModal() == .OK, let url = panel.url else { return }
-
-    Task {
-        do {
-            let msgs = try await messages()
-            let exporter = MBOXExporter()
-            try exporter.export(messages: msgs, to: url)
-        } catch {
-            await MainActor.run {
-                let alert = NSAlert(error: error)
-                alert.runModal()
-            }
-        }
-    }
+    onPick(url)
 }
 
 // MARK: - Import

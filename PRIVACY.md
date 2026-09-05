@@ -21,7 +21,7 @@ account:
 | Data | Where it goes | Why |
 |---|---|---|
 | Email domain, and sometimes full email address during account setup | Your mail provider's DNS and provider-local autoconfig hosts | To discover IMAP/SMTP (and, where advertised, ManageSieve) server settings after you choose to add an account |
-| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view a message's raw source, copy, and manage mail after you add an account |
+| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
 | Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
 | Update check | `updates.brevmail.eu` | Direct-download macOS builds only; checks the signed Sparkle appcast using Settings -> Updates cadence |
@@ -428,6 +428,26 @@ not test or contact the endpoint in the background.
 - Removing a BYOK/local provider also removes its stored API key from
   Keychain.
 
+## Mail file import and export
+
+Exporting a folder reads original messages from its owning mailbox. Cached
+originals are used when available; missing originals may be downloaded from the
+mail provider through the existing mail connection. Full-folder export requires
+the provider connection to enumerate every page; it does not treat the end of a
+partial offline cache as a complete folder. Exports are prepared in a
+temporary replacement location and published only after all selected-folder
+pages succeed. Brev attempts to remove unpublished temporary output when the
+operation exits.
+
+MBOX and EML files contain full messages and attachments. Brev does not add its
+saved account passwords, OAuth tokens, or app settings to these files. The files are written to the location
+you choose; if that location is managed by iCloud or another file provider, that
+provider's own synchronization settings apply.
+
+Import adds messages to the chosen mailbox. A provider-backed import can upload
+the imported messages to that provider. Current import availability depends on
+the account's importer support.
+
 ## What data does *not* leave your device, ever
 
 - **Usage analytics, screen-view counts, button-click counts, time-
@@ -449,7 +469,8 @@ not test or contact the endpoint in the background.
 - **Search terms, draft contents, attachments.** Stay on your
   device unless you use mail-provider features that require them:
   server-side search, saving drafts, uploading attachments, or
-  sending mail.
+  sending mail. You can also export messages and attachments to a location
+  you choose, including a location managed by a file-sync provider.
 
 ## Where Brev stores data
 
