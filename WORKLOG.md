@@ -481,3 +481,11 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   README/PRIVACY/AGENTS/ADRs need no change: setup, architecture, workflow,
   theme schema, and external network behavior are unchanged. Existing ADRs
   0002/0004/0017/0028 were consulted for layout and source ownership.
+
+
+### Hosted compiler correction
+
+- CI caught a stray @ViewBuilder annotation left on the state-restoration
+  helper when the old account-header view was removed. Removed the annotation;
+  restoration is an ordinary Void method. This has no layout or state-policy
+  change and is verified by the existing disclosure tests and rebuilt targets.

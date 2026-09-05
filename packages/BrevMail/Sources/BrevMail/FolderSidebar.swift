@@ -912,7 +912,6 @@ public struct FolderSidebar: View {
         selectionPalette.background.color
     }
 
-    @ViewBuilder
     private func restoreSourceExpansion() {
         expandedSourceIDs = FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
             from: mailboxDisclosureData,
