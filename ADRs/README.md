@@ -80,6 +80,10 @@ repository checks.
 | 67 | Google Desktop client credential and native SSO | Accepted |
 | 68 | Default blue accent and system appearance bootstrap | Accepted |
 | 69 | Monochrome default theme pair | Accepted |
+| 70 | Opt-in background mail on macOS | Proposed |
+| 71 | Native Microsoft Graph mail and shared mailboxes | Proposed |
+| 72 | Provider-neutral calendar and contact authoring | Proposed |
+| 73 | Durable local mail archives and portable backups | Proposed |
 
 ## Conventions
 
