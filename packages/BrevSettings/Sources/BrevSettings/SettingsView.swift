@@ -37,7 +37,6 @@ public struct SettingsView: View {
     @State private var searchTarget: String?
     @State private var selectedSourceID: MailSourceID?
     private let mailboxContext: SettingsMailboxContext
-    @State private var isAdvancedExpanded: Bool
 
     private let accountStore: any AccountStore
     private let settingsStore: SettingsPersistenceStore
@@ -100,7 +99,6 @@ public struct SettingsView: View {
                 availability: sectionAvailability
             )
         )
-        _isAdvancedExpanded = State(initialValue: initialSection.group == .advanced)
         self.allFolders = allFolders
         self.currentFolderSourceID = currentFolderSourceID
         self.backendProvider = backendProvider
@@ -266,16 +264,7 @@ public struct SettingsView: View {
         _ group: SettingsSectionGroup,
         sections: [SettingsSection]
     ) -> some View {
-        if group == .advanced, normalizedSearchText.isEmpty {
-            Section {
-                DisclosureGroup(
-                    String(localized: "Advanced", bundle: .module),
-                    isExpanded: $isAdvancedExpanded
-                ) {
-                    compactSettingsRows(for: sections)
-                }
-            }
-        } else if let header = group.headerLabel {
+        if let header = group.headerLabel {
             Section(header) {
                 compactSettingsRows(for: sections)
             }
@@ -356,7 +345,6 @@ public struct SettingsView: View {
             .onMoveCommand { direction in
                 guard normalizedSearchText.isEmpty, direction == .up || direction == .down else { return }
                 let sections = filteredSettingsGroups
-                    .filter { $0.group != .advanced || isAdvancedExpanded }
                     .flatMap(\.sections)
                 guard let index = sections.firstIndex(of: navigation.selected) else { return }
                 let offset = direction == .down ? 1 : direction == .up ? -1 : 0
@@ -370,23 +358,13 @@ public struct SettingsView: View {
 
     /// Renders one sidebar group: an optional header label (per
     /// `SettingsSectionGroup.headerLabel`) followed by its section rows.
-    /// `.top` renders without a header so Accounts sits flush at the top.
-    /// Advanced destinations stay collapsed until requested or matched by search.
+    /// Every named group shares the same heading and row alignment.
     @ViewBuilder
     private func sidebarGroup(
         _ group: SettingsSectionGroup,
         sections: [SettingsSection]
     ) -> some View {
-        if group == .advanced, normalizedSearchText.isEmpty {
-            Section {
-                DisclosureGroup(
-                    String(localized: "Advanced", bundle: .module),
-                    isExpanded: $isAdvancedExpanded
-                ) {
-                    sidebarRows(for: sections)
-                }
-            }
-        } else if let header = group.headerLabel {
+        if let header = group.headerLabel {
             Section {
                 sidebarRows(for: sections)
             } header: {
@@ -446,7 +424,7 @@ public struct SettingsView: View {
     private var pluginSettingsGroup: some View {
         let contributions = BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel)
         if !contributions.isEmpty {
-            Section(String(localized: "Extensions", bundle: .module)) {
+            Section {
                 ForEach(contributions) { contribution in
                     #if os(iOS)
                     NavigationLink {
@@ -467,6 +445,10 @@ public struct SettingsView: View {
                     .buttonStyle(.plain)
                     #endif
                 }
+            } header: {
+                Text("Extensions", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
             }
         }
     }

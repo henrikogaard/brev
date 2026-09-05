@@ -179,3 +179,11 @@ No provider endpoints, opt-ins, or account defaults change through navigation.
 Mail and Settings share opaque selection roles in BrevDesign. Settings search
 indexes control labels and scrolls to the matching control. Folder Sync uses
 compact hierarchical rows with labeled retention and visibility controls.
+
+
+### 2026-09-05 navigation groups
+
+Accounts and Appearance share the App group. Advanced is a normal labeled
+section, with the same row alignment and header style as every other group;
+capability availability still controls which destinations are present. Removing
+the special disclosure group also makes the keyboard order match visible rows.

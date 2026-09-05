@@ -82,3 +82,18 @@ Native acceptance sequence after unlocking the Mac:
 The Mac locked during native verification. Accounts/navigation inspection and
 rendered snapshots were completed; the remaining sequence above is explicitly
 pending, not inferred from package tests.
+
+
+## Divider and Settings group verification
+
+The dated mock app reproduced the bright inspector gutter. The revised app
+painted both the resize target and split-container gaps with themed surfaces.
+Native captures show no bright vertical bar. Repeated left/right drags moved
+the sidebar to the requested positions; unit tests cover immediate reversal
+at width limits and final-sample persistence. No frame-rate claim is made.
+
+Accounts was verified under App, and Advanced/Extensions were verified with
+matching headers and unindented rows. The Mac locked again before the older
+search-scroll and complete keyboard/VoiceOver acceptance sequence resumed.
+Those remaining checks are still pending; the current reported visual defects
+were verified in the running app.

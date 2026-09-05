@@ -253,6 +253,9 @@ struct AIWriterSectionMacSnapshotTests {
             mailboxes: [SettingsMailbox(account: account, mailbox: mailbox, folders: folders)]
         )
         capture(SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                             sectionAvailability: .allVisible, initialSection: .about, settingsStore: store),
+                theme: theme, name: "navigation-groups-" + mode, size: CGSize(width: 900, height: 940))
+        capture(SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
                              initialSection: .folderSync, mailboxContext: context, settingsStore: store),
                 theme: theme, name: "folder-workspace-" + mode, size: CGSize(width: 900, height: 650))
         capture(PerFolderSyncSection(folders: folders,

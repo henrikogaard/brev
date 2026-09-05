@@ -975,6 +975,7 @@ public struct BrevMailRootView: View {
         // `brevMailPaneScrollEdgeBlur`), not as one overlay here: a full-width
         // band backdrop-sampled the split divider too and blurred away its top.
         mailSplitView
+            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
     }
 
     private var sidebarPane: some View {

@@ -419,3 +419,31 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Final keyboard-path inspection aligned arrow navigation with pointer
   selection: leaving an extension page clears its contribution and any old
   search anchor. Left/right arrows remain available to native controls.
+
+
+## 2026-09-05 — Codex — PR #27 separator and navigation follow-up
+
+- Reproduced the white sidebar gutter in the running dated mock app and saved
+  before/after native captures. A pixel regression over a contrasting backing
+  failed before the fix, then passed when the full hit target owned its themed
+  backdrop. The visible boundary is one physical pixel; the wider drag target
+  stays usable. The split container also paints beneath native divider gaps.
+- Sidebar drag state now consumes successive global pointer positions, avoiding
+  moving-coordinate feedback and the dead zone after reversing from a clamp.
+  SceneStorage is updated on release, including the final pointer sample.
+  Unit tests cover ordinary movement, reversal at the limit, and release state.
+- Sampled the running mock process during repeated drag gestures and verified
+  repeated native drags moved the edge to the requested positions. This is
+  interaction evidence, not a claimed FPS or live-provider latency benchmark.
+- Accounts now belongs to App; Advanced is a normal section with flat rows.
+  Native Accounts, Advanced, and Extensions alignment were visually checked.
+  Updated grouping tests and full navigation snapshots in light/dark themes.
+- The Mac locked again while continuing the earlier pending search checks.
+  The current divider, resize, and navigation checks completed before lock;
+  prior search scrolling and full keyboard/VoiceOver acceptance remain pending.
+- The user's later mailbox/profile simplification question was answered with
+  a compact-switcher recommendation. Its implementation awaits their choice;
+  it is separate from this completed separator/navigation scope.
+- Final tests, builds, lint, self-tests, and hosted checks are recorded in the
+  PR handoff. ADR-0012/0053 and CHANGELOG updated; README/PRIVACY/AGENTS do not
+  need changes because setup, network behavior, and workflow are unchanged.

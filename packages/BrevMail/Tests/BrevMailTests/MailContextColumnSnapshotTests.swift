@@ -14,6 +14,7 @@
 import AppKit
 import BrevAI
 import BrevBackend
+import BrevDesign
 @testable import BrevMail
 import BrevThemes
 import Combine
@@ -26,6 +27,29 @@ import Testing
 @Suite("Mail Context snapshots")
 @MainActor
 struct MailContextColumnSnapshotTests {
+    @Test("resize gutter paints its theme over a contrasting window background")
+    func resizeGutterUsesThemedBackground() throws {
+        let theme = BrevTheme.brevMonoDark
+        let name = "ResizeGutter-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: name))
+        defer { defaults.removePersistentDomain(forName: name) }
+        defaults.set(WindowTranslucencyMode.solid.rawValue, forKey: WindowAppearancePreferenceKey.mode)
+        let view = MailContextColumnEdge()
+            .frame(width: 6, height: 80)
+            .background(BrevTheme.brevMonoLight.bgPrimary.color)
+            .brevTheme(theme)
+            .defaultAppStorage(defaults)
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 6, height: 80)
+        host.view.layoutSubtreeIfNeeded()
+        let bitmap = try #require(host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds))
+        host.view.cacheDisplay(in: host.view.bounds, to: bitmap)
+        let sample = try #require(bitmap.colorAt(x: bitmap.pixelsWide - 1, y: bitmap.pixelsHigh / 2)?.usingColorSpace(.sRGB))
+        #expect(sample.redComponent < 0.3)
+        #expect(sample.greenComponent < 0.3)
+        #expect(sample.blueComponent < 0.3)
+    }
+
     @Test("Mail Context idle shell renders")
     func placeholderEmptyState() {
         let theme = BrevTheme.brevPaper

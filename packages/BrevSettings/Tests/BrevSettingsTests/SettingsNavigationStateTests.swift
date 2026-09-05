@@ -233,7 +233,6 @@ struct SettingsNavigationStateTests {
 
     @Test("Group headers describe user tasks")
     func groupHeaderLabels() {
-        #expect(SettingsSectionGroup.top.headerLabel == nil)
         #expect(SettingsSectionGroup.app.headerLabel == "App")
         #expect(SettingsSectionGroup.readingComposing.headerLabel == "Reading & Composing")
         #expect(SettingsSectionGroup.organization.headerLabel == "Organization")
@@ -242,14 +241,12 @@ struct SettingsNavigationStateTests {
         #expect(SettingsSectionGroup.advanced.headerLabel == "Advanced")
     }
 
-    @Test("Accounts is the only top group section")
-    func accountsIsTopGroup() {
-        #expect(SettingsSection.accounts.group == .top)
-        let topSections = SettingsSection.allCases.filter { $0.group == .top }
-        #expect(topSections == [.accounts])
+    @Test("Accounts shares the App group with Appearance")
+    func accountsIsInAppGroup() {
+        #expect(SettingsSection.accounts.group == .app)
     }
 
-    @Test("Developer, Updates, About are in the collapsed advanced group")
+    @Test("Developer, Updates, About are in the advanced group")
     func advancedGroupOrder() {
         let advancedSections = SettingsSection.allCases.filter { $0.group == .advanced }
         #expect(advancedSections == [.developer, .updates, .about])
@@ -281,10 +278,10 @@ struct SettingsNavigationStateTests {
         #expect(privacySections == [.privacy, .security])
     }
 
-    @Test("App group contains appearance")
+    @Test("App group contains Accounts and Appearance")
     func appGroupOrder() {
         let appSections = SettingsSection.allCases.filter { $0.group == .app }
-        #expect(appSections == [.appearance])
+        #expect(appSections == [.accounts, .appearance])
     }
 
     @Test("groupedVisibleSections groups v1Default sections in group order and omits empty groups")
@@ -293,15 +290,12 @@ struct SettingsNavigationStateTests {
 
         let groupNames = grouped.map(\.group)
         #expect(groupNames == [
-            .top, .app, .readingComposing, .organization,
+            .app, .readingComposing, .organization,
             .syncStorage, .privacySecurity, .advanced,
         ])
 
-        let top = grouped.first { $0.group == .top }?.sections
-        #expect(top == [.accounts])
-
         let app = grouped.first { $0.group == .app }?.sections
-        #expect(app == [.appearance])
+        #expect(app == [.accounts, .appearance])
 
         let reading = grouped.first { $0.group == .readingComposing }?.sections
         #expect(reading == [.notifications, .mailboxView, .compose, .signature, .templates, .aiWriter])
@@ -335,12 +329,12 @@ struct SettingsNavigationStateTests {
 
     @Test("groupedVisibleSections omits groups with no visible sections")
     func groupedVisibleSectionsOmitsEmptyGroups() {
-        // Custom availability with only accounts visible — only .top should appear
+        // Custom availability with only accounts visible — only .app should appear
         let availability = SettingsSectionAvailability(visibleSections: [.accounts])
         let grouped = availability.groupedVisibleSections
 
         #expect(grouped.count == 1)
-        #expect(grouped.first?.group == .top)
+        #expect(grouped.first?.group == .app)
         #expect(grouped.first?.sections == [.accounts])
     }
 

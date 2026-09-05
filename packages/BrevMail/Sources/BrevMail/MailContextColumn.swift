@@ -153,7 +153,7 @@ struct MailContextColumn: View {
             isResizeCursorPushed = false
         }
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
                     let startHeight = panelResizeStartHeight
                         ?? MailContextPanelSplitPolicy.dragStartHeight(
@@ -343,6 +343,25 @@ enum MailContextColumnWidthPolicy {
     }
 }
 
+/// Uses successive pointer positions so reversing after a size clamp has no dead zone.
+struct MailContextColumnResizeState {
+    private(set) var width: CGFloat?
+    private var previousPointerX: CGFloat?
+
+    mutating func update(pointerX: CGFloat, startX: CGFloat, initialWidth: CGFloat, bounds: MailPaneColumnWidth) {
+        let delta = pointerX - (previousPointerX ?? startX)
+        width = MailContextColumnWidthPolicy.width(dragStartWidth: width ?? initialWidth,
+                                                   translation: delta, bounds: bounds)
+        previousPointerX = pointerX
+    }
+
+    mutating func finish() -> CGFloat? {
+        let finalWidth = width
+        self = Self()
+        return finalWidth
+    }
+}
+
 /// The boundary between the reader and the AI Sidebar.
 ///
 /// An explicit hairline in the theme's separator colour rather than SwiftUI's
@@ -354,16 +373,16 @@ enum MailContextColumnWidthPolicy {
 /// it crisply.
 struct MailContextColumnEdge: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         Rectangle()
-            .fill(theme.textPrimary.color.opacity(MailContextSeparator.edgeOpacity))
-            .frame(width: 1)
-            // Runs the full window height, through the toolbar, the way the
-            // folder sidebar's edge does. The column's material already reaches
-            // the top; the hairline stopped at the safe area, so the boundary
-            // began below the toolbar and the column read as a panel dropped
-            // into the reader rather than as a sidebar of the window.
+            .fill(BrevSeparator.color(for: theme, opacity: BrevSeparator.edgeOpacity))
+            .frame(width: 1 / max(displayScale, 1))
+            .frame(width: MailContextColumnWidthPolicy.resizeHandleWidth)
+            // The six-point hit target must own its backdrop. A transparent
+            // gutter exposed AppKit's window backing as a full-height white bar.
+            .background(BrevWindowSurfaceBackground(role: .sidebar))
             .ignoresSafeArea(.container, edges: .top)
             .accessibilityHidden(true)
     }
@@ -408,8 +427,7 @@ struct MailContextInspectorModifier: ViewModifier {
     // Scene-scoped so each mail window keeps its own AI Sidebar width.
     @SceneStorage("mail.context.columnWidth")
     private var storedColumnWidth = Double(MailPaneColumnWidthPolicy.mailContextDefaultWidth)
-    @State private var liveColumnWidth: CGFloat?
-    @State private var columnResizeStartWidth: CGFloat?
+    @State private var columnResize = MailContextColumnResizeState()
     @State private var isColumnResizeHandleHovered = false
     @State private var isColumnResizeCursorPushed = false
     @Environment(\.brevTheme) private var theme
@@ -437,7 +455,7 @@ struct MailContextInspectorModifier: ViewModifier {
 
         if platform == .macOS, let width = MailPaneColumnWidthPolicy.mailContext(platform: platform) {
             let columnWidth = MailContextColumnWidthPolicy.width(
-                preferred: liveColumnWidth ?? CGFloat(storedColumnWidth),
+                preferred: columnResize.width ?? CGFloat(storedColumnWidth),
                 bounds: width
             )
 
@@ -577,22 +595,21 @@ struct MailContextInspectorModifier: ViewModifier {
             isColumnResizeCursorPushed = false
         }
         .gesture(
-            DragGesture(minimumDistance: 0)
+            DragGesture(minimumDistance: 0, coordinateSpace: .global)
                 .onChanged { value in
-                    let startWidth = columnResizeStartWidth ?? columnWidth
-                    columnResizeStartWidth = startWidth
-                    liveColumnWidth = MailContextColumnWidthPolicy.width(
-                        dragStartWidth: startWidth,
-                        translation: value.translation.width,
-                        bounds: bounds
-                    )
-                }
-                .onEnded { _ in
-                    if let liveColumnWidth {
-                        storedColumnWidth = Double(liveColumnWidth)
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        columnResize.update(pointerX: value.location.x, startX: value.startLocation.x,
+                                            initialWidth: columnWidth, bounds: bounds)
                     }
-                    liveColumnWidth = nil
-                    columnResizeStartWidth = nil
+                }
+                .onEnded { value in
+                    columnResize.update(pointerX: value.location.x, startX: value.startLocation.x,
+                                        initialWidth: columnWidth, bounds: bounds)
+                    if let finalWidth = columnResize.finish() {
+                        storedColumnWidth = Double(finalWidth)
+                    }
                 }
         )
         .accessibilityElement(children: .ignore)
@@ -610,7 +627,7 @@ struct MailContextInspectorModifier: ViewModifier {
                     bounds: bounds
                 )
             )
-            liveColumnWidth = nil
+            columnResize = MailContextColumnResizeState()
         }
     }
 }

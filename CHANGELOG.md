@@ -6,6 +6,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Mail split gaps and the AI Sidebar resize gutter now paint themed backdrops,
+  preventing bright window backing from showing as thick white dividers.
+- AI Sidebar resizing uses stable pointer coordinates, responds immediately
+  when reversing from a width limit, and commits the final release position.
+- Settings groups Accounts with Appearance under App. Advanced and Extensions
+  use the same section headings and flat row alignment as the other groups.
+
 - Settings follows the selected mailbox with an explicit source selector in
   Folder Sync. New retention overrides are isolated by account, mailbox, and
   folder; legacy preferences remain available until overridden.
