@@ -17,6 +17,162 @@ import Testing
 
 @Suite("Gmail API draft backend")
 struct GmailAPIDraftBackendTests {
+    @Test("disconnect prevents a late connect response from reactivating compose writes")
+    func lateConnectCannotReactivateDrafts() async throws {
+        let transport = DraftBackendTransport()
+        await transport.pauseNextProfile()
+        let backend = Self.backend(transport: transport)
+        let connection = Task { try await backend.connect() }
+        await transport.waitForProfileStart()
+        await backend.disconnect()
+        await transport.releaseProfile()
+        await #expect(throws: MailBackendError.self) { try await connection.value }
+        await #expect(throws: MailBackendError.self) {
+            _ = try await backend.uploadAttachment(draftID: "retired", data: Data([1]), filename: "note", mimeType: "text/plain")
+        }
+        #expect(backend.capabilities.isEmpty)
+    }
+
+    @Test("a pending save rejects overlapping save, send and discard for the same draft")
+    func draftMutationsAreSingleFlight() async throws {
+        let transport = DraftBackendTransport()
+        let backend = Self.backend(transport: transport)
+        try await backend.connect()
+        await transport.pauseNextSave()
+        let draft = Draft(id: "local", to: [.init(email: "to@example.org")], subject: "One operation")
+        let first = Task { try await backend.save(draft: draft) }
+        await transport.waitForSaveStart()
+        await #expect(throws: GmailDraftOperationError.busy) { _ = try await backend.save(draft: draft) }
+        await #expect(throws: GmailDraftOperationError.busy) { _ = try await backend.send(draft: draft) }
+        await #expect(throws: GmailDraftOperationError.busy) { try await backend.discard(draftID: draft.id) }
+        await transport.releaseSave()
+        _ = try await first.value
+        #expect(await transport.sentRawMIME() == nil)
+        #expect(await transport.deletedDraftIDs().isEmpty)
+        _ = try await backend.save(draft: draft)
+        await backend.disconnect()
+    }
+
+    @Test("an old save acknowledgement cannot recreate staging after removing and re-adding the account")
+    func retiredSaveCannotRecreateStaging() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-compose-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let old = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await old.connect()
+        await transport.pauseNextSave()
+        let save = Task { try await old.save(draft: Draft(id: "old-local", subject: "Old session")) }
+        await transport.waitForSaveStart()
+        await old.disconnect()
+        do {
+            try await store.removeAccount(accountID: Self.account.id)
+            let replacement = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+            try await replacement.connect()
+            await transport.releaseSave()
+            let result = try await save.value
+            #expect(result.remoteID == "remote-draft-1")
+            #expect(try await store.draft(accountID: Self.account.id, draftID: "old-local") == nil)
+            await replacement.disconnect()
+        } catch {
+            await transport.releaseSave()
+            _ = await save.result
+            throw error
+        }
+    }
+
+    @Test("failed remote discard preserves local draft recovery", arguments: [403, 500])
+    func failedDiscardKeepsStaging(_ status: Int) async throws {
+        let transport = DraftBackendTransport()
+        let staging = InMemoryGmailDraftStagingStore()
+        let draft = Draft(id: "local", remoteID: "remote", subject: "Keep until confirmed")
+        await staging.setDraft(draft, accountID: Self.account.id)
+        let backend = Self.backend(transport: transport, staging: staging)
+        try await backend.connect()
+        await transport.setDeleteError(.httpFailure(statusCode: status))
+        await #expect(throws: GmailAPIError.httpFailure(statusCode: status)) { try await backend.discard(draftID: "local") }
+        #expect(await staging.draft(accountID: Self.account.id, draftID: "local") == draft)
+    }
+
+    @Test("discard can finish local cleanup when the remote draft is already gone")
+    func discardMissingRemoteDraft() async throws {
+        let transport = DraftBackendTransport()
+        let staging = InMemoryGmailDraftStagingStore()
+        let draft = Draft(id: "local", remoteID: "remote", subject: "Discarded")
+        await staging.setDraft(draft, accountID: Self.account.id)
+        let backend = Self.backend(transport: transport, staging: staging)
+        try await backend.connect()
+        await transport.setDeleteError(.httpFailure(statusCode: 404))
+        try await backend.discard(draftID: "local")
+        #expect(await staging.draft(accountID: Self.account.id, draftID: "local") == nil)
+    }
+
+    @Test("a staging failure prevents provider submission")
+    func stagingFailureStopsSubmission() async throws {
+        let transport = DraftBackendTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore(),
+                                      draftStaging: FailingDraftStaging(failRemoteAcknowledgement: false))
+        try await backend.connect()
+        let draft = Draft(id: "local", to: [.init(email: "to@example.org")], subject: "Do not lose")
+        await #expect(throws: GmailAccountStoreError.databaseFailure) { _ = try await backend.save(draft: draft) }
+        await #expect(throws: GmailAccountStoreError.databaseFailure) { _ = try await backend.send(draft: draft) }
+        #expect(await transport.createdRawMIME() == nil)
+        #expect(await transport.sentRawMIME() == nil)
+        #expect(await transport.sentDraftID() == nil)
+    }
+
+    @Test("a local cleanup failure cannot turn confirmed delivery into a failed send")
+    func sentMessageSurvivesCleanupFailure() async throws {
+        let transport = DraftBackendTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore(),
+                                      draftStaging: FailingDraftStaging(failRemoteAcknowledgement: true))
+        try await backend.connect()
+        let result = try await backend.send(draft: Draft(id: "local", to: [.init(email: "to@example.org")], subject: "Once"))
+        #expect(result.sentMessageID == "sent-message-1")
+        let health = await backend.syncHealth(for: MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id))
+        #expect(health.lastErrorDescription != nil)
+    }
+
+    @Test("a confirmed remote draft save returns its identity even if local acknowledgement fails")
+    func remoteSaveSurvivesLocalAcknowledgementFailure() async throws {
+        let transport = DraftBackendTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore(),
+                                      draftStaging: FailingDraftStaging(failRemoteAcknowledgement: true))
+        try await backend.connect()
+        let saved = try await backend.save(draft: Draft(id: "local", subject: "Keep remote identity"))
+        #expect(saved.remoteID == "remote-draft-1")
+        let health = await backend.syncHealth(for: MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id))
+        #expect(health.lastErrorDescription != nil)
+    }
+
+    @Test("the default SQLite-backed adapter retains compose attachments across restart")
+    func defaultStagingSurvivesRestart() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-compose-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        var saved: Draft
+        do {
+            let store = try SQLiteGmailAccountStore(databaseURL: url)
+            let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+            try await backend.connect()
+            let part = try await backend.uploadAttachment(draftID: "local-restart", data: Data([0, 255, 128, 1]),
+                                                          filename: "original.bin", mimeType: "application/octet-stream")
+            saved = try await backend.save(draft: Draft(id: "local-restart", to: [.init(email: "to@example.org")],
+                                                        subject: "Recovery", htmlBody: "<p>First</p>", attachmentIDs: [part]))
+            await backend.disconnect()
+        }
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        saved.htmlBody = "<p>Recovered and edited</p>"
+        _ = try await backend.save(draft: saved)
+        let MIME = try #require(await transport.createdRawMIME())
+        #expect(MIME.contains("AP+AAQ=="))
+        #expect(MIME.contains("Recovered and edited"))
+        #expect(await transport.updatedDraftID() == saved.remoteID)
+        await backend.disconnect()
+    }
+
     @Test("saves drafts with Gmail MIME and staged attachments")
     func savesDraft() async throws {
         let transport = DraftBackendTransport()
@@ -245,6 +401,23 @@ struct GmailAPIDraftBackendTests {
     }
 }
 
+private actor FailingDraftStaging: GmailDraftStagingStore {
+    let failRemoteAcknowledgement: Bool
+    init(failRemoteAcknowledgement: Bool) { self.failRemoteAcknowledgement = failRemoteAcknowledgement }
+    func draft(accountID: String, draftID: String) -> Draft? { nil }
+    func setDraft(_ draft: Draft, accountID: String) throws {
+        if !failRemoteAcknowledgement || draft.remoteID != nil { throw GmailAccountStoreError.databaseFailure }
+    }
+
+    func attachment(accountID: String, attachmentID: String) -> GmailStagedAttachment? { nil }
+    func setAttachment(_ attachment: GmailStagedAttachment, accountID: String) throws {
+        throw GmailAccountStoreError.databaseFailure
+    }
+
+    func removeDraft(accountID: String, draftID: String) throws { throw GmailAccountStoreError.databaseFailure }
+    func clear(accountID: String) {}
+}
+
 private actor DraftBackendTransport: GmailAPITransporting {
     private let sendAs: [GmailSendAs]
     private let sendAsError: GmailAPIError?
@@ -258,6 +431,15 @@ private actor DraftBackendTransport: GmailAPITransporting {
     private var sentThread: String?
     var sendError: GmailAPIError?
     var sendDraftError: GmailAPIError?
+    private var deleteError: GmailAPIError?
+    private var pausesSave = false
+    private var saveStarted = false
+    private var saveRelease: CheckedContinuation<Void, Never>?
+    private var saveStartedWaiter: CheckedContinuation<Void, Never>?
+    private var pausesProfile = false
+    private var profileStarted = false
+    private var profileRelease: CheckedContinuation<Void, Never>?
+    private var profileStartedWaiter: CheckedContinuation<Void, Never>?
 
     init(sendAs: [GmailSendAs] = [GmailSendAs(
         sendAsEmail: "primary@example.com",
@@ -270,7 +452,13 @@ private actor DraftBackendTransport: GmailAPITransporting {
     }
 
     func profile() async throws -> GmailProfile {
-        GmailProfile(emailAddress: "primary@example.com", historyID: "history-1")
+        if pausesProfile {
+            profileStarted = true
+            profileStartedWaiter?.resume()
+            profileStartedWaiter = nil
+            await withCheckedContinuation { profileRelease = $0 }
+        }
+        return GmailProfile(emailAddress: "primary@example.com", historyID: "history-1")
     }
 
     func listLabels() async throws -> [GmailLabel] {
@@ -292,6 +480,12 @@ private actor DraftBackendTransport: GmailAPITransporting {
     func createDraft(rawMIME: String, threadID: String?) async throws -> GmailDraft {
         createdMIME = rawMIME
         createdThread = threadID
+        if pausesSave {
+            saveStarted = true
+            saveStartedWaiter?.resume()
+            saveStartedWaiter = nil
+            await withCheckedContinuation { saveRelease = $0 }
+        }
         return GmailDraft(id: "remote-draft-1")
     }
 
@@ -302,7 +496,10 @@ private actor DraftBackendTransport: GmailAPITransporting {
         return GmailDraft(id: id)
     }
 
-    func deleteDraft(id: String) async throws { deletedIDs.append(id) }
+    func deleteDraft(id: String) async throws {
+        if let deleteError { throw deleteError }
+        deletedIDs.append(id)
+    }
 
     func sendDraft(id: String) async throws -> GmailMessage {
         if let sendDraftError { throw sendDraftError }
@@ -323,6 +520,31 @@ private actor DraftBackendTransport: GmailAPITransporting {
     }
 
     func setSendError(_ error: GmailAPIError?) { sendError = error }
+    func pauseNextProfile() { pausesProfile = true; profileStarted = false }
+    func waitForProfileStart() async {
+        if profileStarted { return }
+        await withCheckedContinuation { profileStartedWaiter = $0 }
+    }
+
+    func releaseProfile() {
+        pausesProfile = false
+        profileRelease?.resume()
+        profileRelease = nil
+    }
+
+    func pauseNextSave() { pausesSave = true; saveStarted = false }
+    func waitForSaveStart() async {
+        if saveStarted { return }
+        await withCheckedContinuation { saveStartedWaiter = $0 }
+    }
+
+    func releaseSave() {
+        pausesSave = false
+        saveRelease?.resume()
+        saveRelease = nil
+    }
+
+    func setDeleteError(_ error: GmailAPIError?) { deleteError = error }
     func setSendDraftError(_ error: GmailAPIError?) { sendDraftError = error }
 
     func createdRawMIME() -> String? { createdMIME }

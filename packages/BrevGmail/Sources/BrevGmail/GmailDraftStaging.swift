@@ -70,17 +70,17 @@ public enum GmailDraftStagingError: Error, Sendable, Equatable, LocalizedError {
 /// Stores local Gmail drafts and MIME attachments until a write operation.
 public protocol GmailDraftStagingStore: Sendable {
     /// Returns a draft by local or remote ID.
-    func draft(accountID: String, draftID: String) async -> Draft?
+    func draft(accountID: String, draftID: String) async throws -> Draft?
     /// Persists a draft under its local and remote IDs.
-    func setDraft(_ draft: Draft, accountID: String) async
+    func setDraft(_ draft: Draft, accountID: String) async throws
     /// Returns one staged attachment.
-    func attachment(accountID: String, attachmentID: String) async -> GmailStagedAttachment?
+    func attachment(accountID: String, attachmentID: String) async throws -> GmailStagedAttachment?
     /// Stores one staged attachment or throws when the byte cap is exceeded.
     func setAttachment(_ attachment: GmailStagedAttachment, accountID: String) async throws
     /// Removes a draft and all attachments owned by it.
-    func removeDraft(accountID: String, draftID: String) async
+    func removeDraft(accountID: String, draftID: String) async throws
     /// Clears all staging records for an account.
-    func clear(accountID: String) async
+    func clear(accountID: String) async throws
 }
 
 /// Explicitly bounded in-memory staging for Gmail compose attachments.
@@ -100,7 +100,7 @@ public actor InMemoryGmailDraftStagingStore: GmailDraftStagingStore {
     }
 
     public func setDraft(_ draft: Draft, accountID: String) {
-        var accountDrafts = drafts[accountID] ?? [:]
+        var accountDrafts = (drafts[accountID] ?? [:]).filter { $0.value.id != draft.id }
         accountDrafts[draft.id] = draft
         if let remoteID = draft.remoteID { accountDrafts[remoteID] = draft }
         drafts[accountID] = accountDrafts
@@ -124,11 +124,10 @@ public actor InMemoryGmailDraftStagingStore: GmailDraftStagingStore {
     }
 
     public func removeDraft(accountID: String, draftID: String) {
-        guard let accountDrafts = drafts[accountID],
-              let stored = accountDrafts[draftID]
-        else { return }
-        let IDs = Set([stored.id, stored.remoteID].compactMap { $0 })
-        drafts[accountID] = accountDrafts.filter { !IDs.contains($0.key) }
+        let accountDrafts = drafts[accountID] ?? [:]
+        let stored = accountDrafts[draftID]
+        let IDs = Set([draftID, stored?.id, stored?.remoteID].compactMap { $0 })
+        drafts[accountID] = accountDrafts.filter { !IDs.contains($0.key) && !IDs.contains($0.value.id) }
         let owned = attachments[accountID]?.filter { IDs.contains($0.value.draftID) } ?? [:]
         byteCounts[accountID] = max(0, (byteCounts[accountID] ?? 0) - owned.values.reduce(0) { $0 + $1.data.count })
         attachments[accountID] = attachments[accountID]?.filter { !IDs.contains($0.value.draftID) }

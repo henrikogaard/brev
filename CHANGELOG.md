@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Gmail draft and attachment staging survives app restarts in the local SQLite
+  store. Cache refreshes preserve unsent compose content, account removal clears
+  it, and local storage failures no longer turn confirmed sends into failed sends.
+
 - Folder exports include every page and preserve original message bodies and
   attachments. Shared progress and cancellation controls identify the mailbox
   being exported; failed or canceled work leaves existing output intact.

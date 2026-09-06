@@ -206,6 +206,27 @@ Send and draft operations preserve the existing uncertain-delivery rule: a
 network failure after submission is not automatically retried unless the
 provider response proves delivery did not occur.
 
+#### Durable compose staging update, 2026-09-06
+
+The SQLite Gmail store also implements the draft-staging contract. Schema 2 adds
+account-scoped local draft identities, current provider draft identities, and
+attachment staging. These rows are independent of evictable message-cache rows
+and sync snapshots; foreign-key ownership and account removal clear them in the
+account transaction and reject writes after the account is removed.
+Attachment uploads can be staged before a draft's first save, and the existing
+25 MiB aggregate per-account bound is enforced transactionally on disk.
+
+Staging reads/writes report failures rather than silently dropping content.
+Draft mutations are single-flight by local/provider draft identity. Disconnect
+retires their session and drains local writes before purge; in-flight provider
+replies cannot recreate staging, including after re-adding the same account.
+The adapter stages before submitting a draft/send. Once the provider confirms
+success, local acknowledgement/cleanup errors go to sync health while the caller
+retains the confirmed remote result. Default SQLite-backed adapters use durable
+staging; explicitly injected staging and in-memory test stores remain supported.
+This is a prerequisite for durable local scheduled sends, not an implementation
+of Gmail Send Later, new background execution, or another provider endpoint.
+
 ### 9. Keep OAuth scope state explicit
 
 The initial testing implementation may use the already configured

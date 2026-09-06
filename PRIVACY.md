@@ -236,6 +236,13 @@ so one Gmail message is not duplicated for every label. The cache can contain
 headers, bodies, raw source, attachment metadata, labels, and sync cursors, but
 never OAuth access or refresh tokens.
 
+Gmail compose drafts and staged attachment bytes are also stored locally in
+that database until send/discard cleanup or account removal. They are separate
+from the evictable message cache, so clearing downloaded mail or synchronizing
+the mailbox does not delete unsent content. Staged attachments have a 25 MiB
+aggregate limit per account. This local staging does not add a network call;
+saving a Gmail draft still uploads its MIME content to Gmail as requested.
+
 Gmail API access is on only after the user explicitly adds a Google account.
 Removing the account clears its Keychain token, Gmail configuration, pending
 provider work, and Brev-owned local Gmail cache. The standards-based IMAP/SMTP

@@ -830,3 +830,47 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   multi-account QA checklist. No new endpoint, provider permission, architectural
   archive service, setup, build target or release is introduced, so README,
   AGENTS and a new ADR do not need changes for this export slice.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 durable Gmail staging
+
+- Verified all 19 hosted checks passed on folder-export commit 3d89edd. The
+  parent remains In progress and strategic ADRs in #29 remain unapproved.
+- Scheduled-send inspection found Gmail draft/attachment staging was memory-only.
+  Added account-owned staging to SQLite schema 2 and wired the adapter's default
+  to use it. Restarts preserve local/provider draft identity and attachment bytes;
+  sync/cache eviction preserves staging and account removal clears it atomically.
+- Added transactional attachment byte limits, remote-ID replacement, and deletion
+  of attachments staged before the first draft save. Staging operations now throw
+  persistence/read errors; provider submission requires successful initial staging.
+- Confirmed remote save/send results survive local acknowledgement/cleanup errors,
+  which are surfaced through sync health. This avoids retrying confirmed provider
+  operations as if they failed. Gmail scheduled send itself is still pending.
+- Red-green tests reproduced restart attachment loss and loss of a confirmed
+  remote draft identity after local acknowledgement failure. Coverage also checks
+  write failure preserving old content, version-1 migration, account isolation,
+  cache reset, byte limits, and draft/attachment removal. Full Gmail suite: 118
+  tests passed. Final lint/build and review evidence follows.
+- Documentation sweep: CHANGELOG, PRIVACY and ADR-0064 record local staging and
+  its ownership. README/setup and UI layout are unchanged. No new network call,
+  service, release, daily-driver install, or architecture approval is introduced.
+- Discard retries now finish local cleanup when Gmail reports that the remote
+  draft is already absent. Other provider errors preserve staging. Red-green
+  coverage confirms 404 cleanup and 403/500 retention.
+- Dated macOS mock build/startup, iOS Gmail package compilation, lint/format,
+  privacy audit and diff checks passed. UI layout is unchanged, so no new
+  snapshots were added. Live Gmail and native restart acceptance remain pending.
+- Scheduler follow-up must store explicit scheduling intent separately from
+  autosaved Draft.scheduledFor values: choosing a date while composing is not
+  authorization to send until the user submits the schedule.
+- Review-driven lifecycle fixes add account foreign-key ownership, per-draft
+  single-flight operations, and session invalidation that drains local writes
+  before account purge. Red-green regressions cover old acknowledgements after
+  remove/re-add and connect completing after disconnect. In-memory staging now
+  matches SQLite's remote-alias and pre-save attachment cleanup contract.
+- Residual parent-area-5 finding: the separate sync reconciler can still
+  republish connected metadata after disconnect without a generation check.
+  Draft writes remain blocked by their retired coordinator; broader sync-task
+  retirement is pending reliability work rather than completed by this slice.
+- Added the previously omitted BrevGmail package to hosted CI's test matrix so
+  these regressions run on PRs. This one-line configuration change skips TDD;
+  workflow YAML parsing and the actual package suite verify it locally.

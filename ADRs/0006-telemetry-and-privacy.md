@@ -56,6 +56,13 @@ cache is local-only, excluded from telemetry (none exists), and contains
 no OAuth secrets, passwords, app passwords, or API keys. The cache can
 be cleared from Settings without signing out.
 
+Gmail compose staging stores unsent drafts and attachment bytes in the local
+account database, separately from evictable message content. Cache clearing and
+sync snapshots preserve this staging; send/discard cleanup and account removal
+delete it. The staging tables belong to the canonical account with cascading
+deletion, and draft-operation session guards reject stale writes after removal.
+No credentials are added to staging and no new external service is involved.
+
 ### Network calls Brev makes, by category
 
 The following external network calls exist or are planned for the v1

@@ -15,15 +15,20 @@ import Foundation
 import SQLite3
 
 /// SQLite-backed canonical Gmail account store.
-public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Sendable {
-    private static let currentSchemaVersion = 1
+public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagingStore, @unchecked Sendable {
+    private static let currentSchemaVersion = 2
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private let lock = NSLock()
     private let database: OpaquePointer?
+    private let maxStagedAttachmentBytes: Int
 
     /// Opens or creates a Gmail account database and migrates an empty schema.
-    public init(databaseURL: URL) throws {
+    /// - Parameters:
+    ///   - databaseURL: Local account database, including compose staging.
+    ///   - maxStagedAttachmentBytes: Per-account attachment bound, default 25 MiB; values below one are clamped to one.
+    public init(databaseURL: URL, maxStagedAttachmentBytes: Int = 25 * 1024 * 1024) throws {
+        self.maxStagedAttachmentBytes = max(1, maxStagedAttachmentBytes)
         try FileManager.default.createDirectory(
             at: databaseURL.deletingLastPathComponent(),
             withIntermediateDirectories: true
@@ -56,6 +61,7 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
         try lock.withLock {
             try begin()
             do {
+                try clearStaging(accountID: accountID)
                 try execute("DELETE FROM gmail_attachments WHERE account_id = ?;", bindings: [.text(accountID)])
                 try execute("DELETE FROM gmail_raw_sources WHERE account_id = ?;", bindings: [.text(accountID)])
                 try execute("DELETE FROM gmail_bodies WHERE account_id = ?;", bindings: [.text(accountID)])
@@ -855,8 +861,146 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, @unchecked Send
         PRIMARY KEY (account_id, attachment_id),
         FOREIGN KEY (account_id) REFERENCES gmail_accounts(account_id) ON DELETE CASCADE
     );
-    PRAGMA user_version = 1;
+    CREATE TABLE IF NOT EXISTS gmail_staged_drafts (
+        account_id TEXT NOT NULL,
+        draft_id TEXT NOT NULL,
+        remote_id TEXT,
+        draft_json BLOB NOT NULL,
+        PRIMARY KEY (account_id, draft_id),
+        FOREIGN KEY (account_id) REFERENCES gmail_accounts(account_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS gmail_staged_drafts_remote_idx ON gmail_staged_drafts(account_id, remote_id);
+    CREATE TABLE IF NOT EXISTS gmail_staged_attachments (
+        account_id TEXT NOT NULL,
+        attachment_id TEXT NOT NULL,
+        draft_id TEXT NOT NULL,
+        attachment_json BLOB NOT NULL,
+        byte_count INTEGER NOT NULL,
+        PRIMARY KEY (account_id, attachment_id),
+        FOREIGN KEY (account_id) REFERENCES gmail_accounts(account_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS gmail_staged_attachments_draft_idx ON gmail_staged_attachments(account_id, draft_id);
+    PRAGMA user_version = 2;
     """
+}
+
+// Staged compose content is separate from the evictable message cache. It can
+// exist before the first draft save, but always belongs to an initialized account.
+public extension SQLiteGmailAccountStore {
+    /// Reads local compose state by local or current provider draft identity.
+    func draft(accountID: String, draftID: String) async throws -> Draft? {
+        try validate(accountID: accountID)
+        return try lock.withLock { try stagedDraft(accountID: accountID, draftID: draftID) }
+    }
+
+    /// Commits compose content before the caller reports that staging succeeded.
+    func setDraft(_ draft: Draft, accountID: String) async throws {
+        try validate(accountID: accountID)
+        try validate(messageID: draft.id)
+        let bytes = try JSONEncoder().encode(draft)
+        try lock.withLock {
+            try execute("""
+            INSERT INTO gmail_staged_drafts(account_id, draft_id, remote_id, draft_json) VALUES (?, ?, ?, ?)
+            ON CONFLICT(account_id, draft_id) DO UPDATE SET remote_id = excluded.remote_id, draft_json = excluded.draft_json;
+            """, bindings: [.text(accountID), .text(draft.id), .optionalText(draft.remoteID), .blob(bytes)])
+        }
+    }
+
+    /// Reads original staged attachment content independently of the read cache.
+    func attachment(accountID: String, attachmentID: String) async throws -> GmailStagedAttachment? {
+        try validate(accountID: accountID)
+        return try lock.withLock {
+            try stagedValue("SELECT attachment_json FROM gmail_staged_attachments WHERE account_id = ? AND attachment_id = ?;",
+                            values: [accountID, attachmentID], as: GmailStagedAttachment.self)
+        }
+    }
+
+    /// Atomically stores one attachment while enforcing the account's aggregate byte bound.
+    func setAttachment(_ attachment: GmailStagedAttachment, accountID: String) async throws {
+        try validate(accountID: accountID)
+        guard !attachment.id.isEmpty, !attachment.draftID.isEmpty else { throw GmailDraftStagingError.invalidIdentifier }
+        guard attachment.data.count <= maxStagedAttachmentBytes else {
+            throw GmailDraftStagingError.capacityExceeded(limit: maxStagedAttachmentBytes)
+        }
+        let bytes = try JSONEncoder().encode(attachment)
+        try lock.withLock {
+            try begin()
+            do {
+                let statement = try prepare("""
+                SELECT COALESCE(SUM(byte_count), 0) FROM gmail_staged_attachments
+                WHERE account_id = ? AND attachment_id <> ?;
+                """)
+                defer { sqlite3_finalize(statement) }
+                bind(accountID, to: statement, at: 1)
+                bind(attachment.id, to: statement, at: 2)
+                guard sqlite3_step(statement) == SQLITE_ROW else { throw GmailAccountStoreError.databaseFailure }
+                let used = sqlite3_column_int64(statement, 0)
+                guard used <= Int64(maxStagedAttachmentBytes - attachment.data.count) else {
+                    throw GmailDraftStagingError.capacityExceeded(limit: maxStagedAttachmentBytes)
+                }
+                try execute("""
+                INSERT INTO gmail_staged_attachments(account_id, attachment_id, draft_id, attachment_json, byte_count)
+                VALUES (?, ?, ?, ?, ?)
+                ON CONFLICT(account_id, attachment_id) DO UPDATE SET draft_id = excluded.draft_id,
+                    attachment_json = excluded.attachment_json, byte_count = excluded.byte_count;
+                """, bindings: [.text(accountID), .text(attachment.id), .text(attachment.draftID), .blob(bytes),
+                                .optionalInt(attachment.data.count)])
+                try commit()
+            } catch { try? rollback(); throw error }
+        }
+    }
+
+    /// Removes a draft and its owned attachments in one transaction, including unattached staging.
+    func removeDraft(accountID: String, draftID: String) async throws {
+        try validate(accountID: accountID)
+        try lock.withLock {
+            try begin()
+            do {
+                let stored = try stagedDraft(accountID: accountID, draftID: draftID)
+                let localID = stored?.id ?? draftID
+                let remoteID = stored?.remoteID ?? draftID
+                try execute("DELETE FROM gmail_staged_attachments WHERE account_id = ? AND draft_id IN (?, ?);",
+                            bindings: [.text(accountID), .text(localID), .text(remoteID)])
+                try execute("DELETE FROM gmail_staged_drafts WHERE account_id = ? AND draft_id = ?;",
+                            bindings: [.text(accountID), .text(localID)])
+                try commit()
+            } catch { try? rollback(); throw error }
+        }
+    }
+
+    /// Clears only the account's compose staging, leaving other accounts and cached mail intact.
+    func clear(accountID: String) async throws {
+        try validate(accountID: accountID)
+        try lock.withLock {
+            try begin()
+            do { try clearStaging(accountID: accountID); try commit() }
+            catch { try? rollback(); throw error }
+        }
+    }
+
+    private func clearStaging(accountID: String) throws {
+        try execute("DELETE FROM gmail_staged_attachments WHERE account_id = ?;", bindings: [.text(accountID)])
+        try execute("DELETE FROM gmail_staged_drafts WHERE account_id = ?;", bindings: [.text(accountID)])
+    }
+
+    private func stagedDraft(accountID: String, draftID: String) throws -> Draft? {
+        try stagedValue("""
+        SELECT draft_json FROM gmail_staged_drafts WHERE account_id = ? AND (draft_id = ? OR remote_id = ?)
+        ORDER BY draft_id = ? DESC LIMIT 1;
+        """, values: [accountID, draftID, draftID, draftID], as: Draft.self)
+    }
+
+    private func stagedValue<Value: Decodable>(_ sql: String, values: [String], as type: Value.Type) throws -> Value? {
+        let statement = try prepare(sql)
+        defer { sqlite3_finalize(statement) }
+        for (index, value) in values.enumerated() {
+            bind(value, to: statement, at: Int32(index + 1))
+        }
+        let status = sqlite3_step(statement)
+        if status == SQLITE_DONE { return nil }
+        guard status == SQLITE_ROW, let bytes = blob(statement, column: 0) else { throw GmailAccountStoreError.databaseFailure }
+        return try JSONDecoder().decode(type, from: bytes)
+    }
 }
 
 private extension GmailMessage {
