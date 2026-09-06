@@ -433,6 +433,36 @@ struct GmailAPIBackendTests {
         #expect(await transport.attachmentRequestCount() == 1)
     }
 
+    @Test("Gmail original MIME bytes survive restart and are available offline")
+    func originalMIMEBytesSurviveRestart() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-raw-mime-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let raw = Data("Content-Type: text/plain; charset=iso-8859-1\r\n\r\n".utf8) + Data([0xE5, 0xF8, 0xE6])
+        let encoded = raw.base64EncodedString().replacingOccurrences(of: "+", with: "-")
+            .replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+        let message = GmailMessage(id: "raw-eight-bit", threadID: "thread", labelIDs: ["INBOX"], raw: encoded)
+        let transport = StubGmailTransport(messages: [message])
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        do {
+            let store = try SQLiteGmailAccountStore(databaseURL: url)
+            try await store.replaceSnapshot(Self.snapshot(messages: [message]))
+            try await store.storeRawSource("Legacy decoded text", accountID: Self.account.id, messageID: message.id)
+            let backend: any MailBackend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+            try await backend.connect()
+            #expect(try await backend.rawMessageData(for: message.id, sourceID: source) == raw)
+            await backend.disconnect()
+        }
+        let reopened = try SQLiteGmailAccountStore(databaseURL: url)
+        let offline: any MailBackend = GmailAPIBackend(account: Self.account, transport: transport, store: reopened)
+        #expect(offline.extendedCapabilities.contains(.rawMessageBytes))
+        #expect(try await offline.rawSource(for: message.id, sourceID: source).hasSuffix("åøæ"))
+        #expect(try await offline.rawMessageData(for: message.id, sourceID: source) == raw)
+        #expect(await transport.rawMessageRequestCount() == 1)
+        await #expect(throws: MailBackendError.self) {
+            _ = try await offline.rawMessageData(for: message.id, sourceID: MailSourceID(accountID: "other", mailboxID: "other"))
+        }
+    }
+
     @Test("read-only slice rejects mutations through the public backend contract")
     func rejectsMutations() async throws {
         let backend = GmailAPIBackend(

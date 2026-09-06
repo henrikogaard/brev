@@ -163,14 +163,24 @@ enum ScheduleSendDateResolver {
 
 /// Copy shared by the schedule-send sheet and the app-level quit warning.
 public enum ScheduleSendReliabilityPresentation {
-    static let localDeliveryNotice =
-        "Brev sends scheduled messages while it is running. If Brev is fully quit at the send time, the message sends the next time you open Brev."
+    static let localDeliveryNotice = String(
+        localized: "Brev sends scheduled messages while it is running and connected. If Brev is fully quit, waiting messages are checked the next time you open Brev. Messages needing review will not retry automatically.",
+        bundle: .module
+    )
 
     /// Body text for the quit confirmation shown while scheduled sends are
     /// still pending, or `nil` when there is nothing to warn about.
     public static func quitWarningMessage(pendingCount: Int) -> String? {
         guard pendingCount > 0 else { return nil }
-        let noun = pendingCount == 1 ? "message" : "messages"
-        return "\(pendingCount) scheduled \(noun) will not be sent until Brev is next opened."
+        if pendingCount == 1 {
+            return String(
+                localized: "1 scheduled message remains in Outbox. Waiting mail is checked when Brev is next opened; messages needing review will not retry automatically.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "\(pendingCount) scheduled messages remain in Outbox. Waiting mail is checked when Brev is next opened; messages needing review will not retry automatically.",
+            bundle: .module
+        )
     }
 }

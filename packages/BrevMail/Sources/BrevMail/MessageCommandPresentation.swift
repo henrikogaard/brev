@@ -428,7 +428,7 @@ public enum MessageCommandPresentation {
         let canCopyToFolder = extendedCapabilities.contains(.messageCopy) && canMove
         let canViewSource = extendedCapabilities.contains(.rawMessageSource)
         let canShowHeaders = extendedCapabilities.contains(.rawMessageSource)
-        let canSaveAs = extendedCapabilities.contains(.rawMessageSource) && canExportEML
+        let canSaveAs = extendedCapabilities.contains(.rawMessageBytes) && canExportEML
         var sections: [MessageContextMenuSection] = []
         appendSection(
             &sections,

@@ -38,13 +38,13 @@ struct MessageListMutationRollback {
     }
 
     @MainActor
-    func restore(navigation: MailNavigationState) -> RestoredState {
-        navigation.currentFolderHeaders = currentFolderHeaders
-        navigation.selectedMessageID = selectedMessageID
-        navigation.bulkSelection = bulkSelection
+    func restore(navigation: MailNavigationState, excludingRemovedIDs: Set<MessageHeader.ID> = []) -> RestoredState {
+        navigation.currentFolderHeaders = currentFolderHeaders.filter { !excludingRemovedIDs.contains($0.id) }
+        navigation.selectedMessageID = selectedMessageID.flatMap { excludingRemovedIDs.contains($0) ? nil : $0 }
+        navigation.bulkSelection = bulkSelection.subtracting(excludingRemovedIDs)
         return RestoredState(
-            headers: visibleHeaders,
-            loadedFolderHeaders: loadedFolderHeaders
+            headers: visibleHeaders.filter { !excludingRemovedIDs.contains($0.id) },
+            loadedFolderHeaders: loadedFolderHeaders.filter { !excludingRemovedIDs.contains($0.id) }
         )
     }
 }
@@ -80,24 +80,26 @@ struct UnifiedInboxMutationRollback {
         bulkSelection = navigation.bulkSelection
     }
 
-    func restoring(failedSources: Set<MailSourceID>, in currentItems: [UnifiedInboxItem]) -> RestoredState {
+    func restoring(failedItemIDs: Set<UnifiedInboxItem.ID>, in currentItems: [UnifiedInboxItem]) -> RestoredState {
         let currentByID = Dictionary(currentItems.map { ($0.id, $0) }) { _, latest in latest }
         let restored = items.compactMap { item in
-            failedSources.contains(item.sourceID) ? item : currentByID[item.id]
+            failedItemIDs.contains(item.id) ? item : currentByID[item.id]
         }
-        let failedIDs = Set(items.filter { failedSources.contains($0.sourceID) }.map(\.id))
+        let failedIDs = failedItemIDs
         return RestoredState(items: restored, selectedItemIDs: selectedItemIDs.intersection(failedIDs))
     }
 
     @MainActor
     func restoreFailedReader(
         in navigation: MailNavigationState,
-        failedSources: Set<MailSourceID>,
+        failedItemIDs: Set<UnifiedInboxItem.ID>,
         expectedSelectionRevision: Int
     ) {
         guard navigation.readerSelectionRevision == expectedSelectionRevision,
-              let sourceID, failedSources.contains(sourceID),
-              let header = currentFolderHeaders.first(where: { $0.id == selectedMessageID }) else { return }
+              let sourceID,
+              let selectedItem = items.first(where: { $0.sourceID == sourceID && $0.header.id == selectedMessageID }),
+              failedItemIDs.contains(selectedItem.id) else { return }
+        let header = selectedItem.header
         if let collectionID {
             navigation.selectSmartView(folderID: collectionID)
         } else {

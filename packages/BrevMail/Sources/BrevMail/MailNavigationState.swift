@@ -66,15 +66,22 @@ public final class MailNavigationState {
 
     /// The currently selected account/mailbox source. Folder and
     /// message identifiers are only unique within this scope.
-    public var selectedSourceID: MailSourceID?
+    public var selectedSourceID: MailSourceID? {
+        didSet { if oldValue != selectedSourceID { restoredSelectionHeader = nil } }
+    }
 
     /// The currently selected folder, or `nil` while folders load.
-    public var selectedFolderID: Folder.ID?
+    public var selectedFolderID: Folder.ID? {
+        didSet { if oldValue != selectedFolderID { restoredSelectionHeader = nil } }
+    }
 
     /// The currently selected message in the selected folder, or `nil`
     /// while nothing is open in the reading pane.
     public var selectedMessageID: MessageHeader.ID? {
-        didSet { readerSelectionRevision &+= 1 }
+        didSet {
+            readerSelectionRevision &+= 1
+            if oldValue != selectedMessageID { restoredSelectionHeader = nil }
+        }
     }
 
     /// Distinguishes a user selection made while an asynchronous mutation is pending.
@@ -82,7 +89,13 @@ public final class MailNavigationState {
 
     /// Search query bound to the message list search field. Empty string
     /// means "no filter".
-    public var searchText: String
+    public var searchText: String {
+        didSet { if oldValue != searchText { restoredSelectionHeader = nil } }
+    }
+
+    // A confirmed restored message may sit outside the first refreshed page.
+    // Keep its reader header until that page reaches it or selection changes.
+    private var restoredSelectionHeader: MessageHeader?
 
     /// Incremented when a menu command or shortcut asks the message list
     /// search field to take focus. The field observes the counter rather than
@@ -331,6 +344,7 @@ public final class MailNavigationState {
 
     /// Selects a row from the visible list without changing its folder/search scope.
     public func selectMessage(_ header: MessageHeader, from headers: [MessageHeader]) {
+        restoredSelectionHeader = nil
         currentFolderHeaders = headers
         selectedMessageID = header.id
         bulkSelection.removeAll()
@@ -338,12 +352,23 @@ public final class MailNavigationState {
 
     /// Selects a source-owned message for the reader.
     public func selectMessage(_ header: MessageHeader, in sourceID: MailSourceID, headers: [MessageHeader]) {
+        restoredSelectionHeader = nil
         selectedCollectionFolderID = browsingFolderID
         selectedSourceID = sourceID
         selectedFolderID = header.folderID
         selectedMessageID = header.id
         currentFolderHeaders = headers
         bulkSelection.removeAll()
+    }
+
+    /// Reopens a confirmed restored message without depending on the next list page.
+    func restoreMovedSelection(_ header: MessageHeader, in sourceID: MailSourceID?, headers: [MessageHeader]) {
+        if let sourceID {
+            selectMessage(header, in: sourceID, headers: headers)
+        } else {
+            selectMessage(header, from: headers)
+        }
+        restoredSelectionHeader = header
     }
 
     /// Mutate a header in `currentFolderHeaders` in place. Used by
@@ -354,6 +379,7 @@ public final class MailNavigationState {
             return
         }
         mutate(&currentFolderHeaders[index])
+        if restoredSelectionHeader?.id == id { restoredSelectionHeader = currentFolderHeaders[index] }
     }
 
     /// Applies an optimistic update only to the reader's owning source.
@@ -374,6 +400,13 @@ public final class MailNavigationState {
             currentFolderHeaders.firstIndex(where: { $0.id == selected })
         }
         currentFolderHeaders = headers
+        if let restored = restoredSelectionHeader, restored.id == selectedMessageID {
+            if !headers.contains(where: { $0.id == restored.id }) {
+                currentFolderHeaders.append(restored)
+                return
+            }
+            restoredSelectionHeader = nil
+        }
         guard let selected = selectedMessageID else {
             if selectFirstIfNeeded {
                 selectedMessageID = headers.first?.id
@@ -392,6 +425,7 @@ public final class MailNavigationState {
 
     /// Remove headers in place (e.g. after move or delete).
     public func removeHeaders(ids: Set<MessageHeader.ID>) {
+        if let restored = restoredSelectionHeader, ids.contains(restored.id) { restoredSelectionHeader = nil }
         let selectedRemovalIndex = selectedMessageID.flatMap { selected in
             ids.contains(selected)
                 ? currentFolderHeaders.firstIndex(where: { $0.id == selected })
@@ -465,11 +499,12 @@ public final class MailNavigationState {
         case .accountConnected,
              .accountDisconnected,
              .mailboxChanged,
-             .syncProgress:
+             .syncProgress,
+             .outboxChanged:
             changedFolderID = nil
         }
 
-        if changedFolderID == selectedFolderID {
+        if let changedFolderID, changedFolderID == selectedFolderID {
             requestReload()
         }
     }

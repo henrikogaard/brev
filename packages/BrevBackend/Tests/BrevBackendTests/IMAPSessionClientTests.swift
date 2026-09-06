@@ -1311,6 +1311,36 @@ struct IMAPSessionClientTests {
         #expect(source.rawMessage == rawMessage)
     }
 
+    @Test("legacy source cache remains readable without claiming original-byte fidelity")
+    func legacySourceCacheIsRenderingOnly() throws {
+        let data = Data(#"{"uid":43,"rawMessage":"Subject: Legacy\r\n\r\nReadable"}"#.utf8)
+        let source = try JSONDecoder().decode(IMAPMessageSource.self, from: data)
+        #expect(source.uid == 43)
+        #expect(source.rawMessage == "Subject: Legacy\r\n\r\nReadable")
+        #expect(source.rawMessageData == nil)
+    }
+
+    @Test("raw MIME retrieval and cache encoding preserve original non-UTF8 bytes")
+    func rawMIMEBytesSurviveFetchAndCache() async throws {
+        let raw = Data(("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n"
+                + "Subject: Original bytes\r\n\r\n--mail\r\nContent-Type: text/plain; charset=iso-8859-1\r\n"
+                + "Content-Transfer-Encoding: 8bit\r\n\r\n").utf8)
+            + Data([0xE5, 0xF8, 0xE6])
+            + Data(("\r\n--mail\r\nContent-Type: application/octet-stream\r\n"
+                    + "Content-Disposition: attachment; filename=bytes.bin\r\n"
+                    + "Content-Transfer-Encoding: base64\r\n\r\nAAECAwQ=\r\n--mail--\r\n").utf8)
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready", "A0001 OK LOGIN completed", "A0002 OK [READ-WRITE] SELECT completed",
+            "* 14 FETCH (UID 43 BODY[] {\(raw.count)}", ")", "A0003 OK FETCH completed"
+        ], dataReads: [raw])
+        let source = try await IMAPSessionClient(transport: transport).loginAndFetchMessageSource(
+            configuration: Self.configuration(), credential: Self.credential(), folderPath: "INBOX", uid: 43
+        )
+        #expect(source.rawMessageData == raw)
+        let cached = try JSONDecoder().decode(IMAPMessageSource.self, from: JSONEncoder().encode(source))
+        #expect(cached.rawMessageData == raw)
+    }
+
     @Test("raw message source accepts RFC822 literal labels")
     func rawMessageSourceAcceptsRFC822LiteralLabels() async throws {
         let rawMessage = [
@@ -1678,6 +1708,105 @@ struct IMAPSessionClientTests {
             "A0002 APPEND \"Drafts\" (\\Draft) {\(messageData.count)}",
         ])
         #expect(await transport.sentData == [messageData, Data("\r\n".utf8)])
+    }
+
+    @Test("move retains COPYUID identities instead of guessing destination IDs")
+    func moveRetainsDestinationUIDs() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "* OK [UIDVALIDITY 77] valid",
+            "A0002 OK [READ-WRITE] SELECT completed",
+            "A0003 OK [COPYUID 91 41:43 81:83] MOVE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        let result = try await client.loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [41, 42, 43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidValidity == 91)
+        #expect(result.uidMappings == [41: 81, 42: 82, 43: 83])
+    }
+
+    @Test("a rejected MOVE is not repeated as COPY because it may have partially moved messages")
+    func rejectedMoveDoesNotCopyAgain() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] ready", "A0001 OK LOGIN completed",
+            "A0002 OK [READ-WRITE] SELECT completed", "A0003 NO MOVE partially failed",
+            "A0004 OK COPY completed", "A0005 OK STORE completed", "A0006 OK EXPUNGE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        await #expect(throws: IMAPClientError.self) {
+            try await client.loginAndMoveMessagesWithResult(
+                configuration: Self.configuration(), credential: Self.credential(),
+                sourceFolderPath: "INBOX", uids: [43], destinationFolderPath: "Archive"
+            )
+        }
+        #expect(await transport.sentLines.count == 3)
+    }
+
+    @Test("move accepts untagged COPYUID and normalizes reverse-written ranges")
+    func moveReadsUntaggedMappings() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "A0002 OK SELECT completed",
+            "* OK [COPYUID 91 43:41 83:81] moved", "* 1 EXPUNGE", "A0003 OK MOVE completed"
+        ])
+        let result = try await IMAPSessionClient(transport: transport).loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [41, 42, 43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidMappings == [41: 81, 42: 82, 43: 83])
+    }
+
+    @Test("Undo rejects a replaced mailbox before issuing MOVE")
+    func moveValidatesSourceUIDValidity() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 92] valid",
+            "A0002 OK SELECT completed", "A0003 OK MOVE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        await #expect(throws: MailBackendError.self) {
+            try await client.loginAndMoveMessagesWithResult(
+                configuration: Self.configuration(), credential: Self.credential(),
+                sourceFolderPath: "Archive", uids: [81], destinationFolderPath: "INBOX", expectedSourceUIDValidity: 91
+            )
+        }
+        #expect(await transport.sentLines.count == 2)
+    }
+
+    @Test("oversized or malformed COPYUID never creates guessed undo targets", arguments: [
+        "91 1:4294967295 1:4294967295", "91 43 81:82", "91 99 81", "0 43 81", "91 43,43 81,82"
+    ])
+    func moveRejectsUnsafeMappings(_ mapping: String) async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "A0002 OK SELECT completed",
+            "A0003 OK [COPYUID \(mapping)] MOVE completed"
+        ])
+        let result = try await IMAPSessionClient(transport: transport).loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidMappings.isEmpty)
+        #expect(result.uidValidity == nil)
+    }
+
+    @Test("Undo refreshes UIDVALIDITY even when the source mailbox is already selected")
+    func undoMoveReselectsMailbox() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 91] valid",
+            "A0002 OK SELECT completed", "A0003 OK MOVE completed",
+            "* OK [UIDVALIDITY 92] replaced", "A0004 OK SELECT completed"
+        ])
+        let client = IMAPSessionClient(transport: transport, reusesAuthenticatedSession: true)
+        try await client.loginAndMoveMessages(configuration: Self.configuration(), credential: Self.credential(),
+                                              sourceFolderPath: "Archive", uids: [81], destinationFolderPath: "Other")
+        await #expect(throws: MailBackendError.self) {
+            try await client.loginAndMoveMessagesWithResult(configuration: Self.configuration(), credential: Self.credential(),
+                                                            sourceFolderPath: "Archive", uids: [82],
+                                                            destinationFolderPath: "INBOX",
+                                                            expectedSourceUIDValidity: 91)
+        }
+        #expect(await transport.sentLines.last == "A0004 SELECT \"Archive\" (CONDSTORE)")
     }
 
     @Test("client moves messages with UID MOVE")

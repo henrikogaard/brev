@@ -435,6 +435,16 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         }
     }
 
+    /// Retains message metadata under a provider-confirmed identity after a move.
+    public func withIdentity(_ restoredID: String, folderID restoredFolderID: String) -> MessageHeader {
+        MessageHeader(
+            id: restoredID, threadID: threadID == id ? restoredID : threadID, folderID: restoredFolderID,
+            from: from, replyTo: replyTo, to: to, cc: cc, bcc: bcc, subject: subject, snippet: snippet, date: date,
+            isRead: isRead, isFlagged: isFlagged, isAnswered: isAnswered, isForwarded: isForwarded,
+            hasAttachments: hasAttachments, flagColor: flagColor, messageID: messageID, inReplyTo: inReplyTo, labels: labels
+        )
+    }
+
     /// A copy of this header filed under `threadID`. Used by
     /// `MessageThreadResolver` to name the conversation a message belongs to.
     public func withThreadID(_ threadID: String) -> MessageHeader {
@@ -944,6 +954,8 @@ public enum MailEvent: Sendable, Hashable {
     case accountConnected(accountID: String)
     case accountDisconnected(accountID: String)
     case mailboxChanged(mailboxID: String)
+    /// Pending delivery or offline-work metadata changed for the emitting account.
+    case outboxChanged
     /// Progress of a multi-folder background refresh: `completed` of
     /// `total` folders synced. Emitted as the refresh loop advances so the
     /// view can show a determinate download indicator. `completed == total`

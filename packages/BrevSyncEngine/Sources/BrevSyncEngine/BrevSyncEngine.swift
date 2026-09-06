@@ -170,6 +170,19 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
         await cachedBody(for: messageID, account: account)
     }
 
+    /// Returns source bytes only when the cache records their original MIME provenance.
+    public func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data? {
+        await store.originalBody(accountID: account.id, messageID: messageID)
+    }
+
+    /// Persists original source and provenance together using the normal content-cache lifecycle.
+    public func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async {
+        do {
+            try await store.ensureAccount(id: account.id)
+            try await store.storeOriginalBody(data, accountID: account.id, messageID: messageID)
+        } catch { return }
+    }
+
     public func search(
         _ query: SearchQuery,
         account: BrevAccount,

@@ -21,7 +21,7 @@ account:
 | Data | Where it goes | Why |
 |---|---|---|
 | Email domain, and sometimes full email address during account setup | Your mail provider's DNS and provider-local autoconfig hosts | To discover IMAP/SMTP (and, where advertised, ManageSieve) server settings after you choose to add an account |
-| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view a message's raw source, copy, and manage mail after you add an account |
+| IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
 | Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
 | Update check | `updates.brevmail.eu` | Direct-download macOS builds only; checks the signed Sparkle appcast using Settings -> Updates cadence |
@@ -236,6 +236,29 @@ so one Gmail message is not duplicated for every label. The cache can contain
 headers, bodies, raw source, attachment metadata, labels, and sync cursors, but
 never OAuth access or refresh tokens.
 
+Gmail compose drafts and staged attachment bytes are also stored locally in
+that database until send/discard cleanup or account removal. They are separate
+from the evictable message cache, so clearing downloaded mail or synchronizing
+the mailbox does not delete unsent content. Staged attachments have a 25 MiB
+aggregate limit per account. This local staging does not add a network call;
+saving a Gmail draft still uploads its MIME content to Gmail as requested.
+
+IMAP Send Later retains its scheduling intent locally as draft identifiers,
+dates, attempt counts, and recovery reasons. Message content remains in the local
+draft staging store. The Outbox keeps interrupted delivery and missing drafts
+visible until you cancel or explicitly retry; cancellation retains recoverable
+content. Account removal clears scheduling metadata. Time changes and cancellation
+add no network request. Sending uses the account's existing SMTP connection.
+
+Submitting Gmail Send Later stores a frozen draft, complete MIME content,
+delivery time and attempt state in the same account-owned database. An in-process
+poller checks submitted schedules every 30 seconds and uses the existing Gmail
+send endpoint when due. It also checks on connection and during permitted app
+refresh windows. It cannot deliver while Brev is fully quit. Rate-limit and
+authentication failures may wait for retry; uncertain delivery requires explicit
+review before another attempt. Canceling retains an editable local draft; account
+removal clears the queue. Changing an autosaved draft does not itself schedule mail.
+
 Gmail API access is on only after the user explicitly adds a Google account.
 Removing the account clears its Keychain token, Gmail configuration, pending
 provider work, and Brev-owned local Gmail cache. The standards-based IMAP/SMTP
@@ -428,6 +451,26 @@ not test or contact the endpoint in the background.
 - Removing a BYOK/local provider also removes its stored API key from
   Keychain.
 
+## Mail file import and export
+
+Exporting a folder reads original messages from its owning mailbox. Cached
+originals are used when available; missing originals may be downloaded from the
+mail provider through the existing mail connection. Full-folder export requires
+the provider connection to enumerate every page; it does not treat the end of a
+partial offline cache as a complete folder. Exports are prepared in a
+temporary replacement location and published only after all selected-folder
+pages succeed. Brev attempts to remove unpublished temporary output when the
+operation exits.
+
+MBOX and EML files contain full messages and attachments. Brev does not add its
+saved account passwords, OAuth tokens, or app settings to these files. The files are written to the location
+you choose; if that location is managed by iCloud or another file provider, that
+provider's own synchronization settings apply.
+
+Import adds messages to the chosen mailbox. A provider-backed import can upload
+the imported messages to that provider. Current import availability depends on
+the account's importer support.
+
 ## What data does *not* leave your device, ever
 
 - **Usage analytics, screen-view counts, button-click counts, time-
@@ -446,10 +489,16 @@ not test or contact the endpoint in the background.
   learned from already-cached correspondence and successful sends. It is never
   added to Apple Contacts, never uploaded, and can be removed individually or
   cleared from Settings → Compose.
+- **Search coverage.** Explicit online IMAP searches check all server result
+  pages, even when there are cached matches. Ordinary queries retrieve headers;
+  attachment predicates may retrieve message sources under ADR-0060. Cache-only
+  searches and sender context remain local. Broad searches can take longer and
+  transfer more headers than the previously truncated results.
 - **Search terms, draft contents, attachments.** Stay on your
   device unless you use mail-provider features that require them:
   server-side search, saving drafts, uploading attachments, or
-  sending mail.
+  sending mail. You can also export messages and attachments to a location
+  you choose, including a location managed by a file-sync provider.
 
 ## Where Brev stores data
 

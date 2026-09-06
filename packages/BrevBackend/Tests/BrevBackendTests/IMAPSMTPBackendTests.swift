@@ -2110,8 +2110,99 @@ struct IMAPSMTPBackendTests {
         #expect(secondPage.headers == Array(legacyHeaders[50 ..< 100]))
     }
 
-    @Test("saved view candidates include cached headers beyond ordinary search limits while disconnected")
-    func savedViewCacheEnumerationIsComplete() async throws {
+    @Test("original-byte export refreshes legacy text and then works from cache offline")
+    func rawExportRefreshesLegacyText() async throws {
+        let raw = Data("Content-Type: text/plain; charset=iso-8859-1\r\n\r\n".utf8) + Data([0xE5, 0xF8, 0xE6])
+        let cache = InMemoryIMAPMessageSourceCache()
+        await cache.setSource(IMAPMessageSource(uid: 43, rawMessage: "Reconstructed legacy text"),
+                              accountID: Self.account.id, messageID: "INBOX:43")
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [
+                                          IMAPFolderListing(
+                                              path: "INBOX",
+                                              displayName: "Inbox",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .inbox
+                                          )
+                                      ] }, fetchMessageSource: { _, _, folderID, uid in
+                                          #expect(folderID == "INBOX")
+                                          #expect(uid == 43)
+                                          return IMAPMessageSource(uid: uid, rawMessageData: raw)
+                                      }, sourceCache: cache)
+        try await backend.connect()
+        let mailBackend: any MailBackend = backend
+        #expect(mailBackend.extendedCapabilities.contains(.rawMessageBytes))
+        #expect(try await mailBackend.rawMessageData(for: "INBOX:43", sourceID: Self.sourceID) == raw)
+        #expect(await cache.source(accountID: Self.account.id, messageID: "INBOX:43")?.rawMessageData == raw)
+        await backend.disconnect()
+        #expect(try await mailBackend.rawMessageData(for: "INBOX:43", sourceID: Self.sourceID) == raw)
+        await #expect(throws: MailBackendError.self) {
+            _ = try await mailBackend.rawMessageData(for: "INBOX:43",
+                                                     sourceID: MailSourceID(accountID: "other", mailboxID: "other"))
+        }
+    }
+
+    @Test("Undo moves destination UIDs back and returns newly assigned source IDs")
+    func undoMoveUsesDestinationIdentity() async throws {
+        let probe = MoveIdentityProbe()
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Archive", displayName: "Archive", delimiter: "/", flags: [], role: .archive)
+            ] },
+            moveMessages: { _, _, _, _, _ in },
+            moveMessagesWithResult: { _, _, from, uids, to, generation in
+                await probe.move(from: from, uids: uids, to: to, generation: generation)
+            }
+        )
+        try await backend.connect()
+        let receipt = try #require(try await backend.moveWithUndo(
+            messageIDs: ["INBOX:43"], from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            to: Folder(id: "Archive", name: "Archive", role: .archive), sourceID: Self.sourceID
+        ))
+        let restored = try await receipt.restore()
+        #expect(restored == ["INBOX:43": "INBOX:99"])
+        #expect(await probe.calls == ["INBOX:43->Archive:nil", "Archive:81->INBOX:91"])
+    }
+
+    @Test("an uncertain move failure requests reconciliation for both folders")
+    func failedMoveRefreshesBothFolders() async throws {
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [
+                                          IMAPFolderListing(
+                                              path: "INBOX",
+                                              displayName: "Inbox",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .inbox
+                                          ),
+                                          IMAPFolderListing(
+                                              path: "Archive",
+                                              displayName: "Archive",
+                                              delimiter: "/",
+                                              flags: [],
+                                              role: .archive
+                                          )
+                                      ] }, moveMessages: { _, _, _, _, _ in },
+                                      moveMessagesWithResult: { _, _, _, _, _, _ in
+                                          throw IMAPClientError.commandFailed(command: "UID MOVE", response: "A3 NO Partial move")
+                                      })
+        try await backend.connect()
+        let stream = backend.subscribeToChanges()
+        await #expect(throws: IMAPClientError.self) {
+            _ = try await backend.moveWithUndo(messageIDs: ["INBOX:43"],
+                                               from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+                                               to: Folder(id: "Archive", name: "Archive", role: .archive),
+                                               sourceID: Self.sourceID)
+        }
+        #expect(try await nextIMAPEvent(from: stream) == .folderRefreshed(folderID: "INBOX"))
+        #expect(try await nextIMAPEvent(from: stream) == .folderRefreshed(folderID: "Archive"))
+    }
+
+    @Test("saved views and cache-only searches return every cached match while disconnected", arguments: [false, true])
+    func savedViewCacheEnumerationIsComplete(ordinaryCacheOnly: Bool) async throws {
         let index = LocalSearchIndexRecorder()
         let headers = (0 ..< 120).map {
             Self.retentionHeader(id: "INBOX:\($0)", date: Date(timeIntervalSince1970: Double($0)))
@@ -2122,9 +2213,14 @@ struct IMAPSMTPBackendTests {
                                           Issue.record("Cache enumeration must not connect")
                                           return []
                                       }, localSearchIndex: index)
-        let results = try await backend.cachedMessageHeaders(
-            in: Folder(id: "INBOX", name: "Inbox", role: .inbox), sourceID: Self.sourceID
-        )
+        let results: [MessageHeader]
+        if ordinaryCacheOnly {
+            results = try await backend.search(SearchQuery(folderID: "INBOX", execution: .cacheOnly))
+        } else {
+            results = try await backend.cachedMessageHeaders(
+                in: Folder(id: "INBOX", name: "Inbox", role: .inbox), sourceID: Self.sourceID
+            )
+        }
         #expect(results.count == 120)
         #expect(Set(results.map(\.id)) == Set(headers.map(\.id)))
         #expect(await index.searchRequests.last?.limit == Int.max)
@@ -2172,7 +2268,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2228,7 +2324,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2281,7 +2377,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2332,7 +2428,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject", folderID: "INBOX", execution: .cacheOnly),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2362,7 +2458,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject INBOX:78", execution: .cacheOnly),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2392,7 +2488,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject INBOX:79", execution: .cacheThenServer),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -3712,6 +3808,135 @@ struct IMAPSMTPBackendTests {
         #expect(await sourceRecorder.requestedUIDs == candidateUIDs)
     }
 
+    @Test("a failed later search page or source cannot become a successful cache fallback", arguments: [false, true])
+    func failedLaterSearchPageIsVisible(failureInBody: Bool) async throws {
+        let index = LocalSearchIndexRecorder()
+        let cached = MessageHeader(id: "INBOX:1", threadID: "thread", folderID: "INBOX",
+                                   from: Correspondent(email: "sender@example.org"), to: [], subject: "Match", snippet: "",
+                                   date: Date(), hasAttachments: true)
+        await index.setSearchResults([cached])
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, token, _ in
+                if token != nil, !failureInBody { throw MailBackendError.network(underlying: "Disconnected") }
+                return IMAPMessageListingPage(
+                    messages: [Self.messageListing(uid: token == nil ? 2 : 3, subject: "Match")],
+                    nextPageToken: token == nil ? "next" : nil
+                )
+            }, fetchMessageSource: { _, _, _, uid in
+                if uid == 3 { throw MailBackendError.network(underlying: "Disconnected") }
+                return IMAPMessageSource(uid: uid, rawMessage: "Subject: Match\n\nBody")
+            }, localSearchIndex: index
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: MailBackendError.self) {
+            _ = try await backend.search(SearchQuery(
+                folderID: "INBOX",
+                hasAttachments: failureInBody ? true : nil,
+                execution: .cacheThenServer
+            ))
+        }
+    }
+
+    @Test("search cancellation after the final server response does not publish results")
+    func canceledFinalSearchResponseIsRejected() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, _, _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return IMAPMessageListingPage(messages: [Self.messageListing(uid: 1, subject: "Canceled")])
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let request = Task { try await backend.search(SearchQuery(text: "Canceled", execution: .serverOnly)) }
+        await #expect(throws: CancellationError.self) { _ = try await request.value }
+    }
+
+    @Test("legacy search adapters report incomplete coverage when their bounded limit is reached")
+    func legacySearchLimitIsVisible() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessages: { _, _, _, _, limit in
+                Array((1 ... 251).prefix(limit)).map { Self.messageListing(uid: $0, subject: "Match") }
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: MailBackendError.self) {
+            _ = try await backend.search(SearchQuery(text: "Match", execution: .serverOnly))
+        }
+    }
+
+    @Test("ordinary server search returns every bounded page without fetching message bodies")
+    func ordinarySearchReturnsAllPages() async throws {
+        let recorder = MessageSearchPageRecorder(pages: [
+            nil: IMAPMessageListingPage(
+                messages: (76 ... 125).map { Self.messageListing(uid: $0, subject: "Match") },
+                nextPageToken: "older"
+            ),
+            "older": IMAPMessageListingPage(
+                messages: (26 ... 75).map { Self.messageListing(uid: $0, subject: "Match") },
+                nextPageToken: "empty"
+            ),
+            "empty": IMAPMessageListingPage(messages: [], nextPageToken: "oldest"),
+            "oldest": IMAPMessageListingPage(messages: (1 ... 26).map { Self.messageListing(uid: $0, subject: "Match") }),
+        ])
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { configuration, credential, folderID, query, token, limit in
+                try await recorder.searchPage(
+                    configuration: configuration,
+                    credential: credential,
+                    folderID: folderID,
+                    query: query,
+                    pageToken: token,
+                    limit: limit
+                )
+            },
+            fetchMessageSource: { _, _, _, _ in
+                Issue.record("Ordinary header search must not fetch MIME sources")
+                throw CancellationError()
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let results = try await backend.search(SearchQuery(text: "Match", folderID: "INBOX", execution: .serverOnly))
+        #expect(results.count == 125)
+        #expect(Set(results.map(\.id)) == Set((1 ... 125).map { "INBOX:\($0)" }))
+        #expect(await recorder.requestedPageTokens == [nil, "older", "empty", "oldest"])
+        #expect(await recorder.requestedLimits == [50, 50, 50, 50])
+    }
+
     @Test("attachment search follows paginated server results beyond the first page")
     func attachmentSearchFollowsPaginatedServerResultsBeyondFirstPage() async throws {
         let plainMessage = "Subject: Plain\nContent-Type: text/plain; charset=utf-8\n\nNo file."
@@ -3773,8 +3998,8 @@ struct IMAPSMTPBackendTests {
         #expect(await sourceRecorder.requestedUIDs == [300, 100])
     }
 
-    @Test("cache-then-server attachment search continues to paginated server results")
-    func cacheThenServerAttachmentSearchContinuesToPaginatedServerResults() async throws {
+    @Test("cached hits do not suppress ordinary or attachment server search", arguments: [false, true])
+    func cachedHitsDoNotSuppressServerSearch(attachments: Bool) async throws {
         let cachedHeader = MessageHeader(
             id: "INBOX:200",
             threadID: "INBOX:200",
@@ -3833,17 +4058,17 @@ struct IMAPSMTPBackendTests {
 
         let results = try await backend.search(SearchQuery(
             folderID: "INBOX",
-            hasAttachments: true,
+            hasAttachments: attachments ? true : nil,
             execution: .cacheThenServer
         ))
 
         #expect(results.map(\.id) == ["INBOX:100"])
         #expect(await pageRecorder.requestedPageTokens == [nil])
-        #expect(await sourceRecorder.requestedUIDs == [100])
+        #expect(await sourceRecorder.requestedUIDs == (attachments ? [100] : []))
     }
 
-    @Test("attachment search rejects a repeated server page cursor")
-    func attachmentSearchRejectsRepeatedServerPageCursor() async throws {
+    @Test("ordinary and attachment search reject repeated server cursors", arguments: [false, true])
+    func searchRejectsRepeatedServerPageCursor(attachments: Bool) async throws {
         let pageRecorder = MessageSearchPageRecorder(pages: [
             nil: IMAPMessageListingPage(
                 messages: [Self.messageListing(uid: 300, subject: "Newest")],
@@ -3880,7 +4105,7 @@ struct IMAPSMTPBackendTests {
         await #expect(throws: MailBackendError.self) {
             _ = try await backend.search(SearchQuery(
                 folderID: "INBOX",
-                hasAttachments: true,
+                hasAttachments: attachments ? true : nil,
                 execution: .serverOnly
             ))
         }
@@ -10949,6 +11174,205 @@ private actor DraftAppendRecorder {
 /// other suites' parallel `connect()` calls can never claim their entries.
 @Suite("IMAP SMTP scheduled send", .serialized)
 struct IMAPSMTPScheduledSendTests {
+    @Test("ten known failures require review and cannot be claimed automatically")
+    func retryLimitRequiresReview() throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = ScheduledSendStore()
+        store.add(entry: ScheduledDraftEntry(draftID: "retry-limit", scheduledFor: .distantPast), accountID: Self.account.id)
+        for attempt in 1 ... 10 {
+            store.recordSendFailure(
+                draftID: "retry-limit",
+                accountID: Self.account.id,
+                now: Date(),
+                baseInterval: 30,
+                maxInterval: 3600
+            )
+            let entry = try #require(store.entries(accountID: Self.account.id).first)
+            #expect(entry.attemptCount == attempt)
+            #expect((entry.reviewReason == .retryLimit) == (attempt == 10))
+        }
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: .distantFuture).isEmpty)
+        try store.editWaiting(draftID: "retry-limit", accountID: Self.account.id, date: .distantPast, allowClaimed: true)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: Date()).count == 1)
+    }
+
+    @Test("retired scheduled SMTP responses cannot delete a replacement account's draft")
+    func retiredDeliveryPreservesReplacementDraft() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: true, pauses: true)
+        defer { Task { await recorder.release() } }
+        let store = InMemoryIMAPDraftStagingStore()
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                          try await recorder.sendMessage(
+                                              configuration: configuration,
+                                              credential: credential,
+                                              submission: submission
+                                          )
+                                      }, draftStagingStore: store)
+        try await backend.connect()
+        _ = try await backend.send(draft: Self.outgoingDraft(id: "same-id", scheduledFor: .distantPast))
+        let delivery = Task { await backend.deliverDueScheduledSends() }
+        try await recorder.waitUntilCallCount(1)
+        await backend.disconnect()
+        ScheduledSendStore.purge(accountID: Self.account.id)
+        await store.clear(accountID: Self.account.id)
+        var replacement = Self.outgoingDraft(id: "same-id", scheduledFor: nil)
+        replacement.htmlBody = "<p>Replacement session</p>"
+        await store.setDraft(replacement, accountID: Self.account.id)
+        await recorder.release()
+        await delivery.value
+        #expect(await store.draft(accountID: Self.account.id, draftID: replacement.id) == replacement)
+        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        await #expect(throws: ScheduledSendEditingError.sessionChanged) { try await backend.rescheduleSend(
+            id: replacement.id,
+            for: Date()
+        ) }
+    }
+
+    @Test("a schedule can be withdrawn even when its local draft or staging store is unavailable", arguments: [false, true])
+    func cancelUnavailableDraft(missingStore: Bool) async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        ScheduledSendStore().add(
+            entry: ScheduledDraftEntry(draftID: "missing", scheduledFor: Date().addingTimeInterval(3600)),
+            accountID: Self.account.id
+        )
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] },
+                                      draftStagingStore: missingStore ? nil : InMemoryIMAPDraftStagingStore())
+        try await backend.connect()
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        #expect(try await editor.cancelScheduledSend(id: "missing") == nil)
+        #expect(backend.pendingScheduledSends().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("a live delivery blocks editing that draft while other schedules remain editable")
+    func liveDeliveryLocksOnlyItsDraft() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: true, pauses: true)
+        defer { Task { await recorder.release() } }
+        let store = InMemoryIMAPDraftStagingStore()
+        let first = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                    listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                        try await recorder.sendMessage(
+                                            configuration: configuration,
+                                            credential: credential,
+                                            submission: submission
+                                        )
+                                    }, draftStagingStore: store)
+        let second = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                     listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await first.connect()
+        try await second.connect()
+        _ = try await first.send(draft: Self.outgoingDraft(id: "active", scheduledFor: .distantPast))
+        _ = try await first.send(draft: Self.outgoingDraft(id: "other", scheduledFor: Date().addingTimeInterval(3600)))
+        let delivery = Task { await first.deliverDueScheduledSends() }
+        try await recorder.waitUntilCallCount(1)
+        await #expect(throws: ScheduledSendEditingError.busy) { _ = try await second.cancelScheduledSend(id: "active") }
+        try await second.rescheduleSend(id: "other", for: Date().addingTimeInterval(7200))
+        _ = try await second.cancelScheduledSend(id: "other")
+        #expect(second.pendingScheduledSends().map(\.draftID) == ["active"])
+        #expect(second.pendingScheduledSends().first?.state == .delivering)
+        await recorder.release()
+        await delivery.value
+        #expect(first.pendingScheduledSends().isEmpty)
+        await first.disconnect()
+        await second.disconnect()
+    }
+
+    @Test("an interrupted IMAP claim requires explicit review before delivery")
+    func interruptedClaimRequiresReview() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = InMemoryIMAPDraftStagingStore()
+        let draft = Self.outgoingDraft(id: "interrupted", scheduledFor: .distantPast)
+        await store.setDraft(draft, accountID: Self.account.id)
+        ScheduledSendStore().add(
+            entry: ScheduledDraftEntry(draftID: draft.id, scheduledFor: .distantPast, claimedAt: .distantPast),
+            accountID: Self.account.id
+        )
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await backend.connect()
+        await backend.deliverDueScheduledSends()
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        await #expect(throws: ScheduledSendEditingError.busy) { try await backend.rescheduleSend(id: draft.id, for: Date()) }
+        await #expect(throws: ScheduledSendEditingError.busy) { _ = try await backend.send(draft: draft) }
+        try await backend.retryReviewedScheduledSend(id: draft.id, for: Date().addingTimeInterval(3600))
+        #expect(backend.pendingScheduledSends().first?.state == .waiting)
+        await backend.disconnect()
+    }
+
+    @Test("failed local staging cannot report a successful scheduled send")
+    func failedStagingDoesNotSchedule() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let blockedRoot = FileManager.default.temporaryDirectory.appendingPathComponent("blocked-drafts-\(UUID().uuidString)")
+        try Data("occupied".utf8).write(to: blockedRoot)
+        defer { try? FileManager.default.removeItem(at: blockedRoot) }
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] },
+                                      draftStagingStore: FileIMAPDraftStagingStore(rootDirectory: blockedRoot))
+        try await backend.connect()
+        await #expect(throws: ScheduledSendEditingError.stagingUnavailable) {
+            _ = try await backend.send(draft: Self.outgoingDraft(id: "not-stored", scheduledFor: Date().addingTimeInterval(3600)))
+        }
+        #expect(backend.pendingScheduledSends().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("background and explicit delivery hooks respect scheduled retry backoff")
+    func scheduledHooksRespectBackoff() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: false)
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                          try await recorder.sendMessage(
+                                              configuration: configuration,
+                                              credential: credential,
+                                              submission: submission
+                                          )
+                                      }, draftStagingStore: InMemoryIMAPDraftStagingStore())
+        try await backend.connect()
+        _ = try await backend.send(draft: Self.outgoingDraft(id: "backoff", scheduledFor: .distantPast))
+        await backend.deliverDueScheduledSends()
+        await backend.deliverDueScheduledSends()
+        #expect(await recorder.callCount() == 1)
+        await backend.disconnect()
+    }
+
+    @Test("scheduled IMAP messages expose time changes and cancellation through the shared editor")
+    func scheduledEditingUsesSharedService() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = InMemoryIMAPDraftStagingStore()
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await backend.connect()
+        let original = Self.outgoingDraft(id: "editable", scheduledFor: Date().addingTimeInterval(3600))
+        _ = try await backend.send(draft: original)
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        let changedDate = Date().addingTimeInterval(7200)
+        try await editor.rescheduleSend(id: original.id, for: changedDate)
+        #expect(editor.pendingScheduledSends().first?.scheduledFor == changedDate)
+        #expect(try await editor.scheduledDraft(id: original.id).scheduledFor == changedDate)
+        let canceled = try #require(try await editor.cancelScheduledSend(id: original.id))
+        #expect(canceled.scheduledFor == nil)
+        #expect(canceled.htmlBody == original.htmlBody)
+        #expect(editor.pendingScheduledSends().isEmpty)
+        #expect(await store.draft(accountID: Self.account.id, draftID: original.id) == canceled)
+        await store.setDraft(original, accountID: Self.account.id)
+        await #expect(throws: ScheduledSendEditingError.notFound) { _ = try await editor.cancelScheduledSend(id: original.id) }
+        #expect(await store.draft(accountID: Self.account.id, draftID: original.id) == original)
+        await backend.disconnect()
+    }
+
     private static let account = BrevAccount(
         id: "imap-smtp:scheduled@example.org",
         displayName: "Scheduled",
@@ -11104,8 +11528,7 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await failingBackend.connect()
-        failingBackend.startDeferredStartupWork()
-        try await failingRecorder.waitUntilCallCount(1)
+        await failingBackend.deliverDueScheduledSends()
         await failingBackend.disconnect()
 
         #expect(ScheduledSendStore().dueEntries(
@@ -11129,20 +11552,17 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await successBackend.connect()
-        successBackend.startDeferredStartupWork()
         defer { Task { await successBackend.disconnect() } }
-
-        // Same terminal-state wait as above: the entry is removed only after the
-        // forced retry's SMTP send returns, not when the send call is counted.
-        try await Self.waitUntil {
-            ScheduledSendStore().entries(accountID: Self.account.id).isEmpty
-        }
+        await successBackend.deliverDueScheduledSends()
+        #expect(!ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        try await successBackend.rescheduleSend(id: "scheduled-retry", for: .distantPast)
+        await successBackend.deliverDueScheduledSends()
 
         #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
     }
 
-    @Test("ambiguous scheduled delivery becomes a conflict without retrying")
-    func ambiguousScheduledDeliveryBecomesConflictWithoutRetrying() async throws {
+    @Test("ambiguous or canceled scheduled delivery stays in Outbox for reviewed retry", arguments: [false, true])
+    func ambiguousScheduledDeliveryBecomesConflictWithoutRetrying(canceled: Bool) async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
         let rootDirectory = FileManager.default.temporaryDirectory
@@ -11175,6 +11595,7 @@ struct IMAPSMTPScheduledSendTests {
             credential: Self.credential,
             listFolders: { _, _ in [] },
             sendMessage: { _, _, _ in
+                if canceled { throw CancellationError() }
                 throw SMTPClientError.deliveryOutcomeUnknown(
                     underlying: "Timed out waiting for SMTP DATA response."
                 )
@@ -11186,19 +11607,18 @@ struct IMAPSMTPScheduledSendTests {
         let service = try #require(backend.extensionService(ScheduledSendManaging.self))
         await service.deliverDueScheduledSends()
 
-        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        #expect(service.pendingScheduledSends().first?.state == .needsReview)
         #expect(await draftStore.draft(
             accountID: Self.account.id,
             draftID: "scheduled-unknown"
         ) != nil)
         let conflicts = try await conflictStore.conflicts()
-        #expect(conflicts.count == 1)
-        #expect(conflicts.first?.mutation.kind == .sendStagedDraft(stagedDraftID: "scheduled-unknown"))
-        #expect(conflicts.first?.message.contains("Check Sent") == true)
+        #expect(conflicts.isEmpty)
+        #expect(service.pendingScheduledSends().first?.lastError?.contains("Check Sent") == true)
     }
 
-    @Test("orphaned schedule entry with no staged draft is pruned on delivery")
-    func orphanedScheduleEntryIsPrunedOnDelivery() async throws {
+    @Test("an unavailable scheduled draft stays visible for review and can be canceled")
+    func unavailableScheduledDraftNeedsReview() async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
 
@@ -11233,20 +11653,16 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await backend.connect()
-        backend.startDeferredStartupWork()
         defer { Task { await backend.disconnect() } }
 
-        // The orphan can never be sent, so it must be removed rather than
-        // re-read on every poll tick — wait until the entry disappears.
-        for _ in 0 ..< 100 {
-            if ScheduledSendStore().entries(accountID: Self.account.id).isEmpty { break }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        await backend.deliverDueScheduledSends()
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        #expect(try await backend.cancelScheduledSend(id: "orphan") == nil)
+        #expect(backend.pendingScheduledSends().isEmpty)
     }
 
-    @Test("claim lease and failure backoff gate non-forced re-claims")
-    func claimLeaseAndFailureBackoffGateReclaims() async throws {
+    @Test("interrupted claims never expire into a resend and known failures respect backoff")
+    func interruptedClaimsAndBackoff() async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
         let store = ScheduledSendStore()
@@ -11255,35 +11671,12 @@ struct IMAPSMTPScheduledSendTests {
             entry: ScheduledDraftEntry(draftID: "draft-1", scheduledFor: now.addingTimeInterval(-60)),
             accountID: Self.account.id
         )
-
-        // First claim takes the entry and stamps a lease.
-        let firstClaim = store.claimDueEntries(
-            accountID: Self.account.id, before: now, lease: 120
-        )
-        #expect(firstClaim.map(\.draftID) == ["draft-1"])
-
-        // A second non-forced claim inside the lease window gets nothing...
-        #expect(store.claimDueEntries(accountID: Self.account.id, before: now, lease: 120).isEmpty)
-        // ...but a forced claim (an explicit reconnect) ignores the lease.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now, lease: 120, force: true
-        ).map(\.draftID) == ["draft-1"])
-
-        // After a recorded failure, the entry is gated until nextAttemptAt...
-        store.recordSendFailure(
-            draftID: "draft-1", accountID: Self.account.id, now: now, baseInterval: 60, maxInterval: 3600
-        )
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(30), lease: 120
-        ).isEmpty)
-        // ...yet a forced claim still retries immediately.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(30), lease: 120, force: true
-        ).map(\.draftID) == ["draft-1"])
-        // And once the backoff elapses, an ordinary claim succeeds again.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(3600), lease: 120
-        ).map(\.draftID) == ["draft-1"])
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now).map(\.draftID) == ["draft-1"])
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(86400)).isEmpty)
+        store.recordSendFailure(draftID: "draft-1", accountID: Self.account.id, now: now, baseInterval: 60, maxInterval: 3600)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(30)).isEmpty)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(3600))
+            .map(\.draftID) == ["draft-1"])
     }
 
     @Test("ScheduledSendManaging reports pending entries so the app can warn before quitting")
@@ -11377,10 +11770,16 @@ struct IMAPSMTPScheduledSendTests {
 private actor ScheduledSendOutcomeRecorder {
     private let succeeds: Bool
     private var calls = 0
+    private let pauses: Bool
+    private var waiter: CheckedContinuation<Void, Never>?
 
-    init(succeeds: Bool) {
+    init(succeeds: Bool, pauses: Bool = false) {
         self.succeeds = succeeds
+        self.pauses = pauses
     }
+
+    func callCount() -> Int { calls }
+    func release() { waiter?.resume(); waiter = nil }
 
     func sendMessage(
         configuration: IMAPAccountConfiguration,
@@ -11389,6 +11788,7 @@ private actor ScheduledSendOutcomeRecorder {
     ) async throws -> SendResult {
         #expect(!submission.recipientEmails.isEmpty)
         calls += 1
+        if pauses { await withCheckedContinuation { waiter = $0 } }
         if !succeeds {
             throw SMTPClientError.transport("offline")
         }
@@ -11543,5 +11943,14 @@ private actor GatedIMAPMessageSourceCache: IMAPMessageSourceCache {
 
     func clear(accountID: BrevAccount.ID) async {
         await inner.clear(accountID: accountID)
+    }
+}
+
+private actor MoveIdentityProbe {
+    private(set) var calls: [String] = []
+    func move(from: String, uids: [Int], to: String, generation: Int?) -> IMAPMoveResult {
+        calls.append("\(from):\(uids.map(String.init).joined(separator: ","))->\(to):\(generation.map(String.init) ?? "nil")")
+        if from == "INBOX" { return IMAPMoveResult(uidValidity: 91, uidMappings: [43: 81]) }
+        return IMAPMoveResult(uidValidity: 77, uidMappings: [81: 99])
     }
 }

@@ -6,6 +6,62 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP searches use server pages to return matches beyond the previous
+  50-result display limit. Ordinary searches follow server pages without
+  downloading message bodies, and cached matches no longer hide older online
+  results. Cache-only search remains local and returns all cached matches.
+- Search rejects canceled responses, repeated cursors, and interrupted later
+  pages instead of reporting incomplete server results as success. Legacy
+  nonpaged ordinary adapters report when their bounded limit prevents completion.
+
+- IMAP scheduled messages now offer Outbox time changes, cancellation, and
+  reviewed retry. Interrupted or uncertain delivery and unavailable local drafts
+  remain visible for review. Reconnect respects backoff, and automatic retries
+  stop after ten failures. Active delivery blocks edits only to that message.
+- Account teardown drains local schedule edits and rejects stale delivery cleanup,
+  preserving replacement drafts. Scheduling reports a failed local staging write
+  instead of claiming the message was queued.
+
+- Gmail Send Later stores submitted content and delivery intent durably. Outbox
+  shows waiting, delivering and review states, with time changes, cancellation
+  and an explicit reviewed retry. Interrupted delivery is not retried silently.
+- Outbox counts update for the selected account without reloading message bodies.
+  Unsupported signing/encryption requests are rejected instead of sent as plaintext.
+
+- Gmail draft and attachment staging survives app restarts in the local SQLite
+  store. Cache refreshes preserve unsent compose content, account removal clears
+  it, and local storage failures no longer turn confirmed sends into failed sends.
+
+- Folder exports include every page and preserve original message bodies and
+  attachments. Shared progress and cancellation controls identify the mailbox
+  being exported; failed or canceled work leaves existing output intact.
+- Settings offers an independent export mailbox selector, and EML exports create
+  a new folder without overwriting previous files. Export privacy copy now
+  explains when original messages are downloaded.
+
+- Save As writes the original MIME bytes for a message, preserving non-UTF8
+  content and attachments. It is offered only by backends with byte-preserving
+  export support.
+
+- IMAP and Gmail original-message retrieval preserves MIME encodings and
+  attachment bytes through the source cache. Byte-preserving reads refresh
+  older text-only entries and support cached source access while offline.
+
+- Undo reopens the restored message with its current provider ID, including older
+  mail outside the first refreshed page. It preserves a different folder or
+  message selected while the reversal was running.
+
+- Mail Undo covers toolbar, row and bulk flag/move/trash actions using provider
+  destination identities. IMAP validates mailbox generations before reversing
+  moves; Gmail preserves unrelated labels. Native macOS Undo keeps text editing
+  separate, and account retirement invalidates pending Undo.
+- Partial bulk moves retain Undo for confirmed folder operations and restore only
+  failed rows. Moving to the current folder leaves the list unchanged.
+- MBOX escaping preserves non-UTF8 message bytes while quoting separator lines.
+
+- Failed mail Undo actions now show an error with Retry Undo instead of silently
+  discarding the failure. Reversals run once at a time and refresh mail on success.
+
 - Selecting an unflagged reply inside a filtered conversation keeps the reader
   open with that reply and the conversation context.
 - Smart Views share a compact condition editor in Mail and Settings, with

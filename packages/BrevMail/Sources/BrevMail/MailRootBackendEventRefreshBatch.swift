@@ -32,7 +32,7 @@ struct MailRootBackendEventRefreshBatch: Equatable {
              .messagesRemoved(let folderID, _),
              .messagesUpdated(let folderID, _):
             folderIDs.insert(folderID)
-        case .accountConnected, .accountDisconnected, .mailboxChanged, .syncProgress:
+        case .accountConnected, .accountDisconnected, .mailboxChanged, .syncProgress, .outboxChanged:
             break
         }
     }

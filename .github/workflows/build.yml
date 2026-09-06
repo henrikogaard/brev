@@ -79,6 +79,7 @@ jobs:
       matrix:
         package:
           - BrevBackend
+          - BrevGmail
           - BrevCrypto
           - BrevSettings
           - BrevCalendar
@@ -154,14 +155,14 @@ jobs:
             # Pixel baselines are recorded on macOS 26+. Keep model/behavior
             # suites running on older hosted runners while the dedicated
             # snapshot job below owns compatible-renderer comparisons.
-            test_args+=(--skip 'BrevMailTests\.(MonoMailSelectionSnapshotTests|ConversationWorkspaceSnapshotTests|DetachedMessageWindowSnapshotTests|FolderSidebarSnapshotTests|LoginViewSnapshotTests|MailContextColumnSnapshotTests|MailRootStatusRailSnapshotTests|MessageListRowSnapshotTests|SavedSearchEditorViewSnapshotTests|ServerSearchSyntaxHintSnapshotTests|ThreadInlineChildRowSnapshotTests)')
+            test_args+=(--skip 'BrevMailTests\.(MonoMailSelectionSnapshotTests|ConversationWorkspaceSnapshotTests|DetachedMessageWindowSnapshotTests|FolderSidebarSnapshotTests|LoginViewSnapshotTests|MailContextColumnSnapshotTests|MailRootStatusRailSnapshotTests|MailUndoToastSnapshotTests|MessageListRowSnapshotTests|SavedSearchEditorViewSnapshotTests|ServerSearchSyntaxHintSnapshotTests|ThreadInlineChildRowSnapshotTests|ScheduledOutboxSnapshotTests)')
           fi
           if [[ '${{ matrix.package }}' == 'BrevSettings' ]] &&
               (( $(sw_vers -productVersion | cut -d. -f1) < 26 )); then
             # Pixel and image snapshots are recorded on macOS 26+. Run the
             # behavior suites on older hosted runners and leave renderer
             # comparisons to compatible local/hosted systems.
-            test_args+=(--skip 'BrevSettingsTests\.(CompactSettingsViewSmokeTests|BrevSettingsSnapshotTests|AIWriterSectionMacSnapshotTests)')
+            test_args+=(--skip 'BrevSettingsTests\.(CompactSettingsViewSmokeTests|BrevSettingsSnapshotTests|AIWriterSectionMacSnapshotTests|MailFolderExportStatusSnapshotTests)')
           fi
           swift test "${test_args[@]}" \
             || (echo "::error::tests failed for ${{ matrix.package }}"; exit 1)
@@ -281,10 +282,25 @@ jobs:
             -testRegion en_US \
             -only-testing:BrevMailTests/FolderSidebarSnapshotTests \
             -only-testing:BrevMailTests/MailRootStatusRailSnapshotTests \
+            -only-testing:BrevMailTests/MailUndoToastSnapshotTests \
+            -only-testing:BrevMailTests/ScheduledOutboxSnapshotTests \
             -only-testing:BrevMailTests/MessageListRowSnapshotTests \
             -only-testing:BrevMailTests/ThreadInlineChildRowSnapshotTests \
             -only-testing:BrevMailTests/MailContextColumnSnapshotTests \
             test || (echo "::error::macOS BrevMail snapshot tests failed"; exit 1)
+
+      - name: Test folder export feedback snapshots
+        if: steps.snapshot-host.outputs.run == 'true'
+        working-directory: packages/BrevSettings
+        run: |
+          xcodebuild \
+            -scheme BrevSettings \
+            -destination 'platform=macOS,arch=arm64' \
+            -skipMacroValidation \
+            -testLanguage en \
+            -testRegion en_US \
+            -only-testing:BrevSettingsTests/MailFolderExportStatusSnapshotTests \
+            test
 
       - name: Report deferred macOS snapshot comparison
         if: steps.snapshot-host.outputs.run != 'true'

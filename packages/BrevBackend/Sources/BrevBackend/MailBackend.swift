@@ -195,6 +195,8 @@ public protocol MailBackend: AnyObject, Sendable {
     /// active folder for live (IDLE) watching. Use for bulk or background
     /// enumeration — local rules, import/export — that must not hijack the
     /// folder the user is currently viewing.
+    /// Server-backed adapters enumerate server pages or throw; a partial offline
+    /// cache must not be reported as the exhausted folder.
     func enumerateMessages(in folder: Folder, pageToken: String?) async throws
         -> (headers: [MessageHeader], nextPageToken: String?)
 
@@ -206,6 +208,10 @@ public protocol MailBackend: AnyObject, Sendable {
     /// caches it — the same posture as `body(for:)`. Capability-gated by
     /// `BackendExtendedCapabilities.rawMessageSource`. See ADR-0045.
     func rawSource(for messageID: String) async throws -> String
+
+    /// Original RFC message bytes, including MIME attachments and original encodings.
+    /// Reconstructed text is not a valid fallback for this export contract.
+    func rawMessageData(for messageID: String) async throws -> Data
 
     /// Download the bytes for an attachment. Backends without a
     /// dedicated download endpoint may throw `.notSupported`.
@@ -321,6 +327,10 @@ public protocol MailBackend: AnyObject, Sendable {
     /// or applying ordinary search result limits. Used by local condition evaluators.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader]
 
+    /// Moves one source-folder batch and returns a source-bound safe reversal when supported.
+    func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                      sourceID: MailSourceID) async throws -> MailMoveUndo?
+
     // MARK: Cached attachment enumeration
 
     /// Returns attachment-bearing messages already present in Brev's local
@@ -400,6 +410,8 @@ public protocol MailBackend: AnyObject, Sendable {
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?)
     func body(for messageID: String, sourceID: MailSourceID) async throws -> MessageBody
     func rawSource(for messageID: String, sourceID: MailSourceID) async throws -> String
+    /// Original message bytes within an explicitly owned mailbox.
+    func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data
     func downloadAttachment(_ attachment: Attachment, sourceID: MailSourceID) async throws -> Data
     func setRead(_ isRead: Bool, for messageIDs: [String], sourceID: MailSourceID) async throws
     func setFlagged(_ isFlagged: Bool, for messageIDs: [String], sourceID: MailSourceID) async throws
@@ -458,6 +470,13 @@ public extension MailBackend {
     /// Backends without a header cache cannot enumerate saved-view candidates.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         throw MailBackendError.notSupported(capabilities)
+    }
+
+    /// Legacy adapters still move mail, but never invent destination identities for Undo.
+    func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                      sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+        return nil
     }
 
     /// Default: no local body cache to prune, so retention is a no-op.
@@ -565,6 +584,11 @@ public extension MailBackend {
 
     func rawSource(for messageID: String) async throws -> String {
         _ = messageID
+        throw MailBackendError.notSupported(capabilities)
+    }
+
+    /// Backends must provide original bytes; text-only source is insufficient for export.
+    func rawMessageData(for messageID: String) async throws -> Data {
         throw MailBackendError.notSupported(capabilities)
     }
 
@@ -736,6 +760,12 @@ public extension MailBackend {
     func rawSource(for messageID: String, sourceID: MailSourceID) async throws -> String {
         try await selectSourceIfNeeded(sourceID)
         return try await rawSource(for: messageID)
+    }
+
+    /// Default mailbox routing for backends that implement original source export.
+    func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data {
+        try await selectSourceIfNeeded(sourceID)
+        return try await rawMessageData(for: messageID)
     }
 
     func downloadAttachment(_ attachment: Attachment, sourceID: MailSourceID) async throws -> Data {

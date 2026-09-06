@@ -89,6 +89,11 @@ Anything not listed is roadmap, not release-blocker.
   selection per account (with explicit "No signature" persistence),
   Save Draft, single-flight send/save, AI preview before apply.
 - Drag-and-drop messages onto sidebar folders.
+- Gmail Send Later keeps a durable local queue with frozen message content.
+  Outbox shows schedules for the selected account and supports time changes,
+  cancellation and explicit retry after uncertain delivery. Brev must be running
+  and connected to send; interrupted attempts require review rather than automatic
+  resend. Choosing a date during draft autosave does not submit a schedule.
 
 ### Calendar invites
 

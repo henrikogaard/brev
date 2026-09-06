@@ -86,6 +86,22 @@ struct MBOXExporterTests {
         #expect(bodyLines.contains(">>From c"))
     }
 
+    @Test("MBOX escapes separator lines without decoding non-UTF8 message bytes")
+    func escapesBinarySafeFromLines() throws {
+        let url = try Self.temporaryFile(named: "eight-bit.mbox")
+        let raw = Data("Subject: Eight bit\r\n\r\n".utf8)
+            + Data([0xE5, 0xF8, 0xE6])
+            + Data("\r\nFrom body\r\n>From quoted\r\n".utf8)
+        try MBOXExporter().export(messages: [
+            ImportedMessage(headers: [("From", "sender@example.org")], bodyData: raw)
+        ], to: url)
+        let output = try Data(contentsOf: url)
+        let expected = Data("Subject: Eight bit\r\n\r\n".utf8)
+            + Data([0xE5, 0xF8, 0xE6])
+            + Data("\r\n>From body\r\n>>From quoted\r\n".utf8)
+        #expect(output.range(of: expected) != nil)
+    }
+
     @Test("MBOX append writes one message without replacing existing output")
     func appendWritesOneMessageWithoutReplacingExistingOutput() throws {
         let url = try Self.temporaryFile(named: "streamed.mbox")

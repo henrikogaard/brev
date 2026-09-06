@@ -56,6 +56,12 @@ public protocol MailLocalSearchIndex: Sendable {
         account: BrevAccount
     ) async -> Data?
 
+    /// Original MIME octets whose provenance was recorded at write time.
+    func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data?
+
+    /// Stores original MIME with provenance distinct from legacy reconstructed text.
+    func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async
+
     func search(
         _ query: SearchQuery,
         account: BrevAccount,
@@ -113,6 +119,14 @@ public protocol MailLocalSearchIndex: Sendable {
 }
 
 public extension MailLocalSearchIndex {
+    /// Legacy index adapters cannot prove that existing source bytes are original.
+    func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data? { nil }
+
+    /// Keeps rendering/search caching available for adapters without provenance support.
+    func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async {
+        await storeRawMessage(data, for: messageID, account: account)
+    }
+
     func search(
         _ query: SearchQuery,
         account: BrevAccount

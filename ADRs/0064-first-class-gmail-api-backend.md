@@ -206,6 +206,55 @@ Send and draft operations preserve the existing uncertain-delivery rule: a
 network failure after submission is not automatically retried unless the
 provider response proves delivery did not occur.
 
+#### Durable compose staging update, 2026-09-06
+
+The SQLite Gmail store also implements the draft-staging contract. Schema 2 adds
+account-scoped local draft identities, current provider draft identities, and
+attachment staging. These rows are independent of evictable message-cache rows
+and sync snapshots; foreign-key ownership and account removal clear them in the
+account transaction and reject writes after the account is removed.
+Attachment uploads can be staged before a draft's first save, and the existing
+25 MiB aggregate per-account bound is enforced transactionally on disk.
+
+Staging reads/writes report failures rather than silently dropping content.
+Draft mutations are single-flight by local/provider draft identity. Disconnect
+retires their session and drains local writes before purge; in-flight provider
+replies cannot recreate staging, including after re-adding the same account.
+The adapter stages before submitting a draft/send. Once the provider confirms
+success, local acknowledgement/cleanup errors go to sync health while the caller
+retains the confirmed remote result. Default SQLite-backed adapters use durable
+staging; explicitly injected staging and in-memory test stores remain supported.
+This is a prerequisite for durable local scheduled sends, not an implementation
+of Gmail Send Later, new background execution, or another provider endpoint.
+
+#### Local scheduled delivery update, 2026-09-06
+
+Schema 3 adds a separate submitted-schedule table with frozen draft/MIME content,
+due time, retry time, state and a per-attempt token. Draft autosave never writes
+this table. Claims transition waiting rows to delivering before network dispatch;
+only the matching attempt can finish the row. Interrupted claims become
+needs-review on connection, and a normal date change cannot authorize retry of
+an uncertain delivery. A separate reviewed action is required.
+
+Claims also carry a session owner ID. A weak in-process registry distinguishes
+live sibling backends from interrupted sessions. Recovery snapshots live owners
+inside SQLite's write transaction so a concurrent claim cannot be misclassified.
+Session registration happens only after queue initialization succeeds.
+
+The Gmail adapter uses the existing ScheduledSendManaging contract for native
+quit warnings and background refresh, plus ScheduledSendEditing for Outbox date
+changes/cancellation/reviewed retry. A 30-second in-process worker joins concurrent
+delivery requests. Known rate-limit/authentication failures use backoff for at
+most ten attempts before review; unknown
+transport, 5xx, or ambiguous outcomes do not retry automatically. Newer unscheduled
+edits survive delivery cleanup. The MIME Date header is refreshed at dispatch;
+message identity and body/attachment content remain frozen.
+
+This stays within ADR-0037's running-process model. Closed-app helpers and push
+remain governed by the separate proposed background architecture. Gmail S/MIME
+preparation remains missing; protected send requests fail explicitly instead of
+falling through to unprotected MIME.
+
 ### 9. Keep OAuth scope state explicit
 
 The initial testing implementation may use the already configured

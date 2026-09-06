@@ -10,7 +10,6 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevBackend
 import BrevMail
 import SwiftUI
 
@@ -24,11 +23,12 @@ import SwiftUI
 struct BrevMailCommands: Commands {
     @FocusedValue(\.mailImportAction) private var importAction
     @FocusedValue(\.mailNavigation) private var navigation
-    @FocusedValue(\.mailFolders) private var folders
+    @FocusedValue(\.mailFolderExportAction) private var exportAction
     @Environment(\.openWindow) private var openWindow
 
     var body: some Commands {
         MailCommands()
+        MailUndoCommands()
 
         // MARK: - macOS-only File menu additions
 
@@ -48,19 +48,10 @@ struct BrevMailCommands: Commands {
             .disabled(importAction?.isAvailable != true)
 
             Button(String(localized: "Export Mail…")) {
-                let folderName = exportSelectedFolderName
-                let currentHeaders = navigation?.currentFolderHeaders ?? []
-                presentExportMailPanel(suggestedFolderName: folderName) {
-                    // Convert MessageHeader metadata to ImportedMessage stubs so
-                    // MBOXExporter can produce a valid skeleton archive. Full
-                    // body export requires a backend raw-fetch method that will
-                    // be added in a future milestone (ADR-0001).
-                    currentHeaders.map { header in
-                        ImportedMessage(
-                            headers: exportHeaders(for: header),
-                            bodyData: Data()
-                        )
-                    }
+                guard let exportAction, exportAction.isAvailable else { return }
+                presentExportMailPanel(suggestedFolderName: exportAction.folderName,
+                                       sourceTitle: exportAction.sourceTitle) { url in
+                    exportAction(url)
                 }
             }
             .keyboardShortcut("e", modifiers: [.command, .shift])
@@ -93,49 +84,7 @@ struct BrevMailCommands: Commands {
         }
     }
 
-    // MARK: - Export helpers
-
-    /// The name of the currently selected folder, used as the suggested
-    /// filename stem for the save panel (e.g. "Inbox.mbox").
-    private var exportSelectedFolderName: String? {
-        guard let folderID = navigation?.selectedFolderID else { return nil }
-        return folders?.first { $0.id == folderID }?.name
-    }
-
-    /// Export is available when a folder is selected and at least one
-    /// header is loaded in the current folder view.
     private var isExportAvailable: Bool {
-        MailCommandPlatformPolicy.current.includesFolderMBOXExportCommand
-            && navigation?.selectedFolderID != nil
-            && navigation?.currentFolderHeaders.isEmpty == false
-    }
-
-    /// Derive RFC 2822 header tuples from a `MessageHeader` so
-    /// `MBOXExporter` can produce a structurally valid skeleton archive.
-    /// Body bytes are intentionally empty until the backend gains a
-    /// raw-fetch capability (ADR-0001 phased hook-up).
-    ///
-    /// `nonisolated` because it is a pure transform over its argument and is
-    /// invoked from the export panel's `@Sendable` completion closure; under
-    /// strict concurrency a MainActor-isolated method couldn't be called there.
-    private nonisolated func exportHeaders(for header: MessageHeader) -> [(name: String, value: String)] {
-        let fromValue: String = {
-            let name = header.from.name ?? ""
-            let email = header.from.email
-            return name.isEmpty ? email : "\(name) <\(email)>"
-        }()
-        let dateValue: String = {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.timeZone = TimeZone(identifier: "UTC")
-            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss +0000"
-            return formatter.string(from: header.date)
-        }()
-        return [
-            (name: "From", value: fromValue),
-            (name: "Subject", value: header.subject),
-            (name: "Date", value: dateValue),
-            (name: "Message-ID", value: header.id)
-        ]
+        MailCommandPlatformPolicy.current.includesFolderMBOXExportCommand && exportAction?.isAvailable == true
     }
 }

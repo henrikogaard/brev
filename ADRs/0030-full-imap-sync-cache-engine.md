@@ -170,6 +170,14 @@ loading raw source during listing queries. Body storage respects the same
 per-account byte budget already enforced by `FileIMAPMessageSourceCache`,
 pruning the oldest rows when the budget is exceeded.
 
+Implementation note, 2026-09-05: schema version 4 adds
+`original_bytes INTEGER NOT NULL DEFAULT 0` to `message_bodies`. Existing
+rows may contain source that was decoded and re-encoded, so migration leaves
+them unverified. Original MIME writes set the marker in the same transaction
+as the bytes; legacy writes clear it. Original-message export reads only
+marked rows, while rendering and search can still read legacy cache data.
+Normal body/account deletion removes the bytes and marker together.
+
 ### 2. Sync protocol
 
 #### Tier 1 — CONDSTORE-capable providers

@@ -15,7 +15,7 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
-/// Sheet showing pending offline mutations queued while the device was offline.
+/// Sheet showing submitted schedules and offline changes for one account.
 ///
 /// Lets the user retry all pending changes at once or discard individual ones.
 /// Backed by `OutboxManaging`; if the backend does not conform the sheet shows
@@ -25,6 +25,13 @@ public struct OutboxView: View {
     @State private var mutations: [PendingMutation] = []
     @State private var isRetrying = false
     @State private var retryError: String?
+    @State private var scheduled: [PendingScheduledSend] = []
+    @State private var changingSchedule: PendingScheduledSend?
+    @State private var reviewAction: ScheduleReviewAction?
+
+    private enum ScheduleReviewAction {
+        case change(PendingScheduledSend), cancel(PendingScheduledSend)
+    }
 
     private let backend: any MailBackend
     private let onClose: (() -> Void)?
@@ -37,7 +44,7 @@ public struct OutboxView: View {
     public var body: some View {
         NavigationStack {
             Group {
-                if mutations.isEmpty {
+                if mutations.isEmpty && scheduled.isEmpty && retryError == nil {
                     emptyState
                 } else {
                     mutationList
@@ -48,6 +55,10 @@ public struct OutboxView: View {
                 .navigationBarTitleDisplayMode(.inline)
             #endif
                 .toolbar {
+                    ToolbarItem(placement: .automatic) {
+                        Button(String(localized: "Refresh", bundle: .module)) { Task { await loadMutations() } }
+                            .disabled(isRetrying)
+                    }
                     #if os(iOS)
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "Close", bundle: .module)) { onClose?() }
@@ -69,7 +80,38 @@ public struct OutboxView: View {
                     #endif
                 }
         }
-        .task { await loadMutations() }
+        .task {
+            await loadMutations()
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(2)) } catch { return }
+                await loadMutations()
+            }
+        }
+        .sheet(item: $changingSchedule) { entry in
+            ScheduleSendSheet(initiallyScheduledDate: entry.scheduledFor) { date in
+                changingSchedule = nil
+                Task { await changeSchedule(entry, to: date ?? Date()) }
+            }
+            .brevTheme(theme)
+        }
+        .confirmationDialog(String(localized: "Review scheduled message", bundle: .module), isPresented: Binding(
+            get: { reviewAction != nil }, set: { if !$0 { reviewAction = nil } }
+        ), presenting: reviewAction) { action in
+            switch action {
+            case .change(let entry):
+                Button(String(localized: "Choose send time…", bundle: .module)) { changingSchedule = entry; reviewAction = nil }
+            case .cancel(let entry):
+                Button(String(localized: "Remove schedule", bundle: .module)) {
+                    reviewAction = nil
+                    Task { await cancelSchedule(entry) }
+                }
+            }
+        } message: { _ in
+            Text(
+                "If the previous delivery was uncertain, check Sent before retrying to avoid a duplicate. Removing a schedule does not recall delivered mail.",
+                bundle: .module
+            )
+        }
     }
 
     private var emptyState: some View {
@@ -80,7 +122,7 @@ public struct OutboxView: View {
             Text("No Pending Changes", bundle: .module)
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
-            Text("Changes you make while offline will appear here and sync automatically when you reconnect.", bundle: .module)
+            Text("Scheduled messages and changes waiting to sync appear here.", bundle: .module)
                 .brevFont(.subheadline)
                 .foregroundStyle(theme.textSecondary.color)
                 .multilineTextAlignment(.center)
@@ -91,11 +133,35 @@ public struct OutboxView: View {
 
     private var mutationList: some View {
         List {
+            Section {
+                Text(backend.account.emailAddress).brevFont(.caption).foregroundStyle(theme.textSecondary.color)
+            }
             if let retryError {
                 Section {
                     Text(retryError)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.danger.color)
+                }
+            }
+            if !scheduled.isEmpty {
+                Section(String(localized: "Scheduled", bundle: .module)) {
+                    ForEach(scheduled) { entry in
+                        ScheduledOutboxRow(entry: entry, isBusy: isRetrying,
+                                           canEdit: backend.extensionService(ScheduledSendEditing.self) != nil,
+                                           onChange: {
+                                               if entry.state == .needsReview {
+                                                   reviewAction = .change(entry)
+                                               } else {
+                                                   changingSchedule = entry
+                                               }
+                                           }, onCancel: {
+                                               if entry.state == .needsReview {
+                                                   reviewAction = .cancel(entry)
+                                               } else {
+                                                   Task { await cancelSchedule(entry) }
+                                               }
+                                           })
+                    }
                 }
             }
             ForEach(mutations) { mutation in
@@ -108,7 +174,7 @@ public struct OutboxView: View {
                         }
                     }
             }
-            Section {
+            if !mutations.isEmpty { Section {
                 Button(role: .destructive) {
                     Task { await discardAll() }
                 } label: {
@@ -119,7 +185,7 @@ public struct OutboxView: View {
                         Spacer()
                     }
                 }
-            }
+            } }
         }
     }
 
@@ -149,15 +215,46 @@ public struct OutboxView: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Text("Retry All", bundle: .module)
+                Text("Retry sync changes", bundle: .module)
             }
         }
         .disabled(isRetrying)
     }
 
     private func loadMutations() async {
-        guard let manager = backend.extensionService(OutboxManaging.self) else { return }
-        mutations = await manager.pendingMutations()
+        let values = await backend.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
+        guard !Task.isCancelled else { return }
+        mutations = values
+        scheduled = backend.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
+    }
+
+    private func changeSchedule(_ entry: PendingScheduledSend, to date: Date) async {
+        guard !isRetrying, let editor = backend.extensionService(ScheduledSendEditing.self) else { return }
+        isRetrying = true
+        retryError = nil
+        defer { isRetrying = false }
+        do {
+            if entry.state == .needsReview {
+                try await editor.retryReviewedScheduledSend(id: entry.id, for: date)
+            } else {
+                try await editor.rescheduleSend(id: entry.id, for: date)
+            }
+            if date <= Date() { await editor.deliverDueScheduledSends() }
+        } catch { retryError = error.localizedDescription }
+        await loadMutations()
+    }
+
+    private func cancelSchedule(_ entry: PendingScheduledSend) async {
+        guard !isRetrying, let editor = backend.extensionService(ScheduledSendEditing.self) else { return }
+        isRetrying = true
+        retryError = nil
+        defer { isRetrying = false }
+        do {
+            _ = try await editor.cancelScheduledSend(id: entry.id)
+        } catch {
+            retryError = error.localizedDescription
+        }
+        await loadMutations()
     }
 
     private func retryAll() async {
@@ -166,7 +263,7 @@ public struct OutboxView: View {
         await backend.replayOfflineMutations()
         await loadMutations()
         isRetrying = false
-        if mutations.isEmpty { onClose?() }
+        if mutations.isEmpty && scheduled.isEmpty { onClose?() }
     }
 
     private func discard(_ mutation: PendingMutation) async {
@@ -179,6 +276,6 @@ public struct OutboxView: View {
         guard let manager = backend.extensionService(OutboxManaging.self) else { return }
         await manager.discardAllMutations()
         mutations = []
-        onClose?()
+        if scheduled.isEmpty { onClose?() }
     }
 }

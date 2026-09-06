@@ -21,7 +21,7 @@ enum IMAPBackgroundRefreshPolicy {
 
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
-    OutboxManaging, ScheduledSendManaging, CardDAVContactSyncSupporting, MessageLabelManaging, @unchecked Sendable {
+    OutboxManaging, ScheduledSendEditing, CardDAVContactSyncSupporting, MessageLabelManaging, @unchecked Sendable {
     private static let bodyFetchLogger = Logger(
         subsystem: "eu.brevmail.brev",
         category: "IMAPBodyFetch"
@@ -30,9 +30,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private static let maximumIDLEResubscribeDelayNanoseconds: UInt64 = 30_000_000_000
     private static let idlePollIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let maximumBackgroundRefreshFolderCount = 12
-    private static let searchResultLimit = 50
-    private static let defaultServerSearchCandidateLimit = 200
-    private static let attachmentSearchPageSize = 50
+    private static let indexVerificationSampleLimit = 200
+    private static let serverSearchPageSize = 50
+    private static let legacySearchCandidateLimit = 200
     private static let cachedMessagePageSize = 50
 
     public typealias FolderListingOperation =
@@ -79,6 +79,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     public typealias MessageMoveOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID) async throws
             -> Void
+    /// Moves a batch while retaining UIDPLUS destination mapping and validating source generation.
+    public typealias MessageMoveWithResultOperation =
+        @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID, Int?) async throws
+            -> IMAPMoveResult
     public typealias MessageCopyOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [Int], Folder.ID) async throws
             -> Void
@@ -152,6 +156,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private let setMessageFlagOperation: MessageFlagOperation?
     private let setMessageKeywordOperation: MessageKeywordOperation?
     private let setMessageLabelsOperation: MessageLabelOperation?
+    private let moveMessagesWithResultOperation: MessageMoveWithResultOperation?
     private let moveMessagesOperation: MessageMoveOperation?
     private let copyMessagesOperation: MessageCopyOperation?
     private let permanentlyDeleteMessagesOperation: MessagePermanentDeleteOperation?
@@ -202,13 +207,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     /// Serializes scheduled-draft delivery so overlapping triggers (connect, the
     /// 30s poller, and `refresh(folder:)`) can't read the same due entry and
     /// send it twice.
-    private let scheduledDeliveryLock = NSLock()
-    private var scheduledDeliveryInFlight = false
+    private let scheduledWorkGate: ScheduledSendWorkGate
+    private let scheduledEditingLifetime = ScheduledEditingLifetime()
+    private let scheduledSubjectLock = NSLock()
+    private var scheduledSubjects: [String: String] = [:]
 
-    /// Poll interval for the scheduled-send loop, and the claim-lease / backoff
+    /// Poll interval for the scheduled-send loop, and the retry backoff
     /// bounds used to keep failing sends from re-attempting on every tick.
     private static let scheduledSendPollInterval: UInt64 = 30_000_000_000 // 30s
-    private static let scheduledSendClaimLease: TimeInterval = 120 // 2 min
     private static let scheduledSendBackoffBase: TimeInterval = 60 // 1 min
     private static let scheduledSendBackoffMax: TimeInterval = 3600 // 1 hour
 
@@ -257,6 +263,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         setMessageKeyword: MessageKeywordOperation? = nil,
         setMessageLabels: MessageLabelOperation? = nil,
         moveMessages: MessageMoveOperation? = nil,
+        moveMessagesWithResult: MessageMoveWithResultOperation? = nil,
         copyMessages: MessageCopyOperation? = nil,
         permanentlyDeleteMessages: MessagePermanentDeleteOperation? = nil,
         sendMessage: MessageSendOperation? = nil,
@@ -279,6 +286,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         sentMessageLedger: SentMessageLedger? = nil
     ) {
         self.account = account
+        scheduledWorkGate = ScheduledSendWorkGate.forAccount(account.id)
         self.configuration = configuration
         storedCredential = credential
         listFoldersOperation = listFolders
@@ -295,6 +303,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         setMessageKeywordOperation = setMessageKeyword
         setMessageLabelsOperation = setMessageLabels
         moveMessagesOperation = moveMessages
+        moveMessagesWithResultOperation = moveMessagesWithResult
         copyMessagesOperation = copyMessages
         permanentlyDeleteMessagesOperation = permanentlyDeleteMessages
         sendMessageOperation = sendMessage
@@ -356,13 +365,15 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             advertisedExtendedCapabilities.insert(.messageCopy)
         }
         if fetchMessageSource != nil {
-            advertisedExtendedCapabilities.insert(.rawMessageSource)
+            advertisedExtendedCapabilities.formUnion([.rawMessageSource, .rawMessageBytes])
         }
         extendedCapabilities = advertisedExtendedCapabilities
     }
 
     public func connect() async throws {
+        let generation = await scheduledEditingLifetime.currentGeneration()
         try await connect(retryOAuthCredential: true)
+        try await scheduledEditingLifetime.activate(generation)
     }
 
     private func connect(retryOAuthCredential: Bool) async throws {
@@ -488,6 +499,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     public func disconnect() async {
+        await scheduledEditingLifetime.close()
         stopScheduledSendPoller()
         cancelBackgroundWork()
         cancelRemoteDraftDiscovery()
@@ -777,7 +789,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         in folder: Folder,
         pageToken: String?
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
-        try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false)
+        try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false, allowsCacheFallback: false)
     }
 
     public func enumerateMessages(
@@ -786,7 +798,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         pageToken: String?
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         try validateSourceID(sourceID)
-        return try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false)
+        return try await messages(in: folder, pageToken: pageToken, recordsActiveFolder: false, allowsCacheFallback: false)
     }
 
     /// Every listing path — live FETCH, header cache, search index, offline
@@ -795,12 +807,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func messages(
         in folder: Folder,
         pageToken: String?,
-        recordsActiveFolder: Bool
+        recordsActiveFolder: Bool,
+        allowsCacheFallback: Bool = true
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         let page = try await unthreadedMessages(
             in: folder,
             pageToken: pageToken,
-            recordsActiveFolder: recordsActiveFolder
+            recordsActiveFolder: recordsActiveFolder,
+            allowsCacheFallback: allowsCacheFallback
         )
         return await (
             headers: threadedHeaders(page.headers, folderID: folder.id),
@@ -839,7 +853,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func unthreadedMessages(
         in folder: Folder,
         pageToken: String?,
-        recordsActiveFolder: Bool
+        recordsActiveFolder: Bool,
+        allowsCacheFallback: Bool
     ) async throws -> (headers: [MessageHeader], nextPageToken: String?) {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Messages Page")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -864,7 +879,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         if pageToken == nil, recordsActiveFolder {
             await state.recordActiveMessageFolder(folder.id)
         }
-        if let cachedPage = await cachedMessagePage(in: folder, pageToken: pageToken) {
+        if allowsCacheFallback, let cachedPage = await cachedMessagePage(in: folder, pageToken: pageToken) {
             await state.recordListedMessageIDs(
                 cachedPage.headers.map(\.id),
                 folderID: folder.id,
@@ -884,6 +899,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         do {
             try await state.requireConnected()
         } catch {
+            // Bulk enumeration must not report a partial offline cache as the full folder.
+            guard allowsCacheFallback else { throw error }
             if let indexedPage = await localSearchIndex?.cachedHeaders(
                 for: folder,
                 account: account,
@@ -917,7 +934,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             throw error
         }
         guard listMessagesOperation != nil else {
-            if pageToken == nil,
+            if allowsCacheFallback, pageToken == nil,
                let cachedSnapshot = await cachedHeaderSnapshot(folderID: folder.id) {
                 let repairedSnapshot = await repairedCachedHeaderSnapshotIfNeeded(
                     cachedSnapshot,
@@ -1003,7 +1020,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 nextPageToken: page.nextPageToken
             )
         } catch {
-            if pageToken == nil,
+            if allowsCacheFallback, pageToken == nil,
                Self.shouldUseCacheFallback(for: error),
                let cachedSnapshot = await cachedHeaderSnapshot(folderID: folder.id) {
                 let repairedSnapshot = await repairedCachedHeaderSnapshotIfNeeded(
@@ -1027,7 +1044,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
             // Connection lost mid-pagination — stop gracefully rather than
             // throwing, leaving the already-shown cached headers in place.
-            if pageToken != nil, Self.shouldUseCacheFallback(for: error) {
+            if allowsCacheFallback, pageToken != nil, Self.shouldUseCacheFallback(for: error) {
                 logFinished(path: .offlinePaginationEnd, headers: [], nextPageToken: nil)
                 return (headers: [], nextPageToken: nil)
             }
@@ -1328,6 +1345,19 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return try await rawSource(for: messageID)
     }
 
+    /// Returns original cached bytes or fetches them when only legacy text is cached.
+    public func rawMessageData(for messageID: String) async throws -> Data {
+        let source = try await loadMessageSource(messageID: messageID, requiresOriginalBytes: true)
+        guard let data = source.rawMessageData else { throw MailBackendError.notSupported(capabilities) }
+        return data
+    }
+
+    /// Reads original bytes only from the explicitly owning mailbox.
+    public func rawMessageData(for messageID: String, sourceID: MailSourceID) async throws -> Data {
+        try validateSourceID(sourceID)
+        return try await rawMessageData(for: messageID)
+    }
+
     /// Read-only enumeration of attachment-bearing messages already in the
     /// local cache (ADR-0044). Reads the injected header + source caches and
     /// parses with the pure `IMAPMessageBodyParser`. It never calls
@@ -1524,6 +1554,68 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
             throw error
         }
+    }
+
+    /// Moves a folder batch and captures UIDPLUS identifiers for a safe inverse move.
+    public func moveWithUndo(messageIDs: [MessageHeader.ID], from sourceFolder: Folder, to destination: Folder,
+                             sourceID: MailSourceID) async throws -> MailMoveUndo? {
+        try validateSourceID(sourceID)
+        guard !messageIDs.isEmpty, sourceFolder.id != destination.id else { return nil }
+        guard moveMessagesWithResultOperation != nil else {
+            try await move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+            return nil
+        }
+        let groups = try Self.messageReferencesByFolder(from: messageIDs)
+        guard groups.count == 1, let group = groups.first, group.folderID == sourceFolder.id else {
+            throw MailBackendError.notFound(id: sourceFolder.id)
+        }
+        let result: IMAPMoveResult
+        do {
+            result = try await performMoveWithResult(from: sourceFolder.id, uids: group.uids, to: destination.id)
+        } catch {
+            if try await enqueueOfflineMutation(
+                PendingMutation(kind: .move(folderID: destination.id), sourceID: sourceID, messageIDs: messageIDs), for: error
+            ) { return nil }
+            throw error
+        }
+        guard let generation = result.uidValidity,
+              Set(result.uidMappings.keys) == Set(group.uids) else { return nil }
+        return MailMoveUndo(sourceID: sourceID, originalFolder: sourceFolder) { [self] in
+            let restored = try await performMoveWithResult(
+                from: destination.id, uids: result.uidMappings.values.sorted(), to: sourceFolder.id,
+                expectedGeneration: generation
+            )
+            return result.uidMappings.reduce(into: [:]) { ids, mapping in
+                if let restoredUID = restored.uidMappings[mapping.value] {
+                    ids["\(sourceFolder.id):\(mapping.key)"] = "\(sourceFolder.id):\(restoredUID)"
+                }
+            }
+        }
+    }
+
+    private func performMoveWithResult(from source: Folder.ID, uids: [Int], to destination: Folder.ID,
+                                       expectedGeneration: Int? = nil) async throws -> IMAPMoveResult {
+        try await state.requireConnected()
+        guard let operation = moveMessagesWithResultOperation else { throw MailBackendError.notSupported(capabilities) }
+        try Task.checkCancellation()
+        let result: IMAPMoveResult
+        do {
+            result = try await withAuthenticatedOAuthRetry { credential in
+                try Task.checkCancellation()
+                return try await operation(self.configuration, credential, source, uids, destination, expectedGeneration)
+            }
+        } catch {
+            // MOVE can partially succeed before NO or a disconnect. Reconcile
+            // both folders instead of treating local rollback as server truth.
+            await state.emit(.folderRefreshed(folderID: source))
+            await state.emit(.folderRefreshed(folderID: destination))
+            throw error
+        }
+        await removeCachedMessageSources(folderID: source, uids: uids)
+        await removeCachedHeaders(folderID: source, uids: uids)
+        await state.emit(.messagesRemoved(folderID: source, messageIDs: uids.map { "\(source):\($0)" }))
+        await state.emit(.folderRefreshed(folderID: destination))
+        return result
     }
 
     public func move(messageIDs: [String], to folder: Folder) async throws {
@@ -1899,6 +1991,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             // Keep the full draft in the existing local staging store. The
             // offline mutation queue stores only its stable ID, never message
             // content or recipients in UserDefaults.
+            if error is ScheduledSendEditingError { throw error }
             await draftStagingStore?.setDraft(draft, accountID: account.id)
             if try await enqueueOfflineMutation(
                 PendingMutation(kind: .send(draft: draft), messageIDs: []),
@@ -1919,15 +2012,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return try await send(draft: draft)
     }
 
-    private func performImmediateSend(draft: Draft) async throws -> SendResult {
+    private func performImmediateSend(draft: Draft, scheduledGeneration: UUID? = nil) async throws -> SendResult {
         // De-duplicate at-least-once delivery: if this draft's SMTP send was
         // already confirmed on a prior attempt (the queue/schedule entry just
         // wasn't cleared due to a crash/race), don't deliver a second copy — only
         // finish the local cleanup. This only skips a *confirmed*-sent draft, so
         // it can never drop a real send.
         if let sentMessageLedger, sentMessageLedger.contains(draftID: draft.id, accountID: account.id) {
-            await state.clearDraftAndAttachments(for: draft)
-            await removePersistedDraft(draft)
+            await finishSentDraftCleanup(draft, scheduledGeneration: scheduledGeneration)
             return SendResult(sentMessageID: nil, scheduledFor: nil)
         }
 
@@ -1964,6 +2056,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             recipientEmails: recipientEmails
         )
         let result: SendResult
+        if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
+            throw ScheduledSendEditingError.sessionChanged
+        }
         do {
             result = try await sendMessageOperation(configuration, credential, submission)
         } catch {
@@ -1978,6 +2073,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 configuration,
                 credential
             )
+            if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) {
+                throw ScheduledSendEditingError.sessionChanged
+            }
             replaceCredentialForReconnect(refreshedCredential)
             result = try await sendMessageOperation(
                 configuration,
@@ -1987,17 +2085,40 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
         // The server accepted the message; record it so a later replay of the
         // same draft (e.g. the entry wasn't cleared before a crash) is skipped.
-        sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
+        if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
+        if let scheduledGeneration {
+            do {
+                try await scheduledEditingLifetime.perform(generation: scheduledGeneration) {
+                    self.sentMessageLedger?.record(draftID: draft.id, accountID: self.account.id)
+                }
+            } catch { return result }
+        } else {
+            sentMessageLedger?.record(draftID: draft.id, accountID: account.id)
+        }
         let (sentCopyUID, sentCopyWarning) = await appendSentCopyIfPossible(outgoingData)
+        if let scheduledGeneration, await !(scheduledEditingLifetime.isCurrent(scheduledGeneration)) { return result }
         let draftCleanupWarning = await deleteRemoteDraftIfPossible(draft.remoteID)
-        await state.clearDraftAndAttachments(for: draft)
-        await removePersistedDraft(draft)
+        await finishSentDraftCleanup(draft, scheduledGeneration: scheduledGeneration)
         let sentMessageID = sentCopyUID.map { "\($0)" } ?? result.sentMessageID
         return SendResult(
             sentMessageID: sentMessageID,
             scheduledFor: result.scheduledFor,
             warnings: result.warnings + [sentCopyWarning, draftCleanupWarning].compactMap { $0 }
         )
+    }
+
+    private func finishSentDraftCleanup(_ draft: Draft, scheduledGeneration: UUID?) async {
+        if let scheduledGeneration {
+            do {
+                try await scheduledEditingLifetime.perform(generation: scheduledGeneration) {
+                    await self.state.clearDraftAndAttachments(for: draft)
+                    await self.removePersistedDraft(draft)
+                }
+            } catch { return }
+        } else {
+            await state.clearDraftAndAttachments(for: draft)
+            await removePersistedDraft(draft)
+        }
     }
 
     /// Returns the MIME bytes to submit: the plaintext `messageData` unchanged
@@ -2025,102 +2146,208 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
     private func scheduleSend(draft: Draft) async throws -> SendResult {
         try await state.requireConnected()
-        guard let scheduledFor = draft.scheduledFor else {
-            throw MailBackendError.backendSpecific(message: "Cannot schedule a draft without a scheduledFor date.")
+        guard let scheduledFor = draft.scheduledFor, scheduledFor.timeIntervalSince1970.isFinite else {
+            throw ScheduledSendEditingError.invalidDate
         }
-
-        // Persist the draft and register the schedule entry.
-        await draftStagingStore?.setDraft(draft, accountID: account.id)
-        scheduledSendStore.add(entry: ScheduledDraftEntry(draftID: draft.id, scheduledFor: scheduledFor), accountID: account.id)
-
-        return SendResult(sentMessageID: nil, scheduledFor: scheduledFor)
+        return try await withScheduledEditing(draftID: draft.id) {
+            guard !self.scheduledSendStore.entries(accountID: self.account.id)
+                .contains(where: { $0.draftID == draft.id && $0.claimedAt != nil }) else {
+                throw ScheduledSendEditingError.busy
+            }
+            guard let draftStagingStore = self.draftStagingStore else { throw ScheduledSendEditingError.stagingUnavailable }
+            await draftStagingStore.setDraft(draft, accountID: self.account.id)
+            guard await draftStagingStore.draft(accountID: self.account.id, draftID: draft.id) == draft else {
+                throw ScheduledSendEditingError.stagingUnavailable
+            }
+            self.scheduledSubjectLock.withLock { self.scheduledSubjects[draft.id] = draft.subject }
+            self.scheduledSendStore.add(
+                entry: ScheduledDraftEntry(draftID: draft.id, scheduledFor: scheduledFor),
+                accountID: self.account.id
+            )
+            await self.emit([.outboxChanged])
+            return SendResult(sentMessageID: nil, scheduledFor: scheduledFor)
+        }
     }
 
-    private func deliverDueScheduledDrafts(forceRetry: Bool = false) async {
+    private func deliverDueScheduledDrafts() async {
+        let generation = await scheduledEditingLifetime.currentGeneration()
+        guard await scheduledEditingLifetime.isCurrent(generation) else { return }
         // In-flight guard: only one delivery pass runs at a time, so overlapping
         // triggers (connect, poller, refresh) can't claim and send the same draft.
-        let acquired = scheduledDeliveryLock.withLock { () -> Bool in
-            guard !scheduledDeliveryInFlight else { return false }
-            scheduledDeliveryInFlight = true
-            return true
-        }
-        guard acquired else { return }
-        defer { scheduledDeliveryLock.withLock { scheduledDeliveryInFlight = false } }
+        guard let lease = scheduledWorkGate.acquireDeliveryPass() else { return }
+        defer { scheduledWorkGate.release(lease) }
 
-        let due = scheduledSendStore.claimDueEntries(
+        let due = scheduledSendStore.dueEntries(
             accountID: account.id,
-            before: Date(),
-            lease: Self.scheduledSendClaimLease,
-            force: forceRetry
+            before: Date()
         )
 
-        for entry in due {
-            // Refresh from the stored draft — the polled entry is a snapshot.
-            // A missing draft or a draft no longer scheduled can never succeed,
-            // so prune the orphaned entry instead of re-reading it forever.
-            guard let draft = await draftStagingStore?.draft(accountID: account.id, draftID: entry.draftID),
-                  draft.scheduledFor != nil else {
-                scheduledSendStore.remove(draftID: entry.draftID, accountID: account.id)
-                continue
-            }
-
+        for candidate in due {
+            guard !Task.isCancelled, await scheduledEditingLifetime.isCurrent(generation) else { return }
+            guard let draftLease = scheduledWorkGate.acquireDraft(candidate.draftID, editing: false) else { continue }
+            defer { scheduledWorkGate.release(draftLease) }
             do {
-                _ = try await performImmediateSend(draft: draft)
-                scheduledSendStore.remove(draftID: draft.id, accountID: account.id)
-            } catch {
-                if case SMTPClientError.deliveryOutcomeUnknown = error {
-                    // DATA may already have been accepted. Remove the
-                    // scheduled trigger so the poller/reconnect path cannot
-                    // duplicate the message, but keep the staged draft and
-                    // surface a recoverable conflict for an explicit choice.
-                    scheduledSendStore.remove(draftID: draft.id, accountID: account.id)
-                    let mutation = PendingMutation(
-                        kind: .sendStagedDraft(stagedDraftID: draft.id),
-                        messageIDs: []
-                    )
-                    let conflict = MutationConflict(
-                        mutation: mutation,
-                        reason: .retriesExhausted,
-                        message: error.localizedDescription
-                    )
-                    if let offlineMutationConflictStore {
-                        let alreadySurfaced = await (try? offlineMutationConflictStore.conflicts())?.contains {
-                            guard case .sendStagedDraft(let stagedDraftID) = $0.mutation.kind else {
-                                return false
-                            }
-                            return stagedDraftID == draft.id
-                        } == true
-                        if !alreadySurfaced {
-                            try? await offlineMutationConflictStore.append([conflict])
-                        }
+                let claimed = try await scheduledEditingLifetime.perform(generation: generation) {
+                    self.scheduledSendStore.claimDueEntries(
+                        accountID: self.account.id,
+                        before: Date(),
+                        onlyDraftID: candidate.draftID
+                    ).first
+                }
+                guard let entry = claimed else { continue }
+                // Keep unavailable content visible instead of silently discarding intent.
+                guard let draft = await draftStagingStore?.draft(accountID: account.id, draftID: entry.draftID) else {
+                    try await scheduledEditingLifetime.perform(generation: generation) {
+                        self.scheduledSendStore.holdForReview(
+                            draftID: entry.draftID,
+                            accountID: self.account.id,
+                            reason: .draftUnavailable
+                        )
                     }
                     continue
                 }
-                // Keep the entry but push the next retry out with backoff so a
-                // permanently-failing send doesn't re-attempt on every tick.
-                scheduledSendStore.recordSendFailure(
-                    draftID: entry.draftID,
-                    accountID: account.id,
-                    now: Date(),
-                    baseInterval: Self.scheduledSendBackoffBase,
-                    maxInterval: Self.scheduledSendBackoffMax
-                )
-            }
+                do {
+                    _ = try await performImmediateSend(draft: draft, scheduledGeneration: generation)
+                    try await scheduledEditingLifetime.perform(generation: generation) {
+                        self.scheduledSendStore.remove(draftID: draft.id, accountID: self.account.id)
+                    }
+                } catch {
+                    let uncertain: Bool
+                    if case SMTPClientError.deliveryOutcomeUnknown = error {
+                        uncertain = true
+                    } else {
+                        uncertain = error is CancellationError || Task.isCancelled || (error as? URLError)?.code == .cancelled
+                    }
+                    try await scheduledEditingLifetime.perform(generation: generation) {
+                        if uncertain {
+                            // DATA may already be accepted. Outbox is the single
+                            // review route; automatic retries could duplicate mail.
+                            self.scheduledSendStore.holdForReview(
+                                draftID: draft.id,
+                                accountID: self.account.id,
+                                reason: .deliveryUncertain
+                            )
+                        } else {
+                            self.scheduledSendStore.recordSendFailure(
+                                draftID: entry.draftID, accountID: self.account.id, now: Date(),
+                                baseInterval: Self.scheduledSendBackoffBase, maxInterval: Self.scheduledSendBackoffMax
+                            )
+                        }
+                    }
+                }
+            } catch { return } // Retired sessions cannot mutate a replacement account's intent.
         }
+        // Publish after releasing ownership so observers see settled review state.
+        // The deferred token release also covers early returns and is idempotent.
+        scheduledWorkGate.release(lease)
+        await emit([.outboxChanged])
     }
 
     // MARK: ScheduledSendManaging
 
     public func pendingScheduledSends() -> [PendingScheduledSend] {
-        scheduledSendStore.entries(accountID: account.id).map {
-            PendingScheduledSend(draftID: $0.draftID, scheduledFor: $0.scheduledFor)
+        let entries = scheduledSendStore.entries(accountID: account.id)
+        let names = scheduledSubjectLock.withLock { () -> [String: String] in
+            let ids = Set(entries.map(\.draftID))
+            scheduledSubjects = scheduledSubjects.filter { ids.contains($0.key) }
+            return scheduledSubjects
+        }
+        return entries.map {
+            let state: ScheduledSendState = $0
+                .claimedAt == nil ? .waiting : (scheduledWorkGate.isDelivering($0.draftID) ? .delivering : .needsReview)
+            let error: String?
+            switch $0.reviewReason {
+            case .draftUnavailable: error = String(
+                    localized: "The local draft is unavailable. Restore it before retrying, or cancel the schedule.",
+                    bundle: .module
+                )
+            case .deliveryUncertain: error = String(
+                    localized: "The message may have been delivered. Check Sent before retrying.",
+                    bundle: .module
+                )
+            case .retryLimit: error = String(
+                    localized: "Automatic retries stopped. Review account settings before trying again.",
+                    bundle: .module
+                )
+            case nil:
+                error = state == .needsReview ? String(
+                    localized: "Delivery may have been interrupted. Check Sent before retrying.",
+                    bundle: .module
+                )
+                    : ($0.nextAttemptAt == nil ? nil : String(localized: "Delivery failed. Waiting to retry.", bundle: .module))
+            }
+            return PendingScheduledSend(draftID: $0.draftID, scheduledFor: $0.scheduledFor, subject: names[$0.draftID] ?? "",
+                                        state: state, lastError: error, nextAttemptAt: $0.nextAttemptAt)
+        }
+    }
+
+    /// Reads retained content with the schedule store's authoritative due date.
+    public func scheduledDraft(id: String) async throws -> Draft {
+        guard let entry = scheduledSendStore.entries(accountID: account.id).first(where: { $0.draftID == id }),
+              var draft = await draftStagingStore?.draft(accountID: account.id, draftID: id) else {
+            throw ScheduledSendEditingError.notFound
+        }
+        draft.scheduledFor = entry.scheduledFor
+        scheduledSubjectLock.withLock { scheduledSubjects[id] = draft.subject }
+        return draft
+    }
+
+    /// Withdraws a waiting schedule, keeping its editable message content.
+    public func cancelScheduledSend(id: String) async throws -> Draft? {
+        try await withScheduledEditing(draftID: id) {
+            guard self.scheduledSendStore.entries(accountID: self.account.id).contains(where: { $0.draftID == id }) else {
+                throw ScheduledSendEditingError.notFound
+            }
+            var draft = await self.draftStagingStore?.draft(accountID: self.account.id, draftID: id)
+            draft?.scheduledFor = nil
+            if let draft {
+                await self.draftStagingStore?.setDraft(draft, accountID: self.account.id)
+                guard await self.draftStagingStore?.draft(accountID: self.account.id, draftID: id) == draft else {
+                    throw ScheduledSendEditingError.stagingUnavailable
+                }
+            }
+            try self.scheduledSendStore.editWaiting(draftID: id, accountID: self.account.id, date: nil, allowClaimed: true)
+            if let draft { _ = await self.state.stageDraft(draft) }
+            _ = self.scheduledSubjectLock.withLock { self.scheduledSubjects.removeValue(forKey: id) }
+            await self.emit([.outboxChanged])
+            return draft
+        }
+    }
+
+    /// Changes a waiting delivery time without overwriting the user's draft body.
+    public func rescheduleSend(id: String, for date: Date) async throws {
+        guard date.timeIntervalSince1970.isFinite else { throw ScheduledSendEditingError.invalidDate }
+        try await withScheduledEditing(draftID: id) {
+            try self.scheduledSendStore.editWaiting(draftID: id, accountID: self.account.id, date: date)
+            await self.emit([.outboxChanged])
+        }
+    }
+
+    /// Explicit review can release an interrupted claim once no live delivery owns the account.
+    public func retryReviewedScheduledSend(id: String, for date: Date) async throws {
+        guard date.timeIntervalSince1970.isFinite else { throw ScheduledSendEditingError.invalidDate }
+        try await withScheduledEditing(draftID: id) {
+            _ = try await self.scheduledDraft(id: id)
+            try self.scheduledSendStore.editWaiting(draftID: id, accountID: self.account.id, date: date, allowClaimed: true)
+            await self.emit([.outboxChanged])
+        }
+    }
+
+    private func withScheduledEditing<Value: Sendable>(
+        draftID: String,
+        _ operation: @Sendable @escaping () async throws -> Value
+    ) async throws -> Value {
+        try await scheduledEditingLifetime.perform {
+            guard let lease = self.scheduledWorkGate.acquireDraft(draftID, editing: true)
+            else { throw ScheduledSendEditingError.busy }
+            defer { self.scheduledWorkGate.release(lease) }
+            return try await operation()
         }
     }
 
     public func deliverDueScheduledSends() async {
-        // Forced: an explicit request (background refresh, pre-quit flush) should
-        // not be throttled by the in-session backoff or a stale claim lease.
-        await deliverDueScheduledDrafts(forceRetry: true)
+        // Background refresh and quit hooks must not bypass retry backoff.
+        await deliverDueScheduledDrafts()
     }
 
     private func startScheduledSendPoller() {
@@ -2160,12 +2387,16 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     /// Enumerates cached headers without connecting or truncating saved-view candidates.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         try validateSourceID(sourceID)
-        return await cachedSearchResults(
+        try Task.checkCancellation()
+        let results = await cachedSearchResults(
             for: SearchQuery(folderID: folder.id, execution: .cacheOnly), folders: [folder], limit: Int.max
         )
+        try Task.checkCancellation()
+        return results
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        try Task.checkCancellation()
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
         func durationMilliseconds() -> Int {
@@ -2176,9 +2407,11 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         do {
             folders = try await state.requireConnectedFolders()
         } catch {
+            try Task.checkCancellation()
             if query.execution != .serverOnly {
                 let cachedFolders = await folderCache?.snapshot(accountID: account.id)?.folders ?? []
                 let cachedResults = await cachedSearchResults(for: query, folders: cachedFolders)
+                try Task.checkCancellation()
                 if query.execution == .cacheOnly || !cachedResults.isEmpty {
                     MailPerformanceDiagnostics.logSearchFinished(
                         snapshot: MailPerformanceDiagnostics.searchSnapshot(
@@ -2207,6 +2440,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let cachedResults = query.execution == .serverOnly
             ? []
             : await cachedSearchResults(for: query, folders: folders)
+        try Task.checkCancellation()
         if query.execution == .cacheOnly {
             MailPerformanceDiagnostics.logSearchFinished(
                 snapshot: snapshot,
@@ -2216,19 +2450,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             )
             return cachedResults
         }
-        // Cache-first for ordinary queries; attachment predicates must continue to
-        // the paginated server path so cached hits do not hide older matches.
-        if query.execution == .cacheThenServer,
-           query.hasAttachments == nil,
-           !cachedResults.isEmpty {
-            MailPerformanceDiagnostics.logSearchFinished(
-                snapshot: snapshot,
-                path: .cacheThenServerHit,
-                resultCount: cachedResults.count,
-                durationMilliseconds: durationMilliseconds()
-            )
-            return cachedResults
-        }
+        // Cached hits are not proof of complete coverage. Explicit online
+        // searches still consult the server; cache-only remains entirely local.
         guard searchMessagesOperation != nil || searchMessagePageOperation != nil else {
             if query.execution == .cacheThenServer, !cachedResults.isEmpty {
                 MailPerformanceDiagnostics.logSearchFinished(
@@ -2272,13 +2495,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return []
         }
 
+        var completedSearchFolders = 0
         do {
             var headers: [MessageHeader] = []
             for folderID in folderIDs {
                 try Task.checkCancellation()
-                if query.hasAttachments != nil,
-                   let searchMessagePageOperation {
-                    try await headers.append(contentsOf: searchAttachmentHeaders(
+                if let searchMessagePageOperation {
+                    try await headers.append(contentsOf: searchPagedHeaders(
                         folderID: folderID,
                         query: query,
                         operation: searchMessagePageOperation
@@ -2287,16 +2510,21 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     let listings = try await searchMessagesWithAuthenticatedOAuthRetry(
                         folderID: folderID,
                         query: Self.serverSearchQuery(from: query),
-                        limit: Self.serverSearchCandidateLimit(for: query)
+                        limit: query.hasAttachments == nil ? Self.legacySearchCandidateLimit : Int.max
                     )
+                    if query.hasAttachments == nil, listings.count >= Self.legacySearchCandidateLimit {
+                        throw Self.incompleteSearchError
+                    }
                     try await headers.append(contentsOf: searchHeaders(
                         from: listings,
                         folderID: folderID,
                         attachmentFilter: query.hasAttachments
                     ))
                 }
+                completedSearchFolders += 1
             }
 
+            try Task.checkCancellation()
             let results = Self.sortedSearchResults(headers)
             MailPerformanceDiagnostics.logSearchFinished(
                 snapshot: snapshot,
@@ -2306,6 +2534,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             )
             return results
         } catch {
+            try Task.checkCancellation()
+            if completedSearchFolders > 0, Self.shouldUseCacheFallback(for: error) {
+                throw Self.incompleteSearchError
+            }
             if query.execution == .cacheThenServer,
                !cachedResults.isEmpty,
                Self.shouldUseCacheFallback(for: error) {
@@ -2757,7 +2989,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let results = await localSearchIndex?.search(
             validationQuery,
             account: account,
-            limit: Self.defaultServerSearchCandidateLimit
+            limit: Self.indexVerificationSampleLimit
         ) ?? []
         guard results.contains(where: { $0.id == validationHeader.id }) else {
             throw MailBackendError.backendSpecific(
@@ -2960,7 +3192,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(MessageLabelManaging.self):
             guard setMessageLabelsOperation != nil else { return nil }
             return self as? Service
-        case ObjectIdentifier(ScheduledSendManaging.self):
+        case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
+            // Retain metadata visibility and cancellation even if staging is unavailable.
             return self as? Service
         case ObjectIdentifier(ContactLookupProviding.self):
             return contactLookupProvider as? Service
@@ -3255,12 +3488,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return serverQuery
     }
 
-    private static func serverSearchCandidateLimit(for query: SearchQuery) -> Int {
-        query.hasAttachments == nil ? defaultServerSearchCandidateLimit : Int.max
-    }
-
     private static func sortedSearchResults(_ headers: [MessageHeader]) -> [MessageHeader] {
-        Array(sortedHeaders(headers).prefix(searchResultLimit))
+        sortedHeaders(deduplicatedByID(headers))
     }
 
     private static func sortedHeaders(_ headers: [MessageHeader]) -> [MessageHeader] {
@@ -3760,7 +3989,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func cachedSearchResults(
         for query: SearchQuery,
         folders: [Folder],
-        limit: Int = IMAPSMTPBackend.searchResultLimit
+        limit: Int = Int.max
     ) async -> [MessageHeader] {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -3838,19 +4067,22 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return headers.filter { currentFolderIDs.contains($0.folderID) }
     }
 
-    private func loadMessageSource(messageID: MessageHeader.ID) async throws -> IMAPMessageSource {
+    private func loadMessageSource(messageID: MessageHeader.ID,
+                                   requiresOriginalBytes: Bool = false) async throws -> IMAPMessageSource {
         let reference = try Self.messageReference(from: messageID)
         return try await loadMessageSource(
             messageID: messageID,
             folderID: reference.folderID,
-            uid: reference.uid
+            uid: reference.uid,
+            requiresOriginalBytes: requiresOriginalBytes
         )
     }
 
     private func loadMessageSource(
         messageID: MessageHeader.ID,
         folderID: Folder.ID,
-        uid: Int
+        uid: Int,
+        requiresOriginalBytes: Bool = false
     ) async throws -> IMAPMessageSource {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Message Source")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -3858,7 +4090,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             MailPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
         }
 
-        if let cached = await cachedMessageSource(messageID: messageID) {
+        if let cached = await cachedMessageSource(messageID: messageID, requiresOriginalBytes: requiresOriginalBytes),
+           !requiresOriginalBytes || cached.rawMessageData != nil {
             MailPerformanceDiagnostics.logBodySourceFinished(
                 path: .cacheHit,
                 durationMilliseconds: durationMilliseconds()
@@ -3889,7 +4122,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return source
         } catch {
             if Self.shouldUseCacheFallback(for: error),
-               let cached = await cachedMessageSource(messageID: messageID) {
+               let cached = await cachedMessageSource(messageID: messageID, requiresOriginalBytes: requiresOriginalBytes),
+               !requiresOriginalBytes || cached.rawMessageData != nil {
                 MailPerformanceDiagnostics.logBodySourceFinished(
                     path: .cacheFallback,
                     durationMilliseconds: durationMilliseconds()
@@ -3913,23 +4147,28 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             accountID: account.id,
             messageID: messageID
         )
-        await localSearchIndex?.storeRawMessage(
-            Data(source.rawMessage.utf8),
-            for: messageID,
-            account: account
-        )
+        if let data = source.rawMessageData {
+            await localSearchIndex?.storeOriginalRawMessage(data, for: messageID, account: account)
+        } else {
+            await localSearchIndex?.storeRawMessage(Data(source.rawMessage.utf8), for: messageID, account: account)
+        }
         // A freshly cached source may now carry a parseable date, so allow the
         // repair pass to re-attempt this message.
         clearUnrepairableDate(messageID)
     }
 
-    private func cachedMessageSource(messageID: MessageHeader.ID) async -> IMAPMessageSource? {
+    private func cachedMessageSource(messageID: MessageHeader.ID,
+                                     requiresOriginalBytes: Bool = false) async -> IMAPMessageSource? {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Body Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
         let source: IMAPMessageSource?
-        if let cached = await sourceCache?.source(accountID: account.id, messageID: messageID) {
+        if let cached = await sourceCache?.source(accountID: account.id, messageID: messageID),
+           !requiresOriginalBytes || cached.rawMessageData != nil {
             source = cached
-        } else if let rawData = await localSearchIndex?.cachedRawMessage(
+        } else if let original = await localSearchIndex?.cachedOriginalRawMessage(for: messageID, account: account),
+                  let reference = try? Self.messageReference(from: messageID) {
+            source = IMAPMessageSource(uid: reference.uid, rawMessageData: original)
+        } else if !requiresOriginalBytes, let rawData = await localSearchIndex?.cachedRawMessage(
             for: messageID,
             account: account
         ), let reference = try? Self.messageReference(from: messageID) {
@@ -4496,47 +4735,57 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return headers
     }
 
-    private func searchAttachmentHeaders(
+    private func searchPagedHeaders(
         folderID: Folder.ID,
         query: SearchQuery,
         operation: @escaping MessageSearchPageOperation
     ) async throws -> [MessageHeader] {
-        guard let attachmentFilter = query.hasAttachments else { return [] }
-
+        let attachmentFilter = query.hasAttachments
         var pageToken: String?
-        var visitedPageTokens = Set<String>()
+        var visitedPageTokens = Set<String?>()
         var headers: [MessageHeader] = []
         while true {
             try Task.checkCancellation()
-            let tokenKey = pageToken ?? "<initial>"
-            guard visitedPageTokens.insert(tokenKey).inserted else {
-                throw MailBackendError.backendSpecific(
-                    message: "IMAP attachment search did not advance the page cursor."
-                )
+            guard visitedPageTokens.insert(pageToken).inserted else {
+                throw Self.incompleteSearchError
             }
 
-            let page = try await searchMessagePageWithAuthenticatedOAuthRetry(
-                operation,
-                folderID: folderID,
-                query: Self.serverSearchQuery(from: query),
-                pageToken: pageToken,
-                limit: Self.attachmentSearchPageSize
-            )
-            try await headers.append(contentsOf: searchHeaders(
-                from: page.messages,
-                folderID: folderID,
-                attachmentFilter: attachmentFilter
-            ))
+            let page: IMAPMessageListingPage
+            do {
+                page = try await searchMessagePageWithAuthenticatedOAuthRetry(
+                    operation, folderID: folderID, query: Self.serverSearchQuery(from: query),
+                    pageToken: pageToken, limit: Self.serverSearchPageSize
+                )
+            } catch {
+                try Task.checkCancellation()
+                if pageToken != nil, Self.shouldUseCacheFallback(for: error) { throw Self.incompleteSearchError }
+                throw error
+            }
+            try Task.checkCancellation()
+            do {
+                try await headers.append(contentsOf: searchHeaders(
+                    from: page.messages, folderID: folderID, attachmentFilter: attachmentFilter
+                ))
+            } catch {
+                try Task.checkCancellation()
+                if Self.shouldUseCacheFallback(for: error) { throw Self.incompleteSearchError }
+                throw error
+            }
 
             guard let nextPageToken = page.nextPageToken else { break }
             guard nextPageToken != pageToken else {
-                throw MailBackendError.backendSpecific(
-                    message: "IMAP attachment search did not advance the page cursor."
-                )
+                throw Self.incompleteSearchError
             }
             pageToken = nextPageToken
         }
         return headers
+    }
+
+    private static var incompleteSearchError: MailBackendError {
+        .backendSpecific(message: String(
+            localized: "Search stopped before all results could be loaded. Narrow your search or try again.",
+            bundle: .module
+        ))
     }
 
     private static func recipientEmails(from draft: Draft) -> [String] {
@@ -4801,9 +5050,15 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             guard remoteAvailable else { continue }
             startScheduledSendPoller()
             scheduleRemoteDraftDiscovery()
-            // A reconnect retries failed sends immediately (force), bypassing the
-            // in-session backoff that throttles the 30s poller.
-            trackBackgroundWork { await self.deliverDueScheduledDrafts(forceRetry: true) }
+            // Reconnect respects the same retry timing as the in-process poller.
+            trackBackgroundWork {
+                for entry in self.scheduledSendStore.entries(accountID: self.account.id) {
+                    guard !Task.isCancelled else { return }
+                    _ = try? await self.scheduledDraft(id: entry.draftID)
+                }
+                await self.emit([.outboxChanged])
+                await self.deliverDueScheduledDrafts()
+            }
             return
         }
     }
