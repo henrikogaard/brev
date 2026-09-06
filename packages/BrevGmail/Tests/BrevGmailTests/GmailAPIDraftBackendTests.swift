@@ -13,10 +13,286 @@
 import BrevBackend
 @testable import BrevGmail
 import Foundation
+import SQLite3
 import Testing
 
 @Suite("Gmail API draft backend")
 struct GmailAPIDraftBackendTests {
+    @Test("failed schedule initialization does not publish a connected backend or live delivery owner")
+    func failedScheduleInitializationStaysDisconnected() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let account = BrevAccount(id: UUID().uuidString, displayName: "Test", emailAddress: "primary@example.com")
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        var database: OpaquePointer?
+        try #require(sqlite3_open(url.path, &database) == SQLITE_OK)
+        defer { sqlite3_close(database) }
+        try #require(sqlite3_exec(database, "DROP TABLE gmail_scheduled_sends;", nil, nil, nil) == SQLITE_OK)
+        let backend = GmailAPIBackend(account: account, transport: DraftBackendTransport(), store: store)
+        await #expect(throws: GmailAccountStoreError.self) { try await backend.connect() }
+        #expect(backend.capabilities.isEmpty)
+        #expect(GmailScheduledSessionRegistry.shared.activeIDs(accountID: account.id).isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("a second live backend does not recover another active delivery as interrupted")
+    func liveDeliveryOwnerIsPreserved() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        await transport.pauseNextSend()
+        defer { Task { await transport.releaseSend() } }
+        let first = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await first.connect()
+        _ = try await first.send(draft: Draft(
+            id: "owned",
+            to: [.init(email: "to@example.org")],
+            subject: "One owner",
+            scheduledFor: .distantPast
+        ))
+        let delivery = Task { await first.deliverDueScheduledSends() }
+        await transport.waitForSendStart()
+        let second = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await second.connect()
+        #expect(second.pendingScheduledSends().first?.state == .delivering)
+        await transport.releaseSend()
+        await delivery.value
+        await second.deliverDueScheduledSends()
+        #expect(second.pendingScheduledSends().isEmpty)
+        #expect(await transport.rawSendCount() == 1)
+        await first.disconnect()
+        await second.disconnect()
+    }
+
+    @Test("confirmed delivery with failed local cleanup is held for review without resend")
+    func scheduledCleanupFailureDoesNotResend() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        _ = try await backend.send(draft: Draft(id: "cleanup", to: [.init(email: "to@example.org")], subject: "Already sent",
+                                                scheduledFor: Date().addingTimeInterval(3600)))
+        var database: OpaquePointer?
+        try #require(sqlite3_open(url.path, &database) == SQLITE_OK)
+        defer { sqlite3_close(database) }
+        try #require(sqlite3_exec(
+            database,
+            "CREATE TRIGGER fail_schedule_cleanup BEFORE DELETE ON gmail_scheduled_sends BEGIN SELECT RAISE(ABORT, 'test cleanup failure'); END;",
+            nil,
+            nil,
+            nil
+        ) == SQLITE_OK)
+        try await backend.rescheduleSend(id: "cleanup", for: .distantPast)
+        await backend.deliverDueScheduledSends()
+        await backend.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 1)
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        await backend.disconnect()
+    }
+
+    @Test("rate-limited schedules keep their content and backoff across restart")
+    func scheduledBackoffSurvivesRestart() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        await transport.setSendError(.retryable(statusCode: 429, retryAfter: 600))
+        let backend = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await backend.connect()
+        _ = try await backend.send(draft: Draft(
+            id: "limited",
+            to: [.init(email: "to@example.org")],
+            subject: "Wait",
+            scheduledFor: .distantPast
+        ))
+        await backend.deliverDueScheduledSends()
+        let entry = try #require(backend.pendingScheduledSends().first)
+        #expect(entry.state == .waiting)
+        #expect(try #require(entry.nextAttemptAt) > Date().addingTimeInterval(500))
+        await backend.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 1)
+        await backend.disconnect()
+        let restored = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await restored.connect()
+        await restored.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 1)
+        #expect(restored.pendingScheduledSends().first?.nextAttemptAt == entry.nextAttemptAt)
+        let retained = try await restored.cancelScheduledSend(id: "limited")
+        #expect(retained.subject == "Wait")
+        #expect(retained.scheduledFor == nil)
+        #expect(restored.pendingScheduledSends().isEmpty)
+        await restored.disconnect()
+    }
+
+    @Test(
+        "unsupported signing and encryption are never queued or sent as plaintext",
+        arguments: [OutboundMessageSecurityMode.sign, .encrypt, .signAndEncrypt]
+    )
+    func protectedMailRequiresCrypto(_ mode: OutboundMessageSecurityMode) async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let backend = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await backend.connect()
+        let draft = Draft(id: "protected", to: [.init(email: "to@example.org")], subject: "Protected",
+                          scheduledFor: Date().addingTimeInterval(3600), securityMode: mode)
+        await #expect(throws: OutboundCryptoEngineUnavailableError.self) { _ = try await backend.send(draft: draft) }
+        #expect(backend.pendingScheduledSends().isEmpty)
+        #expect(await transport.rawSendCount() == 0)
+        await backend.disconnect()
+    }
+
+    @Test("ambiguous scheduled delivery remains held across repeat passes and restart")
+    func ambiguousScheduleRequiresReview() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        await transport.setSendError(.ambiguousSendOutcome)
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        _ = try await backend.send(draft: Draft(id: "uncertain", to: [.init(email: "to@example.org")], subject: "Review",
+                                                scheduledFor: .distantPast))
+        await backend.deliverDueScheduledSends()
+        await backend.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 1)
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        await backend.disconnect()
+        let restored = try GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: SQLiteGmailAccountStore(databaseURL: url)
+        )
+        try await restored.connect()
+        await restored.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 1)
+        #expect(restored.pendingScheduledSends().first?.state == .needsReview)
+        await #expect(throws: GmailScheduledSendError.self) {
+            try await restored.rescheduleSend(id: "uncertain", for: .distantPast)
+        }
+        #expect(restored.pendingScheduledSends().first?.state == .needsReview)
+        await transport.setSendError(nil)
+        try await restored.retryReviewedScheduledSend(id: "uncertain", for: .distantPast)
+        await restored.deliverDueScheduledSends()
+        #expect(await transport.rawSendCount() == 2)
+        #expect(restored.pendingScheduledSends().isEmpty)
+        await restored.disconnect()
+    }
+
+    @Test("delivery uses submitted content and preserves later unscheduled edits")
+    func scheduledContentIsFrozen() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        let draft = try await backend.save(draft: Draft(id: "frozen-local", to: [.init(email: "to@example.org")],
+                                                        subject: "Frozen", htmlBody: "<p>Submitted snapshot</p>",
+                                                        scheduledFor: Date().addingTimeInterval(3600)))
+        _ = try await backend.send(draft: draft)
+        var edited = draft
+        edited.htmlBody = "<p>Later unscheduled edits</p>"
+        edited.scheduledFor = nil
+        _ = try await backend.save(draft: edited)
+        try await backend.rescheduleSend(id: draft.id, for: .distantPast)
+        await backend.deliverDueScheduledSends()
+        let sent = try #require(await transport.sentRawMIME())
+        #expect(sent.contains("Submitted snapshot"))
+        #expect(!sent.contains("Later unscheduled edits"))
+        #expect(try await store.draft(accountID: Self.account.id, draftID: draft.id)?.htmlBody == edited.htmlBody)
+        #expect(await transport.deletedDraftIDs().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("saving a draft with a chosen date does not submit scheduling intent")
+    func autosaveDoesNotSchedule() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let backend = try GmailAPIBackend(account: Self.account, transport: DraftBackendTransport(),
+                                          store: SQLiteGmailAccountStore(databaseURL: url))
+        try await backend.connect()
+        _ = try await backend.save(draft: Draft(
+            id: "not-submitted",
+            subject: "Still composing",
+            scheduledFor: Date().addingTimeInterval(3600)
+        ))
+        let service = try #require(backend.extensionService(ScheduledSendManaging.self))
+        #expect(service.pendingScheduledSends().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("due scheduled mail is sent once and removed from the durable queue")
+    func deliversDueScheduleOnce() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        let draft = Draft(id: "due-local", to: [.init(email: "to@example.org")], subject: "Due now",
+                          htmlBody: "<p>Submitted content</p>", scheduledFor: .distantPast)
+        _ = try await backend.send(draft: draft)
+        await backend.deliverDueScheduledSends()
+        await backend.deliverDueScheduledSends()
+        #expect(await transport.sentRawMIME()?.contains("Submitted content") == true)
+        #expect(await transport.rawSendCount() == 1)
+        #expect(backend.pendingScheduledSends().isEmpty)
+        #expect(try await store.scheduledDraft(accountID: Self.account.id, draftID: draft.id) == nil)
+        await backend.disconnect()
+    }
+
+    @Test("explicit scheduling persists without submitting mail and survives restart")
+    func schedulesWithoutSending() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-schedule-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let transport = DraftBackendTransport()
+        let due = Date().addingTimeInterval(3600)
+        let draft = Draft(id: "scheduled-local", to: [.init(email: "to@example.org")], subject: "Later",
+                          htmlBody: "<p>Frozen content</p>", scheduledFor: due)
+        do {
+            let store = try SQLiteGmailAccountStore(databaseURL: url)
+            let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+            try await backend.connect()
+            let result = try await backend.send(draft: draft)
+            #expect(result.sentMessageID == nil)
+            #expect(result.scheduledFor == due)
+            let service = try #require(backend.extensionService(ScheduledSendManaging.self))
+            #expect(service.pendingScheduledSends().map(\.draftID) == [draft.id])
+            #expect(await transport.sentRawMIME() == nil)
+            #expect(await transport.sentDraftID() == nil)
+            await backend.disconnect()
+        }
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        let restored = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await restored.connect()
+        let service = try #require(restored.extensionService(ScheduledSendManaging.self))
+        #expect(service.pendingScheduledSends().map(\.draftID) == [draft.id])
+        #expect(await transport.sentRawMIME() == nil)
+        await restored.disconnect()
+    }
+
     @Test("disconnect prevents a late connect response from reactivating compose writes")
     func lateConnectCannotReactivateDrafts() async throws {
         let transport = DraftBackendTransport()
@@ -423,6 +699,7 @@ private actor DraftBackendTransport: GmailAPITransporting {
     private let sendAsError: GmailAPIError?
     private var createdMIME: String?
     private var sentMIME: String?
+    private var rawSendAttempts = 0
     private var updatedID: String?
     private var deletedIDs: [String] = []
     private var sentDraft: String?
@@ -440,6 +717,10 @@ private actor DraftBackendTransport: GmailAPITransporting {
     private var profileStarted = false
     private var profileRelease: CheckedContinuation<Void, Never>?
     private var profileStartedWaiter: CheckedContinuation<Void, Never>?
+    private var pausesSend = false
+    private var sendStarted = false
+    private var sendRelease: CheckedContinuation<Void, Never>?
+    private var sendStartedWaiter: CheckedContinuation<Void, Never>?
 
     init(sendAs: [GmailSendAs] = [GmailSendAs(
         sendAsEmail: "primary@example.com",
@@ -508,7 +789,14 @@ private actor DraftBackendTransport: GmailAPITransporting {
     }
 
     func sendMessage(rawMIME: String, threadID: String?) async throws -> GmailMessage {
+        rawSendAttempts += 1
         if let sendError { throw sendError }
+        if pausesSend {
+            sendStarted = true
+            sendStartedWaiter?.resume()
+            sendStartedWaiter = nil
+            await withCheckedContinuation { sendRelease = $0 }
+        }
         sentMIME = rawMIME
         sentThread = threadID
         return GmailMessage(id: "sent-message-1")
@@ -520,6 +808,18 @@ private actor DraftBackendTransport: GmailAPITransporting {
     }
 
     func setSendError(_ error: GmailAPIError?) { sendError = error }
+    func pauseNextSend() { pausesSend = true; sendStarted = false }
+    func waitForSendStart() async {
+        if sendStarted { return }
+        await withCheckedContinuation { sendStartedWaiter = $0 }
+    }
+
+    func releaseSend() {
+        pausesSend = false
+        sendRelease?.resume()
+        sendRelease = nil
+    }
+
     func pauseNextProfile() { pausesProfile = true; profileStarted = false }
     func waitForProfileStart() async {
         if profileStarted { return }
@@ -549,6 +849,7 @@ private actor DraftBackendTransport: GmailAPITransporting {
 
     func createdRawMIME() -> String? { createdMIME }
     func sentRawMIME() -> String? { sentMIME }
+    func rawSendCount() -> Int { rawSendAttempts }
     func updatedDraftID() -> String? { updatedID }
     func deletedDraftIDs() -> [String] { deletedIDs }
     func sentDraftID() -> String? { sentDraft }

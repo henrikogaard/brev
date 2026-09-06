@@ -63,6 +63,12 @@ delete it. The staging tables belong to the canonical account with cascading
 deletion, and draft-operation session guards reject stale writes after removal.
 No credentials are added to staging and no new external service is involved.
 
+Explicit Gmail Send Later submission persists frozen MIME and delivery intent
+in account-owned SQLite rows. Automatic delivery uses existing Gmail send calls
+only for submitted schedules while the process can run. Interrupted/uncertain
+attempts are held for review, not reissued on restart. Clearing an account removes
+the queue; no helper, hosted relay, or new endpoint is introduced.
+
 ### Network calls Brev makes, by category
 
 The following external network calls exist or are planned for the v1

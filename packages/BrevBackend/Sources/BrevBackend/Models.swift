@@ -954,6 +954,8 @@ public enum MailEvent: Sendable, Hashable {
     case accountConnected(accountID: String)
     case accountDisconnected(accountID: String)
     case mailboxChanged(mailboxID: String)
+    /// Pending delivery or offline-work metadata changed for the emitting account.
+    case outboxChanged
     /// Progress of a multi-folder background refresh: `completed` of
     /// `total` folders synced. Emitted as the refresh loop advances so the
     /// view can show a determinate download indicator. `completed == total`

@@ -499,11 +499,12 @@ public final class MailNavigationState {
         case .accountConnected,
              .accountDisconnected,
              .mailboxChanged,
-             .syncProgress:
+             .syncProgress,
+             .outboxChanged:
             changedFolderID = nil
         }
 
-        if changedFolderID == selectedFolderID {
+        if let changedFolderID, changedFolderID == selectedFolderID {
             requestReload()
         }
     }

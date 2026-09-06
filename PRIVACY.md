@@ -243,6 +243,15 @@ the mailbox does not delete unsent content. Staged attachments have a 25 MiB
 aggregate limit per account. This local staging does not add a network call;
 saving a Gmail draft still uploads its MIME content to Gmail as requested.
 
+Submitting Gmail Send Later stores a frozen draft, complete MIME content,
+delivery time and attempt state in the same account-owned database. An in-process
+poller checks submitted schedules every 30 seconds and uses the existing Gmail
+send endpoint when due. It also checks on connection and during permitted app
+refresh windows. It cannot deliver while Brev is fully quit. Rate-limit and
+authentication failures may wait for retry; uncertain delivery requires explicit
+review before another attempt. Canceling retains an editable local draft; account
+removal clears the queue. Changing an autosaved draft does not itself schedule mail.
+
 Gmail API access is on only after the user explicitly adds a Google account.
 Removing the account clears its Keychain token, Gmail configuration, pending
 provider work, and Brev-owned local Gmail cache. The standards-based IMAP/SMTP

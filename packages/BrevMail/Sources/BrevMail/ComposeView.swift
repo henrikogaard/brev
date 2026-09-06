@@ -970,7 +970,7 @@ public struct ComposeView: View {
                     systemImage: "calendar.badge.clock"
                 )
             }
-            .disabled(isInteractionBlocked)
+            .disabled(isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil)
         }
         .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
     }
@@ -1150,7 +1150,7 @@ public struct ComposeView: View {
                 ? String(localized: "Edit scheduled send", bundle: .module)
                 : ComposeToolbarAction.scheduleSend.accessibilityLabel,
             systemImage: isScheduled ? "calendar.badge.clock" : "calendar.badge.clock",
-            isDisabled: isInteractionBlocked,
+            isDisabled: isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil,
             isSelected: isScheduled
         ) {
             isScheduleSheetPresented = true
@@ -2727,7 +2727,9 @@ public struct ComposeView: View {
     }
 
     private var canSend: Bool {
-        ComposeDraftBuilder.canSend(
+        guard scheduledSendDate == nil || selectedComposeBackend.extensionService(ScheduledSendManaging.self) != nil
+        else { return false }
+        return ComposeDraftBuilder.canSend(
             to: resolvedToRecipients,
             cc: resolvedCcRecipients,
             bcc: resolvedBccRecipients

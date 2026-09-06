@@ -227,6 +227,34 @@ staging; explicitly injected staging and in-memory test stores remain supported.
 This is a prerequisite for durable local scheduled sends, not an implementation
 of Gmail Send Later, new background execution, or another provider endpoint.
 
+#### Local scheduled delivery update, 2026-09-06
+
+Schema 3 adds a separate submitted-schedule table with frozen draft/MIME content,
+due time, retry time, state and a per-attempt token. Draft autosave never writes
+this table. Claims transition waiting rows to delivering before network dispatch;
+only the matching attempt can finish the row. Interrupted claims become
+needs-review on connection, and a normal date change cannot authorize retry of
+an uncertain delivery. A separate reviewed action is required.
+
+Claims also carry a session owner ID. A weak in-process registry distinguishes
+live sibling backends from interrupted sessions. Recovery snapshots live owners
+inside SQLite's write transaction so a concurrent claim cannot be misclassified.
+Session registration happens only after queue initialization succeeds.
+
+The Gmail adapter uses the existing ScheduledSendManaging contract for native
+quit warnings and background refresh, plus ScheduledSendEditing for Outbox date
+changes/cancellation/reviewed retry. A 30-second in-process worker joins concurrent
+delivery requests. Known rate-limit/authentication failures use backoff for at
+most ten attempts before review; unknown
+transport, 5xx, or ambiguous outcomes do not retry automatically. Newer unscheduled
+edits survive delivery cleanup. The MIME Date header is refreshed at dispatch;
+message identity and body/attachment content remain frozen.
+
+This stays within ADR-0037's running-process model. Closed-app helpers and push
+remain governed by the separate proposed background architecture. Gmail S/MIME
+preparation remains missing; protected send requests fail explicitly instead of
+falling through to unprotected MIME.
+
 ### 9. Keep OAuth scope state explicit
 
 The initial testing implementation may use the already configured

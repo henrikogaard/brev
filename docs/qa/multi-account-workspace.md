@@ -228,3 +228,28 @@ release separately on each platform.
 The mock backend intentionally does not offer original-source export. These
 tests do not establish real provider import, local archive, backup, or restore
 support.
+
+### Issue #28 Gmail scheduled delivery, 2026-09-06
+
+- Schedule a real Gmail message with an attachment for a future time. Verify
+  Outbox appears for that account, the content remains unsent before its due
+  time, and delivery appears once in Sent with the actual delivery Date header.
+- Save a draft after choosing a date without submitting Schedule Send; verify
+  no schedule is created. Change a submitted schedule's time, then cancel one
+  and confirm its draft is retained. Full-content editing handoff and unified
+  Outbox across accounts remain follow-up work.
+- Restart with a future schedule, and separately with an interrupted delivery.
+  Only waiting due entries may send automatically. Review-held entries require
+  checking Sent and an explicit reviewed retry. Ordinary stale date sheets must
+  not bypass that review.
+- Verify transport errors, quota/authentication backoff, ten-attempt exhaustion,
+  confirmed delivery followed by local cleanup failure, and account removal
+  during a pending request. No ambiguous attempt should be automatically resent.
+- Verify sidebar count changes do not reload Inbox bodies, multi-account source
+  switching does not publish another account's count, and native quit warnings
+  accurately describe process/connection requirements.
+- Local evidence covers state transitions, competing claims/live owners,
+  restart, frozen/newer content, rate delay, failed initialization, and light/dark
+  row snapshots. Native CUA interaction was blocked by the locked Mac. Live
+  provider delivery, background/sleep/quit behavior and native control acceptance
+  are not established by those tests or by successful app builds.

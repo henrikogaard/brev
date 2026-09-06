@@ -874,3 +874,44 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Added the previously omitted BrevGmail package to hosted CI's test matrix so
   these regressions run on PRs. This one-line configuration change skips TDD;
   workflow YAML parsing and the actual package suite verify it locally.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 Gmail scheduled delivery
+
+- Added schema-3 submitted schedules with frozen MIME, metadata-only list reads,
+  atomic claims and attempt-owned completion. Autosave dates do not create intent.
+  Gmail now queues scheduled sends, restores them, runs an in-process 30-second
+  worker, and exposes existing quit/background scheduling hooks.
+- Outbox shows current-account schedules with time changes, cancellation and an
+  explicit reviewed retry. A stale date sheet cannot authorize an uncertain retry.
+  Sidebar counts use account-scoped outbox events instead of body reloads/polling.
+- Tests cover queue persistence, due delivery once, competing SQLite claims,
+  restart/uncertainty holds, retry classification, frozen content, newer-edit
+  retention, Date header refresh, and preventing protected requests from falling
+  through to plaintext. Full Gmail S/MIME preparation remains provider-parity work.
+- Found and fixed nil-folder event handling that reloaded unified views for
+  outbox-only metadata. New light/dark scheduled-row snapshots were rendered and
+  inspected; the compatible-renderer CI group includes them.
+- First hosted Gmail job on a0f664a exposed an older Swift Testing macro expansion
+  error in GmailRuntimeSyncTests. Awaiting Task.value before #require fixes that
+  test portability issue. Other 19 checks on a0f664a passed. Hosted confirmation
+  of this fix and final full-suite/build/review verification follow.
+- Existing IMAP scheduled editing, full-content editor handoff, unified multi-
+  account Outbox, offline startup editing, live-provider QA and broader goal
+  requirements remain open; this slice does not establish full provider parity.
+- Review fixes add session-owned claims and weak live-owner tracking to avoid
+  treating another active backend as interrupted. Ownership is read under the
+  SQLite write transaction; failed queue initialization does not register a live
+  owner or publish connected state. Automatic attempts stop at ten.
+- Confirmed delivery with failed local deletion is held for review without
+  automatic resend. Date-only autosaves are not scheduling intent; content and
+  other metadata changes remain protected from delivery cleanup.
+- Full local verification so far: 1,030 Backend, 1,546 Mail and 131 Gmail tests
+  pass. Native mock macOS build/startup and iOS Mail/Gmail compilation pass.
+  Light/dark scheduled-row snapshots pass. Native CUA inspection is unavailable
+  because the Mac is locked; live Gmail delivery/quit/Outbox acceptance is pending.
+- Final verification: Gmail 131, Mail 1,546, Backend 1,030, and separate Contacts
+  6 tests pass. Native dated mock macOS build/startup and iOS Mail/Gmail builds
+  pass. Lint, unchanged formatter output, privacy audit, workflow YAML parsing
+  and diff checks pass. Both review axes cleared the final race/error fixes.
+  UI copy changes reuse the inspected scheduled-row component; full native
+  Outbox interaction/live-provider acceptance remains unverified while locked.

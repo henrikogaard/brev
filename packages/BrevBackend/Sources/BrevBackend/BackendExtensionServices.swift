@@ -190,16 +190,37 @@ public protocol OutboxManaging: BackendExtensionService {
     func discardAllMutations() async
 }
 
-/// A draft queued for scheduled ("send later") delivery.
-public struct PendingScheduledSend: Sendable, Hashable {
+/// Local scheduled-delivery lifecycle, including outcomes that require explicit review.
+public enum ScheduledSendState: String, Codable, Sendable {
+    case waiting, delivering, needsReview
+}
+
+/// Metadata for a submitted scheduled send; autosaved dates do not create entries.
+public struct PendingScheduledSend: Sendable, Hashable, Identifiable {
+    /// Identity within the owning account's Outbox.
+    public var id: String { draftID }
     /// The staged draft that will be sent.
     public let draftID: String
     /// When the draft is due to be sent.
     public let scheduledFor: Date
+    /// Submitted subject, without loading message bodies for the list.
+    public let subject: String
+    /// Whether automatic delivery is permitted or held for review.
+    public let state: ScheduledSendState
+    /// Safe user-facing failure detail when delivery needs attention.
+    public let lastError: String?
+    /// Earliest automatic retry after a known-safe failure.
+    public let nextAttemptAt: Date?
 
-    public init(draftID: String, scheduledFor: Date) {
+    /// Creates metadata; older adapters may supply just the draft and due date.
+    public init(draftID: String, scheduledFor: Date, subject: String = "", state: ScheduledSendState = .waiting,
+                lastError: String? = nil, nextAttemptAt: Date? = nil) {
         self.draftID = draftID
         self.scheduledFor = scheduledFor
+        self.subject = subject
+        self.state = state
+        self.lastError = lastError
+        self.nextAttemptAt = nextAttemptAt
     }
 }
 
@@ -215,9 +236,21 @@ public protocol ScheduledSendManaging: BackendExtensionService {
     func pendingScheduledSends() -> [PendingScheduledSend]
     /// Delivers every scheduled draft whose due date has passed. Safe to call
     /// concurrently with the backend's own poller; retryable failures stay
-    /// queued, while ambiguous SMTP deliveries become surfaced conflicts and
+    /// queued, while ambiguous deliveries require explicit review and
     /// are never retried automatically.
     func deliverDueScheduledSends() async
+}
+
+/// User-requested changes to submitted schedules, separate from ordinary draft autosave.
+public protocol ScheduledSendEditing: ScheduledSendManaging {
+    /// Loads the frozen submitted draft for review.
+    func scheduledDraft(id: String) async throws -> Draft
+    /// Removes scheduling intent and returns an unscheduled draft, retaining its content.
+    func cancelScheduledSend(id: String) async throws -> Draft
+    /// Changes a waiting schedule; uncertain attempts require the separate reviewed retry action.
+    func rescheduleSend(id: String, for date: Date) async throws
+    /// Explicitly retries after the user has reviewed Sent and accepted possible duplicate delivery.
+    func retryReviewedScheduledSend(id: String, for date: Date) async throws
 }
 
 /// Exposes the minimum account information needed to configure a CardDAV contact

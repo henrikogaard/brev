@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Gmail Send Later stores submitted content and delivery intent durably. Outbox
+  shows waiting, delivering and review states, with time changes, cancellation
+  and an explicit reviewed retry. Interrupted delivery is not retried silently.
+- Outbox counts update for the selected account without reloading message bodies.
+  Unsupported signing/encryption requests are rejected instead of sent as plaintext.
+
 - Gmail draft and attachment staging survives app restarts in the local SQLite
   store. Cache refreshes preserve unsent compose content, account removal clears
   it, and local storage failures no longer turn confirmed sends into failed sends.

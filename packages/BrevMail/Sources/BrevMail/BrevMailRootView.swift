@@ -472,6 +472,10 @@ public struct BrevMailRootView: View {
 
     private var mailRootContent: some View {
         mailRootCommandContextContent
+            .task(id: ObjectIdentifier(selectedBackend)) {
+                outboxPendingCount = 0
+                await refreshOutboxCount()
+            }
     }
 
     /// The status rail with its transitions animated in isolation. These
@@ -4880,9 +4884,11 @@ public struct BrevMailRootView: View {
     }
 
     private func refreshOutboxCount() async {
-        guard let manager = backend.extensionService(OutboxManaging.self) else { return }
-        let mutations = await manager.pendingMutations()
-        outboxPendingCount = mutations.count
+        let owner = selectedBackend
+        let mutations = await owner.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
+        let scheduled = owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
+        guard !Task.isCancelled, ObjectIdentifier(owner) == ObjectIdentifier(selectedBackend) else { return }
+        outboxPendingCount = mutations.count + scheduled.count
     }
 
     private func switchMailbox(to id: Mailbox.ID) async {
@@ -5721,6 +5727,9 @@ public struct BrevMailRootView: View {
         // heartbeat so outstanding root work isn't mistaken for stuck.
         bumpRootWorkProgress()
         switch event {
+        case .outboxChanged:
+            guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
+            await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,

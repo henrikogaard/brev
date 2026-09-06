@@ -40,7 +40,7 @@ public enum GmailAccountIdentity {
 /// drafts, MIME send, aliases, and signatures.
 public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderLabelCatalogManaging,
     ServerSearchSyntaxProviding, MailboxBackgroundRefreshing, SyncHealthReporting,
-    MutationApplying, OutboxManaging, SyncConflictManaging, @unchecked Sendable {
+    MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, @unchecked Sendable {
     private static let pageSize = 50
     private static let maxSearchResults = 5000
 
@@ -54,6 +54,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private let syncReconciler: GmailSyncReconciler?
     private let draftStaging: any GmailDraftStagingStore
     private let draftOperations = GmailDraftOperationCoordinator()
+    private let scheduledDelivery = GmailScheduledDeliveryDriver()
+    private var scheduledPollTask: Task<Void, Never>?
+    private var scheduledSummary: [PendingScheduledSend] = []
+    private var scheduledSummaryRevision = 0
+    private var recoveredSchedules = false
+    private var scheduledSession: GmailScheduledSession?
+
+    private var scheduledStore: (any GmailScheduledSendStore)? { store as? any GmailScheduledSendStore }
     private let offlineMutationQueue: (any OfflineMutationQueue)?
     private let offlineMutationConflictStore: (any OfflineMutationConflictStore)?
     private let lock = NSLock()
@@ -185,6 +193,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                 await probeSendAsMetadata()
                 try await draftOperations.activate(generation: draftGeneration)
                 try requireConnectionGeneration(generation)
+                try await prepareScheduledDelivery(generation: generation)
                 return
             }
             let fetchedProfile = try await transport.profile()
@@ -221,6 +230,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                 isConnected = true
                 lastSuccessfulSyncAt = Date()
             }
+            await probeSendAsMetadata()
+            try await draftOperations.activate(generation: draftGeneration)
+            try requireConnectionGeneration(generation)
+            try await prepareScheduledDelivery(generation: generation)
         } catch {
             lock.withLock {
                 guard connectionGeneration == generation else { return }
@@ -232,9 +245,6 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
             throw Self.providerNeutralError(error)
         }
-        await probeSendAsMetadata()
-        try await draftOperations.activate(generation: draftGeneration)
-        try requireConnectionGeneration(generation)
     }
 
     private func requireConnectionGeneration(_ expected: UUID) throws {
@@ -247,6 +257,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         let continuations = lock.withLock { () -> [AsyncStream<MailEvent>.Continuation] in
             isConnected = false
             connectionGeneration = UUID()
+            scheduledPollTask?.cancel()
+            scheduledPollTask = nil
+            recoveredSchedules = false
+            if let scheduledSession { GmailScheduledSessionRegistry.shared.retire(scheduledSession, accountID: account.id) }
+            scheduledSession = nil
             cachedFolderRefreshTasks.values.forEach { $0.cancel() }
             cachedFolderRefreshTasks.removeAll()
             refreshedCachedFolders.removeAll()
@@ -254,6 +269,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             subscribers.removeAll()
             return values
         }
+        await scheduledDelivery.cancel()
         await draftOperations.deactivate()
         continuations.forEach { $0.finish() }
     }
@@ -646,6 +662,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private func performDiscard(draftID: String, lease: GmailDraftOperationCoordinator.Lease) async throws {
         let stored = try await draftStaging.draft(accountID: account.id, draftID: draftID)
+        if let scheduledStore,
+           try await scheduledStore.scheduledDraft(accountID: account.id, draftID: stored?.id ?? draftID) != nil {
+            throw GmailScheduledSendError.inFlight
+        }
         try await draftOperations.check(lease)
         if let remoteID = stored?.remoteID ?? (stored == nil ? draftID : nil) {
             do { try await transport.deleteDraft(id: remoteID) }
@@ -661,13 +681,16 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     public func send(draft: Draft) async throws -> SendResult {
         try requireConnected()
         try validateSendDraft(draft)
-        guard draft.scheduledFor == nil else { throw unsupported() }
         return try await draftOperations.withOperation(identifiers: [draft.id, draft.remoteID ?? ""]) { lease in
-            try await self.performSend(draft: draft, lease: lease)
+            if draft.scheduledFor != nil { return try await self.schedule(draft: draft, lease: lease) }
+            return try await self.performSend(draft: draft, lease: lease)
         }
     }
 
     private func performSend(draft: Draft, lease: GmailDraftOperationCoordinator.Lease) async throws -> SendResult {
+        if let scheduledStore, try await scheduledStore.scheduledDraft(accountID: account.id, draftID: draft.id) != nil {
+            throw GmailScheduledSendError.inFlight
+        }
         try await draftOperations.withStaging(lease) { try await self.draftStaging.setDraft(draft, accountID: self.account.id) }
         try await draftOperations.check(lease)
         let sent: GmailMessage
@@ -697,6 +720,208 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
         } catch { recordSyncFailure(error) }
         return SendResult(sentMessageID: sent.id)
+    }
+
+    private func schedule(draft: Draft, lease: GmailDraftOperationCoordinator.Lease) async throws -> SendResult {
+        guard let scheduledStore else { throw unsupported() }
+        try await draftOperations.withStaging(lease) { try await self.draftStaging.setDraft(draft, accountID: self.account.id) }
+        let mime = try await MIMEMessageBuilder(draft: draft, from: sender(for: draft),
+                                                attachments: stagedMIMEAttachments(for: draft)).build()
+        try await draftOperations.withStaging(lease) {
+            try await scheduledStore.enqueueScheduledSend(draft, rawMIME: mime, accountID: self.account.id)
+        }
+        do { try await reloadScheduledSummary() } catch { recordSyncFailure(error) }
+        return SendResult(sentMessageID: nil, scheduledFor: draft.scheduledFor)
+    }
+
+    /// Cached metadata supports the synchronous native quit warning without reading MIME content.
+    public func pendingScheduledSends() -> [PendingScheduledSend] { lock.withLock { scheduledSummary } }
+
+    /// Concurrent poller/background/manual requests join one delivery pass.
+    public func deliverDueScheduledSends() async {
+        await scheduledDelivery.run { [weak self] in await self?.deliverScheduledBatch() }
+    }
+
+    /// Returns the explicitly submitted content, not a later autosave.
+    public func scheduledDraft(id: String) async throws -> Draft {
+        guard let scheduledStore, let draft = try await scheduledStore.scheduledDraft(accountID: account.id, draftID: id) else {
+            throw GmailScheduledSendError.notFound
+        }
+        return draft
+    }
+
+    /// Withdraws the schedule and preserves content for editing.
+    public func cancelScheduledSend(id: String) async throws -> Draft {
+        guard let scheduledStore else { throw unsupported() }
+        let original = try await scheduledDraft(id: id)
+        let draft = try await draftOperations.withOperation(identifiers: [id, original.remoteID ?? ""]) { lease in
+            try await self.draftOperations.withStaging(lease) {
+                try await scheduledStore.cancelScheduledSend(accountID: self.account.id, draftID: id)
+            }
+        }
+        do { try await reloadScheduledSummary() } catch { recordSyncFailure(error) }
+        return draft
+    }
+
+    /// Reschedules frozen content following an explicit user request.
+    public func rescheduleSend(id: String, for date: Date) async throws {
+        try await changeScheduledTime(id: id, date: date, allowReview: false)
+    }
+
+    /// Retries uncertain delivery only through an explicit reviewed action.
+    public func retryReviewedScheduledSend(id: String, for date: Date) async throws {
+        try await changeScheduledTime(id: id, date: date, allowReview: true)
+    }
+
+    private func changeScheduledTime(id: String, date: Date, allowReview: Bool) async throws {
+        guard let scheduledStore else { throw unsupported() }
+        let original = try await scheduledDraft(id: id)
+        try await draftOperations.withOperation(identifiers: [id, original.remoteID ?? ""]) { lease in
+            try await self.draftOperations.withStaging(lease) {
+                try await scheduledStore.rescheduleSend(
+                    accountID: self.account.id,
+                    draftID: id,
+                    date: date,
+                    allowReview: allowReview
+                )
+            }
+        }
+        do { try await reloadScheduledSummary() } catch { recordSyncFailure(error) }
+    }
+
+    private func prepareScheduledDelivery(generation: UUID) async throws {
+        guard let scheduledStore else { return }
+        if !lock.withLock({ recoveredSchedules }) {
+            try await draftOperations.withOperation(identifiers: []) { lease in
+                try await self.draftOperations.withStaging(lease) {
+                    try await scheduledStore.recoverInterruptedScheduledSends(accountID: self.account.id) {
+                        GmailScheduledSessionRegistry.shared.activeIDs(accountID: self.account.id)
+                    }
+                }
+            }
+        }
+        try await reloadScheduledSummary()
+        try lock.withLock {
+            guard connectionGeneration == generation else { throw MailBackendError.notConnected }
+            if scheduledSession == nil { scheduledSession = GmailScheduledSessionRegistry.shared.register(accountID: account.id) }
+            recoveredSchedules = true
+            guard scheduledPollTask == nil else { return }
+            scheduledPollTask = Task { [weak self] in
+                await self?.deliverDueScheduledSends()
+                while !Task.isCancelled {
+                    do { try await Task.sleep(for: .seconds(30)) } catch { return }
+                    guard !Task.isCancelled, let self else { return }
+                    await deliverDueScheduledSends()
+                }
+            }
+        }
+    }
+
+    private func reloadScheduledSummary() async throws {
+        guard let scheduledStore else { return }
+        let request = lock.withLock { () -> (Int, UUID) in
+            scheduledSummaryRevision += 1
+            return (scheduledSummaryRevision, connectionGeneration)
+        }
+        let values = try await scheduledStore.scheduledSends(accountID: account.id)
+        let changed = lock.withLock { () -> Bool in
+            guard scheduledSummaryRevision == request.0, connectionGeneration == request.1 else { return false }
+            let changed = scheduledSummary != values
+            scheduledSummary = values
+            return changed
+        }
+        if changed { emit(.outboxChanged) }
+    }
+
+    private func deliverScheduledBatch() async {
+        guard let scheduledStore, lock.withLock({ isConnected }), !Task.isCancelled else { return }
+        do {
+            let ownID = lock.withLock { scheduledSession?.id }
+            try await draftOperations.withOperation(identifiers: []) { lease in
+                try await self.draftOperations.withStaging(lease) {
+                    try await scheduledStore.recoverInterruptedScheduledSends(accountID: self.account.id) {
+                        var owners = GmailScheduledSessionRegistry.shared.activeIDs(accountID: self.account.id)
+                        if let ownID { owners.remove(ownID) }
+                        return owners
+                    }
+                }
+            }
+            try await reloadScheduledSummary()
+            let now = Date()
+            let due = pendingScheduledSends().filter {
+                $0.state == .waiting && $0.scheduledFor <= now && ($0.nextAttemptAt.map { $0 <= now } ?? true)
+            }
+            for entry in due {
+                try Task.checkCancellation()
+                let snapshot = try await scheduledDraft(id: entry.draftID)
+                do {
+                    try await draftOperations.withOperation(identifiers: [snapshot.id, snapshot.remoteID ?? ""]) { lease in
+                        guard let ownerID = self.lock.withLock({ self.scheduledSession?.id })
+                        else { throw MailBackendError.notConnected }
+                        guard let attempt = try await self.draftOperations.withStaging(lease, operation: {
+                            try await scheduledStore.claimScheduledSend(
+                                accountID: self.account.id,
+                                draftID: snapshot.id,
+                                now: Date(),
+                                ownerID: ownerID
+                            )
+                        }) else { return }
+                        do { try await self.reloadScheduledSummary() } catch { self.recordSyncFailure(error) }
+                        try await self.draftOperations.check(lease)
+                        do {
+                            try self.validateSendDraft(attempt.draft)
+                            let source = try GmailScheduledMIME.source(attempt.rawMIME, sentAt: Date())
+                            let result = try await self.transport.sendMessage(rawMIME: source,
+                                                                              threadID: attempt.draft.threadID)
+                            guard !result.id.isEmpty else { throw GmailAPIError.malformedResponse }
+                        } catch {
+                            let retryAt = GmailScheduledRetryPolicy.retryDate(
+                                for: error,
+                                attempt: attempt.attemptCount,
+                                now: Date()
+                            )
+                            try await self.draftOperations.withStaging(lease) {
+                                try await scheduledStore.failScheduledSend(accountID: self.account.id, draftID: snapshot.id,
+                                                                           attemptID: attempt.attemptID,
+                                                                           message: error.localizedDescription, retryAt: retryAt)
+                            }
+                            return
+                        }
+                        // Once sent, local failure leaves a non-retryable delivering record for recovery.
+                        let canRemoveProviderDraft: Bool
+                        do {
+                            canRemoveProviderDraft = try await self.draftOperations.withStaging(lease) {
+                                try await scheduledStore.completeScheduledSend(accountID: self.account.id, draftID: snapshot.id,
+                                                                               attemptID: attempt.attemptID)
+                            }
+                        } catch {
+                            self.recordSyncFailure(error)
+                            let message = String(
+                                localized: "Gmail confirmed delivery, but local cleanup failed. Check Sent before removing this schedule.",
+                                bundle: .module
+                            )
+                            try await self.draftOperations.withStaging(lease) {
+                                try await scheduledStore.failScheduledSend(accountID: self.account.id, draftID: snapshot.id,
+                                                                           attemptID: attempt.attemptID, message: message,
+                                                                           retryAt: nil)
+                            }
+                            return
+                        }
+                        if canRemoveProviderDraft, let remoteID = attempt.draft.remoteID {
+                            try await self.draftOperations.check(lease)
+                            do { try await self.transport.deleteDraft(id: remoteID) }
+                            catch GmailAPIError.httpFailure(statusCode: 404) {}
+                            catch { self.recordSyncFailure(error) }
+                        }
+                    }
+                } catch GmailDraftOperationError.busy {
+                    continue // A composer owns the draft; leave its unclaimed schedule for the next tick.
+                }
+            }
+            try await reloadScheduledSummary()
+        } catch {
+            if !Task.isCancelled { recordSyncFailure(error) }
+        }
     }
 
     /// Returns existing Gmail send-as identities.
@@ -974,6 +1199,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
+            guard scheduledStore != nil else { return nil }
+            return self as? Service
         case ObjectIdentifier(MessageLabelManaging.self):
             guard client != nil else { return nil }
             return self as? Service
@@ -1092,6 +1320,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private func validateSendDraft(_ draft: Draft) throws {
         try validateDraftID(draft)
+        guard draft.securityMode == .none else { throw OutboundCryptoEngineUnavailableError(mode: draft.securityMode) }
         guard !(draft.to + draft.cc + draft.bcc).isEmpty else {
             throw DraftValidationError.missingRecipients
         }
