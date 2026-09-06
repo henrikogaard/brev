@@ -751,7 +751,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     /// Withdraws the schedule and preserves content for editing.
-    public func cancelScheduledSend(id: String) async throws -> Draft {
+    public func cancelScheduledSend(id: String) async throws -> Draft? {
         guard let scheduledStore else { throw unsupported() }
         let original = try await scheduledDraft(id: id)
         let draft = try await draftOperations.withOperation(identifiers: [id, original.remoteID ?? ""]) { lease in

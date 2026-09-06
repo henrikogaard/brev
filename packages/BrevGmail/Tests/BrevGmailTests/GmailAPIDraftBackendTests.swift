@@ -134,7 +134,7 @@ struct GmailAPIDraftBackendTests {
         await restored.deliverDueScheduledSends()
         #expect(await transport.rawSendCount() == 1)
         #expect(restored.pendingScheduledSends().first?.nextAttemptAt == entry.nextAttemptAt)
-        let retained = try await restored.cancelScheduledSend(id: "limited")
+        let retained = try #require(try await restored.cancelScheduledSend(id: "limited"))
         #expect(retained.subject == "Wait")
         #expect(retained.scheduledFor == nil)
         #expect(restored.pendingScheduledSends().isEmpty)

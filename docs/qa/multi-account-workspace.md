@@ -253,3 +253,23 @@ support.
   row snapshots. Native CUA interaction was blocked by the locked Mac. Live
   provider delivery, background/sleep/quit behavior and native control acceptance
   are not established by those tests or by successful app builds.
+
+### Issue #28 IMAP scheduled editing, 2026-09-06
+
+- In each IMAP account's Outbox, change a future schedule and cancel another.
+  Confirm the account scope, date, count and retained draft content. If the local
+  draft is unavailable, cancellation must still withdraw the intent.
+- Hold SMTP delivery open. Editing that message must fail visibly while editing
+  another schedule remains available. Repeat with two backend instances sharing
+  one account and confirm only one submission occurs.
+- Reconnect after a known failure before its retry date. Confirm no immediate
+  second attempt. Ten failures must require review. Interrupt a claimed attempt
+  and confirm neither elapsed time nor an ordinary date edit releases it.
+- Simulate an uncertain SMTP DATA outcome. The message must remain in Outbox
+  with a Check Sent warning and no duplicate offline-conflict retry entry.
+- Remove an account during pending delivery, recreate its local draft identity,
+  and release the old response. The replacement draft and metadata must survive.
+- These checks have injected-transport regression coverage. Native interaction,
+  real SMTP delivery, sleep/quit behavior and cross-client Sent verification remain
+  acceptance work. Legacy IMAP metadata is not an atomic draft/schedule journal;
+  full-content editing handoff and frozen submitted IMAP content remain open.

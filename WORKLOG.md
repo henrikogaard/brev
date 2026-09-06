@@ -915,3 +915,36 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   and diff checks pass. Both review axes cleared the final race/error fixes.
   UI copy changes reuse the inspected scheduled-row component; full native
   Outbox interaction/live-provider acceptance remains unverified while locked.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 IMAP scheduled editing
+
+- Added shared Outbox scheduling controls for IMAP, staged-write readback, optional
+  cancellation recovery, current-metadata serialization, per-account delivery and
+  per-draft edit exclusion, and account lifetime checks around local cleanup.
+- Backoff survives reconnect and public hooks. Interrupted/uncertain delivery,
+  missing content and ten failed attempts stay visible for reviewed recovery.
+  Scheduled SMTP uncertainty has one retry route in Outbox; ordinary offline
+  conflicts are unchanged. Gmail adopts the compatible optional cancellation
+  result without changing its stored draft behavior.
+- TDD reproduced duplicate retries, interrupted-claim bypass, lost unavailable
+  intent and uncertain delivery leaving Outbox. Focused scheduling tests passed
+  after fixes; full suites, native builds, lint and independent review follow.
+- Updated CHANGELOG, ADR-0022, PRIVACY and QA guidance. README setup and backend
+  direction are unchanged. No new external calls or background execution model.
+- Remaining: frozen IMAP submission/journal, full draft editor handoff, unified
+  Outbox, offline startup, live/native acceptance and the broader issue28 scope.
+
+- Independent standards/behavior review identified missing-store recovery and
+  cancellation during SMTP. Regression tests reproduced both; schedule metadata
+  remains discoverable without staging, and canceled attempts require review.
+  Canceling a recoverable schedule also clears its retained draft date, verified
+  by a failing/passing persistence assertion. Date-only rescheduling intentionally
+  keeps metadata authoritative to avoid rewriting concurrently edited bodies.
+
+- Final local suites: Backend 1,038, Mail 1,546, Gmail 131 and separate Contacts
+  6 passed. Dated mock macOS build/startup passed. iOS Mail/Gmail compilation,
+  lint, formatter check, privacy audit and diff checks passed before the final
+  review fixes; macOS and lint/privacy were rerun green afterward. Final iOS Mail
+  rebuild also passed. Native interactions/live-provider sends remain unverified;
+  the Mac was locked during the prior native attempt. No UI layout changed, so
+  existing inspected scheduled-row snapshots were not re-recorded.

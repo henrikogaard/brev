@@ -243,6 +243,13 @@ the mailbox does not delete unsent content. Staged attachments have a 25 MiB
 aggregate limit per account. This local staging does not add a network call;
 saving a Gmail draft still uploads its MIME content to Gmail as requested.
 
+IMAP Send Later retains its scheduling intent locally as draft identifiers,
+dates, attempt counts, and recovery reasons. Message content remains in the local
+draft staging store. The Outbox keeps interrupted delivery and missing drafts
+visible until you cancel or explicitly retry; cancellation retains recoverable
+content. Account removal clears scheduling metadata. Time changes and cancellation
+add no network request. Sending uses the account's existing SMTP connection.
+
 Submitting Gmail Send Later stores a frozen draft, complete MIME content,
 delivery time and attempt state in the same account-owned database. An in-process
 poller checks submitted schedules every 30 seconds and uses the existing Gmail

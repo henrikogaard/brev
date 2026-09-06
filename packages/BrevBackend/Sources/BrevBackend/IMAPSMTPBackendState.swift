@@ -542,30 +542,34 @@ struct StagedAttachment: Sendable, Hashable {
 
 // MARK: - Scheduled send support
 
+enum IMAPScheduledReviewReason: String, Codable, Sendable { case draftUnavailable, retryLimit, deliveryUncertain }
+
 struct ScheduledDraftEntry: Codable, Sendable, Hashable {
     let draftID: String
     let scheduledFor: Date
-    /// When this entry was last claimed by a delivery pass. Acts as a short
-    /// lease so two concurrent passes don't both send the same draft.
+    /// A claimed entry never expires into automatic resend after interruption.
     var claimedAt: Date?
     /// Number of failed delivery attempts, used to compute `nextAttemptAt`.
     var attemptCount: Int
     /// Earliest time the polling loop may retry after a failure (`nil` = eligible
-    /// immediately). An explicit reconnect ignores this — see `claimDueEntries`.
+    /// immediately). Reconnect and polling both respect this date.
     var nextAttemptAt: Date?
+    var reviewReason: IMAPScheduledReviewReason?
 
     init(
         draftID: String,
         scheduledFor: Date,
         claimedAt: Date? = nil,
         attemptCount: Int = 0,
-        nextAttemptAt: Date? = nil
+        nextAttemptAt: Date? = nil,
+        reviewReason: IMAPScheduledReviewReason? = nil
     ) {
         self.draftID = draftID
         self.scheduledFor = scheduledFor
         self.claimedAt = claimedAt
         self.attemptCount = attemptCount
         self.nextAttemptAt = nextAttemptAt
+        self.reviewReason = reviewReason
     }
 
     init(from decoder: any Decoder) throws {
@@ -576,27 +580,27 @@ struct ScheduledDraftEntry: Codable, Sendable, Hashable {
         claimedAt = try container.decodeIfPresent(Date.self, forKey: .claimedAt)
         attemptCount = try container.decodeIfPresent(Int.self, forKey: .attemptCount) ?? 0
         nextAttemptAt = try container.decodeIfPresent(Date.self, forKey: .nextAttemptAt)
+        reviewReason = try container.decodeIfPresent(IMAPScheduledReviewReason.self, forKey: .reviewReason)
     }
 }
 
 final class ScheduledSendStore: @unchecked Sendable {
-    private let lock = NSLock()
-    /// The store is shared by a backend instance, so its in-memory cache must
-    /// remain account-scoped just like the persisted UserDefaults keys.
-    private var cachedEntriesByAccountID: [BrevAccount.ID: [ScheduledDraftEntry]] = [:]
+    private static let lock = NSLock()
+    // Instances share a lock and read current metadata so stale snapshots cannot
+    // overwrite another backend's edits or claims.
 
     private static func userDefaultsKey(for accountID: BrevAccount.ID) -> String {
         "scheduledSends.\(accountID)"
     }
 
     func entries(accountID: BrevAccount.ID) -> [ScheduledDraftEntry] {
-        lock.withLock {
+        Self.lock.withLock {
             entriesWithoutLock(accountID: accountID)
         }
     }
 
     func add(entry: ScheduledDraftEntry, accountID: BrevAccount.ID) {
-        lock.withLock {
+        Self.lock.withLock {
             var entries = entriesWithoutLock(accountID: accountID)
             entries.removeAll { $0.draftID == entry.draftID }
             entries.append(entry)
@@ -605,7 +609,7 @@ final class ScheduledSendStore: @unchecked Sendable {
     }
 
     func remove(draftID: String, accountID: BrevAccount.ID) {
-        lock.withLock {
+        Self.lock.withLock {
             var entries = entriesWithoutLock(accountID: accountID)
             entries.removeAll { $0.draftID == draftID }
             persist(entries, accountID: accountID)
@@ -613,32 +617,26 @@ final class ScheduledSendStore: @unchecked Sendable {
     }
 
     func dueEntries(accountID: BrevAccount.ID, before: Date) -> [ScheduledDraftEntry] {
-        lock.withLock {
+        Self.lock.withLock {
             entriesWithoutLock(accountID: accountID).filter { $0.scheduledFor <= before }
         }
     }
 
-    /// Atomically claims due entries for delivery, stamping each with a lease so
-    /// a concurrent pass won't re-claim the same draft. Entries throttled by a
-    /// post-failure backoff (`nextAttemptAt` in the future) or still inside an
-    /// unexpired claim lease are skipped unless `force` is set — an explicit
-    /// reconnect retries immediately and clears stale claims/backoff gating.
+    /// Claims due entries without expiring interrupted work into a possible duplicate send.
     func claimDueEntries(
         accountID: BrevAccount.ID,
         before now: Date,
-        lease: TimeInterval,
-        force: Bool = false
+        onlyDraftID: String? = nil
     ) -> [ScheduledDraftEntry] {
-        lock.withLock {
+        Self.lock.withLock {
             var all = entriesWithoutLock(accountID: accountID)
             var claimed: [ScheduledDraftEntry] = []
             for index in all.indices {
                 let entry = all[index]
+                if let onlyDraftID, entry.draftID != onlyDraftID { continue }
                 guard entry.scheduledFor <= now else { continue }
-                if !force {
-                    if let nextAttemptAt = entry.nextAttemptAt, nextAttemptAt > now { continue }
-                    if let claimedAt = entry.claimedAt, now.timeIntervalSince(claimedAt) < lease { continue }
-                }
+                if let nextAttemptAt = entry.nextAttemptAt, nextAttemptAt > now { continue }
+                guard entry.claimedAt == nil, entry.reviewReason == nil else { continue }
                 all[index].claimedAt = now
                 claimed.append(all[index])
             }
@@ -649,7 +647,7 @@ final class ScheduledSendStore: @unchecked Sendable {
         }
     }
 
-    /// Records a failed delivery attempt: releases the claim lease and pushes the
+    /// Records a failed delivery attempt: releases the claim and pushes the
     /// next eligible retry out with capped exponential backoff, so a
     /// permanently-failing send no longer fires a full SMTP attempt on every tick.
     func recordSendFailure(
@@ -659,22 +657,28 @@ final class ScheduledSendStore: @unchecked Sendable {
         baseInterval: TimeInterval,
         maxInterval: TimeInterval
     ) {
-        lock.withLock {
+        Self.lock.withLock {
             var all = entriesWithoutLock(accountID: accountID)
             guard let index = all.firstIndex(where: { $0.draftID == draftID }) else { return }
             var entry = all[index]
             entry.attemptCount += 1
-            let delay = min(maxInterval, baseInterval * pow(2, Double(entry.attemptCount - 1)))
-            entry.nextAttemptAt = now.addingTimeInterval(delay)
-            entry.claimedAt = nil
+            if entry.attemptCount >= 10 {
+                entry.claimedAt = now
+                entry.nextAttemptAt = nil
+                entry.reviewReason = .retryLimit
+            } else {
+                let delay = min(maxInterval, baseInterval * pow(2, Double(entry.attemptCount - 1)))
+                entry.nextAttemptAt = now.addingTimeInterval(delay)
+                entry.claimedAt = nil
+                entry.reviewReason = nil
+            }
             all[index] = entry
             persist(all, accountID: accountID)
         }
     }
 
     func clear(accountID: BrevAccount.ID) {
-        lock.withLock {
-            cachedEntriesByAccountID[accountID] = []
+        Self.lock.withLock {
             UserDefaults.standard.removeObject(forKey: Self.userDefaultsKey(for: accountID))
         }
     }
@@ -683,26 +687,53 @@ final class ScheduledSendStore: @unchecked Sendable {
     /// live store instance — used during account teardown (#167) so a removed
     /// account leaves no orphaned `scheduledSends.<accountID>` behind.
     static func purge(accountID: BrevAccount.ID) {
-        UserDefaults.standard.removeObject(forKey: userDefaultsKey(for: accountID))
+        lock.withLock {
+            UserDefaults.standard.removeObject(forKey: userDefaultsKey(for: accountID))
+        }
     }
 
     private func entriesWithoutLock(accountID: BrevAccount.ID) -> [ScheduledDraftEntry] {
-        if let cached = cachedEntriesByAccountID[accountID] { return cached }
         let key = Self.userDefaultsKey(for: accountID)
         guard let data = UserDefaults.standard.data(forKey: key) else { return [] }
         let entries = (try? JSONDecoder().decode([ScheduledDraftEntry].self, from: data)) ?? []
-        cachedEntriesByAccountID[accountID] = entries
         return entries
     }
 
     private func persist(_ entries: [ScheduledDraftEntry], accountID: BrevAccount.ID) {
-        cachedEntriesByAccountID[accountID] = entries
         let key = Self.userDefaultsKey(for: accountID)
         if entries.isEmpty {
             UserDefaults.standard.removeObject(forKey: key)
         } else {
             let data = try? JSONEncoder().encode(entries)
             UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+
+    /// Updates only unclaimed intent, so another backend's delivery cannot be edited underneath it.
+    func editWaiting(draftID: String, accountID: BrevAccount.ID, date: Date?, allowClaimed: Bool = false) throws {
+        try Self.lock.withLock {
+            var entries = entriesWithoutLock(accountID: accountID)
+            guard let index = entries.firstIndex(where: { $0.draftID == draftID })
+            else { throw ScheduledSendEditingError.notFound }
+            guard (entries[index].claimedAt == nil && entries[index].reviewReason == nil) || allowClaimed
+            else { throw ScheduledSendEditingError.busy }
+            if let date {
+                entries[index] = ScheduledDraftEntry(draftID: draftID, scheduledFor: date)
+            } else {
+                entries.remove(at: index)
+            }
+            persist(entries, accountID: accountID)
+        }
+    }
+
+    func holdForReview(draftID: String, accountID: BrevAccount.ID, reason: IMAPScheduledReviewReason) {
+        Self.lock.withLock {
+            var entries = entriesWithoutLock(accountID: accountID)
+            guard let index = entries.firstIndex(where: { $0.draftID == draftID }) else { return }
+            entries[index].claimedAt = entries[index].claimedAt ?? Date()
+            entries[index].reviewReason = reason
+            entries[index].nextAttemptAt = nil
+            persist(entries, accountID: accountID)
         }
     }
 }

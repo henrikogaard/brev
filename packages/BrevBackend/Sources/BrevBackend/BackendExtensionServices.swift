@@ -243,10 +243,10 @@ public protocol ScheduledSendManaging: BackendExtensionService {
 
 /// User-requested changes to submitted schedules, separate from ordinary draft autosave.
 public protocol ScheduledSendEditing: ScheduledSendManaging {
-    /// Loads the frozen submitted draft for review.
+    /// Loads retained message content with the submitted schedule for review.
     func scheduledDraft(id: String) async throws -> Draft
-    /// Removes scheduling intent and returns an unscheduled draft, retaining its content.
-    func cancelScheduledSend(id: String) async throws -> Draft
+    /// Removes scheduling intent, retaining content; nil means the draft could not be recovered.
+    func cancelScheduledSend(id: String) async throws -> Draft?
     /// Changes a waiting schedule; uncertain attempts require the separate reviewed retry action.
     func rescheduleSend(id: String, for date: Date) async throws
     /// Explicitly retries after the user has reviewed Sent and accepted possible duplicate delivery.

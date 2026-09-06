@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP scheduled messages now offer Outbox time changes, cancellation, and
+  reviewed retry. Interrupted or uncertain delivery and unavailable local drafts
+  remain visible for review. Reconnect respects backoff, and automatic retries
+  stop after ten failures. Active delivery blocks edits only to that message.
+- Account teardown drains local schedule edits and rejects stale delivery cleanup,
+  preserving replacement drafts. Scheduling reports a failed local staging write
+  instead of claiming the message was queued.
+
 - Gmail Send Later stores submitted content and delivery intent durably. Outbox
   shows waiting, delivering and review states, with time changes, cancellation
   and an explicit reviewed retry. Interrupted delivery is not retried silently.

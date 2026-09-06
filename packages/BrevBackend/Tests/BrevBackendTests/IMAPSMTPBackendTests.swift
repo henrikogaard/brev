@@ -11040,6 +11040,205 @@ private actor DraftAppendRecorder {
 /// other suites' parallel `connect()` calls can never claim their entries.
 @Suite("IMAP SMTP scheduled send", .serialized)
 struct IMAPSMTPScheduledSendTests {
+    @Test("ten known failures require review and cannot be claimed automatically")
+    func retryLimitRequiresReview() throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = ScheduledSendStore()
+        store.add(entry: ScheduledDraftEntry(draftID: "retry-limit", scheduledFor: .distantPast), accountID: Self.account.id)
+        for attempt in 1 ... 10 {
+            store.recordSendFailure(
+                draftID: "retry-limit",
+                accountID: Self.account.id,
+                now: Date(),
+                baseInterval: 30,
+                maxInterval: 3600
+            )
+            let entry = try #require(store.entries(accountID: Self.account.id).first)
+            #expect(entry.attemptCount == attempt)
+            #expect((entry.reviewReason == .retryLimit) == (attempt == 10))
+        }
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: .distantFuture).isEmpty)
+        try store.editWaiting(draftID: "retry-limit", accountID: Self.account.id, date: .distantPast, allowClaimed: true)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: Date()).count == 1)
+    }
+
+    @Test("retired scheduled SMTP responses cannot delete a replacement account's draft")
+    func retiredDeliveryPreservesReplacementDraft() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: true, pauses: true)
+        defer { Task { await recorder.release() } }
+        let store = InMemoryIMAPDraftStagingStore()
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                          try await recorder.sendMessage(
+                                              configuration: configuration,
+                                              credential: credential,
+                                              submission: submission
+                                          )
+                                      }, draftStagingStore: store)
+        try await backend.connect()
+        _ = try await backend.send(draft: Self.outgoingDraft(id: "same-id", scheduledFor: .distantPast))
+        let delivery = Task { await backend.deliverDueScheduledSends() }
+        try await recorder.waitUntilCallCount(1)
+        await backend.disconnect()
+        ScheduledSendStore.purge(accountID: Self.account.id)
+        await store.clear(accountID: Self.account.id)
+        var replacement = Self.outgoingDraft(id: "same-id", scheduledFor: nil)
+        replacement.htmlBody = "<p>Replacement session</p>"
+        await store.setDraft(replacement, accountID: Self.account.id)
+        await recorder.release()
+        await delivery.value
+        #expect(await store.draft(accountID: Self.account.id, draftID: replacement.id) == replacement)
+        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        await #expect(throws: ScheduledSendEditingError.sessionChanged) { try await backend.rescheduleSend(
+            id: replacement.id,
+            for: Date()
+        ) }
+    }
+
+    @Test("a schedule can be withdrawn even when its local draft or staging store is unavailable", arguments: [false, true])
+    func cancelUnavailableDraft(missingStore: Bool) async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        ScheduledSendStore().add(
+            entry: ScheduledDraftEntry(draftID: "missing", scheduledFor: Date().addingTimeInterval(3600)),
+            accountID: Self.account.id
+        )
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] },
+                                      draftStagingStore: missingStore ? nil : InMemoryIMAPDraftStagingStore())
+        try await backend.connect()
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        #expect(try await editor.cancelScheduledSend(id: "missing") == nil)
+        #expect(backend.pendingScheduledSends().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("a live delivery blocks editing that draft while other schedules remain editable")
+    func liveDeliveryLocksOnlyItsDraft() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: true, pauses: true)
+        defer { Task { await recorder.release() } }
+        let store = InMemoryIMAPDraftStagingStore()
+        let first = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                    listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                        try await recorder.sendMessage(
+                                            configuration: configuration,
+                                            credential: credential,
+                                            submission: submission
+                                        )
+                                    }, draftStagingStore: store)
+        let second = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                     listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await first.connect()
+        try await second.connect()
+        _ = try await first.send(draft: Self.outgoingDraft(id: "active", scheduledFor: .distantPast))
+        _ = try await first.send(draft: Self.outgoingDraft(id: "other", scheduledFor: Date().addingTimeInterval(3600)))
+        let delivery = Task { await first.deliverDueScheduledSends() }
+        try await recorder.waitUntilCallCount(1)
+        await #expect(throws: ScheduledSendEditingError.busy) { _ = try await second.cancelScheduledSend(id: "active") }
+        try await second.rescheduleSend(id: "other", for: Date().addingTimeInterval(7200))
+        _ = try await second.cancelScheduledSend(id: "other")
+        #expect(second.pendingScheduledSends().map(\.draftID) == ["active"])
+        #expect(second.pendingScheduledSends().first?.state == .delivering)
+        await recorder.release()
+        await delivery.value
+        #expect(first.pendingScheduledSends().isEmpty)
+        await first.disconnect()
+        await second.disconnect()
+    }
+
+    @Test("an interrupted IMAP claim requires explicit review before delivery")
+    func interruptedClaimRequiresReview() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = InMemoryIMAPDraftStagingStore()
+        let draft = Self.outgoingDraft(id: "interrupted", scheduledFor: .distantPast)
+        await store.setDraft(draft, accountID: Self.account.id)
+        ScheduledSendStore().add(
+            entry: ScheduledDraftEntry(draftID: draft.id, scheduledFor: .distantPast, claimedAt: .distantPast),
+            accountID: Self.account.id
+        )
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await backend.connect()
+        await backend.deliverDueScheduledSends()
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        await #expect(throws: ScheduledSendEditingError.busy) { try await backend.rescheduleSend(id: draft.id, for: Date()) }
+        await #expect(throws: ScheduledSendEditingError.busy) { _ = try await backend.send(draft: draft) }
+        try await backend.retryReviewedScheduledSend(id: draft.id, for: Date().addingTimeInterval(3600))
+        #expect(backend.pendingScheduledSends().first?.state == .waiting)
+        await backend.disconnect()
+    }
+
+    @Test("failed local staging cannot report a successful scheduled send")
+    func failedStagingDoesNotSchedule() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let blockedRoot = FileManager.default.temporaryDirectory.appendingPathComponent("blocked-drafts-\(UUID().uuidString)")
+        try Data("occupied".utf8).write(to: blockedRoot)
+        defer { try? FileManager.default.removeItem(at: blockedRoot) }
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] },
+                                      draftStagingStore: FileIMAPDraftStagingStore(rootDirectory: blockedRoot))
+        try await backend.connect()
+        await #expect(throws: ScheduledSendEditingError.stagingUnavailable) {
+            _ = try await backend.send(draft: Self.outgoingDraft(id: "not-stored", scheduledFor: Date().addingTimeInterval(3600)))
+        }
+        #expect(backend.pendingScheduledSends().isEmpty)
+        await backend.disconnect()
+    }
+
+    @Test("background and explicit delivery hooks respect scheduled retry backoff")
+    func scheduledHooksRespectBackoff() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let recorder = ScheduledSendOutcomeRecorder(succeeds: false)
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, sendMessage: { configuration, credential, submission in
+                                          try await recorder.sendMessage(
+                                              configuration: configuration,
+                                              credential: credential,
+                                              submission: submission
+                                          )
+                                      }, draftStagingStore: InMemoryIMAPDraftStagingStore())
+        try await backend.connect()
+        _ = try await backend.send(draft: Self.outgoingDraft(id: "backoff", scheduledFor: .distantPast))
+        await backend.deliverDueScheduledSends()
+        await backend.deliverDueScheduledSends()
+        #expect(await recorder.callCount() == 1)
+        await backend.disconnect()
+    }
+
+    @Test("scheduled IMAP messages expose time changes and cancellation through the shared editor")
+    func scheduledEditingUsesSharedService() async throws {
+        Self.clearScheduledSends()
+        defer { Self.clearScheduledSends() }
+        let store = InMemoryIMAPDraftStagingStore()
+        let backend = IMAPSMTPBackend(account: Self.account, configuration: Self.configuration, credential: Self.credential,
+                                      listFolders: { _, _ in [] }, draftStagingStore: store)
+        try await backend.connect()
+        let original = Self.outgoingDraft(id: "editable", scheduledFor: Date().addingTimeInterval(3600))
+        _ = try await backend.send(draft: original)
+        let editor = try #require(backend.extensionService(ScheduledSendEditing.self))
+        let changedDate = Date().addingTimeInterval(7200)
+        try await editor.rescheduleSend(id: original.id, for: changedDate)
+        #expect(editor.pendingScheduledSends().first?.scheduledFor == changedDate)
+        #expect(try await editor.scheduledDraft(id: original.id).scheduledFor == changedDate)
+        let canceled = try #require(try await editor.cancelScheduledSend(id: original.id))
+        #expect(canceled.scheduledFor == nil)
+        #expect(canceled.htmlBody == original.htmlBody)
+        #expect(editor.pendingScheduledSends().isEmpty)
+        #expect(await store.draft(accountID: Self.account.id, draftID: original.id) == canceled)
+        await store.setDraft(original, accountID: Self.account.id)
+        await #expect(throws: ScheduledSendEditingError.notFound) { _ = try await editor.cancelScheduledSend(id: original.id) }
+        #expect(await store.draft(accountID: Self.account.id, draftID: original.id) == original)
+        await backend.disconnect()
+    }
+
     private static let account = BrevAccount(
         id: "imap-smtp:scheduled@example.org",
         displayName: "Scheduled",
@@ -11195,8 +11394,7 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await failingBackend.connect()
-        failingBackend.startDeferredStartupWork()
-        try await failingRecorder.waitUntilCallCount(1)
+        await failingBackend.deliverDueScheduledSends()
         await failingBackend.disconnect()
 
         #expect(ScheduledSendStore().dueEntries(
@@ -11220,20 +11418,17 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await successBackend.connect()
-        successBackend.startDeferredStartupWork()
         defer { Task { await successBackend.disconnect() } }
-
-        // Same terminal-state wait as above: the entry is removed only after the
-        // forced retry's SMTP send returns, not when the send call is counted.
-        try await Self.waitUntil {
-            ScheduledSendStore().entries(accountID: Self.account.id).isEmpty
-        }
+        await successBackend.deliverDueScheduledSends()
+        #expect(!ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        try await successBackend.rescheduleSend(id: "scheduled-retry", for: .distantPast)
+        await successBackend.deliverDueScheduledSends()
 
         #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
     }
 
-    @Test("ambiguous scheduled delivery becomes a conflict without retrying")
-    func ambiguousScheduledDeliveryBecomesConflictWithoutRetrying() async throws {
+    @Test("ambiguous or canceled scheduled delivery stays in Outbox for reviewed retry", arguments: [false, true])
+    func ambiguousScheduledDeliveryBecomesConflictWithoutRetrying(canceled: Bool) async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
         let rootDirectory = FileManager.default.temporaryDirectory
@@ -11266,6 +11461,7 @@ struct IMAPSMTPScheduledSendTests {
             credential: Self.credential,
             listFolders: { _, _ in [] },
             sendMessage: { _, _, _ in
+                if canceled { throw CancellationError() }
                 throw SMTPClientError.deliveryOutcomeUnknown(
                     underlying: "Timed out waiting for SMTP DATA response."
                 )
@@ -11277,19 +11473,18 @@ struct IMAPSMTPScheduledSendTests {
         let service = try #require(backend.extensionService(ScheduledSendManaging.self))
         await service.deliverDueScheduledSends()
 
-        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        #expect(service.pendingScheduledSends().first?.state == .needsReview)
         #expect(await draftStore.draft(
             accountID: Self.account.id,
             draftID: "scheduled-unknown"
         ) != nil)
         let conflicts = try await conflictStore.conflicts()
-        #expect(conflicts.count == 1)
-        #expect(conflicts.first?.mutation.kind == .sendStagedDraft(stagedDraftID: "scheduled-unknown"))
-        #expect(conflicts.first?.message.contains("Check Sent") == true)
+        #expect(conflicts.isEmpty)
+        #expect(service.pendingScheduledSends().first?.lastError?.contains("Check Sent") == true)
     }
 
-    @Test("orphaned schedule entry with no staged draft is pruned on delivery")
-    func orphanedScheduleEntryIsPrunedOnDelivery() async throws {
+    @Test("an unavailable scheduled draft stays visible for review and can be canceled")
+    func unavailableScheduledDraftNeedsReview() async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
 
@@ -11324,20 +11519,16 @@ struct IMAPSMTPScheduledSendTests {
             draftStagingStore: draftStore
         )
         try await backend.connect()
-        backend.startDeferredStartupWork()
         defer { Task { await backend.disconnect() } }
 
-        // The orphan can never be sent, so it must be removed rather than
-        // re-read on every poll tick — wait until the entry disappears.
-        for _ in 0 ..< 100 {
-            if ScheduledSendStore().entries(accountID: Self.account.id).isEmpty { break }
-            try await Task.sleep(nanoseconds: 10_000_000)
-        }
-        #expect(ScheduledSendStore().entries(accountID: Self.account.id).isEmpty)
+        await backend.deliverDueScheduledSends()
+        #expect(backend.pendingScheduledSends().first?.state == .needsReview)
+        #expect(try await backend.cancelScheduledSend(id: "orphan") == nil)
+        #expect(backend.pendingScheduledSends().isEmpty)
     }
 
-    @Test("claim lease and failure backoff gate non-forced re-claims")
-    func claimLeaseAndFailureBackoffGateReclaims() async throws {
+    @Test("interrupted claims never expire into a resend and known failures respect backoff")
+    func interruptedClaimsAndBackoff() async throws {
         Self.clearScheduledSends()
         defer { Self.clearScheduledSends() }
         let store = ScheduledSendStore()
@@ -11346,35 +11537,12 @@ struct IMAPSMTPScheduledSendTests {
             entry: ScheduledDraftEntry(draftID: "draft-1", scheduledFor: now.addingTimeInterval(-60)),
             accountID: Self.account.id
         )
-
-        // First claim takes the entry and stamps a lease.
-        let firstClaim = store.claimDueEntries(
-            accountID: Self.account.id, before: now, lease: 120
-        )
-        #expect(firstClaim.map(\.draftID) == ["draft-1"])
-
-        // A second non-forced claim inside the lease window gets nothing...
-        #expect(store.claimDueEntries(accountID: Self.account.id, before: now, lease: 120).isEmpty)
-        // ...but a forced claim (an explicit reconnect) ignores the lease.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now, lease: 120, force: true
-        ).map(\.draftID) == ["draft-1"])
-
-        // After a recorded failure, the entry is gated until nextAttemptAt...
-        store.recordSendFailure(
-            draftID: "draft-1", accountID: Self.account.id, now: now, baseInterval: 60, maxInterval: 3600
-        )
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(30), lease: 120
-        ).isEmpty)
-        // ...yet a forced claim still retries immediately.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(30), lease: 120, force: true
-        ).map(\.draftID) == ["draft-1"])
-        // And once the backoff elapses, an ordinary claim succeeds again.
-        #expect(store.claimDueEntries(
-            accountID: Self.account.id, before: now.addingTimeInterval(3600), lease: 120
-        ).map(\.draftID) == ["draft-1"])
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now).map(\.draftID) == ["draft-1"])
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(86400)).isEmpty)
+        store.recordSendFailure(draftID: "draft-1", accountID: Self.account.id, now: now, baseInterval: 60, maxInterval: 3600)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(30)).isEmpty)
+        #expect(store.claimDueEntries(accountID: Self.account.id, before: now.addingTimeInterval(3600))
+            .map(\.draftID) == ["draft-1"])
     }
 
     @Test("ScheduledSendManaging reports pending entries so the app can warn before quitting")
@@ -11468,10 +11636,16 @@ struct IMAPSMTPScheduledSendTests {
 private actor ScheduledSendOutcomeRecorder {
     private let succeeds: Bool
     private var calls = 0
+    private let pauses: Bool
+    private var waiter: CheckedContinuation<Void, Never>?
 
-    init(succeeds: Bool) {
+    init(succeeds: Bool, pauses: Bool = false) {
         self.succeeds = succeeds
+        self.pauses = pauses
     }
+
+    func callCount() -> Int { calls }
+    func release() { waiter?.resume(); waiter = nil }
 
     func sendMessage(
         configuration: IMAPAccountConfiguration,
@@ -11480,6 +11654,7 @@ private actor ScheduledSendOutcomeRecorder {
     ) async throws -> SendResult {
         #expect(!submission.recipientEmails.isEmpty)
         calls += 1
+        if pauses { await withCheckedContinuation { waiter = $0 } }
         if !succeeds {
             throw SMTPClientError.transport("offline")
         }
