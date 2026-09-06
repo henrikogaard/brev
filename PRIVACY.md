@@ -489,6 +489,11 @@ the account's importer support.
   learned from already-cached correspondence and successful sends. It is never
   added to Apple Contacts, never uploaded, and can be removed individually or
   cleared from Settings → Compose.
+- **Search coverage.** Explicit online IMAP searches check all server result
+  pages, even when there are cached matches. Ordinary queries retrieve headers;
+  attachment predicates may retrieve message sources under ADR-0060. Cache-only
+  searches and sender context remain local. Broad searches can take longer and
+  transfer more headers than the previously truncated results.
 - **Search terms, draft contents, attachments.** Stay on your
   device unless you use mail-provider features that require them:
   server-side search, saving drafts, uploading attachments, or

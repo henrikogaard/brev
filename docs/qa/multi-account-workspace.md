@@ -273,3 +273,20 @@ support.
   real SMTP delivery, sleep/quit behavior and cross-client Sent verification remain
   acceptance work. Legacy IMAP metadata is not an atomic draft/schedule journal;
   full-content editing handoff and frozen submitted IMAP content remain open.
+
+### Issue #28 IMAP search completeness, 2026-09-06
+
+- Search a real IMAP folder with more than 200 matches, including replies older
+  than the loaded message list. Compare results with the provider or another
+  client. Repeat across folders with colliding numeric UIDs.
+- Seed a partial local cache, repeat online, and confirm cached hits do not hide
+  server matches. Offline/cache-only results must remain local and include all
+  cached matches; their coverage is still limited by retained/indexed data.
+- Cancel or switch query/account during a later server page. Confirm no stale
+  results appear. Simulate repeated cursors, empty intermediate pages, and a
+  failed later page; incomplete server collections must not be reported complete.
+- Ordinary search must not fetch MIME bodies. Attachment-predicate search retains
+  its explicit-fetch disclosure and cancellation behavior.
+- Measure time to first result, total search time, memory and scrolling with large
+  result sets. The existing array contract still waits for all pages; progressive
+  results and more explicit coverage/error presentation remain work in #28.

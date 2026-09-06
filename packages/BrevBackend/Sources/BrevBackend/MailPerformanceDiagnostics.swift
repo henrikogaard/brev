@@ -26,7 +26,6 @@ enum MailPerformanceDiagnostics {
 
     enum SearchPath: String, Sendable {
         case cacheOnly
-        case cacheThenServerHit
         case server
         case cacheFallback
         case failure

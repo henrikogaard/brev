@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP searches use server pages to return matches beyond the previous
+  50-result display limit. Ordinary searches follow server pages without
+  downloading message bodies, and cached matches no longer hide older online
+  results. Cache-only search remains local and returns all cached matches.
+- Search rejects canceled responses, repeated cursors, and interrupted later
+  pages instead of reporting incomplete server results as success. Legacy
+  nonpaged ordinary adapters report when their bounded limit prevents completion.
+
 - IMAP scheduled messages now offer Outbox time changes, cancellation, and
   reviewed retry. Interrupted or uncertain delivery and unavailable local drafts
   remain visible for review. Reconnect respects backoff, and automatic retries

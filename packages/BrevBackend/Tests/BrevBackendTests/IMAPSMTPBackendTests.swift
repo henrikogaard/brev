@@ -2201,8 +2201,8 @@ struct IMAPSMTPBackendTests {
         #expect(try await nextIMAPEvent(from: stream) == .folderRefreshed(folderID: "Archive"))
     }
 
-    @Test("saved view candidates include cached headers beyond ordinary search limits while disconnected")
-    func savedViewCacheEnumerationIsComplete() async throws {
+    @Test("saved views and cache-only searches return every cached match while disconnected", arguments: [false, true])
+    func savedViewCacheEnumerationIsComplete(ordinaryCacheOnly: Bool) async throws {
         let index = LocalSearchIndexRecorder()
         let headers = (0 ..< 120).map {
             Self.retentionHeader(id: "INBOX:\($0)", date: Date(timeIntervalSince1970: Double($0)))
@@ -2213,9 +2213,14 @@ struct IMAPSMTPBackendTests {
                                           Issue.record("Cache enumeration must not connect")
                                           return []
                                       }, localSearchIndex: index)
-        let results = try await backend.cachedMessageHeaders(
-            in: Folder(id: "INBOX", name: "Inbox", role: .inbox), sourceID: Self.sourceID
-        )
+        let results: [MessageHeader]
+        if ordinaryCacheOnly {
+            results = try await backend.search(SearchQuery(folderID: "INBOX", execution: .cacheOnly))
+        } else {
+            results = try await backend.cachedMessageHeaders(
+                in: Folder(id: "INBOX", name: "Inbox", role: .inbox), sourceID: Self.sourceID
+            )
+        }
         #expect(results.count == 120)
         #expect(Set(results.map(\.id)) == Set(headers.map(\.id)))
         #expect(await index.searchRequests.last?.limit == Int.max)
@@ -2263,7 +2268,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2319,7 +2324,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2372,7 +2377,7 @@ struct IMAPSMTPBackendTests {
                     folderID: "INBOX",
                     execution: .cacheOnly
                 ),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2423,7 +2428,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject", folderID: "INBOX", execution: .cacheOnly),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2453,7 +2458,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject INBOX:78", execution: .cacheOnly),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -2483,7 +2488,7 @@ struct IMAPSMTPBackendTests {
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(text: "Subject INBOX:79", execution: .cacheThenServer),
-                limit: 50
+                limit: Int.max
             ),
         ])
     }
@@ -3803,6 +3808,135 @@ struct IMAPSMTPBackendTests {
         #expect(await sourceRecorder.requestedUIDs == candidateUIDs)
     }
 
+    @Test("a failed later search page or source cannot become a successful cache fallback", arguments: [false, true])
+    func failedLaterSearchPageIsVisible(failureInBody: Bool) async throws {
+        let index = LocalSearchIndexRecorder()
+        let cached = MessageHeader(id: "INBOX:1", threadID: "thread", folderID: "INBOX",
+                                   from: Correspondent(email: "sender@example.org"), to: [], subject: "Match", snippet: "",
+                                   date: Date(), hasAttachments: true)
+        await index.setSearchResults([cached])
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, token, _ in
+                if token != nil, !failureInBody { throw MailBackendError.network(underlying: "Disconnected") }
+                return IMAPMessageListingPage(
+                    messages: [Self.messageListing(uid: token == nil ? 2 : 3, subject: "Match")],
+                    nextPageToken: token == nil ? "next" : nil
+                )
+            }, fetchMessageSource: { _, _, _, uid in
+                if uid == 3 { throw MailBackendError.network(underlying: "Disconnected") }
+                return IMAPMessageSource(uid: uid, rawMessage: "Subject: Match\n\nBody")
+            }, localSearchIndex: index
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: MailBackendError.self) {
+            _ = try await backend.search(SearchQuery(
+                folderID: "INBOX",
+                hasAttachments: failureInBody ? true : nil,
+                execution: .cacheThenServer
+            ))
+        }
+    }
+
+    @Test("search cancellation after the final server response does not publish results")
+    func canceledFinalSearchResponseIsRejected() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, _, _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+                return IMAPMessageListingPage(messages: [Self.messageListing(uid: 1, subject: "Canceled")])
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let request = Task { try await backend.search(SearchQuery(text: "Canceled", execution: .serverOnly)) }
+        await #expect(throws: CancellationError.self) { _ = try await request.value }
+    }
+
+    @Test("legacy search adapters report incomplete coverage when their bounded limit is reached")
+    func legacySearchLimitIsVisible() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessages: { _, _, _, _, limit in
+                Array((1 ... 251).prefix(limit)).map { Self.messageListing(uid: $0, subject: "Match") }
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: MailBackendError.self) {
+            _ = try await backend.search(SearchQuery(text: "Match", execution: .serverOnly))
+        }
+    }
+
+    @Test("ordinary server search returns every bounded page without fetching message bodies")
+    func ordinarySearchReturnsAllPages() async throws {
+        let recorder = MessageSearchPageRecorder(pages: [
+            nil: IMAPMessageListingPage(
+                messages: (76 ... 125).map { Self.messageListing(uid: $0, subject: "Match") },
+                nextPageToken: "older"
+            ),
+            "older": IMAPMessageListingPage(
+                messages: (26 ... 75).map { Self.messageListing(uid: $0, subject: "Match") },
+                nextPageToken: "empty"
+            ),
+            "empty": IMAPMessageListingPage(messages: [], nextPageToken: "oldest"),
+            "oldest": IMAPMessageListingPage(messages: (1 ... 26).map { Self.messageListing(uid: $0, subject: "Match") }),
+        ])
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { configuration, credential, folderID, query, token, limit in
+                try await recorder.searchPage(
+                    configuration: configuration,
+                    credential: credential,
+                    folderID: folderID,
+                    query: query,
+                    pageToken: token,
+                    limit: limit
+                )
+            },
+            fetchMessageSource: { _, _, _, _ in
+                Issue.record("Ordinary header search must not fetch MIME sources")
+                throw CancellationError()
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let results = try await backend.search(SearchQuery(text: "Match", folderID: "INBOX", execution: .serverOnly))
+        #expect(results.count == 125)
+        #expect(Set(results.map(\.id)) == Set((1 ... 125).map { "INBOX:\($0)" }))
+        #expect(await recorder.requestedPageTokens == [nil, "older", "empty", "oldest"])
+        #expect(await recorder.requestedLimits == [50, 50, 50, 50])
+    }
+
     @Test("attachment search follows paginated server results beyond the first page")
     func attachmentSearchFollowsPaginatedServerResultsBeyondFirstPage() async throws {
         let plainMessage = "Subject: Plain\nContent-Type: text/plain; charset=utf-8\n\nNo file."
@@ -3864,8 +3998,8 @@ struct IMAPSMTPBackendTests {
         #expect(await sourceRecorder.requestedUIDs == [300, 100])
     }
 
-    @Test("cache-then-server attachment search continues to paginated server results")
-    func cacheThenServerAttachmentSearchContinuesToPaginatedServerResults() async throws {
+    @Test("cached hits do not suppress ordinary or attachment server search", arguments: [false, true])
+    func cachedHitsDoNotSuppressServerSearch(attachments: Bool) async throws {
         let cachedHeader = MessageHeader(
             id: "INBOX:200",
             threadID: "INBOX:200",
@@ -3924,17 +4058,17 @@ struct IMAPSMTPBackendTests {
 
         let results = try await backend.search(SearchQuery(
             folderID: "INBOX",
-            hasAttachments: true,
+            hasAttachments: attachments ? true : nil,
             execution: .cacheThenServer
         ))
 
         #expect(results.map(\.id) == ["INBOX:100"])
         #expect(await pageRecorder.requestedPageTokens == [nil])
-        #expect(await sourceRecorder.requestedUIDs == [100])
+        #expect(await sourceRecorder.requestedUIDs == (attachments ? [100] : []))
     }
 
-    @Test("attachment search rejects a repeated server page cursor")
-    func attachmentSearchRejectsRepeatedServerPageCursor() async throws {
+    @Test("ordinary and attachment search reject repeated server cursors", arguments: [false, true])
+    func searchRejectsRepeatedServerPageCursor(attachments: Bool) async throws {
         let pageRecorder = MessageSearchPageRecorder(pages: [
             nil: IMAPMessageListingPage(
                 messages: [Self.messageListing(uid: 300, subject: "Newest")],
@@ -3971,7 +4105,7 @@ struct IMAPSMTPBackendTests {
         await #expect(throws: MailBackendError.self) {
             _ = try await backend.search(SearchQuery(
                 folderID: "INBOX",
-                hasAttachments: true,
+                hasAttachments: attachments ? true : nil,
                 execution: .serverOnly
             ))
         }

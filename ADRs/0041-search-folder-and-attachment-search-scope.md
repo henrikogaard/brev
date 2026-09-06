@@ -154,3 +154,30 @@ Attachment views retain their separate metadata query path.
 Mail and Settings share the same editor and visibility/order panel. Built-in
 and custom definitions retain their positions when hidden. Users can hide the
 entire sidebar section and restore it from Settings.
+
+## Implementation update (2026-09-06): complete IMAP search collection
+
+Explicit ordinary IMAP search uses the existing page-returning provider operation
+for every folder in scope, in 50-header requests. It no longer truncates the final
+result collection to 50. Legacy nonpaged ordinary adapters keep their 200-candidate
+request bound and fail visibly when that limit is reached, since they cannot
+prove completion without a cursor. The production connector supplies the paged
+operation. The pre-existing legacy attachment path remains unchanged.
+Empty intermediate pages still follow their continuation; repeated cursors fail
+visibly, duplicate source-qualified IDs collapse, and cancellation after the
+final network response prevents publication. Ordinary search does not fetch MIME
+sources. Attachment predicates retain ADR-0060's explicit source-inspection path.
+
+A cache hit does not establish complete server coverage. Online cache-then-server
+search therefore consults the server even when cached matches exist. Cache-only
+search stays local and returns the full cached match collection; existing cache
+fallback when server search cannot begin remains intact. Failures after a server
+page or folder has already been searched report incomplete search instead of
+silently returning cached results. Richer coverage reporting for the initial
+unavailable-server fallback still needs the progressive-result contract.
+
+The array-returning search contract still collects all pages before presenting
+its final response. Progressive presentation, result pagination in the UI, richer
+cache-coverage reporting, and bounded document-content indexing remain issue #28
+work. This correction does not establish their completion or change the metadata-
+first All Attachments behavior.

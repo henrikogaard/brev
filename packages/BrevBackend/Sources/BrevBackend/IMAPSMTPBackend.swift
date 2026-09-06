@@ -30,9 +30,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private static let maximumIDLEResubscribeDelayNanoseconds: UInt64 = 30_000_000_000
     private static let idlePollIntervalNanoseconds: UInt64 = 60_000_000_000
     private static let maximumBackgroundRefreshFolderCount = 12
-    private static let searchResultLimit = 50
-    private static let defaultServerSearchCandidateLimit = 200
-    private static let attachmentSearchPageSize = 50
+    private static let indexVerificationSampleLimit = 200
+    private static let serverSearchPageSize = 50
+    private static let legacySearchCandidateLimit = 200
     private static let cachedMessagePageSize = 50
 
     public typealias FolderListingOperation =
@@ -2387,12 +2387,16 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     /// Enumerates cached headers without connecting or truncating saved-view candidates.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         try validateSourceID(sourceID)
-        return await cachedSearchResults(
+        try Task.checkCancellation()
+        let results = await cachedSearchResults(
             for: SearchQuery(folderID: folder.id, execution: .cacheOnly), folders: [folder], limit: Int.max
         )
+        try Task.checkCancellation()
+        return results
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        try Task.checkCancellation()
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
         func durationMilliseconds() -> Int {
@@ -2403,9 +2407,11 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         do {
             folders = try await state.requireConnectedFolders()
         } catch {
+            try Task.checkCancellation()
             if query.execution != .serverOnly {
                 let cachedFolders = await folderCache?.snapshot(accountID: account.id)?.folders ?? []
                 let cachedResults = await cachedSearchResults(for: query, folders: cachedFolders)
+                try Task.checkCancellation()
                 if query.execution == .cacheOnly || !cachedResults.isEmpty {
                     MailPerformanceDiagnostics.logSearchFinished(
                         snapshot: MailPerformanceDiagnostics.searchSnapshot(
@@ -2434,6 +2440,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let cachedResults = query.execution == .serverOnly
             ? []
             : await cachedSearchResults(for: query, folders: folders)
+        try Task.checkCancellation()
         if query.execution == .cacheOnly {
             MailPerformanceDiagnostics.logSearchFinished(
                 snapshot: snapshot,
@@ -2443,19 +2450,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             )
             return cachedResults
         }
-        // Cache-first for ordinary queries; attachment predicates must continue to
-        // the paginated server path so cached hits do not hide older matches.
-        if query.execution == .cacheThenServer,
-           query.hasAttachments == nil,
-           !cachedResults.isEmpty {
-            MailPerformanceDiagnostics.logSearchFinished(
-                snapshot: snapshot,
-                path: .cacheThenServerHit,
-                resultCount: cachedResults.count,
-                durationMilliseconds: durationMilliseconds()
-            )
-            return cachedResults
-        }
+        // Cached hits are not proof of complete coverage. Explicit online
+        // searches still consult the server; cache-only remains entirely local.
         guard searchMessagesOperation != nil || searchMessagePageOperation != nil else {
             if query.execution == .cacheThenServer, !cachedResults.isEmpty {
                 MailPerformanceDiagnostics.logSearchFinished(
@@ -2499,13 +2495,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return []
         }
 
+        var completedSearchFolders = 0
         do {
             var headers: [MessageHeader] = []
             for folderID in folderIDs {
                 try Task.checkCancellation()
-                if query.hasAttachments != nil,
-                   let searchMessagePageOperation {
-                    try await headers.append(contentsOf: searchAttachmentHeaders(
+                if let searchMessagePageOperation {
+                    try await headers.append(contentsOf: searchPagedHeaders(
                         folderID: folderID,
                         query: query,
                         operation: searchMessagePageOperation
@@ -2514,16 +2510,21 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     let listings = try await searchMessagesWithAuthenticatedOAuthRetry(
                         folderID: folderID,
                         query: Self.serverSearchQuery(from: query),
-                        limit: Self.serverSearchCandidateLimit(for: query)
+                        limit: query.hasAttachments == nil ? Self.legacySearchCandidateLimit : Int.max
                     )
+                    if query.hasAttachments == nil, listings.count >= Self.legacySearchCandidateLimit {
+                        throw Self.incompleteSearchError
+                    }
                     try await headers.append(contentsOf: searchHeaders(
                         from: listings,
                         folderID: folderID,
                         attachmentFilter: query.hasAttachments
                     ))
                 }
+                completedSearchFolders += 1
             }
 
+            try Task.checkCancellation()
             let results = Self.sortedSearchResults(headers)
             MailPerformanceDiagnostics.logSearchFinished(
                 snapshot: snapshot,
@@ -2533,6 +2534,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             )
             return results
         } catch {
+            try Task.checkCancellation()
+            if completedSearchFolders > 0, Self.shouldUseCacheFallback(for: error) {
+                throw Self.incompleteSearchError
+            }
             if query.execution == .cacheThenServer,
                !cachedResults.isEmpty,
                Self.shouldUseCacheFallback(for: error) {
@@ -2984,7 +2989,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let results = await localSearchIndex?.search(
             validationQuery,
             account: account,
-            limit: Self.defaultServerSearchCandidateLimit
+            limit: Self.indexVerificationSampleLimit
         ) ?? []
         guard results.contains(where: { $0.id == validationHeader.id }) else {
             throw MailBackendError.backendSpecific(
@@ -3483,12 +3488,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return serverQuery
     }
 
-    private static func serverSearchCandidateLimit(for query: SearchQuery) -> Int {
-        query.hasAttachments == nil ? defaultServerSearchCandidateLimit : Int.max
-    }
-
     private static func sortedSearchResults(_ headers: [MessageHeader]) -> [MessageHeader] {
-        Array(sortedHeaders(headers).prefix(searchResultLimit))
+        sortedHeaders(deduplicatedByID(headers))
     }
 
     private static func sortedHeaders(_ headers: [MessageHeader]) -> [MessageHeader] {
@@ -3988,7 +3989,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func cachedSearchResults(
         for query: SearchQuery,
         folders: [Folder],
-        limit: Int = IMAPSMTPBackend.searchResultLimit
+        limit: Int = Int.max
     ) async -> [MessageHeader] {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -4734,47 +4735,57 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return headers
     }
 
-    private func searchAttachmentHeaders(
+    private func searchPagedHeaders(
         folderID: Folder.ID,
         query: SearchQuery,
         operation: @escaping MessageSearchPageOperation
     ) async throws -> [MessageHeader] {
-        guard let attachmentFilter = query.hasAttachments else { return [] }
-
+        let attachmentFilter = query.hasAttachments
         var pageToken: String?
-        var visitedPageTokens = Set<String>()
+        var visitedPageTokens = Set<String?>()
         var headers: [MessageHeader] = []
         while true {
             try Task.checkCancellation()
-            let tokenKey = pageToken ?? "<initial>"
-            guard visitedPageTokens.insert(tokenKey).inserted else {
-                throw MailBackendError.backendSpecific(
-                    message: "IMAP attachment search did not advance the page cursor."
-                )
+            guard visitedPageTokens.insert(pageToken).inserted else {
+                throw Self.incompleteSearchError
             }
 
-            let page = try await searchMessagePageWithAuthenticatedOAuthRetry(
-                operation,
-                folderID: folderID,
-                query: Self.serverSearchQuery(from: query),
-                pageToken: pageToken,
-                limit: Self.attachmentSearchPageSize
-            )
-            try await headers.append(contentsOf: searchHeaders(
-                from: page.messages,
-                folderID: folderID,
-                attachmentFilter: attachmentFilter
-            ))
+            let page: IMAPMessageListingPage
+            do {
+                page = try await searchMessagePageWithAuthenticatedOAuthRetry(
+                    operation, folderID: folderID, query: Self.serverSearchQuery(from: query),
+                    pageToken: pageToken, limit: Self.serverSearchPageSize
+                )
+            } catch {
+                try Task.checkCancellation()
+                if pageToken != nil, Self.shouldUseCacheFallback(for: error) { throw Self.incompleteSearchError }
+                throw error
+            }
+            try Task.checkCancellation()
+            do {
+                try await headers.append(contentsOf: searchHeaders(
+                    from: page.messages, folderID: folderID, attachmentFilter: attachmentFilter
+                ))
+            } catch {
+                try Task.checkCancellation()
+                if Self.shouldUseCacheFallback(for: error) { throw Self.incompleteSearchError }
+                throw error
+            }
 
             guard let nextPageToken = page.nextPageToken else { break }
             guard nextPageToken != pageToken else {
-                throw MailBackendError.backendSpecific(
-                    message: "IMAP attachment search did not advance the page cursor."
-                )
+                throw Self.incompleteSearchError
             }
             pageToken = nextPageToken
         }
         return headers
+    }
+
+    private static var incompleteSearchError: MailBackendError {
+        .backendSpecific(message: String(
+            localized: "Search stopped before all results could be loaded. Narrow your search or try again.",
+            bundle: .module
+        ))
     }
 
     private static func recipientEmails(from draft: Draft) -> [String] {

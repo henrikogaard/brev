@@ -948,3 +948,40 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   rebuild also passed. Native interactions/live-provider sends remain unverified;
   the Mac was locked during the prior native attempt. No UI layout changed, so
   existing inspected scheduled-row snapshots were not re-recorded.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 IMAP search completeness
+
+- Verified all 20 hosted checks passed on e81ca6d1, the preceding scheduling fix.
+- Red tests reproduced ordinary page-only adapters returning unsupported, cached
+  hits hiding online results, cache search truncating 120 matches to 50, and
+  canceled final responses being returned as success. Generalized existing
+  bounded server pagination to ordinary queries, removed paged-result/cache caps,
+  retained cache-only privacy, and added final-response cancellation checks.
+- Coverage includes empty intermediate pages, duplicate IDs, legacy adapters with
+  over 200 candidates reporting incomplete coverage, and ordinary/attachment
+  repeated-cursor rejection. The
+  full array contract remains; progressive UI and coverage reporting are next.
+- Updated CHANGELOG, ADR-0041, privacy/search disclosure, and native QA guidance.
+  README setup/provider scope and protected architectures are unchanged. Tests,
+  builds and independent review are in progress. No new provider endpoint, body
+  fetch for ordinary search, attachment index, merge, or release is included.
+
+- Review found that later-page failures could still fall back to a small cache,
+  and ordinary legacy adapters would become unbounded. Red tests reproduced
+  both. Later-page/folder failures now report incomplete search; legacy ordinary
+  requests remain bounded and report limit exhaustion. Production uses pages.
+  Removed the obsolete cache-hit-only diagnostics case and clarified test names.
+
+- Attachment-source failures after a server page are also surfaced as incomplete,
+  rather than converted to cache success. Public search/cache enumeration checks
+  cancellation after local reads; final canceled responses cannot publish.
+- Local verification: Backend 1,042 and Mail 1,546 tests passed before the last
+  review delta, with dated mock macOS startup and iOS Mail compilation, lint,
+  formatter and privacy checks. Final delta reruns follow below. No layout
+  changes or snapshots were added. Native/live large-mailbox performance and
+  progressive-result UX remain unverified and explicitly open.
+
+- Final delta verification passed: Backend 1,042, Mail 1,546; dated mock macOS
+  build/startup and iOS Mail compilation; lint/formatter, privacy audit and diff
+  checks. Separate standards and behavior reviewers cleared the error/cancellation
+  fixes. Native/live acceptance and progressive search remain open.
