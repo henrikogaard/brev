@@ -181,3 +181,37 @@ its final response. Progressive presentation, result pagination in the UI, riche
 cache-coverage reporting, and bounded document-content indexing remain issue #28
 work. This correction does not establish their completion or change the metadata-
 first All Attachments behavior.
+
+## Implementation update (2026-09-07): progressive IMAP results and coverage
+
+`ProgressiveMailSearching` is an optional provider-neutral extension. Awaited
+`MailSearchUpdate` callbacks carry incremental headers, cache/server/unverified
+coverage, replacement intent and terminal completion. The existing array-returning
+search contract remains available to callers that do not consume updates.
+
+IMAP publishes cached matches before server work and awaits each page's consumer
+before requesting another page. Server coverage replaces provisional cache matches;
+first-request offline fallback completes with cached coverage. A later failure
+never publishes server completion. Task cancellation is checked between updates.
+No new endpoint or ordinary-query body download is introduced.
+
+Folder and unified lists consume this same service and coverage model. Query UUIDs
+reject stale progress, including repeated identical text. Multi-account work keeps
+its existing concurrency bound; each source can publish before other accounts
+finish. Source-qualified accumulation deduplicates and merges sorted batches.
+Partial pages preserve the selected reader until final reconciliation. Failed
+sources retain partial rows and display Retry. Array-only adapters report
+unverified coverage for non-cache queries rather than claiming a complete server
+search. Gmail's progressive adapter and its own result cap remain follow-up work.
+
+The new compact status row replaces the separate attachment-search banner.
+Detailed index coverage, user-paced load-more, large-mailbox memory measurements,
+Gmail completeness, document indexing and live/native acceptance remain issue #28
+work. This change improves first-page presentation without claiming bounded total
+memory: callers still retain the accumulated headers and final array.
+
+Search lifecycle uses one request-owned cancellable worker per list. Replacing a
+worker cancels the prior task, including identical query text after refresh;
+parent cancellation targets only its own worker. Message-list text and execution
+filters share one task trigger. Abandoned progress settles as incomplete, never
+as a completed server search; Retry waits for remaining source work to settle.

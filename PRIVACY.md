@@ -493,7 +493,10 @@ the account's importer support.
   pages, even when there are cached matches. Ordinary queries retrieve headers;
   attachment predicates may retrieve message sources under ADR-0060. Cache-only
   searches and sender context remain local. Broad searches can take longer and
-  transfer more headers than the previously truncated results.
+  transfer more headers than the previously truncated results. Search progress
+  distinguishes cached results from completed server coverage; interrupted
+  searches retain partial results with an incomplete-search notice. Both searches
+  with and without attachments disclose possible source downloads.
 - **Search terms, draft contents, attachments.** Stay on your
   device unless you use mail-provider features that require them:
   server-side search, saving drafts, uploading attachments, or

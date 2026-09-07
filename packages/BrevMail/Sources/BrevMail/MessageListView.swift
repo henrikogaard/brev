@@ -93,6 +93,8 @@ public struct MessageListView: View {
     @State private var activeLoadMoreRequest: MessageListPageRequest?
     @State private var activeSearchRequest: MessageListSearchRequest?
     @State private var activeAttachmentSearchQuery: SearchQuery?
+    @State private var searchProgress = MailSearchProgressState()
+    @State private var searchWork = MailSearchTaskOwner()
     @State private var nextMutationRequestID = 0
     @State private var activeMutationRequest: MessageListMutationRequest?
     @State private var collapsedDateSectionIDs: Set<MessageListDateSection.ID> = []
@@ -215,12 +217,16 @@ public struct MessageListView: View {
                     searchScopeBar
                 }
             }
-            if let query = activeAttachmentSearchQuery,
-               MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                   query: query,
-                   isLoading: isLoading
-               ) {
-                AttachmentSearchDisclosureView()
+            if !trimmedSearchText.isEmpty, searchProgress.request != nil {
+                MailSearchStatusView(
+                    progress: searchProgress,
+                    checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+                        queries: [activeAttachmentSearchQuery].compactMap { $0 },
+                        isLoading: searchProgress.isSearching
+                    )
+                ) {
+                    Task { await reloadForSearchChange() }
+                }
             }
             Group {
                 if folder != nil {
@@ -266,15 +272,8 @@ public struct MessageListView: View {
             refreshPinnedMessageIDSet()
             scheduleDebouncedThreadCountsRebuild()
         }
-        .task(id: navigation.searchText) { await reloadForSearchChange() }
-        // Consolidated search-filter task: when the user changes scope,
-        // execution, or all-folders during an active search, a single
-        // composite-keyed task fires instead of three separate ones each
-        // doing their own debounce wait and search-plan computation.
-        .task(id: searchFilterKey) {
-            guard !trimmedSearchText.isEmpty else { return }
-            await reloadForSearchChange()
-        }
+        .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
+        .onDisappear { searchWork.cancel() }
         .onChange(of: groupByThread) {
             activeMutationRequest = nil
             // Cancel any pending debounced rebuild so a stale capture cannot
@@ -2032,6 +2031,11 @@ public struct MessageListView: View {
     }
 
     private func reloadForSearchChange() async {
+        await searchWork.run { await performSearchChange() }
+    }
+
+    private func performSearchChange() async {
+        guard !Task.isCancelled else { return }
         guard case .search(let query) = MessageListReloadPolicy.operation(
             forSearchText: navigation.searchText
         ) else {
@@ -2056,6 +2060,8 @@ public struct MessageListView: View {
         }
         needsReloadAfterWorkUnblocks = false
         activeSearchRequest = request
+        let progressSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let progressRequest = searchProgress.begin(sources: [progressSource])
         activeAttachmentSearchQuery = nil
         isLoading = false
         isLoadingMore = false
@@ -2067,15 +2073,15 @@ public struct MessageListView: View {
         let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Search")
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
         guard await MessageListSearchDebouncePolicy.waitForDebounce() else {
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
-        guard canApplySearchResponse(request) else {
-            finishSearch(request)
+        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
         isLoading = true
-        activeAttachmentSearchQuery = searchPlan.query.hasAttachments == true
+        activeAttachmentSearchQuery = searchPlan.query.hasAttachments != nil
             && searchPlan.query.execution != .cacheOnly
             ? searchPlan.query
             : nil
@@ -2083,9 +2089,21 @@ public struct MessageListView: View {
         mutationErrorStatus = nil
         loadMoreErrorStatus = nil
         do {
-            let results = try await search(searchPlan.query)
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            let results = try await MailSearchExecution
+                .run(backend: backend, query: searchPlan.query, sourceID: sourceID) { update in
+                    await MainActor.run {
+                        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request),
+                              searchProgress.apply(
+                                  update,
+                                  source: progressSource,
+                                  request: progressRequest
+                              ) else { return }
+                        headers = searchProgress.headers(for: progressSource)
+                        navigation.installPartialSearchHeaders(navigationHeaders(for: headers))
+                    }
+                }
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
             headers = results
@@ -2100,13 +2118,14 @@ public struct MessageListView: View {
                 skippedSourceCount: 0,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         } catch is CancellationError {
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            searchProgress.fail(source: progressSource, request: progressRequest)
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         } catch {
             if MessageListSearchFallbackPolicy.shouldApplyLocalFallback(
                 for: error,
@@ -2116,7 +2135,8 @@ public struct MessageListView: View {
                 // fall back to the already-loaded page without alarming the user.
                 let resultCount = applyLocalSearchFallback(
                     searchQuery: searchPlan.query,
-                    request: request
+                    request: request,
+                    progressRequest: progressRequest
                 )
                 MailUIPerformanceDiagnostics.logListSearchFinished(
                     surface: .messageList,
@@ -2127,18 +2147,20 @@ public struct MessageListView: View {
                 )
                 return
             }
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
-            errorMessage = MessageListPresentation.searchErrorMessage(for: error)
+            searchProgress.fail(source: progressSource, request: progressRequest)
+            errorMessage = searchProgress.headers(for: progressSource).isEmpty ? MessageListPresentation
+                .searchErrorMessage(for: error) : nil
             MailUIPerformanceDiagnostics.logListFailed(
                 surface: .messageList,
                 path: .search,
                 error: error,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         }
     }
 
@@ -2149,22 +2171,29 @@ public struct MessageListView: View {
     @discardableResult
     private func applyLocalSearchFallback(
         searchQuery: SearchQuery,
-        request: MessageListSearchRequest
+        request: MessageListSearchRequest,
+        progressRequest: UUID
     ) -> Int {
-        guard canApplySearchResponse(request) else {
-            finishSearch(request)
+        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+            finishSearch(request, progressRequest: progressRequest)
             return 0
         }
         let results = MessageSearchFallback.filteredHeaders(
             in: loadedFolderHeaders,
             searchQuery: searchQuery
         )
+        let progressSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        searchProgress.apply(
+            MailSearchUpdate(headers: results, coverage: .cached, replacesResults: true, isComplete: true),
+            source: progressSource,
+            request: progressRequest
+        )
         headers = results
         navigation.replaceCurrentFolderHeaders(
             navigationHeaders(for: results),
             selectFirstIfNeeded: selectsFirstMessageWhenNeeded
         )
-        finishSearch(request)
+        finishSearch(request, progressRequest: progressRequest)
         return results.count
     }
 
@@ -2172,11 +2201,14 @@ public struct MessageListView: View {
         MessageListSearchStartPolicy.canStartSearch(
             request: request,
             activeRequest: activeSearchRequest,
+            replacesActiveRequest: true,
             isBlocked: isWorkBlocked || undoQueue?.isUndoing == true
         )
     }
 
-    private func finishSearch(_ request: MessageListSearchRequest) {
+    private func finishSearch(_ request: MessageListSearchRequest, progressRequest: UUID) {
+        guard searchProgress.request == progressRequest else { return }
+        searchProgress.finish(request: progressRequest)
         guard activeSearchRequest == request else { return }
         activeSearchRequest = nil
         activeAttachmentSearchQuery = nil
@@ -2918,13 +2950,6 @@ public struct MessageListView: View {
             return try await backend.messages(in: folder, sourceID: sourceID, pageToken: pageToken)
         }
         return try await backend.messages(in: folder, pageToken: pageToken)
-    }
-
-    private func search(_ query: SearchQuery) async throws -> [MessageHeader] {
-        if let sourceID {
-            return try await backend.search(query, sourceID: sourceID)
-        }
-        return try await backend.search(query)
     }
 
     /// Adds or removes one provider label on a message, optimistically

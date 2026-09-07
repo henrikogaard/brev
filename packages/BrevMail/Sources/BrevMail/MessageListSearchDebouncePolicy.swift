@@ -152,7 +152,7 @@ enum MessageListAttachmentSearchDisclosurePolicy {
 
     static func shouldShowDisclosure(queries: [SearchQuery], isLoading: Bool) -> Bool {
         isLoading && queries.contains {
-            $0.hasAttachments == true && $0.execution != .cacheOnly
+            $0.hasAttachments != nil && $0.execution != .cacheOnly
         }
     }
 }
@@ -193,9 +193,10 @@ enum MessageListSearchStartPolicy {
     static func canStartSearch(
         request: MessageListSearchRequest,
         activeRequest: MessageListSearchRequest?,
+        replacesActiveRequest: Bool = false,
         isBlocked: Bool
     ) -> Bool {
-        !isBlocked && activeRequest != request
+        !Task.isCancelled && !isBlocked && (replacesActiveRequest || activeRequest != request)
     }
 }
 

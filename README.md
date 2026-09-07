@@ -69,8 +69,9 @@ Anything not listed is roadmap, not release-blocker.
 - Per-row swipe actions, context menus, and bulk actions for
   read/unread, flag/unflag, archive, move, delete, with single-flight
   guards across every entry point (toolbar, menu, swipe, drag).
-- Native `.searchable` search bar with server-side search and a
-  local fallback (snippets, sender, recipients) on a 250 ms debounce.
+- Mailbox search on a 250 ms debounce, with progressive IMAP results in folder
+  and unified lists. Shared status shows cached coverage, server completion,
+  partial failures and retry; the open reader stays stable while pages arrive.
 - Reading pane: lazy body load, automatic mark-as-read, attachment
   preview via Quick Look, RSVP banner for calendar invites,
   Previous / Next message keyboard navigation (`⌘↑` / `⌘↓`).

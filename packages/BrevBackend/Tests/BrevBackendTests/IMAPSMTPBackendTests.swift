@@ -3808,6 +3808,110 @@ struct IMAPSMTPBackendTests {
         #expect(await sourceRecorder.requestedUIDs == candidateUIDs)
     }
 
+    @Test("progressive fallback reports cached coverage instead of server completion", arguments: [false, true])
+    func progressiveSearchCoverageIsExplicit(serverAvailable: Bool) async throws {
+        let progress = SearchProgressRecorder()
+        let index = LocalSearchIndexRecorder()
+        await index.setSearchResults([Self.retentionHeader(id: "INBOX:1", date: Date())])
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, _, _ in
+                #expect(await progress.updates.first?.coverage == .cached)
+                guard serverAvailable else { throw MailBackendError.network(underlying: "Offline") }
+                return IMAPMessageListingPage(messages: [])
+            }, localSearchIndex: index
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let results = try await backend.searchWithProgress(
+            SearchQuery(folderID: "INBOX", execution: .cacheThenServer),
+            sourceID: Self.sourceID
+        ) {
+            await progress.record($0)
+        }
+        let updates = await progress.updates
+        #expect(updates.first?.isComplete == false)
+        #expect(updates.last?.isComplete == true)
+        #expect(updates.last?.coverage == (serverAvailable ? .server : .cached))
+        #expect(results.count == (serverAvailable ? 0 : 1))
+    }
+
+    @Test("cancelling from a progress callback prevents the next page and completion")
+    func progressiveSearchCancellationStopsPaging() async throws {
+        let progress = SearchProgressRecorder()
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, token, _ in
+                #expect(token == nil)
+                return IMAPMessageListingPage(messages: [Self.messageListing(uid: 1, subject: "Match")], nextPageToken: "next")
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let request = Task {
+            try await backend.searchWithProgress(SearchQuery(text: "Match", execution: .serverOnly), sourceID: Self.sourceID) {
+                await progress.record($0)
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+        await #expect(throws: CancellationError.self) { _ = try await request.value }
+        let updates = await progress.updates
+        #expect(updates.count == 1)
+        #expect(updates.first?.isComplete == false)
+    }
+
+    @Test("progressive search publishes each page before requesting the next")
+    func progressiveSearchPublishesBeforeNextPage() async throws {
+        let progress = SearchProgressRecorder()
+        let backend = IMAPSMTPBackend(
+            account: Self.account, configuration: Self.configuration, credential: Self.credential,
+            listFolders: { _, _ in [IMAPFolderListing(
+                path: "INBOX",
+                displayName: "Inbox",
+                delimiter: "/",
+                flags: [],
+                role: .inbox
+            )] },
+            searchMessagePage: { _, _, _, _, token, _ in
+                if token != nil {
+                    #expect(await progress.updates.first?.headers.map(\.id) == ["INBOX:2"])
+                }
+                return IMAPMessageListingPage(
+                    messages: [Self.messageListing(uid: token == nil ? 2 : 1, subject: "Match")],
+                    nextPageToken: token == nil ? "next" : nil
+                )
+            }
+        )
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let search = try #require(backend.extensionService(ProgressiveMailSearching.self))
+        let results = try await search.searchWithProgress(
+            SearchQuery(text: "Match", execution: .serverOnly),
+            sourceID: Self.sourceID
+        ) {
+            await progress.record($0)
+        }
+        #expect(results.count == 2)
+        let updates = await progress.updates
+        #expect(updates.count == 3)
+        #expect(updates.last?.isComplete == true)
+        #expect(updates.last?.coverage == .server)
+    }
+
     @Test("a failed later search page or source cannot become a successful cache fallback", arguments: [false, true])
     func failedLaterSearchPageIsVisible(failureInBody: Bool) async throws {
         let index = LocalSearchIndexRecorder()
@@ -8521,13 +8625,18 @@ struct IMAPSMTPBackendTests {
             }
         )
         try await backend.connect()
+        defer { Task { await backend.disconnect() } }
         let stream = backend.subscribeToChanges()
         _ = stream
 
-        try await idleRecorder.waitUntilSubscriptionCount(2)
-        try await Task.sleep(nanoseconds: 150_000_000)
-        #expect(await idleRecorder.subscriptionCount == 2)
         try await idleRecorder.waitUntilSubscriptionCount(3)
+        let intervals = await idleRecorder.retryIntervals
+        let first = try #require(intervals.first)
+        let second = try #require(intervals.dropFirst().first)
+        // Assert the actual attempt spacing. A busy runner may resume this test
+        // late, so its wake-up time cannot imply an exact subscription count.
+        #expect(first >= .milliseconds(100))
+        #expect(second >= .milliseconds(200))
     }
 
     @Test("body fetches and parses multipart IMAP message source")
@@ -10826,15 +10935,16 @@ private actor PerFolderIdleEventRecorder {
 }
 
 private actor AutoFailingIMAPIdleEventRecorder {
-    private var subscriptions = 0
+    private let clock = ContinuousClock()
+    private var subscriptionTimes: [ContinuousClock.Instant] = []
 
-    var subscriptionCount: Int {
-        subscriptions
+    var retryIntervals: [Duration] {
+        zip(subscriptionTimes, subscriptionTimes.dropFirst()).map { $0.0.duration(to: $0.1) }
     }
 
     func stream() -> AsyncThrowingStream<IMAPIdleEvent, any Error> {
         AsyncThrowingStream { continuation in
-            subscriptions += 1
+            subscriptionTimes.append(clock.now)
             continuation.finish(throwing: IMAPClientError.transport("Idle dropped"))
         }
     }
@@ -10844,7 +10954,7 @@ private actor AutoFailingIMAPIdleEventRecorder {
         timeoutNanoseconds: UInt64 = 5_000_000_000
     ) async throws {
         let startedAt = Date()
-        while subscriptions < count {
+        while subscriptionTimes.count < count {
             guard Date().timeIntervalSince(startedAt) < Double(timeoutNanoseconds) / 1_000_000_000 else {
                 throw IMAPEventTimeout.timedOut
             }
@@ -11953,4 +12063,9 @@ private actor MoveIdentityProbe {
         if from == "INBOX" { return IMAPMoveResult(uidValidity: 91, uidMappings: [43: 81]) }
         return IMAPMoveResult(uidValidity: 77, uidMappings: [81: 99])
     }
+}
+
+private actor SearchProgressRecorder {
+    var updates: [MailSearchUpdate] = []
+    func record(_ update: MailSearchUpdate) { updates.append(update) }
 }

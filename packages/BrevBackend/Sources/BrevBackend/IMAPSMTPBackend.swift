@@ -21,7 +21,8 @@ enum IMAPBackgroundRefreshPolicy {
 
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
-    OutboxManaging, ScheduledSendEditing, CardDAVContactSyncSupporting, MessageLabelManaging, @unchecked Sendable {
+    OutboxManaging, ScheduledSendEditing, ProgressiveMailSearching, CardDAVContactSyncSupporting, MessageLabelManaging,
+    @unchecked Sendable {
     private static let bodyFetchLogger = Logger(
         subsystem: "eu.brevmail.brev",
         category: "IMAPBodyFetch"
@@ -2396,6 +2397,20 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        try await performSearch(query, onUpdate: nil)
+    }
+
+    /// Publishes source-validated cached matches and server pages before final completion.
+    public func searchWithProgress(
+        _ query: SearchQuery,
+        sourceID: MailSourceID?,
+        onUpdate: @escaping MailSearchProgressHandler
+    ) async throws -> [MessageHeader] {
+        if let sourceID { try validateSourceID(sourceID) }
+        return try await performSearch(query, onUpdate: onUpdate)
+    }
+
+    private func performSearch(_ query: SearchQuery, onUpdate: MailSearchProgressHandler?) async throws -> [MessageHeader] {
         try Task.checkCancellation()
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Search")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
@@ -2422,6 +2437,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                         resultCount: cachedResults.count,
                         durationMilliseconds: durationMilliseconds()
                     )
+                    await onUpdate?(MailSearchUpdate(
+                        headers: cachedResults,
+                        coverage: .cached,
+                        replacesResults: true,
+                        isComplete: true
+                    ))
+                    try Task.checkCancellation()
                     return cachedResults
                 }
             }
@@ -2448,7 +2470,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 resultCount: cachedResults.count,
                 durationMilliseconds: durationMilliseconds()
             )
+            await onUpdate?(MailSearchUpdate(headers: cachedResults, coverage: .cached, replacesResults: true, isComplete: true))
+            try Task.checkCancellation()
             return cachedResults
+        }
+        if !cachedResults.isEmpty {
+            await onUpdate?(MailSearchUpdate(headers: cachedResults, coverage: .cached, replacesResults: true))
+            try Task.checkCancellation()
         }
         // Cached hits are not proof of complete coverage. Explicit online
         // searches still consult the server; cache-only remains entirely local.
@@ -2460,6 +2488,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     resultCount: cachedResults.count,
                     durationMilliseconds: durationMilliseconds()
                 )
+                await onUpdate?(MailSearchUpdate(
+                    headers: cachedResults,
+                    coverage: .cached,
+                    replacesResults: true,
+                    isComplete: true
+                ))
+                try Task.checkCancellation()
                 return cachedResults
             }
             let error = MailBackendError.notSupported(capabilities)
@@ -2492,6 +2527,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 resultCount: 0,
                 durationMilliseconds: durationMilliseconds()
             )
+            await onUpdate?(MailSearchUpdate(headers: [], coverage: .server, isComplete: true))
+            try Task.checkCancellation()
             return []
         }
 
@@ -2504,7 +2541,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     try await headers.append(contentsOf: searchPagedHeaders(
                         folderID: folderID,
                         query: query,
-                        operation: searchMessagePageOperation
+                        operation: searchMessagePageOperation,
+                        onUpdate: onUpdate
                     ))
                 } else {
                     let listings = try await searchMessagesWithAuthenticatedOAuthRetry(
@@ -2515,11 +2553,14 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     if query.hasAttachments == nil, listings.count >= Self.legacySearchCandidateLimit {
                         throw Self.incompleteSearchError
                     }
-                    try await headers.append(contentsOf: searchHeaders(
+                    let batch = try await searchHeaders(
                         from: listings,
                         folderID: folderID,
                         attachmentFilter: query.hasAttachments
-                    ))
+                    )
+                    headers.append(contentsOf: batch)
+                    await onUpdate?(MailSearchUpdate(headers: batch, coverage: .server))
+                    try Task.checkCancellation()
                 }
                 completedSearchFolders += 1
             }
@@ -2532,6 +2573,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 resultCount: results.count,
                 durationMilliseconds: durationMilliseconds()
             )
+            await onUpdate?(MailSearchUpdate(headers: [], coverage: .server, isComplete: true))
+            try Task.checkCancellation()
             return results
         } catch {
             try Task.checkCancellation()
@@ -2547,6 +2590,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     resultCount: cachedResults.count,
                     durationMilliseconds: durationMilliseconds()
                 )
+                await onUpdate?(MailSearchUpdate(
+                    headers: cachedResults,
+                    coverage: .cached,
+                    replacesResults: true,
+                    isComplete: true
+                ))
+                try Task.checkCancellation()
                 return cachedResults
             }
             MailPerformanceDiagnostics.logSearchFailed(
@@ -3179,6 +3229,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(ProgressiveMailSearching.self):
+            return self as? Service
         case ObjectIdentifier(CachedMessageHeaderProviding.self):
             return self as? Service
         case ObjectIdentifier(SyncHealthReporting.self),
@@ -4738,7 +4790,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func searchPagedHeaders(
         folderID: Folder.ID,
         query: SearchQuery,
-        operation: @escaping MessageSearchPageOperation
+        operation: @escaping MessageSearchPageOperation,
+        onUpdate: MailSearchProgressHandler?
     ) async throws -> [MessageHeader] {
         let attachmentFilter = query.hasAttachments
         var pageToken: String?
@@ -4763,9 +4816,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
             try Task.checkCancellation()
             do {
-                try await headers.append(contentsOf: searchHeaders(
-                    from: page.messages, folderID: folderID, attachmentFilter: attachmentFilter
-                ))
+                let batch = try await searchHeaders(from: page.messages, folderID: folderID, attachmentFilter: attachmentFilter)
+                headers.append(contentsOf: batch)
+                await onUpdate?(MailSearchUpdate(headers: batch, coverage: .server))
+                try Task.checkCancellation()
             } catch {
                 try Task.checkCancellation()
                 if Self.shouldUseCacheFallback(for: error) { throw Self.incompleteSearchError }

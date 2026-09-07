@@ -16,23 +16,34 @@ import Testing
 
 @Suite("MessageListSearchDebouncePolicy")
 struct MessageListSearchDebouncePolicyTests {
-    @Test("attachment search disclosure is shown only while an attachment search is fetching")
-    func attachmentSearchDisclosureRequiresActiveFetch() {
+    @Test("canceled tasks cannot begin new search progress")
+    func canceledTaskCannotStartSearch() async {
+        let request = MessageListSearchRequest(query: "invoice", folderID: "INBOX")
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return MessageListSearchStartPolicy.canStartSearch(request: request, activeRequest: nil, isBlocked: false)
+        }
+        let allowed = await task.value
+        #expect(!allowed)
+    }
+
+    @Test("attachment-presence and absence searches disclose active fetching", arguments: [false, true])
+    func attachmentSearchDisclosureRequiresActiveFetch(hasAttachments: Bool) {
         #expect(
             MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                query: SearchQuery(hasAttachments: true),
+                query: SearchQuery(hasAttachments: hasAttachments),
                 isLoading: true
             )
         )
         #expect(
             !MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                query: SearchQuery(hasAttachments: true, execution: .cacheOnly),
+                query: SearchQuery(hasAttachments: hasAttachments, execution: .cacheOnly),
                 isLoading: true
             )
         )
         #expect(
             !MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                query: SearchQuery(hasAttachments: true),
+                query: SearchQuery(hasAttachments: hasAttachments),
                 isLoading: false
             )
         )

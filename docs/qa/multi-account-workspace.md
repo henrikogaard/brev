@@ -290,3 +290,33 @@ support.
 - Measure time to first result, total search time, memory and scrolling with large
   result sets. The existing array contract still waits for all pages; progressive
   results and more explicit coverage/error presentation remain work in #28.
+
+### Issue #28 progressive search, 2026-09-07
+
+- Search an IMAP folder larger than one page. Verify first-page rows are readable
+  while older pages load. A selected message must stay open across each update.
+- Repeat identical query text quickly and change folder/account during a slow
+  request. Neither callbacks nor finalization from the old request may replace
+  new rows, clear its progress state or change selection.
+- Search multiple mailboxes with different response speeds and overlapping raw
+  message IDs. Each source must appear independently with correct reader routing.
+- Seed cached matches then search online. Verify cached status changes to server
+  completion only after all pages; a complete empty server result removes stale
+  cached hits. First-request offline fallback stays labeled as cached-only.
+- Fail a later page or one mailbox. Retain useful partial rows, show incomplete
+  search and Retry, and verify retry starts a fresh request. Array-only providers
+  must not claim confirmed server coverage.
+- Search both with and without attachments. Both show the download disclosure
+  only during active source inspection; cache-only does not show active fetching.
+- Light/dark compact status snapshots are recorded and inspected. Automated tests
+  cover publication before the next page, callback cancellation, coverage, source
+  collisions, stale request IDs, terminal updates and reader preservation. Native
+  large-mailbox latency, memory, scrolling and accessibility remain acceptance work.
+
+Native mock evidence: the first invoice search initially left Searching visible,
+then showed a false incomplete state after basic finalization was added. A shared
+cancellable worker and consolidated trigger resolved the underlying replacement
+race. The rebuilt September 7 test app completes that first search without Retry,
+showing its array-only coverage caveat and preserving the visible result/reader.
+Further Local/All Inboxes input was refused when the window stopped resolving in
+AXWindows; these checks and live delayed-page measurements remain unverified.

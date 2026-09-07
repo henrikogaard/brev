@@ -6,6 +6,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP search shows cached matches and server pages as they arrive in folder and
+  unified lists. A shared compact status row identifies cached-only coverage,
+  incomplete results and Retry. Open messages stay selected while paging.
+- Repeated searches reject stale progress and completion callbacks. Late mailbox
+  failures preserve already loaded rows. Attachment-presence and absence searches
+  both disclose possible message-data downloads while fetching.
+
 - IMAP searches use server pages to return matches beyond the previous
   50-result display limit. Ordinary searches follow server pages without
   downloading message bodies, and cached matches no longer hide older online

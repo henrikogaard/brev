@@ -83,6 +83,8 @@ struct UnifiedInboxListView: View {
     @State private var activeSearchRequest: UnifiedInboxSearchRequest?
     @State private var loadedSavedQuery: SmartMailbox.SavedQuery?
     @State private var activeAttachmentSearchQueries: [SearchQuery] = []
+    @State private var searchProgress = MailSearchProgressState()
+    @State private var searchWork = MailSearchTaskOwner()
     @State private var partialLoadErrorStatus: MessageListFooterStatus?
     @State private var mutationErrorStatus: MessageListFooterStatus?
     @State private var loadMoreErrorStatus: MessageListFooterStatus?
@@ -214,11 +216,16 @@ struct UnifiedInboxListView: View {
                     unifiedSearchExecutionBar
                 }
             }
-            if MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                queries: activeAttachmentSearchQueries,
-                isLoading: isLoading
-            ) {
-                AttachmentSearchDisclosureView()
+            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, searchProgress.request != nil {
+                MailSearchStatusView(
+                    progress: searchProgress,
+                    checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+                        queries: activeAttachmentSearchQueries,
+                        isLoading: searchProgress.isSearching
+                    )
+                ) {
+                    Task { await reloadVisibleItems() }
+                }
             }
             Group {
                 if let errorMessage {
@@ -282,6 +289,7 @@ struct UnifiedInboxListView: View {
                 MessageListFolderStatsFooter(presentation: folderStatsFooterPresentation)
             }
         }
+        .onDisappear { searchWork.cancel() }
         .task(id: loadKey) {
             let scope = "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)"
             if requestedScope != scope {
@@ -1522,6 +1530,10 @@ struct UnifiedInboxListView: View {
     }
 
     private func search(query: String) async {
+        await searchWork.run { await performSearch(query: query) }
+    }
+
+    private func performSearch(query: String) async {
         if let savedSearchQuery {
             if loadedContentKey != "saved:\(reloadKey)" || loadedSavedQuery != savedSearchQuery {
                 await reloadSavedSearch(savedSearchQuery)
@@ -1538,7 +1550,6 @@ struct UnifiedInboxListView: View {
             sourceIDs: sourceIDs,
             execution: navigation.searchExecution
         )
-        guard activeSearchRequest != request || !isLoading else { return }
         let loadRequest = loadOwnership.begin()
         defer { if loadOwnership.current == loadRequest { isLoading = false } }
         activeSearchRequest = request
@@ -1561,6 +1572,7 @@ struct UnifiedInboxListView: View {
                 backend(for: sourceID)?.capabilities ?? []
             }
         )
+        let progressRequest = searchProgress.begin(sources: searchPlans.map { $0.source.sourceID })
         activeAttachmentSearchQueries = searchPlans.map(\.query)
         var loadedItems: [UnifiedInboxItem] = []
         var firstError: (any Error)?
@@ -1569,30 +1581,56 @@ struct UnifiedInboxListView: View {
         let results = await MailConcurrentWork.map(searchPlans) { plan in
             let source = plan.source
             guard let backend = backendsByAccountID[source.sourceID.accountID] else {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.missing(source.sourceID.accountID)
             }
             do {
-                let headers = try await backend.search(plan.query, sourceID: source.sourceID)
+                let headers = try await MailSearchExecution
+                    .run(backend: backend, query: plan.query, sourceID: source.sourceID) { update in
+                        await MainActor.run {
+                            guard loadOwnership.accepts(loadRequest), UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+                                request: request, activeRequest: activeSearchRequest, currentSearchText: navigation.searchText,
+                                currentSourceIDs: sourceSections.map(\.id)
+                            ), searchProgress.apply(update, source: source.sourceID, request: progressRequest) else { return }
+                            items = UnifiedInboxPagination.sortedItems(searchPlans.flatMap { plan in
+                                UnifiedInboxSearchPolicy.items(
+                                    from: searchProgress.headers(for: plan.source.sourceID),
+                                    source: plan.source
+                                )
+                            })
+                            if let selectedSource = navigation.selectedSourceID {
+                                navigation
+                                    .installPartialSearchHeaders(items.filter { $0.sourceID == selectedSource }.map(\.header))
+                            }
+                        }
+                    }
                 return UnifiedInboxSearchLoadResult.results(
                     UnifiedInboxSearchPolicy.items(from: headers, source: source)
                 )
             } catch is CancellationError {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.cancelled
             } catch {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.failure(error.localizedDescription)
             }
         }
         guard loadOwnership.accepts(loadRequest) else { return }
-        for result in results {
+        for (index, result) in results.enumerated() {
             switch result {
             case .results(let sourceItems):
                 loadedItems.append(contentsOf: sourceItems)
             case .failure(let message):
+                let source = searchPlans[index].source
+                loadedItems.append(contentsOf: UnifiedInboxSearchPolicy.items(
+                    from: searchProgress.headers(for: source.sourceID),
+                    source: source
+                ))
                 firstError = firstError ?? MailBackendError.backendSpecific(message: message)
             case .missing(let accountID):
                 firstError = firstError ?? MailBackendError.notFound(id: accountID)
             case .cancelled:
-                finishSearch(request)
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
         }
@@ -1603,7 +1641,7 @@ struct UnifiedInboxListView: View {
             currentSearchText: navigation.searchText,
             currentSourceIDs: sourceSections.map(\.id)
         ) else {
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
 
@@ -1619,9 +1657,8 @@ struct UnifiedInboxListView: View {
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
         } else if let firstError {
-            partialLoadErrorStatus = MessageListPresentation.partialLoadErrorStatus(
-                for: firstError
-            )
+            partialLoadErrorStatus = searchProgress.hasFailure ? nil : MessageListPresentation
+                .partialLoadErrorStatus(for: firstError)
             MailUIPerformanceDiagnostics.logListSearchFinished(
                 surface: .unifiedInbox,
                 execution: navigation.searchExecution,
@@ -1650,10 +1687,12 @@ struct UnifiedInboxListView: View {
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
         }
-        finishSearch(request)
+        finishSearch(request, progressRequest: progressRequest)
     }
 
-    private func finishSearch(_ request: UnifiedInboxSearchRequest) {
+    private func finishSearch(_ request: UnifiedInboxSearchRequest, progressRequest: UUID) {
+        guard searchProgress.request == progressRequest else { return }
+        searchProgress.finish(request: progressRequest)
         guard activeSearchRequest == request else { return }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []

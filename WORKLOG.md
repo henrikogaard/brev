@@ -985,3 +985,54 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   build/startup and iOS Mail compilation; lint/formatter, privacy audit and diff
   checks. Separate standards and behavior reviewers cleared the error/cancellation
   fixes. Native/live acceptance and progressive search remain open.
+
+## 2026-09-07 — Codex — Issue #28 / PR #30 progressive search
+
+- Added an optional source-validated progressive search callback with cache/server
+  coverage. IMAP awaits consumers before requesting another page. Existing array
+  callers retain compatibility; array-only providers report unverified coverage.
+- Folder and unified lists now publish incremental source-qualified results with
+  UUID ownership through callbacks and finalization. Sorted batches are merged,
+  selected readers are preserved during paging, and failed sources retain partial
+  rows with shared Retry and coverage feedback.
+- Replaced the separate attachment disclosure with a compact themed search-status
+  row, including both presence and absence predicates. New light/dark snapshots
+  were recorded, inspected and passed comparison; CI routes them to the compatible
+  macOS renderer. Source policy, README, DESIGN, privacy and QA docs were updated.
+- TDD established missing progress contract/state behavior and terminal-update
+  rejection. Callback tests prove first-page publication before next request,
+  cached fallback labeling and cancellation stopping paging. Disclosure regression
+  reproduced absence-predicate omission and was fixed through the shared policy.
+- Full Mail 1,551 and Backend 1,043 tests passed before the final callback additions;
+  the new callback suite passes. Dated September 7 mock macOS build/startup passed;
+  iOS build, final full suites, lint/privacy and independent reviews are ongoing.
+- This remains part of open #28: Gmail progress/cap, detailed index coverage,
+  user-paced load-more, measured native performance and the broader parity scope
+  remain open. No merge, release, external setup or live-provider sends occurred.
+
+- Native QA exposed a first-search lifecycle bug: duplicate SwiftUI search tasks
+  could cancel a same-query replacement, leaving progress stuck or falsely
+  incomplete. Added one cancellable worker per list and a combined text/filter
+  trigger; replaced workers cannot clear newer ownership. Regression tests cover
+  cancellation before start, interrupted finalization, worker replacement and
+  mixed-source Retry readiness. Native first invoice search now finishes without
+  Retry, keeping the result/reader visible. The mock array adapter correctly
+  reports unverified coverage, not server completion.
+- Review fixes preserve loaded conversation replies during paging, retain the
+  explicit no-background-fetch disclosure, add package catalog keys, prioritize
+  unverified coverage in mixed results, and give iOS Retry a 44-point target.
+- Final local evidence: Mail 1,555, Backend 1,045 and separate Contacts 6 tests
+  passed; five-state light/dark snapshots passed and were inspected. Dated mock
+  macOS build/startup and iOS compilation, lint/format/privacy/diff checks pass.
+  Background UI access became unavailable after first-search QA because the
+  target window no longer resolved in AXWindows; Local/All Inboxes native checks
+  remain unverified. No foreground escalation was used.
+- Hosted checks on preceding 546558c9 are 19 passed / Backend failed. Inspecting
+  that exact job before this slice's delivery; no CI success is inferred from
+  local suites. The broader parity issue remains In progress.
+
+- Hosted Backend failure on 546558c9 was the pre-existing IDLE retry test's
+  exact subscription-count assertion after a fixed sleep. Replaced that timing
+  assumption with ContinuousClock intervals recorded at actual subscriptions
+  (at least 100ms then 200ms); production retry behavior is unchanged. Full
+  Backend 1,045 tests pass afterward and independent review cleared the change.

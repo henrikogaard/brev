@@ -1,6 +1,48 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Some results could not be loaded. Other mailboxes are still being searched." : {
+      "extractionState" : "manual"
+    },
+    "Searching remaining mailboxes…" : {
+      "extractionState" : "manual"
+    },
+    "Cached results include only mail stored on this device." : {
+      "extractionState" : "manual"
+    },
+    "Cached results only" : {
+      "extractionState" : "manual"
+    },
+    "Checks message contents page by page and may download data. No background fetch is running." : {
+      "extractionState" : "manual"
+    },
+    "No mailboxes searched" : {
+      "extractionState" : "manual"
+    },
+    "Retry search" : {
+      "extractionState" : "manual"
+    },
+    "Search finished · Some results may be missing" : {
+      "extractionState" : "manual"
+    },
+    "Search incomplete" : {
+      "extractionState" : "manual"
+    },
+    "Searching…" : {
+      "extractionState" : "manual"
+    },
+    "Server search complete" : {
+      "extractionState" : "manual"
+    },
+    "Showing cached matches · Searching server…" : {
+      "extractionState" : "manual"
+    },
+    "Some results are limited to cached mail" : {
+      "extractionState" : "manual"
+    },
+    "Some results could not be loaded. Try searching again." : {
+      "extractionState" : "manual"
+    },
     "Cancel sign-in" : {},
     "Apple Calendar is unavailable." : {
       "extractionState" : "manual"
