@@ -1103,3 +1103,30 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   work is IMAP indexing/References, consented provider discovery and reader/action
   integration, followed by native/live/performance checks. Parent #28 remains
   In progress and PR #30 remains draft; no merge, release or issue closure.
+
+
+## 2026-09-08 — Codex — #28 / PR #30, IMAP relationship index
+
+- Refreshed feature/mail-client-parity at a0a850a: clean/pushed and all 20 hosted
+  checks passed. Parent #28 remains In progress, PR #30 draft on #27's branch.
+- Added MailConversationIndex and a source-owned SyncEngine lookup under accepted
+  ADR-0074. SQLite schema 5 indexes existing RFC reply identifiers in the same
+  cache; updates and deletions follow header transactions and foreign-key cascades.
+  Migration streams v4 headers and preserves original MIME provenance.
+- TDD reproduced missing cached cross-folder lookup, malformed-neighbor lookup
+  failure and stale UIDVALIDITY reuse. Tests now cover these alongside restart,
+  account isolation, excluded-folder traversal, expunge and partial fanout limits.
+- Final stable SyncEngine verification passes 74 XCTest and seven Swift Testing
+  tests; Backend 1,055 and Gmail 145 pass. Lint/format, privacy and diff checks
+  pass. A 2,001-header SQLite write/lookup fixture completed in 0.762 seconds;
+  this is a synthetic smoke measurement, not live-mailbox latency evidence.
+- Independent behavior review found legacy Message-ID fallback, control-character
+  truncation and per-row statement preparation. Recorded failing regressions,
+  reused rfcMessageID, rejected unsafe controls/empty locators and prepared link
+  statements once per batch/migration. Both final reviews report no blockers.
+- No UI or network code changed, so new rendering snapshots/native QA are not
+  applicable to this cache phase. References ingestion, provider
+  service/reader wiring, native/live acceptance and mailbox-scale measurements
+  remain pending. No merge, release or issue closure is included.
+- Documentation sweep updated README, Unreleased changelog, ADR-0074 and QA notes.
+  Privacy/network policy and agent instructions need no change for local indexing.

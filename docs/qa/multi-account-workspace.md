@@ -363,3 +363,20 @@ AXWindows; these checks and live delayed-page measurements remain unverified.
   provider discovery, reader/action integration, native rendering, live-provider
   acceptance and representative large-mailbox performance measurements. This
   foundation must not be reported as complete conversation reading.
+
+
+### IMAP relationship-index follow-up
+
+- Verify a version-four cache upgrades to schema five with reply chains and
+  original MIME provenance intact. Opening a conversation must read matching
+  identifier rows, without decoding unrelated account headers or message bodies.
+- Expunging the connecting reply must remove its graph edges; clearing a folder
+  or account must cascade the same index rows. Cached UIDVALIDITY changes reject
+  stale known-generation anchors. Unknown generations never authorize UID actions.
+- Malformed linkage leaves ordinary cached mail usable; only safely parsed
+  identifiers participate. An identifier with over 500 candidates or traversal
+  reaching 10,000 candidates/identifiers reports partial coverage.
+- Automated SQLite/in-memory tests cover cross-folder resolution, restart,
+  migration, source isolation, exclusions, deletion, malformed metadata and
+  bounded coverage. References persistence/ingestion, provider wiring, rendered
+  reader integration and measured live-mailbox performance remain pending.

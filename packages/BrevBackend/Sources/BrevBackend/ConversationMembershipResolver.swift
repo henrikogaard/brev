@@ -38,7 +38,7 @@ public enum ConversationMembershipResolver {
         var owners: [String: Set<Fingerprint>] = [:]
         var ownerCounts: [String: Int] = [:]
         for member in members {
-            let own = try identifiers(in: member.header.messageID)
+            let own = try identifiers(in: member.header.rfcMessageID)
             guard own.count <= 1 else { throw ConversationLookupError.invalidMetadata }
             if let id = own.first {
                 ownerCounts[id, default: 0] += 1
@@ -82,7 +82,10 @@ public enum ConversationMembershipResolver {
     /// Parses bracketed RFC identifiers or one legacy opaque ID without guessing from prose.
     public static func identifiers(in value: String?) throws -> [String] {
         guard let value else { return [] }
-        guard value.utf8.count <= 65536 else { throw ConversationLookupError.invalidMetadata }
+        guard value.utf8.count <= 65536,
+              !value.unicodeScalars.contains(where: {
+                  ($0.value < 32 && ![9, 10, 13].contains($0.value)) || $0.value == 127
+              }) else { throw ConversationLookupError.invalidMetadata }
         let trimmed = try removingComments(value).trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return [] }
         var remaining = trimmed[...]

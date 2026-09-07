@@ -144,3 +144,22 @@ and coverage without pretending both algorithms are identical.
 - Current integration points: `BrevMailRootView.threadHeadersForSelection`,
   `ThreadMessageDerivation`, `MessageThreadResolver`, `MailLocalSearchIndex`,
   `IMAPSMTPBackend`, `GmailAPIBackend` and their provider-owned stores.
+
+
+## Implementation progress — 2026-09-08
+
+The SyncEngine v5 migration adds a reply-identifier table in the existing SQLite
+cache. Header upserts maintain it atomically; foreign-key cascades cover expunge,
+folder invalidation and account clearing. Migration backfills Message-ID and
+In-Reply-To from v4 header records one row at a time, preserving original-byte
+provenance. Backfill uses the existing `rfcMessageID` legacy fallback; statement
+preparation is shared across each batch/migration. Malformed linkage does not
+prevent the original header being cached; control/NUL characters cannot enter
+identifier bindings.
+
+The local index walks matching identifiers only. A per-identifier candidate cap
+and a total traversal budget produce `partial`, never complete coverage. Known
+folder generations are checked against cached UIDVALIDITY; missing generations
+remain unknown and are not evidence authorizing a remote UID action. No network
+calls or automatic header enrichment are introduced by this step. Persisted
+References ingestion, provider extension wiring and reader/actions remain pending.

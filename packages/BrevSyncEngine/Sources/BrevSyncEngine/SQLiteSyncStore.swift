@@ -31,11 +31,11 @@ enum SyncStoreError: Error {
 
 /// Persistent SQLite-backed implementation of `SyncStoreProtocol` (ADR-0030).
 ///
-/// Schema version 4. All writes use WAL journal mode for concurrent-read safety.
+/// Schema version 5. All writes use WAL journal mode for concurrent-read safety.
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 4
+    let currentSchemaVersion = 5
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -291,6 +291,112 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         }
     }
 
+    func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        guard limit > 0 else { return [] }
+        return try lock.withLock {
+            var statement: OpaquePointer?
+            let sql = """
+            SELECT h.header_json, s.uid_validity FROM conversation_links c
+            JOIN message_headers h USING (account_id, folder_id, uid)
+            LEFT JOIN folder_sync_state s ON s.account_id = h.account_id AND s.folder_id = h.folder_id
+            WHERE c.account_id = ? AND c.identifier = ?
+            ORDER BY c.folder_id, c.uid LIMIT ?;
+            """
+            guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
+                throw SyncStoreError.prepareFailed(errMsg())
+            }
+            defer { sqlite3_finalize(statement) }
+            sqlite3_bind_text(statement, 1, source.accountID, -1, Self.transient)
+            sqlite3_bind_text(statement, 2, identifier, -1, Self.transient)
+            sqlite3_bind_int64(statement, 3, Int64(limit))
+            var result: [ConversationMember] = []
+            var step = sqlite3_step(statement)
+            while step == SQLITE_ROW {
+                guard let bytes = sqlite3_column_blob(statement, 0) else { throw ConversationLookupError.invalidMetadata }
+                let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 0)))
+                let header = try Self.decoder.decode(MessageHeader.self, from: data)
+                let generation = sqlite3_column_type(statement, 1) == SQLITE_NULL ? nil : UInt64(exactly: sqlite3_column_int64(
+                    statement,
+                    1
+                ))
+                result.append(ConversationMember(sourceID: source, header: header, folderGeneration: generation))
+                step = sqlite3_step(statement)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return result
+        }
+    }
+
+    private func createConversationSchema() throws {
+        try execSQL("""
+        CREATE TABLE IF NOT EXISTS conversation_links (
+            account_id TEXT NOT NULL, folder_id TEXT NOT NULL, uid INTEGER NOT NULL, identifier TEXT NOT NULL,
+            PRIMARY KEY(account_id, folder_id, uid, identifier),
+            FOREIGN KEY(account_id, folder_id, uid) REFERENCES message_headers(account_id, folder_id, uid) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_conversation_identifier
+            ON conversation_links(account_id, identifier, folder_id, uid);
+        """)
+    }
+
+    private func prepareConversationStatements() throws -> (delete: OpaquePointer?, insert: OpaquePointer?) {
+        var delete: OpaquePointer?
+        var insert: OpaquePointer?
+        guard sqlite3_prepare_v2(db,
+                                 "DELETE FROM conversation_links WHERE account_id = ? AND folder_id = ? AND uid = ?;",
+                                 -1, &delete, nil) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+        guard sqlite3_prepare_v2(db, "INSERT INTO conversation_links VALUES (?, ?, ?, ?);", -1, &insert, nil) == SQLITE_OK else {
+            sqlite3_finalize(delete)
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        return (delete, insert)
+    }
+
+    private func upsertConversationLinks(_ header: MessageHeader, accountID: String,
+                                         statements: (delete: OpaquePointer?, insert: OpaquePointer?)) throws {
+        sqlite3_bind_text(statements.delete, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(statements.delete, 2, header.folderID, -1, Self.transient)
+        sqlite3_bind_int64(statements.delete, 3, Int64(Self.uid(from: header.id)))
+        let deleted = sqlite3_step(statements.delete)
+        sqlite3_reset(statements.delete)
+        sqlite3_clear_bindings(statements.delete)
+        guard deleted == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+        // Malformed linkage must not prevent ordinary mail from being cached.
+        guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
+              let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo) else { return }
+        for identifier in Set(own + parents) {
+            sqlite3_bind_text(statements.insert, 1, accountID, -1, Self.transient)
+            sqlite3_bind_text(statements.insert, 2, header.folderID, -1, Self.transient)
+            sqlite3_bind_int64(statements.insert, 3, Int64(Self.uid(from: header.id)))
+            sqlite3_bind_text(statements.insert, 4, identifier, -1, Self.transient)
+            guard sqlite3_step(statements.insert) == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            sqlite3_reset(statements.insert)
+            sqlite3_clear_bindings(statements.insert)
+        }
+    }
+
+    private func rebuildConversationLinks() throws {
+        let links = try prepareConversationStatements()
+        defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
+        var statement: OpaquePointer?
+        guard sqlite3_prepare_v2(db, "SELECT account_id, header_json FROM message_headers;", -1, &statement, nil) == SQLITE_OK
+        else {
+            throw SyncStoreError.prepareFailed(errMsg())
+        }
+        defer { sqlite3_finalize(statement) }
+        var step = sqlite3_step(statement)
+        while step == SQLITE_ROW {
+            guard let account = sqlite3_column_text(statement, 0), let bytes = sqlite3_column_blob(statement, 1) else {
+                throw ConversationLookupError.invalidMetadata
+            }
+            let header = try Self.decoder.decode(MessageHeader.self,
+                                                 from: Data(bytes: bytes, count: Int(sqlite3_column_bytes(statement, 1))))
+            try upsertConversationLinks(header, accountID: String(cString: account), statements: links)
+            step = sqlite3_step(statement)
+        }
+        guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+    }
+
     // MARK: SyncStoreProtocol — message headers
 
     func headers(
@@ -312,6 +418,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func upsertHeaders(_ headers: [MessageHeader], accountID: String) throws {
         guard !headers.isEmpty else { return }
         try lock.withLock {
+            let links = try prepareConversationStatements()
+            defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
             let sql = """
                 INSERT INTO message_headers
                     (account_id, folder_id, uid, message_id, date_ts, header_json)
@@ -360,6 +468,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     sqlite3_reset(stmt)
                     sqlite3_clear_bindings(stmt)
                     if headerWasStored {
+                        try upsertConversationLinks(header, accountID: accountID, statements: links)
                         if let previousMessageID, previousMessageID != header.id {
                             let staleMessageIDs = [previousMessageID][...]
                             try deleteSearchRows(messageIDs: staleMessageIDs, accountID: accountID)
@@ -798,7 +907,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     /// Reads `PRAGMA user_version` and brings the schema up to date:
     /// - 0 (fresh database): create the schema and stamp `currentSchemaVersion`.
     /// - equal to `currentSchemaVersion`: nothing to do.
-    /// - older: run forward migrations (none defined yet — see the `switch`).
+    /// - older: migrate search, byte provenance and reply-identifier metadata in order.
     /// - newer: refuse to open so we never write with an outdated layout.
     private func migrateIfNeeded() throws {
         let version = userVersion()
@@ -833,6 +942,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 4;")
                 }
             }
+            if version < 5 {
+                try inTransaction {
+                    try createConversationSchema()
+                    try rebuildConversationLinks()
+                    try execSQL("PRAGMA user_version = 5;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -857,6 +973,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         // schema that would then mismatch `user_version`.
         try inTransaction {
             try createSchemaDDL()
+            try createConversationSchema()
         }
     }
 

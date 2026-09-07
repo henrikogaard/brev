@@ -49,7 +49,7 @@ import Foundation
 /// `cachedBody` reads raw RFC 5322 source bytes stored via `storeBody(_:for:account:)`,
 /// which is a public method on the concrete type (not part of `SyncEngineProtocol`).
 /// `IMAPSMTPBackend` can call it after fetching a message body to populate the cache.
-public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
+public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConversationIndex {
     private static let pageSize = 50
 
     let store: any SyncStoreProtocol
@@ -118,6 +118,72 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
             syncTier: tier
         )
         try await store.setSyncState(newState)
+    }
+
+    /// Walks only indexed reply links, with explicit partial coverage when work is bounded.
+    public func cachedConversation(around anchor: ConversationMember,
+                                   excludingFolderIDs: Set<Folder.ID>) async throws -> ConversationSnapshot {
+        guard anchor.sourceID.accountID == anchor.sourceID.mailboxID else {
+            throw ConversationLookupError.foreignSource
+        }
+        _ = try ConversationSnapshot(anchor: anchor.location, members: [anchor], coverage: .cached)
+        try await validateConversationGeneration(anchor)
+        guard (anchor.references ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536 else {
+            throw ConversationLookupError.invalidMetadata
+        }
+        var pending = try ConversationMembershipResolver.identifiers(in: anchor.header.rfcMessageID)
+        pending += try ConversationMembershipResolver.identifiers(in: anchor.header.inReplyTo)
+        for value in anchor.references ?? [] {
+            pending += try ConversationMembershipResolver.identifiers(in: value)
+        }
+        let initialIdentifiers = Set(pending)
+        pending = Array(initialIdentifiers.sorted().prefix(10000))
+        var queued = Set(pending)
+        var visited = Set<String>()
+        var candidates: [ConversationLocation: ConversationMember] = [:]
+        var partial = initialIdentifiers.count > pending.count
+        while let identifier = pending.popLast() {
+            try Task.checkCancellation()
+            guard visited.insert(identifier).inserted else { continue }
+            let matches = try await store.conversationCandidates(identifier: identifier, source: anchor.sourceID, limit: 501)
+            if matches.count > 500 { partial = true }
+            for member in matches.prefix(500) where !excludingFolderIDs.contains(member.header.folderID) {
+                // The selected header remains authoritative for its display and identity.
+                guard member.header.id != anchor.header.id || member.header.folderID != anchor.header.folderID else { continue }
+                guard candidates[member.location] == nil else { continue }
+                guard candidates.count < 10000 else { partial = true; break }
+                candidates[member.location] = member
+                let own = (try? ConversationMembershipResolver.identifiers(in: member.header.rfcMessageID)) ?? []
+                let parents = (try? ConversationMembershipResolver.identifiers(in: member.header.inReplyTo)) ?? []
+                for next in own + parents where !queued.contains(next) {
+                    guard queued.count < 10000 else { partial = true; break }
+                    queued.insert(next)
+                    pending.append(next)
+                }
+            }
+            if candidates.count >= 10000 || visited.count >= 10000 { partial = true; break }
+        }
+        try Task.checkCancellation()
+        try await validateConversationGeneration(anchor)
+        var checkedFolders = Set<Folder.ID>()
+        for member in candidates.values where member.folderGeneration != nil {
+            if checkedFolders.insert(member.header.folderID).inserted {
+                try await validateConversationGeneration(member)
+            }
+        }
+        try Task.checkCancellation()
+        let resolved = try ConversationMembershipResolver.cached(around: anchor, candidates: Array(candidates.values))
+        return try ConversationSnapshot(anchor: resolved.anchor, members: resolved.members,
+                                        coverage: partial ? .partial : .cached, excludedFolderIDs: Array(excludingFolderIDs),
+                                        ambiguousIdentifiers: resolved.ambiguousIdentifiers)
+    }
+
+    private func validateConversationGeneration(_ member: ConversationMember) async throws {
+        guard let expected = member.folderGeneration else { return }
+        let state = await store.syncState(accountID: member.sourceID.accountID, folderID: member.header.folderID)
+        guard let current = state?.uidValidity, UInt64(exactly: current) == expected else {
+            throw ConversationLookupError.invalidSnapshot
+        }
     }
 
     // MARK: SyncEngineProtocol — reading cached data

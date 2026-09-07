@@ -80,6 +80,9 @@ protocol SyncStoreProtocol: Sendable {
     /// Returns all messageIDs marked dirty under `accountID`.
     func dirtyMessageIDs(accountID: String) async -> [MessageHeader.ID]
 
+    /// Reads bounded reply-identifier matches from the account's existing metadata index.
+    func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) async throws -> [ConversationMember]
+
     // MARK: Message bodies
 
     func body(accountID: String, messageID: MessageHeader.ID) async -> Data?
@@ -136,7 +139,7 @@ extension SyncStoreProtocol {
 /// Used in unit tests so that `BrevSyncEngine` can be exercised without a
 /// real SQLite database file.
 actor InMemorySyncStore: SyncStoreProtocol {
-    let currentSchemaVersion = 4
+    let currentSchemaVersion = 5
 
     private var syncStates: [String: FolderSyncState] = [:]
     // ["\(accountID)|\(folderID)": [messageID: MessageHeader]]
@@ -149,6 +152,22 @@ actor InMemorySyncStore: SyncStoreProtocol {
     private var bodies: [String: StoredBody] = [:]
     // element format: "\(accountID)|\(messageID)"
     private var dirty: Set<String> = []
+
+    func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        var result: [ConversationMember] = []
+        for (key, headers) in headersByFolder where key.hasPrefix("\(source.accountID)|") {
+            for header in headers.values.sorted(by: { $0.id < $1.id }) {
+                guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
+                      let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo),
+                      (own + parents).contains(identifier) else { continue }
+                let generation = syncStates[folderKey(source.accountID, header.folderID)]?.uidValidity
+                result.append(ConversationMember(sourceID: source, header: header,
+                                                 folderGeneration: generation.flatMap { UInt64(exactly: $0) }))
+                if result.count == limit { return result }
+            }
+        }
+        return result
+    }
 
     func ensureAccount(id: String) throws {}
 

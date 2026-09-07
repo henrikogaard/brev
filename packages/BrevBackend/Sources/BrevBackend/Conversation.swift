@@ -76,6 +76,12 @@ public struct ConversationSnapshot: Sendable {
                 excludedFolderIDs: [Folder.ID] = [], unavailableFolderIDs: [Folder.ID] = [],
                 ambiguousIdentifiers: [String] = [], continuation: String? = nil) throws {
         guard members.allSatisfy({ $0.sourceID == anchor.sourceID }) else { throw ConversationLookupError.foreignSource }
+        let sourceIDs = [anchor.sourceID.accountID, anchor.sourceID.mailboxID]
+        guard sourceIDs.allSatisfy({ !$0.isEmpty && !$0.contains("\0") }),
+              members.allSatisfy({
+                  !$0.header.id.isEmpty && !$0.header.folderID.isEmpty &&
+                      !$0.header.id.contains("\0") && !$0.header.folderID.contains("\0")
+              }) else { throw ConversationLookupError.invalidSnapshot }
         guard members.contains(where: { $0.location == anchor }), Set(members.map(\.location)).count == members.count else {
             throw ConversationLookupError.invalidSnapshot
         }
@@ -127,4 +133,11 @@ public enum ConversationLookupError: Error, LocalizedError, Sendable {
         case .invalidMetadata: String(localized: "Some reply headers could not be interpreted safely.", bundle: .module)
         }
     }
+}
+
+/// Optional local index for reply-linked conversations; implementations never contact a provider.
+public protocol MailConversationIndex: Sendable {
+    /// Resolves cached members in one source, without traversing excluded folders.
+    func cachedConversation(around anchor: ConversationMember,
+                            excludingFolderIDs: Set<Folder.ID>) async throws -> ConversationSnapshot
 }

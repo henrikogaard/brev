@@ -31,6 +31,26 @@ struct ConversationMembershipTests {
         )) }
     }
 
+    @Test("identifier parsing rejects embedded controls that SQLite text binding would truncate")
+    func controlsCannotCreateLinks() {
+        for value in ["<abc\u{0000}def>", "abc\u{0001}def", "<abc\u{007f}def>"] {
+            #expect(throws: ConversationLookupError.self) { try ConversationMembershipResolver.identifiers(in: value) }
+        }
+    }
+
+    @Test("empty source and folder locators cannot form a usable snapshot")
+    func emptyLocatorsAreRejected() {
+        for (sourceID, folderID) in [(source, ""), (MailSourceID(accountID: "", mailboxID: ""), "Inbox")] {
+            let header = MessageHeader(id: "1", threadID: "1", folderID: folderID,
+                                       from: Correspondent(email: "a@example.org"), to: [], subject: "", snippet: "",
+                                       date: Date())
+            let invalid = ConversationMember(sourceID: sourceID, header: header)
+            #expect(throws: ConversationLookupError.self) {
+                try ConversationSnapshot(anchor: invalid.location, members: [invalid], coverage: .cached)
+            }
+        }
+    }
+
     @Test("comment text is not a reply link")
     func commentsDoNotCreateLinks() throws {
         let root = member("I:1", folder: "I", messageID: "<root>")

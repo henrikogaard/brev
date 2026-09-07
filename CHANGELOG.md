@@ -10,7 +10,8 @@ All notable changes to Brev are documented here.
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
   are still pending. Gmail's cache migration preserves existing mail and scheduled
-  drafts.
+  drafts. The IMAP cache also indexes existing reply identifiers across folders,
+  with explicit partial coverage when traversal reaches its bounds.
 
 ### Fixed
 
