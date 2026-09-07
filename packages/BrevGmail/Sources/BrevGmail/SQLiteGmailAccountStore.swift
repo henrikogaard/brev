@@ -17,7 +17,7 @@ import SQLite3
 /// SQLite-backed canonical Gmail account store.
 public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagingStore, GmailScheduledSendStore,
     @unchecked Sendable {
-    private static let currentSchemaVersion = 3
+    private static let currentSchemaVersion = 4
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private let lock = NSLock()
@@ -119,6 +119,36 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
                       let message = try? JSONDecoder().decode(GmailMessage.self, from: data) else {
                     throw GmailAccountStoreError.malformedStoredMessage
                 }
+                result.append(message)
+                step = sqlite3_step(statement)
+            }
+            guard step == SQLITE_DONE else { throw GmailAccountStoreError.databaseFailure }
+            return result
+        }
+    }
+
+    /// Uses the native-thread keyset index and decodes only the requested page.
+    public func cachedConversationMessages(accountID: String, threadID: String, afterMessageID: String?,
+                                           limit: Int) async throws -> [GmailMessage] {
+        try validate(accountID: accountID)
+        guard limit > 0 else { return [] }
+        return try lock.withLock {
+            let statement = try prepare("""
+            SELECT message_json FROM gmail_messages
+            WHERE account_id = ? AND COALESCE(NULLIF(thread_id, ''), message_id) = ?
+              AND message_id > ? ORDER BY message_id LIMIT ?;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(accountID, to: statement, at: 1)
+            bind(threadID, to: statement, at: 2)
+            bind(afterMessageID ?? "", to: statement, at: 3)
+            sqlite3_bind_int64(statement, 4, Int64(limit))
+            var result: [GmailMessage] = []
+            var step = sqlite3_step(statement)
+            while step == SQLITE_ROW {
+                guard let data = blob(statement, column: 0),
+                      let message = try? JSONDecoder().decode(GmailMessage.self, from: data)
+                else { throw GmailAccountStoreError.malformedStoredMessage }
                 result.append(message)
                 step = sqlite3_step(statement)
             }
@@ -301,12 +331,19 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
             throw GmailAccountStoreError.migrationFailed
         }
         let version = Int(sqlite3_column_int64(statement, 0))
+        sqlite3_finalize(statement)
+        statement = nil
         guard version <= Self.currentSchemaVersion else {
             throw GmailAccountStoreError.migrationFailed
         }
-        try executeScript(Self.schemaSQL)
-        if version < Self.currentSchemaVersion {
-            try execute("PRAGMA user_version = \(Self.currentSchemaVersion);")
+        guard version < Self.currentSchemaVersion else { return }
+        try begin()
+        do {
+            try executeScript(Self.schemaSQL)
+            try commit()
+        } catch {
+            try? rollback()
+            throw error
         }
     }
 
@@ -925,7 +962,10 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         FOREIGN KEY(account_id) REFERENCES gmail_accounts(account_id) ON DELETE CASCADE
     );
     CREATE INDEX IF NOT EXISTS gmail_scheduled_due_idx ON gmail_scheduled_sends(account_id, state, scheduled_at);
-    PRAGMA user_version = 3;
+    CREATE INDEX IF NOT EXISTS gmail_conversation_idx ON gmail_messages (
+        account_id, COALESCE(NULLIF(thread_id, ''), message_id), message_id
+    );
+    PRAGMA user_version = 4;
     """
 }
 

@@ -80,6 +80,7 @@ repository checks.
 | 67 | Google Desktop client credential and native SSO | Accepted |
 | 68 | Default blue accent and system appearance bootstrap | Accepted |
 | 69 | Monochrome default theme pair | Accepted |
+| 74 | Complete source-owned conversations | Accepted |
 
 ## Conventions
 

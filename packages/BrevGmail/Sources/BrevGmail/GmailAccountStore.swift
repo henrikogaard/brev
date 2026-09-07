@@ -150,6 +150,9 @@ public protocol GmailAccountStore: Sendable {
     func messages(accountID: String) async throws -> [GmailMessage]
     /// Reads a stable Gmail-ID cache page after an exclusive cursor for cancellable search scans.
     func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage]
+    /// Reads an ID-ordered page of one cached native thread, scoped to its account.
+    func cachedConversationMessages(accountID: String, threadID: String, afterMessageID: String?, limit: Int) async throws
+        -> [GmailMessage]
     /// Reads a bounded label page, newest first, without decoding the whole account.
     func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage]
     /// Looks up one account-wide Gmail message.
@@ -464,6 +467,16 @@ private extension GmailMessage {
 }
 
 public extension GmailAccountStore {
+    /// Legacy stores may scan their snapshot; durable stores should index native thread identity.
+    func cachedConversationMessages(accountID: String, threadID: String, afterMessageID: String?,
+                                    limit: Int) async throws -> [GmailMessage] {
+        let all = try await messages(accountID: accountID)
+        return Array(all.filter { message in
+            let nativeID = message.threadID.flatMap { $0.isEmpty ? nil : $0 } ?? message.id
+            return nativeID == threadID && (afterMessageID.map { message.id > $0 } ?? true)
+        }.sorted { $0.id < $1.id }.prefix(max(0, limit)))
+    }
+
     /// Legacy adapters may materialize their snapshot; durable stores should implement bounded reads.
     func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage] {
         try await Array(messages(accountID: accountID).filter { message in afterMessageID.map { message.id > $0 } ?? true }

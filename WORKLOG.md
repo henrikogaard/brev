@@ -1074,3 +1074,32 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   split. This follow-up changes only test construction and the worklog; no app
   build was repeated because production code is unchanged. Hosted verification
   will run on the new follow-up head.
+
+
+## 2026-09-08 — Codex — #28 / PR #29 and #30
+
+- Henrik explicitly accepted ADR-0074; recorded Accepted on the architecture
+  branch and pushed 8aa8bef to PR #29. ADRs 0070–0073 remain Proposed.
+- Implemented the first foundation phase on feature/mail-client-parity: plain
+  source-owned conversation contracts, conservative reply-link graph resolution,
+  offline cached-conversation capability, and SQLite-indexed Gmail cache lookup.
+  The version-four migration uses the existing native thread column and keeps
+  scheduled sends. No remote endpoint, body fetch or reader behavior changed.
+- TDD reproduced missing APIs, comment-induced false links, contradictory folder
+  generations and Gmail's unordered-label/stale-folder provenance. The fixes
+  retain physical copies, explicit ambiguity and cache-only coverage; Gmail
+  preserves selected label membership or corrects a cache-confirmed move while
+  retaining the selected message ID and display metadata.
+- Read-only standards/behavior reviews prompted an explicit offline capability
+  and deterministic conversation folder mapping. Unsupported RFC identifier
+  syntax stays a typed error; provider ingestion must disclose incomplete metadata.
+- Verification so far: Backend 1,053 tests and stable Xcode 26.6 Gmail 145 tests
+  pass; shared Mail 1,555 tests, six isolated Contacts tests, lint/format and
+  privacy audit pass. Final anchor-generation and legacy custom-label regressions
+  pass after review corrections; unchanged folder generations are retained. No views
+  changed, so no new snapshots/native rendering are applicable to this phase.
+- Documentation sweep: README, Unreleased changelog, accepted ADR and QA notes
+  updated. No network/privacy policy, release or agent-workflow change. Remaining
+  work is IMAP indexing/References, consented provider discovery and reader/action
+  integration, followed by native/live/performance checks. Parent #28 remains
+  In progress and PR #30 remains draft; no merge, release or issue closure.

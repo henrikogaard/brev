@@ -13,10 +13,84 @@
 import BrevBackend
 @testable import BrevGmail
 import Foundation
+import SQLite3
 import Testing
 
 @Suite("Gmail account store")
 struct GmailAccountStoreTests {
+    @Test("conversation index migration preserves mail and scheduled drafts")
+    func conversationIndexMigratesVersionThree() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("gmail-conversations-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("mail.sqlite")
+        let draft = Draft(
+            id: "unsent",
+            to: [Correspondent(email: "recipient@example.org")],
+            subject: "Keep draft",
+            htmlBody: "Body",
+            scheduledFor: .distantFuture
+        )
+        do {
+            let store = try SQLiteGmailAccountStore(databaseURL: url)
+            try await store.replaceSnapshot(Self.snapshot(
+                labels: [GmailLabel(id: "INBOX", name: "Inbox"), GmailLabel(id: "SENT", name: "Sent")],
+                messages: [
+                    GmailMessage(id: "a", threadID: "thread", labelIDs: ["INBOX"]),
+                    GmailMessage(id: "b", threadID: "thread", labelIDs: ["SENT"]),
+                    GmailMessage(id: "c", threadID: "other", labelIDs: ["INBOX"])
+                ]
+            ))
+            try await store.enqueueScheduledSend(
+                draft,
+                rawMIME: Data("From: test@example.org\r\n\r\nBody".utf8),
+                accountID: "acct-1"
+            )
+        }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        guard let db else { return }
+        #expect(sqlite3_exec(db, "DROP INDEX gmail_conversation_idx; PRAGMA user_version=3;", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(db)
+        let migrated = try SQLiteGmailAccountStore(databaseURL: url)
+        #expect(try await migrated.cachedConversationMessages(
+            accountID: "acct-1",
+            threadID: "thread",
+            afterMessageID: nil,
+            limit: 1
+        ).map(\.id) == ["a"])
+        #expect(try await migrated.cachedConversationMessages(
+            accountID: "acct-1",
+            threadID: "thread",
+            afterMessageID: "a",
+            limit: 1
+        ).map(\.id) == ["b"])
+        #expect(try await migrated.cachedConversationMessages(
+            accountID: "absent",
+            threadID: "thread",
+            afterMessageID: nil,
+            limit: 100
+        ).isEmpty)
+        #expect(try await migrated.scheduledDraft(accountID: "acct-1", draftID: "unsent") == draft)
+        try await migrated.apply(GmailStoreDelta(
+            accountID: "acct-1",
+            upsertedMessages: [GmailMessage(id: "b", threadID: "other", labelIDs: ["SENT"])],
+            removedMessageIDs: ["a"]
+        ))
+        #expect(try await migrated.cachedConversationMessages(
+            accountID: "acct-1",
+            threadID: "thread",
+            afterMessageID: nil,
+            limit: 100
+        ).isEmpty)
+        #expect(try await migrated.cachedConversationMessages(
+            accountID: "acct-1",
+            threadID: "other",
+            afterMessageID: nil,
+            limit: 100
+        ).map(\.id) == ["b", "c"])
+    }
+
     @Test("SQLite search pages use exclusive stable cursors and isolate accounts")
     func sqliteSearchPagesUseStableCursors() async throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("gmail-search-pages-\(UUID().uuidString)")

@@ -340,3 +340,26 @@ AXWindows; these checks and live delayed-page measurements remain unverified.
   concurrency, callback cancellation, retired responses, stable-label/negative
   scope, bounded cache previews and SQLite keyset/account isolation. Live provider
   acceptance, native large-account measurements and date precision remain open.
+
+
+## Cross-folder conversation foundation — ADR-0074
+
+- Automated domain checks cover source isolation, selected anchor retention,
+  Inbox/Sent/Archive reply graphs, absent parents, cycles, duplicate physical
+  locations, reused identifiers, comments, malformed fields and bounded metadata.
+  The parser conservatively rejects unsupported/invalid syntax; it does not guess
+  reply links from subjects or prose. Provider indexing must handle such errors
+  as incomplete metadata before this resolver is wired to the reader.
+- Gmail cached lookup is advertised while disconnected and makes no transport
+  requests. Tests retain uncached anchors, select related Sent/custom-label mail,
+  exclude Spam/Trash by default and include them explicitly. Label-array order
+  cannot choose Unread as folder provenance. Existing selected label memberships
+  are retained; a cache-confirmed moved anchor keeps its source/message identity
+  and display metadata while receiving its current folder locator.
+- A version-three SQLite database migrates to the thread keyset index without
+  losing messages or scheduled drafts. Cursor/account isolation, deletion and
+  thread changes are covered. Production reads decode only one requested page.
+- Still pending: IMAP cache/index integration, References ingestion, consented
+  provider discovery, reader/action integration, native rendering, live-provider
+  acceptance and representative large-mailbox performance measurements. This
+  foundation must not be reported as complete conversation reading.

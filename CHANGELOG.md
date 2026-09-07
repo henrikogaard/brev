@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Conversation metadata foundation: source-owned members, explicit cached coverage,
+  conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
+  This prepares cross-folder reading; reader integration and related-mail loading
+  are still pending. Gmail's cache migration preserves existing mail and scheduled
+  drafts.
+
 ### Fixed
 
 - Gmail search now publishes results page by page without the former 5,000-result

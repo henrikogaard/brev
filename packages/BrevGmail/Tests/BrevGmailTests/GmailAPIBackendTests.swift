@@ -17,6 +17,73 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("cached Gmail conversations include other folders and retain an uncached selected anchor")
+    func cachedConversationUsesNativeThread() async throws {
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let anchor = ConversationMember(
+            sourceID: source,
+            header: MessageHeader(
+                id: "selected",
+                threadID: "thread",
+                folderID: "INBOX",
+                from: Correspondent(email: "sender@example.org"),
+                to: [],
+                subject: "Topic",
+                snippet: "",
+                date: Date()
+            ),
+            folderGeneration: 7
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "sent", threadID: "thread", labels: ["UNREAD", "SENT"]),
+            Self.message(id: "archive", threadID: "thread", labels: ["projects"]),
+            Self.message(id: "trash", threadID: "thread", labels: ["TRASH"]),
+            Self.message(id: "unrelated", threadID: "other", labels: ["INBOX"])
+        ]))
+        try await store.apply(GmailStoreDelta(accountID: Self.account.id, upsertedLabels: [
+            GmailLabel(id: "UNREAD", name: "Unread"), GmailLabel(id: "SENT", name: "Sent"), GmailLabel(
+                id: "projects",
+                name: "Projects",
+                type: "user"
+            ), GmailLabel(
+                id: "TRASH",
+                name: "Trash"
+            )
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        #expect(backend.extendedCapabilities.contains(.cachedConversations))
+        let provider = try #require(backend.extensionService(CachedConversationProviding.self))
+        let snapshot = try await provider.cachedConversation(around: anchor, includeSpamAndTrash: false)
+        #expect(Set(snapshot.members.map { $0.header.id }) == ["selected", "sent", "archive"])
+        #expect(snapshot.anchor == anchor.location)
+        #expect(snapshot.members.first { $0.header.id == "sent" }?.location.folderID == "SENT")
+        #expect(snapshot.members.first { $0.header.id == "archive" }?.location.folderID == "projects")
+        #expect(snapshot.coverage == .cached)
+        let includingTrash = try await provider.cachedConversation(around: anchor, includeSpamAndTrash: true)
+        #expect(includingTrash.members.count == 4)
+        #expect(await transport.networkCalls == 0)
+        #expect(backend.extensionService(RelatedConversationLoading.self) == nil)
+        try await store.apply(GmailStoreDelta(accountID: Self.account.id, upsertedMessages: [
+            Self.message(id: "selected", threadID: "thread", labels: ["UNREAD", "SENT"])
+        ]))
+        let moved = try await provider.cachedConversation(around: anchor, includeSpamAndTrash: false)
+        #expect(moved.anchor.folderID == "SENT")
+        #expect(moved.anchor.messageID == anchor.header.id)
+        #expect(moved.members.first { $0.header.id == "selected" }?.header.subject == "Topic")
+        try await store.apply(GmailStoreDelta(accountID: Self.account.id, upsertedMessages: [
+            Self.message(id: "selected", threadID: "thread", labels: ["UNREAD", "INBOX", "projects"]),
+            Self.message(id: "sent", threadID: "thread", labels: ["SENT", "projects"])
+        ]))
+        let projectAnchor = ConversationMember(sourceID: source,
+                                               header: anchor.header.withIdentity(anchor.header.id, folderID: "projects"))
+        let project = try await provider.cachedConversation(around: projectAnchor, includeSpamAndTrash: false)
+        #expect(project.anchor.folderID == "projects")
+        #expect(project.members.first { $0.header.id == "sent" }?.location.folderID == "projects")
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("saved views enumerate secondary label membership without fetching messages")
     func savedViewUsesCachedLabelMembership() async throws {
         let transport = StubGmailTransport()
@@ -791,6 +858,7 @@ private actor StubGmailTransport: GmailAPITransporting {
     private let pages: [GmailMessagePage]
     private let messages: [String: GmailMessage]
     private var listingFailure = false
+    private(set) var networkCalls = 0
     private let messageDelay: UInt64
     private let messageObserver: (@Sendable (String) async -> Void)?
     private let pageObserver: (@Sendable (String?) async throws -> Void)?
@@ -826,8 +894,8 @@ private actor StubGmailTransport: GmailAPITransporting {
         self.messages = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
     }
 
-    func profile() async throws -> GmailProfile { profileValue }
-    func listLabels() async throws -> [GmailLabel] { labelsValue }
+    func profile() async throws -> GmailProfile { networkCalls += 1; return profileValue }
+    func listLabels() async throws -> [GmailLabel] { networkCalls += 1; return labelsValue }
 
     func listMessages(
         labelID: String?,
@@ -835,6 +903,7 @@ private actor StubGmailTransport: GmailAPITransporting {
         pageToken: String?,
         maxResults: Int
     ) async throws -> GmailMessagePage {
+        networkCalls += 1
         requestedTokens.append(pageToken)
         requestedLimits.append(maxResults)
         try await pageObserver?(pageToken)
@@ -861,6 +930,7 @@ private actor StubGmailTransport: GmailAPITransporting {
     }
 
     func getMessage(messageID: String, format: GmailMessageFormat) async throws -> GmailMessage {
+        networkCalls += 1
         concurrentRequests += 1
         maximumRequests = max(maximumRequests, concurrentRequests)
         defer { concurrentRequests -= 1 }
@@ -873,6 +943,7 @@ private actor StubGmailTransport: GmailAPITransporting {
     }
 
     func getAttachment(messageID: String, attachmentID: String) async throws -> GmailAttachment {
+        networkCalls += 1
         attachmentRequests += 1
         return GmailAttachment(id: attachmentID, messageID: messageID, data: "SGk=")
     }

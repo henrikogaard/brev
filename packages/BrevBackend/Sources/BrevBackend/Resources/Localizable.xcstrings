@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Related messages belong to a different mailbox." : {
+      "extractionState" : "manual"
+    },
+    "The conversation changed. Load related messages again." : {
+      "extractionState" : "manual"
+    },
+    "Some reply headers could not be interpreted safely." : {
+      "extractionState" : "manual"
+    },
     "Google rejected the token exchange%@ (HTTP %@)." : {}
   },
   "version" : "1.0"

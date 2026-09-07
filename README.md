@@ -81,7 +81,9 @@ Anything not listed is roadmap, not release-blocker.
   sender/domain.
 - Threaded conversation view (Gmail / Apple Mail style) for backends
   that advertise `serverSideThreading`. Newest message auto-expands;
-  HTML bodies render through the shared safe-body pipeline.
+  HTML bodies render through the shared safe-body pipeline. ADR-0074's cross-folder
+  conversation foundation includes a source-owned domain model and indexed Gmail
+  cache lookup; reader integration and consented remote discovery remain pending.
 - Compose: chip-style recipient fields with separate Cc/Bcc rows, recipient
   autocomplete from local Apple Contacts (read-only), a separate removable
   recent-recipient list, and available CardDAV sources; attachment picker with

@@ -190,6 +190,10 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
 
     /// The backend returns original MIME bytes for lossless message export.
     public static let rawMessageBytes = BackendExtendedCapabilities(rawValue: 1 << 13)
+
+    /// The backend resolves source-owned conversations from cached headers, including offline.
+    /// Gates `CachedConversationProviding`; it does not authorize remote discovery (ADR-0074).
+    public static let cachedConversations = BackendExtendedCapabilities(rawValue: 1 << 14)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.

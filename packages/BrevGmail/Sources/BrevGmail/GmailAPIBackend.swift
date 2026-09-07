@@ -40,7 +40,8 @@ public enum GmailAccountIdentity {
 /// drafts, MIME send, aliases, and signatures.
 public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderLabelCatalogManaging,
     ServerSearchSyntaxProviding, MailboxBackgroundRefreshing, SyncHealthReporting,
-    MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, ProgressiveMailSearching, @unchecked Sendable {
+    MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, ProgressiveMailSearching,
+    CachedConversationProviding, @unchecked Sendable {
     private static let pageSize = 50
 
     /// The account this adapter serves.
@@ -153,11 +154,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// Extended provider capabilities for aliases and server signatures.
     public var extendedCapabilities: BackendExtendedCapabilities {
         lock.withLock {
-            guard isConnected else { return [.rawMessageSource, .rawMessageBytes] }
+            guard isConnected else { return [.rawMessageSource, .rawMessageBytes, .cachedConversations] }
             guard sendAsProbeCompleted, let aliases = sendAsAliases else {
-                return [.rawMessageSource, .rawMessageBytes]
+                return [.rawMessageSource, .rawMessageBytes, .cachedConversations]
             }
-            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .serverAliases]
+            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .cachedConversations, .serverAliases]
             if aliases.contains(where: {
                 Self.isUsableSendAs($0) && !($0.signature ?? "").isEmpty
             }) {
@@ -510,6 +511,58 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             cached = try await store.messages(accountID: account.id, labelID: folder.id, offset: 0, limit: Int.max)
         }
         return cached.map { Self.header(from: $0, folderID: folder.id, labels: labels) }
+    }
+
+    /// Finds cached members across label memberships without connecting or fetching message content.
+    public func cachedConversation(around anchor: ConversationMember,
+                                   includeSpamAndTrash: Bool) async throws -> ConversationSnapshot {
+        try validateSource(anchor.sourceID)
+        guard anchor.sourceID.mailboxID == account.id else { throw ConversationLookupError.foreignSource }
+        let generation = lock.withLock { connectionGeneration }
+        try checkSearch(generation)
+        let labels = try await store.labels(accountID: account.id)
+        let cachedAnchor = try await store.message(accountID: account.id, messageID: anchor.header.id)
+        try checkSearch(generation)
+        let nativeID = cachedAnchor?.threadID.flatMap { $0.isEmpty ? nil : $0 }
+            ?? (anchor.header.threadID.isEmpty ? anchor.header.id : anchor.header.threadID)
+        let selectedFolderID = cachedAnchor.map {
+            Self.conversationFolderID(for: $0, preferred: anchor.header.folderID, labels: labels)
+        } ?? anchor.header.folderID
+        let selected = ConversationMember(
+            sourceID: anchor.sourceID,
+            header: anchor.header.withIdentity(anchor.header.id, folderID: selectedFolderID),
+            folderGeneration: selectedFolderID == anchor.header.folderID ? anchor.folderGeneration : nil,
+            references: anchor.references
+        )
+        var members = [selected]
+        var seen: Set<String> = [anchor.header.id]
+        var cursor: String?
+        while true {
+            try checkSearch(generation)
+            let page = try await store.cachedConversationMessages(
+                accountID: account.id,
+                threadID: nativeID,
+                afterMessageID: cursor,
+                limit: 100
+            )
+            try checkSearch(generation)
+            for message in page {
+                guard seen.insert(message.id).inserted else { continue }
+                if !includeSpamAndTrash, message.labelIDs.contains("SPAM") || message.labelIDs.contains("TRASH") { continue }
+                let folderID = Self.conversationFolderID(for: message, preferred: selectedFolderID, labels: labels)
+                let fields = Self.headerMap(message.payload?.headers ?? [])
+                let references: [String]? = message.payload == nil ? nil : fields["references"].map { [$0] } ?? []
+                members.append(ConversationMember(sourceID: anchor.sourceID,
+                                                  header: Self.header(from: message, folderID: folderID, labels: labels),
+                                                  references: references))
+            }
+            guard let last = page.last else { break }
+            if let cursor, last.id <= cursor { throw ConversationLookupError.invalidSnapshot }
+            cursor = last.id
+        }
+        try checkSearch(generation)
+        return try ConversationSnapshot(anchor: selected.location, members: members, coverage: .cached,
+                                        excludedFolderIDs: includeSpamAndTrash ? [] : ["SPAM", "TRASH"])
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
@@ -1348,6 +1401,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(CachedConversationProviding.self):
+            return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
@@ -1991,6 +2046,23 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         guard let slash = label.name.lastIndex(of: "/") else { return nil }
         let parentName = String(label.name[..<slash])
         return labels.first { $0.name == parentName }?.id
+    }
+
+    // Gmail label order is not folder provenance. Keep a selected membership when
+    // still present; otherwise choose a deterministic folder, never a state label.
+    private static func conversationFolderID(for message: GmailMessage, preferred: String,
+                                             labels: [GmailLabel]) -> String {
+        let memberships = Set(message.labelIDs)
+        if memberships.contains(preferred) { return preferred }
+        if preferred == "ALL_MAIL", memberships.isDisjoint(with: ["TRASH", "SPAM"]) { return preferred }
+        for folder in ["TRASH", "SPAM", "INBOX", "SENT", "DRAFT"] where memberships.contains(folder) {
+            return folder
+        }
+        let stateLabels: Set<String> = ["UNREAD", "STARRED", "IMPORTANT", "CHAT", "ALL_MAIL"]
+        return labels.filter {
+            memberships.contains($0.id) && !stateLabels.contains($0.id) &&
+                !$0.id.hasPrefix("CATEGORY_") && ($0.type == nil || $0.type == "user")
+        }.map(\.id).sorted().first ?? "ALL_MAIL"
     }
 
     private static func primaryFolderID(for message: GmailMessage, labels: [GmailLabel]) -> String {
