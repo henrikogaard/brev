@@ -596,3 +596,10 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Read existing threading/search/provider interfaces and primary Gmail/RFC docs.
   Verified index/links and diff formatting. Documentation-only exception: no TDD,
   app build or live account activity. No merge/release or network preference change.
+
+## 2026-09-07 — Codex — Issue #28 / ADR-0074 acceptance
+
+- Henrik explicitly approved ADR-0074 in this thread. Marked only ADR-0074
+  Accepted and updated the index. ADR-0070 through ADR-0073 remain Proposed.
+- This records architecture approval; it does not merge/release or grant live
+  provider mutation/OS setup authority. Documentation-only; diff check applies.

@@ -1,9 +1,9 @@
 # ADR-0074: Complete source-owned conversations
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-07
 - **Deciders:** Henrik
-- **Amends on acceptance:** ADR-0020 and ADR-0052
+- **Amends:** ADR-0020 and ADR-0052
 - **Tracking:** #28, acceptance area 3
 
 ## Context
@@ -97,9 +97,9 @@ cross the selected account/mailbox source.
 
 ## Consequences and delivery gates
 
-Acceptance of this ADR authorizes the architectural direction, not merge,
-release, broader OAuth grants, or live mail mutations. Before implementation:
-update the accepted-decision status after Henrik's approval, then record the new
+Henrik accepted this ADR in the implementation thread on 2026-09-07. This
+authorizes the architectural direction, not merge,
+release, broader OAuth grants, or live mail mutations. Before adding the remote paths, record the new
 related-header requests/consent in ADR-0006 and PRIVACY.md.
 
 Implementation proceeds through provider-neutral snapshot/locator tests, cached

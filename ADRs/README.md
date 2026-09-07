@@ -84,7 +84,7 @@ repository checks.
 | 71 | Native Microsoft Graph mail and shared mailboxes | Proposed |
 | 72 | Provider-neutral calendar and contact authoring | Proposed |
 | 73 | Durable local mail archives and portable backups | Proposed |
-| 74 | Complete source-owned conversations | Proposed |
+| 74 | Complete source-owned conversations | Accepted |
 
 ## Conventions
 
