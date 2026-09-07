@@ -1064,3 +1064,13 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   snapshots were needed because the existing progress component is unchanged.
   Authenticated Gmail search and representative large-account measurements are
   still unverified; no live provider requests were run in this session.
+
+- CI on 8dda4e9 exposed a Swift type-checker timeout in the nested 5,001-message
+  fixture expression before tests ran. Split page construction into typed locals
+  and an explicit loop; production code and the regression assertions are unchanged.
+  Verifying this correction with the stable Xcode toolchain before pushing.
+
+- Stable Xcode 26.6 verification passes all 143 Gmail tests after the fixture
+  split. This follow-up changes only test construction and the worklog; no app
+  build was repeated because production code is unchanged. Hosted verification
+  will run on the new follow-up head.

@@ -549,9 +549,12 @@ struct GmailAPIBackendTests {
     @Test("Gmail search returns a match beyond the former five-thousand cap")
     func searchBeyondFormerCap() async throws {
         let messages = (0 ..< 5001).map { Self.message(id: "m\($0)", threadID: "t\($0)", labels: ["INBOX"]) }
-        let pages = stride(from: 0, to: messages.count, by: 50).map { start in
-            GmailMessagePage(messages: messages[start ..< min(start + 50, messages.count)].map { .init(id: $0.id) },
-                             nextPageToken: start + 50 < messages.count ? String(start / 50 + 1) : nil)
+        var pages: [GmailMessagePage] = []
+        for start in stride(from: 0, to: messages.count, by: 50) {
+            let end = min(start + 50, messages.count)
+            let references: [GmailMessageReference] = messages[start ..< end].map { GmailMessageReference(id: $0.id) }
+            let nextToken: String? = end < messages.count ? String(start / 50 + 1) : nil
+            pages.append(GmailMessagePage(messages: references, nextPageToken: nextToken))
         }
         let store = InMemoryGmailAccountStore()
         try await store.replaceSnapshot(Self.snapshot(messages: messages))
