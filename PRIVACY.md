@@ -489,6 +489,11 @@ the account's importer support.
   learned from already-cached correspondence and successful sends. It is never
   added to Apple Contacts, never uploaded, and can be removed individually or
   cleared from Settings → Compose.
+- **Gmail search.** Cached-only queries remain on this device, including when
+  disconnected. Auto search previews one local page before sending the query to
+  Gmail. Online results arrive in bounded pages and may use full-message reads
+  for uncached matches; search does not call the attachment-download endpoint or
+  persist newly fetched search-only data. Opening a result may fetch it again.
 - **Search coverage.** Explicit online IMAP searches check all server result
   pages, even when there are cached matches. Ordinary queries retrieve headers;
   attachment predicates may retrieve message sources under ADR-0060. Cache-only

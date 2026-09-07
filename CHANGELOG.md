@@ -6,6 +6,15 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Gmail search now publishes results page by page without the former 5,000-result
+  cap. Cached-only searches work disconnected and respect secondary labels.
+  Auto search previews one bounded cache page before contacting Gmail, while
+  offline fallback walks all cache pages.
+- Gmail custom-label filters use stable IDs, negative read/star/attachment filters
+  are preserved, and All Mail excludes Spam/Trash consistently. Cancellation,
+  retired-account responses, repeated cursors and later-page errors cannot report
+  successful completion; authentication and retry errors retain their types.
+
 - IMAP search shows cached matches and server pages as they arrive in folder and
   unified lists. A shared compact status row identifies cached-only coverage,
   incomplete results and Retry. Open messages stay selected while paging.

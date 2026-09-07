@@ -99,6 +99,34 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         return try readMessages(accountID: accountID)
     }
 
+    /// Decodes only one keyset-paginated cache batch for search.
+    public func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage] {
+        try validate(accountID: accountID)
+        guard limit > 0 else { return [] }
+        return try lock.withLock {
+            let statement = try prepare("""
+            SELECT message_json FROM gmail_messages
+            WHERE account_id = ? AND message_id > ? ORDER BY message_id LIMIT ?;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(accountID, to: statement, at: 1)
+            bind(afterMessageID ?? "", to: statement, at: 2)
+            sqlite3_bind_int64(statement, 3, Int64(limit))
+            var result: [GmailMessage] = []
+            var step = sqlite3_step(statement)
+            while step == SQLITE_ROW {
+                guard let data = blob(statement, column: 0),
+                      let message = try? JSONDecoder().decode(GmailMessage.self, from: data) else {
+                    throw GmailAccountStoreError.malformedStoredMessage
+                }
+                result.append(message)
+                step = sqlite3_step(statement)
+            }
+            guard step == SQLITE_DONE else { throw GmailAccountStoreError.databaseFailure }
+            return result
+        }
+    }
+
     /// Reads only one label page in received-date order, with Gmail ID as a stable tie-breaker.
     public func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage] {
         try validate(accountID: accountID)

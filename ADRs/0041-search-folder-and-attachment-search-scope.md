@@ -202,7 +202,7 @@ finish. Source-qualified accumulation deduplicates and merges sorted batches.
 Partial pages preserve the selected reader until final reconciliation. Failed
 sources retain partial rows and display Retry. Array-only adapters report
 unverified coverage for non-cache queries rather than claiming a complete server
-search. Gmail's progressive adapter and its own result cap remain follow-up work.
+search. Gmail now implements this interface; see the Gmail progress update below.
 
 The new compact status row replaces the separate attachment-search banner.
 Detailed index coverage, user-paced load-more, large-mailbox memory measurements,
@@ -215,3 +215,13 @@ worker cancels the prior task, including identical query text after refresh;
 parent cancellation targets only its own worker. Message-list text and execution
 filters share one task trigger. Abandoned progress settles as incomplete, never
 as a completed server search; Retry waits for remaining source work to settle.
+
+## Implementation update (2026-09-07): Gmail progress and bounded cache reads
+
+Gmail now uses the shared progressive result/coverage interface, removing its
+5,000-result cap. The SQLite cache supports ID-keyset pages; Auto search reads only
+one preview page before server work, and cached-only/offline fallback reads all
+pages without network calls. Secondary-label membership and All Mail scope match
+the server query. See ADR-0064 for typed errors, cancellation and search-only
+non-persistence. The earlier Gmail-progress follow-up is implemented; full local
+body/document indexing, date precision and live performance acceptance remain open.

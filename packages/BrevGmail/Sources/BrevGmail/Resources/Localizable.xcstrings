@@ -1,6 +1,9 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Gmail search stopped before all results could be loaded. Try searching again." : {
+      "extractionState" : "manual"
+    },
     "Brev could not reach Gmail." : {},
     "Gmail draft attachments exceed the local staging limit of %@ bytes." : {},
     "Gmail authentication is unavailable." : {},

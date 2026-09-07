@@ -1036,3 +1036,31 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   assumption with ContinuousClock intervals recorded at actual subscriptions
   (at least 100ms then 200ms); production retry behavior is unchanged. Full
   Backend 1,045 tests pass afterward and independent review cleared the change.
+
+## 2026-09-07 — Codex — Issue #28 / PR #30 Gmail search parity
+
+- Confirmed all 20 hosted checks passed on df6be51f before starting.
+- Red tests reproduced the 5,000-result cap, disconnected cache rejection,
+  secondary-label scope loss, omitted negative predicates, inconsistent All Mail,
+  and hidden later-page auth/retry error types. Added shared progressive search,
+  50-reference pages, max-four reads, cancellation/generation checks and typed
+  errors. Search-only fetches do not persist late results into replacement stores.
+- Review found the full-cache Auto scan and production transport-error fallback
+  gap. Added 100-candidate cache preview plus SQLite keyset pages; offline/local
+  scans complete all pages. Tests prove server starts after one preview and use
+  a wrapper that rejects whole-account reads. SQLite checks terminal step errors.
+- Full Gmail suite reached 143 passing tests, with final lint/build checks ongoing.
+  No UI layout changed, so existing inspected progress snapshots are reused.
+- Updated README, CHANGELOG, ADR-0041/0064, privacy and QA. No schema, endpoint,
+  dependency, credential, merge or release change. Residuals include live Gmail
+  acceptance, full-message fetch cost for uncached hits, date precision, local
+  body/document indexing and the wider issue28 goal.
+
+- Final verification: Gmail 143 and shared Mail 1,555 tests pass; dated mock
+  macOS build/startup and iOS Gmail compilation pass; lint/format/privacy/diff
+  checks pass. Independent standards and behavior reviews cleared the typed
+  error, callback ownership and cache-paging fixes. Added nonempty All Mail
+  header mapping and successful search non-persistence assertions. No new UI
+  snapshots were needed because the existing progress component is unchanged.
+  Authenticated Gmail search and representative large-account measurements are
+  still unverified; no live provider requests were run in this session.

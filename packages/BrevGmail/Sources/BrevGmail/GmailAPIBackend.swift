@@ -40,9 +40,8 @@ public enum GmailAccountIdentity {
 /// drafts, MIME send, aliases, and signatures.
 public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderLabelCatalogManaging,
     ServerSearchSyntaxProviding, MailboxBackgroundRefreshing, SyncHealthReporting,
-    MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, @unchecked Sendable {
+    MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, ProgressiveMailSearching, @unchecked Sendable {
     private static let pageSize = 50
-    private static let maxSearchResults = 5000
 
     /// The account this adapter serves.
     public let account: BrevAccount
@@ -514,51 +513,201 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
+        try await performSearch(query, onUpdate: nil)
+    }
+
+    /// Publishes source-validated cached matches and bounded Gmail pages as they arrive.
+    public func searchWithProgress(
+        _ query: SearchQuery,
+        sourceID: MailSourceID?,
+        onUpdate: @escaping MailSearchProgressHandler
+    ) async throws -> [MessageHeader] {
+        try validateSource(sourceID)
+        if let sourceID, sourceID.mailboxID != account.id { throw MailBackendError.notFound(id: sourceID.mailboxID) }
+        return try await performSearch(query, onUpdate: onUpdate)
+    }
+
+    private func performSearch(_ query: SearchQuery, onUpdate: MailSearchProgressHandler?) async throws -> [MessageHeader] {
+        try Task.checkCancellation()
+        let generation = lock.withLock { connectionGeneration }
+        let labels = try await store.labels(accountID: account.id)
+        try requireConnectionGeneration(generation)
+        let localOnly = query.execution == .cacheOnly || (query.execution == .cacheThenServer && !lock.withLock { isConnected })
+        let cached = query.execution == .serverOnly ? [] : try await cachedSearch(
+            query,
+            labels: labels,
+            generation: generation,
+            previewOnly: !localOnly,
+            onUpdate: onUpdate
+        )
+        try checkSearch(generation)
+        if localOnly { return cached }
         try requireConnected()
-        if query.execution == .cacheOnly {
-            let cached = try await store.messages(accountID: account.id)
-            return cached
-                .filter { query.matches(Self.header(
-                    from: $0,
-                    folderID: Self.primaryFolderID(for: $0, labels: labelCatalog),
-                    labels: labelCatalog
-                )) }
-                .map { Self.header(from: $0, folderID: Self.primaryFolderID(for: $0, labels: labelCatalog), labels: labelCatalog)
-                }
-        }
+        let scope = Self.searchScope(for: query)
         var result: [MessageHeader] = []
         var seen = Set<MessageHeader.ID>()
         var pageToken: String?
-        var visitedPageTokens = Set<String>()
-        let search = Self.searchScope(for: query, labels: labelCatalog)
-        repeat {
-            let page = try await transport.listMessages(
-                labelID: search.labelID,
-                query: search.query,
-                pageToken: pageToken,
-                maxResults: min(Self.pageSize, Self.maxSearchResults - result.count),
-                includeSpamTrash: search.includeSpamTrash
-            )
-            for reference in page.messages {
-                guard result.count < Self.maxSearchResults,
-                      seen.insert(reference.id).inserted else { continue }
-                let message = try await message(reference.id)
-                result.append(Self.header(
-                    from: message,
-                    folderID: Self.primaryFolderID(for: message, labels: labelCatalog),
-                    labels: labelCatalog
-                ))
+        var visited = Set<String?>()
+        var receivedPage = false
+        do {
+            repeat {
+                try Task.checkCancellation()
+                try requireConnectionGeneration(generation)
+                guard visited.insert(pageToken).inserted else { throw Self.incompleteSearchError }
+                let page = try await transport.listMessages(labelID: scope.labelID, query: scope.query, pageToken: pageToken,
+                                                            maxResults: Self.pageSize, includeSpamTrash: scope.includeSpamTrash)
+                try Task.checkCancellation()
+                try requireConnectionGeneration(generation)
+                receivedPage = true
+                let references = page.messages.filter { seen.insert($0.id).inserted }
+                let batch = try await searchHeaders(references, folderID: query.folderID, labels: labels, generation: generation)
+                result.append(contentsOf: batch)
+                try checkSearch(generation)
+                await onUpdate?(MailSearchUpdate(headers: batch, coverage: .server))
+                try Task.checkCancellation()
+                try requireConnectionGeneration(generation)
+                pageToken = page.nextPageToken
+            } while pageToken != nil
+        } catch {
+            try Task.checkCancellation()
+            try requireConnectionGeneration(generation)
+            if !receivedPage, query.execution == .cacheThenServer, Self.searchCanUseCache(error) {
+                return try await cachedSearch(
+                    query,
+                    labels: labels,
+                    generation: generation,
+                    previewOnly: false,
+                    onUpdate: onUpdate
+                )
             }
-            guard let nextPageToken = page.nextPageToken,
-                  visitedPageTokens.insert(nextPageToken).inserted,
-                  result.count < Self.maxSearchResults
-            else {
-                pageToken = nil
-                continue
-            }
-            pageToken = nextPageToken
-        } while pageToken != nil
+            if error is CancellationError || (error as? URLError)?.code == .cancelled { throw CancellationError() }
+            throw Self.providerNeutralError(error)
+        }
+        try checkSearch(generation)
+        await onUpdate?(MailSearchUpdate(headers: [], coverage: .server, isComplete: true))
+        try Task.checkCancellation()
+        try requireConnectionGeneration(generation)
         return result
+    }
+
+    private func checkSearch(_ generation: UUID) throws {
+        try Task.checkCancellation()
+        try requireConnectionGeneration(generation)
+    }
+
+    private static func searchCanUseCache(_ error: Error) -> Bool {
+        if let error = error as? GmailAPIError { return error == .transportFailure }
+        guard let error = error as? URLError else { return false }
+        return [
+            .notConnectedToInternet,
+            .networkConnectionLost,
+            .timedOut,
+            .cannotConnectToHost,
+            .cannotFindHost,
+            .dnsLookupFailed
+        ].contains(error.code)
+    }
+
+    private func cachedSearch(
+        _ query: SearchQuery,
+        labels: [GmailLabel],
+        generation: UUID,
+        previewOnly: Bool,
+        onUpdate: MailSearchProgressHandler?
+    ) async throws -> [MessageHeader] {
+        var cursor: String?
+        var results: [MessageHeader] = []
+        var first = true
+        while true {
+            try checkSearch(generation)
+            let page = try await store.cachedSearchPage(accountID: account.id, afterMessageID: cursor, limit: 100)
+            try checkSearch(generation)
+            var batch: [MessageHeader] = []
+            for message in page {
+                try Task.checkCancellation()
+                if let folderID = query.folderID {
+                    if folderID == "ALL_MAIL" {
+                        guard !message.labelIDs.contains("SPAM"), !message.labelIDs.contains("TRASH") else { continue }
+                    } else if !message.labelIDs.contains(folderID) { continue }
+                }
+                let header = Self.header(
+                    from: message,
+                    folderID: query.folderID ?? Self.primaryFolderID(for: message, labels: labels),
+                    labels: labels
+                )
+                if query.matches(header) { batch.append(header) }
+            }
+            results.append(contentsOf: batch)
+            if !previewOnly || !batch.isEmpty {
+                try checkSearch(generation)
+                await onUpdate?(MailSearchUpdate(headers: batch, coverage: .cached, replacesResults: first))
+                try checkSearch(generation)
+            }
+            if previewOnly { break }
+            guard let last = page.last else { break }
+            if let cursor, last.id <= cursor { throw Self.incompleteSearchError }
+            cursor = last.id
+            first = false
+        }
+        if !previewOnly {
+            try checkSearch(generation)
+            await onUpdate?(MailSearchUpdate(headers: [], coverage: .cached, isComplete: true))
+            try checkSearch(generation)
+        }
+        return results.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
+    }
+
+    private func searchHeaders(
+        _ references: [GmailMessageReference],
+        folderID: String?,
+        labels: [GmailLabel],
+        generation: UUID
+    ) async throws -> [MessageHeader] {
+        try await withThrowingTaskGroup(of: (Int, MessageHeader).self) { group in
+            var next = 0
+            var results: [Int: MessageHeader] = [:]
+            func enqueue(_ index: Int) {
+                group.addTask { [self] in
+                    try Task.checkCancellation()
+                    try requireConnectionGeneration(generation)
+                    let cached = try await store.message(accountID: account.id, messageID: references[index].id)
+                    try requireConnectionGeneration(generation)
+                    // Search-only fetches do not write through after account retirement.
+                    let message: GmailMessage
+                    if let cached {
+                        message = cached
+                    } else {
+                        message = try await transport.getMessage(messageID: references[index].id, format: .full)
+                    }
+                    try Task.checkCancellation()
+                    try requireConnectionGeneration(generation)
+                    return (
+                        index,
+                        Self.header(
+                            from: message,
+                            folderID: folderID ?? Self.primaryFolderID(for: message, labels: labels),
+                            labels: labels
+                        )
+                    )
+                }
+            }
+            while next < min(4, references.count) {
+                enqueue(next); next += 1
+            }
+            while let (index, header) = try await group.next() {
+                try Task.checkCancellation()
+                results[index] = header
+                if next < references.count { enqueue(next); next += 1 }
+            }
+            return references.indices.compactMap { results[$0] }
+        }
+    }
+
+    private static var incompleteSearchError: MailBackendError {
+        .backendSpecific(message: String(
+            localized: "Gmail search stopped before all results could be loaded. Try searching again.",
+            bundle: .module
+        ))
     }
 
     // MARK: Drafts, send, and provider identities
@@ -1199,6 +1348,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
+        case ObjectIdentifier(ProgressiveMailSearching.self):
+            return self as? Service
         case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
             guard scheduledStore != nil else { return nil }
             return self as? Service
@@ -2007,15 +2158,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         let includeSpamTrash: Bool
     }
 
-    private static func searchScope(for query: SearchQuery, labels: [GmailLabel]) -> SearchScope {
+    private static func searchScope(for query: SearchQuery) -> SearchScope {
         var terms = [String]()
         if !query.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { terms.append(query.text) }
         if let from = query.from, !from.isEmpty { terms.append("from:\(from)") }
         if let to = query.to, !to.isEmpty { terms.append("to:\(to)") }
         if let subject = query.subject, !subject.isEmpty { terms.append("subject:\(subject)") }
-        if query.hasAttachments == true { terms.append("has:attachment") }
-        if query.isUnread == true { terms.append("is:unread") }
-        if query.isFlagged == true { terms.append("is:starred") }
+        if let value = query.hasAttachments { terms.append(value ? "has:attachment" : "-has:attachment") }
+        if let value = query.isUnread { terms.append(value ? "is:unread" : "is:read") }
+        if let value = query.isFlagged { terms.append(value ? "is:starred" : "-is:starred") }
         if let range = query.dateRange {
             let formatter = DateFormatter()
             formatter.dateFormat = "yyyy/MM/dd"
@@ -2024,23 +2175,18 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
 
         var labelID: String?
-        if let folderID = query.folderID,
-           let label = labels.first(where: { $0.id == folderID || $0.name == folderID }) {
-            switch label.id.uppercased() {
+        if let folderID = query.folderID, !folderID.isEmpty {
+            switch folderID {
             case "INBOX": terms.append("in:inbox")
             case "SPAM": terms.append("in:spam")
             case "TRASH": terms.append("in:trash")
-            case "ALL_MAIL": terms.append("in:anywhere")
+            case "ALL_MAIL": terms.append(contentsOf: ["-in:spam", "-in:trash"])
             case "SENT": terms.append("in:sent")
             case "DRAFT": terms.append("in:drafts")
             case "STARRED": terms.append("is:starred")
             case "IMPORTANT": terms.append("is:important")
-            default:
-                let escaped = label.name.replacingOccurrences(of: "\\\"", with: "\\\\\"")
-                terms.append("label:\"\(escaped)\"")
+            default: labelID = folderID
             }
-        } else if let folderID = query.folderID, !folderID.isEmpty {
-            labelID = folderID
         }
         let joined = terms.joined(separator: " ")
         let includeSpamTrash = joined

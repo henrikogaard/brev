@@ -17,6 +17,24 @@ import Testing
 
 @Suite("Gmail account store")
 struct GmailAccountStoreTests {
+    @Test("SQLite search pages use exclusive stable cursors and isolate accounts")
+    func sqliteSearchPagesUseStableCursors() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent("gmail-search-pages-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store: any GmailAccountStore = try SQLiteGmailAccountStore(databaseURL: directory
+            .appendingPathComponent("mail.sqlite"))
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "c"),
+            Self.message(id: "a"),
+            Self.message(id: "b")
+        ]))
+        #expect(try await store.cachedSearchPage(accountID: "acct-1", afterMessageID: nil, limit: 2).map(\.id) == ["a", "b"])
+        #expect(try await store.cachedSearchPage(accountID: "acct-1", afterMessageID: "b", limit: 2).map(\.id) == ["c"])
+        #expect(try await store.cachedSearchPage(accountID: "acct-1", afterMessageID: "c", limit: 2).isEmpty)
+        #expect(try await store.cachedSearchPage(accountID: "other", afterMessageID: nil, limit: 2).isEmpty)
+    }
+
     @Test("SQLite pages filter labels and order numeric dates before applying the limit")
     func sqliteLabelPagesAreBounded() async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-label-page-\(UUID().uuidString).sqlite")

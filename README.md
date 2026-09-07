@@ -69,7 +69,7 @@ Anything not listed is roadmap, not release-blocker.
 - Per-row swipe actions, context menus, and bulk actions for
   read/unread, flag/unflag, archive, move, delete, with single-flight
   guards across every entry point (toolbar, menu, swipe, drag).
-- Mailbox search on a 250 ms debounce, with progressive IMAP results in folder
+- Mailbox search on a 250 ms debounce, with progressive IMAP and Gmail results in folder
   and unified lists. Shared status shows cached coverage, server completion,
   partial failures and retry; the open reader stays stable while pages arrive.
 - Reading pane: lazy body load, automatic mark-as-read, attachment

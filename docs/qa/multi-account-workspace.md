@@ -320,3 +320,23 @@ race. The rebuilt September 7 test app completes that first search without Retry
 showing its array-only coverage caveat and preserving the visible result/reader.
 Further Local/All Inboxes input was refused when the window stopped resolving in
 AXWindows; these checks and live delayed-page measurements remain unverified.
+
+### Issue #28 Gmail search parity, 2026-09-07
+
+- Search an authenticated Gmail account with more than 5,000 matches. Verify older
+  results are reachable, first-page results appear before completion, and cancel
+  stops further requests. Compare counts with Gmail after the mailbox settles.
+- Test custom labels containing spaces/quotes and messages with multiple labels;
+  verify scoped reading and online/local membership. Compare All Mail, Spam,
+  Trash, and unscoped `in:anywhere`. Test false read/star/attachment predicates.
+- Restart disconnected and run cached-only search. Confirm no provider requests,
+  all cached matches across pages, and cached coverage. Auto search should start
+  server work after one cache preview; an initial transport failure must complete
+  the cached scan. A later failure must retain partial results without completion.
+- Retire/re-add the account while a message response is paused. Old responses must
+  not publish progress or write into replacement storage. Preserve typed auth and
+  rate-limit errors on later pages.
+- Tests cover 5,001 matches, empty pages, duplicate/cyclic cursors, max-four fetch
+  concurrency, callback cancellation, retired responses, stable-label/negative
+  scope, bounded cache previews and SQLite keyset/account isolation. Live provider
+  acceptance, native large-account measurements and date precision remain open.

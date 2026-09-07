@@ -148,6 +148,8 @@ public protocol GmailAccountStore: Sendable {
     func apply(_ delta: GmailStoreDelta) async throws
     /// Lists account-wide messages without duplicating label projections.
     func messages(accountID: String) async throws -> [GmailMessage]
+    /// Reads a stable Gmail-ID cache page after an exclusive cursor for cancellable search scans.
+    func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage]
     /// Reads a bounded label page, newest first, without decoding the whole account.
     func messages(accountID: String, labelID: String, offset: Int, limit: Int) async throws -> [GmailMessage]
     /// Looks up one account-wide Gmail message.
@@ -285,6 +287,16 @@ public actor InMemoryGmailAccountStore: GmailAccountStore {
     public func messages(accountID: String) async throws -> [GmailMessage] {
         try validate(accountID: accountID)
         return snapshots[accountID]?.messages ?? []
+    }
+
+    /// Reads an ID-ordered search page from the in-memory snapshot.
+    public func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage] {
+        try validate(accountID: accountID)
+        return Array((snapshots[accountID]?.messages ?? []).filter { message in afterMessageID.map { message.id > $0 } ?? true }
+            .sorted { $0.id < $1.id }.prefix(max(
+                0,
+                limit
+            )))
     }
 
     /// Looks up one message.
@@ -452,6 +464,15 @@ private extension GmailMessage {
 }
 
 public extension GmailAccountStore {
+    /// Legacy adapters may materialize their snapshot; durable stores should implement bounded reads.
+    func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage] {
+        try await Array(messages(accountID: accountID).filter { message in afterMessageID.map { message.id > $0 } ?? true }
+            .sorted { $0.id < $1.id }.prefix(max(
+                0,
+                limit
+            )))
+    }
+
     /// Default no-op cache for stores that only implement canonical metadata.
     func cachedBody(accountID: String, messageID: String) async throws -> MessageBody? { nil }
     /// Default no-op cache write for metadata-only stores.

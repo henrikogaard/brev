@@ -306,6 +306,263 @@ struct GmailAPIBackendTests {
         #expect(await transport.fullMessageRequestCount() == 1)
     }
 
+    @Test("Auto search previews one cache page, while offline fallback completes every cache page", arguments: [false, true])
+    func autoSearchCachePreviewIsBounded(offline: Bool) async throws {
+        let base = InMemoryGmailAccountStore()
+        let messages = (0 ..< 250).map { Self.message(id: String(format: "m%03d", $0), threadID: "t", labels: ["INBOX"]) }
+        try await base.replaceSnapshot(Self.snapshot(messages: messages))
+        let store = SearchPagingGmailStore(base: base)
+        let transport = StubGmailTransport(pages: [GmailMessagePage()], pageObserver: { _ in
+            #expect(await store.pageLimits.count == 1)
+            if offline { throw GmailAPIError.transportFailure }
+        })
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let progress = GmailSearchProgressRecorder()
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let results = try await backend.searchWithProgress(
+            SearchQuery(folderID: "INBOX", execution: .cacheThenServer),
+            sourceID: nil
+        ) { await progress.record($0) }
+        #expect(results.count == (offline ? 250 : 0))
+        let limits = await store.pageLimits
+        #expect(limits.count == (offline ? 5 : 1))
+        #expect(limits.allSatisfy { $0 == 100 })
+        #expect(await progress.updates.last?.coverage == (offline ? .cached : .server))
+        #expect(await progress.updates.last?.isComplete == true)
+    }
+
+    @Test("later-page authentication and retry errors keep their recovery type", arguments: [false, true])
+    func searchPreservesProviderRecoveryErrors(authentication: Bool) async throws {
+        let transport = StubGmailTransport(pages: [GmailMessagePage(nextPageToken: "1")], pageObserver: { token in
+            if token != nil {
+                if authentication { throw GmailAPIError.reauthenticationRequired }
+                throw GmailAPIError.retryable(statusCode: 503, retryAfter: 30)
+            }
+        })
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore())
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        do {
+            _ = try await backend.search(SearchQuery(text: "invoice", execution: .serverOnly))
+            Issue.record("Expected typed provider error")
+        } catch {
+            if authentication {
+                guard case MailBackendError.authenticationRequired = error
+                else { Issue.record("Lost reauthentication error"); return }
+            } else {
+                #expect(error as? GmailAPIError == .retryable(statusCode: 503, retryAfter: 30))
+            }
+        }
+    }
+
+    @Test("a retired search cannot publish or store a late message in a replacement account")
+    func retiredSearchRejectsLateFetch() async throws {
+        let gate = GmailSearchFetchGate()
+        let message = Self.message(id: "old", threadID: "t", labels: ["INBOX"])
+        let transport = StubGmailTransport(
+            pages: [GmailMessagePage(messages: [.init(id: "old")])],
+            messages: [message],
+            messageObserver: { _ in await gate.pause() }
+        )
+        let store = InMemoryGmailAccountStore()
+        let progress = GmailSearchProgressRecorder()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        let request = Task {
+            try await backend
+                .searchWithProgress(SearchQuery(folderID: "INBOX", execution: .serverOnly), sourceID: nil) {
+                    await progress.record($0)
+                }
+        }
+        await gate.waitForStart()
+        await backend.disconnect()
+        try await store.replaceSnapshot(Self.snapshot(messages: [Self.message(
+            id: "replacement",
+            threadID: "new",
+            labels: ["INBOX"]
+        )]))
+        await gate.release()
+        await #expect(throws: MailBackendError.self) { _ = try await request.value }
+        #expect(await progress.updates.isEmpty)
+        #expect(try await store.messages(accountID: Self.account.id).map(\.id) == ["replacement"])
+    }
+
+    @Test("later page failure preserves partial progress without cached or server completion")
+    func latePageFailureDoesNotComplete() async throws {
+        let message = Self.message(id: "first", threadID: "t", labels: ["INBOX"])
+        let transport = StubGmailTransport(
+            pages: [GmailMessagePage(messages: [.init(id: "first")], nextPageToken: "1")],
+            messages: [message],
+            pageObserver: { token in
+                if token != nil { throw URLError(.notConnectedToInternet) }
+            }
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [Self.message(id: "cached", threadID: "c", labels: ["INBOX"])]))
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let progress = GmailSearchProgressRecorder()
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: URLError.self) {
+            _ = try await backend
+                .searchWithProgress(SearchQuery(folderID: "INBOX", execution: .cacheThenServer), sourceID: nil) {
+                    await progress.record($0)
+                }
+        }
+        let updates = await progress.updates
+        #expect(updates.first?.coverage == .cached)
+        #expect(updates.last?.headers.first?.id == "first")
+        #expect(!updates.contains { $0.isComplete })
+    }
+
+    @Test("custom label searches use stable IDs and preserve negative predicates")
+    func searchUsesStableLabelAndNegativePredicates() async throws {
+        let transport = StubGmailTransport(
+            labels: [GmailLabel(id: "projects", name: "Team \"Plans\"", type: "user")],
+            pages: [GmailMessagePage()]
+        )
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore())
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        _ = try await backend.search(SearchQuery(
+            folderID: "projects",
+            hasAttachments: false,
+            isUnread: false,
+            isFlagged: false,
+            execution: .serverOnly
+        ))
+        #expect(await transport.requestedLabelID == "projects")
+        #expect(await transport.lastQuery() == "-has:attachment is:read -is:starred")
+    }
+
+    @Test("All Mail consistently excludes Spam and Trash online and offline")
+    func allMailScopeIsConsistent() async throws {
+        let messages = [Self.message(id: "kept", threadID: "t", labels: ["INBOX"]),
+                        Self.message(id: "spam", threadID: "s", labels: ["SPAM"]),
+                        Self.message(id: "trash", threadID: "r", labels: ["TRASH"])]
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: messages))
+        let transport = StubGmailTransport(
+            labels: [GmailLabel(id: "ALL_MAIL", name: "All Mail", type: "system")],
+            pages: [GmailMessagePage(messages: [.init(id: "kept")])]
+        )
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let local = try await backend.search(SearchQuery(folderID: "ALL_MAIL", execution: .cacheOnly))
+        #expect(local.map(\.id) == ["kept"])
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let online = try await backend.search(SearchQuery(folderID: "ALL_MAIL", execution: .serverOnly))
+        #expect(online.map(\.id) == ["kept"])
+        #expect(online.first?.folderID == "ALL_MAIL")
+        #expect(await transport.lastQuery() == "-in:spam -in:trash")
+        #expect(await transport.lastIncludeSpamTrash() == false)
+    }
+
+    @Test("Gmail progress arrives before later pages and cancellation stops paging", arguments: [false, true])
+    func progressiveSearchCanCancel(cancel: Bool) async throws {
+        let progress = GmailSearchProgressRecorder()
+        let first = Self.message(id: "first", threadID: "t1", labels: ["INBOX"])
+        let last = Self.message(id: "last", threadID: "t2", labels: ["INBOX"])
+        let transport = StubGmailTransport(pages: [
+            GmailMessagePage(messages: [.init(id: first.id)], nextPageToken: "1"),
+            GmailMessagePage(messages: [], nextPageToken: "2"),
+            GmailMessagePage(messages: [.init(id: last.id)])
+        ], messages: [first, last], pageObserver: { token in
+            if token != nil { #expect(await progress.updates.first?.headers.first?.id == "first") }
+        })
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let service = try #require(backend.extensionService(ProgressiveMailSearching.self))
+        let task = Task {
+            try await service.searchWithProgress(
+                SearchQuery(folderID: "INBOX", execution: .serverOnly),
+                sourceID: MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+            ) {
+                await progress.record($0)
+                if cancel { withUnsafeCurrentTask { $0?.cancel() } }
+            }
+        }
+        if cancel {
+            await #expect(throws: CancellationError.self) { _ = try await task.value }
+            #expect(await transport.requestedTokens == [nil])
+            #expect(await progress.updates.count == 1)
+        } else {
+            let result = try await task.value
+            #expect(result.map(\.id) == ["first", "last"])
+            #expect(await progress.updates.last?.isComplete == true)
+            #expect(await progress.updates.last?.coverage == .server)
+            #expect(await transport.requestedTokens == [nil, "1", "2"])
+        }
+        let limits = await transport.requestedLimits
+        #expect(limits.allSatisfy { $0 == 50 })
+        #expect(try await store.messages(accountID: Self.account.id).isEmpty)
+        #expect(await transport.attachmentRequestCount() == 0)
+    }
+
+    @Test("Gmail cursor cycles fail instead of claiming complete search")
+    func searchCursorCycleFails() async throws {
+        let transport = StubGmailTransport(pages: [GmailMessagePage(nextPageToken: "1"), GmailMessagePage(nextPageToken: "1")])
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore())
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        await #expect(throws: MailBackendError.self) { _ = try await backend.search(SearchQuery(
+            text: "invoice",
+            execution: .serverOnly
+        )) }
+        #expect(await transport.requestedTokens == [nil, "1"])
+    }
+
+    @Test("search message fetching is concurrent but bounded")
+    func searchFetchConcurrencyIsBounded() async throws {
+        let messages = (0 ..< 12).map { Self.message(id: "m\($0)", threadID: "t", labels: ["INBOX"]) }
+        let transport = StubGmailTransport(
+            pages: [GmailMessagePage(messages: messages.map { .init(id: $0.id) })],
+            messages: messages,
+            messageDelay: 10_000_000
+        )
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: InMemoryGmailAccountStore())
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        #expect(try await backend.search(SearchQuery(folderID: "INBOX", execution: .serverOnly)).count == 12)
+        let maximum = await transport.maximumConcurrentRequests()
+        #expect(maximum > 1)
+        #expect(maximum <= 4)
+    }
+
+    @Test("cached search works disconnected and respects secondary label membership")
+    func cachedSearchUsesMembershipOffline() async throws {
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [Self.message(
+            id: "both",
+            threadID: "t",
+            labels: ["INBOX", "projects"]
+        )]))
+        let backend = GmailAPIBackend(account: Self.account, transport: StubGmailTransport(), store: store)
+        let results = try await backend.search(SearchQuery(folderID: "projects", execution: .cacheOnly))
+        #expect(results.map(\.id) == ["both"])
+        #expect(results.first?.folderID == "projects")
+    }
+
+    @Test("Gmail search returns a match beyond the former five-thousand cap")
+    func searchBeyondFormerCap() async throws {
+        let messages = (0 ..< 5001).map { Self.message(id: "m\($0)", threadID: "t\($0)", labels: ["INBOX"]) }
+        let pages = stride(from: 0, to: messages.count, by: 50).map { start in
+            GmailMessagePage(messages: messages[start ..< min(start + 50, messages.count)].map { .init(id: $0.id) },
+                             nextPageToken: start + 50 < messages.count ? String(start / 50 + 1) : nil)
+        }
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: messages))
+        let backend = GmailAPIBackend(account: Self.account, transport: StubGmailTransport(pages: pages), store: store)
+        try await backend.connect()
+        defer { Task { await backend.disconnect() } }
+        let results = try await backend.search(SearchQuery(folderID: "INBOX", execution: .serverOnly))
+        #expect(results.count == 5001)
+        #expect(results.last?.id == "m5000")
+    }
+
     @Test("uses Gmail q syntax for server search and deduplicates results")
     func searchesWithGmailQuery() async throws {
         let message = Self.message(id: "message-3", threadID: "thread-3", labels: ["INBOX"])
@@ -532,12 +789,17 @@ private actor StubGmailTransport: GmailAPITransporting {
     private let messages: [String: GmailMessage]
     private var listingFailure = false
     private let messageDelay: UInt64
+    private let messageObserver: (@Sendable (String) async -> Void)?
+    private let pageObserver: (@Sendable (String?) async throws -> Void)?
+    private(set) var requestedTokens: [String?] = []
+    private(set) var requestedLimits: [Int] = []
     private var concurrentRequests = 0
     private var maximumRequests = 0
     func failListings() { listingFailure = true }
     func maximumConcurrentRequests() -> Int { maximumRequests }
     private var nextPageIndex = 0
     private var query: String?
+    private(set) var requestedLabelID: String?
     private var fullRequests = 0
     private var rawRequests = 0
     private var attachmentRequests = 0
@@ -548,9 +810,13 @@ private actor StubGmailTransport: GmailAPITransporting {
         labels: [GmailLabel] = [],
         pages: [GmailMessagePage] = [],
         messages: [GmailMessage] = [],
-        messageDelay: UInt64 = 0
+        messageDelay: UInt64 = 0,
+        pageObserver: (@Sendable (String?) async throws -> Void)? = nil,
+        messageObserver: (@Sendable (String) async -> Void)? = nil
     ) {
         self.messageDelay = messageDelay
+        self.pageObserver = pageObserver
+        self.messageObserver = messageObserver
         profileValue = profile
         labelsValue = labels
         self.pages = pages
@@ -566,8 +832,12 @@ private actor StubGmailTransport: GmailAPITransporting {
         pageToken: String?,
         maxResults: Int
     ) async throws -> GmailMessagePage {
+        requestedTokens.append(pageToken)
+        requestedLimits.append(maxResults)
+        try await pageObserver?(pageToken)
         if listingFailure { throw URLError(.notConnectedToInternet) }
         self.query = query
+        requestedLabelID = labelID
         includeSpamTrash = false
         if let pageToken, let index = Int(pageToken) {
             return pages.indices.contains(index) ? pages[index] : GmailMessagePage()
@@ -591,6 +861,7 @@ private actor StubGmailTransport: GmailAPITransporting {
         concurrentRequests += 1
         maximumRequests = max(maximumRequests, concurrentRequests)
         defer { concurrentRequests -= 1 }
+        await messageObserver?(messageID)
         if messageDelay > 0 { try await Task.sleep(nanoseconds: messageDelay) }
         if format == .full { fullRequests += 1 }
         if format == .raw { rawRequests += 1 }
@@ -608,4 +879,56 @@ private actor StubGmailTransport: GmailAPITransporting {
     func fullMessageRequestCount() -> Int { fullRequests }
     func rawMessageRequestCount() -> Int { rawRequests }
     func attachmentRequestCount() -> Int { attachmentRequests }
+}
+
+private actor GmailSearchProgressRecorder {
+    var updates: [MailSearchUpdate] = []
+    func record(_ update: MailSearchUpdate) { updates.append(update) }
+}
+
+private actor GmailSearchFetchGate {
+    private var started = false
+    private var startWaiter: CheckedContinuation<Void, Never>?
+    private var releaseWaiter: CheckedContinuation<Void, Never>?
+    func pause() async {
+        started = true
+        startWaiter?.resume(); startWaiter = nil
+        await withCheckedContinuation { releaseWaiter = $0 }
+    }
+
+    func waitForStart() async {
+        guard !started else { return }
+        await withCheckedContinuation { startWaiter = $0 }
+    }
+
+    func release() { releaseWaiter?.resume(); releaseWaiter = nil }
+}
+
+private actor SearchPagingGmailStore: GmailAccountStore {
+    let base: any GmailAccountStore
+    private(set) var pageLimits: [Int] = []
+    init(base: any GmailAccountStore) { self.base = base }
+    func removeAccount(accountID: String) async throws { try await base.removeAccount(accountID: accountID) }
+    func accountState(accountID: String) async throws -> GmailAccountState? { try await base.accountState(accountID: accountID) }
+    func replaceSnapshot(_ snapshot: GmailAccountSnapshot) async throws { try await base.replaceSnapshot(snapshot) }
+    func apply(_ delta: GmailStoreDelta) async throws { try await base.apply(delta) }
+    func messages(accountID: String) async throws -> [GmailMessage] {
+        Issue.record("Search must not materialize the entire account cache")
+        throw GmailAccountStoreError.databaseFailure
+    }
+
+    func cachedSearchPage(accountID: String, afterMessageID: String?, limit: Int) async throws -> [GmailMessage] {
+        pageLimits.append(limit)
+        return try await base.cachedSearchPage(accountID: accountID, afterMessageID: afterMessageID, limit: limit)
+    }
+
+    func message(accountID: String, messageID: String) async throws -> GmailMessage? { try await base.message(
+        accountID: accountID,
+        messageID: messageID
+    ) }
+    func labels(accountID: String) async throws -> [GmailLabel] { try await base.labels(accountID: accountID) }
+    func messageLabelIDs(accountID: String, messageID: String) async throws -> [String] { try await base.messageLabelIDs(
+        accountID: accountID,
+        messageID: messageID
+    ) }
 }

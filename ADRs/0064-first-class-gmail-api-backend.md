@@ -376,3 +376,33 @@ local-only architecture.
 - [Gmail API errors](https://developers.google.com/workspace/gmail/api/guides/handle-errors)
 - [Gmail API quotas](https://developers.google.com/workspace/gmail/api/reference/quota)
 - [Google OAuth app verification FAQ](https://support.google.com/cloud/answer/13463817)
+
+## Implementation update (2026-09-07): progressive search
+
+Gmail implements the existing `ProgressiveMailSearching` extension. Provider
+results use 50-reference pages with at most four concurrent message reads. Cached
+values are reused; uncached values use the existing full-message read, without
+persisting search-only results. This avoids late search writes after account
+retirement, at the cost of a possible repeated fetch when an uncached result is
+opened. It adds no endpoint, attachment download request or new privacy opt-in.
+
+The former 5,000-result cap is removed. Empty pages follow their cursor, duplicates
+collapse by Gmail ID, repeated cursors fail, and completion is emitted only after
+the final page. Typed auth/quota/retry errors remain available to callers. Callback
+boundaries and message reads check task cancellation and connection generation.
+
+`GmailAccountStore.cachedSearchPage` supports an exclusive Gmail-ID cursor. The
+SQLite implementation uses the existing account/message key and decodes only the
+requested page; no schema migration is needed. Connected Auto search previews
+100 cached candidates, then immediately starts server search. Cached-only and
+first-request offline fallback walk all cache pages with progress and cancellation.
+Legacy custom stores may use the documented snapshot-materializing default.
+
+Local folder filtering uses actual label membership, with scoped folder identity
+on returned headers. Custom server labels use stable IDs rather than quoted names.
+All Mail excludes Spam/Trash; raw unscoped `in:anywhere` remains user-controlled.
+Negative attachment, unread and starred predicates map to native Gmail operators.
+
+This does not add a local full-text/document index or improve date-query precision.
+Full-message retrieval for uncached search hits, total accumulated-header memory,
+and live large-account latency remain measured-performance follow-ups.
