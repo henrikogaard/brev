@@ -584,3 +584,15 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Verification: documentation links/index and diff checked. TDD/builds are not
   applicable to this documentation-only slice. Strategic implementations remain
   gated by ADR acceptance under AGENTS.md and prompts/new-adr.md.
+
+## 2026-09-07 — Codex — Issue #28 / PR #29 conversation architecture
+
+- Confirmed all 20 checks passed on implementation head 676a7886.
+- ADR-0052 explicitly reserves cross-folder indexing as a separate decision;
+  ADR-0020 limits reader membership to loaded folder headers. Added Proposed
+  ADR-0074 for source-owned cached graphs, Gmail metadata threads, bounded IMAP
+  header discovery, explicit per-account consent, coverage and action/selection
+  isolation. Implementation awaits acceptance, per AGENTS.md.
+- Read existing threading/search/provider interfaces and primary Gmail/RFC docs.
+  Verified index/links and diff formatting. Documentation-only exception: no TDD,
+  app build or live account activity. No merge/release or network preference change.
