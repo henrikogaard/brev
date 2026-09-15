@@ -21,9 +21,19 @@ import Foundation
 /// operations update the in-memory state and emit `MailEvent`s on the
 /// stream returned by `subscribeToChanges()`.
 public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManaging, ContactLookupProviding, MailImporting,
-    SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging, @unchecked Sendable {
+    SyncHealthReporting, SyncHealthRepairing, SyncConflictManaging,
+    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
     public let account: BrevAccount
     public let capabilities: BackendCapabilities
+    public let extendedCapabilities: BackendExtendedCapabilities
+
+    /// Test/preview hook for cached conversation lookup; nil reports not supported.
+    public var cachedConversationHandler:
+        (@Sendable (ConversationMember, Bool) async throws -> ConversationSnapshot)?
+    /// Test/preview hook for consented remote related-header loading.
+    public var relatedConversationHandler:
+        (@Sendable (ConversationMember, Bool, String?,
+                    @escaping @Sendable (ConversationSnapshot) async -> Void) async throws -> ConversationSnapshot)?
 
     private let store: Store
     private let contacts: [ContactLookupResult]
@@ -31,6 +41,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     public init(
         account: BrevAccount = .preview,
         capabilities: BackendCapabilities = .full,
+        extendedCapabilities: BackendExtendedCapabilities = [],
         folders: [Folder] = MockBackend.previewFolders,
         messagesByFolder: [String: [MessageHeader]] = MockBackend.previewMessages,
         mailboxes: [Mailbox]? = nil,
@@ -38,6 +49,7 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
     ) {
         self.account = account
         self.capabilities = capabilities
+        self.extendedCapabilities = extendedCapabilities
         let resolvedMailboxes: [Mailbox]
         if let mailboxes, !mailboxes.isEmpty {
             resolvedMailboxes = mailboxes
@@ -440,9 +452,37 @@ public final class MockBackend: MailBackend, AutoReplyManaging, ServerRuleManagi
             return self as? Service
         case ObjectIdentifier(SyncConflictManaging.self):
             return self as? Service
+        case ObjectIdentifier(CachedConversationProviding.self)
+            where extendedCapabilities.contains(.cachedConversations):
+            return self as? Service
+        case ObjectIdentifier(RelatedConversationLoading.self)
+            where extendedCapabilities.contains(.relatedConversationLoading):
+            return self as? Service
         default:
             return nil
         }
+    }
+
+    public func cachedConversation(
+        around anchor: ConversationMember,
+        includeSpamAndTrash: Bool
+    ) async throws -> ConversationSnapshot {
+        guard let cachedConversationHandler else {
+            throw MailBackendError.notSupported(capabilities)
+        }
+        return try await cachedConversationHandler(anchor, includeSpamAndTrash)
+    }
+
+    public func loadRelatedConversation(
+        around anchor: ConversationMember,
+        includeSpamAndTrash: Bool,
+        continuation: String?,
+        onUpdate: @escaping @Sendable (ConversationSnapshot) async -> Void
+    ) async throws -> ConversationSnapshot {
+        guard let relatedConversationHandler else {
+            throw MailBackendError.notSupported(capabilities)
+        }
+        return try await relatedConversationHandler(anchor, includeSpamAndTrash, continuation, onUpdate)
     }
 
     public func contacts(matching query: ContactLookupQuery) async throws -> [ContactLookupResult] {

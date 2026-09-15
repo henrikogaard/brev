@@ -144,6 +144,26 @@ configured or when a local rule cannot be translated safely.
 **How to disable:** Leave Server-side filters off during account setup,
 or do not choose the sync action in Settings -> Rules. Defaults to off.
 
+### Related-mail header discovery
+
+If enabled: when you choose **Load related mail** on a conversation, Brev
+asks that account's provider for other messages linked by reply
+identifiers (Message-ID, In-Reply-To, References) across every eligible
+folder in that mailbox — including folders not currently synced. IMAP
+accounts send bounded `UID SEARCH HEADER` queries and fetch only message
+metadata (envelope, flags, and References headers). Gmail accounts fetch
+the native thread with metadata format only.
+
+Only message headers are transferred. Bodies and attachments are never
+downloaded by this feature, messages are never marked read, and nothing
+is searched across other accounts. A per-account preference in
+Settings -> Mailbox View can additionally allow the same lookup
+automatically when you open a conversation; it defaults off.
+
+**How to disable:** Do not choose Load related mail, and keep
+"Automatically load related mail" off in Settings -> Mailbox View.
+Removing the account revokes the consent.
+
 ### Apple Reminders task creation
 
 If you choose **Create Task** from a message, Brev shows an editable

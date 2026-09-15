@@ -11,6 +11,7 @@
  */
 
 import BrevAvatars
+import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -27,15 +28,29 @@ struct MailboxViewSection: View {
     @State private var inboxClassificationSettings: InboxClassificationSettings
     @State private var avatarSettings: AvatarPrivacySettings
     @State private var folderPreferences: FolderPreferences
+    @State private var relatedConsentAccountID: BrevAccount.ID?
+    @State private var relatedAutoLoadEnabled = false
 
     private let settingsStore: SettingsPersistenceStore
+    private let accounts: [BrevAccount]
+    private let currentAccountID: BrevAccount.ID?
+    private let relatedConsentStore: RelatedConversationConsentStore
 
-    init(settingsStore: SettingsPersistenceStore = .standard) {
+    init(
+        settingsStore: SettingsPersistenceStore = .standard,
+        accounts: [BrevAccount] = [],
+        currentAccountID: BrevAccount.ID? = nil,
+        relatedConsentStore: RelatedConversationConsentStore = .shared
+    ) {
         self.settingsStore = settingsStore
+        self.accounts = accounts
+        self.currentAccountID = currentAccountID
+        self.relatedConsentStore = relatedConsentStore
         _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
         _inboxClassificationSettings = State(initialValue: settingsStore.inboxClassificationSettings())
         _avatarSettings = State(initialValue: settingsStore.avatarPrivacySettings())
         _folderPreferences = State(initialValue: settingsStore.folderPreferences())
+        _relatedConsentAccountID = State(initialValue: currentAccountID ?? accounts.first?.id)
     }
 
     var body: some View {
@@ -59,12 +74,23 @@ struct MailboxViewSection: View {
                 case 3: senderIconGroup
                 default:
                     readingGroup
+                    relatedMailGroup
                     searchAndCacheGroup
                 }
             }
         }
         .onChange(of: searchTarget, initial: true) { _, target in
             selectPane(matching: target)
+        }
+        .onChange(of: currentAccountID) { _, accountID in
+            relatedConsentAccountID = accountID ?? accounts.first?.id
+        }
+        .task(id: relatedConsentAccountID) {
+            guard let accountID = relatedConsentAccountID else {
+                relatedAutoLoadEnabled = false
+                return
+            }
+            relatedAutoLoadEnabled = relatedConsentStore.isAutoLoadEnabled(accountID: accountID)
         }
     }
 
@@ -351,6 +377,88 @@ struct MailboxViewSection: View {
                 }
             }
         }
+    }
+
+    /// Per-account consent for remote related-header lookup (ADR-0074). The
+    /// explicit reader "Load related mail" action always stays available; this
+    /// toggle only authorizes the same metadata lookup automatically when a
+    /// conversation opens.
+    private var relatedMailGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Related mail", bundle: .module),
+            subtitle: String(
+                localized: "Find conversation members across folders in one account.",
+                bundle: .module
+            ),
+            symbolName: "arrow.triangle.branch"
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                if accounts.isEmpty {
+                    SettingsInfoCallout(
+                        symbolName: "tray",
+                        message: String(
+                            localized: "Add an account to control related-mail lookup.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                } else {
+                    if accounts.count > 1 {
+                        SettingsPickerRow(
+                            symbolName: "person.crop.circle",
+                            title: String(localized: "Account", bundle: .module),
+                            subtitle: String(
+                                localized: "Related-mail consent is set per account.",
+                                bundle: .module
+                            ),
+                            selection: relatedConsentAccountBinding
+                        ) {
+                            ForEach(accounts) { account in
+                                Text(verbatim: account.emailAddress).tag(account.id)
+                            }
+                        }
+                    }
+
+                    SettingsToggleRow(
+                        symbolName: "arrow.triangle.2.circlepath",
+                        title: String(localized: "Automatically load related mail", bundle: .module),
+                        subtitle: String(
+                            localized: "When you open a conversation, ask the provider for related message headers across all eligible folders in this account, including folders not currently synced.",
+                            bundle: .module
+                        ),
+                        isOn: relatedAutoLoadBinding,
+                        isEnabled: relatedConsentAccountID != nil
+                    )
+
+                    SettingsInfoCallout(
+                        symbolName: "shield",
+                        message: String(
+                            localized: "Only message headers are fetched. Bodies and attachments are never downloaded, and messages are not marked read. You can always use Load related mail on a single conversation instead.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
+            }
+        }
+    }
+
+    private var relatedConsentAccountBinding: Binding<BrevAccount.ID> {
+        Binding(
+            get: { relatedConsentAccountID ?? accounts.first?.id ?? "" },
+            set: { relatedConsentAccountID = $0 }
+        )
+    }
+
+    private var relatedAutoLoadBinding: Binding<Bool> {
+        Binding(
+            get: { relatedAutoLoadEnabled },
+            set: { newValue in
+                relatedAutoLoadEnabled = newValue
+                guard let accountID = relatedConsentAccountID else { return }
+                relatedConsentStore.setAutoLoadEnabled(newValue, accountID: accountID)
+            }
+        )
     }
 
     /// Explains where local search gets its results. Cache lookback itself is

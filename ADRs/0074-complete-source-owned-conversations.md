@@ -174,3 +174,41 @@ explicit value fall back to the cached header's field; malformed fields keep
 only individually verifiable tokens and never block ordinary caching.
 Provider extension wiring, consented remote discovery and reader/action
 integration remain pending.
+
+## Implementation progress — 2026-09-15 (provider extensions and reader)
+
+Provider extension wiring and consented remote discovery landed in this
+thread. `IMAPSMTPBackend` conforms to `CachedConversationProviding` over
+the existing local index — no network I/O, Spam/Trash excluded by
+default, foreign-source anchors rejected, and an anchor-only fallback
+when no index is wired. `GmailAPIBackend` keeps its native-thread cached
+lookup and now also resolves `users.threads.get` in metadata format with
+selected headers for consented remote loading, deduplicating label
+memberships by account-wide message ID and preserving the selected
+folder context.
+
+IMAP remote discovery uses bounded `UID SEARCH HEADER` queries seeded
+from Message-ID/In-Reply-To/References, fetches only
+UID/ENVELOPE/FLAGS/`BODY.PEEK[HEADER.FIELDS (REFERENCES)]`, verifies exact
+relationships locally, expands the identifier frontier until exhausted or
+budget-limited, and reports `.partial` whenever folders fail, identifiers
+are ambiguous, or budgets bind. No `BODY[]`, attachment, or flag
+mutations are issued for discovery.
+
+Consent is provider-neutral (`RelatedConversationConsenting`): a
+persistent per-account auto-load preference defaults off and is
+reversible in Settings → Mailbox View, while the reader's explicit
+**Load related mail** action records a session-only grant. Revocation
+and account removal clear both surfaces. ADR-0006 and `PRIVACY.md`
+document the new call class.
+
+Reader integration adds `RelatedConversationController` (one owner,
+generation-guarded stale rejection, cancellation on anchor/source
+change), a compact coverage bar with cached/loading/partial/complete
+feedback, Retry, Spam/Trash inclusion, and snapshot merging into the
+thread view — cross-folder members keep their real folder/UID context
+for body loads and actions, and the selected anchor stays stable when an
+older root is found.
+
+Native light/dark, accessibility, compact layout, and live-account
+performance acceptance remain open verification items.

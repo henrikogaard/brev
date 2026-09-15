@@ -12,6 +12,13 @@ All notable changes to Brev are documented here.
   are still pending. Gmail's cache migration preserves existing mail and scheduled
   drafts. The IMAP cache also indexes existing reply identifiers across folders,
   with explicit partial coverage when traversal reaches its bounds.
+- Cross-folder conversations: the reader now shows related messages from other
+  folders (including Sent and Archive) using cached metadata, with an explicit
+  "Load related mail" action that asks the provider for related headers across
+  all eligible folders in the account. A per-account "Automatically load related
+  mail" preference in Mailbox View settings can enable the same metadata-only
+  lookup on conversation open; it defaults off, fetches no bodies or
+  attachments, and never marks mail read.
 
 ### Fixed
 

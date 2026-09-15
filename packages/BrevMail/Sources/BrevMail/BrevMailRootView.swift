@@ -187,6 +187,7 @@ public struct BrevMailRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var navigation = MailNavigationState()
+    @State private var relatedConversation = RelatedConversationController()
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     /// Whether the macOS AI Sidebar column is open. Persisted so relaunching
@@ -1143,34 +1144,70 @@ public struct BrevMailRootView: View {
         )
     }
 
+    /// Identity of the conversation anchor the reader resolves cached and
+    /// remote snapshots around (ADR-0074). Includes the backend identity so an
+    /// account/source switch re-evaluates capabilities and discards stale work.
+    private func conversationAnchorKey(fallbackHeader: MessageHeader?) -> String {
+        let header = navigation.selectedHeader ?? fallbackHeader
+        return [
+            navigation.selectedSourceID?.accountID ?? "",
+            navigation.selectedSourceID?.mailboxID ?? "",
+            header?.folderID ?? "",
+            header?.id ?? "",
+            String(describing: ObjectIdentifier(selectedBackend))
+        ].joined(separator: "\u{1F}")
+    }
+
+    private func showsRelatedConversationBar(fallbackHeader: MessageHeader?) -> Bool {
+        guard hasValidSelectedSourceBackend,
+              navigation.selectedHeader ?? fallbackHeader != nil else { return false }
+        return relatedConversation.canLoadRelated
+            || relatedConversation.snapshot != nil
+            || relatedConversation.isLoadingRemote
+    }
+
     @ViewBuilder
     private func readingPaneContent(fallbackHeader: MessageHeader? = nil) -> some View {
-        Group {
-            let threadHeaders = threadHeadersForSelection(fallbackHeader: fallbackHeader)
-            if !hasValidSelectedSourceBackend {
-                Text("This mailbox is no longer connected.", bundle: .module)
-                    .foregroundStyle(theme.textSecondary.color)
-            } else if selectedBackend.groupsMessagesIntoThreads,
-                      threadHeaders.count > 1 {
-                ThreadConversationView(
-                    threadHeaders: threadHeaders,
-                    backend: selectedBackend,
-                    sourceID: navigation.selectedSourceID,
-                    mailboxLabel: selectedSourceSection?.mailbox.email,
-                    navigation: navigation,
-                    isWorkBlocked: isCommandMutationBlocked
-                )
-            } else {
-                MessageDetailView(
-                    backend: selectedBackend,
-                    sourceID: navigation.selectedSourceID,
-                    header: navigation.selectedHeader ?? fallbackHeader,
-                    navigation: navigation,
-                    allFolders: folders,
-                    isWorkBlocked: isMessageWorkBlocked,
-                    isMutationWorkBlocked: isCommandMutationBlocked
-                )
+        VStack(spacing: 0) {
+            if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
+                RelatedConversationBar(controller: relatedConversation)
             }
+            Group {
+                let threadHeaders = relatedConversation.mergedThreadHeaders(
+                    loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
+                )
+                if !hasValidSelectedSourceBackend {
+                    Text("This mailbox is no longer connected.", bundle: .module)
+                        .foregroundStyle(theme.textSecondary.color)
+                } else if selectedBackend.groupsMessagesIntoThreads,
+                          threadHeaders.count > 1 {
+                    ThreadConversationView(
+                        threadHeaders: threadHeaders,
+                        backend: selectedBackend,
+                        sourceID: navigation.selectedSourceID,
+                        mailboxLabel: selectedSourceSection?.mailbox.email,
+                        navigation: navigation,
+                        isWorkBlocked: isCommandMutationBlocked
+                    )
+                } else {
+                    MessageDetailView(
+                        backend: selectedBackend,
+                        sourceID: navigation.selectedSourceID,
+                        header: navigation.selectedHeader ?? fallbackHeader,
+                        navigation: navigation,
+                        allFolders: folders,
+                        isWorkBlocked: isMessageWorkBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked
+                    )
+                }
+            }
+        }
+        .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
+            relatedConversation.updateAnchor(
+                header: navigation.selectedHeader ?? fallbackHeader,
+                sourceID: navigation.selectedSourceID,
+                backend: selectedBackend
+            )
         }
     }
 

@@ -506,7 +506,11 @@ public struct SettingsView: View {
                 settingsStore: settingsStore
             )
         case .mailboxView:
-            MailboxViewSection(settingsStore: settingsStore)
+            MailboxViewSection(
+                settingsStore: settingsStore,
+                accounts: accounts,
+                currentAccountID: currentAccount?.id
+            )
         case .signature:
             SignatureSection(settingsStore: settingsStore, accounts: accounts)
         case .compose:

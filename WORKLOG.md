@@ -1,5 +1,70 @@
 # Worklog
 
+## 2026-09-15 — Devin — Issue #28 / PR #30: ADR-0074 provider extensions, consented remote discovery, reader integration
+
+### Goal
+
+Complete the remaining ADR-0074 delivery stages on `feature/mail-client-parity`:
+cached + remote related-conversation loading on both providers, per-account
+consent, and reader integration.
+
+### Changes
+
+- `IMAPSMTPBackend`: `CachedConversationProviding` over the SyncEngine local
+  index (no network, Spam/Trash excluded by default, anchor-only fallback);
+  `RelatedConversationLoading` via bounded `UID SEARCH HEADER` frontier
+  expansion with metadata-only candidate fetches (UID/ENVELOPE/FLAGS/
+  `BODY.PEEK[HEADER.FIELDS (REFERENCES)]`), generation checks, folder-failure
+  accounting, and honest `.partial` coverage.
+- `IMAPSessionClient`: `loginAndSearchRelatedHeaders` session op emitting
+  structured `UID SEARCH HEADER` commands; no-op when no usable identifiers.
+- `GmailAPIBackend`/`GmailAPITransport`: `getThread` (metadata format,
+  selected headers only — no full/raw/attachment calls), plus
+  `RelatedConversationLoading` that deduplicates label memberships, preserves
+  folder context, excludes Spam/Trash by default, and persists discovered
+  headers through the provider-owned store. Gmail header mapping now carries
+  References.
+- `RelatedConversationConsentStore` (new, BrevBackend): per-account consent —
+  persistent auto-load preference (default off) + session grant for the
+  explicit reader action; revocation/account removal clears both.
+- Settings: "Related mail" group in Mailbox View with per-account picker and
+  the consent copy required by ADR-0074 §6; `removeAccountScopedState` revokes
+  consent.
+- Reader: `RelatedConversationController` (single owner, generation-guarded
+  stale rejection, cancellation on anchor change) + `RelatedConversationBar`
+  (cached/loading/partial/complete feedback, Load related mail, Retry,
+  Include Spam and Trash) merged into `BrevMailRootView`; snapshot members
+  merge into the thread view with real folder/UID locators.
+- `MockBackend` gained conversation-service handlers + `extendedCapabilities`
+  for tests.
+- Docs: ADR-0006 network table row, `PRIVACY.md` related-mail section,
+  ADR-0074 progress note, CHANGELOG Unreleased.
+
+### Verification
+
+- `swift build` clean for BrevBackend, BrevGmail, BrevSettings, BrevMail.
+- Focused tests: IMAP backend conversation tests 7/7; IMAP session
+  related-header 2/2; Gmail backend 29/29 (incl. new consent-gated
+  threads.get tests); Gmail transport 16/16 (metadata request shape);
+  consent store 4/4; settings account-scoped cleanup incl. consent revocation
+  11/11; reader controller 7/7 (cached merge, consent gating, explicit action,
+  auto-load, stale rejection, Spam/Trash scope, failure/retry).
+- `scripts/lint.sh`, `scripts/format.sh`, `scripts/privacy-audit.sh`,
+  `git diff --check` all pass.
+
+### Skipped / pending
+
+- MailboxViewSection iOS snapshot re-record (new Related mail group changes
+  the section image) — needs `RECORD_SNAPSHOTS=YES tuist test`; not run here.
+- Live-account acceptance: native light/dark, accessibility/compact layout,
+  discovery duration/memory/request counts on representative accounts.
+
+### Handoff
+
+Remote discovery is off by default; explicit per-conversation action or the
+per-account Mailbox View preference are the only triggers. PR #30 remains a
+draft; issue #28 remains In progress — no merge/release performed.
+
 ## 2026-08-28 — Claude — Scroll-edge blur anchored to the list viewport
 
 ### Goal
