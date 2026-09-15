@@ -44,10 +44,13 @@ public enum ConversationMembershipResolver {
                 ownerCounts[id, default: 0] += 1
                 owners[id, default: []].insert(Fingerprint(member.header))
             }
-            guard (member.references ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536
+            // An explicitly fetched member value wins; otherwise the cached
+            // header's References field is the provenance (ADR-0074).
+            let memberReferences = member.references ?? member.header.references
+            guard (memberReferences ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536
             else { throw ConversationLookupError.invalidMetadata }
             var references = try identifiers(in: member.header.inReplyTo)
-            for value in member.references ?? [] {
+            for value in memberReferences ?? [] {
                 try references.append(contentsOf: identifiers(in: value))
             }
             links[member.location] = Set(own + references)

@@ -319,7 +319,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     statement,
                     1
                 ))
-                result.append(ConversationMember(sourceID: source, header: header, folderGeneration: generation))
+                result.append(ConversationMember(sourceID: source, header: header, folderGeneration: generation,
+                                                 references: header.references))
                 step = sqlite3_step(statement)
             }
             guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
@@ -364,7 +365,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         // Malformed linkage must not prevent ordinary mail from being cached.
         guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
               let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo) else { return }
-        for identifier in Set(own + parents) {
+        // Each References element is validated independently so one malformed
+        // token cannot poison the message's remaining verified links.
+        let referenced = (header.references ?? []).flatMap {
+            (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
+        }
+        for identifier in Set(own + parents + referenced) {
             sqlite3_bind_text(statements.insert, 1, accountID, -1, Self.transient)
             sqlite3_bind_text(statements.insert, 2, header.folderID, -1, Self.transient)
             sqlite3_bind_int64(statements.insert, 3, Int64(Self.uid(from: header.id)))
@@ -442,11 +448,21 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             do {
                 for header in headers {
                     let uid = Self.uid(from: header.id)
-                    let previousMessageID = messageID(
+                    let previous = storedHeaderRow(
                         accountID: accountID,
                         folderID: header.folderID,
                         uid: uid
                     )
+                    var header = header
+                    // A refresh written without the References attribute (a
+                    // flag-only update or a server that ignored the section)
+                    // must not regress known links back to unknown.
+                    if header.references == nil,
+                       let storedJSON = previous?.headerJSON,
+                       let stored = try? Self.decoder.decode(MessageHeader.self, from: storedJSON) {
+                        header.references = stored.references
+                    }
+                    let previousMessageID = previous?.messageID
                     let data: Data
                     do {
                         data = try Self.encoder.encode(header)
@@ -1116,10 +1132,14 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return try? Self.decoder.decode(MessageHeader.self, from: data)
     }
 
-    private func messageID(accountID: String, folderID: String, uid: Int) -> MessageHeader.ID? {
+    private func storedHeaderRow(
+        accountID: String,
+        folderID: String,
+        uid: Int
+    ) -> (messageID: MessageHeader.ID, headerJSON: Data?)? {
         var stmt: OpaquePointer?
         let sql = """
-            SELECT message_id FROM message_headers
+            SELECT message_id, header_json FROM message_headers
             WHERE account_id = ? AND folder_id = ? AND uid = ?
             LIMIT 1;
         """
@@ -1132,7 +1152,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         guard sqlite3_step(stmt) == SQLITE_ROW,
               let ptr = sqlite3_column_text(stmt, 0)
         else { return nil }
-        return String(cString: ptr)
+        let json: Data?
+        if let bytes = sqlite3_column_blob(stmt, 1) {
+            json = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 1)))
+        } else {
+            json = nil
+        }
+        return (String(cString: ptr), json)
     }
 
     private func headersUnlocked(

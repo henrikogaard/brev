@@ -59,6 +59,63 @@ struct ConversationIndexTests {
         #expect(isolated.members.count == 1)
     }
 
+    @Test("a References-only reply chain resolves across folders after a cache restart")
+    func referencesOnlyChain() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-references-\(UUID()).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
+        }
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org")
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        let root = Self.header("Inbox:1", folder: "Inbox", own: "<root>")
+        // Neither reply carries In-Reply-To; only indexed References edges can
+        // connect them to the root they cite.
+        let middle = Self.header("Archive:2", folder: "Archive", own: "<middle>", references: ["<root>"])
+        let leaf = Self.header("Sent:3", folder: "Sent", own: "<leaf>", references: ["<root>"])
+        let grandchild = Self.header("Inbox:4", folder: "Inbox", own: "<gc>", parent: "<middle>")
+        let engine = try BrevSyncEngine(databaseURL: url)
+        await engine.storeHeaders([root, middle, leaf, grandchild], account: account)
+        let reopened = try BrevSyncEngine(databaseURL: url)
+        let anchor = ConversationMember(sourceID: source, header: leaf)
+        let found = try await reopened.cachedConversation(around: anchor, excludingFolderIDs: [])
+        #expect(Set(found.members.map { $0.header.id }) == ["Inbox:1", "Archive:2", "Sent:3", "Inbox:4"])
+        #expect(found.coverage == .cached)
+        #expect(found.anchor == anchor.location)
+    }
+
+    @Test("a refresh without References keeps known links; known-absent stays absent", arguments: [false, true])
+    func referencesSurvivePartialRefresh(sqlite: Bool) async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-references-refresh-\(UUID()).sqlite")
+        defer {
+            for suffix in ["", "-wal", "-shm"] {
+                try? FileManager.default.removeItem(atPath: url.path + suffix)
+            }
+        }
+        let store: any SyncStoreProtocol = sqlite ? try SQLiteSyncStore(databaseURL: url) : InMemorySyncStore()
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org")
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        let root = Self.header("Inbox:1", folder: "Inbox", own: "<root>")
+        let reply = Self.header("Sent:2", folder: "Sent", own: "<reply>", references: ["<root>"])
+        let absent = Self.header("Inbox:3", folder: "Inbox", own: "<absent>", references: [])
+        await engine.storeHeaders([root, reply, absent], account: account)
+        // A flag-style refresh rewrites the row from a header that never had
+        // References fetched; the stored linkage must survive (unknown ≠ absent).
+        var refreshed = reply
+        refreshed.isRead = true
+        refreshed.references = nil
+        await engine.storeHeaders([refreshed], account: account)
+        #expect(await store.headers(accountID: "a", folderID: "Sent", limit: 10, offset: 0)
+            .first { $0.id == "Sent:2" }?.references == ["<root>"])
+        #expect(await store.headers(accountID: "a", folderID: "Inbox", limit: 10, offset: 0)
+            .first { $0.id == "Inbox:3" }?.references == [])
+        let anchor = ConversationMember(sourceID: source, header: root)
+        let found = try await engine.cachedConversation(around: anchor, excludingFolderIDs: [])
+        #expect(Set(found.members.map { $0.header.id }) == ["Inbox:1", "Sent:2"])
+    }
+
     @Test("malformed metadata cannot break a valid chain or prevent normal caching", arguments: [false, true])
     func malformedNeighbor(sqlite: Bool) async throws {
         let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-invalid-links-\(UUID()).sqlite")
@@ -133,9 +190,10 @@ struct ConversationIndexTests {
         #expect(found.coverage == .cached)
     }
 
-    static func header(_ id: String, folder: String, own: String, parent: String? = nil) -> MessageHeader {
+    static func header(_ id: String, folder: String, own: String, parent: String? = nil,
+                       references: [String]? = nil) -> MessageHeader {
         MessageHeader(id: id, threadID: own, folderID: folder,
                       from: Correspondent(email: "sender@example.org"), to: [], subject: "Same subject", snippet: "",
-                      date: Date(timeIntervalSince1970: 0), messageID: own, inReplyTo: parent)
+                      date: Date(timeIntervalSince1970: 0), messageID: own, inReplyTo: parent, references: references)
     }
 }

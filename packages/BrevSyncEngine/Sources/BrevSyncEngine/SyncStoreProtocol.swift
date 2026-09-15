@@ -158,11 +158,16 @@ actor InMemorySyncStore: SyncStoreProtocol {
         for (key, headers) in headersByFolder where key.hasPrefix("\(source.accountID)|") {
             for header in headers.values.sorted(by: { $0.id < $1.id }) {
                 guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
-                      let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo),
-                      (own + parents).contains(identifier) else { continue }
+                      let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo)
+                else { continue }
+                let referenced = (header.references ?? []).flatMap {
+                    (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
+                }
+                guard (own + parents + referenced).contains(identifier) else { continue }
                 let generation = syncStates[folderKey(source.accountID, header.folderID)]?.uidValidity
                 result.append(ConversationMember(sourceID: source, header: header,
-                                                 folderGeneration: generation.flatMap { UInt64(exactly: $0) }))
+                                                 folderGeneration: generation.flatMap { UInt64(exactly: $0) },
+                                                 references: header.references))
                 if result.count == limit { return result }
             }
         }
@@ -229,6 +234,11 @@ actor InMemorySyncStore: SyncStoreProtocol {
             )
             if let previousMessageID, dirty.contains("\(accountID)|\(previousMessageID)") {
                 continue
+            }
+            var header = header
+            // A refresh written without References must not regress known links.
+            if header.references == nil, let previousMessageID {
+                header.references = headersByFolder[key]?[previousMessageID]?.references
             }
             if let previousMessageID, previousMessageID != header.id {
                 headersByFolder[key]?.removeValue(forKey: previousMessageID)

@@ -517,6 +517,11 @@ public struct IMAPMessageListing: Sendable, Hashable {
     /// RFC 5322 `In-Reply-To` from the ENVELOPE, when the message has one.
     /// Brev derives conversations from this link; see ADR-0052.
     public let inReplyTo: String?
+    /// Ancestor identifiers from the RFC 5322 `References` field, fetched via
+    /// `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` (ADR-0074). `nil` means the
+    /// attribute was absent from the FETCH response; an empty array means the
+    /// field is known absent. Elements are bare identifier tokens.
+    public let references: [String]?
     /// RFC 5322 `Reply-To` recipients advertised by the ENVELOPE.
     public let replyTo: [Correspondent]
     public let subject: String
@@ -538,6 +543,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         uid: Int,
         messageID: String,
         inReplyTo: String? = nil,
+        references: [String]? = nil,
         replyTo: [Correspondent] = [],
         subject: String,
         snippet: String = "",
@@ -554,6 +560,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         self.uid = uid
         self.messageID = messageID
         self.inReplyTo = inReplyTo
+        self.references = references
         self.replyTo = replyTo
         self.subject = subject
         self.snippet = snippet
@@ -582,6 +589,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
             uid: uid,
             messageID: envelope.messageID,
             inReplyTo: envelope.inReplyTo,
+            references: parseReferences(in: line),
             replyTo: envelope.replyTo,
             subject: envelope.subject,
             snippet: parseSnippet(in: line, subject: envelope.subject),
@@ -669,6 +677,117 @@ public struct IMAPMessageListing: Sendable, Hashable {
             return valueIndex < line.endIndex ? valueIndex : nil
         }
         return nil
+    }
+
+    /// Parses the `HEADER.FIELDS (REFERENCES)` section value returned with the
+    /// listing fetch. `nil` means the attribute was absent from the response;
+    /// an empty array means the References field is known absent.
+    private static func parseReferences(in line: String) -> [String]? {
+        guard let valueStart = headerFieldsValueStart(named: "REFERENCES", in: line) else { return nil }
+        var parser = IMAPSExpressionParser(String(line[valueStart...]))
+        guard let value = parser.parseValue() else { return nil }
+        guard let block = value.stringValue else { return [] }
+        return referencesIdentifiers(in: block)
+    }
+
+    /// Index just past a `BODY[HEADER.FIELDS (…)]`/`BODY.PEEK[…]` section label
+    /// whose field list contains `name`, matched at an attribute boundary
+    /// outside quoted strings. Mirrors `bodyTextValueStart`.
+    private static func headerFieldsValueStart(named name: String, in line: String) -> String.Index? {
+        var index = line.startIndex
+        var isInsideQuotedString = false
+        var isEscaped = false
+        while index < line.endIndex {
+            let character = line[index]
+            if isInsideQuotedString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInsideQuotedString = false
+                }
+                line.formIndex(after: &index)
+                continue
+            }
+
+            if character == "\"" {
+                isInsideQuotedString = true
+                line.formIndex(after: &index)
+                continue
+            }
+
+            if isAttributeBoundary(before: index, in: line),
+               let valueStart = headerFieldsValueStart(startingAt: index, named: name, in: line) {
+                return valueStart
+            }
+
+            line.formIndex(after: &index)
+        }
+        return nil
+    }
+
+    private static func headerFieldsValueStart(
+        startingAt index: String.Index,
+        named name: String,
+        in line: String
+    ) -> String.Index? {
+        for label in ["BODY.PEEK[", "BODY["] {
+            guard line[index...].range(of: label, options: [.anchored, .caseInsensitive]) != nil else {
+                continue
+            }
+            var cursor = line.index(index, offsetBy: label.count)
+            guard let fieldsRange = line[cursor...].range(
+                of: "HEADER.FIELDS",
+                options: [.anchored, .caseInsensitive]
+            ) else { continue }
+            cursor = fieldsRange.upperBound
+            while cursor < line.endIndex, line[cursor].isWhitespace {
+                line.formIndex(after: &cursor)
+            }
+            guard cursor < line.endIndex, line[cursor] == "(",
+                  let closeParen = line[cursor...].firstIndex(of: ")") else { continue }
+            let fieldList = line[line.index(after: cursor) ..< closeParen]
+            guard fieldList.split(whereSeparator: \.isWhitespace).contains(where: {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                    .caseInsensitiveCompare(name) == .orderedSame
+            }) else { continue }
+            var valueIndex = line.index(after: closeParen)
+            guard valueIndex < line.endIndex, line[valueIndex] == "]" else { continue }
+            line.formIndex(after: &valueIndex)
+            if valueIndex < line.endIndex, line[valueIndex] == "<" {
+                guard let closeIndex = line[valueIndex...].firstIndex(of: ">") else { continue }
+                valueIndex = line.index(after: closeIndex)
+            }
+            guard valueIndex == line.endIndex || line[valueIndex].isWhitespace else { continue }
+            while valueIndex < line.endIndex, line[valueIndex].isWhitespace {
+                line.formIndex(after: &valueIndex)
+            }
+            return valueIndex < line.endIndex ? valueIndex : nil
+        }
+        return nil
+    }
+
+    /// Extracts verifiable ancestor identifiers from a `HEADER.FIELDS` header
+    /// block. A block without a `References` field means the field is known
+    /// absent. A block the strict parser cannot read yields only the balanced
+    /// `<…>` tokens that still verify individually, or `nil` when none do.
+    private static func referencesIdentifiers(in block: String) -> [String]? {
+        guard let value = IMAPDateParser.headerValue(named: "References", in: block) else { return [] }
+        if let identifiers = try? ConversationMembershipResolver.identifiers(in: value) {
+            return identifiers
+        }
+        var salvaged: [String] = []
+        var remaining = value[...]
+        while let open = remaining.firstIndex(of: "<") {
+            guard let close = remaining[remaining.index(after: open)...].firstIndex(of: ">") else { break }
+            if let identifiers = try? ConversationMembershipResolver
+                .identifiers(in: String(remaining[open ... close])) {
+                salvaged.append(contentsOf: identifiers)
+            }
+            remaining = remaining[remaining.index(after: close)...]
+        }
+        return salvaged.isEmpty ? nil : Array(Set(salvaged)).sorted()
     }
 
     private static func normalizedSnippet(_ rawSnippet: String, subject: String) -> String {
@@ -3003,11 +3122,15 @@ public actor IMAPSessionClient {
         // X-GM-LABELS is only valid on servers advertising X-GM-EXT-1; others
         // reject the whole FETCH, so it is added strictly behind the capability.
         let labelAttribute = serverCapabilities.supportsGmailExtensions ? " X-GM-LABELS" : ""
+        // References rides along on the existing listing fetch so cached
+        // headers can join conversations that lack In-Reply-To (ADR-0074).
+        // The section is header-only — no body bytes are requested.
         let fetchResponses = try await execute(
             tag: nextTag(&tagCounter),
             commandName: "UID FETCH",
             command: "UID FETCH \(uids.map(String.init).joined(separator: ",")) "
-                + "(FLAGS ENVELOPE\(labelAttribute) BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)>)"
+                + "(FLAGS ENVELOPE\(labelAttribute) BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)> "
+                + "BODY.PEEK[HEADER.FIELDS (REFERENCES)])"
         )
         return fetchResponses
             .compactMap(IMAPMessageListing.parse)
@@ -3591,7 +3714,9 @@ enum IMAPDateParser {
         return result
     }
 
-    private static func headerValue(named name: String, in rawMessage: String) -> String? {
+    /// Returns the first occurrence of the named header field, unfolded.
+    /// Shared with `IMAPMessageListing`'s `HEADER.FIELDS` section parsing.
+    static func headerValue(named name: String, in rawMessage: String) -> String? {
         let normalized = rawMessage
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")

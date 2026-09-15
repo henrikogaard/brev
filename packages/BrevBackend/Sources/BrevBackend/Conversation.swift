@@ -34,7 +34,9 @@ public struct ConversationMember: Hashable, Sendable, Identifiable {
     public let sourceID: MailSourceID
     public let header: MessageHeader
     public let folderGeneration: UInt64?
-    /// Nil means References was not fetched; an empty array means known absent.
+    /// References tokens fetched out of band (for example by related-header
+    /// discovery). When nil, resolvers fall back to `header.references`, where
+    /// nil means unknown/unfetched and an empty array means known absent.
     public let references: [String]?
     public var location: ConversationLocation {
         ConversationLocation(

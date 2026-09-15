@@ -128,12 +128,13 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         }
         _ = try ConversationSnapshot(anchor: anchor.location, members: [anchor], coverage: .cached)
         try await validateConversationGeneration(anchor)
-        guard (anchor.references ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536 else {
+        let anchorReferences = anchor.references ?? anchor.header.references
+        guard (anchorReferences ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536 else {
             throw ConversationLookupError.invalidMetadata
         }
         var pending = try ConversationMembershipResolver.identifiers(in: anchor.header.rfcMessageID)
         pending += try ConversationMembershipResolver.identifiers(in: anchor.header.inReplyTo)
-        for value in anchor.references ?? [] {
+        for value in anchorReferences ?? [] {
             pending += try ConversationMembershipResolver.identifiers(in: value)
         }
         let initialIdentifiers = Set(pending)
@@ -155,7 +156,10 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
                 candidates[member.location] = member
                 let own = (try? ConversationMembershipResolver.identifiers(in: member.header.rfcMessageID)) ?? []
                 let parents = (try? ConversationMembershipResolver.identifiers(in: member.header.inReplyTo)) ?? []
-                for next in own + parents where !queued.contains(next) {
+                let referenced = (member.references ?? member.header.references ?? []).flatMap {
+                    (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
+                }
+                for next in own + parents + referenced where !queued.contains(next) {
                     guard queued.count < 10000 else { partial = true; break }
                     queued.insert(next)
                     pending.append(next)

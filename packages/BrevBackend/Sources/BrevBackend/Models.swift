@@ -297,6 +297,12 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
     /// Threading is derived from this link; see ADR-0052.
     public let inReplyTo: String?
 
+    /// Ancestor Message-IDs from RFC 5322 `References`, when the provider
+    /// fetched the field. `nil` means References was never fetched or could
+    /// not be interpreted; an empty array means the field is known absent.
+    /// Elements are bare identifier tokens (no angle brackets); see ADR-0074.
+    public var references: [String]?
+
     /// Provider labels attached to the message, in server order. Populated
     /// only by backends advertising `BackendCapabilities.labels` (Gmail
     /// `X-GM-LABELS`); system labels keep their backslash prefix (`\Inbox`,
@@ -337,12 +343,14 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         flagColor: FlagColor? = nil,
         messageID: String? = nil,
         inReplyTo: String? = nil,
+        references: [String]? = nil,
         labels: [String] = []
     ) {
         self.id = id
         self.threadID = threadID
         self.messageID = messageID
         self.inReplyTo = inReplyTo
+        self.references = references
         self.labels = labels
         self.folderID = folderID
         self.from = from
@@ -366,6 +374,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         case threadID
         case messageID
         case inReplyTo
+        case references
         case folderID
         case from
         case replyTo
@@ -390,6 +399,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         threadID = try container.decode(String.self, forKey: .threadID)
         messageID = try container.decodeIfPresent(String.self, forKey: .messageID)
         inReplyTo = try container.decodeIfPresent(String.self, forKey: .inReplyTo)
+        references = try container.decodeIfPresent([String].self, forKey: .references)
         folderID = try container.decode(String.self, forKey: .folderID)
         from = try container.decode(Correspondent.self, forKey: .from)
         replyTo = try container.decodeIfPresent([Correspondent].self, forKey: .replyTo) ?? []
@@ -414,6 +424,9 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
         try container.encode(threadID, forKey: .threadID)
         try container.encodeIfPresent(messageID, forKey: .messageID)
         try container.encodeIfPresent(inReplyTo, forKey: .inReplyTo)
+        // `nil` (never fetched) omits the key; `[]` (known absent) encodes
+        // explicitly so the two states stay distinguishable after restart.
+        try container.encodeIfPresent(references, forKey: .references)
         try container.encode(folderID, forKey: .folderID)
         try container.encode(from, forKey: .from)
         try container.encode(replyTo, forKey: .replyTo)
@@ -441,7 +454,8 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
             id: restoredID, threadID: threadID == id ? restoredID : threadID, folderID: restoredFolderID,
             from: from, replyTo: replyTo, to: to, cc: cc, bcc: bcc, subject: subject, snippet: snippet, date: date,
             isRead: isRead, isFlagged: isFlagged, isAnswered: isAnswered, isForwarded: isForwarded,
-            hasAttachments: hasAttachments, flagColor: flagColor, messageID: messageID, inReplyTo: inReplyTo, labels: labels
+            hasAttachments: hasAttachments, flagColor: flagColor, messageID: messageID, inReplyTo: inReplyTo,
+            references: references, labels: labels
         )
     }
 
@@ -468,6 +482,7 @@ public struct MessageHeader: Sendable, Hashable, Identifiable, Codable {
             flagColor: flagColor,
             messageID: messageID,
             inReplyTo: inReplyTo,
+            references: references,
             labels: labels
         )
     }

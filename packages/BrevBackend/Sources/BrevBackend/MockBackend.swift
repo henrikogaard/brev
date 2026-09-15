@@ -2601,6 +2601,7 @@ private actor Store {
             flagColor: header.flagColor,
             messageID: header.messageID,
             inReplyTo: header.inReplyTo,
+            references: header.references,
             labels: header.labels
         )
     }

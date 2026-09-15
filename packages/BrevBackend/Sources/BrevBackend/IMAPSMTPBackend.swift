@@ -3499,6 +3499,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             hasAttachments: hasAttachments,
             messageID: listing.messageID.isEmpty ? nil : listing.messageID,
             inReplyTo: listing.inReplyTo,
+            references: listing.references,
             labels: listing.labels
         )
     }
@@ -3529,6 +3530,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             flagColor: isFlagged == false ? nil : header.flagColor,
             messageID: header.messageID,
             inReplyTo: header.inReplyTo,
+            references: header.references,
             labels: header.labels
         )
     }

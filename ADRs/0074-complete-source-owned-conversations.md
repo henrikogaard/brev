@@ -161,5 +161,16 @@ The local index walks matching identifiers only. A per-identifier candidate cap
 and a total traversal budget produce `partial`, never complete coverage. Known
 folder generations are checked against cached UIDVALIDITY; missing generations
 remain unknown and are not evidence authorizing a remote UID action. No network
-calls or automatic header enrichment are introduced by this step. Persisted
-References ingestion, provider extension wiring and reader/actions remain pending.
+calls or automatic header enrichment are introduced by this step.
+
+Persisted References ingestion followed on 2026-09-15. The IMAP listing fetch
+now requests `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` alongside the existing
+ENVELOPE/snippet attributes — an extra attribute on the same request, not a
+new provider call, and no body bytes. Parsed identifiers land on
+`MessageHeader.references` (`nil` unknown/unfetched, `[]` known absent),
+persist inside `header_json`, survive flag-only refreshes and moves, and feed
+`conversation_links` edges plus traversal expansion. Members built without an
+explicit value fall back to the cached header's field; malformed fields keep
+only individually verifiable tokens and never block ordinary caching.
+Provider extension wiring, consented remote discovery and reader/action
+integration remain pending.

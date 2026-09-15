@@ -1130,3 +1130,31 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   remain pending. No merge, release or issue closure is included.
 - Documentation sweep updated README, Unreleased changelog, ADR-0074 and QA notes.
   Privacy/network policy and agent instructions need no change for local indexing.
+
+## 2026-09-15 — Devin — #28 / PR #30, References ingestion
+
+- Resumed the handoff at 805dcf1 on feature/mail-client-parity: clean, pushed,
+  PR #30 draft with all checks green, issue #28 still In progress.
+- Implemented persisted References metadata under accepted ADR-0074, step 1 of
+  the remaining-work plan. The IMAP listing FETCH now also requests
+  `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` — an added attribute on the existing
+  request, not a new network call, and header-only (no body bytes).
+- `MessageHeader.references` (`nil` unknown/unfetched, `[]` known absent) rides
+  `header_json`, survives flag-only refreshes via `updatedHeader` and a
+  preserve-on-nil upsert merge in both sync stores, and is carried through
+  `withIdentity`/`withThreadID`, rules-engine moves and mock copies.
+- `conversation_links` now indexes References identifiers beside Message-ID and
+  In-Reply-To; candidate members expose stored references and traversal expands
+  along them, so a References-only chain resolves across Inbox/Sent/Archive
+  after a cache restart. Malformed fields keep only individually verifiable
+  tokens and never block ordinary caching.
+- TDD: new failing tests reproduced the missing References-only lookup and the
+  refresh regression before implementation; all are green now.
+- Verification: BrevBackend 1,059 tests and BrevSyncEngine 74 XCTest + 9 Swift
+  Testing pass on stable Xcode 26.6. lint.sh, privacy-audit.sh and
+  git diff --check pass. FETCH-command test expectations updated for the new
+  attribute. No UI/network-consent surface changed, so snapshots, ADR-0006 and
+  PRIVACY.md need no update; ADR-0074 progress note and this log updated.
+- Still pending per handoff: CachedConversationProviding wiring on
+  IMAPSMTPBackend, reader/action integration, consented remote discovery,
+  native/live acceptance. PR #30 stays draft; no merge, release or closure.
