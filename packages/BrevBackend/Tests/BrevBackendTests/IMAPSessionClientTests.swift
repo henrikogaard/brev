@@ -903,6 +903,55 @@ struct IMAPSessionClientTests {
         #expect(messages.isEmpty)
     }
 
+    @Test("related-header discovery searches Message-ID, In-Reply-To and References")
+    func relatedHeaderDiscoverySearchesReplyFields() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "A0002 OK [READ-WRITE] SELECT completed",
+            "* SEARCH 91",
+            "A0003 OK SEARCH completed",
+            #"* 9 FETCH (UID 91 FLAGS (\Seen) ENVELOPE ("Sat, 06 Jun 2026 12:00:00 +0000" "Re: Plan" (("Ada" NIL "ada" "example.org")) NIL NIL ((NIL NIL "person" "example.org")) NIL NIL "<a@example.org>" "<b@example.org>"))"#,
+            "A0004 OK FETCH completed",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        let page = try await client.loginAndSearchRelatedHeaders(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "Sent",
+            identifiers: ["a@example.org", "root@example.org"],
+            limit: 50
+        )
+
+        #expect(await transport.sentLines == [
+            "A0001 LOGIN \"person@example.org\" \"secret\"",
+            "A0002 SELECT \"Sent\" (CONDSTORE)",
+            "A0003 UID SEARCH OR OR OR OR OR HEADER \"Message-ID\" \"a@example.org\" HEADER \"In-Reply-To\" \"a@example.org\" HEADER \"References\" \"a@example.org\" HEADER \"Message-ID\" \"root@example.org\" HEADER \"In-Reply-To\" \"root@example.org\" HEADER \"References\" \"root@example.org\"",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+        ])
+        #expect(page.messages.map(\.uid) == [91])
+        #expect(page.messages.first?.inReplyTo == "<a@example.org>")
+    }
+
+    @Test("related-header discovery with no identifiers sends no search")
+    func relatedHeaderDiscoveryWithoutIdentifiersSkipsSearch() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        let page = try await client.loginAndSearchRelatedHeaders(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            identifiers: []
+        )
+
+        #expect(page.messages.isEmpty)
+        #expect(await transport.sentLines.isEmpty)
+    }
+
     // Regression: a non-ASCII SEARCH term (e.g. Norwegian "Møte") must be
     // sent as an RFC 3501 synchronizing literal under CHARSET UTF-8, not as
     // a quoted string of raw 8-bit octets — strict servers answer BAD or

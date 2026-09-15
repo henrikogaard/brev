@@ -154,6 +154,8 @@ public struct GmailAccountConnector: Sendable {
     private let mutationQueueFactory: MutationQueueFactory?
     private let refresher: OAuthTokenRefresher
     private let platform: GoogleOAuthPlatform
+    /// Consent boundary passed through to every provisioned backend.
+    private let relatedConversationConsent: (any RelatedConversationConsenting)?
 
     /// Creates a connector with injected storage, refresh, and transport seams.
     public init(
@@ -164,7 +166,8 @@ public struct GmailAccountConnector: Sendable {
         clientFactory: @escaping ClientFactory = { _, _ in nil },
         mutationQueueFactory: MutationQueueFactory? = nil,
         refresher: OAuthTokenRefresher,
-        platform: GoogleOAuthPlatform
+        platform: GoogleOAuthPlatform,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil
     ) {
         self.configurationStore = configurationStore
         self.tokenStore = tokenStore
@@ -174,6 +177,7 @@ public struct GmailAccountConnector: Sendable {
         self.mutationQueueFactory = mutationQueueFactory
         self.refresher = refresher
         self.platform = platform
+        self.relatedConversationConsent = relatedConversationConsent
     }
 
     /// Builds the production connector using UserDefaults, Keychain, SQLite,
@@ -183,7 +187,8 @@ public struct GmailAccountConnector: Sendable {
         configurationStore: any GmailAccountConfigurationStore,
         tokenStore: any TokenStore,
         googleClientID: String = GoogleOAuthClientID,
-        platform: GoogleOAuthPlatform? = nil
+        platform: GoogleOAuthPlatform? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared
     ) -> GmailAccountConnector {
         let refreshCoordinator = OAuthRefreshCoordinator()
         let refresher = OAuthTokenRefresher(
@@ -217,7 +222,8 @@ public struct GmailAccountConnector: Sendable {
                 )
             },
             refresher: refresher,
-            platform: resolvedPlatform
+            platform: resolvedPlatform,
+            relatedConversationConsent: relatedConversationConsent
         )
     }
 
@@ -359,7 +365,8 @@ public struct GmailAccountConnector: Sendable {
             grantedScopes: grantedScopes,
             syncReconciler: reconciler,
             offlineMutationQueue: mutationStores?.queue,
-            offlineMutationConflictStore: mutationStores?.conflicts
+            offlineMutationConflictStore: mutationStores?.conflicts,
+            relatedConversationConsent: relatedConversationConsent
         )
         try await backend.connect()
         return GmailConnectedAccount(account: account, backend: backend)

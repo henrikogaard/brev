@@ -1967,6 +1967,64 @@ public actor IMAPSessionClient {
         )
     }
 
+    /// Searches one folder for messages that cite any of the given reply
+    /// identifiers in Message-ID, In-Reply-To or References, then fetches the
+    /// matching listing metadata (ADR-0074 related-header discovery).
+    ///
+    /// HEADER search is a substring candidate search — callers must verify the
+    /// exact linkage locally before treating a hit as a conversation member.
+    /// Identifiers are message metadata, not user text; they are transmitted
+    /// as search-key strings (literals when non-ASCII) by `executeSearch`.
+    public func loginAndSearchRelatedHeaders(
+        configuration: IMAPAccountConfiguration,
+        credential: MailAccountCredential,
+        folderPath: String,
+        identifiers: [String],
+        limit: Int = 200
+    ) async throws -> IMAPMessageListingPage {
+        guard configuration.incoming.kind == .imap else {
+            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
+        }
+        let criteria = Self.relatedHeaderSearchCriteria(identifiers: identifiers)
+        guard limit > 0, !criteria.isEmpty else {
+            return IMAPMessageListingPage(messages: [])
+        }
+        return try await withAuthenticatedSession(
+            configuration: configuration, credential: credential
+        ) { tagCounter in
+            let selectedMailbox = try await select(folderPath: folderPath, tagCounter: &tagCounter)
+            return try await searchMessagePage(
+                criteria: criteria,
+                pageToken: nil,
+                limit: limit,
+                uidValidity: selectedMailbox.uidValidity,
+                highestModSeq: selectedMailbox.highestModSeq,
+                tagCounter: &tagCounter
+            )
+        }
+    }
+
+    /// Builds `UID SEARCH` criteria matching messages whose Message-ID,
+    /// In-Reply-To or References field cites one of the given identifiers.
+    /// IMAP OR is binary, so disjuncts are nested left-associatively.
+    /// An empty identifier set yields no criteria — callers must not substitute
+    /// `ALL`, which would search every message in the folder.
+    private static func relatedHeaderSearchCriteria(identifiers: [String]) -> [IMAPSearchToken] {
+        var disjuncts: [[IMAPSearchToken]] = []
+        for identifier in identifiers {
+            let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            for field in ["Message-ID", "In-Reply-To", "References"] {
+                disjuncts.append([.atom("HEADER"), .astring(field), .astring(trimmed)])
+            }
+        }
+        guard var combined = disjuncts.first else { return [] }
+        for disjunct in disjuncts.dropFirst() {
+            combined = [.atom("OR")] + combined + disjunct
+        }
+        return combined
+    }
+
     /// Send a `UID SEARCH` built from structured tokens and return its
     /// untagged responses.
     ///

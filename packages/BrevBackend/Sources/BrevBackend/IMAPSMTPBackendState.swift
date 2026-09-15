@@ -119,6 +119,12 @@ actor IMAPSMTPBackendState {
         connected && !folders.isEmpty
     }
 
+    /// True only when a remote folder listing has succeeded this session —
+    /// remote work must not run against a cache-restored mailbox (ADR-0074 §7).
+    func isRemoteAvailable() -> Bool {
+        connected && remoteAvailable
+    }
+
     func recordBackgroundSyncFailure(_ description: String) {
         lastErrorDescription = description
     }

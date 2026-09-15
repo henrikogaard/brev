@@ -135,11 +135,17 @@ public protocol RelatedConversationLoading: CachedConversationProviding {
 /// Safe errors for invalid conversation state, source or reply metadata.
 public enum ConversationLookupError: Error, LocalizedError, Sendable {
     case foreignSource, invalidSnapshot, invalidMetadata
+    /// Remote discovery was invoked without the account's related-mail consent.
+    case consentRequired
     public var errorDescription: String? {
         switch self {
         case .foreignSource: String(localized: "Related messages belong to a different mailbox.", bundle: .module)
         case .invalidSnapshot: String(localized: "The conversation changed. Load related messages again.", bundle: .module)
         case .invalidMetadata: String(localized: "Some reply headers could not be interpreted safely.", bundle: .module)
+        case .consentRequired: String(
+                localized: "Loading related messages needs your permission for this mailbox.",
+                bundle: .module
+            )
         }
     }
 }

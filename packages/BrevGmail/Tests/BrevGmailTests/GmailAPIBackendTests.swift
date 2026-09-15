@@ -84,6 +84,87 @@ struct GmailAPIBackendTests {
         #expect(await transport.networkCalls == 0)
     }
 
+    @Test("related loading needs consent, then resolves the native thread metadata-only")
+    func relatedConversationLoadsThreadMetadataOnly() async throws {
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "selected", threadID: "thread", labels: ["INBOX"])
+        ]))
+        let transport = StubGmailTransport()
+        await transport.setThreadResult(GmailThread(id: "thread", historyID: "9", messages: [
+            Self.message(id: "selected", threadID: "thread", labels: ["INBOX"]),
+            Self.message(
+                id: "sent", threadID: "thread", labels: ["SENT"],
+                payload: GmailMessagePart(headers: [
+                    GmailMessageHeader(name: "Subject", value: "Re: Topic"),
+                    GmailMessageHeader(name: "From", value: "henrik@example.work"),
+                    GmailMessageHeader(name: "Message-ID", value: "<sent-1@example.org>"),
+                    GmailMessageHeader(name: "References", value: "<root@example.org>")
+                ])
+            ),
+            Self.message(id: "spam", threadID: "thread", labels: ["SPAM"])
+        ]))
+        let consent = StubGmailRelatedConsent(consented: false)
+        let backend = GmailAPIBackend(
+            account: Self.account, transport: transport, store: store,
+            relatedConversationConsent: consent
+        )
+        try await backend.connect()
+        #expect(backend.extendedCapabilities.contains(.relatedConversationLoading))
+        let provider = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = ConversationMember(
+            sourceID: source,
+            header: MessageHeader(
+                id: "selected", threadID: "thread", folderID: "INBOX",
+                from: Correspondent(email: "sender@example.org"), to: [],
+                subject: "Topic", snippet: "", date: Date()
+            )
+        )
+
+        // Without consent the remote path never runs.
+        await #expect(throws: ConversationLookupError.self) {
+            _ = try await provider.loadRelatedConversation(
+                around: anchor, includeSpamAndTrash: false, continuation: nil
+            ) { _ in }
+        }
+        #expect(await transport.threadRequests.isEmpty)
+
+        await consent.setConsented(true)
+        let updates = GmailConversationCoverageCollector()
+        let snapshot = try await provider.loadRelatedConversation(
+            around: anchor, includeSpamAndTrash: false, continuation: nil
+        ) { update in
+            await updates.append(update.coverage)
+        }
+
+        #expect(snapshot.coverage == .completeForScope)
+        #expect(Set(snapshot.members.map(\.header.id)) == ["selected", "sent"])
+        // The selected message keeps its anchor identity and folder context.
+        #expect(snapshot.anchor == anchor.location)
+        #expect(snapshot.members.first { $0.header.id == "selected" }?.header.folderID == "INBOX")
+        #expect(snapshot.members.first { $0.header.id == "sent" }?.header.folderID == "SENT")
+        #expect(snapshot.excludedFolderIDs == ["SPAM", "TRASH"])
+        let threadRequests = await transport.threadRequests
+        #expect(threadRequests.count == 1)
+        #expect(threadRequests.first?.threadID == "thread")
+        #expect(threadRequests.first?.metadataHeaders.contains("References") == true)
+        #expect(await transport.fullMessageRequestCount() == 0)
+        #expect(await updates.values.last == .completeForScope)
+        // Discovered metadata is persisted through the provider-owned store.
+        #expect(try await store.message(accountID: Self.account.id, messageID: "sent") != nil)
+    }
+
+    @Test("related loading stays absent without a consent boundary")
+    func relatedConversationLoadingUnadvertisedWithoutConsent() async throws {
+        let transport = StubGmailTransport()
+        let store = InMemoryGmailAccountStore()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        try await backend.connect()
+        #expect(!backend.extendedCapabilities.contains(.relatedConversationLoading))
+        #expect(backend.extensionService(RelatedConversationLoading.self) == nil)
+    }
+
     @Test("saved views enumerate secondary label membership without fetching messages")
     func savedViewUsesCachedLabelMembership() async throws {
         let transport = StubGmailTransport()
@@ -852,6 +933,30 @@ struct GmailAPIBackendTests {
     }
 }
 
+private actor StubGmailRelatedConsent: RelatedConversationConsenting {
+    private var consented: Bool
+
+    init(consented: Bool) {
+        self.consented = consented
+    }
+
+    func setConsented(_ value: Bool) {
+        consented = value
+    }
+
+    func isRelatedConversationConsented(accountID: BrevAccount.ID) async -> Bool {
+        consented
+    }
+}
+
+private actor GmailConversationCoverageCollector {
+    private(set) var values: [ConversationCoverage] = []
+
+    func append(_ coverage: ConversationCoverage) {
+        values.append(coverage)
+    }
+}
+
 private actor StubGmailTransport: GmailAPITransporting {
     private let profileValue: GmailProfile
     private let labelsValue: [GmailLabel]
@@ -946,6 +1051,26 @@ private actor StubGmailTransport: GmailAPITransporting {
         networkCalls += 1
         attachmentRequests += 1
         return GmailAttachment(id: attachmentID, messageID: messageID, data: "SGk=")
+    }
+
+    private var threadResult: GmailThread?
+    private var threadFailure: Error?
+    private(set) var threadRequests: [(threadID: String, metadataHeaders: [String])] = []
+
+    func setThreadResult(_ thread: GmailThread?) {
+        threadResult = thread
+    }
+
+    func setThreadFailure(_ error: Error?) {
+        threadFailure = error
+    }
+
+    func getThread(threadID: String, metadataHeaders: [String]) async throws -> GmailThread {
+        networkCalls += 1
+        threadRequests.append((threadID: threadID, metadataHeaders: metadataHeaders))
+        if let threadFailure { throw threadFailure }
+        guard let threadResult else { throw GmailAPIError.httpFailure(statusCode: 404) }
+        return threadResult
     }
 
     func lastQuery() -> String? { query }

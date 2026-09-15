@@ -771,6 +771,8 @@ public struct IMAPAccountConnector: Sendable {
     private let idleEvents: IMAPSMTPBackend.IdleEventOperation?
     private let condstoreSync: IMAPSMTPBackend.CONDSTORESyncOperation?
     private let manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation?
+    private let searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation?
+    private let relatedConversationConsent: (any RelatedConversationConsenting)?
     private let disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
@@ -817,6 +819,8 @@ public struct IMAPAccountConnector: Sendable {
         idleEvents: IMAPSMTPBackend.IdleEventOperation? = nil,
         condstoreSync: IMAPSMTPBackend.CONDSTORESyncOperation? = nil,
         manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation? = nil,
+        searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
         disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation? = nil,
         folderCache: (any IMAPFolderSnapshotCache)? = nil,
         headerCache: (any IMAPMailboxHeaderCache)? = nil,
@@ -863,6 +867,8 @@ public struct IMAPAccountConnector: Sendable {
         self.idleEvents = idleEvents
         self.condstoreSync = condstoreSync
         self.manageSieveRuleSync = manageSieveRuleSync
+        self.searchRelatedHeaders = searchRelatedHeaders
+        self.relatedConversationConsent = relatedConversationConsent
         self.disconnectSession = disconnectSession
         self.folderCache = folderCache
         self.headerCache = headerCache
@@ -1124,6 +1130,8 @@ public struct IMAPAccountConnector: Sendable {
             idleEvents: idleEvents,
             condstoreSync: condstoreSync,
             manageSieveRuleSync: manageSieveRuleSync,
+            searchRelatedHeaders: searchRelatedHeaders,
+            relatedConversationConsent: relatedConversationConsent,
             disconnectSession: disconnectSession,
             folderCache: includeLocalStores ? folderCache : nil,
             headerCache: includeLocalStores ? headerCache : nil,

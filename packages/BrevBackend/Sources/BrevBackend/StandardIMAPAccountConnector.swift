@@ -34,6 +34,7 @@ public extension IMAPAccountConnector {
         offlineMutationConflictStore: (@Sendable (BrevAccount.ID) -> (any OfflineMutationConflictStore))? = nil,
         tokenStore: (any TokenStore)? = nil,
         outboundMessagePreparer: (any OutboundMessagePreparing)? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared,
         imapTransportFactory: @escaping IMAPTransportFactory = {
             NetworkIMAPSessionTransport()
         },
@@ -291,6 +292,17 @@ public extension IMAPAccountConnector {
                     scriptName: scriptName
                 )
             },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+                let client = await imapSessionPool.client(for: configuration)
+                return try await client.loginAndSearchRelatedHeaders(
+                    configuration: configuration,
+                    credential: credential,
+                    folderPath: folderID,
+                    identifiers: identifiers,
+                    limit: limit
+                )
+            },
+            relatedConversationConsent: relatedConversationConsent,
             disconnectSession: { configuration in
                 await imapSessionPool.disconnect(accountID: configuration.accountID)
             },

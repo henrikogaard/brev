@@ -41,7 +41,7 @@ public enum GmailAccountIdentity {
 public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderLabelCatalogManaging,
     ServerSearchSyntaxProviding, MailboxBackgroundRefreshing, SyncHealthReporting,
     MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, ProgressiveMailSearching,
-    CachedConversationProviding, @unchecked Sendable {
+    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
     private static let pageSize = 50
 
     /// The account this adapter serves.
@@ -62,6 +62,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private var scheduledSession: GmailScheduledSession?
 
     private var scheduledStore: (any GmailScheduledSendStore)? { store as? any GmailScheduledSendStore }
+    /// Consent boundary for remote related-header discovery (ADR-0074/ADR-0006).
+    private let relatedConversationConsent: (any RelatedConversationConsenting)?
     private let offlineMutationQueue: (any OfflineMutationQueue)?
     private let offlineMutationConflictStore: (any OfflineMutationConflictStore)?
     private let lock = NSLock()
@@ -88,7 +90,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         syncReconciler: GmailSyncReconciler? = nil,
         draftStaging: (any GmailDraftStagingStore)? = nil,
         offlineMutationQueue: (any OfflineMutationQueue)? = nil,
-        offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil
+        offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil
     ) {
         self.account = account
         self.transport = transport
@@ -99,6 +102,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         self.draftStaging = draftStaging ?? (store as? any GmailDraftStagingStore) ?? InMemoryGmailDraftStagingStore()
         self.offlineMutationQueue = offlineMutationQueue
         self.offlineMutationConflictStore = offlineMutationConflictStore
+        self.relatedConversationConsent = relatedConversationConsent
     }
 
     /// Creates a backend using a typed client for Gmail write operations.
@@ -112,7 +116,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         syncReconciler: GmailSyncReconciler? = nil,
         draftStaging: (any GmailDraftStagingStore)? = nil,
         offlineMutationQueue: (any OfflineMutationQueue)? = nil,
-        offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil
+        offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil
     ) {
         self.init(
             account: account,
@@ -123,7 +128,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             syncReconciler: syncReconciler,
             draftStaging: draftStaging,
             offlineMutationQueue: offlineMutationQueue,
-            offlineMutationConflictStore: offlineMutationConflictStore
+            offlineMutationConflictStore: offlineMutationConflictStore,
+            relatedConversationConsent: relatedConversationConsent
         )
     }
 
@@ -151,21 +157,26 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
     }
 
-    /// Extended provider capabilities for aliases and server signatures.
+    /// Extended provider capabilities for aliases, server signatures and
+    /// consented related-conversation loading.
     public var extendedCapabilities: BackendExtendedCapabilities {
         lock.withLock {
-            guard isConnected else { return [.rawMessageSource, .rawMessageBytes, .cachedConversations] }
-            guard sendAsProbeCompleted, let aliases = sendAsAliases else {
-                return [.rawMessageSource, .rawMessageBytes, .cachedConversations]
+            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .cachedConversations]
+            if isConnected, sendAsProbeCompleted, let aliases = sendAsAliases {
+                result.insert(.serverAliases)
+                if aliases.contains(where: {
+                    Self.isUsableSendAs($0) && !($0.signature ?? "").isEmpty
+                }) {
+                    result.insert(.serverSignatures)
+                }
+                if aliases.contains(where: { Self.isUsableSendAs($0) && $0.isPrimary != true }) {
+                    result.insert(.sendAs)
+                }
             }
-            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .cachedConversations, .serverAliases]
-            if aliases.contains(where: {
-                Self.isUsableSendAs($0) && !($0.signature ?? "").isEmpty
-            }) {
-                result.insert(.serverSignatures)
-            }
-            if aliases.contains(where: { Self.isUsableSendAs($0) && $0.isPrimary != true }) {
-                result.insert(.sendAs)
+            // Consent is still enforced per invocation; the flag only tells the
+            // reader the provider can run remote discovery at all.
+            if relatedConversationConsent != nil {
+                result.insert(.relatedConversationLoading)
             }
             return result
         }
@@ -563,6 +574,99 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         try checkSearch(generation)
         return try ConversationSnapshot(anchor: selected.location, members: members, coverage: .cached,
                                         excludedFolderIDs: includeSpamAndTrash ? [] : ["SPAM", "TRASH"])
+    }
+
+    /// Consented remote discovery through `users.threads.get` in metadata
+    /// format — one bounded request resolves the whole native thread; bodies
+    /// and attachments stay lazy (ADR-0074 §3). The account's consent is
+    /// enforced here at invocation, not only by the caller.
+    public func loadRelatedConversation(
+        around anchor: ConversationMember,
+        includeSpamAndTrash: Bool,
+        continuation: String?,
+        onUpdate: @escaping @Sendable (ConversationSnapshot) async -> Void
+    ) async throws -> ConversationSnapshot {
+        try validateSource(anchor.sourceID)
+        guard anchor.sourceID.mailboxID == account.id else { throw ConversationLookupError.foreignSource }
+        guard relatedConversationConsent != nil else { throw unsupported() }
+        guard await relatedConversationConsent?.isRelatedConversationConsented(accountID: account.id) == true else {
+            throw ConversationLookupError.consentRequired
+        }
+        try requireConnected()
+        let generation = lock.withLock { connectionGeneration }
+        try checkSearch(generation)
+        let labels = try await store.labels(accountID: account.id)
+        let cachedAnchor = try await store.message(accountID: account.id, messageID: anchor.header.id)
+        var threadID = cachedAnchor?.threadID.flatMap { $0.isEmpty ? nil : $0 }
+        if threadID == nil {
+            let candidate = anchor.header.threadID
+            threadID = candidate.isEmpty || candidate == anchor.header.id ? nil : candidate
+        }
+        if threadID == nil {
+            // Older cache records predate stored thread IDs: one minimal
+            // message lookup resolves the anchor's native thread ID.
+            let fetched = try await transport.getMessage(messageID: anchor.header.id, format: .minimal)
+            try checkSearch(generation)
+            threadID = fetched.threadID.flatMap { $0.isEmpty ? nil : $0 }
+        }
+        guard let threadID else { throw ConversationLookupError.invalidSnapshot }
+
+        let excludedFolderIDs: [Folder.ID] = includeSpamAndTrash ? [] : ["SPAM", "TRASH"]
+        try await onUpdate(ConversationSnapshot(
+            anchor: anchor.location, members: [anchor], coverage: .loading,
+            excludedFolderIDs: excludedFolderIDs
+        ))
+        let thread = try await transport.getThread(
+            threadID: threadID, metadataHeaders: GmailAPIClient.requiredMetadataHeaders
+        )
+        try checkSearch(generation)
+
+        var members: [ConversationMember] = []
+        var seen: Set<String> = []
+        var discoveredMessages: [GmailMessage] = []
+        for message in thread.messages {
+            guard seen.insert(message.id).inserted else { continue }
+            if !includeSpamAndTrash, message.labelIDs.contains("SPAM") || message.labelIDs.contains("TRASH") {
+                continue
+            }
+            discoveredMessages.append(message)
+            // The selected message keeps its original identity and folder
+            // context even when the thread root changes (ADR-0074 §5).
+            if message.id == anchor.header.id {
+                members.append(anchor)
+                continue
+            }
+            let folderID = Self.conversationFolderID(for: message, preferred: anchor.header.folderID, labels: labels)
+            let fields = Self.headerMap(message.payload?.headers ?? [])
+            let references: [String]? = message.payload == nil ? nil : fields["references"].map { [$0] } ?? []
+            members.append(ConversationMember(
+                sourceID: anchor.sourceID,
+                header: Self.header(from: message, folderID: folderID, labels: labels),
+                references: references
+            ))
+        }
+        if !members.contains(where: { $0.location == anchor.location }) {
+            members.append(anchor)
+        }
+
+        // Persist discovered metadata through the provider-owned store only;
+        // a metadata payload never replaces a richer cached one (§10).
+        var upserts: [GmailMessage] = []
+        for message in discoveredMessages {
+            let existing = try await store.message(accountID: account.id, messageID: message.id)
+            if existing?.payload == nil { upserts.append(message) }
+        }
+        if !upserts.isEmpty {
+            try? await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: upserts))
+        }
+        try checkSearch(generation)
+
+        let final = try ConversationSnapshot(
+            anchor: anchor.location, members: members, coverage: .completeForScope,
+            excludedFolderIDs: excludedFolderIDs
+        )
+        await onUpdate(final)
+        return final
     }
 
     public func search(_ query: SearchQuery) async throws -> [MessageHeader] {
@@ -1403,6 +1507,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         switch ObjectIdentifier(type) {
         case ObjectIdentifier(CachedConversationProviding.self):
             return self as? Service
+        case ObjectIdentifier(RelatedConversationLoading.self):
+            guard relatedConversationConsent != nil else { return nil }
+            return self as? Service
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(ScheduledSendManaging.self), ObjectIdentifier(ScheduledSendEditing.self):
@@ -2103,6 +2210,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             hasAttachments: hasAttachments(message.payload),
             messageID: headers["message-id"],
             inReplyTo: headers["in-reply-to"],
+            references: message.payload == nil ? nil : headers["references"].map { [$0] } ?? [],
             labels: labelNames
         )
     }

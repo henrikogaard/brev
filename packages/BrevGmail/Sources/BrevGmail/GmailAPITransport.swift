@@ -83,6 +83,10 @@ public protocol GmailAPITransporting: Sendable {
     ) async throws -> GmailMessagePage
     /// Loads one account-wide Gmail message.
     func getMessage(messageID: String, format: GmailMessageFormat) async throws -> GmailMessage
+    /// Loads one thread in metadata format, returning only the requested
+    /// headers (ADR-0074 related-header discovery). Implementations must not
+    /// upgrade to a body/full format — discovery is metadata-only.
+    func getThread(threadID: String, metadataHeaders: [String]) async throws -> GmailThread
     /// Loads one attachment payload.
     func getAttachment(messageID: String, attachmentID: String) async throws -> GmailAttachment
     /// Creates a Gmail draft from raw MIME source.
@@ -114,6 +118,10 @@ public extension GmailAPITransporting {
             pageToken: pageToken,
             maxResults: maxResults
         )
+    }
+
+    func getThread(threadID: String, metadataHeaders: [String] = []) async throws -> GmailThread {
+        throw GmailAPIError.invalidRequest
     }
 
     func createDraft(rawMIME: String, threadID: String? = nil) async throws -> GmailDraft {
@@ -579,6 +587,22 @@ public final class GmailAPITransport: GmailAPITransporting, @unchecked Sendable 
                 queryItems: [URLQueryItem(name: "format", value: format.rawValue)]
             ),
             decoding: GmailMessage.self
+        )
+    }
+
+    public func getThread(threadID: String, metadataHeaders: [String] = []) async throws -> GmailThread {
+        guard !threadID.isEmpty, threadID != ".", threadID != ".." else {
+            throw GmailAPIError.invalidRequest
+        }
+        var queryItems = [URLQueryItem(name: "format", value: GmailMessageFormat.metadata.rawValue)]
+        queryItems += metadataHeaders.map { URLQueryItem(name: "metadataHeaders", value: $0) }
+        return try await send(
+            GmailAPIRequest(
+                method: .get,
+                path: "/users/me/threads/\(Self.pathComponent(threadID))",
+                queryItems: queryItems
+            ),
+            decoding: GmailThread.self
         )
     }
 

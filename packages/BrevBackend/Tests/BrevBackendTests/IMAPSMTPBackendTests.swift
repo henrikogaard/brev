@@ -699,6 +699,263 @@ struct IMAPSMTPBackendTests {
         #expect(backendWithSieve.extensionService(ManageSieveRuleSyncing.self) != nil)
     }
 
+    @Test("cached conversation lookup uses the local index and excludes spam and trash folders")
+    func cachedConversationUsesLocalIndexExclusions() async throws {
+        let index = LocalSearchIndexRecorder()
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Junk", displayName: "Junk", delimiter: "/", flags: [], role: .spam),
+                IMAPFolderListing(path: "Trash", displayName: "Trash", delimiter: "/", flags: [], role: .trash)
+            ] },
+            localSearchIndex: index
+        )
+        #expect(backend.extendedCapabilities.contains(.cachedConversations))
+        let service = try #require(backend.extensionService(CachedConversationProviding.self))
+        try await backend.connect()
+
+        let anchor = ConversationMember(
+            sourceID: Self.sourceID,
+            header: MessageHeader(
+                id: "INBOX:1", threadID: "<root>", folderID: "INBOX",
+                from: Correspondent(email: "ada@example.org"),
+                subject: "Standup", snippet: "", date: Date(timeIntervalSince1970: 0),
+                messageID: "<root>"
+            )
+        )
+        let snapshot = try await service.cachedConversation(around: anchor, includeSpamAndTrash: false)
+        #expect(await index.conversationRequests == [["Junk", "Trash"]])
+        #expect(Set(snapshot.excludedFolderIDs) == ["Junk", "Trash"])
+
+        _ = try await service.cachedConversation(around: anchor, includeSpamAndTrash: true)
+        #expect(await index.conversationRequests.last == [])
+    }
+
+    @Test("without a conversation index the cached lookup stays anchor-only and unadvertised")
+    func cachedConversationWithoutIndex() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] }
+        )
+        #expect(!backend.extendedCapabilities.contains(.cachedConversations))
+        #expect(backend.extensionService(CachedConversationProviding.self) == nil)
+
+        let anchor = ConversationMember(
+            sourceID: Self.sourceID,
+            header: MessageHeader(
+                id: "INBOX:1", threadID: "<root>", folderID: "INBOX",
+                from: Correspondent(email: "ada@example.org"),
+                subject: "Standup", snippet: "", date: Date(timeIntervalSince1970: 0)
+            )
+        )
+        let snapshot = try await backend.cachedConversation(around: anchor, includeSpamAndTrash: false)
+        #expect(snapshot.members.map(\.header.id) == ["INBOX:1"])
+        #expect(snapshot.coverage == .cached)
+    }
+
+    @Test("a foreign conversation anchor is rejected")
+    func cachedConversationRejectsForeignSource() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] },
+            localSearchIndex: LocalSearchIndexRecorder()
+        )
+        let anchor = ConversationMember(
+            sourceID: MailSourceID(accountID: "other", mailboxID: "other"),
+            header: MessageHeader(
+                id: "INBOX:1", threadID: "<root>", folderID: "INBOX",
+                from: Correspondent(email: "ada@example.org"),
+                subject: "Standup", snippet: "", date: Date(timeIntervalSince1970: 0)
+            )
+        )
+        await #expect(throws: ConversationLookupError.self) {
+            _ = try await backend.cachedConversation(around: anchor, includeSpamAndTrash: false)
+        }
+    }
+
+    @Test("related conversation loading requires the account's consent before any remote work")
+    func relatedConversationLoadingRequiresConsent() async throws {
+        let searchRecorder = RelatedHeaderSearchRecorder()
+        let consent = StubRelatedConversationConsent(consented: false)
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox)
+            ] },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+                try await searchRecorder.search(
+                    configuration: configuration, credential: credential,
+                    folderID: folderID, identifiers: identifiers, limit: limit
+                )
+            },
+            relatedConversationConsent: consent,
+            localSearchIndex: LocalSearchIndexRecorder()
+        )
+        #expect(backend.extendedCapabilities.contains(.relatedConversationLoading))
+        let service = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = Self.conversationAnchor(messageID: "<a@example.org>")
+
+        await #expect(throws: ConversationLookupError.self) {
+            _ = try await service.loadRelatedConversation(
+                around: anchor, includeSpamAndTrash: false, continuation: nil
+            ) { _ in }
+        }
+        #expect(await searchRecorder.requests.isEmpty)
+    }
+
+    @Test("related conversation loading expands the identifier frontier across eligible folders")
+    func relatedConversationLoadingExpandsFrontier() async throws {
+        let searchRecorder = RelatedHeaderSearchRecorder()
+        // INBOX hit replies to the anchor; the Sent hit replies to the INBOX
+        // hit, so it is reachable only through second-wave frontier expansion.
+        await searchRecorder.setResults(
+            folderID: "INBOX",
+            listings: [
+                IMAPMessageListing(
+                    uid: 7, messageID: "<b@example.org>", inReplyTo: "<a@example.org>",
+                    subject: "Re: Plan",
+                    from: Correspondent(email: "ada@example.org"), to: [], cc: [], bcc: [],
+                    date: Date(timeIntervalSince1970: 7), isRead: true, isFlagged: false, isAnswered: false
+                ),
+                // A loose substring hit that does not cite a queried identifier
+                // must be filtered by local verification.
+                IMAPMessageListing(
+                    uid: 8, messageID: "<noise@example.org>", inReplyTo: "<other@example.org>",
+                    subject: "Unrelated",
+                    from: Correspondent(email: "eve@example.org"), to: [], cc: [], bcc: [],
+                    date: Date(timeIntervalSince1970: 8), isRead: false, isFlagged: false, isAnswered: false
+                )
+            ]
+        )
+        await searchRecorder.setResults(
+            folderID: "Sent",
+            listings: [
+                IMAPMessageListing(
+                    uid: 3, messageID: "<c@example.org>", inReplyTo: "<b@example.org>",
+                    subject: "Re: Plan",
+                    from: Correspondent(email: "person@example.org"), to: [], cc: [], bcc: [],
+                    date: Date(timeIntervalSince1970: 9), isRead: true, isFlagged: false, isAnswered: false
+                )
+            ]
+        )
+        let consent = StubRelatedConversationConsent(consented: true)
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Sent", displayName: "Sent", delimiter: "/", flags: [], role: .sent),
+                IMAPFolderListing(path: "Junk", displayName: "Junk", delimiter: "/", flags: [], role: .spam),
+                IMAPFolderListing(path: "Trash", displayName: "Trash", delimiter: "/", flags: [], role: .trash)
+            ] },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+                try await searchRecorder.search(
+                    configuration: configuration, credential: credential,
+                    folderID: folderID, identifiers: identifiers, limit: limit
+                )
+            },
+            relatedConversationConsent: consent
+        )
+        let service = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = Self.conversationAnchor(messageID: "<a@example.org>")
+        let updates = ConversationCoverageCollector()
+        let snapshot = try await service.loadRelatedConversation(
+            around: anchor, includeSpamAndTrash: false, continuation: nil
+        ) { update in
+            await updates.append(update.coverage)
+        }
+
+        #expect(snapshot.coverage == .completeForScope)
+        #expect(Set(snapshot.members.map(\.header.folderID)) == ["INBOX", "Sent"])
+        #expect(Set(snapshot.members.map(\.header.id)) == ["INBOX:1", "INBOX:7", "Sent:3"])
+        #expect(snapshot.excludedFolderIDs.sorted() == ["Junk", "Trash"])
+        let observedUpdates = await updates.values
+        #expect(observedUpdates.first == .loading && observedUpdates.last == .completeForScope)
+        // Spam and Trash are never searched remotely.
+        let searchedFolders = await Set(searchRecorder.requests.map(\.folderID))
+        #expect(searchedFolders == ["INBOX", "Sent"])
+        // The second Sent wave queries only newly discovered identifiers.
+        #expect(await searchRecorder.requests.filter { $0.folderID == "Sent" }.count >= 1)
+    }
+
+    @Test("related conversation loading reports a failed folder as partial")
+    func relatedConversationLoadingPartialOnFolderFailure() async throws {
+        let searchRecorder = RelatedHeaderSearchRecorder()
+        await searchRecorder.setFailingFolders(["Archive"])
+        let consent = StubRelatedConversationConsent(consented: true)
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
+                IMAPFolderListing(path: "Archive", displayName: "Archive", delimiter: "/", flags: [], role: .archive)
+            ] },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+                try await searchRecorder.search(
+                    configuration: configuration, credential: credential,
+                    folderID: folderID, identifiers: identifiers, limit: limit
+                )
+            },
+            relatedConversationConsent: consent
+        )
+        let service = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = Self.conversationAnchor(messageID: "<a@example.org>")
+        let snapshot = try await service.loadRelatedConversation(
+            around: anchor, includeSpamAndTrash: false, continuation: nil
+        ) { _ in }
+
+        #expect(snapshot.coverage == .partial)
+        #expect(snapshot.unavailableFolderIDs == ["Archive"])
+        // The healthy folder was still searched.
+        #expect(await searchRecorder.requests.map(\.folderID).contains("INBOX"))
+    }
+
+    @Test("without related-header wiring the remote conversation service is absent")
+    func relatedConversationLoadingUnadvertisedWithoutOperation() async throws {
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] },
+            relatedConversationConsent: StubRelatedConversationConsent(consented: true)
+        )
+        #expect(!backend.extendedCapabilities.contains(.relatedConversationLoading))
+        #expect(backend.extensionService(RelatedConversationLoading.self) == nil)
+
+        let backendWithoutConsent = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] },
+            searchRelatedHeaders: { _, _, _, _, _ in IMAPMessageListingPage(messages: []) }
+        )
+        #expect(!backendWithoutConsent.extendedCapabilities.contains(.relatedConversationLoading))
+        #expect(backendWithoutConsent.extensionService(RelatedConversationLoading.self) == nil)
+    }
+
+    private static func conversationAnchor(messageID: String) -> ConversationMember {
+        ConversationMember(
+            sourceID: sourceID,
+            header: MessageHeader(
+                id: "INBOX:1", threadID: "<a@example.org>", folderID: "INBOX",
+                from: Correspondent(email: "ada@example.org"),
+                subject: "Plan", snippet: "", date: Date(timeIntervalSince1970: 1),
+                messageID: messageID
+            )
+        )
+    }
+
     @Test("ManageSieve sync service uploads local rules through the configured server")
     func manageSieveSyncServiceUploadsLocalRules() async throws {
         let recorder = ManageSieveRuleSyncRecorder()
@@ -10094,7 +10351,7 @@ private actor MessageListingRecorder {
     }
 }
 
-private actor LocalSearchIndexRecorder: MailLocalSearchIndex {
+private actor LocalSearchIndexRecorder: MailLocalSearchIndex, MailConversationIndex {
     struct HeaderPageRequest: Equatable, Sendable {
         let folderID: Folder.ID
         let pageToken: String?
@@ -10123,6 +10380,8 @@ private actor LocalSearchIndexRecorder: MailLocalSearchIndex {
     private var recordedDeletedRawMessageFolders: [Folder.ID] = []
     private var recordedClearedAccounts: [BrevAccount.ID] = []
     private var recordedClearedFolders: [Folder.ID] = []
+    private var recordedConversationRequests: [Set<Folder.ID>] = []
+    private var conversationMembers: [ConversationMember] = []
     private var indexMetrics: LocalSearchIndexMetrics?
     private var clearAccountGate: AsyncGate?
     private var persistsStoredRawMessages = true
@@ -10166,6 +10425,14 @@ private actor LocalSearchIndexRecorder: MailLocalSearchIndex {
 
     var clearedFolders: [Folder.ID] {
         recordedClearedFolders
+    }
+
+    var conversationRequests: [Set<Folder.ID>] {
+        recordedConversationRequests
+    }
+
+    func setConversationMembers(_ members: [ConversationMember]) {
+        conversationMembers = members
     }
 
     func setHeaderPage(
@@ -10323,6 +10590,79 @@ private actor LocalSearchIndexRecorder: MailLocalSearchIndex {
 
     func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics? {
         indexMetrics
+    }
+
+    func cachedConversation(
+        around anchor: ConversationMember,
+        excludingFolderIDs: Set<Folder.ID>
+    ) async throws -> ConversationSnapshot {
+        recordedConversationRequests.append(excludingFolderIDs)
+        return try ConversationSnapshot(
+            anchor: anchor.location,
+            members: [anchor] + conversationMembers,
+            coverage: .cached,
+            excludedFolderIDs: Array(excludingFolderIDs)
+        )
+    }
+}
+
+private actor ConversationCoverageCollector {
+    private(set) var values: [ConversationCoverage] = []
+
+    func append(_ coverage: ConversationCoverage) {
+        values.append(coverage)
+    }
+}
+
+private actor StubRelatedConversationConsent: RelatedConversationConsenting {
+    private var consented: Bool
+
+    init(consented: Bool) {
+        self.consented = consented
+    }
+
+    func setConsented(_ value: Bool) {
+        consented = value
+    }
+
+    func isRelatedConversationConsented(accountID: BrevAccount.ID) async -> Bool {
+        consented
+    }
+}
+
+private actor RelatedHeaderSearchRecorder {
+    struct Request: Equatable, Sendable {
+        let folderID: Folder.ID
+        let identifiers: [String]
+    }
+
+    private(set) var requests: [Request] = []
+    private var resultsByFolder: [Folder.ID: [IMAPMessageListing]] = [:]
+    private var failingFolders: Set<Folder.ID> = []
+
+    func setResults(folderID: Folder.ID, listings: [IMAPMessageListing]) {
+        resultsByFolder[folderID] = listings
+    }
+
+    func setFailingFolders(_ folders: Set<Folder.ID>) {
+        failingFolders = folders
+    }
+
+    func search(
+        configuration: IMAPAccountConfiguration,
+        credential: MailAccountCredential,
+        folderID: Folder.ID,
+        identifiers: [String],
+        limit: Int
+    ) async throws -> IMAPMessageListingPage {
+        requests.append(Request(folderID: folderID, identifiers: identifiers))
+        if failingFolders.contains(folderID) {
+            throw MailBackendError.notConnected
+        }
+        return IMAPMessageListingPage(
+            messages: resultsByFolder[folderID] ?? [],
+            uidValidity: 42
+        )
     }
 }
 

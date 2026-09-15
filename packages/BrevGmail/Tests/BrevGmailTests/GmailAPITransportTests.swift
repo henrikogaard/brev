@@ -277,6 +277,21 @@ struct GmailAPITransportTests {
         _ = try await attachmentTransport.getAttachment(messageID: "m/1", attachmentID: "a/1")
         let attachmentRequest = try #require(await attachmentExecutor.lastRequest())
         #expect(attachmentRequest.url?.absoluteString.contains("/messages/m%2F1/attachments/a%2F1") == true)
+
+        let threadExecutor = RecordingHTTPExecutor(response: .json("{\"id\":\"t/1\",\"messages\":[]}"))
+        let threadTransport = GmailAPITransport(
+            accessTokenProvider: StaticAccessTokenProvider(token: "token"),
+            httpExecutor: threadExecutor
+        )
+        _ = try await threadTransport.getThread(
+            threadID: "t/1",
+            metadataHeaders: ["Subject", "References"]
+        )
+        let threadRequest = try #require(await threadExecutor.lastRequest())
+        #expect(threadRequest.url?.absoluteString.contains("/threads/t%2F1") == true)
+        #expect(threadRequest.url?.query?.contains("format=metadata") == true)
+        #expect(threadRequest.url?.query?.contains("metadataHeaders=Subject") == true)
+        #expect(threadRequest.url?.query?.contains("metadataHeaders=References") == true)
     }
 
     @Test("strictly percent-encodes every path component delimiter")

@@ -22,7 +22,7 @@ enum IMAPBackgroundRefreshPolicy {
 public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, MutationApplying, CachedMessageHeaderProviding,
     SyncHealthReporting, SyncConflictReviewing, SyncHealthRepairing, MailboxBackgroundRefreshing,
     OutboxManaging, ScheduledSendEditing, ProgressiveMailSearching, CardDAVContactSyncSupporting, MessageLabelManaging,
-    @unchecked Sendable {
+    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
     private static let bodyFetchLogger = Logger(
         subsystem: "eu.brevmail.brev",
         category: "IMAPBodyFetch"
@@ -117,6 +117,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     public typealias ManageSieveRuleSyncOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential, [ServerRule], String) async throws
             -> SieveScriptPlan
+    /// Bounded UID SEARCH HEADER discovery in one folder: returns listings whose
+    /// headers cite any of the given reply identifiers (candidate matches —
+    /// callers verify exact linkage locally, ADR-0074).
+    public typealias RelatedHeaderSearchOperation =
+        @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [String], Int) async throws
+            -> IMAPMessageListingPage
     public typealias SessionDisconnectOperation =
         @Sendable (IMAPAccountConfiguration) async -> Void
 
@@ -172,6 +178,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private let idleEventsOperation: IdleEventOperation?
     private let condstoreSyncOperation: CONDSTORESyncOperation?
     private let manageSieveRuleSyncOperation: ManageSieveRuleSyncOperation?
+    private let searchRelatedHeadersOperation: RelatedHeaderSearchOperation?
+    /// Consent boundary for remote related-header discovery (ADR-0074/ADR-0006).
+    private let relatedConversationConsent: (any RelatedConversationConsenting)?
     private let disconnectSessionOperation: SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
@@ -274,6 +283,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         idleEvents: IdleEventOperation? = nil,
         condstoreSync: CONDSTORESyncOperation? = nil,
         manageSieveRuleSync: ManageSieveRuleSyncOperation? = nil,
+        searchRelatedHeaders: RelatedHeaderSearchOperation? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
         disconnectSession: SessionDisconnectOperation? = nil,
         folderCache: (any IMAPFolderSnapshotCache)? = nil,
         headerCache: (any IMAPMailboxHeaderCache)? = nil,
@@ -314,6 +325,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         idleEventsOperation = idleEvents
         condstoreSyncOperation = condstoreSync
         manageSieveRuleSyncOperation = manageSieveRuleSync
+        searchRelatedHeadersOperation = searchRelatedHeaders
+        self.relatedConversationConsent = relatedConversationConsent
         disconnectSessionOperation = disconnectSession
         self.folderCache = folderCache
         self.headerCache = headerCache
@@ -362,6 +375,16 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             .clientSideThreading,
             .cachedMessageHeaders,
         ]
+        if localSearchIndex is any MailConversationIndex {
+            // Offline reply-linked lookup over the local index only; the flag
+            // does not authorize remote discovery (ADR-0074).
+            advertisedExtendedCapabilities.insert(.cachedConversations)
+        }
+        if searchRelatedHeaders != nil, relatedConversationConsent != nil {
+            // The provider can run bounded remote discovery; each call still
+            // enforces the per-account consent boundary at invocation time.
+            advertisedExtendedCapabilities.insert(.relatedConversationLoading)
+        }
         if copyMessages != nil {
             advertisedExtendedCapabilities.insert(.messageCopy)
         }
@@ -2385,6 +2408,187 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
     }
 
+    /// Resolves reply-linked members through the local index only — no network
+    /// I/O. Spam and Trash members are excluded unless explicitly requested;
+    /// the snapshot records which folders were actually excluded (ADR-0074).
+    public func cachedConversation(
+        around anchor: ConversationMember,
+        includeSpamAndTrash: Bool
+    ) async throws -> ConversationSnapshot {
+        guard anchor.sourceID.accountID == account.id,
+              anchor.sourceID.mailboxID == account.id else {
+            throw ConversationLookupError.foreignSource
+        }
+        guard let index = localSearchIndex as? any MailConversationIndex else {
+            // No index wired: the honest cached scope is the selected message.
+            return try ConversationSnapshot(anchor: anchor.location, members: [anchor], coverage: .cached)
+        }
+        let excluded = includeSpamAndTrash ? [] : await spamAndTrashFolderIDs()
+        return try await index.cachedConversation(around: anchor, excludingFolderIDs: excluded)
+    }
+
+    /// Folder IDs whose role is Spam or Trash, from the connected folder list
+    /// or the last cached folder snapshot. Unknown folders exclude nothing.
+    private func spamAndTrashFolderIDs() async -> Set<Folder.ID> {
+        let folders: [Folder]
+        if let connected = try? await state.requireConnectedFolders() {
+            folders = connected
+        } else {
+            folders = await folderCache?.snapshot(accountID: account.id)?.folders ?? []
+        }
+        return Set(folders.filter { $0.role == .spam || $0.role == .trash }.map(\.id))
+    }
+
+    /// Bound on identifiers per UID SEARCH and total remote requests per lookup
+    /// (ADR-0074 §8): every query is one finite batch, never a folder scan.
+    private static let relatedSearchIdentifierChunkSize = 30
+    private static let relatedSearchResultLimit = 50
+    private static let relatedSearchRequestBudget = 64
+
+    /// Consented remote discovery: expands the reply-identifier frontier across
+    /// eligible folders with bounded UID SEARCH HEADER queries (ADR-0074 §4/§7).
+    /// Each candidate hit is verified locally before it becomes a member;
+    /// bodies and attachments stay lazy.
+    public func loadRelatedConversation(
+        around anchor: ConversationMember,
+        includeSpamAndTrash: Bool,
+        continuation: String?,
+        onUpdate: @escaping @Sendable (ConversationSnapshot) async -> Void
+    ) async throws -> ConversationSnapshot {
+        guard anchor.sourceID.accountID == account.id,
+              anchor.sourceID.mailboxID == account.id else {
+            throw ConversationLookupError.foreignSource
+        }
+        guard let searchRelatedHeaders = searchRelatedHeadersOperation,
+              let relatedConversationConsent else {
+            throw MailBackendError.notSupported(capabilities)
+        }
+        // Consent is enforced at invocation, not merely surfaced by the caller.
+        guard await relatedConversationConsent.isRelatedConversationConsented(accountID: account.id) else {
+            throw ConversationLookupError.consentRequired
+        }
+        try await connect()
+        guard await state.isRemoteAvailable() else {
+            // Cache-restored or offline mailboxes must not issue remote searches.
+            throw MailBackendError.notConnected
+        }
+        let folders = try await state.requireConnectedFolders()
+        let excludedFolderIDs = includeSpamAndTrash
+            ? []
+            : Set(folders.filter { $0.role == .spam || $0.role == .trash }.map(\.id))
+        let eligible = folders.filter { !excludedFolderIDs.contains($0.id) }
+
+        var membersByLocation: [ConversationLocation: ConversationMember] = [anchor.location: anchor]
+        var ambiguousIdentifiers: [String] = []
+        if let cached = try? await cachedConversation(around: anchor, includeSpamAndTrash: includeSpamAndTrash) {
+            for member in cached.members {
+                membersByLocation[member.location] = member
+            }
+            ambiguousIdentifiers = cached.ambiguousIdentifiers
+        }
+
+        // Per-folder pending/searched identifier sets implement §4's frontier
+        // expansion: every identifier is searched in every eligible folder once.
+        var pendingByFolder: [Folder.ID: Set<String>] = [:]
+        var searchedByFolder: [Folder.ID: Set<String>] = [:]
+        var unavailableFolders: [Folder.ID] = []
+        var queriedCount = 0
+
+        func linkIdentifiers(of member: ConversationMember) -> Set<String> {
+            Set(ConversationMembershipResolver.cachedLinkIdentifiers(
+                for: member.header, references: member.references
+            ) ?? [])
+        }
+        func enqueue(_ identifiers: Set<String>) {
+            for folder in eligible where !unavailableFolders.contains(folder.id) {
+                let searched = searchedByFolder[folder.id, default: []]
+                pendingByFolder[folder.id, default: []].formUnion(identifiers.subtracting(searched))
+            }
+        }
+        func snapshot(coverage: ConversationCoverage) throws -> ConversationSnapshot {
+            try ConversationSnapshot(
+                anchor: anchor.location,
+                members: Array(membersByLocation.values),
+                coverage: coverage,
+                excludedFolderIDs: Array(excludedFolderIDs),
+                unavailableFolderIDs: unavailableFolders,
+                ambiguousIdentifiers: ambiguousIdentifiers
+            )
+        }
+
+        enqueue(membersByLocation.values.reduce(into: Set<String>()) {
+            $0.formUnion(linkIdentifiers(of: $1))
+        })
+        try await onUpdate(snapshot(coverage: .loading))
+
+        while queriedCount < Self.relatedSearchRequestBudget, !Task.isCancelled {
+            // A disconnect mid-scan stops remote work; the result stays honest.
+            guard await state.isRemoteAvailable() else {
+                for folder in eligible where pendingByFolder[folder.id]?.isEmpty == false {
+                    unavailableFolders.append(folder.id)
+                }
+                break
+            }
+            var progressed = false
+            for folder in eligible {
+                guard queriedCount < Self.relatedSearchRequestBudget else { break }
+                guard let pending = pendingByFolder[folder.id], !pending.isEmpty else { continue }
+                let chunk = Array(pending.sorted().prefix(Self.relatedSearchIdentifierChunkSize))
+                do {
+                    let page = try await searchRelatedHeaders(
+                        configuration, credential, folder.id, chunk, Self.relatedSearchResultLimit
+                    )
+                    queriedCount += 1
+                    progressed = true
+                    pendingByFolder[folder.id]?.subtract(chunk)
+                    searchedByFolder[folder.id, default: []].formUnion(chunk)
+                    let generation = page.uidValidity.map { UInt64($0) }
+                    var batchHeaders: [MessageHeader] = []
+                    var discovered: Set<String> = []
+                    for listing in page.messages {
+                        let header = Self.header(from: listing, folderID: folder.id)
+                        let links = Set(ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
+                        // Candidate-search verification: keep only hits citing a
+                        // queried identifier (ADR-0074 §4).
+                        guard !links.isDisjoint(with: chunk) else { continue }
+                        let member = ConversationMember(
+                            sourceID: anchor.sourceID,
+                            header: header,
+                            folderGeneration: generation,
+                            references: header.references
+                        )
+                        if membersByLocation[member.location] == nil {
+                            membersByLocation[member.location] = member
+                            discovered.formUnion(links)
+                        }
+                        batchHeaders.append(header)
+                    }
+                    if !batchHeaders.isEmpty {
+                        await localSearchIndex?.storeHeaders(batchHeaders, account: account)
+                    }
+                    enqueue(discovered)
+                    try await onUpdate(snapshot(coverage: .loading))
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    // Folder failure is reported, not hidden; the rest continue.
+                    unavailableFolders.append(folder.id)
+                    pendingByFolder[folder.id] = []
+                }
+            }
+            if !progressed { break }
+        }
+
+        // Honest completion: every eligible folder drained its frontier and no
+        // folder failed. Failed folders or budget-limited leftovers stay partial.
+        let hasPendingWork = eligible.contains { pendingByFolder[$0.id]?.isEmpty == false }
+        let final = try snapshot(
+            coverage: unavailableFolders.isEmpty && !hasPendingWork ? .completeForScope : .partial
+        )
+        await onUpdate(final)
+        return final
+    }
+
     /// Enumerates cached headers without connecting or truncating saved-view candidates.
     public func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         try validateSourceID(sourceID)
@@ -3232,6 +3436,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         case ObjectIdentifier(ProgressiveMailSearching.self):
             return self as? Service
         case ObjectIdentifier(CachedMessageHeaderProviding.self):
+            return self as? Service
+        case ObjectIdentifier(CachedConversationProviding.self):
+            guard localSearchIndex is any MailConversationIndex else { return nil }
+            return self as? Service
+        case ObjectIdentifier(RelatedConversationLoading.self):
+            guard searchRelatedHeadersOperation != nil, relatedConversationConsent != nil else { return nil }
             return self as? Service
         case ObjectIdentifier(SyncHealthReporting.self),
              ObjectIdentifier(SyncConflictReviewing.self),

@@ -194,6 +194,12 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// The backend resolves source-owned conversations from cached headers, including offline.
     /// Gates `CachedConversationProviding`; it does not authorize remote discovery (ADR-0074).
     public static let cachedConversations = BackendExtendedCapabilities(rawValue: 1 << 14)
+
+    /// The backend can discover conversation members remotely on explicit
+    /// request. Gates `RelatedConversationLoading`; the reader must still hold
+    /// the account's related-mail consent before invoking it (ADR-0074,
+    /// ADR-0006). Never implies background or automatic fetching.
+    public static let relatedConversationLoading = BackendExtendedCapabilities(rawValue: 1 << 15)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.
