@@ -1150,11 +1150,12 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   tokens and never block ordinary caching.
 - TDD: new failing tests reproduced the missing References-only lookup and the
   refresh regression before implementation; all are green now.
-- Verification: BrevBackend 1,059 tests and BrevSyncEngine 74 XCTest + 9 Swift
-  Testing pass on stable Xcode 26.6. lint.sh, privacy-audit.sh and
-  git diff --check pass. FETCH-command test expectations updated for the new
-  attribute. No UI/network-consent surface changed, so snapshots, ADR-0006 and
-  PRIVACY.md need no update; ADR-0074 progress note and this log updated.
+- Verification: BrevBackend 1,059, BrevSyncEngine 74 XCTest + 9 Swift Testing,
+  BrevMail 1,555 + isolated Contacts 6 and BrevGmail 145 tests pass on stable
+  Xcode 26.6. lint.sh, privacy-audit.sh and git diff --check pass.
+  FETCH-command test expectations updated for the new attribute. No
+  UI/network-consent surface changed, so snapshots, ADR-0006 and PRIVACY.md
+  need no update; ADR-0074 progress note and this log updated.
 - Still pending per handoff: CachedConversationProviding wiring on
   IMAPSMTPBackend, reader/action integration, consented remote discovery,
   native/live acceptance. PR #30 stays draft; no merge, release or closure.
