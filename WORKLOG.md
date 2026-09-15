@@ -1159,3 +1159,15 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Still pending per handoff: CachedConversationProviding wiring on
   IMAPSMTPBackend, reader/action integration, consented remote discovery,
   native/live acceptance. PR #30 stays draft; no merge, release or closure.
+- Scoped two-axis review (standards + spec vs ADR-0074) ran after the first
+  commit. Spec axis caught a real bug: a non-string HEADER.FIELDS value
+  decoded as known-absent and would have let a malformed refresh overwrite
+  stored References — now nil/unknown (explicit NIL still means absent).
+  Also added the missing legacy-record decode test, extended the restart
+  test to the index-rebuild path (drop conversation_links + v4 reopen), and
+  centralized the member/header fallback into ConversationMember
+  .effectiveReferences plus a shared cachedLinkIdentifiers helper across the
+  resolver, engine and both stores (fixes in 8dcf59b). Noted follow-up: the
+  header-fields boundary scanner is a third copy of the quoted-string
+  scanner beside bodyTextValueStart/attributeListStart — left as-is to keep
+  the slice small.
