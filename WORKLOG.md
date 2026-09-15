@@ -1,5 +1,58 @@
 # Worklog
 
+## 2026-09-16 — Devin — Issue #28 / PR #30: ADR-0074 independent-review fixes
+
+### Goal
+
+Address the two-axis (standards + spec) review findings on `23281fc6` and
+`a4258de2` before handoff.
+
+### Changes
+
+- Consent revocation: session grants moved to process-wide state so
+  `removeAccountScopedState` (fresh store instance) clears a grant made
+  through `.shared`; consent-store tests serialized because the shared
+  grants are intentionally global.
+- IMAP pagination: `loginAndSearchRelatedHeaders` accepts a page cursor;
+  `loadRelatedConversation` follows truncated result windows within the
+  request budget, and a leftover cursor or ambiguous identifiers force
+  `.partial` — never `.completeForScope` (§8). New tests cover
+  page-following to completion and budget-exhausted partial coverage.
+- IMAP discovery fetch dropped `BODY.PEEK[TEXT]` — metadata-only per
+  §4's enumerated set (`includeSnippet` flag on the shared fetch helper).
+- Stale writes: discovered-header persistence is skipped when the task is
+  cancelled or remote availability dropped mid-scan.
+- Reader: `includeSpamAndTrash` bumps the lookup generation (rejects
+  in-flight updates from the narrower scope) and only re-fires remote work
+  when consent still holds — a revoked consent now re-scopes from cache
+  without a `.consentRequired` failure surface.
+- Docs: ADR-0006 and PRIVACY.md now disclose the one-shot Gmail
+  `users.messages.get` minimal-format fallback for legacy cache records
+  without a stored thread ID.
+- Snapshots: new `RelatedConversationBarSnapshotTests` (prompt, cached,
+  partial, failed-retry); `mailbox-view` light/dark baselines re-recorded
+  for the new Related mail group. Other settings baselines
+  (appearance/accounts/navigation/folder-workspace) drift on this host's
+  renderer with identical content and were left untouched.
+- Gmail store apply kept best-effort with an explicit rationale comment
+  (BrevGmail has no logging convention).
+
+### Verification
+
+- Focused: 12/12 backend related-conversation + consent tests; BrevMail
+  RelatedConversation suites 11/11 incl. new bar snapshots; settings
+  account-scoped consent cleanup passes.
+- Full BrevBackend suite: 1076 tests pass. `scripts/lint.sh`,
+  `scripts/format.sh`, `scripts/privacy-audit.sh`, `git diff --check` pass.
+- `mailbox-view` snapshots pass with new baselines; unrelated settings
+  snapshot drift on this host documented (pre-existing, not from this diff).
+
+### Skipped / pending
+
+- The settings snapshot drift on unrelated surfaces needs re-recording on
+  the maintainer's authoritative host, or CI will show the same drift.
+- Live-account acceptance still pending.
+
 ## 2026-09-15 — Devin — Issue #28 / PR #30: ADR-0074 provider extensions, consented remote discovery, reader integration
 
 ### Goal

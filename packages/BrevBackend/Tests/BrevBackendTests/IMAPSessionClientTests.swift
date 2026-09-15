@@ -928,7 +928,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"Sent\" (CONDSTORE)",
             "A0003 UID SEARCH OR OR OR OR OR HEADER \"Message-ID\" \"a@example.org\" HEADER \"In-Reply-To\" \"a@example.org\" HEADER \"References\" \"a@example.org\" HEADER \"Message-ID\" \"root@example.org\" HEADER \"In-Reply-To\" \"root@example.org\" HEADER \"References\" \"root@example.org\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [91])
         #expect(page.messages.first?.inReplyTo == "<a@example.org>")

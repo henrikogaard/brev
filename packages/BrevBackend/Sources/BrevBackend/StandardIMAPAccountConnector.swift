@@ -292,14 +292,15 @@ public extension IMAPAccountConnector {
                     scriptName: scriptName
                 )
             },
-            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
                 let client = await imapSessionPool.client(for: configuration)
                 return try await client.loginAndSearchRelatedHeaders(
                     configuration: configuration,
                     credential: credential,
                     folderPath: folderID,
                     identifiers: identifiers,
-                    limit: limit
+                    limit: limit,
+                    pageToken: pageToken
                 )
             },
             relatedConversationConsent: relatedConversationConsent,

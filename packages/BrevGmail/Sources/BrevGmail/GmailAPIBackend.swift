@@ -650,7 +650,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
 
         // Persist discovered metadata through the provider-owned store only;
-        // a metadata payload never replaces a richer cached one (§10).
+        // a metadata payload never replaces a richer cached one (§10). The
+        // write is best-effort cache enrichment — the snapshot is already
+        // materialized, so a failed apply only loses offline reuse.
         var upserts: [GmailMessage] = []
         for message in discoveredMessages {
             let existing = try await store.message(accountID: account.id, messageID: message.id)

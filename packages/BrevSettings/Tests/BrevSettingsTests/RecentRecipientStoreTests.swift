@@ -234,10 +234,16 @@ struct RecentRecipientStoreTests {
         let consent = RelatedConversationConsentStore(defaults: defaults)
         consent.setAutoLoadEnabled(true, accountID: "personal")
         consent.setAutoLoadEnabled(true, accountID: "work")
+        // Session grants from the explicit reader action live process-wide;
+        // account removal through a fresh store must still clear them.
+        RelatedConversationConsentStore.shared.grantForSession(accountID: "personal")
+        defer { RelatedConversationConsentStore.shared.revokeConsent(accountID: "personal") }
 
         SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "personal")
 
         #expect(await !consent.isRelatedConversationConsented(accountID: "personal"))
+        #expect(await !RelatedConversationConsentStore.shared
+            .isRelatedConversationConsented(accountID: "personal"))
         #expect(await consent.isRelatedConversationConsented(accountID: "work"))
     }
 

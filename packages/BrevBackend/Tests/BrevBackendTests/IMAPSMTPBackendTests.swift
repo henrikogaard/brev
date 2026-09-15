@@ -791,10 +791,10 @@ struct IMAPSMTPBackendTests {
             listFolders: { _, _ in [
                 IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox)
             ] },
-            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
                 try await searchRecorder.search(
                     configuration: configuration, credential: credential,
-                    folderID: folderID, identifiers: identifiers, limit: limit
+                    folderID: folderID, identifiers: identifiers, limit: limit, pageToken: pageToken
                 )
             },
             relatedConversationConsent: consent,
@@ -858,10 +858,10 @@ struct IMAPSMTPBackendTests {
                 IMAPFolderListing(path: "Junk", displayName: "Junk", delimiter: "/", flags: [], role: .spam),
                 IMAPFolderListing(path: "Trash", displayName: "Trash", delimiter: "/", flags: [], role: .trash)
             ] },
-            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
                 try await searchRecorder.search(
                     configuration: configuration, credential: credential,
-                    folderID: folderID, identifiers: identifiers, limit: limit
+                    folderID: folderID, identifiers: identifiers, limit: limit, pageToken: pageToken
                 )
             },
             relatedConversationConsent: consent
@@ -901,10 +901,10 @@ struct IMAPSMTPBackendTests {
                 IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox),
                 IMAPFolderListing(path: "Archive", displayName: "Archive", delimiter: "/", flags: [], role: .archive)
             ] },
-            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit in
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
                 try await searchRecorder.search(
                     configuration: configuration, credential: credential,
-                    folderID: folderID, identifiers: identifiers, limit: limit
+                    folderID: folderID, identifiers: identifiers, limit: limit, pageToken: pageToken
                 )
             },
             relatedConversationConsent: consent
@@ -919,6 +919,94 @@ struct IMAPSMTPBackendTests {
         #expect(snapshot.unavailableFolderIDs == ["Archive"])
         // The healthy folder was still searched.
         #expect(await searchRecorder.requests.map(\.folderID).contains("INBOX"))
+    }
+
+    @Test("related conversation loading follows truncated result windows to completion")
+    func relatedConversationLoadingFollowsResultPages() async throws {
+        let searchRecorder = RelatedHeaderSearchRecorder()
+        // The anchor's replies straddle two result pages in INBOX — the second
+        // page is reachable only by following the continuation cursor.
+        await searchRecorder.setPages(
+            folderID: "INBOX",
+            pages: [
+                [
+                    IMAPMessageListing(
+                        uid: 7, messageID: "<b@example.org>", inReplyTo: "<a@example.org>",
+                        subject: "Re: Plan",
+                        from: Correspondent(email: "ada@example.org"), to: [], cc: [], bcc: [],
+                        date: Date(timeIntervalSince1970: 7), isRead: true, isFlagged: false,
+                        isAnswered: false
+                    )
+                ],
+                [
+                    IMAPMessageListing(
+                        uid: 9, messageID: "<d@example.org>", inReplyTo: "<a@example.org>",
+                        subject: "Re: Plan",
+                        from: Correspondent(email: "gus@example.org"), to: [], cc: [], bcc: [],
+                        date: Date(timeIntervalSince1970: 11), isRead: true, isFlagged: false,
+                        isAnswered: false
+                    )
+                ]
+            ]
+        )
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox)
+            ] },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
+                try await searchRecorder.search(
+                    configuration: configuration, credential: credential,
+                    folderID: folderID, identifiers: identifiers, limit: limit, pageToken: pageToken
+                )
+            },
+            relatedConversationConsent: StubRelatedConversationConsent(consented: true)
+        )
+        let service = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = Self.conversationAnchor(messageID: "<a@example.org>")
+        let snapshot = try await service.loadRelatedConversation(
+            around: anchor, includeSpamAndTrash: false, continuation: nil
+        ) { _ in }
+
+        #expect(snapshot.coverage == .completeForScope)
+        #expect(Set(snapshot.members.map(\.header.id)) == ["INBOX:1", "INBOX:7", "INBOX:9"])
+        // The first chunk paginates nil → "1"; later frontier waves repeat the
+        // pattern for newly discovered identifiers.
+        let inboxRequests = await searchRecorder.requests.filter { $0.folderID == "INBOX" }
+        #expect(inboxRequests.prefix(2).map(\.pageToken) == [nil, "1"])
+    }
+
+    @Test("a result window the request budget cannot finish reports partial coverage")
+    func relatedConversationLoadingPartialOnUnfetchedPages() async throws {
+        let searchRecorder = RelatedHeaderSearchRecorder()
+        // Every page returns a continuation: pagination stops only when the
+        // request budget runs out, and coverage must stay partial.
+        await searchRecorder.setEndlessFolder("INBOX")
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [
+                IMAPFolderListing(path: "INBOX", displayName: "Inbox", delimiter: "/", flags: [], role: .inbox)
+            ] },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
+                try await searchRecorder.search(
+                    configuration: configuration, credential: credential,
+                    folderID: folderID, identifiers: identifiers, limit: limit, pageToken: pageToken
+                )
+            },
+            relatedConversationConsent: StubRelatedConversationConsent(consented: true)
+        )
+        let service = try #require(backend.extensionService(RelatedConversationLoading.self))
+        let anchor = Self.conversationAnchor(messageID: "<a@example.org>")
+        let snapshot = try await service.loadRelatedConversation(
+            around: anchor, includeSpamAndTrash: false, continuation: nil
+        ) { _ in }
+
+        #expect(snapshot.coverage == .partial)
+        #expect(await searchRecorder.requests.count == 64)
     }
 
     @Test("without related-header wiring the remote conversation service is absent")
@@ -938,7 +1026,7 @@ struct IMAPSMTPBackendTests {
             configuration: Self.configuration,
             credential: Self.credential,
             listFolders: { _, _ in [] },
-            searchRelatedHeaders: { _, _, _, _, _ in IMAPMessageListingPage(messages: []) }
+            searchRelatedHeaders: { _, _, _, _, _, _ in IMAPMessageListingPage(messages: []) }
         )
         #expect(!backendWithoutConsent.extendedCapabilities.contains(.relatedConversationLoading))
         #expect(backendWithoutConsent.extensionService(RelatedConversationLoading.self) == nil)
@@ -10634,18 +10722,33 @@ private actor RelatedHeaderSearchRecorder {
     struct Request: Equatable, Sendable {
         let folderID: Folder.ID
         let identifiers: [String]
+        let pageToken: String?
     }
 
     private(set) var requests: [Request] = []
     private var resultsByFolder: [Folder.ID: [IMAPMessageListing]] = [:]
+    private var pagesByFolder: [Folder.ID: [[IMAPMessageListing]]] = [:]
     private var failingFolders: Set<Folder.ID> = []
+    private var endlessFolders: Set<Folder.ID> = []
 
     func setResults(folderID: Folder.ID, listings: [IMAPMessageListing]) {
         resultsByFolder[folderID] = listings
     }
 
+    /// Splits a folder's hits across successive pages; each non-final page
+    /// returns a continuation token the backend must follow.
+    func setPages(folderID: Folder.ID, pages: [[IMAPMessageListing]]) {
+        pagesByFolder[folderID] = pages
+    }
+
     func setFailingFolders(_ folders: Set<Folder.ID>) {
         failingFolders = folders
+    }
+
+    /// A folder whose result window never terminates — every page hands back
+    /// a continuation token until the request budget stops pagination.
+    func setEndlessFolder(_ folder: Folder.ID) {
+        endlessFolders.insert(folder)
     }
 
     func search(
@@ -10653,11 +10756,26 @@ private actor RelatedHeaderSearchRecorder {
         credential: MailAccountCredential,
         folderID: Folder.ID,
         identifiers: [String],
-        limit: Int
+        limit: Int,
+        pageToken: String?
     ) async throws -> IMAPMessageListingPage {
-        requests.append(Request(folderID: folderID, identifiers: identifiers))
+        requests.append(Request(folderID: folderID, identifiers: identifiers, pageToken: pageToken))
         if failingFolders.contains(folderID) {
             throw MailBackendError.notConnected
+        }
+        if endlessFolders.contains(folderID) {
+            let index = pageToken.flatMap { Int($0) } ?? 0
+            return IMAPMessageListingPage(
+                messages: resultsByFolder[folderID] ?? [],
+                uidValidity: 42,
+                nextPageToken: String(index + 1)
+            )
+        }
+        if let pages = pagesByFolder[folderID] {
+            let index = pageToken.flatMap { Int($0) } ?? 0
+            let messages = index < pages.count ? pages[index] : []
+            let next = index + 1 < pages.count ? String(index + 1) : nil
+            return IMAPMessageListingPage(messages: messages, uidValidity: 42, nextPageToken: next)
         }
         return IMAPMessageListingPage(
             messages: resultsByFolder[folderID] ?? [],

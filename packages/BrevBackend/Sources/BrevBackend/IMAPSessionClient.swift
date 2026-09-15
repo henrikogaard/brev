@@ -1929,6 +1929,7 @@ public actor IMAPSessionClient {
         limit: Int,
         uidValidity: Int?,
         highestModSeq: UInt64? = nil,
+        includeSnippet: Bool = true,
         tagCounter: inout Int
     ) async throws -> IMAPMessageListingPage {
         try Task.checkCancellation()
@@ -1953,6 +1954,7 @@ public actor IMAPSessionClient {
         try Task.checkCancellation()
         let messages = try await fetchMessageListings(
             uids: uids,
+            includeSnippet: includeSnippet,
             tagCounter: &tagCounter
         )
         let nextPageToken = searchableUIDs.count > uids.count
@@ -1980,7 +1982,8 @@ public actor IMAPSessionClient {
         credential: MailAccountCredential,
         folderPath: String,
         identifiers: [String],
-        limit: Int = 200
+        limit: Int = 200,
+        pageToken: String? = nil
     ) async throws -> IMAPMessageListingPage {
         guard configuration.incoming.kind == .imap else {
             throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
@@ -1995,10 +1998,11 @@ public actor IMAPSessionClient {
             let selectedMailbox = try await select(folderPath: folderPath, tagCounter: &tagCounter)
             return try await searchMessagePage(
                 criteria: criteria,
-                pageToken: nil,
+                pageToken: pageToken,
                 limit: limit,
                 uidValidity: selectedMailbox.uidValidity,
                 highestModSeq: selectedMailbox.highestModSeq,
+                includeSnippet: false,
                 tagCounter: &tagCounter
             )
         }
@@ -3182,19 +3186,24 @@ public actor IMAPSessionClient {
 
     private func fetchMessageListings(
         uids: [Int],
+        includeSnippet: Bool = true,
         tagCounter: inout Int
     ) async throws -> [IMAPMessageListing] {
         // X-GM-LABELS is only valid on servers advertising X-GM-EXT-1; others
         // reject the whole FETCH, so it is added strictly behind the capability.
         let labelAttribute = serverCapabilities.supportsGmailExtensions ? " X-GM-LABELS" : ""
-        // References rides along on the existing listing fetch so cached
-        // headers can join conversations that lack In-Reply-To (ADR-0074).
-        // The section is header-only — no body bytes are requested.
+        // References rides along on the listing fetch so cached headers can
+        // join conversations that lack In-Reply-To (ADR-0074). Related-header
+        // discovery passes includeSnippet: false so its candidate fetch stays
+        // inside §4's enumerated metadata set — no body bytes at all.
+        let snippetAttribute = includeSnippet
+            ? " BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)>"
+            : ""
         let fetchResponses = try await execute(
             tag: nextTag(&tagCounter),
             commandName: "UID FETCH",
             command: "UID FETCH \(uids.map(String.init).joined(separator: ",")) "
-                + "(FLAGS ENVELOPE\(labelAttribute) BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)> "
+                + "(FLAGS ENVELOPE\(labelAttribute)\(snippetAttribute) "
                 + "BODY.PEEK[HEADER.FIELDS (REFERENCES)])"
         )
         return fetchResponses

@@ -152,7 +152,9 @@ identifiers (Message-ID, In-Reply-To, References) across every eligible
 folder in that mailbox — including folders not currently synced. IMAP
 accounts send bounded `UID SEARCH HEADER` queries and fetch only message
 metadata (envelope, flags, and References headers). Gmail accounts fetch
-the native thread with metadata format only.
+the native thread with metadata format only, plus at most one minimal
+message lookup to resolve the thread when an older cache record lacks a
+stored thread ID.
 
 Only message headers are transferred. Bodies and attachments are never
 downloaded by this feature, messages are never marked read, and nothing

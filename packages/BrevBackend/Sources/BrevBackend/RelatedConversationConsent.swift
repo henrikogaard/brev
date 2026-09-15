@@ -39,9 +39,13 @@ public final class RelatedConversationConsentStore: RelatedConversationConsentin
 
     private static let autoLoadKeyPrefix = "conversation.relatedMailAutoLoad."
 
+    /// Session grants are process-wide, not per store instance — account
+    /// removal paths construct a fresh store over the same defaults and must
+    /// still clear a grant made through `.shared`.
+    private static let sessionLock = NSLock()
+    private static var sessionConsents: Set<BrevAccount.ID> = []
+
     private let defaults: UserDefaults
-    private let lock = NSLock()
-    private var sessionConsents: Set<BrevAccount.ID> = []
 
     public init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -57,26 +61,26 @@ public final class RelatedConversationConsentStore: RelatedConversationConsentin
     public func setAutoLoadEnabled(_ isEnabled: Bool, accountID: BrevAccount.ID) {
         defaults.set(isEnabled, forKey: Self.key(for: accountID))
         if !isEnabled {
-            lock.withLock { _ = sessionConsents.remove(accountID) }
+            Self.sessionLock.withLock { _ = Self.sessionConsents.remove(accountID) }
         }
     }
 
     /// Records consent for this app session only — used by the explicit
     /// Load related mail action so one tap never becomes a stored preference.
     public func grantForSession(accountID: BrevAccount.ID) {
-        lock.withLock { _ = sessionConsents.insert(accountID) }
+        Self.sessionLock.withLock { _ = Self.sessionConsents.insert(accountID) }
     }
 
     /// Clears persistent and session consent, for account removal or revocation.
     public func revokeConsent(accountID: BrevAccount.ID) {
         defaults.removeObject(forKey: Self.key(for: accountID))
-        lock.withLock { _ = sessionConsents.remove(accountID) }
+        Self.sessionLock.withLock { _ = Self.sessionConsents.remove(accountID) }
     }
 
     /// True when either the session grant or the persisted preference authorizes
     /// a remote related-header lookup for this account right now.
     public func isRelatedConversationConsented(accountID: BrevAccount.ID) async -> Bool {
-        if lock.withLock({ sessionConsents.contains(accountID) }) { return true }
+        if Self.sessionLock.withLock({ Self.sessionConsents.contains(accountID) }) { return true }
         return isAutoLoadEnabled(accountID: accountID)
     }
 

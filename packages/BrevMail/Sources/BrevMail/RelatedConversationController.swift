@@ -115,6 +115,9 @@ final class RelatedConversationController {
     func includeSpamAndTrash() {
         includesSpamAndTrash = true
         guard let anchor else { return }
+        // A new generation rejects updates still in flight from the
+        // narrower scope.
+        generation += 1
         let current = generation
         task?.cancel()
         task = Task { [weak self] in
@@ -124,7 +127,7 @@ final class RelatedConversationController {
             let consented = await consentStore.isRelatedConversationConsented(
                 accountID: anchor.sourceID.accountID
             )
-            if remoteLoadAttempted || consented {
+            if consented {
                 await loadRemote(generation: current)
             }
         }

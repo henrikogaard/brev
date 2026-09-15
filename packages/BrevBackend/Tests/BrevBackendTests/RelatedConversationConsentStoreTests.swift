@@ -14,7 +14,9 @@
 import Foundation
 import Testing
 
-@Suite("Related conversation consent store")
+// Session grants are process-wide state, so these tests must not run
+// concurrently — a grant or revocation in a parallel test would leak here.
+@Suite("Related conversation consent store", .serialized)
 struct RelatedConversationConsentStoreTests {
     @Test("automatic lookup defaults off per account")
     func defaultsOffPerAccount() async throws {

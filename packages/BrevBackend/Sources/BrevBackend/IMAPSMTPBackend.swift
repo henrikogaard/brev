@@ -119,9 +119,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             -> SieveScriptPlan
     /// Bounded UID SEARCH HEADER discovery in one folder: returns listings whose
     /// headers cite any of the given reply identifiers (candidate matches —
-    /// callers verify exact linkage locally, ADR-0074).
+    /// callers verify exact linkage locally, ADR-0074). The trailing page
+    /// cursor continues a truncated result window.
     public typealias RelatedHeaderSearchOperation =
-        @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [String], Int) async throws
+        @Sendable (IMAPAccountConfiguration, MailAccountCredential, Folder.ID, [String], Int, String?) async throws
             -> IMAPMessageListingPage
     public typealias SessionDisconnectOperation =
         @Sendable (IMAPAccountConfiguration) async -> Void
@@ -2493,6 +2494,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         var searchedByFolder: [Folder.ID: Set<String>] = [:]
         var unavailableFolders: [Folder.ID] = []
         var queriedCount = 0
+        var unfetchedResultPages = false
 
         func linkIdentifiers(of member: ConversationMember) -> Set<String> {
             Set(ConversationMembershipResolver.cachedLinkIdentifiers(
@@ -2535,39 +2537,58 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 guard let pending = pendingByFolder[folder.id], !pending.isEmpty else { continue }
                 let chunk = Array(pending.sorted().prefix(Self.relatedSearchIdentifierChunkSize))
                 do {
-                    let page = try await searchRelatedHeaders(
-                        configuration, credential, folder.id, chunk, Self.relatedSearchResultLimit
-                    )
-                    queriedCount += 1
-                    progressed = true
+                    // Follow the result window's page cursor within the request
+                    // budget so a hit-heavy search is not silently capped (§8).
+                    var pageToken: String?
+                    repeat {
+                        guard queriedCount < Self.relatedSearchRequestBudget,
+                              !Task.isCancelled else { break }
+                        let page = try await searchRelatedHeaders(
+                            configuration, credential, folder.id, chunk,
+                            Self.relatedSearchResultLimit, pageToken
+                        )
+                        queriedCount += 1
+                        progressed = true
+                        pageToken = page.nextPageToken
+                        let generation = page.uidValidity.map { UInt64($0) }
+                        var batchHeaders: [MessageHeader] = []
+                        var discovered: Set<String> = []
+                        for listing in page.messages {
+                            let header = Self.header(from: listing, folderID: folder.id)
+                            let links = Set(ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
+                            // Candidate-search verification: keep only hits citing a
+                            // queried identifier (ADR-0074 §4).
+                            guard !links.isDisjoint(with: chunk) else { continue }
+                            let member = ConversationMember(
+                                sourceID: anchor.sourceID,
+                                header: header,
+                                folderGeneration: generation,
+                                references: header.references
+                            )
+                            if membersByLocation[member.location] == nil {
+                                membersByLocation[member.location] = member
+                                discovered.formUnion(links)
+                            }
+                            batchHeaders.append(header)
+                        }
+                        // Persist only while this lookup still owns the session —
+                        // a disconnect mid-scan must not keep refilling caches for
+                        // a retired or replacement account (§10).
+                        if !batchHeaders.isEmpty,
+                           !Task.isCancelled,
+                           await state.isRemoteAvailable() {
+                            await localSearchIndex?.storeHeaders(batchHeaders, account: account)
+                        }
+                        enqueue(discovered)
+                        try await onUpdate(snapshot(coverage: .loading))
+                    } while pageToken != nil
+                    // A page cursor left over means uninspected candidates —
+                    // coverage can never claim complete-for-scope.
+                    if pageToken != nil {
+                        unfetchedResultPages = true
+                    }
                     pendingByFolder[folder.id]?.subtract(chunk)
                     searchedByFolder[folder.id, default: []].formUnion(chunk)
-                    let generation = page.uidValidity.map { UInt64($0) }
-                    var batchHeaders: [MessageHeader] = []
-                    var discovered: Set<String> = []
-                    for listing in page.messages {
-                        let header = Self.header(from: listing, folderID: folder.id)
-                        let links = Set(ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
-                        // Candidate-search verification: keep only hits citing a
-                        // queried identifier (ADR-0074 §4).
-                        guard !links.isDisjoint(with: chunk) else { continue }
-                        let member = ConversationMember(
-                            sourceID: anchor.sourceID,
-                            header: header,
-                            folderGeneration: generation,
-                            references: header.references
-                        )
-                        if membersByLocation[member.location] == nil {
-                            membersByLocation[member.location] = member
-                            discovered.formUnion(links)
-                        }
-                        batchHeaders.append(header)
-                    }
-                    if !batchHeaders.isEmpty {
-                        await localSearchIndex?.storeHeaders(batchHeaders, account: account)
-                    }
-                    enqueue(discovered)
-                    try await onUpdate(snapshot(coverage: .loading))
                 } catch is CancellationError {
                     throw CancellationError()
                 } catch {
@@ -2579,11 +2600,15 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             if !progressed { break }
         }
 
-        // Honest completion: every eligible folder drained its frontier and no
-        // folder failed. Failed folders or budget-limited leftovers stay partial.
+        // Honest completion: every eligible folder drained its frontier, no
+        // folder failed and no search result window was left unfetched. Failed
+        // folders, truncated pages or budget-limited leftovers stay partial.
         let hasPendingWork = eligible.contains { pendingByFolder[$0.id]?.isEmpty == false }
         let final = try snapshot(
-            coverage: unavailableFolders.isEmpty && !hasPendingWork ? .completeForScope : .partial
+            coverage: unavailableFolders.isEmpty && !hasPendingWork && !unfetchedResultPages
+                && ambiguousIdentifiers.isEmpty
+                ? .completeForScope
+                : .partial
         )
         await onUpdate(final)
         return final
