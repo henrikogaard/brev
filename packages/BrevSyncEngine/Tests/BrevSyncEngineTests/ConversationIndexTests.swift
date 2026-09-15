@@ -83,6 +83,16 @@ struct ConversationIndexTests {
         #expect(Set(found.members.map { $0.header.id }) == ["Inbox:1", "Archive:2", "Sent:3", "Inbox:4"])
         #expect(found.coverage == .cached)
         #expect(found.anchor == anchor.location)
+        // Index loss/rebuild: stored headers re-derive References edges on the
+        // schema migration path, so the chain also survives a dropped index.
+        var database: OpaquePointer?
+        #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
+        #expect(sqlite3_exec(database, "DROP TABLE conversation_links; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+        sqlite3_close(database)
+        let rebuilt = try BrevSyncEngine(databaseURL: url)
+        let afterRebuild = try await rebuilt.cachedConversation(around: anchor, excludingFolderIDs: [])
+        #expect(Set(afterRebuild.members.map { $0.header.id }) == ["Inbox:1", "Archive:2", "Sent:3", "Inbox:4"])
+        #expect(afterRebuild.coverage == .cached)
     }
 
     @Test("a refresh without References keeps known links; known-absent stays absent", arguments: [false, true])

@@ -75,6 +75,17 @@ struct IMAPThreadingTests {
 
         #expect(withEmptyField?.references == [])
         #expect(withoutAttribute?.references == nil)
+        // A NIL section value is an explicit answer: the field is known absent.
+        let nilValue = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS () UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] NIL)"
+        )
+        // A malformed (non-string) section value is unknown, not absent, so a
+        // refresh must preserve previously stored References.
+        let malformed = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS () UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] (NOT A STRING))"
+        )
+        #expect(nilValue?.references == [])
+        #expect(malformed?.references == nil)
     }
 
     @Test("a partially malformed References field keeps only verifiable identifiers")

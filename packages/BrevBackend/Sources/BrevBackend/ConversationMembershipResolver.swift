@@ -46,7 +46,7 @@ public enum ConversationMembershipResolver {
             }
             // An explicitly fetched member value wins; otherwise the cached
             // header's References field is the provenance (ADR-0074).
-            let memberReferences = member.references ?? member.header.references
+            let memberReferences = member.effectiveReferences
             guard (memberReferences ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536
             else { throw ConversationLookupError.invalidMetadata }
             var references = try identifiers(in: member.header.inReplyTo)
@@ -80,6 +80,24 @@ public enum ConversationMembershipResolver {
         }
         return try ConversationSnapshot(anchor: anchor.location, members: related, coverage: .cached,
                                         ambiguousIdentifiers: relevantAmbiguities.sorted())
+    }
+
+    /// Non-throwing identifier set used for cache indexing and candidate scans:
+    /// the message's own ID plus its In-Reply-To and References ancestors.
+    /// Returns nil when the own or In-Reply-To fields are malformed, matching
+    /// the index-side skip; each References element is verified independently
+    /// so one bad token cannot poison the rest. `references` overrides the
+    /// header's persisted field, mirroring `ConversationMember.effectiveReferences`.
+    public static func cachedLinkIdentifiers(
+        for header: MessageHeader,
+        references: [String]? = nil
+    ) -> [String]? {
+        guard let own = try? identifiers(in: header.rfcMessageID), own.count <= 1,
+              let parents = try? identifiers(in: header.inReplyTo) else { return nil }
+        let referenced = (references ?? header.references ?? []).flatMap {
+            (try? identifiers(in: $0)) ?? []
+        }
+        return own + parents + referenced
     }
 
     /// Parses bracketed RFC identifiers or one legacy opaque ID without guessing from prose.

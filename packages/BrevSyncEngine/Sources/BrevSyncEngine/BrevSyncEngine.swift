@@ -128,7 +128,7 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         }
         _ = try ConversationSnapshot(anchor: anchor.location, members: [anchor], coverage: .cached)
         try await validateConversationGeneration(anchor)
-        let anchorReferences = anchor.references ?? anchor.header.references
+        let anchorReferences = anchor.effectiveReferences
         guard (anchorReferences ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536 else {
             throw ConversationLookupError.invalidMetadata
         }
@@ -154,12 +154,9 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
                 guard candidates[member.location] == nil else { continue }
                 guard candidates.count < 10000 else { partial = true; break }
                 candidates[member.location] = member
-                let own = (try? ConversationMembershipResolver.identifiers(in: member.header.rfcMessageID)) ?? []
-                let parents = (try? ConversationMembershipResolver.identifiers(in: member.header.inReplyTo)) ?? []
-                let referenced = (member.references ?? member.header.references ?? []).flatMap {
-                    (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
-                }
-                for next in own + parents + referenced where !queued.contains(next) {
+                let memberLinks = ConversationMembershipResolver
+                    .cachedLinkIdentifiers(for: member.header, references: member.references) ?? []
+                for next in memberLinks where !queued.contains(next) {
                     guard queued.count < 10000 else { partial = true; break }
                     queued.insert(next)
                     pending.append(next)

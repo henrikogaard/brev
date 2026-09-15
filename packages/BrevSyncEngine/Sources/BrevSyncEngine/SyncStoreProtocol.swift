@@ -157,13 +157,8 @@ actor InMemorySyncStore: SyncStoreProtocol {
         var result: [ConversationMember] = []
         for (key, headers) in headersByFolder where key.hasPrefix("\(source.accountID)|") {
             for header in headers.values.sorted(by: { $0.id < $1.id }) {
-                guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
-                      let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo)
-                else { continue }
-                let referenced = (header.references ?? []).flatMap {
-                    (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
-                }
-                guard (own + parents + referenced).contains(identifier) else { continue }
+                guard let links = ConversationMembershipResolver.cachedLinkIdentifiers(for: header),
+                      links.contains(identifier) else { continue }
                 let generation = syncStates[folderKey(source.accountID, header.folderID)]?.uidValidity
                 result.append(ConversationMember(sourceID: source, header: header,
                                                  folderGeneration: generation.flatMap { UInt64(exactly: $0) },

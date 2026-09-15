@@ -38,6 +38,13 @@ public struct ConversationMember: Hashable, Sendable, Identifiable {
     /// discovery). When nil, resolvers fall back to `header.references`, where
     /// nil means unknown/unfetched and an empty array means known absent.
     public let references: [String]?
+
+    /// The References tokens to link on: an explicitly fetched member value
+    /// wins over the header's persisted field (ADR-0074).
+    public var effectiveReferences: [String]? {
+        references ?? header.references
+    }
+
     public var location: ConversationLocation {
         ConversationLocation(
             sourceID: sourceID,

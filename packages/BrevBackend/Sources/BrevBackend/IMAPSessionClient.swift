@@ -680,14 +680,21 @@ public struct IMAPMessageListing: Sendable, Hashable {
     }
 
     /// Parses the `HEADER.FIELDS (REFERENCES)` section value returned with the
-    /// listing fetch. `nil` means the attribute was absent from the response;
-    /// an empty array means the References field is known absent.
+    /// listing fetch. `nil` means the attribute was absent or its value was
+    /// malformed (so a refresh preserves previously stored References); an
+    /// empty array means the References field is known absent. Literals are
+    /// already resolved into quoted strings by the time the line is parsed.
     private static func parseReferences(in line: String) -> [String]? {
         guard let valueStart = headerFieldsValueStart(named: "REFERENCES", in: line) else { return nil }
         var parser = IMAPSExpressionParser(String(line[valueStart...]))
-        guard let value = parser.parseValue() else { return nil }
-        guard let block = value.stringValue else { return [] }
-        return referencesIdentifiers(in: block)
+        switch parser.parseValue() {
+        case .string(let block):
+            return referencesIdentifiers(in: block)
+        case .nilValue:
+            return []
+        default:
+            return nil
+        }
     }
 
     /// Index just past a `BODY[HEADER.FIELDS (…)]`/`BODY.PEEK[…]` section label

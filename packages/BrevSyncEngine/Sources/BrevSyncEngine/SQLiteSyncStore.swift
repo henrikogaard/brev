@@ -363,14 +363,11 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         sqlite3_clear_bindings(statements.delete)
         guard deleted == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
         // Malformed linkage must not prevent ordinary mail from being cached.
-        guard let own = try? ConversationMembershipResolver.identifiers(in: header.rfcMessageID), own.count <= 1,
-              let parents = try? ConversationMembershipResolver.identifiers(in: header.inReplyTo) else { return }
-        // Each References element is validated independently so one malformed
-        // token cannot poison the message's remaining verified links.
-        let referenced = (header.references ?? []).flatMap {
-            (try? ConversationMembershipResolver.identifiers(in: $0)) ?? []
-        }
-        for identifier in Set(own + parents + referenced) {
+        // Each References element is validated independently inside the helper
+        // so one bad token cannot poison the message's remaining verified links.
+        guard let linkIdentifiers = ConversationMembershipResolver
+            .cachedLinkIdentifiers(for: header) else { return }
+        for identifier in Set(linkIdentifiers) {
             sqlite3_bind_text(statements.insert, 1, accountID, -1, Self.transient)
             sqlite3_bind_text(statements.insert, 2, header.folderID, -1, Self.transient)
             sqlite3_bind_int64(statements.insert, 3, Int64(Self.uid(from: header.id)))
