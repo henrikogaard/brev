@@ -1147,15 +1147,21 @@ public struct BrevMailRootView: View {
     /// Identity of the conversation anchor the reader resolves cached and
     /// remote snapshots around (ADR-0074). Includes the backend identity so an
     /// account/source switch re-evaluates capabilities and discards stale work.
-    private func conversationAnchorKey(fallbackHeader: MessageHeader?) -> String {
+    private struct ConversationAnchorKey: Equatable {
+        let sourceID: MailSourceID?
+        let folderID: Folder.ID?
+        let headerID: MessageHeader.ID?
+        let backendID: ObjectIdentifier
+    }
+
+    private func conversationAnchorKey(fallbackHeader: MessageHeader?) -> ConversationAnchorKey {
         let header = navigation.selectedHeader ?? fallbackHeader
-        return [
-            navigation.selectedSourceID?.accountID ?? "",
-            navigation.selectedSourceID?.mailboxID ?? "",
-            header?.folderID ?? "",
-            header?.id ?? "",
-            String(describing: ObjectIdentifier(selectedBackend))
-        ].joined(separator: "\u{1F}")
+        return ConversationAnchorKey(
+            sourceID: navigation.selectedSourceID,
+            folderID: header?.folderID,
+            headerID: header?.id,
+            backendID: ObjectIdentifier(selectedBackend)
+        )
     }
 
     private func showsRelatedConversationBar(fallbackHeader: MessageHeader?) -> Bool {

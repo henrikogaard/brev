@@ -443,9 +443,9 @@ struct MailboxViewSection: View {
         }
     }
 
-    private var relatedConsentAccountBinding: Binding<BrevAccount.ID> {
+    private var relatedConsentAccountBinding: Binding<BrevAccount.ID?> {
         Binding(
-            get: { relatedConsentAccountID ?? accounts.first?.id ?? "" },
+            get: { relatedConsentAccountID ?? accounts.first?.id },
             set: { relatedConsentAccountID = $0 }
         )
     }

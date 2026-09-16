@@ -45,6 +45,16 @@ test suite against process-wide session grants, and clamped the
 related-header search limit to `maximumSearchPageSize` like the sibling
 search op.
 
+Third pass (all findings): consolidated the related-mail bar's three
+coverage dispatches into one presentation value (symbol, tint and copy can
+no longer diverge), extracted the shared Gmail member-building helper used
+by both cached and remote paths, replaced the packed anchor-key string
+with a `ConversationAnchorKey` struct, and made the related-mail account
+picker binding optional instead of an empty-string sentinel. Session-pool
+safety verified: `withAuthenticatedSession` serializes every op through
+`acquireSessionOperation`, so SELECT-before-SEARCH cannot interleave.
+
+
 ### Verification
 
 - Focused: 12/12 backend related-conversation + consent tests; BrevMail

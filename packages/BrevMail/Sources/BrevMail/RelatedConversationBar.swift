@@ -26,10 +26,10 @@ struct RelatedConversationBar: View {
 
     var body: some View {
         HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: symbolName)
+            Image(systemName: presentation.symbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(iconColor)
-            Text(message)
+                .foregroundStyle(presentation.tint)
+            Text(presentation.message)
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
@@ -43,49 +43,34 @@ struct RelatedConversationBar: View {
         .accessibilityElement(children: .combine)
     }
 
-    private var symbolName: String {
-        if controller.isLoadingRemote { return "arrow.triangle.2.circlepath" }
-        if controller.remoteLoadDidFail { return "exclamationmark.triangle" }
-        switch controller.snapshot?.coverage {
-        case .completeForScope: return "checkmark.circle"
-        case .partial: return "exclamationmark.circle"
-        case .loading: return "arrow.triangle.2.circlepath"
-        default: return "arrow.triangle.branch"
-        }
-    }
-
-    private var iconColor: Color {
-        if controller.remoteLoadDidFail { return theme.warning.color }
-        switch controller.snapshot?.coverage {
-        case .completeForScope: return theme.accent.color
-        case .partial: return theme.warning.color
-        default: return theme.textSecondary.color
-        }
-    }
-
-    private var message: String {
+    /// One dispatch over the controller's state keeps the symbol, tint and
+    /// copy consistent — a coverage case can never show another case's icon.
+    private var presentation: (symbol: String, tint: Color, message: String) {
         if controller.isLoadingRemote {
-            return String(localized: "Loading related mail across folders…", bundle: .module)
+            return ("arrow.triangle.2.circlepath", theme.textSecondary.color,
+                    String(localized: "Loading related mail across folders…", bundle: .module))
         }
         if controller.remoteLoadDidFail {
-            return String(localized: "Couldn't load related mail.", bundle: .module)
+            return ("exclamationmark.triangle", theme.warning.color,
+                    String(localized: "Couldn't load related mail.", bundle: .module))
         }
         switch controller.snapshot?.coverage {
         case .completeForScope:
-            return String(localized: "Conversation complete for this mailbox.", bundle: .module)
+            return ("checkmark.circle", theme.accent.color,
+                    String(localized: "Conversation complete for this mailbox.", bundle: .module))
         case .partial:
-            return String(
-                localized: "Partial — some folders couldn't be searched.", bundle: .module
-            )
+            return ("exclamationmark.circle", theme.warning.color,
+                    String(localized: "Partial — some folders couldn't be searched.", bundle: .module))
         case .loading:
-            return String(localized: "Loading related mail…", bundle: .module)
+            return ("arrow.triangle.2.circlepath", theme.textSecondary.color,
+                    String(localized: "Loading related mail…", bundle: .module))
         case .cached:
-            return String(localized: "Showing cached conversation.", bundle: .module)
+            return ("arrow.triangle.branch", theme.textSecondary.color,
+                    String(localized: "Showing cached conversation.", bundle: .module))
         case nil:
-            return String(
-                localized: "Brev can look for related mail in other folders of this account.",
-                bundle: .module
-            )
+            return ("arrow.triangle.branch", theme.textSecondary.color,
+                    String(localized: "Brev can look for related mail in other folders of this account.",
+                           bundle: .module))
         }
     }
 

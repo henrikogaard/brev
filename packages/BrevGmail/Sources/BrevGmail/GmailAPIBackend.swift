@@ -560,12 +560,12 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             for message in page {
                 guard seen.insert(message.id).inserted else { continue }
                 if !includeSpamAndTrash, message.labelIDs.contains("SPAM") || message.labelIDs.contains("TRASH") { continue }
-                let folderID = Self.conversationFolderID(for: message, preferred: selectedFolderID, labels: labels)
-                let fields = Self.headerMap(message.payload?.headers ?? [])
-                let references: [String]? = message.payload == nil ? nil : fields["references"].map { [$0] } ?? []
-                members.append(ConversationMember(sourceID: anchor.sourceID,
-                                                  header: Self.header(from: message, folderID: folderID, labels: labels),
-                                                  references: references))
+                members.append(Self.conversationMember(
+                    for: message,
+                    sourceID: anchor.sourceID,
+                    preferredFolderID: selectedFolderID,
+                    labels: labels
+                ))
             }
             guard let last = page.last else { break }
             if let cursor, last.id <= cursor { throw ConversationLookupError.invalidSnapshot }
@@ -636,13 +636,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                 members.append(anchor)
                 continue
             }
-            let folderID = Self.conversationFolderID(for: message, preferred: anchor.header.folderID, labels: labels)
-            let fields = Self.headerMap(message.payload?.headers ?? [])
-            let references: [String]? = message.payload == nil ? nil : fields["references"].map { [$0] } ?? []
-            members.append(ConversationMember(
+            members.append(Self.conversationMember(
+                for: message,
                 sourceID: anchor.sourceID,
-                header: Self.header(from: message, folderID: folderID, labels: labels),
-                references: references
+                preferredFolderID: anchor.header.folderID,
+                labels: labels
             ))
         }
         if !members.contains(where: { $0.location == anchor.location }) {
@@ -2176,6 +2174,26 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private static func primaryFolderID(for message: GmailMessage, labels: [GmailLabel]) -> String {
         message.labelIDs.first { id in labels.contains { $0.id == id } } ?? "ALL_MAIL"
+    }
+
+    /// Builds a conversation member from a Gmail message for both the cached
+    /// and remote paths: resolves folder provenance, maps the metadata
+    /// payload to a header, and carries References — nil when the payload was
+    /// never fetched, empty when the message has none.
+    private static func conversationMember(
+        for message: GmailMessage,
+        sourceID: MailSourceID,
+        preferredFolderID: Folder.ID,
+        labels: [GmailLabel]
+    ) -> ConversationMember {
+        let folderID = conversationFolderID(for: message, preferred: preferredFolderID, labels: labels)
+        let fields = headerMap(message.payload?.headers ?? [])
+        let references: [String]? = message.payload == nil ? nil : fields["references"].map { [$0] } ?? []
+        return ConversationMember(
+            sourceID: sourceID,
+            header: header(from: message, folderID: folderID, labels: labels),
+            references: references
+        )
     }
 
     private static func header(from message: GmailMessage, folderID: String, labels: [GmailLabel]) -> MessageHeader {
