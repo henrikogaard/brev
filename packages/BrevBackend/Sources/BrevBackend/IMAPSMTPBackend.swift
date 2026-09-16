@@ -847,6 +847,41 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         )
     }
 
+    /// Resolved thread IDs per folder, keyed by an order-independent
+    /// fingerprint of the fields the resolver reads (id, messageID,
+    /// inReplyTo, threadID, date). Flag updates keep the fingerprint, so
+    /// read/flag churn and repeated page listings no longer re-run
+    /// union-find over the whole folder.
+    private let threadResolutionLock = NSLock()
+    private var threadResolutionMemos: [Folder.ID: (fingerprint: UInt64, threadIDs: [MessageHeader.ID: String])] = [:]
+
+    /// Order-independent fingerprint over the resolver's input fields — the
+    /// union-find result depends only on the set of (id, messageID,
+    /// inReplyTo, threadID, date) tuples, not their order.
+    private static func threadResolutionFingerprint(of headers: [MessageHeader]) -> UInt64 {
+        var folded: UInt64 = 0xCBF2_9CE4_8422_2325
+        var weighted: UInt64 = 0
+        for header in headers {
+            var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+            for byte in header.id.utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
+            }
+            for byte in (header.messageID ?? "").utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
+            }
+            for byte in (header.inReplyTo ?? "").utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
+            }
+            for byte in header.threadID.utf8 {
+                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
+            }
+            hash = (hash ^ header.date.timeIntervalSince1970.bitPattern) &* 0x0000_0100_0000_01B3
+            folded ^= hash
+            weighted &+= hash &* 0x9E37_79B9_7F4A_7C15
+        }
+        return folded ^ (weighted &* 0x9E37_79B9_7F4A_7C15) ^ UInt64(headers.count)
+    }
+
     /// Resolves conversations for `headers` against the folder's cached
     /// headers, so a reply that arrives on page 2 still joins the message it
     /// answers on page 1. Resolution is pure and idempotent: it reads
@@ -862,9 +897,25 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         guard !cached.isEmpty else {
             return MessageThreadResolver.resolved(headers)
         }
+        let startedAt = Date()
         let headerIDs = Set(headers.map(\.id))
         let known = headers + cached.filter { !headerIDs.contains($0.id) }
-        let threadIDs = MessageThreadResolver.threadIDsByHeaderID(for: known)
+        let fingerprint = Self.threadResolutionFingerprint(of: known)
+        let memo = threadResolutionLock.withLock { threadResolutionMemos[folderID] }
+        let threadIDs: [MessageHeader.ID: String]
+        if let memo, memo.fingerprint == fingerprint {
+            threadIDs = memo.threadIDs
+        } else {
+            threadIDs = MessageThreadResolver.threadIDsByHeaderID(for: known)
+            threadResolutionLock.withLock {
+                threadResolutionMemos[folderID] = (fingerprint, threadIDs)
+            }
+        }
+        MailPerformanceDiagnostics.logThreadResolution(
+            inputCount: known.count,
+            hit: memo?.fingerprint == fingerprint,
+            durationMilliseconds: MailPerformanceDiagnostics.durationMilliseconds(since: startedAt)
+        )
         return headers.map { header in
             guard let threadID = threadIDs[header.id],
                   threadID != header.threadID
@@ -3790,6 +3841,35 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         }
     }
 
+    /// Merges a fetched page into the sorted cached headers. The common case —
+    /// a "load more" page of strictly older, unseen messages — appends without
+    /// the full-folder dictionary rebuild and re-sort.
+    private static func mergedSortedHeaders(
+        existing: [MessageHeader],
+        incoming: [MessageHeader]
+    ) -> [MessageHeader] {
+        guard !incoming.isEmpty else { return existing }
+        let deduplicatedIncoming = deduplicatedByID(incoming)
+        guard let last = existing.last else { return sortedHeaders(deduplicatedIncoming) }
+
+        let existingIDs = Set(existing.map(\.id))
+        let hasOverlap = deduplicatedIncoming.contains { existingIDs.contains($0.id) }
+        // A header sorts after the tail when its date is older, or on a tie
+        // when its id is smaller (sortedHeaders order: date desc, then id desc).
+        let allSortAfterTail = deduplicatedIncoming.allSatisfy {
+            $0.date < last.date || ($0.date == last.date && $0.id < last.id)
+        }
+        if !hasOverlap, allSortAfterTail {
+            return existing + sortedHeaders(deduplicatedIncoming)
+        }
+
+        var headersByID = Dictionary(existing.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
+        for header in deduplicatedIncoming {
+            headersByID[header.id] = header
+        }
+        return sortedHeaders(Array(headersByID.values))
+    }
+
     /// Drops headers whose id already appeared (a server may return two FETCH
     /// lines for one UID), keeping the first occurrence and preserving order, so
     /// duplicate-id headers never enter the cache.
@@ -3837,17 +3917,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             }
 
             if mergingWithExisting {
-                var headersByID = Dictionary(cachedSnapshot.headers.map { ($0.id, $0) }, uniquingKeysWith: { _, newer in newer })
-                for header in headers {
-                    headersByID[header.id] = header
-                }
                 var pageHeaderIDsByToken = cachedSnapshot.pageHeaderIDsByToken
                 if let loadedPageToken {
                     pageHeaderIDsByToken[loadedPageToken] = Set(headers.map(\.id))
                 }
+                let mergedHeaders = Self.mergedSortedHeaders(
+                    existing: cachedSnapshot.headers,
+                    incoming: headers
+                )
                 await headerCache?.setSnapshot(
                     IMAPMailboxHeaderCacheSnapshot(
-                        headers: Self.sortedHeaders(Array(headersByID.values)),
+                        headers: mergedHeaders,
                         uidValidity: cachedSnapshot.uidValidity,
                         highestModSeq: highestModSeq ?? cachedSnapshot.highestModSeq,
                         nextPageToken: nextPageToken,
@@ -4253,6 +4333,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         // CHANGEDSINCE fetch). `Dictionary(uniqueKeysWithValues:)` would TRAP on
         // the duplicate; keep the last (newest modseq-ordered) flags instead.
         let changesByUID = Dictionary(changes.map { ($0.uid, $0.flags) }, uniquingKeysWith: { _, newer in newer })
+        var changedHeaders: [MessageHeader] = []
         snapshot.headers = snapshot.headers.map { header in
             guard let ref = try? Self.messageReference(from: header.id),
                   let newFlags = changesByUID[ref.uid] else { return header }
@@ -4260,13 +4341,18 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             var updated = header
             updated = Self.updatedHeader(updated, isRead: rawFlagsLowered.contains("\\seen"))
             updated = Self.updatedHeader(updated, isFlagged: rawFlagsLowered.contains("\\flagged"))
+            if updated != header {
+                changedHeaders.append(updated)
+            }
             return updated
         }
         if let newModSeq = newHighestModSeq {
             snapshot.highestModSeq = newModSeq
         }
         await headerCache?.setSnapshot(snapshot, accountID: account.id, folderID: folderID)
-        await localSearchIndex?.storeHeaders(snapshot.headers, account: account)
+        // Only the touched headers need re-indexing; rewriting the whole
+        // folder into the search index made every flag delta O(folder).
+        await localSearchIndex?.storeHeaders(changedHeaders, account: account)
     }
 
     private func updateCachedHighestModSeq(_ newModSeq: UInt64, folderID: Folder.ID) async {
@@ -4339,11 +4425,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         guard query.folderID == nil, !folders.isEmpty else {
             return [query]
         }
-        return folders.map { folder in
-            var folderQuery = query
-            folderQuery.folderID = folder.id
-            return folderQuery
-        }
+        // One folder-scoped query instead of one query per folder — the index
+        // serializes internally, so fanning out only multiplied await hops and
+        // candidate scans.
+        var scoped = query
+        scoped.folderIDs = Set(folders.map(\.id))
+        return [scoped]
     }
 
     private static func scopedIndexedSearchResults(
@@ -4489,6 +4576,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     private func clearLocalCaches() async {
+        threadResolutionLock.withLock { threadResolutionMemos.removeAll() }
         await folderCache?.clear(accountID: account.id)
         await headerCache?.clear(accountID: account.id)
         await sourceCache?.clear(accountID: account.id)

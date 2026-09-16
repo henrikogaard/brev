@@ -706,6 +706,12 @@ public struct SearchQuery: Sendable, Hashable, Codable {
     /// Restrict results to a specific folder. `nil` searches all folders.
     public var folderID: String?
 
+    /// Restrict results to a set of folders. Used internally to scope an
+    /// all-folders query to the folders an account actually has, so the
+    /// local index answers in one pass instead of one query per folder.
+    /// Ignored when `folderID` is set.
+    public var folderIDs: Set<String>?
+
     /// Filter by sender address or display name (partial match).
     public var from: String?
 
@@ -748,10 +754,12 @@ public struct SearchQuery: Sendable, Hashable, Codable {
         isUnread: Bool? = nil,
         isFlagged: Bool? = nil,
         subject: String? = nil,
+        folderIDs: Set<String>? = nil,
         execution: SearchExecution = .cacheThenServer
     ) {
         self.text = text
         self.folderID = folderID
+        self.folderIDs = folderIDs
         self.from = from
         self.to = to
         self.dateRange = dateRange
@@ -772,6 +780,7 @@ public struct SearchQuery: Sendable, Hashable, Codable {
             || isUnread != nil
             || isFlagged != nil
             || !(subject?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true)
+            || !(folderIDs?.isEmpty ?? true)
     }
 
     /// Returns `true` if the message header satisfies all non-nil predicates.
@@ -784,6 +793,8 @@ public struct SearchQuery: Sendable, Hashable, Codable {
         if let isFlagged, header.isFlagged != isFlagged { return false }
         if let hasAttachments, header.hasAttachments != hasAttachments { return false }
         if let folderID, header.folderID != folderID { return false }
+        if folderID == nil, let folderIDs, !folderIDs.isEmpty,
+           !folderIDs.contains(header.folderID) { return false }
         if let dateRange, !dateRange.contains(header.date) { return false }
         if let from {
             let q = from.trimmingCharacters(in: .whitespacesAndNewlines)

@@ -1542,7 +1542,15 @@ public actor IMAPSessionClient {
         operationClass: IMAPSessionOperationClass? = nil,
         operation: (inout Int) async throws -> Result
     ) async throws -> Result {
+        // One command session per account serializes every operation; log the
+        // queue wait so sync/foreground contention is measurable separately
+        // from network time.
+        let queuedAt = Date()
         await acquireSessionOperation(operationClass)
+        let queueWaitMilliseconds = MailPerformanceDiagnostics.durationMilliseconds(since: queuedAt)
+        if queueWaitMilliseconds > 0 {
+            MailPerformanceDiagnostics.logSessionQueueWait(durationMilliseconds: queueWaitMilliseconds)
+        }
         defer { releaseSessionOperation() }
 
         let maximumAttempts = reusesAuthenticatedSession && retriesAfterDisconnect ? 2 : 1

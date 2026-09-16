@@ -1307,3 +1307,48 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   header-fields boundary scanner is a third copy of the quoted-string
   scanner beside bodyTextValueStart/attributeListStart — left as-is to keep
   the slice small.
+
+## 2026-09-16 — Devin — #28 / PR #30, performance review fixes
+
+- Deep performance review of list/sync/search/reader paths, then fixes for all
+  findings. Evidence-based: every issue traced to a concrete call site before
+  editing.
+- Header cache: FileBackedIMAPMailboxHeaderCache now coalesces writes —
+  setSnapshot updates memory and marks the folder dirty; a 750ms debounce
+  flushes all dirty folders once (previously every page load, flag update,
+  CONDSTORE delta and removal JSON-encoded + atomically rewrote the whole
+  folder). flushPendingWrites() is public for lifecycle/tests. Two existing
+  cross-instance tests now flush first; new test asserts debounce + flush.
+- cacheHeaders merge: appended pages of strictly-older unseen headers skip the
+  full-folder dictionary rebuild and re-sort (mergedSortedHeaders fast path);
+  overlap/interleave still takes the full merge.
+- CONDSTORE: applyCONDSTOREFlagChanges re-indexes only headers whose flags
+  actually changed, not the entire folder snapshot.
+- Thread resolution: per-folder memo keyed by an order-independent fingerprint
+  over (id, messageID, inReplyTo, threadID, date) — flag churn and repeated
+  page listings reuse the union-find result instead of re-running it over the
+  whole folder per call. Memo cleared in clearLocalCaches.
+- Search: SearchQuery gains optional folderIDs (Codable-backward-compatible
+  optional; matches() enforces membership; hasSearchCriteria counts a non-empty
+  set, matching single-folderID semantics). localIndexQueries emits ONE scoped
+  query for all-folders search; SQLiteSyncStore ftsCandidates/headerCandidates
+  take a folder scope set (single = ?, multi = IN (...)) instead of one query
+  per folder — the engine serializes internally so fan-out only multiplied
+  await hops. Four backend test expectations updated (folderIDs vs folderID).
+- Reader/list: buffer-identity helper Array.hasIdenticalStorage(to:) — O(1)
+  array reuse check, sound because the cache retains the stored buffer. Both
+  presentation caches (folder list + unified inbox) match headers/items by
+  buffer identity instead of O(n) deep equality per body eval. Reader thread
+  derivation memoized via ReaderThreadHeadersMemo (@State class); controller
+  mergedThreadHeaders memoized on (loaded buffer, snapshotRevision); remote
+  onUpdate coalesced at 150ms so per-page emissions don't re-render per folder.
+- Instrumentation: MailPerformanceDiagnostics gains logHeaderCacheFlush,
+  logThreadResolution (inputCount + hit), logSessionQueueWait (acquire wait in
+  withAuthenticatedSession, logged when >0ms); signpost intervals around cache
+  flush and both presentation builds.
+- Not changed: removal loops were verified already single-write per folder;
+  the coalesced flush covers them. A second IMAP command session for
+  background work remains a larger design change, not implemented.
+- Verification: BrevBackend 1077, BrevSyncEngine 74 XCTest + 9 Swift Testing,
+  BrevMail 1572, BrevGmail 147 — all pass. lint.sh, format.sh (0 files),
+  privacy-audit.sh, git diff --check clean.

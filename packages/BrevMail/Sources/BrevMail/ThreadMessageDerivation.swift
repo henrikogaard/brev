@@ -34,6 +34,32 @@ enum ThreadMessageDerivation {
     }
 }
 
+/// Memoizes the reader's thread derivation: filtering the whole folder and
+/// sorting the result on every body evaluation cost O(n) even when neither
+/// the headers nor the selected thread changed.
+final class ReaderThreadHeadersMemo {
+    private var source: [MessageHeader]?
+    private var threadID: String?
+    private var result: [MessageHeader] = []
+
+    /// Returns the thread's headers, recomputing only when the source array's
+    /// backing buffer or the thread changes.
+    func headers(in allHeaders: [MessageHeader], threadID: String) -> [MessageHeader] {
+        if let source, self.threadID == threadID,
+           allHeaders.hasIdenticalStorage(to: source) {
+            return result
+        }
+        let resolved = ThreadMessageDerivation.threadHeaders(
+            from: allHeaders,
+            threadID: threadID
+        )
+        source = allHeaders
+        self.threadID = threadID
+        result = resolved
+        return resolved
+    }
+}
+
 /// Policy for which card starts expanded in ThreadConversationView.
 enum ThreadConversationExpansionPolicy {
     /// Returns the ID of the newest (last) header — the default-expanded card.

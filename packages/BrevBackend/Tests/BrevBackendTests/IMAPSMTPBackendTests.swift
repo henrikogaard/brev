@@ -2610,7 +2610,7 @@ struct IMAPSMTPBackendTests {
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(
                     text: "Subject INBOX:77",
-                    folderID: "INBOX",
+                    folderIDs: ["INBOX"],
                     execution: .cacheOnly
                 ),
                 limit: Int.max
@@ -2666,7 +2666,7 @@ struct IMAPSMTPBackendTests {
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(
                     text: "Subject INBOX",
-                    folderID: "INBOX",
+                    folderIDs: ["INBOX"],
                     execution: .cacheOnly
                 ),
                 limit: Int.max
@@ -2719,7 +2719,7 @@ struct IMAPSMTPBackendTests {
             LocalSearchIndexRecorder.SearchRequest(
                 query: SearchQuery(
                     text: "Subject",
-                    folderID: "INBOX",
+                    folderIDs: ["INBOX"],
                     execution: .cacheOnly
                 ),
                 limit: Int.max
@@ -2772,7 +2772,7 @@ struct IMAPSMTPBackendTests {
         #expect(results.map(\.id) == ["INBOX:77"])
         #expect(await localIndex.searchRequests == [
             LocalSearchIndexRecorder.SearchRequest(
-                query: SearchQuery(text: "Subject", folderID: "INBOX", execution: .cacheOnly),
+                query: SearchQuery(text: "Subject", folderIDs: ["INBOX"], execution: .cacheOnly),
                 limit: Int.max
             ),
         ])

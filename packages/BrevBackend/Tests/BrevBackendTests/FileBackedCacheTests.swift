@@ -53,6 +53,9 @@ struct FileBackedIMAPMailboxHeaderCacheTests {
             uidValidity: 77777
         )
         await writer.setSnapshot(snapshot, accountID: "acc", folderID: "INBOX")
+        // Writes are debounced; force the dirty snapshot to disk before the
+        // fresh instance reads.
+        await writer.flushPendingWrites()
 
         // Simulate a fresh app launch by creating a new instance over the same directory.
         let reader = FileBackedIMAPMailboxHeaderCache(rootDirectory: dir)
@@ -81,6 +84,33 @@ struct FileBackedIMAPMailboxHeaderCacheTests {
         let freshCache = FileBackedIMAPMailboxHeaderCache(rootDirectory: dir)
         let freshRead = await freshCache.snapshot(accountID: "acc", folderID: "INBOX")
         #expect(freshRead == nil)
+    }
+
+    @Test("writes are debounced until flush")
+    func writesAreDebouncedUntilFlush() async throws {
+        let dir = makeTempDirectory()
+        defer { try? FileManager.default.removeItem(at: dir) }
+
+        let cache = FileBackedIMAPMailboxHeaderCache(rootDirectory: dir)
+        await cache.setSnapshot(
+            IMAPMailboxHeaderCacheSnapshot(headers: [Self.makeHeader(id: "INBOX:1")]),
+            accountID: "acc", folderID: "INBOX"
+        )
+
+        // The debounce has not fired yet, so nothing is on disk — but memory
+        // already serves the new snapshot.
+        let folderFile = dir
+            .appendingPathComponent("616363", isDirectory: true) // "acc"
+            .appendingPathComponent("headers", isDirectory: true)
+            .appendingPathComponent("494e424f58.json") // "INBOX"
+        #expect(!FileManager.default.fileExists(atPath: folderFile.path))
+        #expect(await cache.snapshot(accountID: "acc", folderID: "INBOX") != nil)
+
+        await cache.flushPendingWrites()
+        #expect(FileManager.default.fileExists(atPath: folderFile.path))
+
+        let fresh = FileBackedIMAPMailboxHeaderCache(rootDirectory: dir)
+        #expect(await fresh.snapshot(accountID: "acc", folderID: "INBOX")?.headers.map(\.id) == ["INBOX:1"])
     }
 
     @Test("multiple folders are cached independently")
@@ -125,6 +155,7 @@ struct FileBackedIMAPMailboxHeaderCacheTests {
         #expect(await cache.snapshot(accountID: "acc", folderID: "Sent")?.headers.map(\.id) == ["Sent:1"])
 
         // The surviving folder is still there after a fresh launch.
+        await cache.flushPendingWrites()
         let fresh = FileBackedIMAPMailboxHeaderCache(rootDirectory: dir)
         #expect(await fresh.snapshot(accountID: "acc", folderID: "INBOX") == nil)
         #expect(await fresh.snapshot(accountID: "acc", folderID: "Sent")?.headers.map(\.id) == ["Sent:1"])

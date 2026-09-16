@@ -19,9 +19,24 @@ import Foundation
 /// An in-memory write-through layer avoids redundant disk I/O within a
 /// session. Falls back to nil on any I/O error so cache misses are
 /// transparent to callers.
+///
+/// Disk writes are coalesced: `setSnapshot` updates memory immediately and
+/// marks the folder dirty, and a short debounce flushes all dirty folders in
+/// one pass. Every mutation used to re-encode and atomically rewrite the
+/// whole folder JSON, so a page fetch, a flag update, and a CONDSTORE delta
+/// each paid a full-folder write. Unflushed changes are lost on process
+/// termination — acceptable for a cache that the server can rebuild.
 public actor FileBackedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
+    private struct DirtyFolder: Hashable {
+        let accountID: BrevAccount.ID
+        let folderID: Folder.ID
+    }
+
     private let rootDirectory: URL
     private var memoryCache: [BrevAccount.ID: [Folder.ID: IMAPMailboxHeaderCacheSnapshot]] = [:]
+    private var dirtyFolders: Set<DirtyFolder> = []
+    private var flushTask: Task<Void, Never>?
+    private static let flushDelay = Duration.milliseconds(750)
 
     /// Creates a cache rooted at `Application Support/Brev/Cache`.
     public init() {
@@ -68,22 +83,35 @@ public actor FileBackedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
         folders[folderID] = snapshot
         memoryCache[accountID] = folders
 
-        let directory = accountDirectory(accountID: accountID)
-        let url = snapshotURL(accountID: accountID, folderID: folderID)
-        do {
-            try FileManager.default.createDirectory(
-                at: directory,
-                withIntermediateDirectories: true
-            )
-            let data = try JSONEncoder().encode(snapshot)
-            try data.write(to: url, options: .atomic)
-        } catch {
-            // Cache write failures are non-fatal.
+        dirtyFolders.insert(DirtyFolder(accountID: accountID, folderID: folderID))
+        scheduleFlush()
+    }
+
+    /// Writes every dirty in-memory snapshot to disk. Called by the debounce
+    /// timer; also exposed so lifecycle hooks and tests can force durability.
+    public func flushPendingWrites() {
+        flushTask = nil
+        let pending = dirtyFolders
+        dirtyFolders.removeAll()
+        guard !pending.isEmpty else { return }
+
+        let interval = MailPerformanceDiagnostics.beginInterval("IMAP Header Cache Flush")
+        var totalBytes = 0
+        for entry in pending {
+            guard let snapshot = memoryCache[entry.accountID]?[entry.folderID] else { continue }
+            totalBytes += write(snapshot, accountID: entry.accountID, folderID: entry.folderID)
         }
+        MailPerformanceDiagnostics.endInterval(interval)
+        MailPerformanceDiagnostics.logHeaderCacheFlush(
+            folderCount: pending.count,
+            totalBytes: totalBytes,
+            durationMilliseconds: MailPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
+        )
     }
 
     public func clear(accountID: BrevAccount.ID) {
         memoryCache.removeValue(forKey: accountID)
+        dirtyFolders = dirtyFolders.filter { $0.accountID != accountID }
         // Remove the entire account directory (which contains the headers/ subdirectory).
         let directory = rootDirectory.appendingPathComponent(
             Self.fileKey(accountID),
@@ -97,10 +125,43 @@ public actor FileBackedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
         if memoryCache[accountID]?.isEmpty == true {
             memoryCache.removeValue(forKey: accountID)
         }
+        dirtyFolders.remove(DirtyFolder(accountID: accountID, folderID: folderID))
         try? FileManager.default.removeItem(at: snapshotURL(accountID: accountID, folderID: folderID))
     }
 
     // MARK: Private helpers
+
+    private func scheduleFlush() {
+        guard flushTask == nil else { return }
+        flushTask = Task { [weak self] in
+            try? await Task.sleep(for: Self.flushDelay)
+            await self?.flushPendingWrites()
+        }
+    }
+
+    /// Encodes and atomically writes one folder snapshot. Returns the encoded
+    /// byte count for diagnostics; zero on failure.
+    @discardableResult
+    private func write(
+        _ snapshot: IMAPMailboxHeaderCacheSnapshot,
+        accountID: BrevAccount.ID,
+        folderID: Folder.ID
+    ) -> Int {
+        let directory = accountDirectory(accountID: accountID)
+        let url = snapshotURL(accountID: accountID, folderID: folderID)
+        do {
+            try FileManager.default.createDirectory(
+                at: directory,
+                withIntermediateDirectories: true
+            )
+            let data = try JSONEncoder().encode(snapshot)
+            try data.write(to: url, options: .atomic)
+            return data.count
+        } catch {
+            // Cache write failures are non-fatal.
+            return 0
+        }
+    }
 
     private func accountDirectory(accountID: BrevAccount.ID) -> URL {
         rootDirectory

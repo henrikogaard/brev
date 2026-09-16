@@ -881,12 +881,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             let candidates: [(MessageHeader, String?)]
             let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let ftsQueries = Self.ftsQueries(for: text)
+            let folderScope = Self.folderScope(for: query)
             if !ftsQueries.isEmpty {
                 let ftsResults = Self.deduplicatedSearchCandidates(ftsQueries.flatMap {
                     ftsCandidates(
                         ftsQuery: $0,
                         accountID: accountID,
-                        folderID: query.folderID,
+                        folderScope: folderScope,
                         limit: Self.unboundedSearchCandidateLimit
                     )
                 })
@@ -898,7 +899,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             } else {
                 candidates = headerCandidates(
                     accountID: accountID,
-                    folderID: query.folderID,
+                    folderScope: folderScope,
                     dateRange: query.dateRange,
                     limit: Self.unboundedSearchCandidateLimit
                 )
@@ -1382,14 +1383,38 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try execStmt(sql, bindings: bindings)
     }
 
+    /// The effective folder scope for a query: the single `folderID`, or the
+    /// `folderIDs` set an all-folders query was narrowed to. `nil` means no
+    /// folder constraint.
+    private static func folderScope(for query: SearchQuery) -> Set<String>? {
+        if let folderID = query.folderID { return [folderID] }
+        guard let folderIDs = query.folderIDs, !folderIDs.isEmpty else { return nil }
+        return folderIDs
+    }
+
+    /// SQL predicate plus bound values for a folder scope. A single folder
+    /// uses `= ?`; a set uses `IN (?,...)`.
+    private static func folderPredicate(
+        column: String,
+        scope: Set<String>?
+    ) -> (sql: String, values: [String]) {
+        guard let scope, !scope.isEmpty else { return ("", []) }
+        if scope.count == 1, let only = scope.first {
+            return ("\(column) = ?", [only])
+        }
+        let placeholders = scope.map { _ in "?" }.joined(separator: ",")
+        return ("\(column) IN (\(placeholders))", Array(scope))
+    }
+
     private func ftsCandidates(
         ftsQuery: String,
         accountID: String,
-        folderID: String?,
+        folderScope: Set<String>?,
         limit: Int
     ) -> [(MessageHeader, String?)] {
         var stmt: OpaquePointer?
-        let folderPredicate = folderID == nil ? "" : "AND message_search.folder_id = ?"
+        let folderPredicate = Self.folderPredicate(column: "message_search.folder_id", scope: folderScope)
+        let folderClause = folderPredicate.sql.isEmpty ? "" : "AND \(folderPredicate.sql)"
         let sql = """
             SELECT h.header_json, message_search.body
             FROM message_search
@@ -1398,27 +1423,29 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
              AND h.message_id = message_search.message_id
             WHERE message_search MATCH ?
               AND message_search.account_id = ?
-              \(folderPredicate)
+              \(folderClause)
             ORDER BY h.date_ts DESC, h.uid DESC
             LIMIT ?;
         """
         guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
         defer { sqlite3_finalize(stmt) }
 
-        sqlite3_bind_text(stmt, 1, ftsQuery, -1, Self.transient)
-        sqlite3_bind_text(stmt, 2, accountID, -1, Self.transient)
-        if let folderID {
-            sqlite3_bind_text(stmt, 3, folderID, -1, Self.transient)
-            sqlite3_bind_int64(stmt, 4, Int64(limit))
-        } else {
-            sqlite3_bind_int64(stmt, 3, Int64(limit))
+        var index: Int32 = 1
+        sqlite3_bind_text(stmt, index, ftsQuery, -1, Self.transient)
+        index += 1
+        sqlite3_bind_text(stmt, index, accountID, -1, Self.transient)
+        index += 1
+        for folderID in folderPredicate.values {
+            sqlite3_bind_text(stmt, index, folderID, -1, Self.transient)
+            index += 1
         }
+        sqlite3_bind_int64(stmt, index, Int64(limit))
         return decodeSearchCandidateRows(stmt)
     }
 
     private func headerCandidates(
         accountID: String,
-        folderID: String?,
+        folderScope: Set<String>?,
         dateRange: ClosedRange<Date>?,
         limit: Int
     ) -> [(MessageHeader, String?)] {
@@ -1426,7 +1453,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         // Push the column-backed predicates (folder, date range) into SQL to
         // shrink the candidate set; non-column predicates are filtered in Swift.
         var predicates = ["h.account_id = ?"]
-        if folderID != nil { predicates.append("h.folder_id = ?") }
+        let folderPredicate = Self.folderPredicate(column: "h.folder_id", scope: folderScope)
+        if !folderPredicate.sql.isEmpty { predicates.append(folderPredicate.sql) }
         if dateRange != nil { predicates.append("h.date_ts BETWEEN ? AND ?") }
         let sql = """
             SELECT h.header_json, message_search.body
@@ -1444,7 +1472,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         var index: Int32 = 1
         sqlite3_bind_text(stmt, index, accountID, -1, Self.transient)
         index += 1
-        if let folderID {
+        for folderID in folderPredicate.values {
             sqlite3_bind_text(stmt, index, folderID, -1, Self.transient)
             index += 1
         }

@@ -49,6 +49,25 @@ final class RelatedConversationController {
     private var generation = 0
     private let consentStore: RelatedConversationConsentStore
 
+    /// Bumped on every snapshot assignment so the merge memo knows when its
+    /// result is stale. Excluded from observation — `snapshot` itself is the
+    /// tracked dependency.
+    @ObservationIgnored private var snapshotRevision = 0
+    /// Memoized `mergedThreadHeaders` output: the reader re-evaluates on every
+    /// body pass, but the merge (dictionary + sort over all members) only needs
+    /// to rerun when the loaded headers or the snapshot actually change.
+    @ObservationIgnored private var mergeMemo: (
+        loaded: [MessageHeader],
+        snapshotRevision: Int,
+        result: [MessageHeader]
+    )?
+    /// Coalesced streaming update: remote discovery can emit one snapshot per
+    /// folder page, and each assignment would otherwise re-render the reader.
+    @ObservationIgnored private var pendingSnapshot: ConversationSnapshot?
+    @ObservationIgnored private var pendingSnapshotTask: Task<Void, Never>?
+    @ObservationIgnored private var lastSnapshotApply: ContinuousClock.Instant?
+    private static let remoteUpdateCoalesceDelay = Duration.milliseconds(150)
+
     init(consentStore: RelatedConversationConsentStore = .shared) {
         self.consentStore = consentStore
     }
@@ -64,9 +83,15 @@ final class RelatedConversationController {
         backend: any MailBackend
     ) {
         task?.cancel()
+        pendingSnapshotTask?.cancel()
+        pendingSnapshotTask = nil
+        pendingSnapshot = nil
+        lastSnapshotApply = nil
+        mergeMemo = nil
         generation += 1
         let current = generation
         snapshot = nil
+        snapshotRevision += 1
         isLoadingRemote = false
         remoteLoadDidFail = false
         remoteLoadAttempted = false
@@ -120,6 +145,9 @@ final class RelatedConversationController {
         generation += 1
         let current = generation
         task?.cancel()
+        pendingSnapshotTask?.cancel()
+        pendingSnapshotTask = nil
+        pendingSnapshot = nil
         task = Task { [weak self] in
             guard let self else { return }
             await resolveCached(generation: current)
@@ -138,6 +166,11 @@ final class RelatedConversationController {
     /// because they carry richer display metadata (snippets, flags).
     func mergedThreadHeaders(loaded: [MessageHeader]) -> [MessageHeader] {
         guard let snapshot else { return loaded }
+        if let mergeMemo,
+           mergeMemo.snapshotRevision == snapshotRevision,
+           loaded.hasIdenticalStorage(to: mergeMemo.loaded) {
+            return mergeMemo.result
+        }
         // Members are unique by location, not header id: a stale-generation
         // cached row and a fresh remote listing can share `folder:uid`.
         // Prefer the member that still carries a UIDVALIDITY generation.
@@ -150,11 +183,13 @@ final class RelatedConversationController {
         for header in loaded {
             byID[header.id] = header
         }
-        return byID.values.sorted {
+        let result = byID.values.sorted {
             if $0.date != $1.date { return $0.date < $1.date }
             if $0.folderID != $1.folderID { return $0.folderID < $1.folderID }
             return $0.id < $1.id
         }
+        mergeMemo = (loaded, snapshotRevision, result)
+        return result
     }
 
     /// Whether the anchor's folder is excluded from the current scope, so the
@@ -169,6 +204,9 @@ final class RelatedConversationController {
         generation += 1
         let current = generation
         task?.cancel()
+        pendingSnapshotTask?.cancel()
+        pendingSnapshotTask = nil
+        pendingSnapshot = nil
         remoteLoadAttempted = true
         task = Task { [weak self] in
             await self?.loadRemote(generation: current)
@@ -186,6 +224,7 @@ final class RelatedConversationController {
             )
             guard generation == current, !Task.isCancelled else { return }
             snapshot = resolved
+            snapshotRevision += 1
         } catch {
             // Cached lookup is best-effort; the reader falls back to the
             // loaded-folder thread when the index cannot answer.
@@ -212,7 +251,9 @@ final class RelatedConversationController {
                 await self?.applyRemoteUpdate(update, generation: current)
             }
             guard generation == current, !Task.isCancelled else { return }
+            pendingSnapshot = nil
             snapshot = resolved
+            snapshotRevision += 1
         } catch is CancellationError {
             // Replaced by a newer anchor; state already moved on.
         } catch {
@@ -223,8 +264,38 @@ final class RelatedConversationController {
 
     /// Applies a streaming snapshot only while its request generation is
     /// still current — a stale lookup can never overwrite a newer anchor.
+    /// Updates within the coalesce window are folded so a per-page emission
+    /// does not re-render the reader for every folder page.
     private func applyRemoteUpdate(_ update: ConversationSnapshot, generation current: Int) {
         guard generation == current else { return }
+        let now = ContinuousClock.now
+        if let last = lastSnapshotApply, now < last + Self.remoteUpdateCoalesceDelay {
+            pendingSnapshot = update
+            schedulePendingSnapshotFlush(generation: current, at: last + Self.remoteUpdateCoalesceDelay)
+            return
+        }
+        lastSnapshotApply = now
         snapshot = update
+        snapshotRevision += 1
+    }
+
+    private func schedulePendingSnapshotFlush(
+        generation current: Int,
+        at instant: ContinuousClock.Instant
+    ) {
+        guard pendingSnapshotTask == nil else { return }
+        pendingSnapshotTask = Task { [weak self] in
+            try? await Task.sleep(until: instant, clock: .continuous)
+            self?.flushPendingSnapshot(generation: current)
+        }
+    }
+
+    private func flushPendingSnapshot(generation current: Int) {
+        pendingSnapshotTask = nil
+        guard generation == current, let update = pendingSnapshot else { return }
+        pendingSnapshot = nil
+        lastSnapshotApply = .now
+        snapshot = update
+        snapshotRevision += 1
     }
 }

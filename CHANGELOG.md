@@ -37,6 +37,12 @@ All notable changes to Brev are documented here.
 - Repeated searches reject stale progress and completion callbacks. Late mailbox
   failures preserve already loaded rows. Attachment-presence and absence searches
   both disclose possible message-data downloads while fetching.
+- Faster folder and list performance: header-cache writes are coalesced instead
+  of rewriting a folder's JSON on every page load or flag update, "load more"
+  merges append without re-sorting the whole folder, CONDSTORE flag deltas only
+  re-index the messages that changed, all-folders local search issues one
+  scoped index query instead of one per folder, and list/thread projections are
+  reused across unrelated redraws instead of being re-derived.
 
 - IMAP searches use server pages to return matches beyond the previous
   50-result display limit. Ordinary searches follow server pages without

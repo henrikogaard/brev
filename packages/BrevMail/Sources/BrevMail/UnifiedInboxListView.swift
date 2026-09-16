@@ -440,7 +440,6 @@ struct UnifiedInboxListView: View {
             now: now
         )
         let key = UnifiedInboxPresentationSnapshotCache.Key(
-            items: items,
             pinnedMessageIDsRaw: pinnedMessageIDsRaw,
             groupByDate: groupByDate,
             collapsedDateSectionIDs: collapsedDateSectionIDs,
@@ -459,7 +458,9 @@ struct UnifiedInboxListView: View {
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
             localeIdentifier: locale.identifier
         )
-        return presentationSnapshotCache.snapshot(for: key) {
+        return presentationSnapshotCache.snapshot(for: key, items: items) {
+            let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Presentation Build")
+            defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let pinnedMessageIDs = UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw)
             let listed = makeVisibleItems(
                 pinnedMessageIDs: pinnedMessageIDs,

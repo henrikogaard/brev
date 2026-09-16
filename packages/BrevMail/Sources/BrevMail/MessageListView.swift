@@ -1522,7 +1522,6 @@ public struct MessageListView: View {
             now: now
         )
         let key = MessageListPresentationSnapshotCache.Key(
-            headers: headers,
             groupByThread: groupByThread,
             pinnedMessageIDs: pinnedMessageIDs,
             mailboxFilter: navigation.mailboxFilter,
@@ -1542,7 +1541,9 @@ public struct MessageListView: View {
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
             localeIdentifier: locale.identifier
         )
-        return presentationSnapshotCache.snapshot(for: key) {
+        return presentationSnapshotCache.snapshot(for: key, headers: headers) {
+            let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
+            defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let presentationHeaders = MessageListSortPolicy.sorted(
                 visibleHeaders(for: workflowVisibleHeaders(from: headers, now: now, calendar: calendar)),
                 by: mailboxSortOrder,

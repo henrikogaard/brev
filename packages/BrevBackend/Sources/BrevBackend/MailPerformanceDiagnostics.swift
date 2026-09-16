@@ -187,6 +187,34 @@ enum MailPerformanceDiagnostics {
         )
     }
 
+    static func logHeaderCacheFlush(
+        folderCount: Int,
+        totalBytes: Int,
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.headers.cacheFlush folders=\(folderCount, privacy: .public) bytes=\(totalBytes, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
+    static func logThreadResolution(
+        inputCount: Int,
+        hit: Bool,
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.threads.resolve inputCount=\(inputCount, privacy: .public) hit=\(hit, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
+    static func logSessionQueueWait(
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.imap.sessionQueueWait durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
     static func errorCategory(for error: any Error) -> String {
         if let backendError = error as? MailBackendError {
             return backendErrorCategory(backendError)

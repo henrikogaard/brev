@@ -188,6 +188,7 @@ public struct BrevMailRootView: View {
     #endif
     @State private var navigation = MailNavigationState()
     @State private var relatedConversation = RelatedConversationController()
+    @State private var readerThreadMemo = ReaderThreadHeadersMemo()
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     /// Whether the macOS AI Sidebar column is open. Persisted so relaunching
@@ -1138,8 +1139,8 @@ public struct BrevMailRootView: View {
         guard let threadID = navigation.selectedHeader?.threadID ?? fallbackHeader?.threadID else {
             return []
         }
-        return ThreadMessageDerivation.threadHeaders(
-            from: navigation.currentFolderHeaders,
+        return readerThreadMemo.headers(
+            in: navigation.currentFolderHeaders,
             threadID: threadID
         )
     }
