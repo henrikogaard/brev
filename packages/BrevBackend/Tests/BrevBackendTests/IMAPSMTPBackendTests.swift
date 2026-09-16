@@ -222,6 +222,22 @@ struct IMAPSMTPBackendTests {
         #expect(await listingRecorder.callCount == 2)
     }
 
+    @Test("disconnect flushes deferred header-cache writes")
+    func disconnectFlushesHeaderCacheWrites() async {
+        let headerCache = FlushRecordingHeaderCache()
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] },
+            headerCache: headerCache
+        )
+
+        await backend.disconnect()
+
+        #expect(await headerCache.flushCount == 1)
+    }
+
     @Test("cancelled remote draft body fetch does not stage a conflict")
     func cancelledRemoteDraftBodyFetchDoesNotStageConflict() async throws {
         let listingRecorder = MessageListingRecorder(messages: [
@@ -10436,6 +10452,38 @@ private actor MessageListingRecorder {
             return sequence.removeFirst()
         }
         return page
+    }
+}
+
+private actor FlushRecordingHeaderCache: IMAPMailboxHeaderCache {
+    private let inner = InMemoryIMAPMailboxHeaderCache()
+    private(set) var flushCount = 0
+
+    func snapshot(
+        accountID: BrevAccount.ID,
+        folderID: Folder.ID
+    ) async -> IMAPMailboxHeaderCacheSnapshot? {
+        await inner.snapshot(accountID: accountID, folderID: folderID)
+    }
+
+    func setSnapshot(
+        _ snapshot: IMAPMailboxHeaderCacheSnapshot,
+        accountID: BrevAccount.ID,
+        folderID: Folder.ID
+    ) async {
+        await inner.setSnapshot(snapshot, accountID: accountID, folderID: folderID)
+    }
+
+    func clear(accountID: BrevAccount.ID, folderID: Folder.ID) async {
+        await inner.clear(accountID: accountID, folderID: folderID)
+    }
+
+    func clear(accountID: BrevAccount.ID) async {
+        await inner.clear(accountID: accountID)
+    }
+
+    func flushPendingWrites() {
+        flushCount += 1
     }
 }
 

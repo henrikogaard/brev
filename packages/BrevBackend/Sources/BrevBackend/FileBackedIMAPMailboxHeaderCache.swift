@@ -89,7 +89,9 @@ public actor FileBackedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
 
     /// Writes every dirty in-memory snapshot to disk. Called by the debounce
     /// timer; also exposed so lifecycle hooks and tests can force durability.
-    public func flushPendingWrites() {
+    /// Declared `async` so `await cache.flushPendingWrites()` picks this
+    /// member over the protocol's default no-op in async contexts.
+    public func flushPendingWrites() async {
         flushTask = nil
         let pending = dirtyFolders
         dirtyFolders.removeAll()

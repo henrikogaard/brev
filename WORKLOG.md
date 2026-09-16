@@ -1352,3 +1352,31 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Verification: BrevBackend 1077, BrevSyncEngine 74 XCTest + 9 Swift Testing,
   BrevMail 1572, BrevGmail 147 — all pass. lint.sh, format.sh (0 files),
   privacy-audit.sh, git diff --check clean.
+
+### Follow-up: header-cache flush on disconnect
+
+- `flushPendingWrites()` was only reachable via the debounce timer and tests —
+  teardown could drop up to 750ms of pending cache writes. Added it to
+  `IMAPMailboxHeaderCache` as a requirement with a default no-op, and
+  `IMAPSMTPBackend.disconnect()` now flushes before session teardown.
+- Fixed a Swift overload-resolution trap the protocol method introduced: in
+  async contexts `await cache.flushPendingWrites()` on the concrete type
+  preferred the async protocol-extension no-op over the actor's sync member.
+  Declared the concrete member `async` so it wins resolution and witnesses the
+  requirement. New test asserts disconnect() invokes the flush.
+- Verification: focused backend tests 17/17 (incl. all FileBacked cache
+  suites), lint/format/diff-check clean.
+
+### Follow-up: header-cache flush on disconnect
+
+- `flushPendingWrites()` was only reachable via the debounce timer and tests —
+  teardown could drop up to 750ms of pending cache writes. Added it to
+  `IMAPMailboxHeaderCache` as a requirement with a default no-op, and
+  `IMAPSMTPBackend.disconnect()` now flushes before session teardown.
+- Fixed a Swift overload-resolution trap the protocol method introduced: in
+  async contexts `await cache.flushPendingWrites()` on the concrete type
+  preferred the async protocol-extension no-op over the actor's sync member.
+  Declared the concrete member `async` so it wins resolution and witnesses the
+  requirement. New test asserts disconnect() invokes the flush.
+- Verification: focused backend tests 17/17 (incl. all FileBacked cache
+  suites), lint/format/diff-check clean.

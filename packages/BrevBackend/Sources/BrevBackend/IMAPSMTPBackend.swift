@@ -531,6 +531,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         deferredStartupLock.withLock { didStartDeferredStartupWork = false }
         cancelBackgroundRefreshTasks()
         cancelBackgroundDateRepairTasks()
+        await headerCache?.flushPendingWrites()
         await disconnectSessionOperation?(configuration)
         await state.disconnect()
     }
