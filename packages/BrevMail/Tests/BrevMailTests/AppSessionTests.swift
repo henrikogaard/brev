@@ -2090,6 +2090,45 @@ struct AppSessionTests {
         #expect(session.aiBackend?.transparencyLabel == "Sent to: Private Gateway (ai.example.test)")
     }
 
+    @Test("flushLocalCaches reaches every connected backend")
+    func flushLocalCachesReachesEveryBackend() async {
+        let firstAccount = BrevAccount(
+            id: "imap-smtp:first@example.org",
+            displayName: "First",
+            emailAddress: "first@example.org"
+        )
+        let secondAccount = BrevAccount(
+            id: "imap-smtp:second@example.org",
+            displayName: "Second",
+            emailAddress: "second@example.org"
+        )
+        let firstBackend = DisconnectTrackingBackend(account: firstAccount)
+        let secondBackend = DisconnectTrackingBackend(account: secondAccount)
+        let session = AppSession(
+            accountStore: InMemoryAccountStore(
+                accounts: [firstAccount, secondAccount],
+                current: firstAccount
+            ),
+            tokenStore: InMemoryTokenStore(),
+            restoreCoordinator: { account in
+                switch account.id {
+                case firstAccount.id:
+                    return AppSession.LoginResult(backend: firstBackend, account: firstAccount)
+                case secondAccount.id:
+                    return AppSession.LoginResult(backend: secondBackend, account: secondAccount)
+                default:
+                    return nil
+                }
+            }
+        )
+
+        await session.restoreAllAccounts()
+        await session.flushLocalCaches()
+
+        #expect(await firstBackend.flushCount == 1)
+        #expect(await secondBackend.flushCount == 1)
+    }
+
     private static func makeAIProviderDefaults() throws -> UserDefaults {
         let suiteName = "AppSessionAIProviderTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
@@ -2140,10 +2179,18 @@ private class DisconnectTrackingBackend: MailBackend, @unchecked Sendable {
         get async { await state.disconnectCount }
     }
 
+    var flushCount: Int {
+        get async { await state.flushCount }
+    }
+
     func connect() async throws {}
 
     func disconnect() async {
         await state.incrementDisconnectCount()
+    }
+
+    func flushLocalCaches() async {
+        await state.incrementFlushCount()
     }
 
     func folders() async throws -> [Folder] { [] }
@@ -2227,9 +2274,14 @@ private final class CardDAVSyncSupportingBackend: DisconnectTrackingBackend, Car
 
 private actor DisconnectTrackingState {
     private(set) var disconnectCount = 0
+    private(set) var flushCount = 0
 
     func incrementDisconnectCount() {
         disconnectCount += 1
+    }
+
+    func incrementFlushCount() {
+        flushCount += 1
     }
 }
 

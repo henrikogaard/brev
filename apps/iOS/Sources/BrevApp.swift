@@ -188,8 +188,10 @@ struct BrevApp: App {
                     // let the foreground MailFetchScheduler drive refreshes instead.
                     BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BrevBackgroundRefreshCoordinator.taskIdentifier)
                 case .background:
-                    // Background: keep the delegate's backend list current, then
-                    // schedule the next system-granted background refresh window.
+                    // Background: flush deferred cache writes before suspension
+                    // (disconnect() never runs), keep the delegate's backend list
+                    // current, then schedule the next background refresh window.
+                    Task { await session.flushLocalCaches() }
                     BrevIOSAppDelegate.currentBackends = session.visibleBackends
                     BrevBackgroundRefreshCoordinator.scheduleNextRefresh()
                 default:

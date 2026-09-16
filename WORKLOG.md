@@ -1367,16 +1367,21 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Verification: focused backend tests 17/17 (incl. all FileBacked cache
   suites), lint/format/diff-check clean.
 
-### Follow-up: header-cache flush on disconnect
+### Follow-up: flush local caches on quit / background
 
-- `flushPendingWrites()` was only reachable via the debounce timer and tests —
-  teardown could drop up to 750ms of pending cache writes. Added it to
-  `IMAPMailboxHeaderCache` as a requirement with a default no-op, and
-  `IMAPSMTPBackend.disconnect()` now flushes before session teardown.
-- Fixed a Swift overload-resolution trap the protocol method introduced: in
-  async contexts `await cache.flushPendingWrites()` on the concrete type
-  preferred the async protocol-extension no-op over the actor's sync member.
-  Declared the concrete member `async` so it wins resolution and witnesses the
-  requirement. New test asserts disconnect() invokes the flush.
-- Verification: focused backend tests 17/17 (incl. all FileBacked cache
-  suites), lint/format/diff-check clean.
+- `disconnect()` (and its header-cache flush) only runs on account
+  switch/removal — never on macOS quit or iOS backgrounding — so up to 750ms
+  of debounced cache writes could be lost. Added provider-neutral
+  `MailBackend.flushLocalCaches()` (default no-op), implemented it in
+  `IMAPSMTPBackend` (forwards to `headerCache.flushPendingWrites()`), and
+  fanned it out from `AppSession.flushLocalCaches()` over `backends.values`.
+- macOS `applicationShouldTerminate` now returns `.terminateLater` on both
+  quit paths and replies `true` after the flush races a 2-second budget, so
+  quit can never stall on a stuck write; nil session still returns
+  `.terminateNow`. iOS flushes in `onChange(of: scenePhase)` `.background`.
+- Verification: BrevBackend flush tests + FileBacked suites 18/18, BrevMail
+  AppSession flush test 1/1, `swift build` both packages clean, `tuist
+  generate` + BrevIOS build OK, BrevMacOS compiles (`xcodebuild
+  CODE_SIGNING_ALLOWED=NO`; `tuist build` fails only on the entitlements
+  development-signing requirement — no dev cert in this environment).
+  lint.sh, format.sh (0 files), git diff --check clean.

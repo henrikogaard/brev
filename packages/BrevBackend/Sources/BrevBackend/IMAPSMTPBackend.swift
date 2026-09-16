@@ -536,6 +536,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         await state.disconnect()
     }
 
+    public func flushLocalCaches() async {
+        await headerCache?.flushPendingWrites()
+    }
+
     /// Spawns a tracked fire-and-forget task that is cancelled on `disconnect()`.
     func trackBackgroundWork(_ work: @escaping @Sendable () async -> Void) {
         let id = UUID()

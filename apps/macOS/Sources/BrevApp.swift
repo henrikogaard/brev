@@ -396,14 +396,16 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
     // quitting with pending entries silently defers them until the next launch.
     // Ask before quitting instead of losing the send window unnoticed.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let session = Self.currentSession else { return .terminateNow }
         let pendingCount = MainActor.assumeIsolated {
-            let backends: [any MailBackend] = Self.currentSession.map { Array($0.backends.values) } ?? []
+            let backends: [any MailBackend] = Array(session.backends.values)
             return backends
                 .compactMap { $0.extensionService(ScheduledSendManaging.self) }
                 .reduce(0) { $0 + $1.pendingScheduledSends().count }
         }
         guard let message = ScheduleSendReliabilityPresentation.quitWarningMessage(pendingCount: pendingCount) else {
-            return .terminateNow
+            flushLocalCachesThenTerminate(session)
+            return .terminateLater
         }
         let alert = NSAlert()
         alert.messageText = String(localized: "Quit Brev?")
@@ -411,7 +413,26 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.addButton(withTitle: String(localized: "Quit Anyway"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return .terminateCancel
+        }
+        flushLocalCachesThenTerminate(session)
+        return .terminateLater
+    }
+
+    /// `disconnect()` is only called on account switch/removal, so quit is the
+    /// last chance to flush debounced header-cache writes. Best-effort: the
+    /// flush races a 2-second budget so a stalled write can never block quit.
+    private func flushLocalCachesThenTerminate(_ session: AppSession) {
+        Task { @MainActor in
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await session.flushLocalCaches() }
+                group.addTask { try? await Task.sleep(for: .seconds(2)) }
+                await group.next()
+                group.cancelAll()
+            }
+            NSApplication.shared.reply(toApplicationShouldTerminate: true)
+        }
     }
 
     func applicationShouldSaveApplicationState(_ sender: NSApplication) -> Bool {

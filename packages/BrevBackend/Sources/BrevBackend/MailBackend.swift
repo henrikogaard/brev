@@ -125,6 +125,11 @@ public protocol MailBackend: AnyObject, Sendable {
     /// Tear down the connection. Idempotent.
     func disconnect() async
 
+    /// Forces deferred local-cache writes to durable storage. Called before
+    /// process suspension or termination; providers that write through
+    /// immediately rely on the default no-op.
+    func flushLocalCaches() async
+
     /// Replay any mutations that were queued while the device was offline.
     ///
     /// Call this when network connectivity is restored. Backends that do not
@@ -466,6 +471,8 @@ public protocol MailBackend: AnyObject, Sendable {
 /// that can satisfy the call should override.
 public extension MailBackend {
     func replayOfflineMutations() async {}
+
+    func flushLocalCaches() async {}
 
     /// Backends without a header cache cannot enumerate saved-view candidates.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {

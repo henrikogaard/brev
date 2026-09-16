@@ -844,6 +844,15 @@ public final class AppSession {
         restoreContactsAccessIfNoDemoMailboxRemains()
     }
 
+    /// Flushes every connected backend's deferred local-cache writes. Called
+    /// before process suspension or termination so debounced disk writes are
+    /// not lost when the app goes away without a `disconnect()`.
+    public func flushLocalCaches() async {
+        for backend in backends.values {
+            await backend.flushLocalCaches()
+        }
+    }
+
     public func finishInitialMailboxSelection(for accountID: BrevAccount.ID) {
         guard pendingInitialMailboxSelectionAccountID == accountID else { return }
         pendingInitialMailboxSelectionAccountID = nil

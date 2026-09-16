@@ -238,6 +238,22 @@ struct IMAPSMTPBackendTests {
         #expect(await headerCache.flushCount == 1)
     }
 
+    @Test("flushLocalCaches flushes deferred header-cache writes")
+    func flushLocalCachesFlushesHeaderCacheWrites() async {
+        let headerCache = FlushRecordingHeaderCache()
+        let backend = IMAPSMTPBackend(
+            account: Self.account,
+            configuration: Self.configuration,
+            credential: Self.credential,
+            listFolders: { _, _ in [] },
+            headerCache: headerCache
+        )
+
+        await backend.flushLocalCaches()
+
+        #expect(await headerCache.flushCount == 1)
+    }
+
     @Test("cancelled remote draft body fetch does not stage a conflict")
     func cancelledRemoteDraftBodyFetchDoesNotStageConflict() async throws {
         let listingRecorder = MessageListingRecorder(messages: [
