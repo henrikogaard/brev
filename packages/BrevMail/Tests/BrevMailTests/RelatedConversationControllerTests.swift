@@ -15,7 +15,10 @@ import BrevBackend
 import Foundation
 import Testing
 
-@Suite("Related conversation controller")
+// Session consent grants are process-wide state, so this suite runs
+// serialized — a grant from a parallel test would otherwise leak into
+// consent assertions here.
+@Suite("Related conversation controller", .serialized)
 @MainActor
 struct RelatedConversationControllerTests {
     @Test("cached snapshot merges a cross-folder member into the thread")

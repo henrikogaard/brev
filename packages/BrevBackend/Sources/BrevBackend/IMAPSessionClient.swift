@@ -1992,6 +1992,7 @@ public actor IMAPSessionClient {
         guard limit > 0, !criteria.isEmpty else {
             return IMAPMessageListingPage(messages: [])
         }
+        let boundedLimit = min(limit, Self.maximumSearchPageSize)
         return try await withAuthenticatedSession(
             configuration: configuration, credential: credential
         ) { tagCounter in
@@ -1999,7 +2000,7 @@ public actor IMAPSessionClient {
             return try await searchMessagePage(
                 criteria: criteria,
                 pageToken: pageToken,
-                limit: limit,
+                limit: boundedLimit,
                 uidValidity: selectedMailbox.uidValidity,
                 highestModSeq: selectedMailbox.highestModSeq,
                 includeSnippet: false,

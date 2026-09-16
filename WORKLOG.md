@@ -37,6 +37,14 @@ Address the two-axis (standards + spec) review findings on `23281fc6` and
 - Gmail store apply kept best-effort with an explicit rationale comment
   (BrevGmail has no logging convention).
 
+Follow-up (same day, second review pass): fixed a `mergedThreadHeaders`
+trap on duplicate header ids (`uniquingKeysWith` preferring the member
+that carries a folder generation), disclosed unsynced folders in the
+reader's Load-related-mail accessibility hint, serialized the controller
+test suite against process-wide session grants, and clamped the
+related-header search limit to `maximumSearchPageSize` like the sibling
+search op.
+
 ### Verification
 
 - Focused: 12/12 backend related-conversation + consent tests; BrevMail

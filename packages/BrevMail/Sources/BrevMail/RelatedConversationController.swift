@@ -138,7 +138,15 @@ final class RelatedConversationController {
     /// because they carry richer display metadata (snippets, flags).
     func mergedThreadHeaders(loaded: [MessageHeader]) -> [MessageHeader] {
         guard let snapshot else { return loaded }
-        var byID = Dictionary(uniqueKeysWithValues: snapshot.members.map { ($0.header.id, $0.header) })
+        // Members are unique by location, not header id: a stale-generation
+        // cached row and a fresh remote listing can share `folder:uid`.
+        // Prefer the member that still carries a UIDVALIDITY generation.
+        var byID = Dictionary(
+            snapshot.members.map { ($0.header.id, $0) },
+            uniquingKeysWith: { current, challenger in
+                challenger.folderGeneration != nil ? challenger : current
+            }
+        ).mapValues(\.header)
         for header in loaded {
             byID[header.id] = header
         }

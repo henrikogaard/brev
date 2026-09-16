@@ -109,7 +109,7 @@ struct RelatedConversationBar: View {
                     controller.loadRelatedMail()
                 }
                 .accessibilityHint(String(
-                    localized: "Searches every eligible folder in this account for related message headers.",
+                    localized: "Searches every eligible folder in this account, including folders that are not synced, for related message headers.",
                     bundle: .module
                 ))
             }
