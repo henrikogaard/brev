@@ -21,7 +21,7 @@ import Foundation
 ///
 /// Credentials are never stored here — they live in the Keychain, keyed
 /// by `credentialAccount`. This struct only persists non-secret metadata.
-public struct CalDAVSettings: Equatable, Sendable {
+public struct CalDAVSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static let featureFlagEnabled = "caldav.featureFlagEnabled"
         public static let isEnabled = "caldav.isEnabled"

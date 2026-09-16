@@ -12,7 +12,7 @@
 
 import Foundation
 
-public struct UpdateSettings: Equatable, Sendable {
+public struct UpdateSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static let cadence = "updates.cadence"
         public static let channel = "updates.channel"
@@ -86,7 +86,7 @@ public struct UpdateSettings: Equatable, Sendable {
     }
 }
 
-public enum UpdateCheckCadence: String, CaseIterable, Identifiable, Sendable {
+public enum UpdateCheckCadence: String, CaseIterable, Identifiable, Sendable, Codable {
     case oncePerLaunch
     case weekly
     case manual
@@ -124,7 +124,7 @@ public enum UpdateCheckCadence: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable {
+public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable, Codable {
     case stable
     case beta
 
@@ -147,7 +147,7 @@ public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public enum UpdatePlatform: String, Sendable {
+public enum UpdatePlatform: String, Sendable, Codable {
     case macOS
     case iOS
 }

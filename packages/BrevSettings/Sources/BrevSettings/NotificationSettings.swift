@@ -18,7 +18,7 @@ public extension Notification.Name {
     )
 }
 
-public enum NotificationBadgePolicy: String, CaseIterable, Sendable {
+public enum NotificationBadgePolicy: String, CaseIterable, Sendable, Codable {
     case allUnread
     case inboxUnread
     case selectedSources
@@ -47,7 +47,7 @@ public enum NotificationBadgePolicy: String, CaseIterable, Sendable {
     }
 }
 
-public struct NotificationSettings: Equatable, Sendable {
+public struct NotificationSettings: Equatable, Sendable, Codable {
     public struct AccountOverride: Codable, Equatable, Sendable, Identifiable {
         public var id: String { accountID }
 

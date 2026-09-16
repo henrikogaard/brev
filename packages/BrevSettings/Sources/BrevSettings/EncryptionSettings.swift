@@ -23,7 +23,7 @@ import Foundation
 /// settings.** The library, trust model, and key-storage ADR must
 /// ship first. Views gate encryption UI on a capability flag, not
 /// on these values directly.
-public struct EncryptionSettings: Equatable, Sendable {
+public struct EncryptionSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static let smimeEnabled = "encryption.smimeEnabled"
         public static let preferSign = "encryption.preferSign"

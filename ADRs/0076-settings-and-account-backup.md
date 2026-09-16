@@ -109,16 +109,21 @@ it is not a backup (no history, no accounts, capped size, Apple-ID-bound).
 
 ### Accepted
 
-- New `BrevBackup` module inside `BrevSettings` (codec, writer, validator,
+- New `Backup/` group inside `BrevSettings` (codec, writer, reader,
   restorer, preview model) with unit tests for round-trip, tampered hash,
   newer-version payload, merge vs. replace, and per-category rollback.
-- `SettingsPersistenceStore` gains `exportBackupSettings()` /
-  `applyBackupSettings(_:mode:)`; the completeness test compares the codec's
-  key set to the store's known keys.
-- Account store gains a metadata-only export and an import that creates
-  accounts flagged as needing credentials; `AppSession` surfaces those as
-  sign-in prompts through the existing account-error path.
+- `SettingsBackupCodec` owns export/apply instead of methods on
+  `SettingsPersistenceStore`; the completeness test classifies every store
+  accessor as included or explicitly excluded. Codable conformances were
+  added to the settings value types that lacked them (including
+  `BrevDesign` window/mailbox-view preference types — protected paths
+  justified by this ADR).
+- Restored accounts are not inserted into `AccountStore`: they persist as
+  `backup.pendingRestoredAccounts` and surface in Accounts settings as
+  "Restored accounts — sign in to finish" rows wired to the add-account
+  sheet's email prefill.
 - ImportExportSection UI plus snapshot baselines; `PRIVACY.md`, `CHANGELOG`.
+  iOS shows an availability note only for this slice.
 
 ### Risks
 

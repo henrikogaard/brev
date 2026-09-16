@@ -13,7 +13,7 @@
 import BrevDesign
 import Foundation
 
-public struct InboxClassificationSettings: Equatable, Sendable {
+public struct InboxClassificationSettings: Equatable, Sendable, Codable {
     public var mode: InboxClassificationMode
 
     public init(mode: InboxClassificationMode) {

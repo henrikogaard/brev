@@ -22,6 +22,9 @@ All notable changes to Brev are documented here.
 - Optional background mail on macOS: keep checking mail with no window open,
   see status in the menu bar, and open Brev at login (Settings ›
   Notifications; off by default).
+- Back up and restore Brev settings and account setup from Settings ›
+  Import / Export. Backups never include passwords or tokens; restored
+  accounts ask you to sign in.
 
 ### Changed
 

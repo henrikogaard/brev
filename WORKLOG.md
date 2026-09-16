@@ -1438,3 +1438,28 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Docs: PRIVACY.md paragraph under Local mail notifications; CHANGELOG
   Unreleased/Added; ADR-0006 note (cadence/lifetime only, no new row) and
   its related-mail row's settings pointer updated to Folder Sync.
+
+### Follow-up: ADR-0076 settings and account backup
+
+- New `BrevSettings/Backup/`: `BrevBackupManifest` (format v1, `payloads`
+  with name/sha256/encoding — future `mail/` describable but not written),
+  `SettingsBackupCodec` + `SettingsBackupPayload` (25 families; notification
+  DTO strips device-bound ADR-0075 fields; CalDAV DTO strips the Keychain
+  `credentialAccount`), `AccountsBackupCodec`/`AccountBackupEntry`
+  (`credentialID` blanked — the only secret-bearing field), writer/reader
+  (`settings.json` + `accounts.json`, manifest last, atomic writes, SHA-256
+  verified), `BackupRestorer` (per-category snapshot/rollback, continues on
+  failure), `PendingRestoredAccountsStore` (`backup.pendingRestoredAccounts`).
+- Codable conformances added to previously non-Codable settings types in
+  BrevSettings and BrevDesign so families serialize without DTO sprawl.
+- `RelatedConversationConsentStore.autoLoadEnabledAccountIDs(among:)`
+  supports consent export; consent restore is additive in both modes.
+- UI: Import/Export gains a macOS "Brev backup" group (NSSavePanel /
+  NSOpenPanel + `BackupPreviewSheet` with counts, Merge/Replace picker,
+  credentials-never-included callout). Accounts shows a "Restored accounts —
+  sign in to finish" group wired through `SettingsView` to the existing
+  add-account sheet prefilled with the account email. iOS shows an
+  availability note only — no backup UI this slice.
+- Verification: BackupTests 15/15 (round-trip, tamper, version, unknown
+  keys, merge/replace, rollback, secrets stripped, signed-in drop,
+  completeness); 2 preview-sheet snapshot PNGs recorded.

@@ -162,8 +162,14 @@ struct AccountsSection: View {
     let onSetDefault: (BrevAccount) async -> Void
     let onSignOut: (BrevAccount) async -> Void
     let onRemoveAccount: (BrevAccount) async -> Void
+    /// Invoked when the user chooses Sign in on a restored account row; the
+    /// app wires this to the add-account flow prefilled with the entry's
+    /// email/server settings where a prefill seam exists.
+    let onSignInRestoredAccount: (AccountBackupEntry) -> Void
 
     private let settingsStore: SettingsPersistenceStore
+    private let pendingRestoredStore: PendingRestoredAccountsStore
+    @State private var pendingRestoredEntries: [AccountBackupEntry] = []
     @State private var fetchSettings: FetchScheduleSettings
     @State private var mailboxPreferences: MailboxSourcePreferences
     @State private var mailboxesByAccountID: [BrevAccount.ID: [Mailbox]] = [:]
@@ -186,7 +192,9 @@ struct AccountsSection: View {
         onAddAccount: @escaping () async -> Void,
         onSetDefault: @escaping (BrevAccount) async -> Void,
         onSignOut: @escaping (BrevAccount) async -> Void,
-        onRemoveAccount: @escaping (BrevAccount) async -> Void
+        onRemoveAccount: @escaping (BrevAccount) async -> Void,
+        pendingRestoredStore: PendingRestoredAccountsStore = .init(),
+        onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in }
     ) {
         self.accounts = accounts
         self.currentAccountID = currentAccountID
@@ -197,6 +205,8 @@ struct AccountsSection: View {
         self.onSetDefault = onSetDefault
         self.onSignOut = onSignOut
         self.onRemoveAccount = onRemoveAccount
+        self.pendingRestoredStore = pendingRestoredStore
+        self.onSignInRestoredAccount = onSignInRestoredAccount
         _fetchSettings = State(initialValue: settingsStore.fetchScheduleSettings())
         _mailboxPreferences = State(initialValue: settingsStore.mailboxSourcePreferences())
     }
@@ -205,6 +215,7 @@ struct AccountsSection: View {
         SectionScaffold(title: String(localized: "Accounts", bundle: .module)) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 accountListGroup
+                restoredAccountsGroup
                 fetchScheduleGroup
             }
         }
@@ -240,6 +251,12 @@ struct AccountsSection: View {
         }
         .task(id: mailboxLoadTaskID) {
             await loadMailboxesForAccounts()
+        }
+        .task { reloadPendingRestoredAccounts() }
+        .onReceive(
+            NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+        ) { _ in
+            reloadPendingRestoredAccounts()
         }
     }
 
@@ -296,6 +313,65 @@ struct AccountsSection: View {
                 }
             }
         }
+    }
+
+    /// Accounts parked by a backup restore until the user signs in again
+    /// (ADR-0076 decision 5). Entries whose email is already signed in are
+    /// hidden — restore drops them, and a later manual sign-in removes the
+    /// row without touching the store.
+    @ViewBuilder
+    private var restoredAccountsGroup: some View {
+        let visibleEntries = pendingRestoredEntries.filter { entry in
+            !accounts.contains {
+                $0.emailAddress.caseInsensitiveCompare(entry.account.emailAddress) == .orderedSame
+            }
+        }
+        if !visibleEntries.isEmpty {
+            SettingsGroup(
+                title: String(localized: "Restored accounts — sign in to finish", bundle: .module),
+                subtitle: String(
+                    localized: "Backups never include passwords. Sign in to reconnect each account.",
+                    bundle: .module
+                ),
+                symbolName: "person.badge.clock"
+            ) {
+                VStack(spacing: BrevSpacing.xs) {
+                    ForEach(visibleEntries) { entry in
+                        restoredAccountRow(entry)
+                    }
+                }
+            }
+        }
+    }
+
+    private func restoredAccountRow(_ entry: AccountBackupEntry) -> some View {
+        HStack(spacing: BrevSpacing.md) {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(entry.account.displayName.isEmpty
+                    ? entry.account.emailAddress
+                    : entry.account.displayName)
+                    .brevFont(.body)
+                Text(entry.account.emailAddress)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                Text(entry.account.backendDisplayName)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            Spacer()
+            Button(String(localized: "Sign in", bundle: .module)) {
+                onSignInRestoredAccount(entry)
+            }
+            Button(String(localized: "Remove", bundle: .module), role: .destructive) {
+                pendingRestoredStore.remove(accountID: entry.account.id)
+                reloadPendingRestoredAccounts()
+            }
+        }
+        .padding(.vertical, BrevSpacing.xxs)
+    }
+
+    private func reloadPendingRestoredAccounts() {
+        pendingRestoredEntries = pendingRestoredStore.entries()
     }
 
     private var fetchScheduleGroup: some View {

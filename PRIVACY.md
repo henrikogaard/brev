@@ -499,6 +499,18 @@ Import adds messages to the chosen mailbox. A provider-backed import can upload
 the imported messages to that provider. Current import availability depends on
 the account's importer support.
 
+## Brev backups
+
+Settings › Import / Export can write a `.brevbackup` package — a folder
+containing a manifest, your settings, and your account setup (names, email
+addresses, and server hostnames/ports) — to a location you choose. Backups
+never include passwords, OAuth tokens, Keychain references, or other
+credentials; the manifest records `containsSecrets: false` and a SHA-256 hash
+of each payload so a restore can detect tampering. Restored accounts are
+parked under "Restored accounts — sign in to finish" until you sign in again.
+The file is written where you choose; if that location is managed by iCloud
+or another file provider, that provider's own synchronization settings apply.
+
 ## What data does *not* leave your device, ever
 
 - **Usage analytics, screen-view counts, button-click counts, time-

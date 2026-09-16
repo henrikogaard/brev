@@ -13,7 +13,7 @@
 import BrevDesign
 import Foundation
 
-struct MailboxViewSettings: Equatable, Sendable {
+struct MailboxViewSettings: Equatable, Sendable, Codable {
     var useRichRenderer: Bool
     var allowRemoteContent: Bool
     var groupByThread: Bool

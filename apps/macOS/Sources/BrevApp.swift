@@ -40,6 +40,8 @@ struct BrevApp: App {
     @State private var sessionRestoreAttempted = false
     @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
+    /// Email handed to the add-account sheet when signing in a restored account.
+    @State private var addAccountPrefillEmail = ""
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var showRestoreErrorAlert = false
@@ -129,8 +131,9 @@ struct BrevApp: App {
                 )
             }
             .sheet(isPresented: $isShowingAddAccountSheet) {
-                MailAccountSetupSheet(session: session) {
+                MailAccountSetupSheet(session: session, initialEmailAddress: addAccountPrefillEmail) {
                     isShowingAddAccountSheet = false
+                    addAccountPrefillEmail = ""
                 }
                 .brevTheme(session.theme)
             }
@@ -216,6 +219,10 @@ struct BrevApp: App {
                 onAddAccount: { isShowingAddAccountSheet = true },
                 onSignOut: { account in await session.signOut(account: account) },
                 onRemoveAccount: { account in await session.removeAccount(account) },
+                onSignInRestoredAccount: { entry in
+                    addAccountPrefillEmail = entry.account.emailAddress
+                    isShowingAddAccountSheet = true
+                },
                 onAIProviderConfigurationChanged: {
                     await session.reloadConfiguredAIBackends()
                 }

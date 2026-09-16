@@ -53,6 +53,9 @@ struct ImportExportSection: View {
     private let accounts: [BrevAccount]
     private let currentAccountID: BrevAccount.ID?
     private let exportController: MailFolderExportController
+    private let settingsStore: SettingsPersistenceStore
+    private let accountConfigurationProvider: (String) async -> IMAPAccountConfiguration?
+    private let pendingRestoredStore: PendingRestoredAccountsStore
 
     @State private var allFolders: [Folder]
     @State private var isLoadingFolders = false
@@ -70,6 +73,9 @@ struct ImportExportSection: View {
     @State private var exportReloadRevision = 0
     @State private var selectedFolderID: Folder.ID?
     @State private var importDestination: ImportDestination = .newFolder
+    @State private var restorePreview: BackupPreview?
+    @State private var backupResultMessage: String?
+    @State private var backupErrorMessage: String?
 
     #if os(iOS)
     @State private var isChoosingExportFolder = false
@@ -111,12 +117,20 @@ struct ImportExportSection: View {
         accounts: [BrevAccount],
         currentAccountID: BrevAccount.ID?,
         exportController: MailFolderExportController,
-        allFolders: [Folder] = []
+        allFolders: [Folder] = [],
+        settingsStore: SettingsPersistenceStore = .standard,
+        accountConfigurationProvider: @escaping (String) async -> IMAPAccountConfiguration? = { accountID in
+            UserDefaultsIMAPAccountConfigurationStore().configuration(for: accountID)
+        },
+        pendingRestoredStore: PendingRestoredAccountsStore = .init()
     ) {
         self.backendProvider = backendProvider
         self.accounts = accounts
         self.currentAccountID = currentAccountID
         self.exportController = exportController
+        self.settingsStore = settingsStore
+        self.accountConfigurationProvider = accountConfigurationProvider
+        self.pendingRestoredStore = pendingRestoredStore
         _allFolders = State(initialValue: allFolders)
     }
 
@@ -131,6 +145,7 @@ struct ImportExportSection: View {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 importGroup
                 exportGroup
+                backupGroup
                 privacyNote
             }
         }
@@ -143,6 +158,16 @@ struct ImportExportSection: View {
             await loadExportMailboxes()
         }
         .task(id: selectedExportSourceID) { await loadExportFolders() }
+        .sheet(item: $restorePreview) { preview in
+            BackupPreviewSheet(
+                preview: preview,
+                onCancel: { restorePreview = nil },
+                onRestore: { mode in
+                    applyRestore(preview: preview, mode: mode)
+                    restorePreview = nil
+                }
+            )
+        }
         .onChange(of: accounts.map(\.id)) { previous, current in
             if !Set(previous).isSubset(of: Set(current)) {
                 #if os(iOS)
@@ -395,6 +420,139 @@ struct ImportExportSection: View {
                 .disabled(!canExport)
             }
         }
+    }
+
+    private var backupGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Brev backup", bundle: .module),
+            subtitle: String(
+                localized: "Save settings and account setup to a .brevbackup package. Passwords and tokens are never included.",
+                bundle: .module
+            ),
+            symbolName: "archivebox"
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                #if os(macOS)
+                HStack(spacing: BrevSpacing.sm) {
+                    Button(String(localized: "Back up settings and accounts…", bundle: .module)) {
+                        startBackupExport()
+                    }
+                    Button(String(localized: "Restore from backup…", bundle: .module)) {
+                        startBackupRestore()
+                    }
+                }
+                #else
+                Text("Backup is currently available on Mac.", bundle: .module)
+                    .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
+                #endif
+
+                if let backupResultMessage {
+                    SettingsInfoCallout(
+                        symbolName: "checkmark.circle",
+                        message: backupResultMessage,
+                        tone: .success
+                    )
+                }
+                if let backupErrorMessage {
+                    SettingsInfoCallout(
+                        symbolName: "exclamationmark.triangle",
+                        message: backupErrorMessage,
+                        tone: .warning
+                    )
+                }
+            }
+        }
+    }
+
+    #if os(macOS)
+    private func startBackupExport() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Brev backup.\(BackupWriter.packageExtension)"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            do {
+                let settings = SettingsBackupCodec.export(
+                    from: settingsStore,
+                    accountIDs: accounts.map(\.id)
+                )
+                let accountsPayload = await AccountsBackupCodec.export(
+                    accounts: accounts,
+                    configurationProvider: accountConfigurationProvider
+                )
+                let info = Bundle.main.infoDictionary
+                try BackupWriter.write(
+                    to: url,
+                    settings: settings,
+                    accounts: accountsPayload,
+                    appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
+                    appBuild: info?["CFBundleVersion"] as? String ?? "unknown"
+                )
+                backupErrorMessage = nil
+                backupResultMessage = String(
+                    localized: "Backup saved to \(url.lastPathComponent). Passwords and tokens were not included.",
+                    bundle: .module
+                )
+            } catch {
+                backupResultMessage = nil
+                backupErrorMessage = String(
+                    localized: "Backup failed: \(error.localizedDescription)",
+                    bundle: .module
+                )
+            }
+        }
+    }
+
+    private func startBackupRestore() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        do {
+            var preview = try BackupReader.validate(url: url)
+            preview = preview.countingSignedIn(emails: Set(accounts.map(\.emailAddress)))
+            backupErrorMessage = nil
+            restorePreview = preview
+        } catch {
+            backupResultMessage = nil
+            backupErrorMessage = error.localizedDescription
+        }
+    }
+
+    #endif
+
+    private func applyRestore(preview: BackupPreview, mode: BackupRestoreMode) {
+        let report = BackupRestorer.apply(
+            preview: preview,
+            mode: mode,
+            store: settingsStore,
+            signedInEmails: Set(accounts.map(\.emailAddress)),
+            pendingStore: pendingRestoredStore
+        )
+        var parts = [
+            String(
+                localized: "Restored \(report.succeededCategories.count) settings groups.",
+                bundle: .module
+            )
+        ]
+        if report.pendingRestoredAccounts > 0 {
+            parts.append(String(
+                localized: "\(report.pendingRestoredAccounts) accounts need sign-in — see Accounts.",
+                bundle: .module
+            ))
+        }
+        if report.alreadySignedInAccounts > 0 {
+            parts.append(String(
+                localized: "\(report.alreadySignedInAccounts) accounts were already signed in.",
+                bundle: .module
+            ))
+        }
+        backupResultMessage = parts.joined(separator: " ")
+        backupErrorMessage = report.failedCategories.isEmpty ? nil : String(
+            localized: "Couldn't restore \(report.failedCategories.count) settings groups.",
+            bundle: .module
+        )
     }
 
     private var privacyNote: some View {

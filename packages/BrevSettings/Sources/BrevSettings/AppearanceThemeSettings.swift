@@ -13,7 +13,7 @@
 import BrevThemes
 import Foundation
 
-public enum AppearanceThemeMode: String, CaseIterable, Identifiable, Sendable {
+public enum AppearanceThemeMode: String, CaseIterable, Identifiable, Sendable, Codable {
     case followSystem
     case alwaysLight
     case alwaysDark
@@ -37,7 +37,7 @@ public enum AppearanceThemeMode: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public struct AppearanceThemeSettings: Equatable, Sendable {
+public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
     enum Key {
         static let mode = "appearance.themeMode"
         static let lightThemeID = "appearance.lightThemeID"

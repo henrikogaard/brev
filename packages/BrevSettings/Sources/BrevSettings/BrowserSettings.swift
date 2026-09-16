@@ -12,7 +12,7 @@
 
 import Foundation
 
-public struct BrowserSettings: Equatable, Sendable {
+public struct BrowserSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static func preferredBrowser(scope: String? = nil) -> String {
             guard let scope, !scope.isEmpty else {
@@ -64,7 +64,7 @@ public struct BrowserSettings: Equatable, Sendable {
     }
 }
 
-public enum BrowserChoice: String, CaseIterable, Identifiable, Sendable {
+public enum BrowserChoice: String, CaseIterable, Identifiable, Sendable, Codable {
     case systemDefault
     case safari
     case chrome

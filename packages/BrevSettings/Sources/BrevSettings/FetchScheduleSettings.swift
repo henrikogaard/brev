@@ -15,7 +15,7 @@ import Foundation
 /// User preferences for automatic mail-fetch scheduling.
 ///
 /// Defaults to manual-only mode so new installs do not poll unexpectedly.
-public struct FetchScheduleSettings: Equatable, Sendable {
+public struct FetchScheduleSettings: Equatable, Sendable, Codable {
     /// `UserDefaults` key constants shared between `BrevSettings` and
     /// `BrevMail` so both packages write and read from the same store.
     public enum Key {
@@ -65,7 +65,7 @@ public struct FetchScheduleSettings: Equatable, Sendable {
 }
 
 /// Polling cadence advertised to the user in Settings → Accounts.
-public enum FetchInterval: String, CaseIterable, Sendable, Identifiable {
+public enum FetchInterval: String, CaseIterable, Sendable, Identifiable, Codable {
     case manual
     case fiveMinutes
     case fifteenMinutes

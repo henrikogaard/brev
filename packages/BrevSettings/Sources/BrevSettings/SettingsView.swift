@@ -51,6 +51,7 @@ public struct SettingsView: View {
     private let onSetDefaultAccount: (BrevAccount) async -> Void
     private let onSignOut: (BrevAccount) async -> Void
     private let onRemoveAccount: (BrevAccount) async -> Void
+    private let onSignInRestoredAccount: (AccountBackupEntry) -> Void
     private let onAIProviderConfigurationChanged: () async -> Void
     private let onClose: (() -> Void)?
     private let allFolders: [Folder]
@@ -76,6 +77,7 @@ public struct SettingsView: View {
         onSetDefaultAccount: ((BrevAccount) async -> Void)? = nil,
         onSignOut: @escaping (BrevAccount) async -> Void = { _ in },
         onRemoveAccount: ((BrevAccount) async -> Void)? = nil,
+        onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in },
         onAIProviderConfigurationChanged: @escaping () async -> Void = {},
         onClose: (() -> Void)? = nil
     ) {
@@ -113,6 +115,7 @@ public struct SettingsView: View {
             await accountStore.remove(account.id)
         }
         self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
+        self.onSignInRestoredAccount = onSignInRestoredAccount
         self.onClose = onClose
     }
 
@@ -497,7 +500,8 @@ public struct SettingsView: View {
                 onAddAccount: onAddAccount,
                 onSetDefault: onSetDefaultAccount,
                 onSignOut: onSignOut,
-                onRemoveAccount: onRemoveAccount
+                onRemoveAccount: onRemoveAccount,
+                onSignInRestoredAccount: onSignInRestoredAccount
             )
         case .appearance:
             AppearanceSection(
@@ -554,7 +558,8 @@ public struct SettingsView: View {
                 accounts: accounts,
                 currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
                 exportController: folderExportController,
-                allFolders: allFolders
+                allFolders: allFolders,
+                settingsStore: settingsStore
             )
         case .security:
             SecuritySection(settingsStore: settingsStore)

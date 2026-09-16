@@ -56,6 +56,13 @@ public final class RelatedConversationConsentStore: RelatedConversationConsentin
         defaults.bool(forKey: Self.key(for: accountID))
     }
 
+    /// The subset of `accountIDs` with persistent auto-load consent enabled.
+    /// Used by settings backup export (ADR-0076), which only knows the
+    /// accounts it is writing.
+    public func autoLoadEnabledAccountIDs(among accountIDs: [BrevAccount.ID]) -> [BrevAccount.ID] {
+        accountIDs.filter { isAutoLoadEnabled(accountID: $0) }
+    }
+
     /// Records or revokes the persistent automatic-lookup consent. Revoking also
     /// drops any session consent granted earlier.
     public func setAutoLoadEnabled(_ isEnabled: Bool, accountID: BrevAccount.ID) {

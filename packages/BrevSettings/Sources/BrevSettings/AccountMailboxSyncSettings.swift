@@ -123,7 +123,7 @@ public struct FolderSyncOverride: Codable, Equatable, Sendable {
     }
 }
 
-public struct AccountMailboxSyncSettings: Equatable, Sendable {
+public struct AccountMailboxSyncSettings: Equatable, Sendable, Codable {
     enum Key {
         static let roleMappings = "account.mailboxRoleMappings"
         static let folderSyncScope = "account.folderSyncScope"
