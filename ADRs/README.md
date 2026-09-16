@@ -81,7 +81,8 @@ repository checks.
 | 68 | Default blue accent and system appearance bootstrap | Accepted |
 | 69 | Monochrome default theme pair | Accepted |
 | 74 | Complete source-owned conversations | Accepted |
-| 75 | macOS background mail presence and launch at login | Proposed |
+| 75 | macOS background mail presence and launch at login | Accepted |
+| 76 | Versioned settings and account backup | Accepted |
 
 ## Conventions
 

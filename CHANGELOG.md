@@ -19,6 +19,9 @@ All notable changes to Brev are documented here.
   mail" preference in Settings › Folder Sync can enable the same metadata-only
   lookup on conversation open; it defaults off, fetches no bodies or
   attachments, and never marks mail read.
+- Optional background mail on macOS: keep checking mail with no window open,
+  see status in the menu bar, and open Brev at login (Settings ›
+  Notifications; off by default).
 
 ### Changed
 

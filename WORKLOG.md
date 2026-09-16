@@ -1411,3 +1411,30 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   BrevBackend's RelatedConversationConsentStoreTests.
 - CHANGELOG: one Unreleased/Changed line; the earlier Added bullet's
   "per-account … in Mailbox View settings" wording was corrected to match.
+
+### Follow-up: ADR-0075 background mail presence
+
+- New `NotificationSettings.backgroundMailEnabled` + `launchAtLoginRequested`
+  (per-device, not in the ADR-0056 allowlist). `BackgroundMailCoordinator`
+  (BrevMail, session-owned) runs `MailFetchScheduler.ticks` and records
+  success/failure; `performBackgroundRefresh` now returns the first
+  `localizedDescription` failure. `BackgroundMailStatusView` +
+  `BackgroundMailStatusPresentation` render the menu-bar menu; macOS app
+  adds a `MenuBarExtra` gated on the setting and reconciles start/stop and
+  interval changes via `UserDefaults.didChangeNotification`. Root view
+  yields ticks to the coordinator per-tick when the setting is on and
+  pushes the badge unread count into it. `LaunchAtLoginController`/
+  `Availability` live in BrevSettings (settings cannot depend on BrevMail),
+  gated to the exact release bundle id. Settings › Notifications gains a
+  macOS-only "Background mail" group with the toggle, launch-at-login
+  sub-toggle (SMAppService status-driven, requiresApproval → Login Items
+  button), and the manual-schedule callout.
+- Verification: BrevSettings build + NotificationSettings/LaunchAtLogin
+  13/13; BrevMail build + coordinator 6/6, scheduler/badge 28/28, status
+  snapshots 4/4 (8 new PNGs); `tuist generate` OK; BrevMacOS compiles via
+  xcodebuild CODE_SIGNING_ALLOWED=NO (entitlements need a dev cert for a
+  signed build — same env limitation as before); `tuist build BrevIOS` OK;
+  format/lint/privacy-audit/diff-check clean.
+- Docs: PRIVACY.md paragraph under Local mail notifications; CHANGELOG
+  Unreleased/Added; ADR-0006 note (cadence/lifetime only, no new row) and
+  its related-mail row's settings pointer updated to Folder Sync.

@@ -68,6 +68,27 @@ struct NotificationSettingsTests {
         #expect(restored == settings)
     }
 
+    @Test("background mail and launch-at-login flags persist per device")
+    func backgroundMailFlagsRoundTrip() throws {
+        let defaults = try Self.makeDefaults()
+
+        #expect(NotificationSettings.load(from: defaults).backgroundMailEnabled == false)
+        #expect(NotificationSettings.load(from: defaults).launchAtLoginRequested == false)
+
+        var settings = NotificationSettings.defaults
+        settings.backgroundMailEnabled = true
+        settings.launchAtLoginRequested = true
+        settings.save(to: defaults)
+
+        let restored = NotificationSettings.load(from: defaults)
+        #expect(restored.backgroundMailEnabled)
+        #expect(restored.launchAtLoginRequested)
+        // ADR-0075: these keys describe this device's process behavior and
+        // must stay out of the ADR-0056 iCloud key-value sync allowlist.
+        #expect(!PreferenceSyncAllowlist.keys.contains(NotificationSettings.Key.backgroundMailEnabled))
+        #expect(!PreferenceSyncAllowlist.keys.contains(NotificationSettings.Key.launchAtLogin))
+    }
+
     @Test("notification settings change signal has a stable name")
     func notificationSettingsChangeSignalHasStableName() {
         #expect(Notification.Name.brevNotificationSettingsDidChange.rawValue == "eu.brevmail.settings.notifications.changed")

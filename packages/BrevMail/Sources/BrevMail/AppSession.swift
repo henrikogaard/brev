@@ -62,6 +62,10 @@ public final class AppSession {
 
     public let accountStore: any AccountStore
     public let tokenStore: any TokenStore
+    /// Owns the macOS background fetch cadence while the "Keep checking mail
+    /// in the background" setting is on (ADR-0075). Inert until the app
+    /// target calls `start(interval:)`.
+    public let backgroundMail: BackgroundMailCoordinator
     private let themeDefaults: UserDefaults
 
     public struct LoginResult {
@@ -258,6 +262,8 @@ public final class AppSession {
         self.aiProviderAssignmentCleanup = aiProviderAssignmentCleanup
         self.aiProviderBackendResolver = aiProviderBackendResolver
         self.pendingMutationCleanup = pendingMutationCleanup
+        backgroundMail = BackgroundMailCoordinator()
+        backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         if let backend {
             backends[backend.account.id] = backend
             if let aiBackend {

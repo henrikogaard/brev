@@ -43,6 +43,9 @@ struct BrevApp: App {
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var showRestoreErrorAlert = false
+    /// Menu-bar presence mirrors the per-device setting (ADR-0075); reconciled
+    /// on launch and whenever defaults change.
+    @State private var backgroundMailInserted = NotificationSettings.load().backgroundMailEnabled
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -53,7 +56,7 @@ struct BrevApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: BrevWindowID.main) {
             Group {
                 if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
                     visibleBackendCount: session.visibleBackends.count,
@@ -85,7 +88,8 @@ struct BrevApp: App {
                         pendingComposePrefill: $pendingComposePrefill,
                         pendingNotificationRoute: $pendingNotificationRoute,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
-                        onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:)
+                        onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                        backgroundMail: session.backgroundMail
                     )
                     .frame(minWidth: 960, minHeight: 600)
                     .environment(\.openURL, browserOpenURLAction)
@@ -131,6 +135,7 @@ struct BrevApp: App {
                 .brevTheme(session.theme)
             }
             .task {
+                reconcileBackgroundMail()
                 await RetiredSecurityMaterialMigration.run()
                 updateController.startIfConfigured()
                 // A mailto: launch URL can arrive in the app delegate before
@@ -166,6 +171,13 @@ struct BrevApp: App {
                 NotificationCenter.default.publisher(for: .brevDidReceiveDeepLinkURL)
             ) { _ in
                 consumePendingBrevURL()
+            }
+            // Covers both `notifications.backgroundMailEnabled` and
+            // `fetch.interval` writes from any settings pane.
+            .onReceive(
+                NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            ) { _ in
+                reconcileBackgroundMail()
             }
         }
         .defaultSize(width: 1440, height: 820)
@@ -221,6 +233,57 @@ struct BrevApp: App {
                 .brevTheme(session.theme)
         }
         .windowResizability(.contentSize)
+
+        // ADR-0075: the visible proof that background checking is active.
+        MenuBarExtra(
+            "Brev",
+            systemImage: "envelope",
+            isInserted: $backgroundMailInserted
+        ) {
+            BackgroundMailStatusView(
+                presentation: BackgroundMailStatusPresentation(
+                    coordinator: session.backgroundMail
+                ),
+                onCheckNow: {
+                    Task { await session.backgroundMail.refreshNow() }
+                },
+                onOpenBrev: {
+                    // A WindowGroup's openWindow always creates another window;
+                    // prefer surfacing an existing main window over a duplicate.
+                    if let existing = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue.hasPrefix(BrevWindowID.main) == true && $0.isVisible
+                    }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: BrevWindowID.main)
+                    }
+                    NSApp.activate()
+                },
+                onQuitBrev: {
+                    // Goes through `applicationShouldTerminate`, keeping the
+                    // scheduled-send warning and the bounded cache flush.
+                    NSApp.terminate(nil)
+                }
+            )
+        }
+        .menuBarExtraStyle(.menu)
+    }
+
+    /// Mirrors `notifications.backgroundMailEnabled` into the menu-bar item
+    /// and starts/stops the session's `BackgroundMailCoordinator` at the
+    /// configured fetch interval. Restart-on-change is handled inside
+    /// `start(interval:)`'s same-interval no-op.
+    @MainActor
+    private func reconcileBackgroundMail() {
+        let settings = NotificationSettings.load()
+        backgroundMailInserted = settings.backgroundMailEnabled
+        if settings.backgroundMailEnabled {
+            session.backgroundMail.start(
+                interval: FetchScheduleSettings.load().interval.intervalSeconds
+            )
+        } else {
+            session.backgroundMail.stop()
+        }
     }
 
     private var browserOpenURLAction: OpenURLAction {
@@ -307,6 +370,7 @@ struct BrevApp: App {
 }
 
 enum BrevWindowID {
+    static let main = "brev-main"
     static let settings = "brev-settings"
     static let keyboardShortcuts = "brev-keyboard-shortcuts"
 }

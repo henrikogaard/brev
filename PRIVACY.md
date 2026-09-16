@@ -98,6 +98,12 @@ local presentation settings.
 **How to disable:** Settings → Notifications → "Enable notifications".
 Defaults to off.
 
+On macOS, "Keep checking mail in the background" (Settings → Notifications)
+keeps Brev running and checking the configured mail servers with no window
+open, shows its status in the menu bar, and can optionally register to open
+at login. It contacts only the mail servers the added accounts already use;
+no new destinations are contacted. Defaults to off.
+
 ### Remote HTML assets
 
 If enabled: Brev lets message HTML load remote images, fonts, and

@@ -1,6 +1,6 @@
 # ADR-0075: macOS background mail presence and launch at login
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-16
 - **Deciders:** Henrik
 
@@ -57,11 +57,12 @@ driver, which matters for launch-at-login registration).
    item and behavior is unchanged from today.
 
 3. **When on, the fetch loop survives the last window closing.** The
-   `MailFetchScheduler` tick loop and per-account IMAP IDLE ownership move
-   from `BrevMailRootView` to a `@MainActor` `BackgroundMailCoordinator` in
-   BrevMail owned by `AppSession`, so the root view becomes a subscriber
-   rather than the owner. With the toggle off, the coordinator runs only
-   while a mail window is open, preserving current behavior exactly.
+   `MailFetchScheduler` tick loop moves from `BrevMailRootView` to a
+   `@MainActor` `BackgroundMailCoordinator` in BrevMail owned by
+   `AppSession`. IMAP IDLE already belongs to each connected backend
+   (`IMAPSMTPBackend.watchInboxAndActiveFolderForIdleEvents`) and needs no
+   change. With the toggle off, the root view keeps owning the tick loop as
+   today, so current behavior is preserved exactly.
 
 4. **Launch at login is a separate opt-in sub-toggle**, enabled only when
    background mail is on, implemented with `SMAppService.mainApp`. Brev

@@ -69,6 +69,10 @@ public struct NotificationSettings: Equatable, Sendable {
         static let quietHoursEnabled = "notifications.quietHoursEnabled"
         static let quietHoursStart = "notifications.quietHoursStart"
         static let quietHoursEnd = "notifications.quietHoursEnd"
+        // Per-device process behavior (ADR-0075): deliberately not part of the
+        // ADR-0056 iCloud key-value allowlist in `PreferenceSyncAllowlist`.
+        static let backgroundMailEnabled = "notifications.backgroundMailEnabled"
+        static let launchAtLogin = "notifications.launchAtLogin"
     }
 
     public var notificationsEnabled: Bool
@@ -80,6 +84,12 @@ public struct NotificationSettings: Equatable, Sendable {
     public var quietHoursEnabled: Bool
     public var quietHoursStart: Int
     public var quietHoursEnd: Int
+    /// Keeps the fetch loop and menu-bar status alive with no window open
+    /// (ADR-0075). macOS only; off by default.
+    public var backgroundMailEnabled = false
+    /// Records that the user asked for launch-at-login. The rendered state
+    /// always comes from `SMAppService.mainApp.status`, not this flag.
+    public var launchAtLoginRequested = false
 
     public static let defaults = NotificationSettings(
         notificationsEnabled: false,
@@ -138,7 +148,17 @@ public struct NotificationSettings: Equatable, Sendable {
             quietHoursStart: defaults.object(forKey: Key.quietHoursStart) != nil
                 ? defaults.integer(forKey: Key.quietHoursStart) : Self.defaults.quietHoursStart,
             quietHoursEnd: defaults.object(forKey: Key.quietHoursEnd) != nil
-                ? defaults.integer(forKey: Key.quietHoursEnd) : Self.defaults.quietHoursEnd
+                ? defaults.integer(forKey: Key.quietHoursEnd) : Self.defaults.quietHoursEnd,
+            backgroundMailEnabled: bool(
+                for: Key.backgroundMailEnabled,
+                defaultValue: Self.defaults.backgroundMailEnabled,
+                defaults: defaults
+            ),
+            launchAtLoginRequested: bool(
+                for: Key.launchAtLogin,
+                defaultValue: Self.defaults.launchAtLoginRequested,
+                defaults: defaults
+            )
         )
     }
 
@@ -154,6 +174,8 @@ public struct NotificationSettings: Equatable, Sendable {
         defaults.set(quietHoursEnabled, forKey: Key.quietHoursEnabled)
         defaults.set(quietHoursStart, forKey: Key.quietHoursStart)
         defaults.set(quietHoursEnd, forKey: Key.quietHoursEnd)
+        defaults.set(backgroundMailEnabled, forKey: Key.backgroundMailEnabled)
+        defaults.set(launchAtLoginRequested, forKey: Key.launchAtLogin)
     }
 
     public mutating func setAccountOverride(

@@ -369,6 +369,10 @@ public struct BrevMailRootView: View {
     private let isExternalModalPresented: Bool
     private let initialMailboxSelectionAccountID: BrevAccount.ID?
     private let onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)?
+    /// Session-owned background fetch cadence (ADR-0075). Non-nil on macOS;
+    /// the root view pushes the badge unread count into it and, when the
+    /// background-mail setting is on, leaves the tick loop to it.
+    private let backgroundMail: BackgroundMailCoordinator?
 
     private let unreadCountReconciler = UnreadCountReconciler()
 
@@ -388,7 +392,8 @@ public struct BrevMailRootView: View {
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
-        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil
+        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
+        backgroundMail: BackgroundMailCoordinator? = nil
     ) {
         self.init(
             backends: [backend],
@@ -406,7 +411,8 @@ public struct BrevMailRootView: View {
             pendingNotificationRoute: pendingNotificationRoute,
             isExternalModalPresented: isExternalModalPresented,
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
-            onFinishInitialMailboxSelection: onFinishInitialMailboxSelection
+            onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
+            backgroundMail: backgroundMail
         )
     }
 
@@ -427,7 +433,8 @@ public struct BrevMailRootView: View {
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
-        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil
+        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
+        backgroundMail: BackgroundMailCoordinator? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -452,6 +459,7 @@ public struct BrevMailRootView: View {
         self.isExternalModalPresented = isExternalModalPresented
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
+        self.backgroundMail = backgroundMail
     }
 
     public var body: some View {
@@ -4039,6 +4047,7 @@ public struct BrevMailRootView: View {
             sourceSections: visibleSourceSections,
             settings: NotificationSettings.load()
         )
+        backgroundMail?.unreadCount = badgeUpdater.lastAppliedCount
     }
 
     private func applyMailboxSourcePreferenceUpdate() {
@@ -4919,10 +4928,19 @@ public struct BrevMailRootView: View {
     /// The task is restarted (via `.task(id: fetchIntervalRaw)`) whenever
     /// the user changes the fetch interval in settings. When the interval is
     /// manual-only the stream finishes immediately without refreshing.
+    /// When background mail is enabled (ADR-0075), `AppSession.backgroundMail`
+    /// owns the cadence instead so it survives the last window closing;
+    /// `refreshVisibleMail` stays available for manual refreshes. Ownership is
+    /// checked per tick (not once at task start) so toggling the setting
+    /// mid-session hands the cadence over without waiting for an
+    /// interval-change restart.
     private func runPeriodicFetchScheduler() async {
         let interval = FetchInterval(rawValue: fetchIntervalRaw) ?? .manual
         for await _ in MailFetchScheduler.ticks(every: interval.intervalSeconds) {
             guard !Task.isCancelled else { break }
+            guard BackgroundMailOwnershipPolicy.rootViewOwnsTicks(
+                backgroundMailEnabled: NotificationSettings.load().backgroundMailEnabled
+            ) else { continue }
             await refreshVisibleMail()
         }
     }
