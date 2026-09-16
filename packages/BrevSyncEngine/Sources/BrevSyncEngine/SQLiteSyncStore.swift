@@ -1383,13 +1383,10 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try execStmt(sql, bindings: bindings)
     }
 
-    /// The effective folder scope for a query: the single `folderID`, or the
-    /// `folderIDs` set an all-folders query was narrowed to. `nil` means no
-    /// folder constraint.
+    /// The effective folder scope for a query: `nil` means no folder
+    /// constraint; otherwise the query's `folderScope` (`folderID` wins).
     private static func folderScope(for query: SearchQuery) -> Set<String>? {
-        if let folderID = query.folderID { return [folderID] }
-        guard let folderIDs = query.folderIDs, !folderIDs.isEmpty else { return nil }
-        return folderIDs
+        query.folderScope
     }
 
     /// SQL predicate plus bound values for a folder scope. A single folder

@@ -46,7 +46,7 @@ final class ReaderThreadHeadersMemo {
     /// backing buffer or the thread changes.
     func headers(in allHeaders: [MessageHeader], threadID: String) -> [MessageHeader] {
         if let source, self.threadID == threadID,
-           allHeaders.hasIdenticalStorage(to: source) {
+           allHeaders.sharesRetainedBuffer(with: source) {
             return result
         }
         let resolved = ThreadMessageDerivation.threadHeaders(

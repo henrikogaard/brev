@@ -52,7 +52,7 @@ final class UnifiedInboxPresentationSnapshotCache {
         build: () -> UnifiedInboxPresentationSnapshot
     ) -> UnifiedInboxPresentationSnapshot {
         if self.key == key, let storedItems = self.items,
-           items.hasIdenticalStorage(to: storedItems), let value {
+           items.sharesRetainedBuffer(with: storedItems), let value {
             return value
         }
         let value = build()

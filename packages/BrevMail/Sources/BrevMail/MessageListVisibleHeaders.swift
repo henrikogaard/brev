@@ -17,10 +17,11 @@ import Foundation
 
 extension Array {
     /// Whether both arrays share the same backing buffer — an O(1) identity
-    /// check. As long as one of the arrays stays alive (the cache retains it),
-    /// its buffer address cannot be recycled, so matching addresses imply
-    /// identical contents: a copy shares the buffer and a mutation reallocates.
-    func hasIdenticalStorage(to other: [Element]) -> Bool {
+    /// check. A copy shares the buffer and a mutation reallocates, so matching
+    /// addresses imply identical contents. Sound only when the caller retains
+    /// `other` for the lifetime of the comparison result — otherwise the freed
+    /// buffer's address could be recycled by an unrelated allocation.
+    func sharesRetainedBuffer(with other: [Element]) -> Bool {
         withUnsafeBufferPointer { lhs in
             other.withUnsafeBufferPointer { rhs in
                 lhs.baseAddress == rhs.baseAddress && lhs.count == rhs.count
@@ -68,7 +69,7 @@ final class MessageListPresentationSnapshotCache {
         build: () -> MessageListPresentationSnapshot
     ) -> MessageListPresentationSnapshot {
         if self.key == key, let storedHeaders = self.headers,
-           headers.hasIdenticalStorage(to: storedHeaders), let value {
+           headers.sharesRetainedBuffer(with: storedHeaders), let value {
             return value
         }
         let value = build()

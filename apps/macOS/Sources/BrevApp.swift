@@ -420,10 +420,14 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
         return .terminateLater
     }
 
+    private var isFlushingBeforeTerminate = false
+
     /// `disconnect()` is only called on account switch/removal, so quit is the
     /// last chance to flush debounced header-cache writes. Best-effort: the
     /// flush races a 2-second budget so a stalled write can never block quit.
     private func flushLocalCachesThenTerminate(_ session: AppSession) {
+        guard !isFlushingBeforeTerminate else { return }
+        isFlushingBeforeTerminate = true
         Task { @MainActor in
             await withTaskGroup(of: Void.self) { group in
                 group.addTask { await session.flushLocalCaches() }

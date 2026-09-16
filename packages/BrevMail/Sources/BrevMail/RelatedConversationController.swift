@@ -168,7 +168,7 @@ final class RelatedConversationController {
         guard let snapshot else { return loaded }
         if let mergeMemo,
            mergeMemo.snapshotRevision == snapshotRevision,
-           loaded.hasIdenticalStorage(to: mergeMemo.loaded) {
+           loaded.sharesRetainedBuffer(with: mergeMemo.loaded) {
             return mergeMemo.result
         }
         // Members are unique by location, not header id: a stale-generation

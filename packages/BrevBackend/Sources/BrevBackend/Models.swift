@@ -712,6 +712,15 @@ public struct SearchQuery: Sendable, Hashable, Codable {
     /// Ignored when `folderID` is set.
     public var folderIDs: Set<String>?
 
+    /// The effective folder scope: the single `folderID` when set (it wins),
+    /// else a non-empty `folderIDs` set, else `nil` for no folder constraint.
+    /// Computed only — not part of the Codable shape.
+    public var folderScope: Set<Folder.ID>? {
+        if let folderID { return [folderID] }
+        guard let folderIDs, !folderIDs.isEmpty else { return nil }
+        return folderIDs
+    }
+
     /// Filter by sender address or display name (partial match).
     public var from: String?
 
@@ -792,9 +801,7 @@ public struct SearchQuery: Sendable, Hashable, Codable {
         if let isUnread, header.isRead == isUnread { return false }
         if let isFlagged, header.isFlagged != isFlagged { return false }
         if let hasAttachments, header.hasAttachments != hasAttachments { return false }
-        if let folderID, header.folderID != folderID { return false }
-        if folderID == nil, let folderIDs, !folderIDs.isEmpty,
-           !folderIDs.contains(header.folderID) { return false }
+        if let folderScope, !folderScope.contains(header.folderID) { return false }
         if let dateRange, !dateRange.contains(header.date) { return false }
         if let from {
             let q = from.trimmingCharacters(in: .whitespacesAndNewlines)

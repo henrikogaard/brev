@@ -144,10 +144,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private let gmailLabelsLock = NSLock()
     private var gmailLabelsDetected = false
 
-    private let configuration: IMAPAccountConfiguration
+    let configuration: IMAPAccountConfiguration
     private let credentialLock = NSLock()
     private var storedCredential: MailAccountCredential
-    private var credential: MailAccountCredential {
+    var credential: MailAccountCredential {
         credentialLock.withLock { storedCredential }
     }
 
@@ -179,22 +179,22 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private let idleEventsOperation: IdleEventOperation?
     private let condstoreSyncOperation: CONDSTORESyncOperation?
     private let manageSieveRuleSyncOperation: ManageSieveRuleSyncOperation?
-    private let searchRelatedHeadersOperation: RelatedHeaderSearchOperation?
+    let searchRelatedHeadersOperation: RelatedHeaderSearchOperation?
     /// Consent boundary for remote related-header discovery (ADR-0074/ADR-0006).
-    private let relatedConversationConsent: (any RelatedConversationConsenting)?
+    let relatedConversationConsent: (any RelatedConversationConsenting)?
     private let disconnectSessionOperation: SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
     private let sourceCache: (any IMAPMessageSourceCache)?
     private let bodyCache: (any IMAPMessageBodyCache)?
-    private let localSearchIndex: (any MailLocalSearchIndex)?
+    let localSearchIndex: (any MailLocalSearchIndex)?
     private let draftStagingStore: (any IMAPDraftStagingStore)?
     private let offlineMutationQueue: (any OfflineMutationQueue)?
     private let offlineMutationConflictStore: (any OfflineMutationConflictStore)?
     /// Optional outbound signing/encryption engine (ADR-0021). When a draft
     /// requests security but this is nil, the send fails closed.
     private let outboundMessagePreparer: (any OutboundMessagePreparing)?
-    private let state = IMAPSMTPBackendState()
+    let state = IMAPSMTPBackendState()
     /// Injectable contact lookup service. Set by BrevMail after backend creation
     /// when a CardDAV addressbook is available for the account.
     private let contactLookupProviderLock = NSLock()
@@ -2493,181 +2493,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         } else {
             folders = await folderCache?.snapshot(accountID: account.id)?.folders ?? []
         }
-        return Set(folders.filter { $0.role == .spam || $0.role == .trash }.map(\.id))
-    }
-
-    /// Bound on identifiers per UID SEARCH and total remote requests per lookup
-    /// (ADR-0074 §8): every query is one finite batch, never a folder scan.
-    private static let relatedSearchIdentifierChunkSize = 30
-    private static let relatedSearchResultLimit = 50
-    private static let relatedSearchRequestBudget = 64
-
-    /// Consented remote discovery: expands the reply-identifier frontier across
-    /// eligible folders with bounded UID SEARCH HEADER queries (ADR-0074 §4/§7).
-    /// Each candidate hit is verified locally before it becomes a member;
-    /// bodies and attachments stay lazy.
-    public func loadRelatedConversation(
-        around anchor: ConversationMember,
-        includeSpamAndTrash: Bool,
-        continuation: String?,
-        onUpdate: @escaping @Sendable (ConversationSnapshot) async -> Void
-    ) async throws -> ConversationSnapshot {
-        guard anchor.sourceID.accountID == account.id,
-              anchor.sourceID.mailboxID == account.id else {
-            throw ConversationLookupError.foreignSource
-        }
-        guard let searchRelatedHeaders = searchRelatedHeadersOperation,
-              let relatedConversationConsent else {
-            throw MailBackendError.notSupported(capabilities)
-        }
-        // Consent is enforced at invocation, not merely surfaced by the caller.
-        guard await relatedConversationConsent.isRelatedConversationConsented(accountID: account.id) else {
-            throw ConversationLookupError.consentRequired
-        }
-        try await connect()
-        guard await state.isRemoteAvailable() else {
-            // Cache-restored or offline mailboxes must not issue remote searches.
-            throw MailBackendError.notConnected
-        }
-        let folders = try await state.requireConnectedFolders()
-        let excludedFolderIDs = includeSpamAndTrash
-            ? []
-            : Set(folders.filter { $0.role == .spam || $0.role == .trash }.map(\.id))
-        let eligible = folders.filter { !excludedFolderIDs.contains($0.id) }
-
-        var membersByLocation: [ConversationLocation: ConversationMember] = [anchor.location: anchor]
-        var ambiguousIdentifiers: [String] = []
-        if let cached = try? await cachedConversation(around: anchor, includeSpamAndTrash: includeSpamAndTrash) {
-            for member in cached.members {
-                membersByLocation[member.location] = member
-            }
-            ambiguousIdentifiers = cached.ambiguousIdentifiers
-        }
-
-        // Per-folder pending/searched identifier sets implement §4's frontier
-        // expansion: every identifier is searched in every eligible folder once.
-        var pendingByFolder: [Folder.ID: Set<String>] = [:]
-        var searchedByFolder: [Folder.ID: Set<String>] = [:]
-        var unavailableFolders: [Folder.ID] = []
-        var queriedCount = 0
-        var unfetchedResultPages = false
-
-        func linkIdentifiers(of member: ConversationMember) -> Set<String> {
-            Set(ConversationMembershipResolver.cachedLinkIdentifiers(
-                for: member.header, references: member.references
-            ) ?? [])
-        }
-        func enqueue(_ identifiers: Set<String>) {
-            for folder in eligible where !unavailableFolders.contains(folder.id) {
-                let searched = searchedByFolder[folder.id, default: []]
-                pendingByFolder[folder.id, default: []].formUnion(identifiers.subtracting(searched))
-            }
-        }
-        func snapshot(coverage: ConversationCoverage) throws -> ConversationSnapshot {
-            try ConversationSnapshot(
-                anchor: anchor.location,
-                members: Array(membersByLocation.values),
-                coverage: coverage,
-                excludedFolderIDs: Array(excludedFolderIDs),
-                unavailableFolderIDs: unavailableFolders,
-                ambiguousIdentifiers: ambiguousIdentifiers
-            )
-        }
-
-        enqueue(membersByLocation.values.reduce(into: Set<String>()) {
-            $0.formUnion(linkIdentifiers(of: $1))
-        })
-        try await onUpdate(snapshot(coverage: .loading))
-
-        while queriedCount < Self.relatedSearchRequestBudget, !Task.isCancelled {
-            // A disconnect mid-scan stops remote work; the result stays honest.
-            guard await state.isRemoteAvailable() else {
-                for folder in eligible where pendingByFolder[folder.id]?.isEmpty == false {
-                    unavailableFolders.append(folder.id)
-                }
-                break
-            }
-            var progressed = false
-            for folder in eligible {
-                guard queriedCount < Self.relatedSearchRequestBudget else { break }
-                guard let pending = pendingByFolder[folder.id], !pending.isEmpty else { continue }
-                let chunk = Array(pending.sorted().prefix(Self.relatedSearchIdentifierChunkSize))
-                do {
-                    // Follow the result window's page cursor within the request
-                    // budget so a hit-heavy search is not silently capped (§8).
-                    var pageToken: String?
-                    repeat {
-                        guard queriedCount < Self.relatedSearchRequestBudget,
-                              !Task.isCancelled else { break }
-                        let page = try await searchRelatedHeaders(
-                            configuration, credential, folder.id, chunk,
-                            Self.relatedSearchResultLimit, pageToken
-                        )
-                        queriedCount += 1
-                        progressed = true
-                        pageToken = page.nextPageToken
-                        let generation = page.uidValidity.map { UInt64($0) }
-                        var batchHeaders: [MessageHeader] = []
-                        var discovered: Set<String> = []
-                        for listing in page.messages {
-                            let header = Self.header(from: listing, folderID: folder.id)
-                            let links = Set(ConversationMembershipResolver.cachedLinkIdentifiers(for: header) ?? [])
-                            // Candidate-search verification: keep only hits citing a
-                            // queried identifier (ADR-0074 §4).
-                            guard !links.isDisjoint(with: chunk) else { continue }
-                            let member = ConversationMember(
-                                sourceID: anchor.sourceID,
-                                header: header,
-                                folderGeneration: generation,
-                                references: header.references
-                            )
-                            if membersByLocation[member.location] == nil {
-                                membersByLocation[member.location] = member
-                                discovered.formUnion(links)
-                            }
-                            batchHeaders.append(header)
-                        }
-                        // Persist only while this lookup still owns the session —
-                        // a disconnect mid-scan must not keep refilling caches for
-                        // a retired or replacement account (§10).
-                        if !batchHeaders.isEmpty,
-                           !Task.isCancelled,
-                           await state.isRemoteAvailable() {
-                            await localSearchIndex?.storeHeaders(batchHeaders, account: account)
-                        }
-                        enqueue(discovered)
-                        try await onUpdate(snapshot(coverage: .loading))
-                    } while pageToken != nil
-                    // A page cursor left over means uninspected candidates —
-                    // coverage can never claim complete-for-scope.
-                    if pageToken != nil {
-                        unfetchedResultPages = true
-                    }
-                    pendingByFolder[folder.id]?.subtract(chunk)
-                    searchedByFolder[folder.id, default: []].formUnion(chunk)
-                } catch is CancellationError {
-                    throw CancellationError()
-                } catch {
-                    // Folder failure is reported, not hidden; the rest continue.
-                    unavailableFolders.append(folder.id)
-                    pendingByFolder[folder.id] = []
-                }
-            }
-            if !progressed { break }
-        }
-
-        // Honest completion: every eligible folder drained its frontier, no
-        // folder failed and no search result window was left unfetched. Failed
-        // folders, truncated pages or budget-limited leftovers stay partial.
-        let hasPendingWork = eligible.contains { pendingByFolder[$0.id]?.isEmpty == false }
-        let final = try snapshot(
-            coverage: unavailableFolders.isEmpty && !hasPendingWork && !unfetchedResultPages
-                && ambiguousIdentifiers.isEmpty
-                ? .completeForScope
-                : .partial
-        )
-        await onUpdate(final)
-        return final
+        return Self.spamAndTrashFolderIDs(in: folders)
     }
 
     /// Enumerates cached headers without connecting or truncating saved-view candidates.
@@ -3766,7 +3592,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return parentID.isEmpty ? nil : parentID
     }
 
-    private static func header(
+    static func header(
         from listing: IMAPMessageListing,
         folderID: Folder.ID,
         hasAttachments: Bool = false
