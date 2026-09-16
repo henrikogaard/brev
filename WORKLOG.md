@@ -1385,3 +1385,29 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   CODE_SIGNING_ALLOWED=NO`; `tuist build` fails only on the entitlements
   development-signing requirement — no dev cert in this environment).
   lint.sh, format.sh (0 files), git diff --check clean.
+
+### Follow-up: settings consistency — related mail under Folder Sync
+
+- Moved the "Related mail" consent group out of Mailbox View into
+  `PerFolderSyncSection` (after the folder-override list). The account is
+  derived from the context bar's `MailSourceID.accountID`; the inline account
+  picker is gone, and `sourceID == nil` shows "Open a mailbox to control
+  related-mail lookup." `MailboxViewSection` lost its `accounts`,
+  `currentAccountID`, and `relatedConsentStore` init params plus all related
+  state/bindings.
+- Removed Mailbox View's standalone "Search" callout; its sentence is appended
+  to the Mail Storage cache-lookback footnote. Reading-group subtitle now
+  reads "Rendering, conversation order, and type."
+- Smart Views sidebar glyph is now `rectangle.stack` (Rules keeps the funnel).
+  Settings search: "Related mail"/"Automatically load related mail" resolve to
+  Folder Sync; "Search"/"Local search" moved from Mailbox View to Mail Storage.
+- Verification: `swift build` BrevSettings + BrevMail clean; full BrevSettings
+  suite 342/342 pass after re-recording the five legitimately changed
+  baselines (navigation-groups, folder-workspace, folders, folders-narrow,
+  mailbox-view — light+dark) plus settings-navigation. appearance-*/accounts-*
+  re-recorded byte-identical and were left untouched. format.sh, lint.sh,
+  git diff --check clean. No view-level toggle test existed to move (no
+  ViewInspector in the package); store behavior remains covered by
+  BrevBackend's RelatedConversationConsentStoreTests.
+- CHANGELOG: one Unreleased/Changed line; the earlier Added bullet's
+  "per-account … in Mailbox View settings" wording was corrected to match.
