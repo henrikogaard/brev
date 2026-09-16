@@ -852,40 +852,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         )
     }
 
-    /// Resolved thread IDs per folder, keyed by an order-independent
-    /// fingerprint of the fields the resolver reads (id, messageID,
-    /// inReplyTo, threadID, date). Flag updates keep the fingerprint, so
-    /// read/flag churn and repeated page listings no longer re-run
-    /// union-find over the whole folder.
+    /// Per-folder incremental thread resolvers. Each resolver diffs the
+    /// known header set on the fields resolution reads, so a flag update is
+    /// `.unchanged` and a new page only extends the forest — union-find and
+    /// naming no longer re-run over the whole cached folder.
     private let threadResolutionLock = NSLock()
-    private var threadResolutionMemos: [Folder.ID: (fingerprint: UInt64, threadIDs: [MessageHeader.ID: String])] = [:]
-
-    /// Order-independent fingerprint over the resolver's input fields — the
-    /// union-find result depends only on the set of (id, messageID,
-    /// inReplyTo, threadID, date) tuples, not their order.
-    private static func threadResolutionFingerprint(of headers: [MessageHeader]) -> UInt64 {
-        var folded: UInt64 = 0xCBF2_9CE4_8422_2325
-        var weighted: UInt64 = 0
-        for header in headers {
-            var hash: UInt64 = 0xCBF2_9CE4_8422_2325
-            for byte in header.id.utf8 {
-                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
-            }
-            for byte in (header.messageID ?? "").utf8 {
-                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
-            }
-            for byte in (header.inReplyTo ?? "").utf8 {
-                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
-            }
-            for byte in header.threadID.utf8 {
-                hash = (hash ^ UInt64(byte)) &* 0x0000_0100_0000_01B3
-            }
-            hash = (hash ^ header.date.timeIntervalSince1970.bitPattern) &* 0x0000_0100_0000_01B3
-            folded ^= hash
-            weighted &+= hash &* 0x9E37_79B9_7F4A_7C15
-        }
-        return folded ^ (weighted &* 0x9E37_79B9_7F4A_7C15) ^ UInt64(headers.count)
-    }
+    private var threadResolvers: [Folder.ID: IncrementalThreadResolver] = [:]
 
     /// Resolves conversations for `headers` against the folder's cached
     /// headers, so a reply that arrives on page 2 still joins the message it
@@ -905,26 +877,32 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         let startedAt = Date()
         let headerIDs = Set(headers.map(\.id))
         let known = headers + cached.filter { !headerIDs.contains($0.id) }
-        let fingerprint = Self.threadResolutionFingerprint(of: known)
-        let memo = threadResolutionLock.withLock { threadResolutionMemos[folderID] }
-        let threadIDs: [MessageHeader.ID: String]
-        if let memo, memo.fingerprint == fingerprint {
-            threadIDs = memo.threadIDs
-        } else {
-            threadIDs = MessageThreadResolver.threadIDsByHeaderID(for: known)
-            threadResolutionLock.withLock {
-                threadResolutionMemos[folderID] = (fingerprint, threadIDs)
-            }
+        // The page's ids are looked up one at a time so a warm listing does
+        // not build an N-entry threadID dictionary.
+        let (update, pageThreadIDs) = threadResolutionLock.withLock {
+            var resolver = threadResolvers[folderID] ?? IncrementalThreadResolver()
+            let update = resolver.update(with: known)
+            let ids = headers.map { resolver.threadID(for: $0.id) }
+            threadResolvers[folderID] = resolver
+            return (update, ids)
+        }
+        let updateDescription: String
+        switch update {
+        case .unchanged:
+            updateDescription = "unchanged"
+        case .incremental(let added):
+            updateDescription = "incremental added=\(added)"
+        case .rebuilt(let reason):
+            updateDescription = "rebuilt reason=\(reason)"
         }
         MailPerformanceDiagnostics.logThreadResolution(
             inputCount: known.count,
-            hit: memo?.fingerprint == fingerprint,
+            hit: update == .unchanged,
+            update: updateDescription,
             durationMilliseconds: MailPerformanceDiagnostics.durationMilliseconds(since: startedAt)
         )
-        return headers.map { header in
-            guard let threadID = threadIDs[header.id],
-                  threadID != header.threadID
-            else {
+        return zip(headers, pageThreadIDs).map { header, threadID in
+            guard let threadID, threadID != header.threadID else {
                 return header
             }
             return header.withThreadID(threadID)
@@ -4407,7 +4385,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     private func clearLocalCaches() async {
-        threadResolutionLock.withLock { threadResolutionMemos.removeAll() }
+        threadResolutionLock.withLock { threadResolvers.removeAll() }
         await folderCache?.clear(accountID: account.id)
         await headerCache?.clear(accountID: account.id)
         await sourceCache?.clear(accountID: account.id)

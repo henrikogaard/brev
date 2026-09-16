@@ -25,24 +25,31 @@ Debug-build numbers are pessimistic; relative ratios are the point.
 
 | Path | Fixture | Before-shape | After-shape | Ratio |
 | --- | --- | ---: | ---: | ---: |
-| Cache-hit folder listing (thread resolution) | 10k headers | cold 37.6 ms | memo hit 12.2 ms | 3.1× |
-| Header-cache disk writes | 10k headers × 50 flag updates | write-through 2,726 ms | coalesced 81 ms | 33× |
+| Cache-hit folder listing (thread resolution) | 10k headers | cold 37.6 ms → 35.0 ms | memo hit 12.2 ms → 9.3 ms | 3.8× |
+| Header-cache disk writes | 10k headers × 50 flag updates | write-through 2,726 ms → 3,739 ms | coalesced 81 ms → 114 ms | 33× |
 | All-folders local search | 20 folders × 500 rows, 1,000 matches | 20 queries 33.9 ms | 1 scoped query 17.2 ms | 2.0× |
-| Server paging merge | 200-row pages into a growing cache | first 3 pages 0.63 ms avg | pages 18–20 3.55 ms avg | record-only |
+| Server paging merge | 200-row pages into a growing cache | first 3 pages 0.63 ms → 0.50 ms avg | pages 18–20 3.55 ms → 2.15 ms avg | record-only |
 
 "Before-shape" is the same code path exercised in the shape the code used
 before the pass (per-mutation flush, per-folder query, no memo), so the
-comparison is like-for-like on the same host and build.
+comparison is like-for-like on the same host and build. The left number in
+each `→` pair is the previous recorded value on this host; the right number
+is the incremental-thread-resolution re-run on 2026-09-16.
 
 ## Findings the harness surfaced
 
-- **Paging still grows with cached folder size.** The append fast path removed
-  the per-page re-sort, but thread resolution runs over the whole cached
-  folder whenever new headers arrive, so page N costs O(N×page). At 4k headers
-  it is 3.5 ms per page — acceptable, but it will reach the 10 ms range near
-  12k headers. Incremental union-find (extend the existing forest with only
-  the new page's edges) is the next optimization if large-folder paging shows
-  up in live traces.
+- **Incremental thread resolution cut per-page merge cost ~40%.** Replacing
+  the fingerprint memo + whole-folder union-find with
+  `IncrementalThreadResolver` (diff on thread keys, extend the forest with
+  only new edges) took pages 18–20 of a 10k folder from 3.55 ms to 2.15 ms
+  average, and the warm cache-hit listing from 12.2 ms to 9.3 ms. The warm
+  listing no longer hashes all 10k headers or rebuilds the thread-ID
+  dictionary — it diffs keys and looks up only the page's ids.
+- **Paging still grows, just slower.** The per-page update still diffs the
+  known set O(N) to catch removals/rekeys, so late pages cost ~4× the first
+  pages (was ~6×). A removal/change-triggered rebuild is rare; if large-folder
+  paging still shows in live traces, the remaining cost is the O(N) diff
+  itself, not resolution.
 
 ## Not measured here — still owed under #28 §5
 

@@ -1463,3 +1463,20 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Verification: BackupTests 15/15 (round-trip, tamper, version, unknown
   keys, merge/replace, rollback, secrets stripped, signed-in drop,
   completeness); 2 preview-sheet snapshot PNGs recorded.
+
+### Follow-up: incremental IMAP thread resolution
+
+- `IncrementalThreadResolver` in `MessageThreadResolver.swift` diffs known
+  headers on `ThreadKey` (messageID, inReplyTo, threadID, date) per update:
+  flag-only churn is `.unchanged`, pure additions extend the union-find
+  forest incrementally (names merged by min `(date, node)` on unite), and
+  any change/removal falls back to a full rebuild with batch semantics.
+- `IMAPSMTPBackend.threadedHeaders` keeps one resolver per folder under the
+  existing lock and looks up only the page's ids (`threadID(for:)`), so a
+  warm listing no longer hashes all N headers or rebuilds the whole map.
+  `logThreadResolution` gained a counts-only `update=` field.
+- Baselines (10k folder): warm cache-hit 16.8 → 9.3 ms; paging pages 18–20
+  4.94 → 2.15 ms avg (still record-only — the O(N) key diff remains).
+- Tests: `IncrementalThreadResolverTests` (5) — random-page-order property
+  test vs batch resolver, flag-only unchanged, changed/removed/empty
+  rebuilds, incremental adds, bridge-merge naming.

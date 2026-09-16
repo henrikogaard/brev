@@ -200,10 +200,11 @@ enum MailPerformanceDiagnostics {
     static func logThreadResolution(
         inputCount: Int,
         hit: Bool,
+        update: String,
         durationMilliseconds: Int
     ) {
         logger.debug(
-            "mail.threads.resolve inputCount=\(inputCount, privacy: .public) hit=\(hit, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+            "mail.threads.resolve inputCount=\(inputCount, privacy: .public) hit=\(hit, privacy: .public) update=\(update, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
         )
     }
 
