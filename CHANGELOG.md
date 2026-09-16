@@ -15,10 +15,15 @@ All notable changes to Brev are documented here.
 - Cross-folder conversations: the reader now shows related messages from other
   folders (including Sent and Archive) using cached metadata, with an explicit
   "Load related mail" action that asks the provider for related headers across
-  all eligible folders in the account. A per-account "Automatically load related
-  mail" preference in Mailbox View settings can enable the same metadata-only
+  all eligible folders in the account. A per-mailbox "Automatically load related
+  mail" preference in Settings › Folder Sync can enable the same metadata-only
   lookup on conversation open; it defaults off, fetches no bodies or
   attachments, and never marks mail read.
+
+### Changed
+
+- Related-mail auto-loading is now set per mailbox under Settings › Folder Sync;
+  Smart Views has its own sidebar icon.
 
 ### Fixed
 

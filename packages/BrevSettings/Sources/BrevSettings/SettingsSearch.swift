@@ -71,7 +71,6 @@ extension SettingsSection {
                 String(localized: "Show folder stats", bundle: .module),
                 String(localized: "Inbox classification", bundle: .module),
                 String(localized: "Stats detail", bundle: .module),
-                String(localized: "Search", bundle: .module),
                 String(localized: "Sender image sources", bundle: .module),
                 String(localized: "Use Contacts photos", bundle: .module),
                 String(localized: "Use Gravatar", bundle: .module),
@@ -133,7 +132,8 @@ extension SettingsSection {
                 String(localized: "Per-folder overrides", bundle: .module),
                 String(localized: "Show in mailbox list", bundle: .module),
                 String(localized: "Retention", bundle: .module),
-                String(localized: "Show in mailbox list", bundle: .module),
+                String(localized: "Related mail", bundle: .module),
+                String(localized: "Automatically load related mail", bundle: .module),
             ]
         case .mailStorage: return [
                 String(localized: "Reset & re-download local mail?", bundle: .module),
@@ -148,6 +148,8 @@ extension SettingsSection {
                 String(localized: "Breakdown", bundle: .module),
                 String(localized: "Details", bundle: .module),
                 String(localized: "Search index", bundle: .module),
+                String(localized: "Search", bundle: .module),
+                String(localized: "Local search", bundle: .module),
                 String(localized: "Local retention", bundle: .module),
                 String(localized: "Cache lookback", bundle: .module),
                 String(localized: "Download", bundle: .module),

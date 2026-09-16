@@ -19,11 +19,13 @@ public struct PerFolderSyncSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var settings: AccountMailboxSyncSettings
     @State private var visibilityPreferences: FolderVisibilityPreferences
+    @State private var relatedAutoLoadEnabled = false
     @State private var filter = ""
 
     private let folders: [Folder]
     private let sourceID: MailSourceID?
     private let settingsStore: SettingsPersistenceStore
+    private let relatedConsentStore: RelatedConversationConsentStore
     private let emptyFolderMessage: String
     private let onReload: (() -> Void)?
     private let isLoading: Bool
@@ -35,6 +37,7 @@ public struct PerFolderSyncSection: View {
         sourceID: MailSourceID? = nil,
         settings: AccountMailboxSyncSettings,
         settingsStore: SettingsPersistenceStore = .standard,
+        relatedConsentStore: RelatedConversationConsentStore = .shared,
         emptyFolderMessage: String? = nil,
         isLoading: Bool = false,
         onReload: (() -> Void)? = nil,
@@ -46,6 +49,7 @@ public struct PerFolderSyncSection: View {
         self.onReload = onReload
         self.sourceID = sourceID
         self.settingsStore = settingsStore
+        self.relatedConsentStore = relatedConsentStore
         self.emptyFolderMessage = emptyFolderMessage ?? String(
             localized: "No folders available. Open a mailbox to configure per-folder sync.",
             bundle: .module
@@ -63,8 +67,73 @@ public struct PerFolderSyncSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 folderOverridesGroup
+                relatedMailGroup
             }
         }
+        .task(id: sourceID) {
+            relatedAutoLoadEnabled = sourceID.map {
+                relatedConsentStore.isAutoLoadEnabled(accountID: $0.accountID)
+            } ?? false
+        }
+    }
+
+    /// Per-mailbox consent for remote related-header lookup (ADR-0074). The
+    /// explicit reader "Load related mail" action always stays available; this
+    /// toggle only authorizes the same metadata lookup automatically when a
+    /// conversation opens. The account comes from the context bar's mailbox —
+    /// one mailbox belongs to exactly one account.
+    private var relatedMailGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Related mail", bundle: .module),
+            subtitle: String(
+                localized: "Look up conversation members across this mailbox's folders.",
+                bundle: .module
+            ),
+            symbolName: "arrow.triangle.branch"
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                if sourceID == nil {
+                    SettingsInfoCallout(
+                        symbolName: "tray",
+                        message: String(
+                            localized: "Open a mailbox to control related-mail lookup.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                } else {
+                    SettingsToggleRow(
+                        symbolName: "arrow.triangle.2.circlepath",
+                        title: String(localized: "Automatically load related mail", bundle: .module),
+                        subtitle: String(
+                            localized: "When you open a conversation, ask the provider for related headers across this mailbox, including folders that aren't synced.",
+                            bundle: .module
+                        ),
+                        isOn: relatedAutoLoadBinding
+                    )
+
+                    SettingsInfoCallout(
+                        symbolName: "shield",
+                        message: String(
+                            localized: "Headers only. Bodies and attachments are never downloaded, and nothing is marked read. You can always use Load related mail on a single conversation instead.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
+            }
+        }
+    }
+
+    private var relatedAutoLoadBinding: Binding<Bool> {
+        Binding(
+            get: { relatedAutoLoadEnabled },
+            set: { newValue in
+                relatedAutoLoadEnabled = newValue
+                guard let accountID = sourceID?.accountID else { return }
+                relatedConsentStore.setAutoLoadEnabled(newValue, accountID: accountID)
+            }
+        )
     }
 
     private var folderOverridesGroup: some View {

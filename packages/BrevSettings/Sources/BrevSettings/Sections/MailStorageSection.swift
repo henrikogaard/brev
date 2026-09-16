@@ -576,6 +576,15 @@ enum MailStoragePresentation {
         )
     }
 
+    /// Where local search results come from. Previously a standalone callout
+    /// in Mailbox View; folded in here next to the cache-lookback control.
+    static var localSearchExplanation: String {
+        String(
+            localized: "Local search uses Brev-owned cached headers and message bodies. Use Server in the message list when you want provider search; the lookback above decides how far back bodies stay searchable.",
+            bundle: .module
+        )
+    }
+
     /// Title for the Advanced storage disclosure control.
     static func advancedDisclosureTitle(isExpanded: Bool) -> String {
         isExpanded ? String(localized: "Hide advanced storage", bundle: .module) : String(
@@ -801,7 +810,8 @@ struct MailStorageSection: View {
 
                 SettingsInfoCallout(
                     symbolName: "info.circle",
-                    message: MailStoragePresentation.retentionDownloadExplanation,
+                    message: MailStoragePresentation.retentionDownloadExplanation
+                        + " " + MailStoragePresentation.localSearchExplanation,
                     tone: .info
                 )
             }
