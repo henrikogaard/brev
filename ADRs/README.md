@@ -83,6 +83,9 @@ repository checks.
 | 74 | Complete source-owned conversations | Accepted |
 | 75 | macOS background mail presence and launch at login | Accepted |
 | 76 | Versioned settings and account backup | Accepted |
+| 77 | Durable local mail folders | Accepted |
+| 78 | Local attachment content indexing | Accepted |
+| 79 | Native Microsoft 365 mail through Microsoft Graph | Proposed |
 
 ## Conventions
 

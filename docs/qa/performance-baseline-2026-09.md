@@ -65,3 +65,8 @@ on the maintainer's daily-driver mailbox, and are **not** covered by this file:
 The new signposts (`IMAP Header Cache Flush`, thread-resolution hit/miss,
 session queue wait, presentation build) exist so that pass can attribute time
 without further code changes.
+
+The operator script for that pass is `docs/qa/performance-live-run.md`
+(ten scenarios, ~30 minutes); `scripts/performance-summarize-trace.py` turns
+the log export into the budget-gate JSON. Results go under
+`docs/qa/results/` and a **Live measurements** section is appended here.

@@ -4,7 +4,7 @@
 - **Date:** 2026-06-15
 - **Deciders:** Henrik
 - **Amends:** ADR-0034
-- **Amended by:** ADR-0060
+- **Amended by:** ADR-0060, ADR-0078
 
 ## Context
 
