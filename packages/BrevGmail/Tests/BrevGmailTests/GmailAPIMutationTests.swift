@@ -47,6 +47,42 @@ struct GmailAPIMutationTests {
         #expect(Set(labels) == ["ALL_MAIL", "IMPORTANT", "label-work", "label-projects"])
     }
 
+    @Test("move Undo restores label changes without dropping pre-existing labels")
+    func moveUndoRestoresLabels() async throws {
+        let original = ["INBOX", "ALL_MAIL", "IMPORTANT", "label-work"]
+        let client = MutationClient(messages: [Self.message(labels: original)])
+        let store = InMemoryGmailAccountStore()
+        let backend = try await Self.backend(client: client, store: store)
+        let receipt = try #require(try await backend.moveWithUndo(
+            messageIDs: ["m1"], from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            to: Folder(id: "label-projects", name: "Projects", role: .custom),
+            sourceID: MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        ))
+        #expect(try await Set(store.messageLabelIDs(accountID: Self.account.id, messageID: "m1"))
+            == ["ALL_MAIL", "IMPORTANT", "label-work", "label-projects"])
+        let restored = try await receipt.restore()
+        #expect(restored == ["m1": "m1"])
+        #expect(try await Set(store.messageLabelIDs(accountID: Self.account.id, messageID: "m1")) == Set(original))
+    }
+
+    @Test("retrying a partially restored Gmail move skips completed messages")
+    func moveUndoRetrySkipsRestoredMessages() async throws {
+        let messages = ["m1", "m2"].map { GmailMessage(id: $0, threadID: $0, labelIDs: ["INBOX"], snippet: "") }
+        let client = MutationClient(messages: messages)
+        let store = InMemoryGmailAccountStore()
+        let backend = try await Self.backend(client: client, store: store)
+        try await store.apply(GmailStoreDelta(accountID: Self.account.id, upsertedMessages: messages))
+        let receipt = try #require(try await backend.moveWithUndo(
+            messageIDs: ["m1", "m2"], from: Folder(id: "INBOX", name: "Inbox", role: .inbox),
+            to: Folder(id: "ALL_MAIL", name: "All Mail", role: .allMail),
+            sourceID: MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        ))
+        await client.failNextModify(id: "m2")
+        await #expect(throws: GmailAPIError.self) { _ = try await receipt.restore() }
+        _ = try await receipt.restore()
+        #expect(await client.modifiedMessageIDs() == ["m1", "m2", "m2"])
+    }
+
     @Test("junk, trash, restore, and scope-gated permanent delete are native")
     func junkTrashRestoreAndPermanentDelete() async throws {
         let client = MutationClient(messages: [Self.message(labels: ["INBOX"])])
@@ -195,6 +231,11 @@ private actor MutationClient: GmailAPIClientProtocol, GmailAPITransporting {
     private var trashOperations = 0
     private var permanentDeletes = 0
     private var createdNames: [String] = []
+    private var failedModifyID: String?
+    private var modifiedIDs: [String] = []
+
+    func failNextModify(id: String) { failedModifyID = id; modifiedIDs = [] }
+    func modifiedMessageIDs() -> [String] { modifiedIDs }
 
     init(messages: [GmailMessage], shouldFailWrites: Bool = false) {
         self.messages = Dictionary(uniqueKeysWithValues: messages.map { ($0.id, $0) })
@@ -242,7 +283,12 @@ private actor MutationClient: GmailAPIClientProtocol, GmailAPITransporting {
     func listSendAs() async throws -> [GmailSendAs] { throw GmailAPIError.invalidRequest }
 
     func modifyMessageLabels(id: String, addLabelIDs: [String], removeLabelIDs: [String]) async throws -> GmailMessage {
-        try mutate(id: id, add: addLabelIDs, remove: removeLabelIDs)
+        modifiedIDs.append(id)
+        if failedModifyID == id {
+            failedModifyID = nil
+            throw GmailAPIError.invalidRequest
+        }
+        return try mutate(id: id, add: addLabelIDs, remove: removeLabelIDs)
     }
 
     func batchModifyMessageLabels(messageIDs: [String], addLabelIDs: [String], removeLabelIDs: [String]) async throws {

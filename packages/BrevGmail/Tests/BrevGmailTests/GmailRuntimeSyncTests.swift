@@ -47,7 +47,8 @@ struct GmailRuntimeSyncTests {
 
         try await backend.connect()
 
-        let event = try await #require(eventTask.value)
+        let receivedEvent = await eventTask.value
+        let event = try #require(receivedEvent)
         guard case .messagesUpdated(_, let messageIDs) = event else {
             Issue.record("Expected a committed messagesUpdated event")
             return

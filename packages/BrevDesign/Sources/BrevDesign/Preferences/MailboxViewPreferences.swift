@@ -32,7 +32,7 @@ public enum MailboxViewPreferenceKey {
 }
 
 /// Order of the messages inside a conversation thread in the reading pane.
-public enum MailboxThreadOrder: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxThreadOrder: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     /// Oldest message at the top, newest at the bottom (read top to bottom).
     case oldestFirst
     /// Newest message at the top.
@@ -62,7 +62,7 @@ public enum MailboxThreadOrder: String, Sendable, Hashable, CaseIterable, Identi
     }
 }
 
-public enum InboxClassificationMode: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum InboxClassificationMode: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case off
     case categories
 
@@ -136,7 +136,7 @@ public enum InboxCategory: String, Sendable, Hashable, CaseIterable, Identifiabl
     }
 }
 
-public enum MailboxFolderStatsDetail: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxFolderStatsDetail: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case compact
     case detailed
 
@@ -157,7 +157,7 @@ public enum MailboxFolderStatsDetail: String, Sendable, Hashable, CaseIterable, 
     }
 }
 
-public enum MailboxSortOrder: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxSortOrder: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case newestFirst
     case oldestFirst
     case sender
@@ -205,7 +205,7 @@ public enum MailboxSortOrder: String, Sendable, Hashable, CaseIterable, Identifi
     }
 }
 
-public enum MailboxReadingPanePlacement: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxReadingPanePlacement: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case side
     case bottom
 
@@ -226,7 +226,7 @@ public enum MailboxReadingPanePlacement: String, Sendable, Hashable, CaseIterabl
     }
 }
 
-public enum MailboxFontFamily: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxFontFamily: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case system
     case serif
     case rounded
@@ -279,7 +279,7 @@ public enum MailboxFontFamily: String, Sendable, Hashable, CaseIterable, Identif
     }
 }
 
-public enum MailboxTextSize: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxTextSize: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case small
     case medium
     case large
@@ -331,7 +331,7 @@ public enum MailboxTextSize: String, Sendable, Hashable, CaseIterable, Identifia
     }
 }
 
-public enum MailboxListDensity: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxListDensity: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case compact
     case comfortable
     case spacious
@@ -390,7 +390,7 @@ public enum MailboxListDensity: String, Sendable, Hashable, CaseIterable, Identi
     }
 }
 
-public enum MailboxPreviewLineCount: Int, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MailboxPreviewLineCount: Int, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case none = 0
     case one = 1
     case two = 2

@@ -34,6 +34,8 @@ public extension IMAPAccountConnector {
         offlineMutationConflictStore: (@Sendable (BrevAccount.ID) -> (any OfflineMutationConflictStore))? = nil,
         tokenStore: (any TokenStore)? = nil,
         outboundMessagePreparer: (any OutboundMessagePreparing)? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = AttachmentIndexConsentStore.shared,
         imapTransportFactory: @escaping IMAPTransportFactory = {
             NetworkIMAPSessionTransport()
         },
@@ -197,6 +199,13 @@ public extension IMAPAccountConnector {
                     destinationFolderPath: destinationFolderID
                 )
             },
+            moveMessagesWithResult: { configuration, credential, sourceFolderID, uids, destinationFolderID, generation in
+                let client = await imapSessionPool.client(for: configuration)
+                return try await client.loginAndMoveMessagesWithResult(
+                    configuration: configuration, credential: credential, sourceFolderPath: sourceFolderID,
+                    uids: uids, destinationFolderPath: destinationFolderID, expectedSourceUIDValidity: generation
+                )
+            },
             copyMessages: { configuration, credential, sourceFolderID, uids, destinationFolderID in
                 let client = await imapSessionPool.client(for: configuration)
                 try await client.loginAndCopyMessages(
@@ -284,6 +293,19 @@ public extension IMAPAccountConnector {
                     scriptName: scriptName
                 )
             },
+            searchRelatedHeaders: { configuration, credential, folderID, identifiers, limit, pageToken in
+                let client = await imapSessionPool.client(for: configuration)
+                return try await client.loginAndSearchRelatedHeaders(
+                    configuration: configuration,
+                    credential: credential,
+                    folderPath: folderID,
+                    identifiers: identifiers,
+                    limit: limit,
+                    pageToken: pageToken
+                )
+            },
+            relatedConversationConsent: relatedConversationConsent,
+            attachmentIndexConsent: attachmentIndexConsent,
             disconnectSession: { configuration in
                 await imapSessionPool.disconnect(accountID: configuration.accountID)
             },

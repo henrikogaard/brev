@@ -662,7 +662,7 @@ build_app() {
     MARKETING_VERSION="$marketing_version" \
     CURRENT_PROJECT_VERSION="$build_number" \
     ${build_args[@]+"${build_args[@]}"} \
-    "${oauth_secret_build_args[@]}" \
+    ${oauth_secret_build_args[@]+"${oauth_secret_build_args[@]}"} \
     "${signing_build_args[@]}" \
     -quiet \
     build

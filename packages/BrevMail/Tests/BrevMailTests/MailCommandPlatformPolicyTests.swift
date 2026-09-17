@@ -36,10 +36,11 @@ struct MailCommandPlatformPolicyTests {
         #expect(!ios.includesKeyboardShortcutsWindowCommand)
     }
 
-    @Test("folder MBOX export stays unavailable until full message bodies are available")
-    func folderMBOXExportRequiresFullBodies() {
+    @Test("macOS offers full folder export through the source capability gate")
+    func folderMBOXExportIsAvailableOnMac() {
         let mac = MailCommandPlatformPolicy.forPlatform(.macOS)
 
-        #expect(!mac.includesFolderMBOXExportCommand)
+        #expect(mac.includesFolderMBOXExportCommand)
+        #expect(!MailCommandPlatformPolicy.forPlatform(.iOS).includesFolderMBOXExportCommand)
     }
 }

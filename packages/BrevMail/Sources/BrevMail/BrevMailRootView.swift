@@ -29,6 +29,9 @@ import UIKit
 private struct MailFolderActionTarget: Equatable {
     let folder: Folder
     let sourceID: MailSourceID?
+    /// Whether the folder's source lists a `.trash` folder. Sources without
+    /// one (local folders, ADR-0077) delete mail permanently.
+    var hasTrashFallback = true
 }
 
 private enum MailRootImportError: LocalizedError {
@@ -49,12 +52,14 @@ private enum MailFolderNamePrompt: Equatable {
     case createSubfolder(MailFolderActionTarget)
     case renameFolder(MailFolderActionTarget)
     case setLocalName(MailFolderActionTarget)
+    case createLocalFolder
 
     var title: String {
         switch self {
         case .createSubfolder: return String(localized: "New Subfolder", bundle: .module)
         case .renameFolder: return String(localized: "Rename Folder", bundle: .module)
         case .setLocalName: return String(localized: "Set Local Name", bundle: .module)
+        case .createLocalFolder: return String(localized: "New Local Folder", bundle: .module)
         }
     }
 
@@ -63,6 +68,7 @@ private enum MailFolderNamePrompt: Equatable {
         case .createSubfolder: return String(localized: "Create", bundle: .module)
         case .renameFolder: return String(localized: "Rename", bundle: .module)
         case .setLocalName: return String(localized: "Save", bundle: .module)
+        case .createLocalFolder: return String(localized: "Create", bundle: .module)
         }
     }
 
@@ -71,6 +77,7 @@ private enum MailFolderNamePrompt: Equatable {
         case .createSubfolder: return String(localized: "Name", bundle: .module)
         case .renameFolder: return String(localized: "New name", bundle: .module)
         case .setLocalName: return String(localized: "Local name", bundle: .module)
+        case .createLocalFolder: return String(localized: "Name", bundle: .module)
         }
     }
 
@@ -83,6 +90,11 @@ private enum MailFolderNamePrompt: Equatable {
         case .setLocalName(let target):
             return String(
                 localized: "A local name only changes how \"\(target.folder.name)\" appears in Brev. The server folder is untouched.",
+                bundle: .module
+            )
+        case .createLocalFolder:
+            return String(
+                localized: "Local folders are stored on this device only and are never synced to a server.",
                 bundle: .module
             )
         }
@@ -123,6 +135,14 @@ private enum MailFolderConfirmation: Equatable {
     var message: String {
         switch self {
         case .deleteFolder(let target):
+            // A source with no Trash folder (e.g. local folders, ADR-0077)
+            // deletes mail permanently — the alert must say so.
+            if !target.hasTrashFallback {
+                return String(
+                    localized: "Permanently delete \"\(target.folder.name)\" and the mail you chose to keep in it? This cannot be undone.",
+                    bundle: .module
+                )
+            }
             return String(localized: "Delete \"\(target.folder.name)\" and all subfolders?", bundle: .module)
         case .flushFolder(let target):
             switch target.folder.role {
@@ -187,6 +207,8 @@ public struct BrevMailRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var navigation = MailNavigationState()
+    @State private var relatedConversation = RelatedConversationController()
+    @State private var readerThreadMemo = ReaderThreadHeadersMemo()
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     /// Whether the macOS AI Sidebar column is open. Persisted so relaunching
@@ -308,10 +330,12 @@ public struct BrevMailRootView: View {
     @State private var rootWorkProgressTick = 0
     @State private var shouldRefreshAfterSheetDismissal = false
     @State private var undoQueue = UndoQueue()
+    @State private var folderExportController = MailFolderExportController()
     @State private var showOfflineBanner = false
     @State private var outboxPendingCount = 0
     @State private var folderNamePrompt: MailFolderNamePrompt?
     @State private var folderConfirmation: MailFolderConfirmation?
+    @State private var pendingPermanentDeleteHeader: MessageHeader?
     @State private var folderNameDraft = ""
     @State private var notificationCenter = BrevLocalNotificationCenter()
     @State private var badgeUpdater = UnreadBadgeUpdater()
@@ -366,6 +390,16 @@ public struct BrevMailRootView: View {
     private let isExternalModalPresented: Bool
     private let initialMailboxSelectionAccountID: BrevAccount.ID?
     private let onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)?
+    /// Session-owned background fetch cadence (ADR-0075). Non-nil on macOS;
+    /// the root view pushes the badge unread count into it and, when the
+    /// background-mail setting is on, leaves the tick loop to it.
+    private let backgroundMail: BackgroundMailCoordinator?
+    /// Durable local-mail backend (ADR-0077). May be absent from `backends`
+    /// while it has no folders — the session keeps it registered.
+    private let localBackend: LocalMailBackend?
+    /// Called after local folders are created/renamed/deleted or imported so
+    /// the session can refresh `visibleBackends` visibility.
+    private let onLocalFoldersChanged: (() -> Void)?
 
     private let unreadCountReconciler = UnreadCountReconciler()
 
@@ -385,7 +419,10 @@ public struct BrevMailRootView: View {
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
-        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil
+        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
+        backgroundMail: BackgroundMailCoordinator? = nil,
+        localBackend: LocalMailBackend? = nil,
+        onLocalFoldersChanged: (() -> Void)? = nil
     ) {
         self.init(
             backends: [backend],
@@ -403,7 +440,10 @@ public struct BrevMailRootView: View {
             pendingNotificationRoute: pendingNotificationRoute,
             isExternalModalPresented: isExternalModalPresented,
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
-            onFinishInitialMailboxSelection: onFinishInitialMailboxSelection
+            onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
+            backgroundMail: backgroundMail,
+            localBackend: localBackend,
+            onLocalFoldersChanged: onLocalFoldersChanged
         )
     }
 
@@ -424,7 +464,10 @@ public struct BrevMailRootView: View {
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
-        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil
+        onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
+        backgroundMail: BackgroundMailCoordinator? = nil,
+        localBackend: LocalMailBackend? = nil,
+        onLocalFoldersChanged: (() -> Void)? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -449,6 +492,9 @@ public struct BrevMailRootView: View {
         self.isExternalModalPresented = isExternalModalPresented
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
+        self.backgroundMail = backgroundMail
+        self.localBackend = localBackend
+        self.onLocalFoldersChanged = onLocalFoldersChanged
     }
 
     public var body: some View {
@@ -471,6 +517,10 @@ public struct BrevMailRootView: View {
 
     private var mailRootContent: some View {
         mailRootCommandContextContent
+            .task(id: ObjectIdentifier(selectedBackend)) {
+                outboxPendingCount = 0
+                await refreshOutboxCount()
+            }
     }
 
     /// The status rail with its transitions animated in isolation. These
@@ -564,7 +614,7 @@ public struct BrevMailRootView: View {
     private var mailRootLoadingContent: some View {
         mailRootCacheContent
             .task { monitor.start() }
-            .onChange(of: backendSessionIDs) { handleBackendSessionChange() }
+            .onChange(of: backendSessionIDs) { previous, _ in handleBackendSessionChange(previousIDs: previous) }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
             .task(id: fetchIntervalRaw) { await runPeriodicFetchScheduler() }
             .task(id: rootWorkBlockSnapshot) {
@@ -586,7 +636,11 @@ public struct BrevMailRootView: View {
             }
     }
 
-    private func handleBackendSessionChange() {
+    private func handleBackendSessionChange(previousIDs: [ObjectIdentifier]) {
+        if !Set(previousIDs).isSubset(of: Set(backendSessionIDs)) {
+            undoQueue.discardAll()
+        }
+        folderExportController.reconcileSessions(previous: previousIDs, current: backendSessionIDs)
         sourceSectionsRevision += 1
         invalidateSourceLoading()
         backgroundAccountRefreshTask?.cancel()
@@ -702,6 +756,57 @@ public struct BrevMailRootView: View {
             } message: {
                 Text(folderConfirmationMessage)
             }
+            .alert(
+                String(localized: "Permanently Delete?", bundle: .module),
+                isPresented: isPermanentDeleteAlertPresented
+            ) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    guard let header = pendingPermanentDeleteHeader else { return }
+                    pendingPermanentDeleteHeader = nil
+                    Task { await trash(header: header, confirmedPermanent: true) }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingPermanentDeleteHeader = nil
+                }
+            } message: {
+                Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: folders))
+            }
+            .confirmationDialog(
+                String(localized: "Import Mail", bundle: .module),
+                isPresented: isImportDestinationPromptPresented,
+                titleVisibility: .visible
+            ) {
+                if let request = pendingImportRequest {
+                    // ADR-0077: local folder is the default destination.
+                    Button {
+                        pendingImportRequest = nil
+                        Task { await runImport(request, destination: .local) }
+                    } label: {
+                        Text(
+                            String(
+                                localized: "New local folder “\(importBaseName(for: request))”",
+                                bundle: .module
+                            )
+                        )
+                    }
+                    Button {
+                        pendingImportRequest = nil
+                        Task { await runImport(request, destination: .account) }
+                    } label: {
+                        Text(
+                            String(
+                                localized: "New folder in \(selectedBackend.account.displayName)",
+                                bundle: .module
+                            )
+                        )
+                    }
+                    Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                        pendingImportRequest = nil
+                    }
+                }
+            } message: {
+                Text(String(localized: "Choose where to import these messages.", bundle: .module))
+            }
     }
 
     @ViewBuilder
@@ -730,28 +835,54 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailMessageCommandActions, mailMessageCommandActions)
             .focusedSceneValue(\.mailComposePresentationActions, composePresentationActions)
             .focusedSceneValue(\.mailImportAction, mailImportAction)
+            .focusedSceneValue(\.mailFolderExportAction, mailFolderExportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
             .environment(\.undoQueue, undoQueue)
+        #if os(macOS)
+            .focusedSceneValue(\.mailUndoActions, MailUndoCommandActions(
+                canUndo: { undoQueue.canUndo && !isCommandMutationBlocked && activeCommandMutationRequest == nil },
+                onUndo: { performUndo() }
+            ))
+        #endif
             .modifier(DetachedMessageCommandReceiver(handle: handleDetachedMessageCommand))
-            .overlay(alignment: .bottom) {
-                undoToastOverlay
+            .overlay(alignment: .bottom) { undoToastOverlay }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if folderExportController.state != .idle {
+                    MailFolderExportStatusView(
+                        state: folderExportController.state, sourceTitle: folderExportController.sourceTitle,
+                        onCancel: { folderExportController.cancel() }, onDismiss: { folderExportController.dismiss() }
+                    )
+                    .frame(maxWidth: 640)
+                    .padding(BrevSpacing.sm)
+                    .frame(maxWidth: .infinity)
+                }
             }
+    }
+
+    private func performUndo(retry: Bool = false) {
+        guard !isCommandMutationBlocked, activeCommandMutationRequest == nil else { return }
+        let task = retry ? undoQueue.retry() : undoQueue.undo()
+        guard let task else { return }
+        Task {
+            if await task.value {
+                navigation.requestReload()
+                await loadFolders()
+            }
+        }
     }
 
     @ViewBuilder
     private var undoToastOverlay: some View {
-        if let mutation = undoQueue.current {
-            BrevToast(
-                message: mutation.description,
-                tone: .info,
-                actionTitle: String(localized: "Undo", bundle: .module),
-                onAction: { undoQueue.undo() },
-                onDismiss: { undoQueue.dismiss() }
+        if undoQueue.isUndoing || undoQueue.errorMessage != nil || undoQueue.current != nil {
+            MailUndoToast(
+                queue: undoQueue,
+                isBlocked: isCommandMutationBlocked || activeCommandMutationRequest != nil || undoQueue.isMutationInFlight,
+                onUndo: { performUndo() },
+                onRetry: { performUndo(retry: true) }
             )
             .padding(.horizontal, BrevSpacing.lg)
             .padding(.bottom, BrevSpacing.xl)
             .transition(.move(edge: .bottom).combined(with: .opacity))
-            .animation(.easeInOut(duration: 0.2), value: undoQueue.current != nil)
         } else if let ephemeralToast {
             BrevToast(
                 message: ephemeralToast.message,
@@ -855,6 +986,7 @@ public struct BrevMailRootView: View {
         MailMessageCommandActions(
             isPerformingMutation: activeCommandMutationRequest != nil,
             isBlocked: isCommandMutationBlocked,
+            canFileLocally: localBackend != nil,
             toggleRead: { header in
                 await toggleRead(for: header)
             },
@@ -874,6 +1006,20 @@ public struct BrevMailRootView: View {
                 await trash(header: header)
             }
         )
+    }
+
+    private var mailFolderExportAction: MailFolderExportAction? {
+        guard !navigation.isUnifiedInboxSelected, !navigation.isSmartViewSelected,
+              let folder = selectedFolder, let section = selectedSourceSection else { return nil }
+        let owner = backend(for: section.id)
+        let exporter = MailFolderExporter(backend: owner, sourceID: section.id, folder: folder)
+        let title = "\(folder.name) · \(section.title)"
+        let sessionToken = folderExportController.sessionToken
+        return MailFolderExportAction(folderName: folder.name, sourceTitle: title,
+                                      isAvailable: owner.extendedCapabilities.contains(.rawMessageBytes)
+                                          && !folderExportController.isRunning && !isCommandMutationBlocked) { url in
+            folderExportController.start(exporter, to: url, format: .mbox, sourceTitle: title, sessionToken: sessionToken)
+        }
     }
 
     private var mailImportAction: MailImportAction {
@@ -1071,6 +1217,10 @@ public struct BrevMailRootView: View {
             },
             onOpenMessages: {
                 openSelectedMessagesOnCompact()
+            },
+            onNewLocalFolder: localBackend == nil ? nil : {
+                folderNamePrompt = .createLocalFolder
+                folderNameDraft = ""
             }
         )
         .brevMailPaneSurface(.sidebar)
@@ -1088,40 +1238,82 @@ public struct BrevMailRootView: View {
         guard let threadID = navigation.selectedHeader?.threadID ?? fallbackHeader?.threadID else {
             return []
         }
-        return ThreadMessageDerivation.threadHeaders(
-            from: navigation.currentFolderHeaders,
+        return readerThreadMemo.headers(
+            in: navigation.currentFolderHeaders,
             threadID: threadID
         )
     }
 
+    /// Identity of the conversation anchor the reader resolves cached and
+    /// remote snapshots around (ADR-0074). Includes the backend identity so an
+    /// account/source switch re-evaluates capabilities and discards stale work.
+    private struct ConversationAnchorKey: Equatable {
+        let sourceID: MailSourceID?
+        let folderID: Folder.ID?
+        let headerID: MessageHeader.ID?
+        let backendID: ObjectIdentifier
+    }
+
+    private func conversationAnchorKey(fallbackHeader: MessageHeader?) -> ConversationAnchorKey {
+        let header = navigation.selectedHeader ?? fallbackHeader
+        return ConversationAnchorKey(
+            sourceID: navigation.selectedSourceID,
+            folderID: header?.folderID,
+            headerID: header?.id,
+            backendID: ObjectIdentifier(selectedBackend)
+        )
+    }
+
+    private func showsRelatedConversationBar(fallbackHeader: MessageHeader?) -> Bool {
+        guard hasValidSelectedSourceBackend,
+              navigation.selectedHeader ?? fallbackHeader != nil else { return false }
+        return relatedConversation.canLoadRelated
+            || relatedConversation.snapshot != nil
+            || relatedConversation.isLoadingRemote
+    }
+
     @ViewBuilder
     private func readingPaneContent(fallbackHeader: MessageHeader? = nil) -> some View {
-        Group {
-            let threadHeaders = threadHeadersForSelection(fallbackHeader: fallbackHeader)
-            if !hasValidSelectedSourceBackend {
-                Text("This mailbox is no longer connected.", bundle: .module)
-                    .foregroundStyle(theme.textSecondary.color)
-            } else if selectedBackend.groupsMessagesIntoThreads,
-                      threadHeaders.count > 1 {
-                ThreadConversationView(
-                    threadHeaders: threadHeaders,
-                    backend: selectedBackend,
-                    sourceID: navigation.selectedSourceID,
-                    mailboxLabel: selectedSourceSection?.mailbox.email,
-                    navigation: navigation,
-                    isWorkBlocked: isCommandMutationBlocked
-                )
-            } else {
-                MessageDetailView(
-                    backend: selectedBackend,
-                    sourceID: navigation.selectedSourceID,
-                    header: navigation.selectedHeader ?? fallbackHeader,
-                    navigation: navigation,
-                    allFolders: folders,
-                    isWorkBlocked: isMessageWorkBlocked,
-                    isMutationWorkBlocked: isCommandMutationBlocked
-                )
+        VStack(spacing: 0) {
+            if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
+                RelatedConversationBar(controller: relatedConversation)
             }
+            Group {
+                let threadHeaders = relatedConversation.mergedThreadHeaders(
+                    loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
+                )
+                if !hasValidSelectedSourceBackend {
+                    Text("This mailbox is no longer connected.", bundle: .module)
+                        .foregroundStyle(theme.textSecondary.color)
+                } else if selectedBackend.groupsMessagesIntoThreads,
+                          threadHeaders.count > 1 {
+                    ThreadConversationView(
+                        threadHeaders: threadHeaders,
+                        backend: selectedBackend,
+                        sourceID: navigation.selectedSourceID,
+                        mailboxLabel: selectedSourceSection?.mailbox.email,
+                        navigation: navigation,
+                        isWorkBlocked: isCommandMutationBlocked
+                    )
+                } else {
+                    MessageDetailView(
+                        backend: selectedBackend,
+                        sourceID: navigation.selectedSourceID,
+                        header: navigation.selectedHeader ?? fallbackHeader,
+                        navigation: navigation,
+                        allFolders: folders,
+                        isWorkBlocked: isMessageWorkBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked
+                    )
+                }
+            }
+        }
+        .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
+            relatedConversation.updateAnchor(
+                header: navigation.selectedHeader ?? fallbackHeader,
+                sourceID: navigation.selectedSourceID,
+                backend: selectedBackend
+            )
         }
     }
 
@@ -1208,6 +1400,30 @@ public struct BrevMailRootView: View {
         return SmartMailboxSettings.load().mailboxes.first { $0.id == id && $0.isEnabled }
     }
 
+    /// Local attachment-content lookup for the All Attachments query field
+    /// (ADR-0078 §5). Queries only backends advertising `.localAttachmentIndex`
+    /// and only over rows already on device; nil when no backend qualifies.
+    private func attachmentContentMatcher() -> (
+        @Sendable (String, [MessageHeader.ID]) async -> [MessageHeader.ID: String]
+    )? {
+        let indexingBackends = backends.filter {
+            $0.extendedCapabilities.contains(.localAttachmentIndex)
+        }
+        guard !indexingBackends.isEmpty else { return nil }
+        return { query, messageIDs in
+            var result: [MessageHeader.ID: String] = [:]
+            for backend in indexingBackends {
+                let names = await backend.matchedAttachmentNames(
+                    matching: SearchQuery(text: query, execution: .cacheOnly),
+                    account: backend.account,
+                    messageIDs: messageIDs
+                )
+                result.merge(names) { _, new in new }
+            }
+            return result
+        }
+    }
+
     /// Executes a selected saved search: attachment searches open the All
     /// Attachments surface seeded with the saved filter; message searches reuse
     /// the unified list filtered by the saved query (ADR-0041).
@@ -1220,7 +1436,8 @@ public struct BrevMailRootView: View {
                     enumerator: BackendCachedAttachmentEnumerator(
                         backends: backends,
                         sourceSections: visibleSourceSections
-                    )
+                    ),
+                    contentMatcher: attachmentContentMatcher()
                 ),
                 navigation: navigation,
                 initialFilter: AttachmentSearchFilter(
@@ -1235,6 +1452,7 @@ public struct BrevMailRootView: View {
                 navigation: navigation,
                 backends: backends,
                 sourceSections: visibleSourceSections,
+                canFileLocally: localBackend != nil,
                 savedSearchID: mailbox.id,
                 savedSearchTitle: mailbox.name,
                 savedSearchQuery: mailbox.query,
@@ -1262,7 +1480,8 @@ public struct BrevMailRootView: View {
                         enumerator: BackendCachedAttachmentEnumerator(
                             backends: backends,
                             sourceSections: visibleSourceSections
-                        )
+                        ),
+                        contentMatcher: attachmentContentMatcher()
                     ),
                     navigation: navigation,
                     onOpen: { route in openAttachmentRoute(route) }
@@ -1274,6 +1493,7 @@ public struct BrevMailRootView: View {
                     navigation: navigation,
                     backends: backends,
                     sourceSections: visibleSourceSections,
+                    canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmailsByAccountID: accountOwnedMailboxEmailsByAccountID,
                     smartView: selectedSmartView,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
@@ -1294,6 +1514,7 @@ public struct BrevMailRootView: View {
                     navigation: navigation,
                     backend: selectedBackend,
                     sourceID: navigation.selectedSourceID,
+                    canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmails: accountOwnedMailboxEmailsByAccountID[
                         selectedBackend.account.id
                     ] ?? [],
@@ -2262,6 +2483,21 @@ public struct BrevMailRootView: View {
         )
     }
 
+    private var isImportDestinationPromptPresented: Binding<Bool> {
+        Binding(
+            get: { pendingImportRequest != nil },
+            set: { if !$0 { pendingImportRequest = nil } }
+        )
+    }
+
+    private func importBaseName(for request: MailImportRequest) -> String {
+        let rawName = request.format == .maildir
+            ? request.url.lastPathComponent
+            : request.url.deletingPathExtension().lastPathComponent
+        let trimmed = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? "Mail" : trimmed
+    }
+
     private var folderConfirmationTitle: String {
         folderConfirmation?.title ?? "Folder"
     }
@@ -2305,7 +2541,8 @@ public struct BrevMailRootView: View {
 
     private var isCommandMutationBlocked: Bool {
         if !hasMailContext { return true }
-        return activeFolderLoadRequest != nil
+        return undoQueue.isUndoing
+            || activeFolderLoadRequest != nil
             || activeMailboxLoadRequest != nil
             || activeRefreshRequest != nil
             || activeMailboxSwitchRequest != nil
@@ -2612,7 +2849,11 @@ public struct BrevMailRootView: View {
         clearRootStatus()
         folderNamePrompt = nil
         folderNameDraft = ""
-        folderConfirmation = .deleteFolder(MailFolderActionTarget(folder: folder, sourceID: sourceID))
+        var target = MailFolderActionTarget(folder: folder, sourceID: sourceID)
+        target.hasTrashFallback = (sourceID.flatMap { id in
+            sourceSections.first(where: { $0.id == id })?.folders
+        } ?? folders).contains { $0.role == .trash }
+        folderConfirmation = .deleteFolder(target)
     }
 
     private func presentFlushFolderConfirmation(for folder: Folder, sourceID: MailSourceID?) {
@@ -2653,6 +2894,14 @@ public struct BrevMailRootView: View {
             }
         case .setLocalName(let target):
             setFolderLocalName(target, name: trimmedName)
+        case .createLocalFolder:
+            await performFolderMutation(sourceFolderID: navigation.selectedFolderID ?? "") {
+                guard let localBackend else {
+                    throw MailBackendError.notSupported([.folderCreate])
+                }
+                _ = try await localBackend.createFolder(name: trimmedName, parentID: nil)
+                onLocalFoldersChanged?()
+            }
         }
     }
 
@@ -2700,9 +2949,12 @@ public struct BrevMailRootView: View {
     ) async {
         guard canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: sourceFolderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         clearRootStatus()
         do {
             try await operation()
+            undoQueue.discardPendingUndo(lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -2719,22 +2971,70 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private enum MailImportDestination {
+        /// New folder on the synthetic local account (ADR-0077 default).
+        case local
+        /// New folder on the currently selected account (pre-ADR-0077 path).
+        case account
+    }
+
+    @State private var pendingImportRequest: MailImportRequest?
+
     private func importMail(_ importRequest: MailImportRequest) async {
+        // ADR-0077 decision: when a local backend exists the destination
+        // picker defaults to a new local folder; the server-folder choice
+        // stays available.
+        if localBackend != nil {
+            pendingImportRequest = importRequest
+            return
+        }
+        await runImport(importRequest, destination: .account)
+    }
+
+    private func runImport(
+        _ importRequest: MailImportRequest,
+        destination destinationKind: MailImportDestination
+    ) async {
         guard canStartCommandMutation() else { return }
         let mutationRequest = startCommandMutationRequest(sourceFolderID: navigation.selectedFolderID)
         clearRootStatus()
 
         do {
-            let sourceID = visibleSelectedSourceID
-            let targetBackend = selectedBackend
-            guard let importer = targetBackend.extensionService(MailImporting.self) else {
-                throw MailRootImportError.importingUnsupported
+            let importer: any MailImporting
+            let destination: Folder
+            let destinationSourceID: MailSourceID?
+            switch destinationKind {
+            case .local:
+                guard let localBackend,
+                      let localImporter = localBackend.extensionService(MailImporting.self) else {
+                    throw MailRootImportError.importingUnsupported
+                }
+                let localFolderNames = await Set(
+                    ((try? localBackend.folders()) ?? []).map { $0.name.lowercased() }
+                )
+                destination = try await localBackend.createFolder(
+                    name: uniqueImportFolderName(for: importRequest, existingNames: localFolderNames),
+                    parentID: nil
+                )
+                importer = localImporter
+                destinationSourceID = await localBackend.sourceID(
+                    for: (try? localBackend.currentMailbox())
+                        ?? Mailbox(id: localBackend.account.id, email: "", displayName: localBackend.account.displayName)
+                )
+            case .account:
+                let sourceID = visibleSelectedSourceID
+                let targetBackend = selectedBackend
+                guard let accountImporter = targetBackend.extensionService(MailImporting.self) else {
+                    throw MailRootImportError.importingUnsupported
+                }
+                destination = try await createFolder(
+                    name: uniqueImportFolderName(for: importRequest),
+                    parentID: nil,
+                    sourceID: sourceID
+                )
+                importer = accountImporter
+                destinationSourceID = navigation.selectedSourceID
             }
-            let destination = try await createFolder(
-                name: uniqueImportFolderName(for: importRequest),
-                parentID: nil,
-                sourceID: sourceID
-            )
             let summary = try await importMessages(
                 from: importRequest,
                 into: destination,
@@ -2747,7 +3047,10 @@ public struct BrevMailRootView: View {
             if summary.messageCount == 0 {
                 throw MailRootImportError.emptySource(importRequest.url.lastPathComponent)
             }
-            navigation.selectFolder(destination.id, in: navigation.selectedSourceID)
+            if destinationKind == .local {
+                onLocalFoldersChanged?()
+            }
+            navigation.selectFolder(destination.id, in: destinationSourceID)
             navigation.requestReload()
             await reloadFoldersAfterSidebarMutation()
             rootStatus = MailRootStatus(
@@ -2825,13 +3128,16 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func uniqueImportFolderName(for request: MailImportRequest) -> String {
+    private func uniqueImportFolderName(
+        for request: MailImportRequest,
+        existingNames: Set<String>? = nil
+    ) -> String {
         let rawName = request.format == .maildir
             ? request.url.lastPathComponent
             : request.url.deletingPathExtension().lastPathComponent
         let sourceName = rawName.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseName = "Imported \(sourceName.isEmpty ? "Mail" : sourceName)"
-        let existingNames = Set(folders.map { $0.name.lowercased() })
+        let existingNames = existingNames ?? Set(folders.map { $0.name.lowercased() })
         var candidate = baseName
         var suffix = 2
         while existingNames.contains(candidate.lowercased()) {
@@ -3050,6 +3356,38 @@ public struct BrevMailRootView: View {
                 onClose: onClose
             )
             .brevTheme(theme)
+        case .copyToLocal(let messageIDs, let sourceID, let fromFolderID):
+            if let localBackend {
+                LocalFolderDestinationSheet(
+                    localBackend: localBackend,
+                    messageIDs: messageIDs,
+                    title: String(localized: "Copy to Local Folder", bundle: .module),
+                    onMove: { ids, folder in
+                        try await performLocalTransfer(
+                            messageIDs: ids, to: folder,
+                            sourceID: sourceID, fromFolderID: fromFolderID, isMove: false
+                        )
+                    },
+                    onClose: onClose
+                )
+                .brevTheme(theme)
+            }
+        case .moveToLocal(let messageIDs, let sourceID, let fromFolderID):
+            if let localBackend {
+                LocalFolderDestinationSheet(
+                    localBackend: localBackend,
+                    messageIDs: messageIDs,
+                    title: String(localized: "Move to Local Folder", bundle: .module),
+                    onMove: { ids, folder in
+                        try await performLocalTransfer(
+                            messageIDs: ids, to: folder,
+                            sourceID: sourceID, fromFolderID: fromFolderID, isMove: true
+                        )
+                    },
+                    onClose: onClose
+                )
+                .brevTheme(theme)
+            }
         case .outbox:
             let activeBackend = selectedBackend
             OutboxView(
@@ -3942,6 +4280,7 @@ public struct BrevMailRootView: View {
             sourceSections: visibleSourceSections,
             settings: NotificationSettings.load()
         )
+        backgroundMail?.unreadCount = badgeUpdater.lastAppliedCount
     }
 
     private func applyMailboxSourcePreferenceUpdate() {
@@ -4503,6 +4842,8 @@ public struct BrevMailRootView: View {
         let newValue = !header.isFlagged
         let originalValue = header.isFlagged
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
@@ -4511,6 +4852,18 @@ public struct BrevMailRootView: View {
         navigation.updateHeader(id: header.id) { $0.isFlagged = newValue }
         do {
             try await setFlagged(newValue, for: [header.id])
+            let description = MailFlagUndo.description(.flagged, value: newValue)
+            undoQueue.push(UndoableMutation(description: description) {
+                if let sourceID = capturedSourceID {
+                    try await capturedBackend.setFlagged(
+                        originalValue,
+                        for: capturedMessageIDs,
+                        sourceID: sourceID
+                    )
+                } else {
+                    try await capturedBackend.setFlagged(originalValue, for: capturedMessageIDs)
+                }
+            }, lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4518,18 +4871,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
             await loadFolders()
             finishCommandMutation(request)
-            let description = newValue ? "Flagged" : "Unflagged"
-            undoQueue.push(UndoableMutation(description: description) {
-                if let sourceID = capturedSourceID {
-                    try? await capturedBackend.setFlagged(
-                        originalValue,
-                        for: capturedMessageIDs,
-                        sourceID: sourceID
-                    )
-                } else {
-                    try? await capturedBackend.setFlagged(originalValue, for: capturedMessageIDs)
-                }
-            })
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4545,6 +4887,8 @@ public struct BrevMailRootView: View {
         let newValue = !header.isRead
         let originalValue = header.isRead
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
@@ -4553,6 +4897,18 @@ public struct BrevMailRootView: View {
         navigation.updateHeader(id: header.id) { $0.isRead = newValue }
         do {
             try await setRead(newValue, for: [header.id])
+            let description = MailFlagUndo.description(.read, value: newValue)
+            undoQueue.push(UndoableMutation(description: description) {
+                if let sourceID = capturedSourceID {
+                    try await capturedBackend.setRead(
+                        originalValue,
+                        for: capturedMessageIDs,
+                        sourceID: sourceID
+                    )
+                } else {
+                    try await capturedBackend.setRead(originalValue, for: capturedMessageIDs)
+                }
+            }, lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4560,18 +4916,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.updated(header))
             await loadFolders()
             finishCommandMutation(request)
-            let description = newValue ? "Marked as Read" : "Marked as Unread"
-            undoQueue.push(UndoableMutation(description: description) {
-                if let sourceID = capturedSourceID {
-                    try? await capturedBackend.setRead(
-                        originalValue,
-                        for: capturedMessageIDs,
-                        sourceID: sourceID
-                    )
-                } else {
-                    try? await capturedBackend.setRead(originalValue, for: capturedMessageIDs)
-                }
-            })
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4584,18 +4929,19 @@ public struct BrevMailRootView: View {
 
     private func archive(header: MessageHeader) async {
         guard canStartCommandMutation(),
-              let archive = folder(role: .archive) else { return }
+              let archive = folder(role: .archive), header.folderID != archive.id else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         // Capture original folder for undo before mutating navigation state.
         let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
-        let capturedBackend = selectedBackend
-        let capturedSourceID = navigation.selectedSourceID
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await move(messageIDs: [header.id], to: archive)
+            let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: archive)
+            undoQueue.registerMoves([receipt], description: String(localized: "Archived", bundle: .module), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4603,22 +4949,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                undoQueue.push(UndoableMutation(description: "Archived") {
-                    if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4630,17 +4961,22 @@ public struct BrevMailRootView: View {
     }
 
     private func move(header: MessageHeader, to destination: Folder) async {
-        guard canStartCommandMutation() else { return }
+        guard header.folderID != destination.id, canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
-        let capturedBackend = selectedBackend
-        let capturedSourceID = navigation.selectedSourceID
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await move(messageIDs: [header.id], to: destination)
+            let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: destination)
+            undoQueue.registerMoves(
+                [receipt],
+                description: String(localized: "Moved to \(destination.name)", bundle: .module),
+                lease: undoLease
+            )
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4648,23 +4984,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                let destName = destination.name
-                undoQueue.push(UndoableMutation(description: "Moved to \(destName)") {
-                    if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4678,15 +4998,23 @@ public struct BrevMailRootView: View {
     private func setJunk(_ isJunk: Bool, for header: MessageHeader) async {
         guard canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
-        let originalFolder = folders.first { $0.id == header.folderID }
-        let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
         do {
-            try await setJunkOrMoveToFallbackFolder(isJunk, for: header)
+            let source: MailSourceID
+            if let capturedSourceID {
+                source = capturedSourceID
+            } else {
+                source = try await capturedBackend.sourceID(for: capturedBackend.currentMailbox())
+            }
+            let action = try await MailJunkUndo.perform(isJunk, header: header, folders: folders,
+                                                        sourceID: source, backend: capturedBackend, lease: undoLease)
+            undoQueue.registerBatch([action], description: MailJunkUndo.description(isJunk), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -4694,23 +5022,7 @@ public struct BrevMailRootView: View {
             navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
             await loadFolders()
             finishCommandMutation(request)
-            if let originalFolder {
-                let description = isJunk ? "Reported Junk" : "Marked Not Junk"
-                undoQueue.push(UndoableMutation(description: description) {
-                    if let sourceID = capturedSourceID {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder,
-                            sourceID: sourceID
-                        )
-                    } else {
-                        try? await capturedBackend.move(
-                            messageIDs: capturedMessageIDs,
-                            to: originalFolder
-                        )
-                    }
-                })
-            }
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -4721,38 +5033,33 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func setJunkOrMoveToFallbackFolder(_ isJunk: Bool, for header: MessageHeader) async throws {
-        do {
-            if let sourceID = navigation.selectedSourceID {
-                try await selectedBackend.setJunk(isJunk, for: [header.id], sourceID: sourceID)
-            } else {
-                try await selectedBackend.setJunk(isJunk, for: [header.id])
+    private var isPermanentDeleteAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingPermanentDeleteHeader != nil },
+            set: { isPresented in
+                if !isPresented { pendingPermanentDeleteHeader = nil }
             }
-        } catch MailBackendError.notSupported {
-            guard let fallbackFolder = MessageCommandPresentation.junkFallbackFolder(
-                isJunk: isJunk,
-                folders: folders
-            ) else {
-                throw MailBackendError.notSupported(selectedBackend.capabilities)
-            }
-            if let sourceID = navigation.selectedSourceID {
-                try await selectedBackend.move(messageIDs: [header.id], to: fallbackFolder, sourceID: sourceID)
-            } else {
-                try await selectedBackend.move(messageIDs: [header.id], to: fallbackFolder)
-            }
-        }
+        )
     }
 
-    private func trash(header: MessageHeader) async {
+    private func trash(header: MessageHeader, confirmedPermanent: Bool = false) async {
         guard canStartCommandMutation() else { return }
+        let originalFolder = folders.first { $0.id == header.folderID }
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+        // Permanent deletes (no Trash on the source, or already inside Trash)
+        // require prior confirmation — there is no undo.
+        if !confirmedPermanent,
+           MailUndoableDelete.isPermanentDelete(from: originalFolder, folders: folders) {
+            pendingPermanentDeleteHeader = header
+            return
+        }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         // Capture the original folder so we can move back on undo.
         // If the message is already in Trash, a permanent delete is implied
         // and we don't offer undo (the backend's `delete` is irreversible).
-        let originalFolder = folders.first { $0.id == header.folderID }
-        let isAlreadyInTrash = originalFolder?.role == .trash
-        let capturedMessageIDs = [header.id]
         let capturedBackend = selectedBackend
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
@@ -4760,7 +5067,16 @@ public struct BrevMailRootView: View {
         switch MessageDeletionOperation.operation(for: header) {
         case .delete(let messageIDs):
             do {
-                try await delete(messageIDs: messageIDs)
+                let source: MailSourceID
+                if let capturedSourceID {
+                    source = capturedSourceID
+                } else {
+                    source = try await capturedBackend.sourceID(for: capturedBackend.currentMailbox())
+                }
+                let receipt = try await MailUndoableDelete.perform(
+                    messageIDs: messageIDs, from: originalFolder, folders: folders, sourceID: source, backend: capturedBackend
+                )
+                undoQueue.registerMoves([receipt], description: String(localized: "Deleted", bundle: .module), lease: undoLease)
                 guard canApplyCommandMutationResponse(request) else {
                     finishCommandMutation(request)
                     return
@@ -4768,25 +5084,6 @@ public struct BrevMailRootView: View {
                 navigation.requestReloadIfVisibleFolderChanged(MessageCommandRefreshPolicy.removed(header))
                 await loadFolders()
                 finishCommandMutation(request)
-                // Only offer undo when the backend `delete` moves to Trash
-                // (i.e. message was NOT already in Trash). After `delete`
-                // the message lives in Trash; undo moves it back.
-                if !isAlreadyInTrash, let originalFolder {
-                    undoQueue.push(UndoableMutation(description: "Deleted") {
-                        if let sourceID = capturedSourceID {
-                            try? await capturedBackend.move(
-                                messageIDs: capturedMessageIDs,
-                                to: originalFolder,
-                                sourceID: sourceID
-                            )
-                        } else {
-                            try? await capturedBackend.move(
-                                messageIDs: capturedMessageIDs,
-                                to: originalFolder
-                            )
-                        }
-                    })
-                }
             } catch {
                 guard canApplyCommandMutationResponse(request) else {
                     finishCommandMutation(request)
@@ -4880,18 +5177,29 @@ public struct BrevMailRootView: View {
     /// The task is restarted (via `.task(id: fetchIntervalRaw)`) whenever
     /// the user changes the fetch interval in settings. When the interval is
     /// manual-only the stream finishes immediately without refreshing.
+    /// When background mail is enabled (ADR-0075), `AppSession.backgroundMail`
+    /// owns the cadence instead so it survives the last window closing;
+    /// `refreshVisibleMail` stays available for manual refreshes. Ownership is
+    /// checked per tick (not once at task start) so toggling the setting
+    /// mid-session hands the cadence over without waiting for an
+    /// interval-change restart.
     private func runPeriodicFetchScheduler() async {
         let interval = FetchInterval(rawValue: fetchIntervalRaw) ?? .manual
         for await _ in MailFetchScheduler.ticks(every: interval.intervalSeconds) {
             guard !Task.isCancelled else { break }
+            guard BackgroundMailOwnershipPolicy.rootViewOwnsTicks(
+                backgroundMailEnabled: NotificationSettings.load().backgroundMailEnabled
+            ) else { continue }
             await refreshVisibleMail()
         }
     }
 
     private func refreshOutboxCount() async {
-        guard let manager = backend.extensionService(OutboxManaging.self) else { return }
-        let mutations = await manager.pendingMutations()
-        outboxPendingCount = mutations.count
+        let owner = selectedBackend
+        let mutations = await owner.extensionService(OutboxManaging.self)?.pendingMutations() ?? []
+        let scheduled = owner.extensionService(ScheduledSendManaging.self)?.pendingScheduledSends() ?? []
+        guard !Task.isCancelled, ObjectIdentifier(owner) == ObjectIdentifier(selectedBackend) else { return }
+        outboxPendingCount = mutations.count + scheduled.count
     }
 
     private func switchMailbox(to id: Mailbox.ID) async {
@@ -5043,14 +5351,27 @@ public struct BrevMailRootView: View {
             from: sourceFolder,
             to: destinationFolder
         )
-        guard !events.isEmpty else { return }
+        guard !events.isEmpty, let sourceFolder else { return }
         guard canStartCommandMutation() else { return }
-        let request = startCommandMutationRequest(sourceFolderID: sourceFolder?.id)
+        let ownerSourceID = sourceID ?? navigation.selectedSourceID
+        let owner = ownerSourceID.map { backend(for: $0) } ?? selectedBackend
+        let request = startCommandMutationRequest(sourceFolderID: sourceFolder.id)
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
         let rollback = MessageCommandMutationRollback(navigation: navigation)
         clearRootStatus()
         navigation.removeHeaders(ids: Set(messageIDs))
         do {
-            try await move(messageIDs: messageIDs, to: destinationFolder, sourceID: sourceID)
+            let source: MailSourceID
+            if let ownerSourceID {
+                source = ownerSourceID
+            } else {
+                source = try await owner.sourceID(for: owner.currentMailbox())
+            }
+            let receipt = try await owner.moveWithUndo(
+                messageIDs: messageIDs, from: sourceFolder, to: destinationFolder, sourceID: source
+            )
+            undoQueue.registerMoves([receipt], description: String(localized: "Moved", bundle: .module), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
                 return
@@ -5060,6 +5381,7 @@ public struct BrevMailRootView: View {
             }
             await loadFolders()
             finishCommandMutation(request)
+
         } catch {
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -5090,16 +5412,16 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func move(
-        messageIDs: [String],
-        to folder: Folder,
-        sourceID explicitSourceID: MailSourceID? = nil
-    ) async throws {
-        if let sourceID = explicitSourceID ?? navigation.selectedSourceID {
-            try await backend(for: sourceID).move(messageIDs: messageIDs, to: folder, sourceID: sourceID)
+    private func moveWithUndo(messageIDs: [String], from sourceFolder: Folder,
+                              to destination: Folder) async throws -> MailMoveUndo? {
+        let owner = selectedBackend
+        let source: MailSourceID
+        if let selected = navigation.selectedSourceID {
+            source = selected
         } else {
-            try await selectedBackend.move(messageIDs: messageIDs, to: folder)
+            source = try await owner.sourceID(for: owner.currentMailbox())
         }
+        return try await owner.moveWithUndo(messageIDs: messageIDs, from: sourceFolder, to: destination, sourceID: source)
     }
 
     private func copy(
@@ -5112,6 +5434,106 @@ public struct BrevMailRootView: View {
         } else {
             try await selectedBackend.copy(messageIDs: messageIDs, to: folder)
         }
+    }
+
+    /// Copy/Move to Local Folder (ADR-0077 decision 4): reads each message's
+    /// raw bytes from the source backend, writes them into the local folder,
+    /// and — for Move only — runs the existing undoable delete on the source
+    /// *after* the local write succeeds. Per-message failures are reported in
+    /// the root status banner and rethrown so the sheet shows the error.
+    private func performLocalTransfer(
+        messageIDs: [String],
+        to destination: Folder,
+        sourceID explicitSourceID: MailSourceID?,
+        fromFolderID: Folder.ID?,
+        isMove: Bool
+    ) async throws {
+        guard let localBackend else { return }
+        let sourceBackend: any MailBackend
+        let sourceID: MailSourceID
+        if let resolved = explicitSourceID ?? navigation.selectedSourceID {
+            sourceID = resolved
+            sourceBackend = backend(for: sourceID)
+        } else {
+            sourceBackend = selectedBackend
+            sourceID = try await sourceBackend.sourceID(for: sourceBackend.currentMailbox())
+        }
+
+        let sourceFolders: [Folder]
+        if let sectionFolders = sourceSections.first(where: { $0.id == sourceID })?.folders {
+            sourceFolders = sectionFolders
+        } else {
+            sourceFolders = await (try? sourceBackend.folders()) ?? []
+        }
+        let undoLease = undoQueue.beginMutation(navigation: navigation)
+        defer { undoQueue.endMutation(undoLease) }
+
+        let transfer = LocalMailTransfer(
+            fetchRaw: { id in
+                try await sourceBackend.rawMessageData(for: id, sourceID: sourceID)
+            },
+            writeLocal: { data in
+                try await localBackend.importRaw(data, into: destination)
+            },
+            deleteSource: { id in
+                guard isMove else { return }
+                guard let origin = sourceFolders.first(where: { $0.id == fromFolderID })
+                    ?? sourceFolders.first else {
+                    throw MailBackendError.notFound(id: fromFolderID ?? "")
+                }
+                if let receipt = try await MailUndoableDelete.perform(
+                    messageIDs: [id],
+                    from: origin,
+                    folders: sourceFolders,
+                    sourceID: sourceID,
+                    backend: sourceBackend
+                ) {
+                    await undoQueue.registerMoves(
+                        [receipt],
+                        description: String(localized: "Moved to Local Folder", bundle: .module),
+                        lease: undoLease
+                    )
+                }
+            }
+        )
+        let result = isMove
+            ? await transfer.move(messageIDs)
+            : await transfer.copy(messageIDs)
+
+        onLocalFoldersChanged?()
+        // Only source IDs whose delete actually ran may leave the listing —
+        // a copied-but-not-removed failure keeps its source row.
+        navigation.removeHeaders(ids: isMove ? Set(result.removedSourceIDs) : [])
+        await reloadFoldersAfterSidebarMutation()
+
+        if !result.failures.isEmpty {
+            let detail = result.failures
+                .map(\.error)
+                .prefix(3)
+                .joined(separator: "; ")
+            rootStatus = MailRootStatus(
+                message: String(
+                    localized: "\(result.succeeded) of \(messageIDs.count) messages filed locally. \(detail)",
+                    bundle: .module
+                ),
+                tone: .warning
+            )
+            let failedNoun = result.failures.count == 1 ? "message" : "messages"
+            throw MailBackendError.backendSpecific(
+                message: String(
+                    localized: "\(result.failures.count) \(failedNoun) could not be filed locally.",
+                    bundle: .module
+                )
+            )
+        }
+        let succeededNoun = result.succeeded == 1 ? "message" : "messages"
+        rootStatus = MailRootStatus(
+            message: isMove
+                ? String(localized: "Moved \(result.succeeded) \(succeededNoun) to \(destination.name).", bundle: .module)
+                : String(localized: "Copied \(result.succeeded) \(succeededNoun) to \(destination.name).", bundle: .module),
+            tone: .success
+        )
+        navigation.presentedSheet = nil
     }
 
     private func unreadMessageIDs(
@@ -5517,7 +5939,7 @@ public struct BrevMailRootView: View {
     }
 
     private func canStartCommandMutation() -> Bool {
-        guard hasValidSelectedSourceBackend, hasMailContext else { return false }
+        guard hasValidSelectedSourceBackend, hasMailContext, !undoQueue.isUndoing else { return false }
         return MailRootCommandMutationStartPolicy.canStartMutation(
             activeRequest: activeCommandMutationRequest,
             activeFolderLoadRequest: activeFolderLoadRequest,
@@ -5716,6 +6138,9 @@ public struct BrevMailRootView: View {
         // heartbeat so outstanding root work isn't mistaken for stuck.
         bumpRootWorkProgress()
         switch event {
+        case .outboxChanged:
+            guard ObjectIdentifier(backend) == ObjectIdentifier(selectedBackend) else { return }
+            await refreshOutboxCount()
         case .folderRefreshed, .messagesAdded, .messagesRemoved, .messagesUpdated:
             let effects = MailRootAccountEventPolicy.mailboxEventEffects(
                 for: event,

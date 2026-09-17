@@ -114,8 +114,212 @@ public enum MessageThreadResolver {
     }
 }
 
+/// Incremental variant of `MessageThreadResolver`: keeps the union-find
+/// forest and conversation names alive between calls so a new page or a
+/// flag-only update does not re-resolve the whole cached folder.
+///
+/// `update(with:)` diffs incoming headers by the exact fields the batch
+/// resolver reads (`messageID`, `inReplyTo`, `threadID`, `date`) — flag
+/// churn is `.unchanged`. Pure additions extend the forest in place; a
+/// removal or a changed key triggers a full rebuild, since union-find has
+/// no delete.
+public struct IncrementalThreadResolver: Sendable {
+    /// The fields thread resolution depends on. Compared rather than hashed:
+    /// Swift `String ==` short-circuits on identical storage, which is the
+    /// common case when a cached snapshot is re-presented.
+    private struct ThreadKey: Hashable, Sendable {
+        var messageID: String?
+        var inReplyTo: String?
+        var threadID: String
+        var date: Date
+    }
+
+    /// How the last `update(with:)` changed the resolved state.
+    public enum Update: Equatable, Sendable {
+        /// Every incoming id was already known with an identical key.
+        case unchanged
+        /// Only new ids arrived; the forest was extended in place.
+        case incremental(added: Int)
+        /// A removal, key change, or empty input forced a full rebuild.
+        case rebuilt(reason: String)
+    }
+
+    private var keys: [MessageHeader.ID: ThreadKey] = [:]
+    private var union = DisjointSet()
+    private var nodesByHeaderID: [MessageHeader.ID: String] = [:]
+    private var namesByRoot: [String: (threadID: String, date: Date, node: String)] = [:]
+
+    public init() {}
+
+    /// Feeds the current known header set. Idempotent for identical input.
+    public mutating func update(with headers: [MessageHeader]) -> Update {
+        if headers.isEmpty {
+            guard !keys.isEmpty else { return .unchanged }
+            rebuild(headers)
+            return .rebuilt(reason: "empty")
+        }
+
+        var added: [MessageHeader] = []
+        var changed = false
+        var incomingIDs: Set<MessageHeader.ID> = []
+        incomingIDs.reserveCapacity(headers.count)
+        for header in headers {
+            incomingIDs.insert(header.id)
+            let key = ThreadKey(
+                messageID: header.messageID,
+                inReplyTo: header.inReplyTo,
+                threadID: header.threadID,
+                date: header.date
+            )
+            if let existing = keys[header.id] {
+                if existing != key { changed = true }
+            } else {
+                added.append(header)
+            }
+        }
+        let removed = keys.keys.count { !incomingIDs.contains($0) }
+
+        if changed || removed > 0 {
+            rebuild(headers)
+            return .rebuilt(reason: removed > 0 ? "removed" : "changed")
+        }
+        guard !added.isEmpty else { return .unchanged }
+
+        for header in added {
+            let node = Self.node(for: header)
+            keys[header.id] = ThreadKey(
+                messageID: header.messageID,
+                inReplyTo: header.inReplyTo,
+                threadID: header.threadID,
+                date: header.date
+            )
+            nodesByHeaderID[header.id] = node
+            union.insert(node)
+            if let parent = Self.normalized(header.inReplyTo) {
+                union.insert(parent)
+                uniteKeepingNames(node, parent)
+            }
+            let root = union.find(node)
+            let candidate = (threadID: header.threadID, date: header.date, node: node)
+            if let current = namesByRoot[root] {
+                if Self.isBetter(candidate, than: current) {
+                    namesByRoot[root] = candidate
+                }
+            } else {
+                namesByRoot[root] = candidate
+            }
+        }
+        return .incremental(added: added.count)
+    }
+
+    /// The resolved conversation id for one known header, or nil when the
+    /// id was never seen.
+    public mutating func threadID(for id: MessageHeader.ID) -> String? {
+        guard let node = nodesByHeaderID[id] else { return nil }
+        return namesByRoot[union.find(node)]?.threadID ?? keys[id]?.threadID
+    }
+
+    /// The resolved conversation id for every known header. Mutating
+    /// because `find` applies path halving.
+    public mutating func threadIDs() -> [MessageHeader.ID: String] {
+        var result: [MessageHeader.ID: String] = [:]
+        result.reserveCapacity(nodesByHeaderID.count)
+        for (id, node) in nodesByHeaderID {
+            guard let threadID = namesByRoot[union.find(node)]?.threadID ?? keys[id]?.threadID
+            else { continue }
+            result[id] = threadID
+        }
+        return result
+    }
+
+    /// Unites two nodes' roots; when both roots already carry a name, the
+    /// merged root keeps the older one (same rule the batch naming pass
+    /// applies: smaller date, then smaller node).
+    private mutating func uniteKeepingNames(_ lhs: String, _ rhs: String) {
+        let lhsRoot = union.find(lhs)
+        let rhsRoot = union.find(rhs)
+        guard lhsRoot != rhsRoot else { return }
+        let lhsName = namesByRoot[lhsRoot]
+        let rhsName = namesByRoot[rhsRoot]
+        union.unite(lhsRoot, rhsRoot)
+        let mergedRoot = union.find(lhsRoot)
+        namesByRoot.removeValue(forKey: lhsRoot)
+        namesByRoot.removeValue(forKey: rhsRoot)
+        switch (lhsName, rhsName) {
+        case (let lhs?, let rhs?):
+            namesByRoot[mergedRoot] = Self.isBetter(lhs, than: rhs) ? lhs : rhs
+        case (let lhs?, nil):
+            namesByRoot[mergedRoot] = lhs
+        case (nil, let rhs?):
+            namesByRoot[mergedRoot] = rhs
+        case (nil, nil):
+            break
+        }
+    }
+
+    /// Re-runs the batch algorithm's exact steps over `headers`.
+    private mutating func rebuild(_ headers: [MessageHeader]) {
+        keys.removeAll(keepingCapacity: true)
+        union = DisjointSet()
+        nodesByHeaderID.removeAll(keepingCapacity: true)
+        namesByRoot.removeAll(keepingCapacity: true)
+
+        for header in headers {
+            keys[header.id] = ThreadKey(
+                messageID: header.messageID,
+                inReplyTo: header.inReplyTo,
+                threadID: header.threadID,
+                date: header.date
+            )
+            let node = Self.node(for: header)
+            nodesByHeaderID[header.id] = node
+            union.insert(node)
+            guard let parent = Self.normalized(header.inReplyTo) else { continue }
+            union.insert(parent)
+            union.unite(node, parent)
+        }
+
+        for header in headers {
+            guard let node = nodesByHeaderID[header.id] else { continue }
+            let root = union.find(node)
+            let candidate = (threadID: header.threadID, date: header.date, node: node)
+            guard let current = namesByRoot[root] else {
+                namesByRoot[root] = candidate
+                continue
+            }
+            if Self.isBetter(candidate, than: current) {
+                namesByRoot[root] = candidate
+            }
+        }
+    }
+
+    private static func isBetter(
+        _ candidate: (threadID: String, date: Date, node: String),
+        than current: (threadID: String, date: Date, node: String)
+    ) -> Bool {
+        candidate.date < current.date
+            || (candidate.date == current.date && candidate.node < current.node)
+    }
+
+    private static func node(for header: MessageHeader) -> String {
+        guard let messageID = normalized(header.messageID) else {
+            return "brev-header-id:\(header.id)"
+        }
+        return messageID
+    }
+
+    private static func normalized(_ messageID: String?) -> String? {
+        guard let trimmed = messageID?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !trimmed.isEmpty
+        else {
+            return nil
+        }
+        return trimmed
+    }
+}
+
 /// Minimal union-find over string nodes, with path halving and union by size.
-private struct DisjointSet {
+private struct DisjointSet: Sendable {
     private var parents: [String: String] = [:]
     private var sizes: [String: Int] = [:]
 

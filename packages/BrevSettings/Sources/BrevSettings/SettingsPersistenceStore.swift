@@ -286,5 +286,6 @@ public struct SettingsPersistenceStore: Equatable {
 
     public func removeAccountScopedState(accountID: String) {
         RecentRecipientStore(defaults: defaults).removeAccount(accountID)
+        RelatedConversationConsentStore(defaults: defaults).revokeConsent(accountID: accountID)
     }
 }

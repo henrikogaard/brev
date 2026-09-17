@@ -16,10 +16,11 @@ import BrevSettings
 import Foundation
 
 /// Reuses the unified presentation projection when navigation reconciliation
-/// and SwiftUI body evaluation observe the same inputs in one update.
+/// and SwiftUI body evaluation observe the same inputs in one update. The
+/// item array is matched by buffer identity — comparing it element-by-element
+/// cost O(n) on every body evaluation even when nothing changed.
 final class UnifiedInboxPresentationSnapshotCache {
     struct Key: Equatable {
-        let items: [UnifiedInboxItem]
         let pinnedMessageIDsRaw: String
         let groupByDate: Bool
         let collapsedDateSectionIDs: Set<MessageListDateSection.ID>
@@ -40,17 +41,23 @@ final class UnifiedInboxPresentationSnapshotCache {
     }
 
     private var key: Key?
+    /// Retained so the buffer-identity check stays sound: a stored array's
+    /// backing storage cannot be freed and reallocated while we hold it.
+    private var items: [UnifiedInboxItem]?
     private var value: UnifiedInboxPresentationSnapshot?
 
     func snapshot(
         for key: Key,
+        items: [UnifiedInboxItem],
         build: () -> UnifiedInboxPresentationSnapshot
     ) -> UnifiedInboxPresentationSnapshot {
-        if self.key == key, let value {
+        if self.key == key, let storedItems = self.items,
+           items.sharesRetainedBuffer(with: storedItems), let value {
             return value
         }
         let value = build()
         self.key = key
+        self.items = items
         self.value = value
         return value
     }

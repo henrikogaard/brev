@@ -111,6 +111,9 @@ public struct FolderSidebar: View {
     private let onOpenOutbox: (() -> Void)?
     private let onOpenSettings: (() -> Void)?
     private let onOpenMessages: (() -> Void)?
+    /// "New Local Folder…" (ADR-0077) — always offered while a local backend
+    /// exists, even when the local account is hidden for having no folders.
+    private let onNewLocalFolder: (() -> Void)?
 
     public init(
         navigation: MailNavigationState,
@@ -145,7 +148,8 @@ public struct FolderSidebar: View {
         outboxPendingCount: Int = 0,
         onOpenOutbox: (() -> Void)? = nil,
         onOpenSettings: (() -> Void)? = nil,
-        onOpenMessages: (() -> Void)? = nil
+        onOpenMessages: (() -> Void)? = nil,
+        onNewLocalFolder: (() -> Void)? = nil
     ) {
         self.navigation = navigation
         self.folders = folders
@@ -180,6 +184,7 @@ public struct FolderSidebar: View {
         self.onOpenOutbox = onOpenOutbox
         self.onOpenSettings = onOpenSettings
         self.onOpenMessages = onOpenMessages
+        self.onNewLocalFolder = onNewLocalFolder
     }
 
     public var body: some View {
@@ -462,6 +467,20 @@ public struct FolderSidebar: View {
         .accessibilityValue(isExpanded
             ? String(localized: "Expanded mailbox", bundle: .module)
             : String(localized: "Collapsed mailbox", bundle: .module))
+        .contextMenu {
+            // The local account's account-level menu (ADR-0077).
+            if section.account.id == LocalMailBackend.accountID,
+               let onNewLocalFolder {
+                Button {
+                    onNewLocalFolder()
+                } label: {
+                    Label(
+                        String(localized: "New Local Folder…", bundle: .module),
+                        systemImage: "folder.badge.plus"
+                    )
+                }
+            }
+        }
     }
 
     private var normalizedActiveProfileID: MailProfile.ID {
@@ -900,6 +919,17 @@ public struct FolderSidebar: View {
                         } else {
                             Text(mailbox.email)
                         }
+                    }
+                }
+                if let onNewLocalFolder {
+                    Divider()
+                    Button {
+                        onNewLocalFolder()
+                    } label: {
+                        Label(
+                            String(localized: "New Local Folder…", bundle: .module),
+                            systemImage: "externaldrive"
+                        )
                     }
                 }
             } label: {

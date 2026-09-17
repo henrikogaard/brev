@@ -4,7 +4,7 @@
 - **Date:** 2026-06-15
 - **Deciders:** Henrik
 - **Amends:** ADR-0034
-- **Amended by:** ADR-0060
+- **Amended by:** ADR-0060, ADR-0078
 
 ## Context
 
@@ -154,3 +154,74 @@ Attachment views retain their separate metadata query path.
 Mail and Settings share the same editor and visibility/order panel. Built-in
 and custom definitions retain their positions when hidden. Users can hide the
 entire sidebar section and restore it from Settings.
+
+## Implementation update (2026-09-06): complete IMAP search collection
+
+Explicit ordinary IMAP search uses the existing page-returning provider operation
+for every folder in scope, in 50-header requests. It no longer truncates the final
+result collection to 50. Legacy nonpaged ordinary adapters keep their 200-candidate
+request bound and fail visibly when that limit is reached, since they cannot
+prove completion without a cursor. The production connector supplies the paged
+operation. The pre-existing legacy attachment path remains unchanged.
+Empty intermediate pages still follow their continuation; repeated cursors fail
+visibly, duplicate source-qualified IDs collapse, and cancellation after the
+final network response prevents publication. Ordinary search does not fetch MIME
+sources. Attachment predicates retain ADR-0060's explicit source-inspection path.
+
+A cache hit does not establish complete server coverage. Online cache-then-server
+search therefore consults the server even when cached matches exist. Cache-only
+search stays local and returns the full cached match collection; existing cache
+fallback when server search cannot begin remains intact. Failures after a server
+page or folder has already been searched report incomplete search instead of
+silently returning cached results. Richer coverage reporting for the initial
+unavailable-server fallback still needs the progressive-result contract.
+
+The array-returning search contract still collects all pages before presenting
+its final response. Progressive presentation, result pagination in the UI, richer
+cache-coverage reporting, and bounded document-content indexing remain issue #28
+work. This correction does not establish their completion or change the metadata-
+first All Attachments behavior.
+
+## Implementation update (2026-09-07): progressive IMAP results and coverage
+
+`ProgressiveMailSearching` is an optional provider-neutral extension. Awaited
+`MailSearchUpdate` callbacks carry incremental headers, cache/server/unverified
+coverage, replacement intent and terminal completion. The existing array-returning
+search contract remains available to callers that do not consume updates.
+
+IMAP publishes cached matches before server work and awaits each page's consumer
+before requesting another page. Server coverage replaces provisional cache matches;
+first-request offline fallback completes with cached coverage. A later failure
+never publishes server completion. Task cancellation is checked between updates.
+No new endpoint or ordinary-query body download is introduced.
+
+Folder and unified lists consume this same service and coverage model. Query UUIDs
+reject stale progress, including repeated identical text. Multi-account work keeps
+its existing concurrency bound; each source can publish before other accounts
+finish. Source-qualified accumulation deduplicates and merges sorted batches.
+Partial pages preserve the selected reader until final reconciliation. Failed
+sources retain partial rows and display Retry. Array-only adapters report
+unverified coverage for non-cache queries rather than claiming a complete server
+search. Gmail now implements this interface; see the Gmail progress update below.
+
+The new compact status row replaces the separate attachment-search banner.
+Detailed index coverage, user-paced load-more, large-mailbox memory measurements,
+Gmail completeness, document indexing and live/native acceptance remain issue #28
+work. This change improves first-page presentation without claiming bounded total
+memory: callers still retain the accumulated headers and final array.
+
+Search lifecycle uses one request-owned cancellable worker per list. Replacing a
+worker cancels the prior task, including identical query text after refresh;
+parent cancellation targets only its own worker. Message-list text and execution
+filters share one task trigger. Abandoned progress settles as incomplete, never
+as a completed server search; Retry waits for remaining source work to settle.
+
+## Implementation update (2026-09-07): Gmail progress and bounded cache reads
+
+Gmail now uses the shared progressive result/coverage interface, removing its
+5,000-result cap. The SQLite cache supports ID-keyset pages; Auto search reads only
+one preview page before server work, and cached-only/offline fallback reads all
+pages without network calls. Secondary-label membership and All Mail scope match
+the server query. See ADR-0064 for typed errors, cancellation and search-only
+non-persistence. The earlier Gmail-progress follow-up is implemented; full local
+body/document indexing, date precision and live performance acceptance remain open.

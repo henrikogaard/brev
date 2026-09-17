@@ -31,6 +31,25 @@ protocol CachedAttachmentEnumerating: Sendable {
 /// Derives `[AttachmentSearchRecord]` from cached message bodies, excluding inline parts.
 struct CachedAttachmentSearchRecordProvider: AttachmentSearchRecordProviding {
     let enumerator: any CachedAttachmentEnumerating
+    /// Optional local-index lookup for attachment *content* matches (ADR-0078).
+    /// Must be cache-only; nil leaves the filter metadata-only.
+    let contentMatcher: (@Sendable (String, [MessageHeader.ID]) async -> [MessageHeader.ID: String])?
+
+    init(
+        enumerator: any CachedAttachmentEnumerating,
+        contentMatcher: (@Sendable (String, [MessageHeader.ID]) async -> [MessageHeader.ID: String])? = nil
+    ) {
+        self.enumerator = enumerator
+        self.contentMatcher = contentMatcher
+    }
+
+    func attachmentContentMatchedMessageIDs(
+        query: String,
+        candidateMessageIDs: [MessageHeader.ID]
+    ) async -> Set<MessageHeader.ID> {
+        guard let contentMatcher, !query.isEmpty else { return [] }
+        return await Set(contentMatcher(query, candidateMessageIDs).keys)
+    }
 
     func attachmentRecords() async -> [AttachmentSearchRecord] {
         let cached = await enumerator.cachedMessagesWithBodies()

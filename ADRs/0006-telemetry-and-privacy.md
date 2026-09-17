@@ -56,6 +56,19 @@ cache is local-only, excluded from telemetry (none exists), and contains
 no OAuth secrets, passwords, app passwords, or API keys. The cache can
 be cleared from Settings without signing out.
 
+Gmail compose staging stores unsent drafts and attachment bytes in the local
+account database, separately from evictable message content. Cache clearing and
+sync snapshots preserve this staging; send/discard cleanup and account removal
+delete it. The staging tables belong to the canonical account with cascading
+deletion, and draft-operation session guards reject stale writes after removal.
+No credentials are added to staging and no new external service is involved.
+
+Explicit Gmail Send Later submission persists frozen MIME and delivery intent
+in account-owned SQLite rows. Automatic delivery uses existing Gmail send calls
+only for submitted schedules while the process can run. Interrupted/uncertain
+attempts are held for review, not reissued on restart. Clearing an account removes
+the queue; no helper, hosted relay, or new endpoint is introduced.
+
 ### Network calls Brev makes, by category
 
 The following external network calls exist or are planned for the v1
@@ -74,6 +87,7 @@ sign-in, platform distribution infrastructure, or off by default
 | Manual GitHub release check | GitHub API request metadata such as IP address, user agent, and requested Brev release repository | Only when the user chooses the manual GitHub release check in Settings → Updates | **Off** | Settings → Updates |
 | Remote HTML assets in messages | Remote image, font, stylesheet, and tracking-pixel requests from message HTML | When the user loads once, allows a sender/domain, or enables always-load remote images | **Off** | Message banner / Settings → Reading |
 | List-Unsubscribe action | Standard unsubscribe HTTPS URL request metadata, or an unsubscribe email draft addressed to the list provider | Only after the message advertises `List-Unsubscribe` and the user confirms the action | **Off** | Message unsubscribe banner |
+| Related-mail header discovery | Reply identifiers (Message-ID, In-Reply-To, References) from the selected conversation. IMAP: bounded `UID SEARCH HEADER` queries plus metadata fetches (UID/ENVELOPE/FLAGS/`BODY.PEEK[HEADER.FIELDS (REFERENCES)]`) across eligible folders. Gmail: metadata-only `users.threads.get` for the native thread, plus at most one `users.messages.get` in minimal format to resolve the anchor's thread ID when the cache predates stored thread IDs | Only when the user chooses "Load related mail" in the reader, or on conversation open when the per-account preference is enabled | **Off** | Reader action / Settings → Folder Sync |
 | Gravatar avatar lookup | SHA-256 hash of sender email address plus normal HTTPS request metadata | Background sync, if enabled | **Off** | Settings → Privacy |
 | BIMI DNS lookup | Sender domain DNS query and logo SVG request metadata | Background sync, if enabled | **Off** | Settings → Privacy |
 | Domain favicon fetch | Sender-domain icon request metadata | Background sync, if enabled | **Off** | Settings → Privacy |
@@ -87,6 +101,10 @@ sign-in, platform distribution infrastructure, or off by default
 | CardDAV contacts sync | OAuth bearer token or configured credentials plus a CardDAV `REPORT` query to the provider principal URL | After the user adds/restores an OAuth account with a built-in CardDAV profile, or when the user triggers sync for a configured CardDAV server | Off until account add/restore or contacts setup | Account add/remove; contacts setup |
 | CalDAV invite write | Account credentials plus the event/response payload `PUT` to the user-configured CalDAV collection | Only when the user accepts a calendar invite and a CalDAV target is configured | **Off** | Calendar invite action |
 | iCloud Key-Value preference sync | Allowlisted local preferences only (snoozes/done markers, VIPs, inbox category overrides, pinned messages, blocked senders, follow-up reminders, signatures, templates, smart mailboxes, compose and sidebar preferences; see ADR-0056); never mail, credentials, or consent flags | While the user has enabled preference sync, on local change and on remote change | **Off** | Settings → Privacy |
+
+ADR-0075's optional background mail changes only the cadence and lifetime of
+the mail access rows above — it contacts the same account endpoints with no
+window open and adds no new destination, so the table is unchanged.
 
 Optional privacy-sensitive external calls (remote HTML assets, server-side
 filter sync, avatars, iCloud preference sync, and AI)

@@ -94,7 +94,18 @@ struct AllAttachmentsView: View {
             guard appliedFilter != filter else { return }
             try? await Task.sleep(nanoseconds: 250_000_000)
             guard !Task.isCancelled else { return }
-            appliedFilter = filter
+            var applied = filter
+            // Attachment-content hits come from the local index, not record
+            // fields; the provider resolves them cache-only (ADR-0078 §5).
+            let query = filter.query.trimmingCharacters(in: .whitespacesAndNewlines)
+            if !query.isEmpty {
+                applied.attachmentContentMessageIDs = await provider
+                    .attachmentContentMatchedMessageIDs(
+                        query: query,
+                        candidateMessageIDs: records.map(\.header.id)
+                    )
+            }
+            appliedFilter = applied
         }
     }
 

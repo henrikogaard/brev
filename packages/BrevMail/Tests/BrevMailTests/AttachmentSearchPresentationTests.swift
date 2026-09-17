@@ -127,6 +127,63 @@ struct AttachmentSearchPresentationTests {
         #expect(rows.map(\.attachmentID) == ["contract"])
     }
 
+    @Test("query matches indexed attachment content via content message IDs")
+    func queryMatchesIndexedContent() {
+        let source = MailSourceID(accountID: "account-a", mailboxID: "mailbox-a")
+        let contentHit = AttachmentSearchRecord(
+            sourceID: source,
+            sourceName: "Legal",
+            header: Self.header(
+                id: "content-hit",
+                folderID: "inbox",
+                subject: "Unrelated subject",
+                from: "someone@example.com",
+                date: Date(timeIntervalSince1970: 20)
+            ),
+            folderName: "Inbox",
+            attachment: Attachment(
+                id: "ledger",
+                name: "ledger.pdf",
+                mimeType: "application/pdf",
+                sizeBytes: 1200,
+                resource: "cached://ledger"
+            ),
+            bodyCacheState: .cached,
+            contentIndexState: .indexed
+        )
+        let miss = AttachmentSearchRecord(
+            sourceID: source,
+            sourceName: "Legal",
+            header: Self.header(
+                id: "content-miss",
+                folderID: "inbox",
+                subject: "Other",
+                from: "other@example.com",
+                date: Date(timeIntervalSince1970: 10)
+            ),
+            folderName: "Inbox",
+            attachment: Attachment(
+                id: "photo",
+                name: "photo.png",
+                mimeType: "image/png",
+                sizeBytes: 1200,
+                resource: "cached://photo"
+            ),
+            bodyCacheState: .cached,
+            contentIndexState: .notIndexed
+        )
+
+        let rows = AttachmentSearchPresentation.rows(
+            records: [contentHit, miss],
+            filter: AttachmentSearchFilter(
+                query: "quarterly",
+                attachmentContentMessageIDs: ["content-hit"]
+            )
+        )
+
+        #expect(rows.map(\.attachmentID) == ["ledger"])
+    }
+
     @Test("attachment filters can match source labels and date windows")
     func attachmentFiltersCanMatchSourceLabelsAndDateWindows() {
         let source = MailSourceID(accountID: "account-a", mailboxID: "mailbox-a")

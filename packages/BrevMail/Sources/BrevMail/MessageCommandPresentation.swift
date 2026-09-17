@@ -27,6 +27,8 @@ enum MessageContextMenuAction: CaseIterable, Hashable, Sendable {
     case archive
     case move
     case copyToFolder
+    case copyToLocalFolder
+    case moveToLocalFolder
     case setJunk
     case blockSender
     case delete
@@ -243,6 +245,26 @@ public enum MessageCommandPresentation {
             wiring: .visible(handler: "MoveToSheet copy mode", dependency: "MailBackend.copy", platforms: "macOS, iOS")
         ),
         .init(
+            action: .copyToLocalFolder,
+            title: "Copy to Local Folder",
+            enabledCondition: "local backend is present and the row source is not the local account",
+            wiring: .visible(
+                handler: "LocalFolderDestinationSheet copy mode",
+                dependency: "LocalMailBackend.importRaw",
+                platforms: "macOS"
+            )
+        ),
+        .init(
+            action: .moveToLocalFolder,
+            title: "Move to Local Folder",
+            enabledCondition: "local backend is present and the row source is not the local account",
+            wiring: .visible(
+                handler: "LocalFolderDestinationSheet move mode",
+                dependency: "LocalMailBackend.importRaw + undoable source delete",
+                platforms: "macOS"
+            )
+        ),
+        .init(
             action: .setJunk,
             title: "Report Junk / Not Junk",
             enabledCondition: "junk API or spam/inbox fallback folder exists",
@@ -403,6 +425,7 @@ public enum MessageCommandPresentation {
         canArchive: Bool,
         canMove: Bool,
         canCopyToFolder: Bool = false,
+        canFileLocally: Bool = false,
         junkActionTitle: String?,
         canBlockSender: Bool,
         canDelete: Bool,
@@ -428,7 +451,7 @@ public enum MessageCommandPresentation {
         let canCopyToFolder = extendedCapabilities.contains(.messageCopy) && canMove
         let canViewSource = extendedCapabilities.contains(.rawMessageSource)
         let canShowHeaders = extendedCapabilities.contains(.rawMessageSource)
-        let canSaveAs = extendedCapabilities.contains(.rawMessageSource) && canExportEML
+        let canSaveAs = extendedCapabilities.contains(.rawMessageBytes) && canExportEML
         var sections: [MessageContextMenuSection] = []
         appendSection(
             &sections,
@@ -484,6 +507,21 @@ public enum MessageCommandPresentation {
                 symbolName: "folder.badge.plus"
             ))
         }
+        // ADR-0077 decision 8: local-folder writes are macOS-only for now.
+        #if os(macOS)
+        if canFileLocally {
+            filingActions.append(.init(
+                action: .copyToLocalFolder,
+                title: "Copy to Local Folder…",
+                symbolName: "externaldrive"
+            ))
+            filingActions.append(.init(
+                action: .moveToLocalFolder,
+                title: "Move to Local Folder…",
+                symbolName: "externaldrive.fill"
+            ))
+        }
+        #endif
         if let junkActionTitle {
             filingActions.append(.init(action: .setJunk, title: junkActionTitle, symbolName: "xmark.octagon"))
         }

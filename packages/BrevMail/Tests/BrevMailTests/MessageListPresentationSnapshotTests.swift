@@ -45,32 +45,41 @@ struct MessageListPresentationSnapshotTests {
         let headers = [Self.header(id: "first", date: Date(timeIntervalSince1970: 1_800_000_000))]
         let cache = MessageListPresentationSnapshotCache()
         var buildCount = 0
-        let key = Self.key(headers: headers, collapsedDateSectionIDs: [])
+        let key = Self.key(collapsedDateSectionIDs: [])
 
-        _ = cache.snapshot(for: key) {
+        _ = cache.snapshot(for: key, headers: headers) {
             buildCount += 1
             return Self.snapshot(headers: headers, collapsedDateSectionIDs: [])
         }
-        _ = cache.snapshot(for: key) {
+        _ = cache.snapshot(for: key, headers: headers) {
             buildCount += 1
             return Self.snapshot(headers: headers, collapsedDateSectionIDs: [])
         }
         #expect(buildCount == 1)
 
-        _ = cache.snapshot(for: Self.key(headers: headers, collapsedDateSectionIDs: ["Today"])) {
+        // An equal-valued but different buffer is a miss — identity, not
+        // deep equality, is the reuse check.
+        _ = cache.snapshot(for: key, headers: headers.map { $0 }) {
+            buildCount += 1
+            return Self.snapshot(headers: headers, collapsedDateSectionIDs: [])
+        }
+        #expect(buildCount == 2)
+
+        _ = cache.snapshot(
+            for: Self.key(collapsedDateSectionIDs: ["Today"]),
+            headers: headers
+        ) {
             buildCount += 1
             return Self.snapshot(headers: headers, collapsedDateSectionIDs: ["Today"])
         }
-        #expect(buildCount == 2)
+        #expect(buildCount == 3)
     }
 
     private static func key(
-        headers: [MessageHeader],
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>
     ) -> MessageListPresentationSnapshotCache.Key {
         let sourceID = MailSourceID(accountID: "account", mailboxID: "mailbox")
         return MessageListPresentationSnapshotCache.Key(
-            headers: headers,
             groupByThread: true,
             pinnedMessageIDs: [],
             mailboxFilter: .none,

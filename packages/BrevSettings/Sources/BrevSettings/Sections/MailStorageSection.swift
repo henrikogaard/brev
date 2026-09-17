@@ -576,6 +576,15 @@ enum MailStoragePresentation {
         )
     }
 
+    /// Where local search results come from. Previously a standalone callout
+    /// in Mailbox View; folded in here next to the cache-lookback control.
+    static var localSearchExplanation: String {
+        String(
+            localized: "Local search uses Brev-owned cached headers and message bodies. Use Server in the message list when you want provider search; the lookback above decides how far back bodies stay searchable.",
+            bundle: .module
+        )
+    }
+
     /// Title for the Advanced storage disclosure control.
     static func advancedDisclosureTitle(isExpanded: Bool) -> String {
         isExpanded ? String(localized: "Hide advanced storage", bundle: .module) : String(
@@ -596,8 +605,14 @@ struct MailStorageSection: View {
     private let account: BrevAccount?
     private let backend: (any MailBackend)?
     private let settingsStore: SettingsPersistenceStore
+    /// Durable local-mail backend (ADR-0077); its size is shown alongside the
+    /// cache sizes with "not a cache" copy.
+    private let localBackend: LocalMailBackend?
 
     @State private var breakdown: MailStorageBreakdown?
+    @State private var localFoldersBytes: Int64?
+    @State private var attachmentIndexBytes: Int?
+    @State private var isRunningAttachmentIndexAction = false
     @State private var storageURL: URL?
     @State private var sourceID: MailSourceID?
     @State private var syncHealth: AccountSyncHealth?
@@ -613,11 +628,13 @@ struct MailStorageSection: View {
         account: BrevAccount?,
         backend: (any MailBackend)?,
         settingsStore: SettingsPersistenceStore,
+        localBackend: LocalMailBackend? = nil,
         initiallyAdvancedExpanded: Bool = false
     ) {
         self.account = account
         self.backend = backend
         self.settingsStore = settingsStore
+        self.localBackend = localBackend
         _syncSettings = State(initialValue: settingsStore.accountMailboxSyncSettings())
         _isAdvancedExpanded = State(initialValue: initiallyAdvancedExpanded)
     }
@@ -631,6 +648,9 @@ struct MailStorageSection: View {
             )
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                if localBackend != nil {
+                    localFoldersGroup
+                }
                 if account == nil {
                     SettingsInfoCallout(
                         symbolName: "tray",
@@ -663,6 +683,22 @@ struct MailStorageSection: View {
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
         } message: {
             Text(storageResetPresentation.message)
+        }
+    }
+
+    private var localFoldersGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Local folders", bundle: .module),
+            subtitle: String(
+                localized: "Not a cache. Cleared only when you delete a local folder.",
+                bundle: .module
+            ),
+            symbolName: "externaldrive"
+        ) {
+            storageValueRow(
+                title: String(localized: "Size on disk", bundle: .module),
+                value: localFoldersBytes.map { MailStorageInfo.formattedSize($0) } ?? "Calculating..."
+            )
         }
     }
 
@@ -768,6 +804,9 @@ struct MailStorageSection: View {
                     message: MailStoragePresentation.indexSummary(for: syncHealth),
                     tone: indexCalloutTone
                 )
+                if supportsAttachmentIndexing {
+                    attachmentIndexRow
+                }
                 if let statusMessage {
                     SettingsInfoCallout(
                         symbolName: "info.circle",
@@ -777,6 +816,56 @@ struct MailStorageSection: View {
                 }
             }
         }
+    }
+
+    /// Whether the account's backend can index attachment text locally
+    /// (ADR-0078). Gates the Attachment index row and its actions.
+    private var supportsAttachmentIndexing: Bool {
+        backend?.extendedCapabilities.contains(.localAttachmentIndex) ?? false
+    }
+
+    /// Per-account attachment-content index size plus Rebuild/Remove.
+    /// Removal clears every indexed row; rebuilding re-sweeps cached sources.
+    private var attachmentIndexRow: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            storageValueRow(
+                title: String(localized: "Attachment index", bundle: .module),
+                value: attachmentIndexBytes
+                    .map { MailStorageInfo.formattedSize(Int64($0)) } ?? "Calculating..."
+            )
+            HStack(spacing: BrevSpacing.sm) {
+                BrevButton(
+                    String(localized: "Rebuild", bundle: .module),
+                    style: .secondary
+                ) {
+                    Task { await runAttachmentIndexAction(rebuild: true) }
+                }
+                BrevButton(
+                    String(localized: "Remove", bundle: .module),
+                    style: .destructive
+                ) {
+                    Task { await runAttachmentIndexAction(rebuild: false) }
+                }
+            }
+            .disabled(isRunningAttachmentIndexAction)
+        }
+    }
+
+    private func runAttachmentIndexAction(rebuild: Bool) async {
+        guard let backend, !isRunningAttachmentIndexAction else { return }
+        isRunningAttachmentIndexAction = true
+        defer { isRunningAttachmentIndexAction = false }
+        if rebuild {
+            await backend.rebuildAttachmentIndex()
+            statusMessage = String(
+                localized: "Rebuilding the attachment index from cached mail.",
+                bundle: .module
+            )
+        } else {
+            await backend.removeAttachmentIndex()
+            statusMessage = String(localized: "Removed the attachment index.", bundle: .module)
+        }
+        attachmentIndexBytes = await backend.attachmentIndexBytes()
     }
 
     private var retentionGroup: some View {
@@ -801,7 +890,8 @@ struct MailStorageSection: View {
 
                 SettingsInfoCallout(
                     symbolName: "info.circle",
-                    message: MailStoragePresentation.retentionDownloadExplanation,
+                    message: MailStoragePresentation.retentionDownloadExplanation
+                        + " " + MailStoragePresentation.localSearchExplanation,
                     tone: .info
                 )
             }
@@ -919,6 +1009,14 @@ struct MailStorageSection: View {
     private func reload() async {
         sourceID = nil
         syncHealth = nil
+        if let localBackend {
+            localFoldersBytes = try? await localBackend.size()
+        }
+        if let backend, backend.extendedCapabilities.contains(.localAttachmentIndex) {
+            attachmentIndexBytes = await backend.attachmentIndexBytes()
+        } else {
+            attachmentIndexBytes = nil
+        }
         guard let account else {
             breakdown = nil
             storageURL = nil

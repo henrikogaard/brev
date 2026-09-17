@@ -24,8 +24,9 @@ enum MessageEMLExport {
         return "\(safeFileBaseName(baseName)).eml"
     }
 
-    static func data(from rawSource: String) -> Data {
-        Data(rawSource.utf8)
+    /// Writes the complete MIME message without decoding or rebuilding it.
+    static func write(_ rawMessageData: Data, to url: URL) throws {
+        try rawMessageData.write(to: url, options: [.atomic])
     }
 
     private static func safeFileBaseName(_ value: String) -> String {
@@ -44,7 +45,7 @@ enum MessageEMLExport {
 
     #if canImport(AppKit)
     @MainActor
-    static func presentSavePanel(header: MessageHeader, rawSource: String) throws -> Bool {
+    static func presentSavePanel(header: MessageHeader, rawMessageData: Data) throws -> Bool {
         let panel = NSSavePanel()
         panel.title = String(localized: "Save Message As", bundle: .module)
         panel.prompt = String(localized: "Save", bundle: .module)
@@ -56,7 +57,7 @@ enum MessageEMLExport {
         guard panel.runModal() == .OK, let url = panel.url else {
             return false
         }
-        try data(from: rawSource).write(to: url, options: [.atomic])
+        try write(rawMessageData, to: url)
         return true
     }
     #endif

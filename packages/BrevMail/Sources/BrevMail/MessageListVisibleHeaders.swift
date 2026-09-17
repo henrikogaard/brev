@@ -15,12 +15,28 @@ import BrevDesign
 import BrevSettings
 import Foundation
 
+extension Array {
+    /// Whether both arrays share the same backing buffer — an O(1) identity
+    /// check. A copy shares the buffer and a mutation reallocates, so matching
+    /// addresses imply identical contents. Sound only when the caller retains
+    /// `other` for the lifetime of the comparison result — otherwise the freed
+    /// buffer's address could be recycled by an unrelated allocation.
+    func sharesRetainedBuffer(with other: [Element]) -> Bool {
+        withUnsafeBufferPointer { lhs in
+            other.withUnsafeBufferPointer { rhs in
+                lhs.baseAddress == rhs.baseAddress && lhs.count == rhs.count
+            }
+        }
+    }
+}
+
 /// Reuses the folder-list projection across selection and other unrelated
 /// SwiftUI invalidations. The key includes every input that changes filtering,
-/// sorting, thread grouping, or date-section visibility.
+/// sorting, thread grouping, or date-section visibility. The header array is
+/// matched by buffer identity — comparing it element-by-element cost O(n) on
+/// every body evaluation even when nothing changed.
 final class MessageListPresentationSnapshotCache {
     struct Key: Equatable {
-        let headers: [MessageHeader]
         let groupByThread: Bool
         let pinnedMessageIDs: Set<MessageHeader.ID>
         let mailboxFilter: MailboxFilterQuery
@@ -42,17 +58,23 @@ final class MessageListPresentationSnapshotCache {
     }
 
     private var key: Key?
+    /// Retained so the buffer-identity check stays sound: a stored array's
+    /// backing storage cannot be freed and reallocated while we hold it.
+    private var headers: [MessageHeader]?
     private var value: MessageListPresentationSnapshot?
 
     func snapshot(
         for key: Key,
+        headers: [MessageHeader],
         build: () -> MessageListPresentationSnapshot
     ) -> MessageListPresentationSnapshot {
-        if self.key == key, let value {
+        if self.key == key, let storedHeaders = self.headers,
+           headers.sharesRetainedBuffer(with: storedHeaders), let value {
             return value
         }
         let value = build()
         self.key = key
+        self.headers = headers
         self.value = value
         return value
     }

@@ -39,8 +39,10 @@ Runs the budget-table unit tests and validates the gate script itself.
 
 ### Live measurement pass
 
-1. Capture signposts using `docs/qa/performance-diagnostics.md`.
-2. Summarize the warm-cache scenarios into JSON:
+1. Capture signposts using `docs/qa/performance-diagnostics.md`, or follow
+   the scenario script in `docs/qa/performance-live-run.md`.
+2. Summarize the warm-cache scenarios into JSON, by hand or with
+   `scripts/performance-summarize-trace.py <log export> --scroll-p95-ms N --memory-mb N`:
 
 ```json
 {

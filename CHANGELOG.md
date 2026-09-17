@@ -4,7 +4,126 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Conversation metadata foundation: source-owned members, explicit cached coverage,
+  conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
+  This prepares cross-folder reading; reader integration and related-mail loading
+  are still pending. Gmail's cache migration preserves existing mail and scheduled
+  drafts. The IMAP cache also indexes existing reply identifiers across folders,
+  with explicit partial coverage when traversal reaches its bounds.
+- Cross-folder conversations: the reader now shows related messages from other
+  folders (including Sent and Archive) using cached metadata, with an explicit
+  "Load related mail" action that asks the provider for related headers across
+  all eligible folders in the account. A per-mailbox "Automatically load related
+  mail" preference in Settings › Folder Sync can enable the same metadata-only
+  lookup on conversation open; it defaults off, fetches no bodies or
+  attachments, and never marks mail read.
+- Optional background mail on macOS: keep checking mail with no window open,
+  see status in the menu bar, and open Brev at login (Settings ›
+  Notifications; off by default).
+- Back up and restore Brev settings and account setup from Settings ›
+  Import / Export. Backups never include passwords or tokens; restored
+  accounts ask you to sign in. Backups can now include local folders as
+  `mail/*.mbox` payloads (on by default when local folders exist).
+- Durable local folders ("On My Mac" / "On My iPhone") keep mail on this
+  device outside every cache — nothing is evicted, uploaded, or removed
+  until you delete a folder. On macOS, create folders from the sidebar and
+  use Copy/Move to Local Folder on any message; on iOS local folders are
+  readable. Local folders are searchable and browsable like any account.
+- Optional attachment-content indexing per account (Settings › Folder Sync ›
+  "Search inside attachments"): Brev extracts text locally from attachments
+  already cached on this device — nothing is downloaded for indexing — so
+  message search can match attachment text and label the hit with "Found in
+  <name>". Turning the toggle off deletes the account's attachment index;
+  Mail Storage shows its size with Rebuild/Remove actions.
+
+### Changed
+
+- Mail import now defaults to a new local folder named after the imported
+  file; provider folder destinations remain available in the destination step.
+- Related-mail auto-loading is now set per mailbox under Settings › Folder Sync;
+  Smart Views has its own sidebar icon.
+
 ### Fixed
+
+- Gmail search now publishes results page by page without the former 5,000-result
+  cap. Cached-only searches work disconnected and respect secondary labels.
+  Auto search previews one bounded cache page before contacting Gmail, while
+  offline fallback walks all cache pages.
+- Gmail custom-label filters use stable IDs, negative read/star/attachment filters
+  are preserved, and All Mail excludes Spam/Trash consistently. Cancellation,
+  retired-account responses, repeated cursors and later-page errors cannot report
+  successful completion; authentication and retry errors retain their types.
+
+- IMAP search shows cached matches and server pages as they arrive in folder and
+  unified lists. A shared compact status row identifies cached-only coverage,
+  incomplete results and Retry. Open messages stay selected while paging.
+- Repeated searches reject stale progress and completion callbacks. Late mailbox
+  failures preserve already loaded rows. Attachment-presence and absence searches
+  both disclose possible message-data downloads while fetching.
+- Faster folder and list performance: header-cache writes are coalesced instead
+  of rewriting a folder's JSON on every page load or flag update, "load more"
+  merges append without re-sorting the whole folder, CONDSTORE flag deltas only
+  re-index the messages that changed, all-folders local search issues one
+  scoped index query instead of one per folder, and list/thread projections are
+  reused across unrelated redraws instead of being re-derived.
+
+- IMAP searches use server pages to return matches beyond the previous
+  50-result display limit. Ordinary searches follow server pages without
+  downloading message bodies, and cached matches no longer hide older online
+  results. Cache-only search remains local and returns all cached matches.
+- Search rejects canceled responses, repeated cursors, and interrupted later
+  pages instead of reporting incomplete server results as success. Legacy
+  nonpaged ordinary adapters report when their bounded limit prevents completion.
+
+- IMAP scheduled messages now offer Outbox time changes, cancellation, and
+  reviewed retry. Interrupted or uncertain delivery and unavailable local drafts
+  remain visible for review. Reconnect respects backoff, and automatic retries
+  stop after ten failures. Active delivery blocks edits only to that message.
+- Account teardown drains local schedule edits and rejects stale delivery cleanup,
+  preserving replacement drafts. Scheduling reports a failed local staging write
+  instead of claiming the message was queued.
+
+- Gmail Send Later stores submitted content and delivery intent durably. Outbox
+  shows waiting, delivering and review states, with time changes, cancellation
+  and an explicit reviewed retry. Interrupted delivery is not retried silently.
+- Outbox counts update for the selected account without reloading message bodies.
+  Unsupported signing/encryption requests are rejected instead of sent as plaintext.
+
+- Gmail draft and attachment staging survives app restarts in the local SQLite
+  store. Cache refreshes preserve unsent compose content, account removal clears
+  it, and local storage failures no longer turn confirmed sends into failed sends.
+
+- Folder exports include every page and preserve original message bodies and
+  attachments. Shared progress and cancellation controls identify the mailbox
+  being exported; failed or canceled work leaves existing output intact.
+- Settings offers an independent export mailbox selector, and EML exports create
+  a new folder without overwriting previous files. Export privacy copy now
+  explains when original messages are downloaded.
+
+- Save As writes the original MIME bytes for a message, preserving non-UTF8
+  content and attachments. It is offered only by backends with byte-preserving
+  export support.
+
+- IMAP and Gmail original-message retrieval preserves MIME encodings and
+  attachment bytes through the source cache. Byte-preserving reads refresh
+  older text-only entries and support cached source access while offline.
+
+- Undo reopens the restored message with its current provider ID, including older
+  mail outside the first refreshed page. It preserves a different folder or
+  message selected while the reversal was running.
+
+- Mail Undo covers toolbar, row and bulk flag/move/trash actions using provider
+  destination identities. IMAP validates mailbox generations before reversing
+  moves; Gmail preserves unrelated labels. Native macOS Undo keeps text editing
+  separate, and account retirement invalidates pending Undo.
+- Partial bulk moves retain Undo for confirmed folder operations and restore only
+  failed rows. Moving to the current folder leaves the list unchanged.
+- MBOX escaping preserves non-UTF8 message bytes while quoting separator lines.
+
+- Failed mail Undo actions now show an error with Retry Undo instead of silently
+  discarding the failure. Reversals run once at a time and refresh mail on success.
 
 - Selecting an unflagged reply inside a filtered conversation keeps the reader
   open with that reply and the conversation context.

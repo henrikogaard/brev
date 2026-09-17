@@ -762,6 +762,7 @@ public struct IMAPAccountConnector: Sendable {
     private let setMessageKeyword: IMAPSMTPBackend.MessageKeywordOperation?
     private let setMessageLabels: IMAPSMTPBackend.MessageLabelOperation?
     private let moveMessages: IMAPSMTPBackend.MessageMoveOperation?
+    private let moveMessagesWithResult: IMAPSMTPBackend.MessageMoveWithResultOperation?
     private let copyMessages: IMAPSMTPBackend.MessageCopyOperation?
     private let permanentlyDeleteMessages: IMAPSMTPBackend.MessagePermanentDeleteOperation?
     private let sendMessage: IMAPSMTPBackend.MessageSendOperation?
@@ -770,6 +771,10 @@ public struct IMAPAccountConnector: Sendable {
     private let idleEvents: IMAPSMTPBackend.IdleEventOperation?
     private let condstoreSync: IMAPSMTPBackend.CONDSTORESyncOperation?
     private let manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation?
+    private let searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation?
+    private let relatedConversationConsent: (any RelatedConversationConsenting)?
+    /// Per-account opt-in store for attachment content indexing (ADR-0078).
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
     private let disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
@@ -807,6 +812,7 @@ public struct IMAPAccountConnector: Sendable {
         setMessageKeyword: IMAPSMTPBackend.MessageKeywordOperation? = nil,
         setMessageLabels: IMAPSMTPBackend.MessageLabelOperation? = nil,
         moveMessages: IMAPSMTPBackend.MessageMoveOperation? = nil,
+        moveMessagesWithResult: IMAPSMTPBackend.MessageMoveWithResultOperation? = nil,
         copyMessages: IMAPSMTPBackend.MessageCopyOperation? = nil,
         permanentlyDeleteMessages: IMAPSMTPBackend.MessagePermanentDeleteOperation? = nil,
         sendMessage: IMAPSMTPBackend.MessageSendOperation? = nil,
@@ -815,6 +821,9 @@ public struct IMAPAccountConnector: Sendable {
         idleEvents: IMAPSMTPBackend.IdleEventOperation? = nil,
         condstoreSync: IMAPSMTPBackend.CONDSTORESyncOperation? = nil,
         manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation? = nil,
+        searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation? = nil,
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil,
         disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation? = nil,
         folderCache: (any IMAPFolderSnapshotCache)? = nil,
         headerCache: (any IMAPMailboxHeaderCache)? = nil,
@@ -852,6 +861,7 @@ public struct IMAPAccountConnector: Sendable {
         self.setMessageKeyword = setMessageKeyword
         self.setMessageLabels = setMessageLabels
         self.moveMessages = moveMessages
+        self.moveMessagesWithResult = moveMessagesWithResult
         self.copyMessages = copyMessages
         self.permanentlyDeleteMessages = permanentlyDeleteMessages
         self.sendMessage = sendMessage
@@ -860,6 +870,9 @@ public struct IMAPAccountConnector: Sendable {
         self.idleEvents = idleEvents
         self.condstoreSync = condstoreSync
         self.manageSieveRuleSync = manageSieveRuleSync
+        self.searchRelatedHeaders = searchRelatedHeaders
+        self.relatedConversationConsent = relatedConversationConsent
+        self.attachmentIndexConsent = attachmentIndexConsent
         self.disconnectSession = disconnectSession
         self.folderCache = folderCache
         self.headerCache = headerCache
@@ -1111,6 +1124,7 @@ public struct IMAPAccountConnector: Sendable {
             setMessageKeyword: setMessageKeyword,
             setMessageLabels: setMessageLabels,
             moveMessages: moveMessages,
+            moveMessagesWithResult: moveMessagesWithResult,
             copyMessages: copyMessages,
             permanentlyDeleteMessages: permanentlyDeleteMessages,
             sendMessage: sendMessage,
@@ -1120,6 +1134,8 @@ public struct IMAPAccountConnector: Sendable {
             idleEvents: idleEvents,
             condstoreSync: condstoreSync,
             manageSieveRuleSync: manageSieveRuleSync,
+            searchRelatedHeaders: searchRelatedHeaders,
+            relatedConversationConsent: relatedConversationConsent,
             disconnectSession: disconnectSession,
             folderCache: includeLocalStores ? folderCache : nil,
             headerCache: includeLocalStores ? headerCache : nil,
@@ -1130,7 +1146,8 @@ public struct IMAPAccountConnector: Sendable {
             offlineMutationQueue: offlineMutationQueue?(account.id),
             offlineMutationConflictStore: offlineMutationConflictStore?(account.id),
             outboundMessagePreparer: outboundMessagePreparer,
-            sentMessageLedger: SentMessageLedger()
+            sentMessageLedger: SentMessageLedger(),
+            attachmentIndexConsent: attachmentIndexConsent
         )
     }
 

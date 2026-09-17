@@ -104,6 +104,14 @@ struct MailNavigationStateTests {
         #expect(state.reloadRequestID == first + 1)
     }
 
+    @Test("outbox metadata does not reload a workspace without a selected physical folder")
+    func outboxEventDoesNotReloadUnifiedWorkspace() {
+        let state = MailNavigationState()
+        let original = state.reloadRequestID
+        state.requestReloadIfVisibleFolderChanged(.outboxChanged)
+        #expect(state.reloadRequestID == original)
+    }
+
     @Test("visible folder change events request a reload")
     func visibleFolderEventsRequestReload() {
         let state = MailNavigationState(selectedFolderID: "sent")

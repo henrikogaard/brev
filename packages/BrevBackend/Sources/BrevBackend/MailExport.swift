@@ -78,22 +78,25 @@ public struct MBOXExporter: Sendable {
     }
 
     private func escapeFromLines(_ data: Data) -> Data {
-        guard let content = String(data: data, encoding: .utf8) else {
-            return data
-        }
-        let lines = content.components(separatedBy: "\n")
-        let escaped = lines.map { line -> String in
-            // mboxrd: prepend ">" to any line that is "From " possibly already
-            // preceded by ">" quotes (not just the unquoted form), so the reader
-            // can strip exactly one level back and the round-trip is lossless.
-            // Escaping only "From " here would let an original ">From " line be
-            // mis-unquoted to "From " on import.
-            if line.drop(while: { $0 == ">" }).hasPrefix("From ") {
-                return ">" + line
+        var escaped = Data()
+        escaped.reserveCapacity(data.count)
+        var atLineStart = true
+        var index = data.startIndex
+        let prefix = Array("From ".utf8)
+        while index < data.endIndex {
+            if atLineStart {
+                var probe = index
+                while probe < data.endIndex, data[probe] == 0x3E {
+                    probe += 1
+                }
+                if data[probe...].starts(with: prefix) { escaped.append(0x3E) }
             }
-            return line
+            let byte = data[index]
+            escaped.append(byte)
+            atLineStart = byte == 0x0A
+            index += 1
         }
-        return Data(escaped.joined(separator: "\n").utf8)
+        return escaped
     }
 }
 

@@ -517,6 +517,11 @@ public struct IMAPMessageListing: Sendable, Hashable {
     /// RFC 5322 `In-Reply-To` from the ENVELOPE, when the message has one.
     /// Brev derives conversations from this link; see ADR-0052.
     public let inReplyTo: String?
+    /// Ancestor identifiers from the RFC 5322 `References` field, fetched via
+    /// `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` (ADR-0074). `nil` means the
+    /// attribute was absent from the FETCH response; an empty array means the
+    /// field is known absent. Elements are bare identifier tokens.
+    public let references: [String]?
     /// RFC 5322 `Reply-To` recipients advertised by the ENVELOPE.
     public let replyTo: [Correspondent]
     public let subject: String
@@ -538,6 +543,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         uid: Int,
         messageID: String,
         inReplyTo: String? = nil,
+        references: [String]? = nil,
         replyTo: [Correspondent] = [],
         subject: String,
         snippet: String = "",
@@ -554,6 +560,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
         self.uid = uid
         self.messageID = messageID
         self.inReplyTo = inReplyTo
+        self.references = references
         self.replyTo = replyTo
         self.subject = subject
         self.snippet = snippet
@@ -582,6 +589,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
             uid: uid,
             messageID: envelope.messageID,
             inReplyTo: envelope.inReplyTo,
+            references: parseReferences(in: line),
             replyTo: envelope.replyTo,
             subject: envelope.subject,
             snippet: parseSnippet(in: line, subject: envelope.subject),
@@ -669,6 +677,124 @@ public struct IMAPMessageListing: Sendable, Hashable {
             return valueIndex < line.endIndex ? valueIndex : nil
         }
         return nil
+    }
+
+    /// Parses the `HEADER.FIELDS (REFERENCES)` section value returned with the
+    /// listing fetch. `nil` means the attribute was absent or its value was
+    /// malformed (so a refresh preserves previously stored References); an
+    /// empty array means the References field is known absent. Literals are
+    /// already resolved into quoted strings by the time the line is parsed.
+    private static func parseReferences(in line: String) -> [String]? {
+        guard let valueStart = headerFieldsValueStart(named: "REFERENCES", in: line) else { return nil }
+        var parser = IMAPSExpressionParser(String(line[valueStart...]))
+        switch parser.parseValue() {
+        case .string(let block):
+            return referencesIdentifiers(in: block)
+        case .nilValue:
+            return []
+        default:
+            return nil
+        }
+    }
+
+    /// Index just past a `BODY[HEADER.FIELDS (…)]`/`BODY.PEEK[…]` section label
+    /// whose field list contains `name`, matched at an attribute boundary
+    /// outside quoted strings. Mirrors `bodyTextValueStart`.
+    private static func headerFieldsValueStart(named name: String, in line: String) -> String.Index? {
+        var index = line.startIndex
+        var isInsideQuotedString = false
+        var isEscaped = false
+        while index < line.endIndex {
+            let character = line[index]
+            if isInsideQuotedString {
+                if isEscaped {
+                    isEscaped = false
+                } else if character == "\\" {
+                    isEscaped = true
+                } else if character == "\"" {
+                    isInsideQuotedString = false
+                }
+                line.formIndex(after: &index)
+                continue
+            }
+
+            if character == "\"" {
+                isInsideQuotedString = true
+                line.formIndex(after: &index)
+                continue
+            }
+
+            if isAttributeBoundary(before: index, in: line),
+               let valueStart = headerFieldsValueStart(startingAt: index, named: name, in: line) {
+                return valueStart
+            }
+
+            line.formIndex(after: &index)
+        }
+        return nil
+    }
+
+    private static func headerFieldsValueStart(
+        startingAt index: String.Index,
+        named name: String,
+        in line: String
+    ) -> String.Index? {
+        for label in ["BODY.PEEK[", "BODY["] {
+            guard line[index...].range(of: label, options: [.anchored, .caseInsensitive]) != nil else {
+                continue
+            }
+            var cursor = line.index(index, offsetBy: label.count)
+            guard let fieldsRange = line[cursor...].range(
+                of: "HEADER.FIELDS",
+                options: [.anchored, .caseInsensitive]
+            ) else { continue }
+            cursor = fieldsRange.upperBound
+            while cursor < line.endIndex, line[cursor].isWhitespace {
+                line.formIndex(after: &cursor)
+            }
+            guard cursor < line.endIndex, line[cursor] == "(",
+                  let closeParen = line[cursor...].firstIndex(of: ")") else { continue }
+            let fieldList = line[line.index(after: cursor) ..< closeParen]
+            guard fieldList.split(whereSeparator: \.isWhitespace).contains(where: {
+                $0.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
+                    .caseInsensitiveCompare(name) == .orderedSame
+            }) else { continue }
+            var valueIndex = line.index(after: closeParen)
+            guard valueIndex < line.endIndex, line[valueIndex] == "]" else { continue }
+            line.formIndex(after: &valueIndex)
+            if valueIndex < line.endIndex, line[valueIndex] == "<" {
+                guard let closeIndex = line[valueIndex...].firstIndex(of: ">") else { continue }
+                valueIndex = line.index(after: closeIndex)
+            }
+            guard valueIndex == line.endIndex || line[valueIndex].isWhitespace else { continue }
+            while valueIndex < line.endIndex, line[valueIndex].isWhitespace {
+                line.formIndex(after: &valueIndex)
+            }
+            return valueIndex < line.endIndex ? valueIndex : nil
+        }
+        return nil
+    }
+
+    /// Extracts verifiable ancestor identifiers from a `HEADER.FIELDS` header
+    /// block. A block without a `References` field means the field is known
+    /// absent. A block the strict parser cannot read yields only the balanced
+    /// `<…>` tokens that still verify individually, or `nil` when none do.
+    private static func referencesIdentifiers(in block: String) -> [String]? {
+        guard let value = IMAPDateParser.headerValue(named: "References", in: block) else { return [] }
+        if let identifiers = try? ConversationMembershipResolver.identifiers(in: value) {
+            return identifiers
+        }
+        var salvaged: [String] = []
+        var remaining = value[...]
+        while let open = remaining.firstIndex(of: "<") {
+            guard let close = remaining[remaining.index(after: open)...].firstIndex(of: ">") else { break }
+            if let identifiers = try? ConversationMembershipResolver
+                .identifiers(in: String(remaining[open ... close])) {
+                salvaged.append(contentsOf: identifiers)
+            }
+            remaining = remaining[remaining.index(after: close)...]
+        }
+        return salvaged.isEmpty ? nil : Array(Set(salvaged)).sorted()
     }
 
     private static func normalizedSnippet(_ rawSnippet: String, subject: String) -> String {
@@ -796,28 +922,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
     /// style/script content (not prose) and a final tag the byte-limited
     /// peek cut in half, which then has no closing bracket to match.
     private static func strippingHTMLMarkup(_ text: String) -> String {
-        text
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*?</\1\s*>"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?s)<!--.*?-->"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-            .replacingOccurrences(
-                of: #"(?s)<[^>]*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
+        HTMLTextStripper.stripMarkup(text)
     }
 
     private static func parseUID(in line: String) -> Int? {
@@ -1111,13 +1216,63 @@ public struct IMAPSelectedMailbox: Sendable, Hashable {
     }
 }
 
+/// Raw source for rendering and byte-preserving message export.
 public struct IMAPMessageSource: Sendable, Hashable, Codable {
     public let uid: Int
-    public let rawMessage: String
+    private let content: Content
 
+    private enum Content: Sendable, Hashable {
+        case bytes(Data)
+        case legacyText(String)
+    }
+
+    /// Decoded source for the existing renderer and header parser.
+    public var rawMessage: String {
+        switch content {
+        case .bytes(let data): IMAPMessageBodyParser().rawMessageString(from: data)
+        case .legacyText(let text): text
+        }
+    }
+
+    /// Original RFC message bytes; legacy text caches cannot prove byte fidelity.
+    public var rawMessageData: Data? {
+        guard case .bytes(let data) = content else { return nil }
+        return data
+    }
+
+    /// Creates source reconstructed as text, suitable for rendering.
     public init(uid: Int, rawMessage: String) {
         self.uid = uid
-        self.rawMessage = rawMessage
+        content = .legacyText(rawMessage)
+    }
+
+    /// Retains the original literal bytes without converting MIME encodings.
+    public init(uid: Int, rawMessageData: Data) {
+        self.uid = uid
+        content = .bytes(rawMessageData)
+    }
+
+    private enum CodingKeys: String, CodingKey { case uid, rawMessage, rawMessageData }
+
+    /// Reads original-byte caches and legacy text-only source files.
+    public init(from decoder: any Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        uid = try values.decode(Int.self, forKey: .uid)
+        if let data = try values.decodeIfPresent(Data.self, forKey: .rawMessageData) {
+            content = .bytes(data)
+        } else {
+            content = try .legacyText(values.decode(String.self, forKey: .rawMessage))
+        }
+    }
+
+    /// Stores one representation, preserving original bytes when known.
+    public func encode(to encoder: any Encoder) throws {
+        var values = encoder.container(keyedBy: CodingKeys.self)
+        try values.encode(uid, forKey: .uid)
+        switch content {
+        case .bytes(let data): try values.encode(data, forKey: .rawMessageData)
+        case .legacyText(let text): try values.encode(text, forKey: .rawMessage)
+        }
     }
 
     public static func parse(
@@ -1366,7 +1521,15 @@ public actor IMAPSessionClient {
         operationClass: IMAPSessionOperationClass? = nil,
         operation: (inout Int) async throws -> Result
     ) async throws -> Result {
+        // One command session per account serializes every operation; log the
+        // queue wait so sync/foreground contention is measurable separately
+        // from network time.
+        let queuedAt = Date()
         await acquireSessionOperation(operationClass)
+        let queueWaitMilliseconds = MailPerformanceDiagnostics.durationMilliseconds(since: queuedAt)
+        if queueWaitMilliseconds > 0 {
+            MailPerformanceDiagnostics.logSessionQueueWait(durationMilliseconds: queueWaitMilliseconds)
+        }
         defer { releaseSessionOperation() }
 
         let maximumAttempts = reusesAuthenticatedSession && retriesAfterDisconnect ? 2 : 1
@@ -1753,6 +1916,7 @@ public actor IMAPSessionClient {
         limit: Int,
         uidValidity: Int?,
         highestModSeq: UInt64? = nil,
+        includeSnippet: Bool = true,
         tagCounter: inout Int
     ) async throws -> IMAPMessageListingPage {
         try Task.checkCancellation()
@@ -1777,6 +1941,7 @@ public actor IMAPSessionClient {
         try Task.checkCancellation()
         let messages = try await fetchMessageListings(
             uids: uids,
+            includeSnippet: includeSnippet,
             tagCounter: &tagCounter
         )
         let nextPageToken = searchableUIDs.count > uids.count
@@ -1789,6 +1954,67 @@ public actor IMAPSessionClient {
             nextPageToken: nextPageToken,
             supportsGmailLabels: supportsGmailLabels
         )
+    }
+
+    /// Searches one folder for messages that cite any of the given reply
+    /// identifiers in Message-ID, In-Reply-To or References, then fetches the
+    /// matching listing metadata (ADR-0074 related-header discovery).
+    ///
+    /// HEADER search is a substring candidate search — callers must verify the
+    /// exact linkage locally before treating a hit as a conversation member.
+    /// Identifiers are message metadata, not user text; they are transmitted
+    /// as search-key strings (literals when non-ASCII) by `executeSearch`.
+    public func loginAndSearchRelatedHeaders(
+        configuration: IMAPAccountConfiguration,
+        credential: MailAccountCredential,
+        folderPath: String,
+        identifiers: [String],
+        limit: Int = 200,
+        pageToken: String? = nil
+    ) async throws -> IMAPMessageListingPage {
+        guard configuration.incoming.kind == .imap else {
+            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
+        }
+        let criteria = Self.relatedHeaderSearchCriteria(identifiers: identifiers)
+        guard limit > 0, !criteria.isEmpty else {
+            return IMAPMessageListingPage(messages: [])
+        }
+        let boundedLimit = min(limit, Self.maximumSearchPageSize)
+        return try await withAuthenticatedSession(
+            configuration: configuration, credential: credential
+        ) { tagCounter in
+            let selectedMailbox = try await select(folderPath: folderPath, tagCounter: &tagCounter)
+            return try await searchMessagePage(
+                criteria: criteria,
+                pageToken: pageToken,
+                limit: boundedLimit,
+                uidValidity: selectedMailbox.uidValidity,
+                highestModSeq: selectedMailbox.highestModSeq,
+                includeSnippet: false,
+                tagCounter: &tagCounter
+            )
+        }
+    }
+
+    /// Builds `UID SEARCH` criteria matching messages whose Message-ID,
+    /// In-Reply-To or References field cites one of the given identifiers.
+    /// IMAP OR is binary, so disjuncts are nested left-associatively.
+    /// An empty identifier set yields no criteria — callers must not substitute
+    /// `ALL`, which would search every message in the folder.
+    private static func relatedHeaderSearchCriteria(identifiers: [String]) -> [IMAPSearchToken] {
+        var disjuncts: [[IMAPSearchToken]] = []
+        for identifier in identifiers {
+            let trimmed = identifier.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            for field in ["Message-ID", "In-Reply-To", "References"] {
+                disjuncts.append([.atom("HEADER"), .astring(field), .astring(trimmed)])
+            }
+        }
+        guard var combined = disjuncts.first else { return [] }
+        for disjunct in disjuncts.dropFirst() {
+            combined = [.atom("OR")] + combined + disjunct
+        }
+        return combined
     }
 
     /// Send a `UID SEARCH` built from structured tokens and return its
@@ -1868,11 +2094,10 @@ public actor IMAPSessionClient {
                     commandName: "UID FETCH"
                 )
                 try await readFetchLiteralCompletion(tag: tag)
-                let rawMessage = IMAPMessageBodyParser().rawMessageString(from: literal)
-                guard !rawMessage.isEmpty else {
+                guard !literal.isEmpty else {
                     throw IMAPClientError.malformedResponse(line)
                 }
-                return IMAPMessageSource(uid: uid, rawMessage: rawMessage)
+                return IMAPMessageSource(uid: uid, rawMessageData: literal)
             }
 
             fetchResponses.append(line)
@@ -2199,6 +2424,49 @@ public actor IMAPSessionClient {
         return "UID STORE \(uidSet(uids)) \(operation) (\(tokens.joined(separator: " ")))"
     }
 
+    /// Moves messages and retains provider-assigned destination identities for Undo.
+    public func loginAndMoveMessagesWithResult(
+        configuration: IMAPAccountConfiguration,
+        credential: MailAccountCredential,
+        sourceFolderPath: String,
+        uids: [Int],
+        destinationFolderPath: String,
+        expectedSourceUIDValidity: Int? = nil
+    ) async throws -> IMAPMoveResult {
+        guard configuration.incoming.kind == .imap else {
+            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
+        }
+        guard !uids.isEmpty, sourceFolderPath != destinationFolderPath else { return IMAPMoveResult() }
+        return try await withAuthenticatedSession(
+            configuration: configuration, credential: credential, retriesAfterDisconnect: false
+        ) { tagCounter in
+            let selected = try await select(folderPath: sourceFolderPath, tagCounter: &tagCounter,
+                                            force: expectedSourceUIDValidity != nil)
+            if let expectedSourceUIDValidity, selected.uidValidity != expectedSourceUIDValidity {
+                throw MailBackendError.backendSpecific(message: String(
+                    localized: "This mailbox changed on the server. Refresh before undoing the move.", bundle: .module
+                ))
+            }
+            try Task.checkCancellation()
+            do {
+                let responses = try await execute(
+                    tag: nextTag(&tagCounter), commandName: "UID MOVE",
+                    command: "UID MOVE \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))",
+                    includeTaggedResponse: true
+                )
+                return IMAPMoveResult.parse(responses: responses, requestedUIDs: uids)
+            } catch IMAPClientError.commandFailed(_, let response)
+                where response.split(separator: " ").dropFirst().first?.uppercased() == "BAD" {
+                    // A NO may follow a partial MOVE (RFC 6851). Only unsupported
+                    // command syntax may fall back to COPY, avoiding duplicate mail.
+                    return try await copyThenDeleteMessages(
+                        uids: uids, destinationFolderPath: destinationFolderPath, tagCounter: &tagCounter
+                    )
+                }
+        }
+    }
+
+    /// Moves messages while preserving the existing caller contract.
     public func loginAndMoveMessages(
         configuration: IMAPAccountConfiguration,
         credential: MailAccountCredential,
@@ -2206,32 +2474,10 @@ public actor IMAPSessionClient {
         uids: [Int],
         destinationFolderPath: String
     ) async throws {
-        guard configuration.incoming.kind == .imap else {
-            throw IMAPClientError.invalidServerKind(configuration.incoming.kind)
-        }
-        guard !uids.isEmpty, sourceFolderPath != destinationFolderPath else { return }
-
-        try await withAuthenticatedSession(
-            configuration: configuration,
-            credential: credential,
-            retriesAfterDisconnect: false
-        ) { tagCounter in
-            _ = try await select(folderPath: sourceFolderPath, tagCounter: &tagCounter)
-
-            do {
-                _ = try await execute(
-                    tag: nextTag(&tagCounter),
-                    commandName: "UID MOVE",
-                    command: "UID MOVE \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))"
-                )
-            } catch IMAPClientError.commandFailed {
-                try await copyThenDeleteMessages(
-                    uids: uids,
-                    destinationFolderPath: destinationFolderPath,
-                    tagCounter: &tagCounter
-                )
-            }
-        }
+        _ = try await loginAndMoveMessagesWithResult(
+            configuration: configuration, credential: credential, sourceFolderPath: sourceFolderPath,
+            uids: uids, destinationFolderPath: destinationFolderPath
+        )
     }
 
     public func loginAndCopyMessages(
@@ -2492,15 +2738,17 @@ public actor IMAPSessionClient {
     private func execute(
         tag: String,
         commandName: String,
-        command: String
+        command: String,
+        includeTaggedResponse: Bool = false
     ) async throws -> [String] {
         try await transport.writeLine("\(tag) \(command)")
-        return try await readTaggedResponses(tag: tag, commandName: commandName)
+        return try await readTaggedResponses(tag: tag, commandName: commandName, includeTaggedResponse: includeTaggedResponse)
     }
 
     private func readTaggedResponses(
         tag: String,
-        commandName: String
+        commandName: String,
+        includeTaggedResponse: Bool = false
     ) async throws -> [String] {
         var untaggedResponses: [String] = []
 
@@ -2524,7 +2772,7 @@ public actor IMAPSessionClient {
                 if commandName == "LOGIN" {
                     noteServerCapabilities(fromResponseLine: line)
                 }
-                return untaggedResponses
+                return includeTaggedResponse ? untaggedResponses + [line] : untaggedResponses
             }
             if commandName == "LOGIN",
                uppercasedResponse.hasPrefix("NO")
@@ -2820,9 +3068,10 @@ public actor IMAPSessionClient {
 
     private func select(
         folderPath: String,
-        tagCounter: inout Int
+        tagCounter: inout Int,
+        force: Bool = false
     ) async throws -> IMAPSelectedMailbox {
-        if reusesAuthenticatedSession,
+        if reusesAuthenticatedSession, !force,
            let selectedMailboxState,
            selectedMailboxState.folderPath == folderPath {
             return selectedMailboxState.mailbox
@@ -2872,23 +3121,20 @@ public actor IMAPSessionClient {
     }
 
     private func copyThenDeleteMessages(
-        uids: [Int],
-        destinationFolderPath: String,
-        tagCounter: inout Int
-    ) async throws {
+        uids: [Int], destinationFolderPath: String, tagCounter: inout Int
+    ) async throws -> IMAPMoveResult {
+        try Task.checkCancellation()
         try requireTargetedExpungeSupport()
-        try await copyMessages(
-            uids: uids,
-            destinationFolderPath: destinationFolderPath,
-            tagCounter: &tagCounter
+        let responses = try await execute(
+            tag: nextTag(&tagCounter), commandName: "UID COPY",
+            command: "UID COPY \(Self.uidSet(uids)) \(Self.quotedMailboxName(destinationFolderPath))",
+            includeTaggedResponse: true
         )
-        try await storeFlag(
-            uids: uids,
-            flag: .deleted,
-            isEnabled: true,
-            tagCounter: &tagCounter
-        )
+        try Task.checkCancellation()
+        try await storeFlag(uids: uids, flag: .deleted, isEnabled: true, tagCounter: &tagCounter)
+        try Task.checkCancellation()
         try await expungeDeletedMessages(uids: uids, tagCounter: &tagCounter)
+        return IMAPMoveResult.parse(responses: responses, requestedUIDs: uids)
     }
 
     private func copyMessages(
@@ -2928,16 +3174,25 @@ public actor IMAPSessionClient {
 
     private func fetchMessageListings(
         uids: [Int],
+        includeSnippet: Bool = true,
         tagCounter: inout Int
     ) async throws -> [IMAPMessageListing] {
         // X-GM-LABELS is only valid on servers advertising X-GM-EXT-1; others
         // reject the whole FETCH, so it is added strictly behind the capability.
         let labelAttribute = serverCapabilities.supportsGmailExtensions ? " X-GM-LABELS" : ""
+        // References rides along on the listing fetch so cached headers can
+        // join conversations that lack In-Reply-To (ADR-0074). Related-header
+        // discovery passes includeSnippet: false so its candidate fetch stays
+        // inside §4's enumerated metadata set — no body bytes at all.
+        let snippetAttribute = includeSnippet
+            ? " BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)>"
+            : ""
         let fetchResponses = try await execute(
             tag: nextTag(&tagCounter),
             commandName: "UID FETCH",
             command: "UID FETCH \(uids.map(String.init).joined(separator: ",")) "
-                + "(FLAGS ENVELOPE\(labelAttribute) BODY.PEEK[TEXT]<0.\(Self.messageListingPreviewByteLimit)>)"
+                + "(FLAGS ENVELOPE\(labelAttribute)\(snippetAttribute) "
+                + "BODY.PEEK[HEADER.FIELDS (REFERENCES)])"
         )
         return fetchResponses
             .compactMap(IMAPMessageListing.parse)
@@ -3521,7 +3776,9 @@ enum IMAPDateParser {
         return result
     }
 
-    private static func headerValue(named name: String, in rawMessage: String) -> String? {
+    /// Returns the first occurrence of the named header field, unfolded.
+    /// Shared with `IMAPMessageListing`'s `HEADER.FIELDS` section parsing.
+    static func headerValue(named name: String, in rawMessage: String) -> String? {
         let normalized = rawMessage
             .replacingOccurrences(of: "\r\n", with: "\n")
             .replacingOccurrences(of: "\r", with: "\n")

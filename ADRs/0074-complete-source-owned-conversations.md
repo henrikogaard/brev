@@ -25,7 +25,9 @@ cross the selected account/mailbox source.
    cancellable related-header loading. Snapshots carry members, actual folder
    locators, selected anchor identity, coverage, excluded/unavailable folders and
    a continuation only when the provider supports resumption. Views see plain
-   Swift values and capabilities, never Gmail DTOs or storage objects.
+   Swift values and capabilities, never Gmail DTOs or storage objects. Cached
+   lookup is gated by the offline-capable `.cachedConversations` extended flag;
+   it does not authorize remote discovery.
 2. Build the cached conversation from all indexed folders in the owning mailbox,
    including Inbox, Sent and Archive. Keep provider identity and folder membership
    in the provider's existing local store, rather than adding another database or
@@ -142,3 +144,71 @@ and coverage without pretending both algorithms are identical.
 - Current integration points: `BrevMailRootView.threadHeadersForSelection`,
   `ThreadMessageDerivation`, `MessageThreadResolver`, `MailLocalSearchIndex`,
   `IMAPSMTPBackend`, `GmailAPIBackend` and their provider-owned stores.
+
+
+## Implementation progress — 2026-09-08
+
+The SyncEngine v5 migration adds a reply-identifier table in the existing SQLite
+cache. Header upserts maintain it atomically; foreign-key cascades cover expunge,
+folder invalidation and account clearing. Migration backfills Message-ID and
+In-Reply-To from v4 header records one row at a time, preserving original-byte
+provenance. Backfill uses the existing `rfcMessageID` legacy fallback; statement
+preparation is shared across each batch/migration. Malformed linkage does not
+prevent the original header being cached; control/NUL characters cannot enter
+identifier bindings.
+
+The local index walks matching identifiers only. A per-identifier candidate cap
+and a total traversal budget produce `partial`, never complete coverage. Known
+folder generations are checked against cached UIDVALIDITY; missing generations
+remain unknown and are not evidence authorizing a remote UID action. No network
+calls or automatic header enrichment are introduced by this step.
+
+Persisted References ingestion followed on 2026-09-15. The IMAP listing fetch
+now requests `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` alongside the existing
+ENVELOPE/snippet attributes — an extra attribute on the same request, not a
+new provider call, and no body bytes. Parsed identifiers land on
+`MessageHeader.references` (`nil` unknown/unfetched, `[]` known absent),
+persist inside `header_json`, survive flag-only refreshes and moves, and feed
+`conversation_links` edges plus traversal expansion. Members built without an
+explicit value fall back to the cached header's field; malformed fields keep
+only individually verifiable tokens and never block ordinary caching.
+Provider extension wiring, consented remote discovery and reader/action
+integration remain pending.
+
+## Implementation progress — 2026-09-15 (provider extensions and reader)
+
+Provider extension wiring and consented remote discovery landed in this
+thread. `IMAPSMTPBackend` conforms to `CachedConversationProviding` over
+the existing local index — no network I/O, Spam/Trash excluded by
+default, foreign-source anchors rejected, and an anchor-only fallback
+when no index is wired. `GmailAPIBackend` keeps its native-thread cached
+lookup and now also resolves `users.threads.get` in metadata format with
+selected headers for consented remote loading, deduplicating label
+memberships by account-wide message ID and preserving the selected
+folder context.
+
+IMAP remote discovery uses bounded `UID SEARCH HEADER` queries seeded
+from Message-ID/In-Reply-To/References, fetches only
+UID/ENVELOPE/FLAGS/`BODY.PEEK[HEADER.FIELDS (REFERENCES)]`, verifies exact
+relationships locally, expands the identifier frontier until exhausted or
+budget-limited, and reports `.partial` whenever folders fail, identifiers
+are ambiguous, or budgets bind. No `BODY[]`, attachment, or flag
+mutations are issued for discovery.
+
+Consent is provider-neutral (`RelatedConversationConsenting`): a
+persistent per-account auto-load preference defaults off and is
+reversible in Settings → Mailbox View, while the reader's explicit
+**Load related mail** action records a session-only grant. Revocation
+and account removal clear both surfaces. ADR-0006 and `PRIVACY.md`
+document the new call class.
+
+Reader integration adds `RelatedConversationController` (one owner,
+generation-guarded stale rejection, cancellation on anchor/source
+change), a compact coverage bar with cached/loading/partial/complete
+feedback, Retry, Spam/Trash inclusion, and snapshot merging into the
+thread view — cross-folder members keep their real folder/UID context
+for body loads and actions, and the selected anchor stays stable when an
+older root is found.
+
+Native light/dark, accessibility, compact layout, and live-account
+performance acceptance remain open verification items.

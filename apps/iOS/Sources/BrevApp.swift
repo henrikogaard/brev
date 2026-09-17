@@ -106,7 +106,9 @@ struct BrevApp: App {
                             pendingComposePrefill: $pendingComposePrefill,
                             pendingNotificationRoute: $pendingNotificationRoute,
                             initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
-                            onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:)
+                            onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                            localBackend: session.localBackend,
+                            onLocalFoldersChanged: { session.refreshLocalFolders() }
                         )
                         .environment(\.openURL, browserOpenURLAction)
                         .networkMonitor(networkMonitor)
@@ -188,8 +190,10 @@ struct BrevApp: App {
                     // let the foreground MailFetchScheduler drive refreshes instead.
                     BGTaskScheduler.shared.cancel(taskRequestWithIdentifier: BrevBackgroundRefreshCoordinator.taskIdentifier)
                 case .background:
-                    // Background: keep the delegate's backend list current, then
-                    // schedule the next system-granted background refresh window.
+                    // Background: flush deferred cache writes before suspension
+                    // (disconnect() never runs), keep the delegate's backend list
+                    // current, then schedule the next background refresh window.
+                    Task { await session.flushLocalCaches() }
                     BrevIOSAppDelegate.currentBackends = session.visibleBackends
                     BrevBackgroundRefreshCoordinator.scheduleNextRefresh()
                 default:
@@ -440,7 +444,12 @@ extension AppSession {
         let gmailConnector = GmailAccountConnector.standard(
             applicationSupportURL: applicationSupportURL,
             configurationStore: UserDefaultsGmailAccountConfigurationStore(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: KeychainTokenStore(),
+            localSearchIndexFactory: { accountID in
+                try? BrevSyncEngine(
+                    databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
+                )
+            }
         )
         return AppSessionFactory.makeDefault(
             configuration: AppSessionFactory.Configuration(

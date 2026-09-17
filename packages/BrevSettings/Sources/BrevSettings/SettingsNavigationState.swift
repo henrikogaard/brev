@@ -106,7 +106,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .compose: return "square.and.pencil"
         case .templates: return "doc.text"
         case .vipAndReminders: return "star"
-        case .smartViews: return "line.3.horizontal.decrease.circle"
+        case .smartViews: return "rectangle.stack"
         case .rules: return "line.3.horizontal.decrease.circle"
         case .autoReply: return "airplane.departure"
         case .folderSync: return "folder.badge.gearshape"

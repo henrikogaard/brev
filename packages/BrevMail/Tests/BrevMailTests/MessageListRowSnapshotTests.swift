@@ -73,6 +73,58 @@ struct MessageListRowSnapshotTests {
         )
     }
 
+    /// ADR-0078 §5: an attachment-only search hit renders "Found in <name>"
+    /// beneath the subject.
+    @Test("search hit from attachment content shows the match badge")
+    func attachmentMatchBadge() {
+        let theme = BrevTheme.brevSlate
+        let header = MessageHeader(
+            id: "inbox:attachment-match",
+            threadID: "thread-attachment-match",
+            folderID: "inbox",
+            from: Correspondent(name: "Ingrid Sæther", email: "ingrid@example.org"),
+            subject: "Q3 paperwork",
+            snippet: "The badge reports the matched attachment, not the subject.",
+            date: .distantPast,
+            isRead: true
+        )
+        let view = MessageListRow(
+            header: header,
+            threadCount: 1,
+            isSelected: false,
+            isChecked: false,
+            isInSelectionMode: false,
+            isPinned: false,
+            isThreadExpanded: false,
+            showAvatar: true,
+            previewLineCount: 1,
+            fontFamily: .system,
+            textSize: .medium,
+            density: .comfortable,
+            showsAbsoluteArrivalTime: false,
+            sourceContext: nil,
+            matchedAttachmentName: "ledger-2026.pdf",
+            isBlockedSender: false,
+            hasFollowUp: false,
+            onActivate: {},
+            onToggleCheck: {},
+            onToggleThread: {}
+        )
+        .frame(width: 360, height: 96)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 360, height: 96)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 360, height: 96)),
+            named: "attachment-match-badge",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     /// Reproduces the narrow-column case ADR-0023 flags as a truncation risk:
     /// the widest absolute arrival label, a long sender, and a thread badge all
     /// competing inside the 280-point minimum message-list width. The timestamp

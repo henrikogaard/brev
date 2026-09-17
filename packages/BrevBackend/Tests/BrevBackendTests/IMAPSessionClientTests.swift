@@ -419,7 +419,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 42,43 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 42,43 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         let messages = page.messages
         #expect(page.uidValidity == 987_654_321)
@@ -719,7 +719,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 42 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 42 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [42])
         #expect(page.messages.first?.subject == "Mixed search")
@@ -750,7 +750,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 41 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 41 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.messages.map(\.uid) == [41])
         #expect(page.nextPageToken == nil)
@@ -797,9 +797,9 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH SUBJECT \"receipt\"",
-            "A0004 UID FETCH 20 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 20 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
             "A0005 UID SEARCH SUBJECT \"receipt\"",
-            "A0006 UID FETCH 10 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0006 UID FETCH 10 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
     }
 
@@ -834,7 +834,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"receipt\" FROM \"github.com\" SEEN SUBJECT \"CI\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(messages.map(\.uid) == [91])
         #expect(messages.first?.subject == "CI receipt")
@@ -868,7 +868,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"quarterly\" TEXT \"budget\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(messages.map(\.uid) == [91])
     }
@@ -901,6 +901,55 @@ struct IMAPSessionClientTests {
             "A0003 UID SEARCH OR OR TO \"hidden@example.org\" CC \"hidden@example.org\" BCC \"hidden@example.org\"",
         ])
         #expect(messages.isEmpty)
+    }
+
+    @Test("related-header discovery searches Message-ID, In-Reply-To and References")
+    func relatedHeaderDiscoverySearchesReplyFields() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "A0002 OK [READ-WRITE] SELECT completed",
+            "* SEARCH 91",
+            "A0003 OK SEARCH completed",
+            #"* 9 FETCH (UID 91 FLAGS (\Seen) ENVELOPE ("Sat, 06 Jun 2026 12:00:00 +0000" "Re: Plan" (("Ada" NIL "ada" "example.org")) NIL NIL ((NIL NIL "person" "example.org")) NIL NIL "<a@example.org>" "<b@example.org>"))"#,
+            "A0004 OK FETCH completed",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        let page = try await client.loginAndSearchRelatedHeaders(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "Sent",
+            identifiers: ["a@example.org", "root@example.org"],
+            limit: 50
+        )
+
+        #expect(await transport.sentLines == [
+            "A0001 LOGIN \"person@example.org\" \"secret\"",
+            "A0002 SELECT \"Sent\" (CONDSTORE)",
+            "A0003 UID SEARCH OR OR OR OR OR HEADER \"Message-ID\" \"a@example.org\" HEADER \"In-Reply-To\" \"a@example.org\" HEADER \"References\" \"a@example.org\" HEADER \"Message-ID\" \"root@example.org\" HEADER \"In-Reply-To\" \"root@example.org\" HEADER \"References\" \"root@example.org\"",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
+        ])
+        #expect(page.messages.map(\.uid) == [91])
+        #expect(page.messages.first?.inReplyTo == "<a@example.org>")
+    }
+
+    @Test("related-header discovery with no identifiers sends no search")
+    func relatedHeaderDiscoveryWithoutIdentifiersSkipsSearch() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        let page = try await client.loginAndSearchRelatedHeaders(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            identifiers: []
+        )
+
+        #expect(page.messages.isEmpty)
+        #expect(await transport.sentLines.isEmpty)
     }
 
     // Regression: a non-ASCII SEARCH term (e.g. Norwegian "Møte") must be
@@ -940,7 +989,7 @@ struct IMAPSessionClientTests {
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH CHARSET UTF-8 TEXT {5}",
             "",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(await transport.sentData == [Data("Møte".utf8)])
         #expect(messages.map(\.uid) == [91])
@@ -978,7 +1027,7 @@ struct IMAPSessionClientTests {
             "A0003 UID SEARCH CHARSET UTF-8 TEXT {5}",
             " TEXT {11}",
             "",
-            "A0004 UID FETCH 92 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 92 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(await transport.sentData == [
             Data("Møte".utf8),
@@ -1309,6 +1358,36 @@ struct IMAPSessionClientTests {
         )
 
         #expect(source.rawMessage == rawMessage)
+    }
+
+    @Test("legacy source cache remains readable without claiming original-byte fidelity")
+    func legacySourceCacheIsRenderingOnly() throws {
+        let data = Data(#"{"uid":43,"rawMessage":"Subject: Legacy\r\n\r\nReadable"}"#.utf8)
+        let source = try JSONDecoder().decode(IMAPMessageSource.self, from: data)
+        #expect(source.uid == 43)
+        #expect(source.rawMessage == "Subject: Legacy\r\n\r\nReadable")
+        #expect(source.rawMessageData == nil)
+    }
+
+    @Test("raw MIME retrieval and cache encoding preserve original non-UTF8 bytes")
+    func rawMIMEBytesSurviveFetchAndCache() async throws {
+        let raw = Data(("MIME-Version: 1.0\r\nContent-Type: multipart/mixed; boundary=mail\r\n"
+                + "Subject: Original bytes\r\n\r\n--mail\r\nContent-Type: text/plain; charset=iso-8859-1\r\n"
+                + "Content-Transfer-Encoding: 8bit\r\n\r\n").utf8)
+            + Data([0xE5, 0xF8, 0xE6])
+            + Data(("\r\n--mail\r\nContent-Type: application/octet-stream\r\n"
+                    + "Content-Disposition: attachment; filename=bytes.bin\r\n"
+                    + "Content-Transfer-Encoding: base64\r\n\r\nAAECAwQ=\r\n--mail--\r\n").utf8)
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready", "A0001 OK LOGIN completed", "A0002 OK [READ-WRITE] SELECT completed",
+            "* 14 FETCH (UID 43 BODY[] {\(raw.count)}", ")", "A0003 OK FETCH completed"
+        ], dataReads: [raw])
+        let source = try await IMAPSessionClient(transport: transport).loginAndFetchMessageSource(
+            configuration: Self.configuration(), credential: Self.credential(), folderPath: "INBOX", uid: 43
+        )
+        #expect(source.rawMessageData == raw)
+        let cached = try JSONDecoder().decode(IMAPMessageSource.self, from: JSONEncoder().encode(source))
+        #expect(cached.rawMessageData == raw)
     }
 
     @Test("raw message source accepts RFC822 literal labels")
@@ -1680,6 +1759,105 @@ struct IMAPSessionClientTests {
         #expect(await transport.sentData == [messageData, Data("\r\n".utf8)])
     }
 
+    @Test("move retains COPYUID identities instead of guessing destination IDs")
+    func moveRetainsDestinationUIDs() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "* OK [UIDVALIDITY 77] valid",
+            "A0002 OK [READ-WRITE] SELECT completed",
+            "A0003 OK [COPYUID 91 41:43 81:83] MOVE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        let result = try await client.loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [41, 42, 43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidValidity == 91)
+        #expect(result.uidMappings == [41: 81, 42: 82, 43: 83])
+    }
+
+    @Test("a rejected MOVE is not repeated as COPY because it may have partially moved messages")
+    func rejectedMoveDoesNotCopyAgain() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] ready", "A0001 OK LOGIN completed",
+            "A0002 OK [READ-WRITE] SELECT completed", "A0003 NO MOVE partially failed",
+            "A0004 OK COPY completed", "A0005 OK STORE completed", "A0006 OK EXPUNGE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        await #expect(throws: IMAPClientError.self) {
+            try await client.loginAndMoveMessagesWithResult(
+                configuration: Self.configuration(), credential: Self.credential(),
+                sourceFolderPath: "INBOX", uids: [43], destinationFolderPath: "Archive"
+            )
+        }
+        #expect(await transport.sentLines.count == 3)
+    }
+
+    @Test("move accepts untagged COPYUID and normalizes reverse-written ranges")
+    func moveReadsUntaggedMappings() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "A0002 OK SELECT completed",
+            "* OK [COPYUID 91 43:41 83:81] moved", "* 1 EXPUNGE", "A0003 OK MOVE completed"
+        ])
+        let result = try await IMAPSessionClient(transport: transport).loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [41, 42, 43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidMappings == [41: 81, 42: 82, 43: 83])
+    }
+
+    @Test("Undo rejects a replaced mailbox before issuing MOVE")
+    func moveValidatesSourceUIDValidity() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 92] valid",
+            "A0002 OK SELECT completed", "A0003 OK MOVE completed"
+        ])
+        let client = IMAPSessionClient(transport: transport)
+        await #expect(throws: MailBackendError.self) {
+            try await client.loginAndMoveMessagesWithResult(
+                configuration: Self.configuration(), credential: Self.credential(),
+                sourceFolderPath: "Archive", uids: [81], destinationFolderPath: "INBOX", expectedSourceUIDValidity: 91
+            )
+        }
+        #expect(await transport.sentLines.count == 2)
+    }
+
+    @Test("oversized or malformed COPYUID never creates guessed undo targets", arguments: [
+        "91 1:4294967295 1:4294967295", "91 43 81:82", "91 99 81", "0 43 81", "91 43,43 81,82"
+    ])
+    func moveRejectsUnsafeMappings(_ mapping: String) async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "A0002 OK SELECT completed",
+            "A0003 OK [COPYUID \(mapping)] MOVE completed"
+        ])
+        let result = try await IMAPSessionClient(transport: transport).loginAndMoveMessagesWithResult(
+            configuration: Self.configuration(), credential: Self.credential(),
+            sourceFolderPath: "INBOX", uids: [43], destinationFolderPath: "Archive"
+        )
+        #expect(result.uidMappings.isEmpty)
+        #expect(result.uidValidity == nil)
+    }
+
+    @Test("Undo refreshes UIDVALIDITY even when the source mailbox is already selected")
+    func undoMoveReselectsMailbox() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 91] valid",
+            "A0002 OK SELECT completed", "A0003 OK MOVE completed",
+            "* OK [UIDVALIDITY 92] replaced", "A0004 OK SELECT completed"
+        ])
+        let client = IMAPSessionClient(transport: transport, reusesAuthenticatedSession: true)
+        try await client.loginAndMoveMessages(configuration: Self.configuration(), credential: Self.credential(),
+                                              sourceFolderPath: "Archive", uids: [81], destinationFolderPath: "Other")
+        await #expect(throws: MailBackendError.self) {
+            try await client.loginAndMoveMessagesWithResult(configuration: Self.configuration(), credential: Self.credential(),
+                                                            sourceFolderPath: "Archive", uids: [82],
+                                                            destinationFolderPath: "INBOX",
+                                                            expectedSourceUIDValidity: 91)
+        }
+        #expect(await transport.sentLines.last == "A0004 SELECT \"Archive\" (CONDSTORE)")
+    }
+
     @Test("client moves messages with UID MOVE")
     func clientMovesMessagesWithUIDMove() async throws {
         let transport = ScriptedIMAPTransport(lines: [
@@ -1954,7 +2132,7 @@ struct IMAPSessionClientTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH TEXT \"receipt\"",
-            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
     }
 

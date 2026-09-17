@@ -679,7 +679,7 @@ struct IMAPAccountProvisioningTests {
             "A0004 STATUS \"Sent\" (MESSAGES UNSEEN)",
             "A0005 SELECT \"INBOX\" (CONDSTORE)",
             "A0006 UID SEARCH TEXT \"receipt\"",
-            "A0007 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024>)",
+            "A0007 UID FETCH 91 (FLAGS ENVELOPE BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(await smtpTransport.sentLines.prefix(4) == [
             "EHLO brev.local",

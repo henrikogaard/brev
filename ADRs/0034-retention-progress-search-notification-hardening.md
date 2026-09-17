@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-14
 - **Deciders:** Henrik
-- **Amended by:** ADR-0041
+- **Amended by:** ADR-0041, ADR-0077, ADR-0078
 
 ## Context
 

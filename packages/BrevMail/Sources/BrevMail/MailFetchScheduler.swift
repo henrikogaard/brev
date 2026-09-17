@@ -77,32 +77,47 @@ public enum MailFetchScheduler {
     /// Uses a backend's mailbox-wide background refresh service when available,
     /// so richer backends can warm multiple first-page caches. Backends without
     /// that service fall back to locating and refreshing the inbox folder.
-    /// Failures are skipped silently — the caller (a `BGAppRefreshTask` handler)
-    /// is responsible for calling `task.setTaskCompleted(success:)`.
+    /// Returns the first failure's provider-neutral message (the same
+    /// `localizedDescription` the visible refresh path surfaces), or `nil`
+    /// when every backend succeeded — an iOS `BGAppRefreshTask` caller may
+    /// ignore the result and call `task.setTaskCompleted(success:)`.
     ///
     /// - Parameter backends: The currently connected backends. May be empty.
-    public static func performBackgroundRefresh(backends: [any MailBackend]) async {
-        await withTaskGroup(of: Void.self) { group in
+    /// - Returns: The first provider error message, or `nil` when all targets succeed.
+    @discardableResult
+    public static func performBackgroundRefresh(backends: [any MailBackend]) async -> String? {
+        await withTaskGroup(of: String?.self) { group in
             for backend in backends {
                 // A background window is also the only chance a suspended app
                 // gets to flush "send later" drafts that came due meanwhile.
                 if let scheduledSends = backend.extensionService(ScheduledSendManaging.self) {
-                    group.addTask { await scheduledSends.deliverDueScheduledSends() }
+                    group.addTask {
+                        await scheduledSends.deliverDueScheduledSends()
+                        return nil
+                    }
                 }
                 group.addTask {
-                    let mailbox = try? await backend.currentMailbox()
-                    let sourceID = mailbox.map { backend.sourceID(for: $0) }
-                    if let sourceID,
-                       let backgroundRefresher = backend.extensionService(MailboxBackgroundRefreshing.self) {
-                        try? await backgroundRefresher.refreshMailbox(for: sourceID)
-                        return
-                    }
+                    do {
+                        let mailbox = try await backend.currentMailbox()
+                        let sourceID = backend.sourceID(for: mailbox)
+                        if let backgroundRefresher = backend.extensionService(MailboxBackgroundRefreshing.self) {
+                            try await backgroundRefresher.refreshMailbox(for: sourceID)
+                            return nil
+                        }
 
-                    guard let folders = try? await backend.folders() else { return }
-                    guard let inbox = folders.first(where: { $0.role == .inbox }) else { return }
-                    try? await backend.refresh(folder: inbox)
+                        let folders = try await backend.folders()
+                        guard let inbox = folders.first(where: { $0.role == .inbox }) else { return nil }
+                        try await backend.refresh(folder: inbox)
+                        return nil
+                    } catch {
+                        return error.localizedDescription
+                    }
                 }
             }
+            for await failure in group {
+                if let failure { return failure }
+            }
+            return nil
         }
     }
 
@@ -112,7 +127,7 @@ public enum MailFetchScheduler {
     /// immediate fire on subscription), matching Apple Mail behaviour.
     /// If `intervalSeconds` is `nil` the stream completes immediately
     /// with no ticks.
-    static func ticks(every intervalSeconds: TimeInterval?) -> AsyncStream<Void> {
+    public static func ticks(every intervalSeconds: TimeInterval?) -> AsyncStream<Void> {
         guard let intervalSeconds, intervalSeconds > 0 else {
             return AsyncStream { $0.finish() }
         }

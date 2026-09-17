@@ -49,6 +49,7 @@ enum MailRootAccountEventPolicy {
         case .accountConnected,
              .accountDisconnected,
              .mailboxChanged,
+             .outboxChanged,
              .syncProgress:
             return MailboxEventEffects(
                 refreshVisibleContent: false,
@@ -75,6 +76,7 @@ enum MailRootAccountEventPolicy {
              .messagesRemoved,
              .messagesUpdated,
              .mailboxChanged,
+             .outboxChanged,
              .syncProgress:
             return .ignore
         }

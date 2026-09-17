@@ -1,5 +1,216 @@
 # Worklog
 
+## 2026-09-17 — Devin — Issue #28 §9: ADR-0077 durable local mail folders
+
+### Goal
+
+Implement ADR-0077: a synthetic "On My Mac" / "On My iPhone" backend storing
+mail as Maildir files outside every cache root, with Copy/Move/Import entry
+points, search-index integration, and `.brevbackup` mail payloads.
+
+### Changes
+
+- BrevBackend: `LocalMaildirStore` (actor; `folders.json` manifest, per-folder
+  `cur`/`new`/`tmp`, atomic tmp→fsync→rename writes, Maildir flag-suffix
+  renames, `size()`), `LocalMailBackend` (`accountID = "local"`,
+  folderCreate/Rename/Delete capabilities, `importMessages`/`importRaw`,
+  `storedRFCMessageIDs`, index rebuild on connect when files exceed the
+  index), `LocalMailBackup` (payload/restore-mode/importer types).
+- BrevMail: `AppSession` registers the local backend (injectable via
+  `AppSessionFactory.Configuration.localBackendFactory`) and gates
+  `visibleBackends` on `hasFolders`; `LocalMailTransfer` implements the
+  write-local-first then undoable-server-delete ordering; `MoveToSheet` gains
+  a local-destination mode with a New Folder field; context menus and
+  `MailCommands` offer Copy/Move to Local Folder (macOS only); `FolderSidebar`
+  has "New Local Folder…" on the account-level menu; the folder delete
+  confirmation states it permanently removes kept mail; `importMessages`
+  defaults to a new local folder named after the file basename.
+- BrevSettings: Mail Storage gains a "Local folders" group with size and the
+  "Not a cache." subtitle; `.brevbackup` format bumped to v2 (reader still
+  accepts v1) with `mail/<folderID>.mbox` payloads, SHA-256 manifest entries,
+  a preview toggle (default on when folders exist), and restore Merge
+  dedupes by Message-ID / Replace recreates.
+- Docs: PRIVACY.md local-mail-folders section + backup paragraph update,
+  CHANGELOG Unreleased entries, ADRs/README index row.
+
+### Verification
+
+- `swift test packages/BrevBackend --filter 'Local|Backup|Maildir'`: 67/67.
+- `swift test packages/BrevBackend`: 1106/1106 in 108 suites.
+- `swift test packages/BrevMail --filter 'AppSession|LocalFolder|Import'`:
+  green incl. 2 AppSession local-backend tests, 4 LocalMailTransfer ordering
+  tests, 4 new snapshot cases.
+- `swift test packages/BrevSettings --filter 'Backup|MailStorage'`: green incl.
+  writer `mail/*.mbox` hashes, v1 acceptance, Merge dedupe / Replace recreate,
+  and new snapshots (preview toggle + Mail Storage row).
+- `tuist generate` OK; `tuist build BrevIOS` built; macOS
+  `xcodebuild … CODE_SIGNING_ALLOWED=NO` **BUILD SUCCEEDED**;
+  format/lint/privacy-audit/`git diff --check` all OK.
+
+### Skipped
+
+- `tuist build BrevMacOS` (signed) — no dev cert in this environment; unsigned
+  xcodebuild covers compilation.
+- iOS write UI — macOS-only by design (ADR-0077); iOS read path covered by the
+  BrevIOS build.
+
+### Review fixes (same entry)
+
+- Backup writer/reader now hash every payload by streaming CryptoKit SHA-256
+  (1 MiB `FileHandle` chunks); `mailBytes` comes from file resource values, so
+  multi-GB mboxes never load into memory.
+- Permanent message deletes confirm first via a single shape-based rule —
+  `MailUndoableDelete.isPermanentDelete` (no `.trash` folder, or already in
+  Trash) gates root `trash`, list swipe, and bulk paths; the folder-delete
+  alert copy uses the same predicate instead of the local account ID.
+- `LocalMailTransfer.move` splits write failures from source-delete failures
+  (copied-but-not-removed keeps `copiedIDs` + a distinct error) and exposes
+  `removedSourceIDs` so the list only drops sources that actually deleted.
+- "message(s)" strings replaced with count-based noun selection.
+
+Re-verified: Backup suite 20/20, LocalMail/Undoable/Delete/LocalFolder 20/20,
+format/lint/diff-check clean, unsigned macOS build succeeded.
+
+### Handoff
+
+Uncommitted on `feature/mail-client-parity` over `8cbbed14`; user commits.
+
+## 2026-09-16 — Devin — Issue #28 / PR #30: ADR-0074 independent-review fixes
+
+### Goal
+
+Address the two-axis (standards + spec) review findings on `23281fc6` and
+`a4258de2` before handoff.
+
+### Changes
+
+- Consent revocation: session grants moved to process-wide state so
+  `removeAccountScopedState` (fresh store instance) clears a grant made
+  through `.shared`; consent-store tests serialized because the shared
+  grants are intentionally global.
+- IMAP pagination: `loginAndSearchRelatedHeaders` accepts a page cursor;
+  `loadRelatedConversation` follows truncated result windows within the
+  request budget, and a leftover cursor or ambiguous identifiers force
+  `.partial` — never `.completeForScope` (§8). New tests cover
+  page-following to completion and budget-exhausted partial coverage.
+- IMAP discovery fetch dropped `BODY.PEEK[TEXT]` — metadata-only per
+  §4's enumerated set (`includeSnippet` flag on the shared fetch helper).
+- Stale writes: discovered-header persistence is skipped when the task is
+  cancelled or remote availability dropped mid-scan.
+- Reader: `includeSpamAndTrash` bumps the lookup generation (rejects
+  in-flight updates from the narrower scope) and only re-fires remote work
+  when consent still holds — a revoked consent now re-scopes from cache
+  without a `.consentRequired` failure surface.
+- Docs: ADR-0006 and PRIVACY.md now disclose the one-shot Gmail
+  `users.messages.get` minimal-format fallback for legacy cache records
+  without a stored thread ID.
+- Snapshots: new `RelatedConversationBarSnapshotTests` (prompt, cached,
+  partial, failed-retry); `mailbox-view` light/dark baselines re-recorded
+  for the new Related mail group. Other settings baselines
+  (appearance/accounts/navigation/folder-workspace) drift on this host's
+  renderer with identical content and were left untouched.
+- Gmail store apply kept best-effort with an explicit rationale comment
+  (BrevGmail has no logging convention).
+
+Follow-up (same day, second review pass): fixed a `mergedThreadHeaders`
+trap on duplicate header ids (`uniquingKeysWith` preferring the member
+that carries a folder generation), disclosed unsynced folders in the
+reader's Load-related-mail accessibility hint, serialized the controller
+test suite against process-wide session grants, and clamped the
+related-header search limit to `maximumSearchPageSize` like the sibling
+search op.
+
+Third pass (all findings): consolidated the related-mail bar's three
+coverage dispatches into one presentation value (symbol, tint and copy can
+no longer diverge), extracted the shared Gmail member-building helper used
+by both cached and remote paths, replaced the packed anchor-key string
+with a `ConversationAnchorKey` struct, and made the related-mail account
+picker binding optional instead of an empty-string sentinel. Session-pool
+safety verified: `withAuthenticatedSession` serializes every op through
+`acquireSessionOperation`, so SELECT-before-SEARCH cannot interleave.
+
+
+### Verification
+
+- Focused: 12/12 backend related-conversation + consent tests; BrevMail
+  RelatedConversation suites 11/11 incl. new bar snapshots; settings
+  account-scoped consent cleanup passes.
+- Full BrevBackend suite: 1076 tests pass. `scripts/lint.sh`,
+  `scripts/format.sh`, `scripts/privacy-audit.sh`, `git diff --check` pass.
+- `mailbox-view` snapshots pass with new baselines; unrelated settings
+  snapshot drift on this host documented (pre-existing, not from this diff).
+
+### Skipped / pending
+
+- The settings snapshot drift on unrelated surfaces needs re-recording on
+  the maintainer's authoritative host, or CI will show the same drift.
+- Live-account acceptance still pending.
+
+## 2026-09-15 — Devin — Issue #28 / PR #30: ADR-0074 provider extensions, consented remote discovery, reader integration
+
+### Goal
+
+Complete the remaining ADR-0074 delivery stages on `feature/mail-client-parity`:
+cached + remote related-conversation loading on both providers, per-account
+consent, and reader integration.
+
+### Changes
+
+- `IMAPSMTPBackend`: `CachedConversationProviding` over the SyncEngine local
+  index (no network, Spam/Trash excluded by default, anchor-only fallback);
+  `RelatedConversationLoading` via bounded `UID SEARCH HEADER` frontier
+  expansion with metadata-only candidate fetches (UID/ENVELOPE/FLAGS/
+  `BODY.PEEK[HEADER.FIELDS (REFERENCES)]`), generation checks, folder-failure
+  accounting, and honest `.partial` coverage.
+- `IMAPSessionClient`: `loginAndSearchRelatedHeaders` session op emitting
+  structured `UID SEARCH HEADER` commands; no-op when no usable identifiers.
+- `GmailAPIBackend`/`GmailAPITransport`: `getThread` (metadata format,
+  selected headers only — no full/raw/attachment calls), plus
+  `RelatedConversationLoading` that deduplicates label memberships, preserves
+  folder context, excludes Spam/Trash by default, and persists discovered
+  headers through the provider-owned store. Gmail header mapping now carries
+  References.
+- `RelatedConversationConsentStore` (new, BrevBackend): per-account consent —
+  persistent auto-load preference (default off) + session grant for the
+  explicit reader action; revocation/account removal clears both.
+- Settings: "Related mail" group in Mailbox View with per-account picker and
+  the consent copy required by ADR-0074 §6; `removeAccountScopedState` revokes
+  consent.
+- Reader: `RelatedConversationController` (single owner, generation-guarded
+  stale rejection, cancellation on anchor change) + `RelatedConversationBar`
+  (cached/loading/partial/complete feedback, Load related mail, Retry,
+  Include Spam and Trash) merged into `BrevMailRootView`; snapshot members
+  merge into the thread view with real folder/UID locators.
+- `MockBackend` gained conversation-service handlers + `extendedCapabilities`
+  for tests.
+- Docs: ADR-0006 network table row, `PRIVACY.md` related-mail section,
+  ADR-0074 progress note, CHANGELOG Unreleased.
+
+### Verification
+
+- `swift build` clean for BrevBackend, BrevGmail, BrevSettings, BrevMail.
+- Focused tests: IMAP backend conversation tests 7/7; IMAP session
+  related-header 2/2; Gmail backend 29/29 (incl. new consent-gated
+  threads.get tests); Gmail transport 16/16 (metadata request shape);
+  consent store 4/4; settings account-scoped cleanup incl. consent revocation
+  11/11; reader controller 7/7 (cached merge, consent gating, explicit action,
+  auto-load, stale rejection, Spam/Trash scope, failure/retry).
+- `scripts/lint.sh`, `scripts/format.sh`, `scripts/privacy-audit.sh`,
+  `git diff --check` all pass.
+
+### Skipped / pending
+
+- MailboxViewSection iOS snapshot re-record (new Related mail group changes
+  the section image) — needs `RECORD_SNAPSHOTS=YES tuist test`; not run here.
+- Live-account acceptance: native light/dark, accessibility/compact layout,
+  discovery duration/memory/request counts on representative accounts.
+
+### Handoff
+
+Remote discovery is off by default; explicit per-conversation action or the
+per-account Mailbox View preference are the only triggers. PR #30 remains a
+draft; issue #28 remains In progress — no merge/release performed.
+
 ## 2026-08-28 — Claude — Scroll-edge blur anchored to the list viewport
 
 ### Goal
@@ -603,3 +814,816 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   Accepted and updated the index. ADR-0070 through ADR-0073 remain Proposed.
 - This records architecture approval; it does not merge/release or grant live
   provider mutation/OS setup authority. Documentation-only; diff check applies.
+
+## 2026-09-05 — Codex — Issue #28 core parity implementation
+
+- Established an isolated feature/mail-client-parity worktree at #27's
+  1250634 baseline. Integration will stack on fix/multi-account-workspace and
+  eventually main. The umbrella is In progress on project 9; architecture
+  proposals are separately reviewable in #29.
+- First slice: make Undo failures visible and retryable, prevent overlapping
+  reversals, preserve a later pending action, and refresh after a successful
+  reversal. Existing root Undo closures now propagate errors to the queue.
+- Tests exercise the existing public UndoQueue action boundary. A failed
+  reversal test was red before implementation; retry, single-flight, and dismiss
+  cases are covered. Light/dark failure feedback snapshots were added.
+- Remaining work includes consistent registration across entry points, provider
+  move identities, native Undo integration, scheduling/provider parity,
+  conversation/search completeness, performance and live QA, and accepted-ADR
+  implementation. This slice does not claim completion of #28.
+
+- Undo slice verification: 1,518 BrevMail tests passed excluding the separate
+  Contacts process; focused queue/error snapshots passed in both themes. Lint
+  and format passed. Independent standards and behavior reviews found a stale
+  failure/new-action defect, fixed with a red-green regression and re-reviewed
+  without remaining material findings. Native/live acceptance remains pending.
+
+
+## 2026-09-05 — Codex — Issue #28 move identities and native Undo
+
+- Added provider-bound move reversals. IMAP retains tagged/untagged COPYUID
+  mappings, bounds range parsing to requested UIDs, validates UIDVALIDITY before
+  a reversal even on an already-selected mailbox, and does not retry a possibly
+  partial NO response as COPY. Standard account provisioning forwards the result
+  operation. Gmail reverses the move's label delta while preserving unrelated
+  labels; preview backends preserve source ownership.
+- Toolbar, row and bulk read/flag/move/trash paths now register shared Undo.
+  Retry skips already completed move batches. Unchanged messages are excluded
+  from flag inverses. Ordinary bulk unread deltas use actual changed/unread
+  headers; label providers wait for their authoritative counts.
+- The latest mail Undo survives its toast; leased mutations suspend Undo until
+  their work finishes. Invocation order prevents older late results replacing
+  newer Undo. Retired backend sessions cancel/invalidate queued work and reject
+  late registrations or error publication.
+- macOS Edit Undo uses focused mail commands with explicit priority for native
+  text Undo managers. Settings/other windows retain native Undo/Redo. Menu state
+  observes editing, key-window and Undo notifications. An experimental responder
+  insertion was discarded after native tests demonstrated hosting/window routing
+  problems; no view responder chain is modified in the final implementation.
+- Tests were run red before fixes for silent errors, stale failures, partial
+  MOVE retries, destination IDs, UIDVALIDITY, bulk flag preservation, late
+  session callbacks, and native text/mail routing. Full checks and native QA
+  are pending for this slice. #28 remains In progress; #29 awaits ADR acceptance.
+- Additional finding for the migration/export slice: File-menu MBOX export
+  contains headers without bodies; Settings exports reconstruct MIME and omit
+  attachments. Repair these existing flows independently of new local archives.
+
+### 2026-09-05 — Codex — Issue #28 / PR #30 review fixes and native checks
+
+- Fixed review findings in the move/Undo batch: partial folder failures retain
+  completed receipts and restore only failed rows; unified mutations reconcile
+  per folder within each mailbox. Successful receipts are registered before
+  stale UI response guards, so navigation changes do not lose source-owned Undo.
+- Added shared junk reversal handling for root, rows and unified lists, native
+  text-priority Undo/Redo commands, no-op flag registration filtering, explicit
+  invalidation after non-reversible folder/label/block actions, and cancellation
+  checks between provider/batch operations. An already transmitted provider
+  request cannot be recalled; retired sessions suppress late UI publication.
+- Gmail Undo retries retain per-message completion. IMAP uncertain move failures
+  refresh source and destination; COPY fallback is limited to unsupported MOVE
+  syntax. Mixed irreversible/reversible bulk commands deliberately offer no
+  generic whole-command Undo.
+- Added byte-wise mboxrd escaping after a red test showed non-UTF8 source skipped
+  From-line escaping. Full MIME export wiring and raw-byte backend persistence
+  remain pending; no claim of complete migration support.
+- Build reproduced a Bash 3 empty OAuth argument-array failure after dependency
+  download recovered. Applied the same nounset-safe expansion already used for
+  optional build arguments. `scripts/test-build-run-env.sh` passed.
+- Native mock build launched through `script/build_and_run.sh --mock --verify`
+  using the dated test bundle in this worktree. CUA verified archive reduced
+  Inbox from 29 to 28 messages, native Edit > Undo remained enabled after toast
+  expiry, and Undo restored 29. Compose text Undo cleared entered test text;
+  Redo restored it. After clearing/closing the empty composer, Cmd-Z reversed
+  the earlier row flag action. No mail was sent.
+- The row/drop wiring uses the tested provider receipt path; direct SwiftUI
+  private action invocation is not an automated test seam. Native drag/drop,
+  source-switch-during-network, multi-folder partial provider failure, selection
+  restoration, offline queued Undo, and live IMAP/Gmail acceptance remain open.
+- Full package suites passed before the last review fixes; final reruns and
+  frozen review are recorded in the subsequent handoff. The app build warning
+  in BrevApp.swift about the existing delegate Sendable capture is unchanged.
+
+- Final local rerun passed 1,534 Mail tests, 1,020 Backend tests, and 102 Gmail
+  tests. The subsequent same-folder filtering and cancellation checkpoints
+  receive focused reruns. Lint/format passed. macOS test build and startup
+  passed; the daily-driver bundle was untouched.
+- Hosted checks for first-slice commit a72e3c1 showed Undo image differences on
+  macOS 15 and an existing BrevDesign WindowAppearancePreferences process crash.
+  Added Undo images to the established macOS 26+ snapshot group, retaining local
+  image comparisons and behavior tests. Workflow YAML parses. The isolated
+  WindowTrafficLightPolicy test passed using stable Xcode locally; the hosted
+  process failure is not claimed fixed and will be checked on the next commit.
+- Required summary-router / summary-tables skills were not installed in the
+  available catalog or searched skill roots. Used the repository's table format
+  directly for evidence reports.
+
+- Final review caught retirement before an Undo task starts. A deterministic
+  red test confirmed the canceled task still invoked the provider action.
+  Added a cancellation check before invocation; subsequent green evidence is
+  included in the final focused queue run.
+
+## 2026-09-05 — Codex — Issue #28 / PR #30 Undo reader restoration
+
+- Verified c858d68 was pushed and its 19 hosted checks completed successfully,
+  including the earlier Design process failure and Mail snapshot configuration.
+  The parent issue remains In progress; no merge/release or architecture
+  acceptance was inferred.
+- Added navigation context to forward-operation leases. Move receipts now use
+  the provider's restored ID mapping to reselect the original reader message.
+  The selection is restored only in the original folder/search or aggregate
+  view and only if the user did not change selection while Undo was running.
+- The reader retains a confirmed restored header when the first refreshed page
+  contains only newer mail. A fetched header replaces that temporary copy;
+  explicit removal, navigation, or selection changes release it. Shared junk
+  actions use the same restoration path.
+- Red-green regressions proved the original next-message focus bug, older-page
+  loss after restoration, and junk fallback missing selection restoration.
+  Tests also cover other folders, same-view mid-Undo selection, colliding IDs
+  across sources, All Inboxes context, and releasing/replacing retained headers.
+- Public header identity remapping preserves recipients, flags, attachments,
+  RFC threading metadata, and the non-RFC provider-ID threading fallback.
+- Final package, lint, mock native checks and frozen review follow below.
+  Full MIME export, offline queued Undo, scheduling, complete conversation/
+  search coverage, live/performance acceptance, and proposed ADRs remain open.
+
+- Verification: 1,543 Mail tests and 1,020 Backend tests passed; formatter/lint
+  and diff checks passed. Both frozen reviewers found no material findings.
+  The dated mock build/startup passed. CUA verified selected mock bill ->
+  toolbar Archive -> Cmd-Z restored Inbox 28 -> 29 and reopened the same bill
+  in the reader. The settled screenshot showed matching sender details.
+- Documentation sweep: CHANGELOG and this log updated; README architecture,
+  privacy/network tables, ADRs and AGENTS are unchanged because this adds only
+  transient reader restoration within existing provider-bound actions.
+
+## 2026-09-05 — Codex — Issue #28 / PR #30 original MIME bytes
+
+- Added a provider-neutral original-byte export contract. IMAP fetch/cache now
+  keeps literal MIME bytes and derives text only for rendering, without storing
+  duplicate decoded and raw copies. Legacy text caches remain readable but are
+  refreshed from the server when original-byte export is requested.
+- Gmail stores original MIME in the existing source-cache table as BLOB;
+  legacy TEXT remains rendering-only. Cache account/message purge behavior is
+  unchanged. Original-byte cache reads work offline and validate source identity.
+- Red-green tests reproduced non-UTF8 MIME changing from 344 to 347 bytes,
+  proved literal/cache round-trip fidelity, verified IMAP legacy-cache refresh
+  followed by offline reads, and verified Gmail byte fidelity through SQLite
+  restart, legacy-cache replacement, and account-scope rejection.
+- This is the data foundation for complete export. File-menu and Settings
+  export callers still need conversion to the new API, streaming/progress/cancel
+  handling, and safe output publication. Their previous body/attachment gaps
+  are not claimed fixed.
+- Privacy/docs sweep: no new provider endpoint, account permission or cache
+  category is added; existing message-source retrieval and purge rules apply.
+  Original MIME remains in the existing provider-owned, evictable caches.
+
+- Review identified the secondary index-cache provenance gap. Added explicit
+  original-byte store/read methods and schema 4 provenance in BrevSyncEngine.
+  Migration leaves legacy rows unverified, original writes mark bytes atomically,
+  and legacy overwrites clear the marker. Account/message purges keep their
+  existing lifecycle.
+- A red integration test reproduced index-only offline failure after a fetch.
+  It is green with the real SQLite index across restart, and rejects a later
+  unverified overwrite. Added in-memory/SQLite marker lifecycle tests and legacy
+  migration assertions. ADR-0030 records this cache representation detail.
+
+- Connected single-message Save As in folder/unified lists to rawMessageData
+  and an atomic byte writer. New rawMessageBytes capability prevents text-only
+  adapters from offering an export they cannot preserve. IMAP/Gmail advertise
+  it; Gmail source actions remain available for offline cached messages.
+- Red-green EML output regression proved exact non-UTF8 bytes and menu gating.
+  Existing raw-source/attachment cache tests and Gmail offline source view pass.
+  ADR-0045 records the resolution of its previously documented String-fidelity
+  risk. Full folder File-menu/Settings export is still pending.
+
+- Final verification: 1,543 Mail, 1,023 Backend, 103 Gmail, 74 SyncEngine
+  XCTest tests and 2 SyncEngine Swift Testing tests passed. Lint/format,
+  diff checks, and the dated mock macOS build/startup passed. Both review axes
+  cleared the provenance and Save As consumer changes.
+- EML fidelity is verified by reading back temporary output bytes. Native Save
+  As against a live mailbox was not run; the mock backend intentionally lacks
+  original-source capability. No new view layout was introduced.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 full-folder export
+
+- Replaced the File menu's metadata-only path and Settings' reconstructed-body
+  exports with a shared original-MIME exporter. It streams pages/messages,
+  follows empty intermediate pages, deduplicates IDs, detects repeated cursors,
+  and captures the source mailbox/folder before destination selection.
+- MBOX is staged and atomically replaces the approved output only on success.
+  EML files are grouped into a new collision-safe directory with byte-bounded,
+  safe names. Unapproved replacements are rejected, including destination-folder
+  selection on iOS. Security-scoped folder access is held through the operation.
+- Added shared compact status/cancel controls for Mail and Settings. Background
+  file work is separate from UI updates, which are limited to 10 Hz. Completed,
+  failed and canceled exports allow another attempt. Pending picker callbacks
+  are invalidated when their mailbox session retires.
+- Settings has independent export mailbox/folder selection and cancellable,
+  identity-bound catalog loading. File export status reserves footer space.
+  iOS uses the system folder picker; macOS uses native save/open panels.
+- Corrected privacy text claiming no export network activity. Missing original
+  messages may be downloaded. No new provider endpoint or permission is added.
+- Tests reproduced page truncation/missing MIME, late cancellation replacing
+  old output, unapproved overwrite, and a retired picker starting stale work.
+  Green coverage includes full payloads, attachments/non-UTF8, EML collisions,
+  Unicode names, controller completion/cancel/retry, and session retirement.
+- Rendered/inspected light and dark status snapshots. Final package/native
+  checks and review follow. Live provider/native iOS picker acceptance remains
+  separate from local tests and builds.
+- Additional area 9 finding: real IMAP/Gmail adapters currently do not expose
+  MailImporting; only MockBackend does. The old Settings import buttons offered
+  predictable unsupported operations and terminal states prevented retry.
+  Unsupported import is now explained/disabled; real source-owned import remains
+  required work under the parent goal.
+
+- iOS package compilation passed for the document-picker implementation with
+  security-scoped destination access. Native picker interaction is still a
+  device acceptance check. Interactive controls have 44-point iOS targets.
+- Export catalog retries now refresh the SwiftUI task identity instead of
+  launching an unowned task, so an old-account retry cannot populate a new
+  account's picker. Session tokens reject destinations selected after retirement.
+- UTC mbox envelope timestamps use ctime day padding; the MIME payload remains
+  byte-preserving mboxrd output. See RFC 4155 Appendix A for envelope context.
+
+- Verification: 1,030 Backend, 1,543 Mail and 6 separate Contacts tests passed.
+  Settings passed 338 tests excluding the older AI Writer macOS snapshot suite.
+  Its 3 tests produce 9 pixel mismatches here and on unchanged canonical base
+  1250634; the old baselines were preserved. New export snapshots passed.
+  The dated September 6 macOS build/startup and iOS Settings package compilation
+  passed. Native CUA inspection was unavailable because the Mac was locked.
+  Privacy audit and diff checks passed.
+- Review identified an additional Settings retirement race: after switching
+  from account A to B, replacing backend A did not invalidate A's pending export.
+  Settings now observes all account backend identities, using the same
+  reconciliation rule as Mail. Added replacement and reorder/addition tests.
+- Behavior review found the legacy macOS platform gate still disabled File-menu
+  export despite the new source action. A failing policy test reproduced it;
+  macOS now permits the command while folder/source/raw-byte capability and
+  operation-state checks determine availability. The iOS menu remains absent.
+- Settings now owns the export controller above individual sections. Navigating
+  to another section keeps the task and footer controls alive; backend retirement
+  is observed at that same level. The former section-owned controller canceled
+  work on deallocation. Controller behavior is automated, but mounted page-switch
+  lifetime/interaction remains native QA: the Mac is locked and this package has
+  no mounted-view introspection fixture. No new testing dependency was added for
+  that structural ownership change.
+- A real-cache regression reproduced successful publication of a partial folder
+  while offline. IMAP bulk enumeration now bypasses cache/transport fallbacks
+  and follows server pages or throws, matching Gmail; ordinary message browsing
+  keeps its existing offline behavior. Tests cover disconnected partial caches
+  and transport loss on a later page without replacing prior output. ADR-0045
+  and PRIVACY document this full-folder completeness requirement.
+- Documentation sweep: updated CHANGELOG, PRIVACY, this worklog and the existing
+  multi-account QA checklist. No new endpoint, provider permission, architectural
+  archive service, setup, build target or release is introduced, so README,
+  AGENTS and a new ADR do not need changes for this export slice.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 durable Gmail staging
+
+- Verified all 19 hosted checks passed on folder-export commit 3d89edd. The
+  parent remains In progress and strategic ADRs in #29 remain unapproved.
+- Scheduled-send inspection found Gmail draft/attachment staging was memory-only.
+  Added account-owned staging to SQLite schema 2 and wired the adapter's default
+  to use it. Restarts preserve local/provider draft identity and attachment bytes;
+  sync/cache eviction preserves staging and account removal clears it atomically.
+- Added transactional attachment byte limits, remote-ID replacement, and deletion
+  of attachments staged before the first draft save. Staging operations now throw
+  persistence/read errors; provider submission requires successful initial staging.
+- Confirmed remote save/send results survive local acknowledgement/cleanup errors,
+  which are surfaced through sync health. This avoids retrying confirmed provider
+  operations as if they failed. Gmail scheduled send itself is still pending.
+- Red-green tests reproduced restart attachment loss and loss of a confirmed
+  remote draft identity after local acknowledgement failure. Coverage also checks
+  write failure preserving old content, version-1 migration, account isolation,
+  cache reset, byte limits, and draft/attachment removal. Full Gmail suite: 118
+  tests passed. Final lint/build and review evidence follows.
+- Documentation sweep: CHANGELOG, PRIVACY and ADR-0064 record local staging and
+  its ownership. README/setup and UI layout are unchanged. No new network call,
+  service, release, daily-driver install, or architecture approval is introduced.
+- Discard retries now finish local cleanup when Gmail reports that the remote
+  draft is already absent. Other provider errors preserve staging. Red-green
+  coverage confirms 404 cleanup and 403/500 retention.
+- Dated macOS mock build/startup, iOS Gmail package compilation, lint/format,
+  privacy audit and diff checks passed. UI layout is unchanged, so no new
+  snapshots were added. Live Gmail and native restart acceptance remain pending.
+- Scheduler follow-up must store explicit scheduling intent separately from
+  autosaved Draft.scheduledFor values: choosing a date while composing is not
+  authorization to send until the user submits the schedule.
+- Review-driven lifecycle fixes add account foreign-key ownership, per-draft
+  single-flight operations, and session invalidation that drains local writes
+  before account purge. Red-green regressions cover old acknowledgements after
+  remove/re-add and connect completing after disconnect. In-memory staging now
+  matches SQLite's remote-alias and pre-save attachment cleanup contract.
+- Residual parent-area-5 finding: the separate sync reconciler can still
+  republish connected metadata after disconnect without a generation check.
+  Draft writes remain blocked by their retired coordinator; broader sync-task
+  retirement is pending reliability work rather than completed by this slice.
+- Added the previously omitted BrevGmail package to hosted CI's test matrix so
+  these regressions run on PRs. This one-line configuration change skips TDD;
+  workflow YAML parsing and the actual package suite verify it locally.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 Gmail scheduled delivery
+
+- Added schema-3 submitted schedules with frozen MIME, metadata-only list reads,
+  atomic claims and attempt-owned completion. Autosave dates do not create intent.
+  Gmail now queues scheduled sends, restores them, runs an in-process 30-second
+  worker, and exposes existing quit/background scheduling hooks.
+- Outbox shows current-account schedules with time changes, cancellation and an
+  explicit reviewed retry. A stale date sheet cannot authorize an uncertain retry.
+  Sidebar counts use account-scoped outbox events instead of body reloads/polling.
+- Tests cover queue persistence, due delivery once, competing SQLite claims,
+  restart/uncertainty holds, retry classification, frozen content, newer-edit
+  retention, Date header refresh, and preventing protected requests from falling
+  through to plaintext. Full Gmail S/MIME preparation remains provider-parity work.
+- Found and fixed nil-folder event handling that reloaded unified views for
+  outbox-only metadata. New light/dark scheduled-row snapshots were rendered and
+  inspected; the compatible-renderer CI group includes them.
+- First hosted Gmail job on a0f664a exposed an older Swift Testing macro expansion
+  error in GmailRuntimeSyncTests. Awaiting Task.value before #require fixes that
+  test portability issue. Other 19 checks on a0f664a passed. Hosted confirmation
+  of this fix and final full-suite/build/review verification follow.
+- Existing IMAP scheduled editing, full-content editor handoff, unified multi-
+  account Outbox, offline startup editing, live-provider QA and broader goal
+  requirements remain open; this slice does not establish full provider parity.
+- Review fixes add session-owned claims and weak live-owner tracking to avoid
+  treating another active backend as interrupted. Ownership is read under the
+  SQLite write transaction; failed queue initialization does not register a live
+  owner or publish connected state. Automatic attempts stop at ten.
+- Confirmed delivery with failed local deletion is held for review without
+  automatic resend. Date-only autosaves are not scheduling intent; content and
+  other metadata changes remain protected from delivery cleanup.
+- Full local verification so far: 1,030 Backend, 1,546 Mail and 131 Gmail tests
+  pass. Native mock macOS build/startup and iOS Mail/Gmail compilation pass.
+  Light/dark scheduled-row snapshots pass. Native CUA inspection is unavailable
+  because the Mac is locked; live Gmail delivery/quit/Outbox acceptance is pending.
+- Final verification: Gmail 131, Mail 1,546, Backend 1,030, and separate Contacts
+  6 tests pass. Native dated mock macOS build/startup and iOS Mail/Gmail builds
+  pass. Lint, unchanged formatter output, privacy audit, workflow YAML parsing
+  and diff checks pass. Both review axes cleared the final race/error fixes.
+  UI copy changes reuse the inspected scheduled-row component; full native
+  Outbox interaction/live-provider acceptance remains unverified while locked.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 IMAP scheduled editing
+
+- Added shared Outbox scheduling controls for IMAP, staged-write readback, optional
+  cancellation recovery, current-metadata serialization, per-account delivery and
+  per-draft edit exclusion, and account lifetime checks around local cleanup.
+- Backoff survives reconnect and public hooks. Interrupted/uncertain delivery,
+  missing content and ten failed attempts stay visible for reviewed recovery.
+  Scheduled SMTP uncertainty has one retry route in Outbox; ordinary offline
+  conflicts are unchanged. Gmail adopts the compatible optional cancellation
+  result without changing its stored draft behavior.
+- TDD reproduced duplicate retries, interrupted-claim bypass, lost unavailable
+  intent and uncertain delivery leaving Outbox. Focused scheduling tests passed
+  after fixes; full suites, native builds, lint and independent review follow.
+- Updated CHANGELOG, ADR-0022, PRIVACY and QA guidance. README setup and backend
+  direction are unchanged. No new external calls or background execution model.
+- Remaining: frozen IMAP submission/journal, full draft editor handoff, unified
+  Outbox, offline startup, live/native acceptance and the broader issue28 scope.
+
+- Independent standards/behavior review identified missing-store recovery and
+  cancellation during SMTP. Regression tests reproduced both; schedule metadata
+  remains discoverable without staging, and canceled attempts require review.
+  Canceling a recoverable schedule also clears its retained draft date, verified
+  by a failing/passing persistence assertion. Date-only rescheduling intentionally
+  keeps metadata authoritative to avoid rewriting concurrently edited bodies.
+
+- Final local suites: Backend 1,038, Mail 1,546, Gmail 131 and separate Contacts
+  6 passed. Dated mock macOS build/startup passed. iOS Mail/Gmail compilation,
+  lint, formatter check, privacy audit and diff checks passed before the final
+  review fixes; macOS and lint/privacy were rerun green afterward. Final iOS Mail
+  rebuild also passed. Native interactions/live-provider sends remain unverified;
+  the Mac was locked during the prior native attempt. No UI layout changed, so
+  existing inspected scheduled-row snapshots were not re-recorded.
+
+## 2026-09-06 — Codex — Issue #28 / PR #30 IMAP search completeness
+
+- Verified all 20 hosted checks passed on e81ca6d1, the preceding scheduling fix.
+- Red tests reproduced ordinary page-only adapters returning unsupported, cached
+  hits hiding online results, cache search truncating 120 matches to 50, and
+  canceled final responses being returned as success. Generalized existing
+  bounded server pagination to ordinary queries, removed paged-result/cache caps,
+  retained cache-only privacy, and added final-response cancellation checks.
+- Coverage includes empty intermediate pages, duplicate IDs, legacy adapters with
+  over 200 candidates reporting incomplete coverage, and ordinary/attachment
+  repeated-cursor rejection. The
+  full array contract remains; progressive UI and coverage reporting are next.
+- Updated CHANGELOG, ADR-0041, privacy/search disclosure, and native QA guidance.
+  README setup/provider scope and protected architectures are unchanged. Tests,
+  builds and independent review are in progress. No new provider endpoint, body
+  fetch for ordinary search, attachment index, merge, or release is included.
+
+- Review found that later-page failures could still fall back to a small cache,
+  and ordinary legacy adapters would become unbounded. Red tests reproduced
+  both. Later-page/folder failures now report incomplete search; legacy ordinary
+  requests remain bounded and report limit exhaustion. Production uses pages.
+  Removed the obsolete cache-hit-only diagnostics case and clarified test names.
+
+- Attachment-source failures after a server page are also surfaced as incomplete,
+  rather than converted to cache success. Public search/cache enumeration checks
+  cancellation after local reads; final canceled responses cannot publish.
+- Local verification: Backend 1,042 and Mail 1,546 tests passed before the last
+  review delta, with dated mock macOS startup and iOS Mail compilation, lint,
+  formatter and privacy checks. Final delta reruns follow below. No layout
+  changes or snapshots were added. Native/live large-mailbox performance and
+  progressive-result UX remain unverified and explicitly open.
+
+- Final delta verification passed: Backend 1,042, Mail 1,546; dated mock macOS
+  build/startup and iOS Mail compilation; lint/formatter, privacy audit and diff
+  checks. Separate standards and behavior reviewers cleared the error/cancellation
+  fixes. Native/live acceptance and progressive search remain open.
+
+## 2026-09-07 — Codex — Issue #28 / PR #30 progressive search
+
+- Added an optional source-validated progressive search callback with cache/server
+  coverage. IMAP awaits consumers before requesting another page. Existing array
+  callers retain compatibility; array-only providers report unverified coverage.
+- Folder and unified lists now publish incremental source-qualified results with
+  UUID ownership through callbacks and finalization. Sorted batches are merged,
+  selected readers are preserved during paging, and failed sources retain partial
+  rows with shared Retry and coverage feedback.
+- Replaced the separate attachment disclosure with a compact themed search-status
+  row, including both presence and absence predicates. New light/dark snapshots
+  were recorded, inspected and passed comparison; CI routes them to the compatible
+  macOS renderer. Source policy, README, DESIGN, privacy and QA docs were updated.
+- TDD established missing progress contract/state behavior and terminal-update
+  rejection. Callback tests prove first-page publication before next request,
+  cached fallback labeling and cancellation stopping paging. Disclosure regression
+  reproduced absence-predicate omission and was fixed through the shared policy.
+- Full Mail 1,551 and Backend 1,043 tests passed before the final callback additions;
+  the new callback suite passes. Dated September 7 mock macOS build/startup passed;
+  iOS build, final full suites, lint/privacy and independent reviews are ongoing.
+- This remains part of open #28: Gmail progress/cap, detailed index coverage,
+  user-paced load-more, measured native performance and the broader parity scope
+  remain open. No merge, release, external setup or live-provider sends occurred.
+
+- Native QA exposed a first-search lifecycle bug: duplicate SwiftUI search tasks
+  could cancel a same-query replacement, leaving progress stuck or falsely
+  incomplete. Added one cancellable worker per list and a combined text/filter
+  trigger; replaced workers cannot clear newer ownership. Regression tests cover
+  cancellation before start, interrupted finalization, worker replacement and
+  mixed-source Retry readiness. Native first invoice search now finishes without
+  Retry, keeping the result/reader visible. The mock array adapter correctly
+  reports unverified coverage, not server completion.
+- Review fixes preserve loaded conversation replies during paging, retain the
+  explicit no-background-fetch disclosure, add package catalog keys, prioritize
+  unverified coverage in mixed results, and give iOS Retry a 44-point target.
+- Final local evidence: Mail 1,555, Backend 1,045 and separate Contacts 6 tests
+  passed; five-state light/dark snapshots passed and were inspected. Dated mock
+  macOS build/startup and iOS compilation, lint/format/privacy/diff checks pass.
+  Background UI access became unavailable after first-search QA because the
+  target window no longer resolved in AXWindows; Local/All Inboxes native checks
+  remain unverified. No foreground escalation was used.
+- Hosted checks on preceding 546558c9 are 19 passed / Backend failed. Inspecting
+  that exact job before this slice's delivery; no CI success is inferred from
+  local suites. The broader parity issue remains In progress.
+
+- Hosted Backend failure on 546558c9 was the pre-existing IDLE retry test's
+  exact subscription-count assertion after a fixed sleep. Replaced that timing
+  assumption with ContinuousClock intervals recorded at actual subscriptions
+  (at least 100ms then 200ms); production retry behavior is unchanged. Full
+  Backend 1,045 tests pass afterward and independent review cleared the change.
+
+## 2026-09-07 — Codex — Issue #28 / PR #30 Gmail search parity
+
+- Confirmed all 20 hosted checks passed on df6be51f before starting.
+- Red tests reproduced the 5,000-result cap, disconnected cache rejection,
+  secondary-label scope loss, omitted negative predicates, inconsistent All Mail,
+  and hidden later-page auth/retry error types. Added shared progressive search,
+  50-reference pages, max-four reads, cancellation/generation checks and typed
+  errors. Search-only fetches do not persist late results into replacement stores.
+- Review found the full-cache Auto scan and production transport-error fallback
+  gap. Added 100-candidate cache preview plus SQLite keyset pages; offline/local
+  scans complete all pages. Tests prove server starts after one preview and use
+  a wrapper that rejects whole-account reads. SQLite checks terminal step errors.
+- Full Gmail suite reached 143 passing tests, with final lint/build checks ongoing.
+  No UI layout changed, so existing inspected progress snapshots are reused.
+- Updated README, CHANGELOG, ADR-0041/0064, privacy and QA. No schema, endpoint,
+  dependency, credential, merge or release change. Residuals include live Gmail
+  acceptance, full-message fetch cost for uncached hits, date precision, local
+  body/document indexing and the wider issue28 goal.
+
+- Final verification: Gmail 143 and shared Mail 1,555 tests pass; dated mock
+  macOS build/startup and iOS Gmail compilation pass; lint/format/privacy/diff
+  checks pass. Independent standards and behavior reviews cleared the typed
+  error, callback ownership and cache-paging fixes. Added nonempty All Mail
+  header mapping and successful search non-persistence assertions. No new UI
+  snapshots were needed because the existing progress component is unchanged.
+  Authenticated Gmail search and representative large-account measurements are
+  still unverified; no live provider requests were run in this session.
+
+- CI on 8dda4e9 exposed a Swift type-checker timeout in the nested 5,001-message
+  fixture expression before tests ran. Split page construction into typed locals
+  and an explicit loop; production code and the regression assertions are unchanged.
+  Verifying this correction with the stable Xcode toolchain before pushing.
+
+- Stable Xcode 26.6 verification passes all 143 Gmail tests after the fixture
+  split. This follow-up changes only test construction and the worklog; no app
+  build was repeated because production code is unchanged. Hosted verification
+  will run on the new follow-up head.
+
+
+## 2026-09-08 — Codex — #28 / PR #29 and #30
+
+- Henrik explicitly accepted ADR-0074; recorded Accepted on the architecture
+  branch and pushed 8aa8bef to PR #29. ADRs 0070–0073 remain Proposed.
+- Implemented the first foundation phase on feature/mail-client-parity: plain
+  source-owned conversation contracts, conservative reply-link graph resolution,
+  offline cached-conversation capability, and SQLite-indexed Gmail cache lookup.
+  The version-four migration uses the existing native thread column and keeps
+  scheduled sends. No remote endpoint, body fetch or reader behavior changed.
+- TDD reproduced missing APIs, comment-induced false links, contradictory folder
+  generations and Gmail's unordered-label/stale-folder provenance. The fixes
+  retain physical copies, explicit ambiguity and cache-only coverage; Gmail
+  preserves selected label membership or corrects a cache-confirmed move while
+  retaining the selected message ID and display metadata.
+- Read-only standards/behavior reviews prompted an explicit offline capability
+  and deterministic conversation folder mapping. Unsupported RFC identifier
+  syntax stays a typed error; provider ingestion must disclose incomplete metadata.
+- Verification so far: Backend 1,053 tests and stable Xcode 26.6 Gmail 145 tests
+  pass; shared Mail 1,555 tests, six isolated Contacts tests, lint/format and
+  privacy audit pass. Final anchor-generation and legacy custom-label regressions
+  pass after review corrections; unchanged folder generations are retained. No views
+  changed, so no new snapshots/native rendering are applicable to this phase.
+- Documentation sweep: README, Unreleased changelog, accepted ADR and QA notes
+  updated. No network/privacy policy, release or agent-workflow change. Remaining
+  work is IMAP indexing/References, consented provider discovery and reader/action
+  integration, followed by native/live/performance checks. Parent #28 remains
+  In progress and PR #30 remains draft; no merge, release or issue closure.
+
+
+## 2026-09-08 — Codex — #28 / PR #30, IMAP relationship index
+
+- Refreshed feature/mail-client-parity at a0a850a: clean/pushed and all 20 hosted
+  checks passed. Parent #28 remains In progress, PR #30 draft on #27's branch.
+- Added MailConversationIndex and a source-owned SyncEngine lookup under accepted
+  ADR-0074. SQLite schema 5 indexes existing RFC reply identifiers in the same
+  cache; updates and deletions follow header transactions and foreign-key cascades.
+  Migration streams v4 headers and preserves original MIME provenance.
+- TDD reproduced missing cached cross-folder lookup, malformed-neighbor lookup
+  failure and stale UIDVALIDITY reuse. Tests now cover these alongside restart,
+  account isolation, excluded-folder traversal, expunge and partial fanout limits.
+- Final stable SyncEngine verification passes 74 XCTest and seven Swift Testing
+  tests; Backend 1,055 and Gmail 145 pass. Lint/format, privacy and diff checks
+  pass. A 2,001-header SQLite write/lookup fixture completed in 0.762 seconds;
+  this is a synthetic smoke measurement, not live-mailbox latency evidence.
+- Independent behavior review found legacy Message-ID fallback, control-character
+  truncation and per-row statement preparation. Recorded failing regressions,
+  reused rfcMessageID, rejected unsafe controls/empty locators and prepared link
+  statements once per batch/migration. Both final reviews report no blockers.
+- No UI or network code changed, so new rendering snapshots/native QA are not
+  applicable to this cache phase. References ingestion, provider
+  service/reader wiring, native/live acceptance and mailbox-scale measurements
+  remain pending. No merge, release or issue closure is included.
+- Documentation sweep updated README, Unreleased changelog, ADR-0074 and QA notes.
+  Privacy/network policy and agent instructions need no change for local indexing.
+
+## 2026-09-15 — Devin — #28 / PR #30, References ingestion
+
+- Resumed the handoff at 805dcf1 on feature/mail-client-parity: clean, pushed,
+  PR #30 draft with all checks green, issue #28 still In progress.
+- Implemented persisted References metadata under accepted ADR-0074, step 1 of
+  the remaining-work plan. The IMAP listing FETCH now also requests
+  `BODY.PEEK[HEADER.FIELDS (REFERENCES)]` — an added attribute on the existing
+  request, not a new network call, and header-only (no body bytes).
+- `MessageHeader.references` (`nil` unknown/unfetched, `[]` known absent) rides
+  `header_json`, survives flag-only refreshes via `updatedHeader` and a
+  preserve-on-nil upsert merge in both sync stores, and is carried through
+  `withIdentity`/`withThreadID`, rules-engine moves and mock copies.
+- `conversation_links` now indexes References identifiers beside Message-ID and
+  In-Reply-To; candidate members expose stored references and traversal expands
+  along them, so a References-only chain resolves across Inbox/Sent/Archive
+  after a cache restart. Malformed fields keep only individually verifiable
+  tokens and never block ordinary caching.
+- TDD: new failing tests reproduced the missing References-only lookup and the
+  refresh regression before implementation; all are green now.
+- Verification: BrevBackend 1,059, BrevSyncEngine 74 XCTest + 9 Swift Testing,
+  BrevMail 1,555 + isolated Contacts 6 and BrevGmail 145 tests pass on stable
+  Xcode 26.6. lint.sh, privacy-audit.sh and git diff --check pass.
+  FETCH-command test expectations updated for the new attribute. No
+  UI/network-consent surface changed, so snapshots, ADR-0006 and PRIVACY.md
+  need no update; ADR-0074 progress note and this log updated.
+- Still pending per handoff: CachedConversationProviding wiring on
+  IMAPSMTPBackend, reader/action integration, consented remote discovery,
+  native/live acceptance. PR #30 stays draft; no merge, release or closure.
+- Scoped two-axis review (standards + spec vs ADR-0074) ran after the first
+  commit. Spec axis caught a real bug: a non-string HEADER.FIELDS value
+  decoded as known-absent and would have let a malformed refresh overwrite
+  stored References — now nil/unknown (explicit NIL still means absent).
+  Also added the missing legacy-record decode test, extended the restart
+  test to the index-rebuild path (drop conversation_links + v4 reopen), and
+  centralized the member/header fallback into ConversationMember
+  .effectiveReferences plus a shared cachedLinkIdentifiers helper across the
+  resolver, engine and both stores (fixes in 8dcf59b). Noted follow-up: the
+  header-fields boundary scanner is a third copy of the quoted-string
+  scanner beside bodyTextValueStart/attributeListStart — left as-is to keep
+  the slice small.
+
+## 2026-09-16 — Devin — #28 / PR #30, performance review fixes
+
+- Deep performance review of list/sync/search/reader paths, then fixes for all
+  findings. Evidence-based: every issue traced to a concrete call site before
+  editing.
+- Header cache: FileBackedIMAPMailboxHeaderCache now coalesces writes —
+  setSnapshot updates memory and marks the folder dirty; a 750ms debounce
+  flushes all dirty folders once (previously every page load, flag update,
+  CONDSTORE delta and removal JSON-encoded + atomically rewrote the whole
+  folder). flushPendingWrites() is public for lifecycle/tests. Two existing
+  cross-instance tests now flush first; new test asserts debounce + flush.
+- cacheHeaders merge: appended pages of strictly-older unseen headers skip the
+  full-folder dictionary rebuild and re-sort (mergedSortedHeaders fast path);
+  overlap/interleave still takes the full merge.
+- CONDSTORE: applyCONDSTOREFlagChanges re-indexes only headers whose flags
+  actually changed, not the entire folder snapshot.
+- Thread resolution: per-folder memo keyed by an order-independent fingerprint
+  over (id, messageID, inReplyTo, threadID, date) — flag churn and repeated
+  page listings reuse the union-find result instead of re-running it over the
+  whole folder per call. Memo cleared in clearLocalCaches.
+- Search: SearchQuery gains optional folderIDs (Codable-backward-compatible
+  optional; matches() enforces membership; hasSearchCriteria counts a non-empty
+  set, matching single-folderID semantics). localIndexQueries emits ONE scoped
+  query for all-folders search; SQLiteSyncStore ftsCandidates/headerCandidates
+  take a folder scope set (single = ?, multi = IN (...)) instead of one query
+  per folder — the engine serializes internally so fan-out only multiplied
+  await hops. Four backend test expectations updated (folderIDs vs folderID).
+- Reader/list: buffer-identity helper Array.hasIdenticalStorage(to:) — O(1)
+  array reuse check, sound because the cache retains the stored buffer. Both
+  presentation caches (folder list + unified inbox) match headers/items by
+  buffer identity instead of O(n) deep equality per body eval. Reader thread
+  derivation memoized via ReaderThreadHeadersMemo (@State class); controller
+  mergedThreadHeaders memoized on (loaded buffer, snapshotRevision); remote
+  onUpdate coalesced at 150ms so per-page emissions don't re-render per folder.
+- Instrumentation: MailPerformanceDiagnostics gains logHeaderCacheFlush,
+  logThreadResolution (inputCount + hit), logSessionQueueWait (acquire wait in
+  withAuthenticatedSession, logged when >0ms); signpost intervals around cache
+  flush and both presentation builds.
+- Not changed: removal loops were verified already single-write per folder;
+  the coalesced flush covers them. A second IMAP command session for
+  background work remains a larger design change, not implemented.
+- Verification: BrevBackend 1077, BrevSyncEngine 74 XCTest + 9 Swift Testing,
+  BrevMail 1572, BrevGmail 147 — all pass. lint.sh, format.sh (0 files),
+  privacy-audit.sh, git diff --check clean.
+
+### Follow-up: header-cache flush on disconnect
+
+- `flushPendingWrites()` was only reachable via the debounce timer and tests —
+  teardown could drop up to 750ms of pending cache writes. Added it to
+  `IMAPMailboxHeaderCache` as a requirement with a default no-op, and
+  `IMAPSMTPBackend.disconnect()` now flushes before session teardown.
+- Fixed a Swift overload-resolution trap the protocol method introduced: in
+  async contexts `await cache.flushPendingWrites()` on the concrete type
+  preferred the async protocol-extension no-op over the actor's sync member.
+  Declared the concrete member `async` so it wins resolution and witnesses the
+  requirement. New test asserts disconnect() invokes the flush.
+- Verification: focused backend tests 17/17 (incl. all FileBacked cache
+  suites), lint/format/diff-check clean.
+
+### Follow-up: flush local caches on quit / background
+
+- `disconnect()` (and its header-cache flush) only runs on account
+  switch/removal — never on macOS quit or iOS backgrounding — so up to 750ms
+  of debounced cache writes could be lost. Added provider-neutral
+  `MailBackend.flushLocalCaches()` (default no-op), implemented it in
+  `IMAPSMTPBackend` (forwards to `headerCache.flushPendingWrites()`), and
+  fanned it out from `AppSession.flushLocalCaches()` over `backends.values`.
+- macOS `applicationShouldTerminate` now returns `.terminateLater` on both
+  quit paths and replies `true` after the flush races a 2-second budget, so
+  quit can never stall on a stuck write; nil session still returns
+  `.terminateNow`. iOS flushes in `onChange(of: scenePhase)` `.background`.
+- Verification: BrevBackend flush tests + FileBacked suites 18/18, BrevMail
+  AppSession flush test 1/1, `swift build` both packages clean, `tuist
+  generate` + BrevIOS build OK, BrevMacOS compiles (`xcodebuild
+  CODE_SIGNING_ALLOWED=NO`; `tuist build` fails only on the entitlements
+  development-signing requirement — no dev cert in this environment).
+  lint.sh, format.sh (0 files), git diff --check clean.
+
+### Follow-up: settings consistency — related mail under Folder Sync
+
+- Moved the "Related mail" consent group out of Mailbox View into
+  `PerFolderSyncSection` (after the folder-override list). The account is
+  derived from the context bar's `MailSourceID.accountID`; the inline account
+  picker is gone, and `sourceID == nil` shows "Open a mailbox to control
+  related-mail lookup." `MailboxViewSection` lost its `accounts`,
+  `currentAccountID`, and `relatedConsentStore` init params plus all related
+  state/bindings.
+- Removed Mailbox View's standalone "Search" callout; its sentence is appended
+  to the Mail Storage cache-lookback footnote. Reading-group subtitle now
+  reads "Rendering, conversation order, and type."
+- Smart Views sidebar glyph is now `rectangle.stack` (Rules keeps the funnel).
+  Settings search: "Related mail"/"Automatically load related mail" resolve to
+  Folder Sync; "Search"/"Local search" moved from Mailbox View to Mail Storage.
+- Verification: `swift build` BrevSettings + BrevMail clean; full BrevSettings
+  suite 342/342 pass after re-recording the five legitimately changed
+  baselines (navigation-groups, folder-workspace, folders, folders-narrow,
+  mailbox-view — light+dark) plus settings-navigation. appearance-*/accounts-*
+  re-recorded byte-identical and were left untouched. format.sh, lint.sh,
+  git diff --check clean. No view-level toggle test existed to move (no
+  ViewInspector in the package); store behavior remains covered by
+  BrevBackend's RelatedConversationConsentStoreTests.
+- CHANGELOG: one Unreleased/Changed line; the earlier Added bullet's
+  "per-account … in Mailbox View settings" wording was corrected to match.
+
+### Follow-up: ADR-0075 background mail presence
+
+- New `NotificationSettings.backgroundMailEnabled` + `launchAtLoginRequested`
+  (per-device, not in the ADR-0056 allowlist). `BackgroundMailCoordinator`
+  (BrevMail, session-owned) runs `MailFetchScheduler.ticks` and records
+  success/failure; `performBackgroundRefresh` now returns the first
+  `localizedDescription` failure. `BackgroundMailStatusView` +
+  `BackgroundMailStatusPresentation` render the menu-bar menu; macOS app
+  adds a `MenuBarExtra` gated on the setting and reconciles start/stop and
+  interval changes via `UserDefaults.didChangeNotification`. Root view
+  yields ticks to the coordinator per-tick when the setting is on and
+  pushes the badge unread count into it. `LaunchAtLoginController`/
+  `Availability` live in BrevSettings (settings cannot depend on BrevMail),
+  gated to the exact release bundle id. Settings › Notifications gains a
+  macOS-only "Background mail" group with the toggle, launch-at-login
+  sub-toggle (SMAppService status-driven, requiresApproval → Login Items
+  button), and the manual-schedule callout.
+- Verification: BrevSettings build + NotificationSettings/LaunchAtLogin
+  13/13; BrevMail build + coordinator 6/6, scheduler/badge 28/28, status
+  snapshots 4/4 (8 new PNGs); `tuist generate` OK; BrevMacOS compiles via
+  xcodebuild CODE_SIGNING_ALLOWED=NO (entitlements need a dev cert for a
+  signed build — same env limitation as before); `tuist build BrevIOS` OK;
+  format/lint/privacy-audit/diff-check clean.
+- Docs: PRIVACY.md paragraph under Local mail notifications; CHANGELOG
+  Unreleased/Added; ADR-0006 note (cadence/lifetime only, no new row) and
+  its related-mail row's settings pointer updated to Folder Sync.
+
+### Follow-up: ADR-0076 settings and account backup
+
+- New `BrevSettings/Backup/`: `BrevBackupManifest` (format v1, `payloads`
+  with name/sha256/encoding — future `mail/` describable but not written),
+  `SettingsBackupCodec` + `SettingsBackupPayload` (25 families; notification
+  DTO strips device-bound ADR-0075 fields; CalDAV DTO strips the Keychain
+  `credentialAccount`), `AccountsBackupCodec`/`AccountBackupEntry`
+  (`credentialID` blanked — the only secret-bearing field), writer/reader
+  (`settings.json` + `accounts.json`, manifest last, atomic writes, SHA-256
+  verified), `BackupRestorer` (per-category snapshot/rollback, continues on
+  failure), `PendingRestoredAccountsStore` (`backup.pendingRestoredAccounts`).
+- Codable conformances added to previously non-Codable settings types in
+  BrevSettings and BrevDesign so families serialize without DTO sprawl.
+- `RelatedConversationConsentStore.autoLoadEnabledAccountIDs(among:)`
+  supports consent export; consent restore is additive in both modes.
+- UI: Import/Export gains a macOS "Brev backup" group (NSSavePanel /
+  NSOpenPanel + `BackupPreviewSheet` with counts, Merge/Replace picker,
+  credentials-never-included callout). Accounts shows a "Restored accounts —
+  sign in to finish" group wired through `SettingsView` to the existing
+  add-account sheet prefilled with the account email. iOS shows an
+  availability note only — no backup UI this slice.
+- Verification: BackupTests 15/15 (round-trip, tamper, version, unknown
+  keys, merge/replace, rollback, secrets stripped, signed-in drop,
+  completeness); 2 preview-sheet snapshot PNGs recorded.
+
+### Follow-up: incremental IMAP thread resolution
+
+- `IncrementalThreadResolver` in `MessageThreadResolver.swift` diffs known
+  headers on `ThreadKey` (messageID, inReplyTo, threadID, date) per update:
+  flag-only churn is `.unchanged`, pure additions extend the union-find
+  forest incrementally (names merged by min `(date, node)` on unite), and
+  any change/removal falls back to a full rebuild with batch semantics.
+- `IMAPSMTPBackend.threadedHeaders` keeps one resolver per folder under the
+  existing lock and looks up only the page's ids (`threadID(for:)`), so a
+  warm listing no longer hashes all N headers or rebuilds the whole map.
+  `logThreadResolution` gained a counts-only `update=` field.
+- Baselines (10k folder): warm cache-hit 16.8 → 9.3 ms; paging pages 18–20
+  4.94 → 2.15 ms avg (still record-only — the O(N) key diff remains).
+- Tests: `IncrementalThreadResolverTests` (5) — random-page-order property
+  test vs batch resolver, flag-only unchanged, changed/removed/empty
+  rebuilds, incremental adds, bridge-merge naming.
+
+## 2026-09-17 — Agent — ADR-0078 local attachment content indexing
+
+- Goal: opt-in, local-only attachment text indexing so message search can
+  match attachment content without ever downloading for indexing.
+- BrevSyncEngine: schema v6 adds `attachment_search` FTS5 (account/message/
+  folder/attachment ids unindexed + name/content/content_normalized);
+  migration creates it empty. Purge cascades on clearFolder, clearAccount,
+  deleteHeaders and body eviction. `searchHeaders` unions attachment hits
+  under the same folder scope; `attachmentMatchNames` reports a name only
+  when the hit came from `attachment_search` alone. New store methods:
+  `indexAttachmentText`, `removeAttachmentText`, `removeAllAttachmentText`,
+  `attachmentIndexBytes`, `indexedAttachmentMessageIDs`. `InMemorySyncStore`
+  mirrors the semantics.
+- BrevBackend: `AttachmentTextExtractor` (text/CSV/Markdown, RTF, HTML, PDF
+  via PDFKit, Office Open XML on macOS; 25 MB input cap, 512 KB output cap,
+  cancellation checks, 10 s task-group timeout). `AttachmentIndexer` actor:
+  per-account serialized utility-priority extraction from cached sources
+  only, `noteSourceCached`/`sweep`/`rebuild`/`stop`/`disable`, consent gate
+  consulted per unit of work. `AttachmentIndexConsentStore` (per-account
+  UserDefaults + didChange notification; excluded from `.brevbackup`).
+  `.localAttachmentIndex` (1<<16) advertised by IMAPSMTPBackend,
+  GmailAPIBackend and LocalMailBackend only when a local index is wired.
+  `MailBackend` gains `matchedAttachmentNames`, `attachmentIndexBytes`,
+  `rebuildAttachmentIndex`, `removeAttachmentIndex` defaults.
+- BrevMail: `MailSearchExecution` decorates cached updates with attachment
+  match names; `MailSearchProgressState` merges/clears them per source;
+  `MessageListRow` renders a "Found in <name>" badge under the subject in
+  both list and unified inbox. All Attachments filters additionally match
+  indexed content via a cache-only `matchedAttachmentNames` lookup.
+- BrevSettings: capability-gated "Search inside attachments" toggle in
+  Folder Sync (Mac/iPhone-aware subtitle, no network promise); Mail Storage
+  "Attachment index" row with size + Rebuild/Remove.
+- Verification: AttachmentSearchIndexTests 6/6 (migration, union, folder
+  scope, all cascades); AttachmentIndexingTests 16/16 + capability suite
+  2/2; Gmail capability 1/1; MailSearchProgress + row badge snapshot;
+  FolderSync + MailStorage snapshot baselines recorded.

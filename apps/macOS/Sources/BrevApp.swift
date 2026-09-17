@@ -40,9 +40,14 @@ struct BrevApp: App {
     @State private var sessionRestoreAttempted = false
     @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
+    /// Email handed to the add-account sheet when signing in a restored account.
+    @State private var addAccountPrefillEmail = ""
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var showRestoreErrorAlert = false
+    /// Menu-bar presence mirrors the per-device setting (ADR-0075); reconciled
+    /// on launch and whenever defaults change.
+    @State private var backgroundMailInserted = NotificationSettings.load().backgroundMailEnabled
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -53,7 +58,7 @@ struct BrevApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(id: BrevWindowID.main) {
             Group {
                 if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
                     visibleBackendCount: session.visibleBackends.count,
@@ -85,7 +90,10 @@ struct BrevApp: App {
                         pendingComposePrefill: $pendingComposePrefill,
                         pendingNotificationRoute: $pendingNotificationRoute,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
-                        onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:)
+                        onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                        backgroundMail: session.backgroundMail,
+                        localBackend: session.localBackend,
+                        onLocalFoldersChanged: { session.refreshLocalFolders() }
                     )
                     .frame(minWidth: 960, minHeight: 600)
                     .environment(\.openURL, browserOpenURLAction)
@@ -125,12 +133,14 @@ struct BrevApp: App {
                 )
             }
             .sheet(isPresented: $isShowingAddAccountSheet) {
-                MailAccountSetupSheet(session: session) {
+                MailAccountSetupSheet(session: session, initialEmailAddress: addAccountPrefillEmail) {
                     isShowingAddAccountSheet = false
+                    addAccountPrefillEmail = ""
                 }
                 .brevTheme(session.theme)
             }
             .task {
+                reconcileBackgroundMail()
                 await RetiredSecurityMaterialMigration.run()
                 updateController.startIfConfigured()
                 // A mailto: launch URL can arrive in the app delegate before
@@ -166,6 +176,13 @@ struct BrevApp: App {
                 NotificationCenter.default.publisher(for: .brevDidReceiveDeepLinkURL)
             ) { _ in
                 consumePendingBrevURL()
+            }
+            // Covers both `notifications.backgroundMailEnabled` and
+            // `fetch.interval` writes from any settings pane.
+            .onReceive(
+                NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            ) { _ in
+                reconcileBackgroundMail()
             }
         }
         .defaultSize(width: 1440, height: 820)
@@ -204,6 +221,10 @@ struct BrevApp: App {
                 onAddAccount: { isShowingAddAccountSheet = true },
                 onSignOut: { account in await session.signOut(account: account) },
                 onRemoveAccount: { account in await session.removeAccount(account) },
+                onSignInRestoredAccount: { entry in
+                    addAccountPrefillEmail = entry.account.emailAddress
+                    isShowingAddAccountSheet = true
+                },
                 onAIProviderConfigurationChanged: {
                     await session.reloadConfiguredAIBackends()
                 }
@@ -221,6 +242,57 @@ struct BrevApp: App {
                 .brevTheme(session.theme)
         }
         .windowResizability(.contentSize)
+
+        // ADR-0075: the visible proof that background checking is active.
+        MenuBarExtra(
+            "Brev",
+            systemImage: "envelope",
+            isInserted: $backgroundMailInserted
+        ) {
+            BackgroundMailStatusView(
+                presentation: BackgroundMailStatusPresentation(
+                    coordinator: session.backgroundMail
+                ),
+                onCheckNow: {
+                    Task { await session.backgroundMail.refreshNow() }
+                },
+                onOpenBrev: {
+                    // A WindowGroup's openWindow always creates another window;
+                    // prefer surfacing an existing main window over a duplicate.
+                    if let existing = NSApp.windows.first(where: {
+                        $0.identifier?.rawValue.hasPrefix(BrevWindowID.main) == true && $0.isVisible
+                    }) {
+                        existing.makeKeyAndOrderFront(nil)
+                    } else {
+                        openWindow(id: BrevWindowID.main)
+                    }
+                    NSApp.activate()
+                },
+                onQuitBrev: {
+                    // Goes through `applicationShouldTerminate`, keeping the
+                    // scheduled-send warning and the bounded cache flush.
+                    NSApp.terminate(nil)
+                }
+            )
+        }
+        .menuBarExtraStyle(.menu)
+    }
+
+    /// Mirrors `notifications.backgroundMailEnabled` into the menu-bar item
+    /// and starts/stops the session's `BackgroundMailCoordinator` at the
+    /// configured fetch interval. Restart-on-change is handled inside
+    /// `start(interval:)`'s same-interval no-op.
+    @MainActor
+    private func reconcileBackgroundMail() {
+        let settings = NotificationSettings.load()
+        backgroundMailInserted = settings.backgroundMailEnabled
+        if settings.backgroundMailEnabled {
+            session.backgroundMail.start(
+                interval: FetchScheduleSettings.load().interval.intervalSeconds
+            )
+        } else {
+            session.backgroundMail.stop()
+        }
     }
 
     private var browserOpenURLAction: OpenURLAction {
@@ -307,6 +379,7 @@ struct BrevApp: App {
 }
 
 enum BrevWindowID {
+    static let main = "brev-main"
     static let settings = "brev-settings"
     static let keyboardShortcuts = "brev-keyboard-shortcuts"
 }
@@ -396,14 +469,16 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
     // quitting with pending entries silently defers them until the next launch.
     // Ask before quitting instead of losing the send window unnoticed.
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard let session = Self.currentSession else { return .terminateNow }
         let pendingCount = MainActor.assumeIsolated {
-            let backends: [any MailBackend] = Self.currentSession.map { Array($0.backends.values) } ?? []
+            let backends: [any MailBackend] = Array(session.backends.values)
             return backends
                 .compactMap { $0.extensionService(ScheduledSendManaging.self) }
                 .reduce(0) { $0 + $1.pendingScheduledSends().count }
         }
         guard let message = ScheduleSendReliabilityPresentation.quitWarningMessage(pendingCount: pendingCount) else {
-            return .terminateNow
+            flushLocalCachesThenTerminate(session)
+            return .terminateLater
         }
         let alert = NSAlert()
         alert.messageText = String(localized: "Quit Brev?")
@@ -411,7 +486,30 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
         alert.alertStyle = .warning
         alert.addButton(withTitle: String(localized: "Quit Anyway"))
         alert.addButton(withTitle: String(localized: "Cancel"))
-        return alert.runModal() == .alertFirstButtonReturn ? .terminateNow : .terminateCancel
+        guard alert.runModal() == .alertFirstButtonReturn else {
+            return .terminateCancel
+        }
+        flushLocalCachesThenTerminate(session)
+        return .terminateLater
+    }
+
+    private var isFlushingBeforeTerminate = false
+
+    /// `disconnect()` is only called on account switch/removal, so quit is the
+    /// last chance to flush debounced header-cache writes. Best-effort: the
+    /// flush races a 2-second budget so a stalled write can never block quit.
+    private func flushLocalCachesThenTerminate(_ session: AppSession) {
+        guard !isFlushingBeforeTerminate else { return }
+        isFlushingBeforeTerminate = true
+        Task { @MainActor in
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { await session.flushLocalCaches() }
+                group.addTask { try? await Task.sleep(for: .seconds(2)) }
+                await group.next()
+                group.cancelAll()
+            }
+            NSApplication.shared.reply(toApplicationShouldTerminate: true)
+        }
     }
 
     func applicationShouldSaveApplicationState(_ sender: NSApplication) -> Bool {
@@ -542,7 +640,12 @@ extension AppSession {
         let gmailConnector = GmailAccountConnector.standard(
             applicationSupportURL: applicationSupportURL,
             configurationStore: UserDefaultsGmailAccountConfigurationStore(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: KeychainTokenStore(),
+            localSearchIndexFactory: { accountID in
+                try? BrevSyncEngine(
+                    databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
+                )
+            }
         )
         return AppSessionFactory.makeDefault(
             configuration: AppSessionFactory.Configuration(

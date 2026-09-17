@@ -146,3 +146,12 @@ height. Label preview-text matching honestly; do not claim full-body search.
 Settings > Smart Views lists built-in and custom entries together. Visibility
 and order are separate controls; hiding a view retains its definition and
 position. The whole section can be hidden and restored from Settings.
+
+## Search progress and coverage
+
+Folder and unified search share one compact status row below the search options.
+Use caption typography, existing secondary surfaces, and no extra card border.
+Progress, cached-only coverage, incomplete results and Retry stay together.
+Attachment-source inspection is disclosed in this same row, including searches
+for messages without attachments. New result pages must not reset the open
+reader or allow an older query to overwrite a newer one.

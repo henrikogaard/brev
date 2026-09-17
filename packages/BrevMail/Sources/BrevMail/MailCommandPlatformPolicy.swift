@@ -32,7 +32,7 @@ public struct MailCommandPlatformPolicy: Equatable, Sendable {
                 includesComposeCommands: true,
                 includesPrintCommands: true,
                 includesImportExportCommands: true,
-                includesFolderMBOXExportCommand: false,
+                includesFolderMBOXExportCommand: true,
                 includesKeyboardShortcutsWindowCommand: true
             )
         case .iOS:

@@ -103,3 +103,29 @@ change with no view impact.
 - ADR-0001 — `MailBackend` protocol
 - ADR-0028 — roadmap and invariants (invariants 1 and 5)
 - `packages/BrevBackend/Sources/BrevBackend/OfflineMutationQueue.swift`
+
+## IMAP scheduled-send recovery, September 2026
+
+The existing metadata-only schedule store exposes the shared
+`ScheduledSendEditing` service, including metadata recovery when staging is unavailable. Cancellation
+removes intent while retaining recoverable content; an unavailable draft returns
+`nil` without blocking withdrawal. Time changes update scheduling metadata.
+
+Schedule-store instances serialize reads and writes against current metadata.
+Process-shared per-account leases prevent competing delivery passes, and per-draft
+leases exclude editing during that draft's active SMTP attempt. Local edits and
+post-delivery cleanup drain before account teardown; retired responses cannot
+modify a replacement account's local intent or draft.
+
+Claims never expire into automatic resends. Interrupted or uncertain SMTP delivery
+stays in Outbox for an explicit reviewed retry after checking Sent, rather than
+creating a second retry route in the offline conflict list. Missing draft content
+also stays visible. Known failures respect backoff on reconnect and all delivery
+hooks; ten failures require review. The ordinary offline mutation conflict path
+is unchanged.
+
+This retains the existing UserDefaults metadata and draft staging architecture.
+Readback detects failed staging before accepting a schedule, but does not create
+an atomic cross-store journal or freeze later IMAP draft edits. Those remain
+separate durability work. Delivery still requires the running app and a usable
+connection; ADR-0070's proposed background execution is not implemented here.

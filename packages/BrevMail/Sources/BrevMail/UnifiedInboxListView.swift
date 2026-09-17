@@ -57,6 +57,8 @@ struct UnifiedInboxListView: View {
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backends: [any MailBackend]
     private let sourceSections: [MailSourceSection]
+    /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
+    private let canFileLocally: Bool
     private let accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>]
     private let smartView: MailboxSmartView?
     /// When non-nil this list is showing a persisted saved search: the unified
@@ -83,10 +85,13 @@ struct UnifiedInboxListView: View {
     @State private var activeSearchRequest: UnifiedInboxSearchRequest?
     @State private var loadedSavedQuery: SmartMailbox.SavedQuery?
     @State private var activeAttachmentSearchQueries: [SearchQuery] = []
+    @State private var searchProgress = MailSearchProgressState()
+    @State private var searchWork = MailSearchTaskOwner()
     @State private var partialLoadErrorStatus: MessageListFooterStatus?
     @State private var mutationErrorStatus: MessageListFooterStatus?
     @State private var loadMoreErrorStatus: MessageListFooterStatus?
     @State private var pendingDeleteItemID: UnifiedInboxItem.ID?
+    @State private var isBulkPermanentDeletePresented = false
     @State private var pendingSnoozeItems: [UnifiedInboxItem] = []
     @State private var followUpSettings = FollowUpSettings.load()
     /// Progressive disclosure for unified search execution chips.
@@ -121,6 +126,7 @@ struct UnifiedInboxListView: View {
         navigation: MailNavigationState,
         backends: [any MailBackend],
         sourceSections: [MailSourceSection],
+        canFileLocally: Bool = false,
         accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>] = [:],
         smartView: MailboxSmartView? = nil,
         savedSearchID: String? = nil,
@@ -137,6 +143,7 @@ struct UnifiedInboxListView: View {
         _localMessageWorkflowState = localMessageWorkflowState
         self.backends = backends
         self.sourceSections = sourceSections
+        self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmailsByAccountID = accountOwnedMailboxEmailsByAccountID
         self.smartView = smartView
         self.savedSearchID = savedSearchID
@@ -214,11 +221,16 @@ struct UnifiedInboxListView: View {
                     unifiedSearchExecutionBar
                 }
             }
-            if MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                queries: activeAttachmentSearchQueries,
-                isLoading: isLoading
-            ) {
-                AttachmentSearchDisclosureView()
+            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, searchProgress.request != nil {
+                MailSearchStatusView(
+                    progress: searchProgress,
+                    checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+                        queries: activeAttachmentSearchQueries,
+                        isLoading: searchProgress.isSearching
+                    )
+                ) {
+                    Task { await reloadVisibleItems() }
+                }
             }
             Group {
                 if let errorMessage {
@@ -282,6 +294,7 @@ struct UnifiedInboxListView: View {
                 MessageListFolderStatsFooter(presentation: folderStatsFooterPresentation)
             }
         }
+        .onDisappear { searchWork.cancel() }
         .task(id: loadKey) {
             let scope = "\(reloadKey)|\(navigation.searchText)|\(navigation.searchExecution)"
             if requestedScope != scope {
@@ -328,10 +341,29 @@ struct UnifiedInboxListView: View {
             }
         } message: {
             if let item = pendingDeleteItem {
-                Text("Delete \"\(item.header.subject)\"?", bundle: .module)
+                if isPermanentDelete(for: item) {
+                    Text(MailUndoableDelete.permanentDeleteMessage(
+                        count: 1, folders: foldersForPermanentDelete(of: item)
+                    ))
+                } else {
+                    Text("Delete \"\(item.header.subject)\"?", bundle: .module)
+                }
             } else {
                 Text("Delete this message?", bundle: .module)
             }
+        }
+        .alert(String(localized: "Permanently Delete?", bundle: .module),
+               isPresented: $isBulkPermanentDeletePresented) {
+            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                Task { await delete(selectedItems, confirmedPermanent: true) }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text(MailUndoableDelete.permanentDeleteMessage(
+                count: selectedItems.count,
+                folders: selectedItems.first(where: { isPermanentDelete(for: $0) })
+                    .map { foldersForPermanentDelete(of: $0) } ?? []
+            ))
         }
         .sheet(isPresented: isUnifiedSnoozePickerPresented) {
             if let item = pendingSnoozeItems.first {
@@ -390,7 +422,7 @@ struct UnifiedInboxListView: View {
         }
         performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
         defer { pendingDeleteItemID = nil }
-        await delete(item)
+        await delete([item], confirmedPermanent: true)
     }
 
     private struct LoadKey: Equatable {
@@ -432,7 +464,6 @@ struct UnifiedInboxListView: View {
             now: now
         )
         let key = UnifiedInboxPresentationSnapshotCache.Key(
-            items: items,
             pinnedMessageIDsRaw: pinnedMessageIDsRaw,
             groupByDate: groupByDate,
             collapsedDateSectionIDs: collapsedDateSectionIDs,
@@ -451,7 +482,9 @@ struct UnifiedInboxListView: View {
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
             localeIdentifier: locale.identifier
         )
-        return presentationSnapshotCache.snapshot(for: key) {
+        return presentationSnapshotCache.snapshot(for: key, items: items) {
+            let interval = MailUIPerformanceDiagnostics.beginInterval("Unified Inbox Presentation Build")
+            defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let pinnedMessageIDs = UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw)
             let listed = makeVisibleItems(
                 pinnedMessageIDs: pinnedMessageIDs,
@@ -724,7 +757,7 @@ struct UnifiedInboxListView: View {
     }
 
     private var isMutationActionBlocked: Bool {
-        isMutating || isWorkBlocked || isMutationWorkBlocked
+        isMutating || isWorkBlocked || isMutationWorkBlocked || undoQueue?.isUndoing == true
     }
 
     private var availableSearchExecutions: [SearchExecution] {
@@ -925,6 +958,10 @@ struct UnifiedInboxListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: item.sourceContext,
+            matchedAttachmentName: searchProgress.matchedAttachmentName(
+                for: item.header.id,
+                source: item.sourceID
+            ),
             isBlockedSender: false,
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
@@ -999,6 +1036,8 @@ struct UnifiedInboxListView: View {
             canArchive: item.archiveFolder != nil,
             canMove: !moveFolderCandidates(for: item).isEmpty,
             canCopyToFolder: !moveFolderCandidates(for: item).isEmpty,
+            canFileLocally: canFileLocally
+                && item.sourceID.accountID != LocalMailBackend.accountID,
             junkActionTitle: junkActionTitle(for: item),
             canBlockSender: false,
             canDelete: true,
@@ -1182,6 +1221,28 @@ struct UnifiedInboxListView: View {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .copyToLocalFolder:
+            Button {
+                navigation.presentedSheet = .copyToLocal(
+                    messageIDs: [item.header.id],
+                    sourceID: item.sourceID,
+                    fromFolderID: item.folder.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .moveToLocalFolder:
+            Button {
+                navigation.presentedSheet = .moveToLocal(
+                    messageIDs: [item.header.id],
+                    sourceID: item.sourceID,
+                    fromFolderID: item.folder.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .setJunk:
             Button {
                 let isInSpam = item.folder.role == .spam
@@ -1293,7 +1354,11 @@ struct UnifiedInboxListView: View {
         case .delete:
             Button(role: .destructive) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await delete(item) }
+                if isPermanentDelete(for: item) {
+                    pendingDeleteItemID = item.id
+                } else {
+                    Task { await delete(item) }
+                }
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
@@ -1522,6 +1587,10 @@ struct UnifiedInboxListView: View {
     }
 
     private func search(query: String) async {
+        await searchWork.run { await performSearch(query: query) }
+    }
+
+    private func performSearch(query: String) async {
         if let savedSearchQuery {
             if loadedContentKey != "saved:\(reloadKey)" || loadedSavedQuery != savedSearchQuery {
                 await reloadSavedSearch(savedSearchQuery)
@@ -1538,7 +1607,6 @@ struct UnifiedInboxListView: View {
             sourceIDs: sourceIDs,
             execution: navigation.searchExecution
         )
-        guard activeSearchRequest != request || !isLoading else { return }
         let loadRequest = loadOwnership.begin()
         defer { if loadOwnership.current == loadRequest { isLoading = false } }
         activeSearchRequest = request
@@ -1561,6 +1629,7 @@ struct UnifiedInboxListView: View {
                 backend(for: sourceID)?.capabilities ?? []
             }
         )
+        let progressRequest = searchProgress.begin(sources: searchPlans.map { $0.source.sourceID })
         activeAttachmentSearchQueries = searchPlans.map(\.query)
         var loadedItems: [UnifiedInboxItem] = []
         var firstError: (any Error)?
@@ -1569,30 +1638,56 @@ struct UnifiedInboxListView: View {
         let results = await MailConcurrentWork.map(searchPlans) { plan in
             let source = plan.source
             guard let backend = backendsByAccountID[source.sourceID.accountID] else {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.missing(source.sourceID.accountID)
             }
             do {
-                let headers = try await backend.search(plan.query, sourceID: source.sourceID)
+                let headers = try await MailSearchExecution
+                    .run(backend: backend, query: plan.query, sourceID: source.sourceID) { update in
+                        await MainActor.run {
+                            guard loadOwnership.accepts(loadRequest), UnifiedInboxSearchResponsePolicy.canApplySearchResponse(
+                                request: request, activeRequest: activeSearchRequest, currentSearchText: navigation.searchText,
+                                currentSourceIDs: sourceSections.map(\.id)
+                            ), searchProgress.apply(update, source: source.sourceID, request: progressRequest) else { return }
+                            items = UnifiedInboxPagination.sortedItems(searchPlans.flatMap { plan in
+                                UnifiedInboxSearchPolicy.items(
+                                    from: searchProgress.headers(for: plan.source.sourceID),
+                                    source: plan.source
+                                )
+                            })
+                            if let selectedSource = navigation.selectedSourceID {
+                                navigation
+                                    .installPartialSearchHeaders(items.filter { $0.sourceID == selectedSource }.map(\.header))
+                            }
+                        }
+                    }
                 return UnifiedInboxSearchLoadResult.results(
                     UnifiedInboxSearchPolicy.items(from: headers, source: source)
                 )
             } catch is CancellationError {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.cancelled
             } catch {
+                await MainActor.run { searchProgress.fail(source: source.sourceID, request: progressRequest) }
                 return UnifiedInboxSearchLoadResult.failure(error.localizedDescription)
             }
         }
         guard loadOwnership.accepts(loadRequest) else { return }
-        for result in results {
+        for (index, result) in results.enumerated() {
             switch result {
             case .results(let sourceItems):
                 loadedItems.append(contentsOf: sourceItems)
             case .failure(let message):
+                let source = searchPlans[index].source
+                loadedItems.append(contentsOf: UnifiedInboxSearchPolicy.items(
+                    from: searchProgress.headers(for: source.sourceID),
+                    source: source
+                ))
                 firstError = firstError ?? MailBackendError.backendSpecific(message: message)
             case .missing(let accountID):
                 firstError = firstError ?? MailBackendError.notFound(id: accountID)
             case .cancelled:
-                finishSearch(request)
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
         }
@@ -1603,7 +1698,7 @@ struct UnifiedInboxListView: View {
             currentSearchText: navigation.searchText,
             currentSourceIDs: sourceSections.map(\.id)
         ) else {
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
 
@@ -1619,9 +1714,8 @@ struct UnifiedInboxListView: View {
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
         } else if let firstError {
-            partialLoadErrorStatus = MessageListPresentation.partialLoadErrorStatus(
-                for: firstError
-            )
+            partialLoadErrorStatus = searchProgress.hasFailure ? nil : MessageListPresentation
+                .partialLoadErrorStatus(for: firstError)
             MailUIPerformanceDiagnostics.logListSearchFinished(
                 surface: .unifiedInbox,
                 execution: navigation.searchExecution,
@@ -1650,10 +1744,12 @@ struct UnifiedInboxListView: View {
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
         }
-        finishSearch(request)
+        finishSearch(request, progressRequest: progressRequest)
     }
 
-    private func finishSearch(_ request: UnifiedInboxSearchRequest) {
+    private func finishSearch(_ request: UnifiedInboxSearchRequest, progressRequest: UUID) {
+        guard searchProgress.request == progressRequest else { return }
+        searchProgress.finish(request: progressRequest)
         guard activeSearchRequest == request else { return }
         activeSearchRequest = nil
         activeAttachmentSearchQueries = []
@@ -1832,29 +1928,57 @@ struct UnifiedInboxListView: View {
     }
 
     private func setRead(_ isRead: Bool, for targetItems: [UnifiedInboxItem]) async {
+        let targetItems = targetItems.filter { $0.header.isRead != isRead }
+        guard !targetItems.isEmpty else { return }
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var actions: [UndoableMutation?] = []
         await performMutation(targetItems) { sourceID, messageIDs in
             guard let backend = backend(for: sourceID) else {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
             try await backend.setRead(isRead, for: messageIDs, sourceID: sourceID)
+            actions.append(MailFlagUndo.action(
+                .read,
+                originals: targetItems.filter { $0.sourceID == sourceID && messageIDs.contains($0.header.id) }.map(\.header),
+                newValue: isRead,
+                sourceID: sourceID,
+                backend: backend,
+                description: MailFlagUndo.description(.read, value: isRead)
+            ))
         } optimisticUpdate: { item in
             item.header.isRead = isRead
         } event: {
             MessageCommandRefreshPolicy.updated($0.header)
         }
+        undoQueue?.registerBatch(actions, description: MailFlagUndo.description(.read, value: isRead), lease: undoLease)
     }
 
     private func setFlagged(_ isFlagged: Bool, for targetItems: [UnifiedInboxItem]) async {
+        let targetItems = targetItems.filter { $0.header.isFlagged != isFlagged }
+        guard !targetItems.isEmpty else { return }
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var actions: [UndoableMutation?] = []
         await performMutation(targetItems) { sourceID, messageIDs in
             guard let backend = backend(for: sourceID) else {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
             try await backend.setFlagged(isFlagged, for: messageIDs, sourceID: sourceID)
+            actions.append(MailFlagUndo.action(
+                .flagged,
+                originals: targetItems.filter { $0.sourceID == sourceID && messageIDs.contains($0.header.id) }.map(\.header),
+                newValue: isFlagged,
+                sourceID: sourceID,
+                backend: backend,
+                description: MailFlagUndo.description(.flagged, value: isFlagged)
+            ))
         } optimisticUpdate: { item in
             item.header.isFlagged = isFlagged
         } event: {
             MessageCommandRefreshPolicy.updated($0.header)
         }
+        undoQueue?.registerBatch(actions, description: MailFlagUndo.description(.flagged, value: isFlagged), lease: undoLease)
     }
 
     private func moveFolderCandidates(for item: UnifiedInboxItem) -> [Folder] {
@@ -1895,14 +2019,33 @@ struct UnifiedInboxListView: View {
     }
 
     private func move(_ targetItems: [UnifiedInboxItem], to destination: Folder) async {
+        let targetItems = targetItems.filter { $0.folder.id != destination.id }
+        guard !targetItems.isEmpty else { return }
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in
             guard let backend = backend(for: sourceID) else {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
-            try await backend.move(messageIDs: messageIDs, to: destination, sourceID: sourceID)
+            let sourceItems = targetItems.filter { $0.sourceID == sourceID && messageIDs.contains($0.header.id) }
+            for (_, group) in Dictionary(grouping: sourceItems, by: \.folder.id).sorted(by: { $0.key < $1.key }) {
+                guard let first = group.first, first.folder.id != destination.id else { continue }
+                try await receipts.append(backend.moveWithUndo(
+                    messageIDs: group.map(\.header.id),
+                    from: first.folder,
+                    to: destination,
+                    sourceID: sourceID
+                ))
+            }
         } optimisticUpdate: { _ in } event: {
             MessageCommandRefreshPolicy.removed($0.header)
         }
+        undoQueue?.registerMoves(
+            receipts,
+            description: String(localized: "Moved to \(destination.name)", bundle: .module),
+            lease: undoLease
+        )
     }
 
     private func archive(_ item: UnifiedInboxItem) async {
@@ -1910,6 +2053,11 @@ struct UnifiedInboxListView: View {
     }
 
     private func archive(_ targetItems: [UnifiedInboxItem]) async {
+        let targetItems = targetItems.filter { $0.folder.id != $0.archiveFolder?.id }
+        guard !targetItems.isEmpty else { return }
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in
             guard let firstItem = targetItems.first(where: { $0.sourceID == sourceID }),
                   let archiveFolder = firstItem.archiveFolder,
@@ -1917,47 +2065,81 @@ struct UnifiedInboxListView: View {
             else {
                 throw MailBackendError.notFound(id: sourceID.mailboxID)
             }
-            try await backend.move(messageIDs: messageIDs, to: archiveFolder, sourceID: sourceID)
+            let sourceItems = targetItems.filter { $0.sourceID == sourceID && messageIDs.contains($0.header.id) }
+            for (_, group) in Dictionary(grouping: sourceItems, by: \.folder.id).sorted(by: { $0.key < $1.key }) {
+                guard let first = group.first, first.folder.id != archiveFolder.id else { continue }
+                try await receipts.append(backend.moveWithUndo(
+                    messageIDs: group.map(\.header.id),
+                    from: first.folder,
+                    to: archiveFolder,
+                    sourceID: sourceID
+                ))
+            }
         } optimisticUpdate: { _ in } event: {
             MessageCommandRefreshPolicy.removed($0.header)
         }
+        undoQueue?.registerMoves(receipts, description: String(localized: "Archived", bundle: .module), lease: undoLease)
     }
 
     private func setJunk(_ isJunk: Bool, for item: UnifiedInboxItem) async {
-        await performMutation([item], removeFromList: true) { sourceID, messageIDs in
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var actions: [UndoableMutation?] = []
+        await performMutation([item], removeFromList: true) { sourceID, _ in
             guard let backend = backend(for: sourceID),
-                  let section = sourceSections.first(where: { $0.id == sourceID })
-            else {
+                  let section = sourceSections.first(where: { $0.id == sourceID }) else {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
-            if backend.capabilities.contains(.junkAPI) {
-                try await backend.setJunk(isJunk, for: messageIDs, sourceID: sourceID)
-            } else if let fallbackFolder = MessageCommandPresentation.junkFallbackFolder(
-                isJunk: isJunk,
-                folders: section.folders
-            ) {
-                try await backend.move(messageIDs: messageIDs, to: fallbackFolder, sourceID: sourceID)
-            } else {
-                throw MailBackendError.notFound(id: isJunk ? "spam" : "inbox")
-            }
+            try await actions.append(MailJunkUndo.perform(isJunk, header: item.header, folders: section.folders,
+                                                          sourceID: sourceID, backend: backend, lease: undoLease))
         } optimisticUpdate: { _ in } event: {
             MessageCommandRefreshPolicy.removed($0.header)
         }
+        undoQueue?.registerBatch(actions, description: MailJunkUndo.description(isJunk), lease: undoLease)
+    }
+
+    /// A delete is permanent when the source has no Trash (local folders,
+    /// ADR-0077) or the message is already inside Trash — confirm first.
+    private func isPermanentDelete(for item: UnifiedInboxItem) -> Bool {
+        MailUndoableDelete.isPermanentDelete(
+            from: item.folder,
+            folders: foldersForPermanentDelete(of: item)
+        )
+    }
+
+    private func foldersForPermanentDelete(of item: UnifiedInboxItem) -> [Folder] {
+        sourceSections.first { $0.id == item.sourceID }?.folders ?? []
     }
 
     private func delete(_ item: UnifiedInboxItem) async {
         await delete([item])
     }
 
-    private func delete(_ targetItems: [UnifiedInboxItem]) async {
+    private func delete(_ targetItems: [UnifiedInboxItem], confirmedPermanent: Bool = false) async {
+        if !confirmedPermanent,
+           targetItems.contains(where: { isPermanentDelete(for: $0) }) {
+            isBulkPermanentDeletePresented = true
+            return
+        }
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
+        var receipts: [MailMoveUndo?] = []
         await performMutation(targetItems, removeFromList: true) { sourceID, messageIDs in
             guard let backend = backend(for: sourceID) else {
                 throw MailBackendError.notFound(id: sourceID.accountID)
             }
-            try await backend.delete(messageIDs: messageIDs, sourceID: sourceID)
+            let sourceItems = targetItems.filter { $0.sourceID == sourceID && messageIDs.contains($0.header.id) }
+            for (_, group) in Dictionary(grouping: sourceItems, by: \.folder.id).sorted(by: { $0.key < $1.key }) {
+                guard let first = group.first else { continue }
+                try await receipts.append(MailUndoableDelete.perform(messageIDs: group.map(\.header.id), from: first.folder,
+                                                                     folders: sourceSections.first { $0.id == sourceID }?
+                                                                         .folders ?? [],
+                                                                     sourceID: sourceID, backend: backend))
+            }
         } optimisticUpdate: { _ in } event: {
             MessageCommandRefreshPolicy.removed($0.header)
         }
+        undoQueue?.registerMoves(receipts, description: String(localized: "Deleted", bundle: .module), lease: undoLease)
     }
 
     private func snoozePendingItems(until wakeAt: Date) {
@@ -2119,6 +2301,11 @@ struct UnifiedInboxListView: View {
         })
     }
 
+    private struct SourceFolderKey: Hashable {
+        let sourceID: MailSourceID
+        let folderID: Folder.ID
+    }
+
     private func performMutation(
         _ targetItems: [UnifiedInboxItem],
         removeFromList: Bool = false,
@@ -2156,14 +2343,17 @@ struct UnifiedInboxListView: View {
         let request = loadOwnership.begin()
         isLoading = false
         isLoadingMore = false
-        let grouped = Dictionary(grouping: targetItems, by: \.sourceID)
-        var failedSources: Set<MailSourceID> = []
+        let grouped = Dictionary(grouping: targetItems, by: { SourceFolderKey(sourceID: $0.sourceID, folderID: $0.folder.id) })
+        var failedItemIDs: Set<UnifiedInboxItem.ID> = []
         var firstError: (any Error)?
         var successfulCount = 0
-        for sourceID in targetItems.map(\.sourceID).reduce(into: [MailSourceID](), { ids, id in
-            if !ids.contains(id) { ids.append(id) }
-        }) {
-            guard let sourceItems = grouped[sourceID] else { continue }
+        let orderedGroups = targetItems.map { SourceFolderKey(sourceID: $0.sourceID, folderID: $0.folder.id) }
+            .reduce(into: [SourceFolderKey]()) { keys, key in
+                if !keys.contains(key) { keys.append(key) }
+            }
+        for key in orderedGroups {
+            let sourceID = key.sourceID
+            guard let sourceItems = grouped[key] else { continue }
             do {
                 try await operation(sourceID, sourceItems.map(\.header.id))
                 successfulCount += sourceItems.count
@@ -2171,7 +2361,7 @@ struct UnifiedInboxListView: View {
                     await onMutation(event(item))
                 }
             } catch {
-                failedSources.insert(sourceID)
+                failedItemIDs.formUnion(sourceItems.map(\.id))
                 firstError = firstError ?? error
             }
         }
@@ -2180,16 +2370,16 @@ struct UnifiedInboxListView: View {
             return
         }
         if let firstError {
-            let restored = rollback.restoring(failedSources: failedSources, in: items)
+            let restored = rollback.restoring(failedItemIDs: failedItemIDs, in: items)
             items = restored.items
             selectedItemIDs = restored.selectedItemIDs
             rollback.restoreFailedReader(
                 in: navigation,
-                failedSources: failedSources,
+                failedItemIDs: failedItemIDs,
                 expectedSelectionRevision: selectionRevision
             )
             reconcileNavigationAfterItemsChanged()
-            let failedCount = targetItems.filter { failedSources.contains($0.sourceID) }.count
+            let failedCount = failedItemIDs.count
             mutationErrorStatus = MessageListFooterStatus(
                 message: String(
                     localized: "Updated \(successfulCount) messages; \(failedCount) failed. \(firstError.localizedDescription)",
@@ -2212,9 +2402,9 @@ struct UnifiedInboxListView: View {
                 guard let backend = backend(for: item.sourceID) else {
                     throw MailBackendError.notConnected
                 }
-                let rawSource = try await backend.rawSource(for: item.header.id, sourceID: item.sourceID)
+                let rawMessageData = try await backend.rawMessageData(for: item.header.id, sourceID: item.sourceID)
                 _ = try await MainActor.run {
-                    try MessageEMLExport.presentSavePanel(header: item.header, rawSource: rawSource)
+                    try MessageEMLExport.presentSavePanel(header: item.header, rawMessageData: rawMessageData)
                 }
             } catch {
                 mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)

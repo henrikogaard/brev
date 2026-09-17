@@ -21,7 +21,7 @@ public enum WindowAppearancePreferenceKey {
     public static let messageContentOpacity = "window.messageContentOpacity"
 }
 
-public enum WindowTranslucencyMode: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum WindowTranslucencyMode: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case solid
     case subtle
     case frosted
@@ -52,7 +52,7 @@ public enum WindowTranslucencyMode: String, Sendable, Hashable, CaseIterable, Id
     }
 }
 
-public enum WindowTranslucencyScope: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum WindowTranslucencyScope: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case sidebarOnly
     case mainWindow
     case allWindows
@@ -77,7 +77,7 @@ public enum WindowTranslucencyScope: String, Sendable, Hashable, CaseIterable, I
 }
 
 /// Controls how the bounded message-reader surface derives its opacity.
-public enum MessageContentOpacityMode: String, Sendable, Hashable, CaseIterable, Identifiable {
+public enum MessageContentOpacityMode: String, Sendable, Hashable, CaseIterable, Identifiable, Codable {
     case followPane
     case opaque
     case custom
@@ -114,7 +114,7 @@ public enum WindowSurfaceRole: Sendable, Hashable, CaseIterable {
     case card
 }
 
-public struct WindowAppearancePreferences: Equatable, Sendable {
+public struct WindowAppearancePreferences: Equatable, Sendable, Codable {
     public static let surfaceOpacityRange: ClosedRange<Double> = 0.25 ... 0.95
     public static let sidebarOpacityRange: ClosedRange<Double> = 0.1 ... 0.95
     public static let messageContentOpacityRange: ClosedRange<Double> = 0.25 ... 1

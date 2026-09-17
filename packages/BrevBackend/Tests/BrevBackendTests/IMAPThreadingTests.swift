@@ -54,6 +54,63 @@ struct IMAPThreadingTests {
         #expect(listing?.messageID == "<root@example.org>")
     }
 
+    @Test("a References header field is parsed from a FETCH line")
+    func headerFieldsReferencesAreParsed() {
+        let listing = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS (\\Seen) UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] \"References: <root@example.org>\r\n\t<older@example.org>\r\n\")"
+        )
+
+        // Identifiers are stored bracket-stripped, de-duplicated and sorted.
+        #expect(listing?.references == ["older@example.org", "root@example.org"])
+    }
+
+    @Test("a missing References attribute stays unknown while an empty field is known absent")
+    func referencesKnownAbsentVsUnknown() {
+        let withEmptyField = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS (\\Seen) UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY[HEADER.FIELDS (REFERENCES)] \"\r\n\")"
+        )
+        let withoutAttribute = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS (\\Seen) UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\"))"
+        )
+
+        #expect(withEmptyField?.references == [])
+        #expect(withoutAttribute?.references == nil)
+        // A NIL section value is an explicit answer: the field is known absent.
+        let nilValue = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS () UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] NIL)"
+        )
+        // A malformed (non-string) section value is unknown, not absent, so a
+        // refresh must preserve previously stored References.
+        let malformed = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS () UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] (NOT A STRING))"
+        )
+        #expect(nilValue?.references == [])
+        #expect(malformed?.references == nil)
+    }
+
+    @Test("a partially malformed References field keeps only verifiable identifiers")
+    func malformedReferencesKeepVerifiedTokens() {
+        let listing = IMAPMessageListing.parse(
+            "* 2 FETCH (FLAGS () UID 101 ENVELOPE (\"Sat, 06 Jun 2026 12:00:00 +0000\" \"Re: Standup\" ((\"Ada\" NIL \"ada\" \"example.org\")) NIL NIL ((NIL NIL \"person\" \"example.org\")) NIL NIL \"<root@example.org>\" \"<reply@example.org>\") BODY.PEEK[HEADER.FIELDS (REFERENCES)] \"References: trailing text <root@example.org>\r\n\")"
+        )
+
+        // The prose cannot be verified, but the bracketed identifier can.
+        #expect(listing?.references == ["root@example.org"])
+    }
+
+    @Test("parsed References propagate to the message header")
+    func referencesPropagateToHeaders() async throws {
+        let backend = Self.backend(messages: [
+            Self.listing(uid: 2, messageID: "<reply@example.org>", inReplyTo: "<root@example.org>",
+                         references: ["root@example.org"], minutes: 10),
+        ])
+        try await backend.connect()
+
+        let page = try await backend.messages(in: Self.inbox, pageToken: nil)
+
+        #expect(page.headers.first?.references == ["root@example.org"])
+    }
+
     @Test("a listed reply shares its parent's thread id")
     func listedReplySharesParentThreadID() async throws {
         let backend = Self.backend(messages: [
@@ -166,12 +223,14 @@ struct IMAPThreadingTests {
         messageID: String,
         inReplyTo: String? = nil,
         replyTo: [Correspondent] = [],
+        references: [String]? = nil,
         minutes: Int
     ) -> IMAPMessageListing {
         IMAPMessageListing(
             uid: uid,
             messageID: messageID,
             inReplyTo: inReplyTo,
+            references: references,
             replyTo: replyTo,
             subject: "Standup",
             from: Correspondent(email: "ada@example.org"),

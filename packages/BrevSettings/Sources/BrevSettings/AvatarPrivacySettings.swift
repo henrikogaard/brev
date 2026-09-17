@@ -13,7 +13,7 @@
 import BrevAvatars
 import Foundation
 
-struct AvatarPrivacySettings: Equatable, Sendable {
+struct AvatarPrivacySettings: Equatable, Sendable, Codable {
     enum Key {
         static let useContacts = "avatar.useContacts"
         static let useGravatar = "avatar.useGravatar"

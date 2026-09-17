@@ -13,6 +13,9 @@
 import BrevBackend
 import BrevDesign
 import BrevThemes
+#if os(macOS)
+import ServiceManagement
+#endif
 import SwiftUI
 import UserNotifications
 
@@ -22,6 +25,10 @@ struct NotificationSection: View {
     @State private var authorizationStatus: BrevSettingsNotificationAuthStatus = .notDetermined
     @State private var isRequestingAuthorization = false
     @State private var lastTestResult: String?
+    #if os(macOS)
+    @State private var launchAtLoginController = LaunchAtLoginController()
+    @State private var launchAtLoginStatus: SMAppService.Status = .notRegistered
+    #endif
 
     private let settingsStore: SettingsPersistenceStore
     private let accounts: [BrevAccount]
@@ -42,12 +49,98 @@ struct NotificationSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 notificationGroup
+                #if os(macOS)
+                backgroundMailGroup
+                #endif
                 accountScopeGroup
                 quietHoursGroup
             }
         }
         .task { await refreshAuthorizationStatus() }
+        #if os(macOS)
+            .task { launchAtLoginStatus = launchAtLoginController.status }
+        #endif
     }
+
+    /// ADR-0075: explicit opt-in for keeping the fetch loop and menu-bar
+    /// status alive with no window open, plus the launch-at-login sub-toggle.
+    #if os(macOS)
+    private var backgroundMailGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Background mail", bundle: .module),
+            subtitle: String(localized: "Run checks while no window is open.", bundle: .module),
+            symbolName: "envelope.badge"
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                SettingsToggleRow(
+                    symbolName: "envelope.badge",
+                    title: String(localized: "Keep checking mail in the background", bundle: .module),
+                    subtitle: String(
+                        localized: "Brev keeps running and checking mail with no window open, and shows its status in the menu bar.",
+                        bundle: .module
+                    ),
+                    isOn: backgroundMailBinding
+                )
+
+                if settings.backgroundMailEnabled,
+                   LaunchAtLoginAvailability.isAvailable(
+                       bundleIdentifier: Bundle.main.bundleIdentifier
+                   ) {
+                    SettingsToggleRow(
+                        symbolName: "power",
+                        title: String(localized: "Open Brev at login", bundle: .module),
+                        subtitle: launchAtLoginSubtitle,
+                        isOn: Binding(
+                            get: { launchAtLoginStatus == .enabled },
+                            set: { newValue in
+                                try? launchAtLoginController.setEnabled(newValue)
+                                settings.launchAtLoginRequested = newValue
+                                settingsStore.save(settings)
+                                launchAtLoginStatus = launchAtLoginController.status
+                            }
+                        ),
+                        isEnabled: launchAtLoginStatus != .requiresApproval
+                    )
+                    if launchAtLoginStatus == .requiresApproval {
+                        BrevButton(
+                            String(localized: "Open Login Items Settings…", bundle: .module),
+                            style: .secondary
+                        ) {
+                            launchAtLoginController.openSystemSettings()
+                        }
+                    }
+                }
+
+                if settings.backgroundMailEnabled,
+                   FetchScheduleSettings.load().interval == .manual {
+                    SettingsInfoCallout(
+                        symbolName: "hand.raised",
+                        message: String(
+                            localized: "Your fetch schedule is set to Manually, so background checking only listens for server pushes.",
+                            bundle: .module
+                        ),
+                        tone: .info
+                    )
+                }
+            }
+        }
+    }
+
+    private var launchAtLoginSubtitle: String {
+        switch launchAtLoginStatus {
+        case .requiresApproval:
+            return String(
+                localized: "macOS needs your approval in System Settings first.",
+                bundle: .module
+            )
+        default:
+            return String(
+                localized: "Start Brev automatically when you sign in to this Mac.",
+                bundle: .module
+            )
+        }
+    }
+    #endif
 
     private var notificationGroup: some View {
         SettingsGroup(
@@ -400,6 +493,24 @@ struct NotificationSection: View {
             }
         )
     }
+
+    #if os(macOS)
+    /// Persists the per-device flag and signals the app to start/stop the
+    /// `BackgroundMailCoordinator` and menu-bar item.
+    private var backgroundMailBinding: Binding<Bool> {
+        Binding(
+            get: { settings.backgroundMailEnabled },
+            set: { newValue in
+                settings.backgroundMailEnabled = newValue
+                settingsStore.save(settings)
+                NotificationCenter.default.post(
+                    name: .brevNotificationSettingsDidChange,
+                    object: nil
+                )
+            }
+        )
+    }
+    #endif
 
     private var notificationsEnabledBinding: Binding<Bool> {
         Binding(

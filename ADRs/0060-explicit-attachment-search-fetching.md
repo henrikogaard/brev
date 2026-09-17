@@ -95,3 +95,11 @@ Alternatives rejected:
 - `packages/BrevBackend/Sources/BrevBackend/IMAPSMTPBackend.swift`
 - `packages/BrevMail/Sources/BrevMail/MessageListView.swift`
 - `packages/BrevMail/Tests/BrevMailTests/MessageListSearchDebouncePolicyTests.swift`
+
+## Presentation update (2026-09-07)
+
+The folder and unified lists now place the attachment-source notice in the shared
+compact search-status row alongside progress and coverage. Both presence and
+absence predicates require source inspection and therefore disclose possible data
+downloads while fetching. Cache-only searches show cached coverage without a
+fetch notice. This changes presentation, not the user-intent or network boundary.

@@ -12,7 +12,7 @@
 
 import Foundation
 
-enum ComposeMessageFormat: String, CaseIterable, Sendable {
+enum ComposeMessageFormat: String, CaseIterable, Sendable, Codable {
     case automatic
     case richText
     case plainText
@@ -26,7 +26,7 @@ enum ComposeMessageFormat: String, CaseIterable, Sendable {
     }
 }
 
-enum ComposeQuotePlacement: String, CaseIterable, Sendable {
+enum ComposeQuotePlacement: String, CaseIterable, Sendable, Codable {
     case belowReply
     case aboveReply
 
@@ -38,7 +38,7 @@ enum ComposeQuotePlacement: String, CaseIterable, Sendable {
     }
 }
 
-enum ComposeUndoSendDelay: Int, CaseIterable, Sendable {
+enum ComposeUndoSendDelay: Int, CaseIterable, Sendable, Codable {
     case off = 0
     case fiveSeconds = 5
     case tenSeconds = 10
@@ -54,7 +54,7 @@ enum ComposeUndoSendDelay: Int, CaseIterable, Sendable {
     }
 }
 
-struct ComposeSettings: Equatable, Sendable {
+struct ComposeSettings: Equatable, Sendable, Codable {
     enum Key {
         static let messageFormat = "compose.messageFormat"
         static let attachmentReminderEnabled = "compose.attachmentReminderEnabled"

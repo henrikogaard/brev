@@ -1,6 +1,6 @@
 # ADR-0070: Opt-in background mail on macOS
 
-- **Status:** Proposed
+- **Status:** Superseded by ADR-0075
 - **Date:** 2026-09-05
 - **Deciders:** Henrik
 - **Amends on acceptance:** ADR-0037

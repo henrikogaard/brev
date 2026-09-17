@@ -63,4 +63,60 @@ struct MessageHeaderCodableTests {
             Correspondent(name: "Billing", email: "billing@payments.example.net")
         ])
     }
+
+    @Test("a record encoded before References existed decodes it as unknown")
+    func missingReferencesDecodesAsUnknown() throws {
+        let json = #"""
+        {
+          "id": "message-1",
+          "threadID": "thread-1",
+          "folderID": "inbox",
+          "from": { "email": "alerts@example.com" },
+          "to": [],
+          "cc": [],
+          "bcc": [],
+          "subject": "Notice",
+          "snippet": "Read this",
+          "date": 1779960600,
+          "isRead": false,
+          "isFlagged": false,
+          "isAnswered": false,
+          "isForwarded": false,
+          "hasAttachments": false
+        }
+        """#
+        let data = try #require(json.data(using: .utf8))
+        let header = try JSONDecoder().decode(MessageHeader.self, from: data)
+
+        #expect(header.references == nil)
+    }
+
+    @Test("references round trips and an empty field stays known absent")
+    func referencesRoundTripAndEmptyStaysAbsent() throws {
+        let header = MessageHeader(
+            id: "message-1",
+            threadID: "thread-1",
+            folderID: "inbox",
+            from: Correspondent(email: "alerts@example.com"),
+            subject: "Notice",
+            snippet: "Read this",
+            date: Date(timeIntervalSince1970: 1_779_960_600),
+            references: ["<root@example.org>"]
+        )
+        let decoded = try JSONDecoder().decode(MessageHeader.self, from: JSONEncoder().encode(header))
+        #expect(decoded.references == ["<root@example.org>"])
+
+        let empty = MessageHeader(
+            id: "message-2",
+            threadID: "thread-2",
+            folderID: "inbox",
+            from: Correspondent(email: "alerts@example.com"),
+            subject: "Notice",
+            snippet: "Read this",
+            date: Date(timeIntervalSince1970: 1_779_960_600),
+            references: []
+        )
+        let decodedEmpty = try JSONDecoder().decode(MessageHeader.self, from: JSONEncoder().encode(empty))
+        #expect(decodedEmpty.references == [])
+    }
 }

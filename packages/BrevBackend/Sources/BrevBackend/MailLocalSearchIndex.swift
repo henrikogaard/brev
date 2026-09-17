@@ -56,6 +56,12 @@ public protocol MailLocalSearchIndex: Sendable {
         account: BrevAccount
     ) async -> Data?
 
+    /// Original MIME octets whose provenance was recorded at write time.
+    func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data?
+
+    /// Stores original MIME with provenance distinct from legacy reconstructed text.
+    func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async
+
     func search(
         _ query: SearchQuery,
         account: BrevAccount,
@@ -110,13 +116,78 @@ public protocol MailLocalSearchIndex: Sendable {
     /// operations can prove headers, bodies, and search documents were actually
     /// persisted before reporting a ready local index.
     func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics?
+
+    // MARK: Attachment text index (ADR-0078)
+
+    /// Inserts or replaces extracted text for one attachment of a cached message.
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws
+
+    /// Removes attachment index rows for the given messages.
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) async throws
+
+    /// Removes every attachment index row for the account.
+    func removeAllAttachmentText(accountID: String) async throws
+
+    /// Approximate attachment-index size in characters for Mail Storage.
+    func attachmentIndexBytes(accountID: String) async -> Int
+
+    /// Message IDs that already have at least one indexed attachment row.
+    func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID>
+
+    /// Deterministic matched-attachment name per result message, set only for
+    /// hits that came from attachment content rather than the message itself.
+    func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String]
 }
 
 public extension MailLocalSearchIndex {
+    /// Legacy index adapters cannot prove that existing source bytes are original.
+    func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data? { nil }
+
+    /// Keeps rendering/search caching available for adapters without provenance support.
+    func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async {
+        await storeRawMessage(data, for: messageID, account: account)
+    }
+
     func search(
         _ query: SearchQuery,
         account: BrevAccount
     ) async -> [MessageHeader] {
         await search(query, account: account, limit: 200)
     }
+
+    // Attachment indexing defaults keep adapters without an attachment index
+    // compiling; they simply store and match nothing.
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {}
+
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) async throws {}
+
+    func removeAllAttachmentText(accountID: String) async throws {}
+
+    func attachmentIndexBytes(accountID: String) async -> Int { 0 }
+
+    func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> { [] }
+
+    func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] { [:] }
 }

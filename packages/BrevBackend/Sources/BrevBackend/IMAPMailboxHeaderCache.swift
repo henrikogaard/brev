@@ -49,6 +49,13 @@ public protocol IMAPMailboxHeaderCache: Sendable {
     ) async
     func clear(accountID: BrevAccount.ID, folderID: Folder.ID) async
     func clear(accountID: BrevAccount.ID) async
+    /// Forces any deferred writes to durable storage. Implementations that
+    /// write through immediately may rely on the default no-op.
+    func flushPendingWrites() async
+}
+
+public extension IMAPMailboxHeaderCache {
+    func flushPendingWrites() async {}
 }
 
 public extension IMAPMailboxHeaderCache {

@@ -11,6 +11,7 @@
  */
 
 import BrevAvatars
+import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -59,7 +60,6 @@ struct MailboxViewSection: View {
                 case 3: senderIconGroup
                 default:
                     readingGroup
-                    searchAndCacheGroup
                 }
             }
         }
@@ -166,7 +166,7 @@ struct MailboxViewSection: View {
     private var readingGroup: some View {
         SettingsGroup(
             title: String(localized: "Reading", bundle: .module),
-            subtitle: String(localized: "Font size and family apply to reading and composing.", bundle: .module),
+            subtitle: String(localized: "Rendering, conversation order, and type.", bundle: .module),
             symbolName: "text.alignleft"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
@@ -350,26 +350,6 @@ struct MailboxViewSection: View {
                     }
                 }
             }
-        }
-    }
-
-    /// Explains where local search gets its results. Cache lookback itself is
-    /// edited in Mail Storage — one account-level key with an editor in three
-    /// panes meant the last pane written silently overrode the other two.
-    private var searchAndCacheGroup: some View {
-        SettingsGroup(
-            title: String(localized: "Search", bundle: .module),
-            subtitle: String(localized: "Where results come from when you search this mailbox.", bundle: .module),
-            symbolName: "magnifyingglass"
-        ) {
-            SettingsInfoCallout(
-                symbolName: "internaldrive",
-                message: String(
-                    localized: "Local search uses Brev-owned cached headers and message bodies. Use Server in the message list when you want provider search. How far back bodies are kept is set in Mail Storage.",
-                    bundle: .module
-                ),
-                tone: .info
-            )
         }
     }
 

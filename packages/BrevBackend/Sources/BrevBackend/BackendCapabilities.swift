@@ -175,7 +175,7 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     public static let messageCopy = BackendExtendedCapabilities(rawValue: 1 << 9)
 
     /// The backend can return a message's raw RFC822 source, gating View
-    /// Source, Save As (.eml), and Show Headers. See ADR-0045.
+    /// Source and Show Headers. Original-byte export uses rawMessageBytes.
     public static let rawMessageSource = BackendExtendedCapabilities(rawValue: 1 << 10)
 
     /// The backend groups messages into conversations itself, from RFC 5322
@@ -187,6 +187,25 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// Callers gate `CachedMessageHeaderProviding` on this flag before asking
     /// for the extension service (ADR-0028 invariant 2).
     public static let cachedMessageHeaders = BackendExtendedCapabilities(rawValue: 1 << 12)
+
+    /// The backend returns original MIME bytes for lossless message export.
+    public static let rawMessageBytes = BackendExtendedCapabilities(rawValue: 1 << 13)
+
+    /// The backend resolves source-owned conversations from cached headers, including offline.
+    /// Gates `CachedConversationProviding`; it does not authorize remote discovery (ADR-0074).
+    public static let cachedConversations = BackendExtendedCapabilities(rawValue: 1 << 14)
+
+    /// The backend can discover conversation members remotely on explicit
+    /// request. Gates `RelatedConversationLoading`; the reader must still hold
+    /// the account's related-mail consent before invoking it (ADR-0074,
+    /// ADR-0006). Never implies background or automatic fetching.
+    public static let relatedConversationLoading = BackendExtendedCapabilities(rawValue: 1 << 15)
+
+    /// The backend can feed already-cached attachment bytes to the local
+    /// attachment-content index (ADR-0078). The flag only means the backend
+    /// can supply bytes it already has; indexing itself is opt-in per account
+    /// and never downloads anything.
+    public static let localAttachmentIndex = BackendExtendedCapabilities(rawValue: 1 << 16)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.

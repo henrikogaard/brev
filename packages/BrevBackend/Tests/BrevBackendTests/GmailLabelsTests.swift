@@ -72,7 +72,7 @@ struct GmailLabelsTests {
             "A0001 LOGIN \"person@example.org\" \"secret\"",
             "A0002 SELECT \"INBOX\" (CONDSTORE)",
             "A0003 UID SEARCH ALL",
-            "A0004 UID FETCH 42 (FLAGS ENVELOPE X-GM-LABELS BODY.PEEK[TEXT]<0.1024>)",
+            "A0004 UID FETCH 42 (FLAGS ENVELOPE X-GM-LABELS BODY.PEEK[TEXT]<0.1024> BODY.PEEK[HEADER.FIELDS (REFERENCES)])",
         ])
         #expect(page.supportsGmailLabels)
         #expect(page.messages.first?.labels == ["\\Inbox", "\\Important", "Work", "Foo Bar", "été"])

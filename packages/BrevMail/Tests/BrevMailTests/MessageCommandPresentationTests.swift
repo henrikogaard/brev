@@ -248,10 +248,12 @@ struct MessageCommandPresentationTests {
         #expect(menu.action(.properties)?.action == .properties)
     }
 
-    @Test("Save As appears only with raw source and the platform export gate")
+    @Test("Save As requires original bytes and the platform export gate")
     func saveAsAppearsOnlyWithRawSourceAndExportGate() {
-        func menu(rawSource: Bool, exportEML: Bool) -> MessageContextMenuPresentation {
-            MessageCommandPresentation.contextMenu(
+        func menu(originalBytes: Bool, rawSource: Bool = true, exportEML: Bool) -> MessageContextMenuPresentation {
+            var capabilities: BackendExtendedCapabilities = rawSource ? [.rawMessageSource] : []
+            if originalBytes { capabilities.insert(.rawMessageBytes) }
+            return MessageCommandPresentation.contextMenu(
                 for: Self.makeHeader(),
                 isSelected: false,
                 isPinned: false,
@@ -263,14 +265,14 @@ struct MessageCommandPresentationTests {
                 junkActionTitle: nil,
                 canBlockSender: false,
                 canDelete: true,
-                extendedCapabilities: rawSource ? [.rawMessageSource] : [],
+                extendedCapabilities: capabilities,
                 canExportEML: exportEML
             )
         }
 
-        #expect(menu(rawSource: true, exportEML: true).action(.saveAs)?.isEnabled == true)
-        #expect(menu(rawSource: true, exportEML: false).action(.saveAs) == nil)
-        #expect(menu(rawSource: false, exportEML: true).action(.saveAs) == nil)
+        #expect(menu(originalBytes: true, rawSource: false, exportEML: true).action(.saveAs)?.isEnabled == true)
+        #expect(menu(originalBytes: true, exportEML: false).action(.saveAs) == nil)
+        #expect(menu(originalBytes: false, exportEML: true).action(.saveAs) == nil)
     }
 
     @Test("Copy to Folder needs both the copy capability and a move target")
@@ -321,13 +323,15 @@ struct MessageCommandPresentationTests {
         #expect(menu.action(.properties)?.isEnabled == true)
     }
 
-    @Test("message EML export uses safe subject filename and utf8 source bytes")
-    func messageEMLExportUsesSafeSubjectFilenameAndUTF8SourceBytes() throws {
+    @Test("message EML export preserves original bytes and uses a safe subject filename")
+    func messageEMLExportPreservesOriginalBytes() throws {
         let header = Self.makeHeader(subject: "Invoice/June: <draft>?")
-        let rawSource = "Subject: Hei\r\n\r\nMøte"
-
+        let raw = Data("Content-Type: text/plain; charset=iso-8859-1\r\n\r\n".utf8) + Data([0xE5, 0xF8, 0xE6])
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent("brev-eml-\(UUID().uuidString).eml")
+        defer { try? FileManager.default.removeItem(at: url) }
         #expect(MessageEMLExport.fileName(for: header) == "Invoice-June- -draft--.eml")
-        #expect(String(data: MessageEMLExport.data(from: rawSource), encoding: .utf8) == rawSource)
+        try MessageEMLExport.write(raw, to: url)
+        #expect(try Data(contentsOf: url) == raw)
     }
 
     @Test("message EML export never produces a dotfile or reserved name")

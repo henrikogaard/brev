@@ -17,7 +17,7 @@ import Foundation
 /// The toggle is itself device-local and deliberately absent from
 /// `PreferenceSyncAllowlist`, so enabling sync on one device never
 /// enables it elsewhere.
-public struct PreferenceSyncSettings: Equatable, Sendable {
+public struct PreferenceSyncSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static let iCloudSyncEnabled = "sync.preferences.iCloudEnabled"
     }

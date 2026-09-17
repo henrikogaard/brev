@@ -16,6 +16,19 @@ import Testing
 
 @Suite("MailRootAccountEventPolicy")
 struct MailRootAccountEventPolicyTests {
+    @Test("outbox metadata changes do not reload message bodies or post new-mail alerts")
+    func outboxMetadataStaysLocal() {
+        let effects = MailRootAccountEventPolicy.mailboxEventEffects(
+            for: .outboxChanged,
+            eventAccountID: "a",
+            selectedAccountID: "a"
+        )
+        #expect(effects.refreshVisibleContent == false)
+        #expect(effects.refreshBackgroundAccountState == false)
+        #expect(effects.postNewMailNotification == false)
+        #expect(MailRootAccountEventPolicy.action(for: .outboxChanged, currentAccountID: "a", hasSignOutHandler: true) == .ignore)
+    }
+
     @Test("current account disconnect signs out when a sign-out handler exists")
     func currentAccountDisconnectSignsOutWhenHandlerExists() {
         #expect(MailRootAccountEventPolicy.action(

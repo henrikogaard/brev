@@ -93,9 +93,40 @@ struct MessageListMutationRollbackTests {
             selectedItemIDs: [first.id, second.id],
             navigation: navigation
         )
-        let restored = rollback.restoring(failedSources: [secondSource], in: [])
+        let restored = rollback.restoring(failedItemIDs: [second.id], in: [])
         #expect(restored.items == [second])
         #expect(restored.selectedItemIDs == [second.id])
+    }
+
+    @Test("partial move rollback never resurrects messages already moved on the server")
+    func rollbackExcludesMovedMessages() {
+        let first = Self.makeHeader(id: "moved")
+        let second = Self.makeHeader(id: "failed")
+        let navigation = MailNavigationState(selectedMessageID: first.id, currentFolderHeaders: [first, second],
+                                             bulkSelection: [first.id, second.id])
+        let rollback = MessageListMutationRollback(visibleHeaders: [first, second], loadedFolderHeaders: [first, second],
+                                                   navigation: navigation)
+        navigation.removeHeaders(ids: [first.id, second.id])
+        let restored = rollback.restore(navigation: navigation, excludingRemovedIDs: [first.id])
+        #expect(restored.headers == [second])
+        #expect(restored.loadedFolderHeaders == [second])
+        #expect(navigation.currentFolderHeaders == [second])
+        #expect(navigation.selectedMessageID != first.id)
+        #expect(navigation.bulkSelection == [second.id])
+    }
+
+    @Test("unified partial rollback distinguishes folders in the same mailbox")
+    func sameMailboxPartialRollback() {
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        let inbox = Folder(id: "inbox", name: "Inbox", role: .inbox)
+        let archive = Folder(id: "archive", name: "Archive", role: .archive)
+        let moved = Self.makeUnifiedItem(sourceID: source, folder: inbox, header: Self.makeHeader(id: "moved"))
+        let failed = Self.makeUnifiedItem(sourceID: source, folder: archive, header: Self.makeHeader(id: "failed"))
+        let rollback = UnifiedInboxMutationRollback(items: [moved, failed], selectedItemIDs: [moved.id, failed.id],
+                                                    navigation: MailNavigationState())
+        let restored = rollback.restoring(failedItemIDs: [failed.id], in: [])
+        #expect(restored.items == [failed])
+        #expect(restored.selectedItemIDs == [failed.id])
     }
 
     private static func makeUnifiedItem(

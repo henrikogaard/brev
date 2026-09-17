@@ -69,8 +69,9 @@ Anything not listed is roadmap, not release-blocker.
 - Per-row swipe actions, context menus, and bulk actions for
   read/unread, flag/unflag, archive, move, delete, with single-flight
   guards across every entry point (toolbar, menu, swipe, drag).
-- Native `.searchable` search bar with server-side search and a
-  local fallback (snippets, sender, recipients) on a 250 ms debounce.
+- Mailbox search on a 250 ms debounce, with progressive IMAP and Gmail results in folder
+  and unified lists. Shared status shows cached coverage, server completion,
+  partial failures and retry; the open reader stays stable while pages arrive.
 - Reading pane: lazy body load, automatic mark-as-read, attachment
   preview via Quick Look, RSVP banner for calendar invites,
   Previous / Next message keyboard navigation (`⌘↑` / `⌘↓`).
@@ -80,7 +81,10 @@ Anything not listed is roadmap, not release-blocker.
   sender/domain.
 - Threaded conversation view (Gmail / Apple Mail style) for backends
   that advertise `serverSideThreading`. Newest message auto-expands;
-  HTML bodies render through the shared safe-body pipeline.
+  HTML bodies render through the shared safe-body pipeline. ADR-0074's cross-folder
+  conversation foundation includes source-owned domain models, indexed Gmail
+  cache lookup and an IMAP reply-identifier cache index. References ingestion,
+  reader integration and consented remote discovery remain pending.
 - Compose: chip-style recipient fields with separate Cc/Bcc rows, recipient
   autocomplete from local Apple Contacts (read-only), a separate removable
   recent-recipient list, and available CardDAV sources; attachment picker with
@@ -89,6 +93,11 @@ Anything not listed is roadmap, not release-blocker.
   selection per account (with explicit "No signature" persistence),
   Save Draft, single-flight send/save, AI preview before apply.
 - Drag-and-drop messages onto sidebar folders.
+- Gmail Send Later keeps a durable local queue with frozen message content.
+  Outbox shows schedules for the selected account and supports time changes,
+  cancellation and explicit retry after uncertain delivery. Brev must be running
+  and connected to send; interrupted attempts require review rather than automatic
+  resend. Choosing a date during draft autosave does not submit a schedule.
 
 ### Calendar invites
 

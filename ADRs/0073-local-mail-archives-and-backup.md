@@ -1,6 +1,6 @@
 # ADR-0073: Durable local mail archives and portable backups
 
-- **Status:** Proposed
+- **Status:** Superseded by ADR-0076 and ADR-0077
 - **Date:** 2026-09-05
 - **Deciders:** Henrik
 - **Tracking:** #28

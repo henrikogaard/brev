@@ -1,6 +1,6 @@
 # ADR-0071: Native Microsoft Graph mail and shared mailboxes
 
-- **Status:** Proposed
+- **Status:** Superseded by ADR-0079
 - **Date:** 2026-09-05
 - **Deciders:** Henrik
 - **Amends on acceptance:** ADR-0040, ADR-0066

@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 @testable import BrevSettings
 import Foundation
 import Testing
@@ -225,6 +226,25 @@ struct RecentRecipientStoreTests {
         SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "personal")
 
         #expect(store.allRecipients().map(\.email) == ["grace@example.org"])
+    }
+
+    @Test("account-scoped cleanup revokes related-mail consent")
+    func accountScopedCleanupRevokesRelatedMailConsent() async throws {
+        let defaults = try makeDefaults()
+        let consent = RelatedConversationConsentStore(defaults: defaults)
+        consent.setAutoLoadEnabled(true, accountID: "personal")
+        consent.setAutoLoadEnabled(true, accountID: "work")
+        // Session grants from the explicit reader action live process-wide;
+        // account removal through a fresh store must still clear them.
+        RelatedConversationConsentStore.shared.grantForSession(accountID: "personal")
+        defer { RelatedConversationConsentStore.shared.revokeConsent(accountID: "personal") }
+
+        SettingsPersistenceStore(defaults: defaults).removeAccountScopedState(accountID: "personal")
+
+        #expect(await !consent.isRelatedConversationConsented(accountID: "personal"))
+        #expect(await !RelatedConversationConsentStore.shared
+            .isRelatedConversationConsented(accountID: "personal"))
+        #expect(await consent.isRelatedConversationConsented(accountID: "work"))
     }
 
     @Test("system contacts stay disabled until explicitly enabled")

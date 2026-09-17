@@ -241,3 +241,33 @@ dangling extended-flag documentation.
   `packages/BrevMail/Sources/BrevMail/MessageCommandPresentation.swift`,
   `MessageListView.swift`, `UnifiedInboxListView.swift`, `BrevMailRootView.swift`,
   `MoveToSheet.swift`
+
+## Implementation update, 2026-09-05
+
+A concrete MIME regression showed a 344-byte message becoming 347 bytes after
+text conversion. The original String-based export limitation is now addressed:
+
+- MailBackend exposes original-byte rawMessageData methods, with source-scoped
+  overloads. Backends without original-byte support throw unsupported.
+- The rawMessageBytes extended capability gates Save As. The existing
+  rawMessageSource flag still gates View Source and Show Headers.
+- Save As in the folder and unified lists fetches the owning message's original
+  bytes and writes them atomically as EML, preserving MIME attachments and content
+  encodings without rebuilding headers or body.
+- IMAP caches retain original literal bytes; Gmail caches distinguish original
+  BLOB values from legacy decoded TEXT. The local index records original-byte
+  provenance in schema 4 as described in ADR-0030. Legacy cache content remains
+  readable but is not exported as if it were byte-identical.
+- Cached source remains available offline. Fetching missing original bytes uses
+  the existing explicit source-read operation and adds no endpoint or permission.
+
+## Full-folder export, 2026-09-06
+
+File and Settings folder export reuse original-byte reads with background folder
+enumeration. IMAP enumeration now follows server pages or throws, matching the
+Gmail adapter, without changing the active folder or substituting partial cached
+pages. Normal message-list browsing keeps its cache-first/offline behavior.
+Single-message cached source reads remain available offline. This prevents an
+offline cache boundary from publishing a successful but incomplete MBOX/EML
+folder export. No new provider endpoint, permission, or archive storage model is
+introduced; exported files are user-selected snapshots, not a new local mailbox.

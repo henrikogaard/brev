@@ -280,6 +280,33 @@ struct AIWriterSectionMacSnapshotTests {
         )
     }
 
+    /// ADR-0078: the Folder Sync "Search inside attachments" toggle only
+    /// renders when the backend advertises `.localAttachmentIndex`.
+    @Test("Folder Sync attachment indexing toggle follows the capability", arguments: ["light", "dark"])
+    func folderSyncAttachmentIndexing(_ mode: String) {
+        guard #available(macOS 26.0, *) else { return }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let defaults = UserDefaults(suiteName: "FolderSyncAttach-" + UUID().uuidString)!
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 11),
+            Folder(id: "archive", name: "Archive", role: .archive)
+        ]
+        let sourceID = MailSourceID(accountID: "account", mailboxID: "personal")
+        capture(PerFolderSyncSection(folders: folders,
+                                     sourceID: sourceID,
+                                     settings: .defaults, settingsStore: store,
+                                     supportsAttachmentIndexing: true),
+                theme: theme, name: "folders-attachment-index-" + mode,
+                size: CGSize(width: 700, height: 760))
+        capture(PerFolderSyncSection(folders: folders,
+                                     sourceID: sourceID,
+                                     settings: .defaults, settingsStore: store,
+                                     supportsAttachmentIndexing: false),
+                theme: theme, name: "folders-attachment-index-hidden-" + mode,
+                size: CGSize(width: 700, height: 560))
+    }
+
     private func capture<V: View>(_ view: V, theme: BrevTheme, name: String, size: CGSize) {
         let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme)
             .tint(theme.accent.color).environment(

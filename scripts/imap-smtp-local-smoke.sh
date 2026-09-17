@@ -385,6 +385,9 @@ struct BrevIMAPSMTPLocalSmoke {
         else {
             throw LocalSmokeError.unexpected("Expected source-scoped first page to match unscoped first page.")
         }
+        // Header-cache writes are coalesced (ADR-0030 perf pass); a relaunch
+        // sees them only after the lifecycle flush the app performs on quit.
+        await backend.flushLocalCaches()
         let messageListingOutageConnector = makeConnector(failMessageListing: true)
         guard let cachedMessagePageBackend = try await messageListingOutageConnector.restore(connected.account) else {
             throw LocalSmokeError.unexpected("Expected cached message-page restore when message listing is temporarily unavailable.")

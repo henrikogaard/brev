@@ -118,7 +118,7 @@ public actor InMemoryIMAPMessageSourceCache: IMAPMessageSourceCache {
         sourcesByMessageByAccount[accountID, default: [:]]
             .values
             .reduce(0) { total, source in
-                total + source.rawMessage.utf8.count
+                total + (source.rawMessageData?.count ?? source.rawMessage.utf8.count)
             }
     }
 

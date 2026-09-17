@@ -26,7 +26,6 @@ enum MailPerformanceDiagnostics {
 
     enum SearchPath: String, Sendable {
         case cacheOnly
-        case cacheThenServerHit
         case server
         case cacheFallback
         case failure
@@ -185,6 +184,47 @@ enum MailPerformanceDiagnostics {
     ) {
         logger.debug(
             "mail.body.cacheRead hit=\(hit, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
+    static func logHeaderCacheFlush(
+        folderCount: Int,
+        totalBytes: Int,
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.headers.cacheFlush folders=\(folderCount, privacy: .public) bytes=\(totalBytes, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
+    static func logThreadResolution(
+        inputCount: Int,
+        hit: Bool,
+        update: String,
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.threads.resolve inputCount=\(inputCount, privacy: .public) hit=\(hit, privacy: .public) update=\(update, privacy: .public) durationMs=\(durationMilliseconds, privacy: .public)"
+        )
+    }
+
+    /// Attachment-index diagnostics (ADR-0078 §7): counts, byte sizes, and
+    /// durations only — never attachment names or extracted text.
+    static func logAttachmentIndex(
+        count: Int,
+        bytes: Int,
+        durationMs: Int
+    ) {
+        logger.debug(
+            "mail.attachmentIndex message processed attachments=\(count, privacy: .public) bytes=\(bytes, privacy: .public) durationMs=\(durationMs, privacy: .public)"
+        )
+    }
+
+    static func logSessionQueueWait(
+        durationMilliseconds: Int
+    ) {
+        logger.debug(
+            "mail.imap.sessionQueueWait durationMs=\(durationMilliseconds, privacy: .public)"
         )
     }
 

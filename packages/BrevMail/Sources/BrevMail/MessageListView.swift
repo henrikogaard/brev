@@ -54,6 +54,8 @@ public struct MessageListView: View {
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
+    /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
+    private let canFileLocally: Bool
     private let accountOwnedMailboxEmails: Set<String>
     private let folder: Folder?
     private let folderDisplayName: String?
@@ -93,11 +95,14 @@ public struct MessageListView: View {
     @State private var activeLoadMoreRequest: MessageListPageRequest?
     @State private var activeSearchRequest: MessageListSearchRequest?
     @State private var activeAttachmentSearchQuery: SearchQuery?
+    @State private var searchProgress = MailSearchProgressState()
+    @State private var searchWork = MailSearchTaskOwner()
     @State private var nextMutationRequestID = 0
     @State private var activeMutationRequest: MessageListMutationRequest?
     @State private var collapsedDateSectionIDs: Set<MessageListDateSection.ID> = []
     @State private var expandedThreadIDs: Set<String> = []
     @State private var pendingDeleteHeaderID: MessageHeader.ID?
+    @State private var isBulkPermanentDeletePresented = false
     @State private var pendingBlockSenderHeader: MessageHeader?
     @State private var pendingSnoozeHeaders: [MessageHeader] = []
     @State private var searchScope: SearchScope = .all
@@ -146,6 +151,7 @@ public struct MessageListView: View {
         navigation: MailNavigationState,
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
+        canFileLocally: Bool = false,
         accountOwnedMailboxEmails: Set<String> = [],
         folder: Folder?,
         folderDisplayName: String? = nil,
@@ -164,6 +170,7 @@ public struct MessageListView: View {
         _localMessageWorkflowState = localMessageWorkflowState
         self.backend = backend
         self.sourceID = sourceID
+        self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmails = accountOwnedMailboxEmails
         self.folder = folder
         self.folderDisplayName = folderDisplayName
@@ -215,12 +222,16 @@ public struct MessageListView: View {
                     searchScopeBar
                 }
             }
-            if let query = activeAttachmentSearchQuery,
-               MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
-                   query: query,
-                   isLoading: isLoading
-               ) {
-                AttachmentSearchDisclosureView()
+            if !trimmedSearchText.isEmpty, searchProgress.request != nil {
+                MailSearchStatusView(
+                    progress: searchProgress,
+                    checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+                        queries: [activeAttachmentSearchQuery].compactMap { $0 },
+                        isLoading: searchProgress.isSearching
+                    )
+                ) {
+                    Task { await reloadForSearchChange() }
+                }
             }
             Group {
                 if folder != nil {
@@ -266,15 +277,8 @@ public struct MessageListView: View {
             refreshPinnedMessageIDSet()
             scheduleDebouncedThreadCountsRebuild()
         }
-        .task(id: navigation.searchText) { await reloadForSearchChange() }
-        // Consolidated search-filter task: when the user changes scope,
-        // execution, or all-folders during an active search, a single
-        // composite-keyed task fires instead of three separate ones each
-        // doing their own debounce wait and search-plan computation.
-        .task(id: searchFilterKey) {
-            guard !trimmedSearchText.isEmpty else { return }
-            await reloadForSearchChange()
-        }
+        .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
+        .onDisappear { searchWork.cancel() }
         .onChange(of: groupByThread) {
             activeMutationRequest = nil
             // Cancel any pending debounced rebuild so a stale capture cannot
@@ -326,10 +330,25 @@ public struct MessageListView: View {
             }
         } message: {
             if let header = pendingDeleteHeader {
-                Text("Delete \"\(header.subject)\"?", bundle: .module)
+                if isPermanentDelete(for: header) {
+                    Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
+                } else {
+                    Text("Delete \"\(header.subject)\"?", bundle: .module)
+                }
             } else {
                 Text("Delete this message?", bundle: .module)
             }
+        }
+        .alert(String(localized: "Permanently Delete?", bundle: .module),
+               isPresented: $isBulkPermanentDeletePresented) {
+            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                Task { await bulkDelete(confirmedPermanent: true) }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text(MailUndoableDelete.permanentDeleteMessage(
+                count: navigation.bulkSelection.count, folders: allFolders
+            ))
         }
         .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
             Button(String(localized: "Block", bundle: .module), role: .destructive) {
@@ -720,6 +739,7 @@ public struct MessageListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: nil,
+            matchedAttachmentName: matchedAttachmentName(for: header.id),
             isBlockedSender: blockedSendersSettings.isBlocked(header.from.email),
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
@@ -824,6 +844,8 @@ public struct MessageListView: View {
                 from: allFolders,
                 currentFolderID: folder?.id
             ).isEmpty,
+            canFileLocally: canFileLocally
+                && backend.account.id != LocalMailBackend.accountID,
             junkActionTitle: MessageCommandPresentation.junkActionTitle(
                 currentFolder: folder,
                 capabilities: backend.capabilities,
@@ -1054,6 +1076,28 @@ public struct MessageListView: View {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .copyToLocalFolder:
+            Button {
+                navigation.presentedSheet = .copyToLocal(
+                    messageIDs: [header.id],
+                    sourceID: sourceID,
+                    fromFolderID: folder?.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .moveToLocalFolder:
+            Button {
+                navigation.presentedSheet = .moveToLocal(
+                    messageIDs: [header.id],
+                    sourceID: sourceID,
+                    fromFolderID: folder?.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .setJunk:
             Button {
                 let isInSpam = folder?.role == .spam
@@ -1218,20 +1262,31 @@ public struct MessageListView: View {
         #if canImport(AppKit)
         Task {
             do {
-                let rawSource: String
+                let rawMessageData: Data
                 if let sourceID {
-                    rawSource = try await backend.rawSource(for: header.id, sourceID: sourceID)
+                    rawMessageData = try await backend.rawMessageData(for: header.id, sourceID: sourceID)
                 } else {
-                    rawSource = try await backend.rawSource(for: header.id)
+                    rawMessageData = try await backend.rawMessageData(for: header.id)
                 }
                 _ = try await MainActor.run {
-                    try MessageEMLExport.presentSavePanel(header: header, rawSource: rawSource)
+                    try MessageEMLExport.presentSavePanel(header: header, rawMessageData: rawMessageData)
                 }
             } catch {
                 mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
             }
         }
         #endif
+    }
+
+    /// Attachment-content match name for a search row (ADR-0078 §5); nil when
+    /// no search is active or the hit came from the message itself.
+    private func matchedAttachmentName(for messageID: MessageHeader.ID) -> String? {
+        guard !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let progressSource = sourceID
+            ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        return searchProgress.matchedAttachmentName(for: messageID, source: progressSource)
     }
 
     @ViewBuilder
@@ -1290,7 +1345,11 @@ public struct MessageListView: View {
         case .delete:
             Button(role: .destructive) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await deleteRow(header: header) }
+                if isPermanentDelete(for: header) {
+                    pendingDeleteHeaderID = header.id
+                } else {
+                    Task { await deleteRow(header: header) }
+                }
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
@@ -1501,7 +1560,7 @@ public struct MessageListView: View {
 
     private func bulkArchive() async {
         guard let archive = archiveFolder else { return }
-        await bulkMove(to: archive)
+        await bulkMove(to: archive, undoDescription: String(localized: "Archived", bundle: .module))
     }
 
     // MARK: - Drag payload
@@ -1523,7 +1582,6 @@ public struct MessageListView: View {
             now: now
         )
         let key = MessageListPresentationSnapshotCache.Key(
-            headers: headers,
             groupByThread: groupByThread,
             pinnedMessageIDs: pinnedMessageIDs,
             mailboxFilter: navigation.mailboxFilter,
@@ -1543,7 +1601,9 @@ public struct MessageListView: View {
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
             localeIdentifier: locale.identifier
         )
-        return presentationSnapshotCache.snapshot(for: key) {
+        return presentationSnapshotCache.snapshot(for: key, headers: headers) {
+            let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
+            defer { MailUIPerformanceDiagnostics.endInterval(interval) }
             let presentationHeaders = MessageListSortPolicy.sorted(
                 visibleHeaders(for: workflowVisibleHeaders(from: headers, now: now, calendar: calendar)),
                 by: mailboxSortOrder,
@@ -1997,7 +2057,7 @@ public struct MessageListView: View {
         MessageListFolderLoadStartPolicy.canStartFolderLoad(
             request: request,
             activeRequest: activeFolderLoadRequest,
-            isBlocked: isWorkBlocked
+            isBlocked: isWorkBlocked || undoQueue?.isUndoing == true
         )
     }
 
@@ -2021,7 +2081,7 @@ public struct MessageListView: View {
         MessageListPageStartPolicy.canStartPageLoad(
             request: request,
             activeRequest: activeLoadMoreRequest,
-            isBlocked: isWorkBlocked
+            isBlocked: isWorkBlocked || undoQueue?.isUndoing == true
         )
     }
 
@@ -2032,6 +2092,11 @@ public struct MessageListView: View {
     }
 
     private func reloadForSearchChange() async {
+        await searchWork.run { await performSearchChange() }
+    }
+
+    private func performSearchChange() async {
+        guard !Task.isCancelled else { return }
         guard case .search(let query) = MessageListReloadPolicy.operation(
             forSearchText: navigation.searchText
         ) else {
@@ -2056,6 +2121,8 @@ public struct MessageListView: View {
         }
         needsReloadAfterWorkUnblocks = false
         activeSearchRequest = request
+        let progressSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let progressRequest = searchProgress.begin(sources: [progressSource])
         activeAttachmentSearchQuery = nil
         isLoading = false
         isLoadingMore = false
@@ -2067,15 +2134,15 @@ public struct MessageListView: View {
         let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Search")
         defer { MailUIPerformanceDiagnostics.endInterval(interval) }
         guard await MessageListSearchDebouncePolicy.waitForDebounce() else {
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
-        guard canApplySearchResponse(request) else {
-            finishSearch(request)
+        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+            finishSearch(request, progressRequest: progressRequest)
             return
         }
         isLoading = true
-        activeAttachmentSearchQuery = searchPlan.query.hasAttachments == true
+        activeAttachmentSearchQuery = searchPlan.query.hasAttachments != nil
             && searchPlan.query.execution != .cacheOnly
             ? searchPlan.query
             : nil
@@ -2083,9 +2150,21 @@ public struct MessageListView: View {
         mutationErrorStatus = nil
         loadMoreErrorStatus = nil
         do {
-            let results = try await search(searchPlan.query)
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            let results = try await MailSearchExecution
+                .run(backend: backend, query: searchPlan.query, sourceID: sourceID) { update in
+                    await MainActor.run {
+                        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request),
+                              searchProgress.apply(
+                                  update,
+                                  source: progressSource,
+                                  request: progressRequest
+                              ) else { return }
+                        headers = searchProgress.headers(for: progressSource)
+                        navigation.installPartialSearchHeaders(navigationHeaders(for: headers))
+                    }
+                }
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
             headers = results
@@ -2100,13 +2179,14 @@ public struct MessageListView: View {
                 skippedSourceCount: 0,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         } catch is CancellationError {
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            searchProgress.fail(source: progressSource, request: progressRequest)
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         } catch {
             if MessageListSearchFallbackPolicy.shouldApplyLocalFallback(
                 for: error,
@@ -2116,7 +2196,8 @@ public struct MessageListView: View {
                 // fall back to the already-loaded page without alarming the user.
                 let resultCount = applyLocalSearchFallback(
                     searchQuery: searchPlan.query,
-                    request: request
+                    request: request,
+                    progressRequest: progressRequest
                 )
                 MailUIPerformanceDiagnostics.logListSearchFinished(
                     surface: .messageList,
@@ -2127,18 +2208,20 @@ public struct MessageListView: View {
                 )
                 return
             }
-            guard canApplySearchResponse(request) else {
-                finishSearch(request)
+            guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+                finishSearch(request, progressRequest: progressRequest)
                 return
             }
-            errorMessage = MessageListPresentation.searchErrorMessage(for: error)
+            searchProgress.fail(source: progressSource, request: progressRequest)
+            errorMessage = searchProgress.headers(for: progressSource).isEmpty ? MessageListPresentation
+                .searchErrorMessage(for: error) : nil
             MailUIPerformanceDiagnostics.logListFailed(
                 surface: .messageList,
                 path: .search,
                 error: error,
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
-            finishSearch(request)
+            finishSearch(request, progressRequest: progressRequest)
         }
     }
 
@@ -2149,22 +2232,29 @@ public struct MessageListView: View {
     @discardableResult
     private func applyLocalSearchFallback(
         searchQuery: SearchQuery,
-        request: MessageListSearchRequest
+        request: MessageListSearchRequest,
+        progressRequest: UUID
     ) -> Int {
-        guard canApplySearchResponse(request) else {
-            finishSearch(request)
+        guard !Task.isCancelled, searchProgress.request == progressRequest, canApplySearchResponse(request) else {
+            finishSearch(request, progressRequest: progressRequest)
             return 0
         }
         let results = MessageSearchFallback.filteredHeaders(
             in: loadedFolderHeaders,
             searchQuery: searchQuery
         )
+        let progressSource = sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        searchProgress.apply(
+            MailSearchUpdate(headers: results, coverage: .cached, replacesResults: true, isComplete: true),
+            source: progressSource,
+            request: progressRequest
+        )
         headers = results
         navigation.replaceCurrentFolderHeaders(
             navigationHeaders(for: results),
             selectFirstIfNeeded: selectsFirstMessageWhenNeeded
         )
-        finishSearch(request)
+        finishSearch(request, progressRequest: progressRequest)
         return results.count
     }
 
@@ -2172,11 +2262,14 @@ public struct MessageListView: View {
         MessageListSearchStartPolicy.canStartSearch(
             request: request,
             activeRequest: activeSearchRequest,
-            isBlocked: isWorkBlocked
+            replacesActiveRequest: true,
+            isBlocked: isWorkBlocked || undoQueue?.isUndoing == true
         )
     }
 
-    private func finishSearch(_ request: MessageListSearchRequest) {
+    private func finishSearch(_ request: MessageListSearchRequest, progressRequest: UUID) {
+        guard searchProgress.request == progressRequest else { return }
+        searchProgress.finish(request: progressRequest)
         guard activeSearchRequest == request else { return }
         activeSearchRequest = nil
         activeAttachmentSearchQuery = nil
@@ -2203,6 +2296,8 @@ public struct MessageListView: View {
         guard canStartMutation() else { return }
         let newValue = !header.isRead
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         navigation.updateHeader(id: header.id) { $0.isRead = newValue }
@@ -2211,11 +2306,14 @@ public struct MessageListView: View {
         }
         do {
             try await setRead(newValue, for: [header.id])
+            undoQueue?.registerFlag(.read, originals: [header], newValue: newValue,
+                                    sourceID: workflowSourceID, backend: backend, lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationUpdated(messageIDs: [header.id])
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2231,6 +2329,8 @@ public struct MessageListView: View {
         guard canStartMutation() else { return }
         let newValue = !header.isFlagged
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         navigation.updateHeader(id: header.id) { $0.isFlagged = newValue }
@@ -2239,11 +2339,14 @@ public struct MessageListView: View {
         }
         do {
             try await setFlagged(newValue, for: [header.id])
+            undoQueue?.registerFlag(.flagged, originals: [header], newValue: newValue,
+                                    sourceID: workflowSourceID, backend: backend, lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationUpdated(messageIDs: [header.id])
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2262,6 +2365,8 @@ public struct MessageListView: View {
     private func setJunk(_ isJunk: Bool, for header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
         mutationErrorStatus = nil
@@ -2269,7 +2374,9 @@ public struct MessageListView: View {
         navigation.removeHeaders(ids: ids)
         removeCachedHeaders(ids: ids)
         do {
-            try await setJunkOrMoveToFallbackFolder(isJunk, for: header)
+            let action = try await MailJunkUndo.perform(isJunk, header: header, folders: allFolders,
+                                                        sourceID: workflowSourceID, backend: backend, lease: undoLease)
+            undoQueue?.registerBatch([action], description: MailJunkUndo.description(isJunk), lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2286,28 +2393,6 @@ public struct MessageListView: View {
         }
     }
 
-    private func setJunkOrMoveToFallbackFolder(_ isJunk: Bool, for header: MessageHeader) async throws {
-        do {
-            if let sourceID {
-                try await backend.setJunk(isJunk, for: [header.id], sourceID: sourceID)
-            } else {
-                try await backend.setJunk(isJunk, for: [header.id])
-            }
-        } catch MailBackendError.notSupported {
-            guard let fallbackFolder = MessageCommandPresentation.junkFallbackFolder(
-                isJunk: isJunk,
-                folders: allFolders
-            ) else {
-                throw MailBackendError.notSupported(backend.capabilities)
-            }
-            if let sourceID {
-                try await backend.move(messageIDs: [header.id], to: fallbackFolder, sourceID: sourceID)
-            } else {
-                try await backend.move(messageIDs: [header.id], to: fallbackFolder)
-            }
-        }
-    }
-
     /// Blocks the sender of a message via the backend's block-sender API.
     ///
     /// Requires prior user confirmation (the alert uses `.destructive`
@@ -2315,6 +2400,8 @@ public struct MessageListView: View {
     private func blockSender(email: String, header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
         mutationErrorStatus = nil
@@ -2324,6 +2411,7 @@ public struct MessageListView: View {
             } else {
                 try await backend.blockSender(email: email)
             }
+            undoQueue?.discardPendingUndo(lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2343,21 +2431,38 @@ public struct MessageListView: View {
         }
     }
 
+    /// A delete is permanent when the source has no Trash (local folders,
+    /// ADR-0077) or the message is already inside Trash — confirm first.
+    private func isPermanentDelete(for header: MessageHeader) -> Bool {
+        let origin = allFolders.first { $0.id == header.folderID }
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+        return MailUndoableDelete.isPermanentDelete(from: origin, folders: allFolders)
+    }
+
     private func deleteRow(header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: ids)
         removeCachedHeaders(ids: ids)
         do {
-            try await delete(messageIDs: [header.id])
+            let originalFolder = allFolders.first { $0.id == header.folderID }
+                ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+            let receipt = try await MailUndoableDelete.perform(
+                messageIDs: [header.id], from: originalFolder, folders: allFolders,
+                sourceID: workflowSourceID, backend: backend
+            )
+            undoQueue?.registerMoves([receipt], description: String(localized: "Deleted", bundle: .module), lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationRemoved(messageIDs: [header.id])
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2371,21 +2476,29 @@ public struct MessageListView: View {
 
     private func archiveRow(header: MessageHeader) async {
         guard canStartMutation(),
-              let archive = archiveFolder
+              let archive = archiveFolder, header.folderID != archive.id
         else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: ids)
         removeCachedHeaders(ids: ids)
         do {
-            try await move(messageIDs: [header.id], to: archive)
+            let originalFolder = allFolders.first { $0.id == header.folderID }
+                ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+            let receipt = try await backend.moveWithUndo(
+                messageIDs: [header.id], from: originalFolder, to: archive, sourceID: workflowSourceID
+            )
+            undoQueue?.registerMoves([receipt], description: String(localized: "Archived", bundle: .module), lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationRemoved(messageIDs: [header.id])
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2398,20 +2511,32 @@ public struct MessageListView: View {
     }
 
     private func moveRow(header: MessageHeader, to destination: Folder) async {
-        guard canStartMutation() else { return }
+        guard header.folderID != destination.id, canStartMutation() else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         let ids: Set<MessageHeader.ID> = [header.id]
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: ids)
         removeCachedHeaders(ids: ids)
         do {
-            try await move(messageIDs: [header.id], to: destination)
+            let originalFolder = allFolders.first { $0.id == header.folderID }
+                ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+            let receipt = try await backend.moveWithUndo(
+                messageIDs: [header.id], from: originalFolder, to: destination, sourceID: workflowSourceID
+            )
+            undoQueue?.registerMoves(
+                [receipt],
+                description: String(localized: "Moved to \(destination.name)", bundle: .module),
+                lease: undoLease
+            )
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationRemoved(messageIDs: [header.id])
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2436,7 +2561,11 @@ public struct MessageListView: View {
         let ids = Array(navigation.bulkSelection)
         guard !ids.isEmpty, canStartMutation() else { return }
         let idSet = Set(ids)
+        let originals = headers.filter { idSet.contains($0.id) }
+        guard originals.contains(where: { $0.isRead != value }) else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         for id in idSet {
@@ -2446,7 +2575,14 @@ public struct MessageListView: View {
             $0.isRead = value
         }
         do {
+            guard Set(originals.map(\.id)) == idSet else {
+                throw MailBackendError.backendSpecific(message: String(
+                    localized: "The selection changed. Select the messages again.", bundle: .module
+                ))
+            }
             try await setRead(value, for: ids)
+            undoQueue?.registerFlag(.read, originals: originals, newValue: value,
+                                    sourceID: workflowSourceID, backend: backend, lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2457,8 +2593,10 @@ public struct MessageListView: View {
             // (The related feature request). The next folder-list refresh from the
             // backend will correct any drift.
             if let currentFolderID = folder?.id {
-                onUnreadCountChanged(currentFolderID, value ? -ids.count : ids.count)
+                let changedCount = originals.filter { $0.isRead != value }.count
+                onUnreadCountChanged(currentFolderID, value ? -changedCount : changedCount)
             }
+
             await notifyMutationUpdated(messageIDs: ids)
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2474,7 +2612,11 @@ public struct MessageListView: View {
         let ids = Array(navigation.bulkSelection)
         guard !ids.isEmpty, canStartMutation() else { return }
         let idSet = Set(ids)
+        let originals = headers.filter { idSet.contains($0.id) }
+        guard originals.contains(where: { $0.isFlagged != value }) else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         for id in idSet {
@@ -2484,12 +2626,20 @@ public struct MessageListView: View {
             $0.isFlagged = value
         }
         do {
+            guard Set(originals.map(\.id)) == idSet else {
+                throw MailBackendError.backendSpecific(message: String(
+                    localized: "The selection changed. Select the messages again.", bundle: .module
+                ))
+            }
             try await setFlagged(value, for: ids)
+            undoQueue?.registerFlag(.flagged, originals: originals, newValue: value,
+                                    sourceID: workflowSourceID, backend: backend, lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
             finishMutation(request)
+
             await notifyMutationUpdated(messageIDs: ids)
         } catch {
             guard canApplyMutationResponse(request) else {
@@ -2501,18 +2651,42 @@ public struct MessageListView: View {
         }
     }
 
-    private func bulkMove(to destination: Folder) async {
-        let ids = Array(navigation.bulkSelection)
-        guard !ids.isEmpty, canStartMutation() else { return }
+    private func bulkMove(to destination: Folder, undoDescription: String? = nil) async {
+        let selectedIDs = navigation.bulkSelection
+        guard !selectedIDs.isEmpty, canStartMutation() else { return }
+        let selectedHeaders = headers.filter { selectedIDs.contains($0.id) }
+        guard Set(selectedHeaders.map(\.id)) == selectedIDs else {
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: MailBackendError.backendSpecific(
+                message: String(localized: "The selection changed. Select the messages again.", bundle: .module)
+            ))
+            return
+        }
+        let originals = selectedHeaders.filter { $0.folderID != destination.id }
+        let ids = originals.map(\.id)
         let idSet = Set(ids)
+        guard !ids.isEmpty else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: idSet)
         removeCachedHeaders(ids: idSet)
         navigation.bulkSelection.removeAll()
+        var receipts: [MailMoveUndo?] = []
+        var completedIDs: Set<MessageHeader.ID> = []
+        defer {
+            undoQueue?.registerMoves(receipts, description: undoDescription ?? String(localized: "Moved", bundle: .module),
+                                     lease: undoLease)
+        }
         do {
-            try await move(messageIDs: ids, to: destination)
+            for (folderID, group) in Dictionary(grouping: originals, by: \.folderID).sorted(by: { $0.key < $1.key }) {
+                if folderID == destination.id { continue }
+                let origin = allFolders.first { $0.id == folderID } ?? Folder(id: folderID, name: folderID, role: .custom)
+                try await receipts.append(backend.moveWithUndo(messageIDs: group.map(\.id), from: origin,
+                                                               to: destination, sourceID: workflowSourceID))
+                completedIDs.formUnion(group.map(\.id))
+            }
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2522,33 +2696,64 @@ public struct MessageListView: View {
             // folder loses the unread count, the destination gains it
             // (The related feature request). A future folder-list refresh from the
             // backend will correct any drift.
-            if let currentFolderID = folder?.id, currentFolderID != destination.id {
-                onUnreadCountChanged(currentFolderID, -ids.count)
+            if !backend.capabilities.contains(.labels) {
+                let unread = originals.filter { !$0.isRead && $0.folderID != destination.id }
+                for (folderID, group) in Dictionary(grouping: unread, by: \.folderID) {
+                    onUnreadCountChanged(folderID, -group.count)
+                }
+                onUnreadCountChanged(destination.id, unread.count)
             }
-            onUnreadCountChanged(destination.id, ids.count)
             await notifyMutationRemoved(messageIDs: ids)
         } catch {
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
             }
-            handleMutationFailure(error, rollback: rollback)
+            let restored = rollback.restore(navigation: navigation, excludingRemovedIDs: completedIDs)
+            headers = restored.headers
+            loadedFolderHeaders = restored.loadedFolderHeaders
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
             finishMutation(request)
+            if !completedIDs.isEmpty { await notifyMutationRemoved(messageIDs: Array(completedIDs)) }
         }
     }
 
-    private func bulkDelete() async {
+    private func bulkDelete(confirmedPermanent: Bool = false) async {
         let ids = Array(navigation.bulkSelection)
         guard !ids.isEmpty, canStartMutation() else { return }
         let idSet = Set(ids)
+        let originals = headers.filter { idSet.contains($0.id) }
+        if !confirmedPermanent,
+           originals.contains(where: { isPermanentDelete(for: $0) }) {
+            isBulkPermanentDeletePresented = true
+            return
+        }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: idSet)
         removeCachedHeaders(ids: idSet)
         navigation.bulkSelection.removeAll()
+        var receipts: [MailMoveUndo?] = []
+        var completedIDs: Set<MessageHeader.ID> = []
+        defer {
+            undoQueue?.registerMoves(receipts, description: String(localized: "Deleted", bundle: .module), lease: undoLease)
+        }
         do {
-            try await delete(messageIDs: ids)
+            guard Set(originals.map(\.id)) == idSet else {
+                throw MailBackendError.backendSpecific(message: String(
+                    localized: "The selection changed. Select the messages again.", bundle: .module
+                ))
+            }
+            for (folderID, group) in Dictionary(grouping: originals, by: \.folderID).sorted(by: { $0.key < $1.key }) {
+                let origin = allFolders.first { $0.id == folderID } ?? Folder(id: folderID, name: folderID, role: .custom)
+                try await receipts.append(MailUndoableDelete.perform(messageIDs: group.map(\.id), from: origin,
+                                                                     folders: allFolders, sourceID: workflowSourceID,
+                                                                     backend: backend))
+                completedIDs.formUnion(group.map(\.id))
+            }
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2560,8 +2765,12 @@ public struct MessageListView: View {
                 finishMutation(request)
                 return
             }
-            handleMutationFailure(error, rollback: rollback)
+            let restored = rollback.restore(navigation: navigation, excludingRemovedIDs: completedIDs)
+            headers = restored.headers
+            loadedFolderHeaders = restored.loadedFolderHeaders
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
             finishMutation(request)
+            if !completedIDs.isEmpty { await notifyMutationRemoved(messageIDs: Array(completedIDs)) }
         }
     }
 
@@ -2707,7 +2916,7 @@ public struct MessageListView: View {
     private func canStartMutation() -> Bool {
         MessageListMutationStartPolicy.canStartMutation(
             activeRequest: activeMutationRequest,
-            isBlocked: isWorkBlocked
+            isBlocked: isWorkBlocked || undoQueue?.isUndoing == true
         )
     }
 
@@ -2817,13 +3026,6 @@ public struct MessageListView: View {
         return try await backend.messages(in: folder, pageToken: pageToken)
     }
 
-    private func search(_ query: SearchQuery) async throws -> [MessageHeader] {
-        if let sourceID {
-            return try await backend.search(query, sourceID: sourceID)
-        }
-        return try await backend.search(query)
-    }
-
     /// Adds or removes one provider label on a message, optimistically
     /// updating the row and rolling back on failure like flag toggles.
     private func setLabel(
@@ -2834,6 +3036,8 @@ public struct MessageListView: View {
     ) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
+        let undoLease = undoQueue?.beginMutation(navigation: navigation)
+        defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         let rollback = makeMutationRollback()
         mutationErrorStatus = nil
         let mutate: (inout MessageHeader) -> Void = { header in
@@ -2847,6 +3051,7 @@ public struct MessageListView: View {
         updateCachedHeaders(ids: [header.id], mutate: mutate)
         do {
             try await service.setLabels([label], isEnabled: isEnabled, for: [header.id], sourceID: sourceID)
+            undoQueue?.discardPendingUndo(lease: undoLease)
             guard canApplyMutationResponse(request) else {
                 finishMutation(request)
                 return
@@ -2876,22 +3081,6 @@ public struct MessageListView: View {
             try await backend.setFlagged(isFlagged, for: messageIDs, sourceID: sourceID)
         } else {
             try await backend.setFlagged(isFlagged, for: messageIDs)
-        }
-    }
-
-    private func move(messageIDs: [String], to folder: Folder) async throws {
-        if let sourceID {
-            try await backend.move(messageIDs: messageIDs, to: folder, sourceID: sourceID)
-        } else {
-            try await backend.move(messageIDs: messageIDs, to: folder)
-        }
-    }
-
-    private func delete(messageIDs: [String]) async throws {
-        if let sourceID {
-            try await backend.delete(messageIDs: messageIDs, sourceID: sourceID)
-        } else {
-            try await backend.delete(messageIDs: messageIDs)
         }
     }
 }
@@ -3245,6 +3434,9 @@ struct MessageListRow: View {
     let density: MailboxListDensity
     let showsAbsoluteArrivalTime: Bool
     let sourceContext: String?
+    /// Attachment name when this row's search hit came from attachment
+    /// content only (ADR-0078 §5); nil renders no badge.
+    let matchedAttachmentName: String?
     let isBlockedSender: Bool
     let hasFollowUp: Bool
     let followUpDue: Bool
@@ -3274,6 +3466,7 @@ struct MessageListRow: View {
         density: MailboxListDensity,
         showsAbsoluteArrivalTime: Bool,
         sourceContext: String?,
+        matchedAttachmentName: String? = nil,
         isBlockedSender: Bool,
         hasFollowUp: Bool,
         followUpDue: Bool = false,
@@ -3296,6 +3489,7 @@ struct MessageListRow: View {
         self.density = density
         self.showsAbsoluteArrivalTime = showsAbsoluteArrivalTime
         self.sourceContext = sourceContext
+        self.matchedAttachmentName = matchedAttachmentName
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
         self.followUpDue = followUpDue
@@ -3387,6 +3581,16 @@ struct MessageListRow: View {
                     .foregroundStyle(isSelected ? selectionPalette.text
                         .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
                     .lineLimit(1)
+                if let matchedAttachmentName {
+                    HStack(spacing: BrevSpacing.xxs) {
+                        Image(systemName: "paperclip")
+                        Text("Found in \(matchedAttachmentName)", bundle: .module)
+                    }
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.accent.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                }
                 if contentPresentation.showsSourceContext, let sourceContext {
                     Text(sourceContext)
                         .font(fontFamily.font(size: max(12, textSize.captionPointSize)))

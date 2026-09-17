@@ -62,6 +62,10 @@ public final class AppSession {
 
     public let accountStore: any AccountStore
     public let tokenStore: any TokenStore
+    /// Owns the macOS background fetch cadence while the "Keep checking mail
+    /// in the background" setting is on (ADR-0075). Inert until the app
+    /// target calls `start(interval:)`.
+    public let backgroundMail: BackgroundMailCoordinator
     private let themeDefaults: UserDefaults
 
     public struct LoginResult {
@@ -189,16 +193,32 @@ public final class AppSession {
         imapAccountDiscoveryCoordinator != nil
     }
 
+    /// The synthetic "On My Mac" / "On My iPhone" backend (ADR-0077), always
+    /// registered when constructed — hidden from `visibleBackends` until it
+    /// has at least one folder.
+    public let localBackend: LocalMailBackend?
+
+    /// Local folders, refreshed by `refreshLocalFolders()`.
+    public private(set) var localFolders: [Folder] = []
+    /// Whether the local account has folders — drives `visibleBackends`.
+    public private(set) var hasLocalFolders = false
+
     public var isSigningOut: Bool {
         !signingOutAccountIDs.isEmpty
     }
 
     public var visibleBackends: [any MailBackend] {
-        backends.values.sorted {
-            $0.account.emailAddress.localizedCaseInsensitiveCompare(
-                $1.account.emailAddress
-            ) == .orderedAscending
-        }
+        backends.values
+            .filter {
+                // ADR-0077 decision 1: the local account is only visible
+                // once it has at least one folder.
+                $0.account.id != LocalMailBackend.accountID || hasLocalFolders
+            }
+            .sorted {
+                $0.account.emailAddress.localizedCaseInsensitiveCompare(
+                    $1.account.emailAddress
+                ) == .orderedAscending
+            }
     }
 
     public init(
@@ -206,6 +226,7 @@ public final class AppSession {
         initialSignInError: String? = nil,
         backend: (any MailBackend)? = nil,
         aiBackend: (any AIBackend)? = nil,
+        localBackend: LocalMailBackend? = nil,
         accountStore: any AccountStore,
         tokenStore: any TokenStore,
         themeDefaults: UserDefaults = .standard,
@@ -258,12 +279,30 @@ public final class AppSession {
         self.aiProviderAssignmentCleanup = aiProviderAssignmentCleanup
         self.aiProviderBackendResolver = aiProviderBackendResolver
         self.pendingMutationCleanup = pendingMutationCleanup
+        self.localBackend = localBackend
+        backgroundMail = BackgroundMailCoordinator()
+        backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
         if let backend {
             backends[backend.account.id] = backend
             if let aiBackend {
                 builtInAIBackends[backend.account.id] = aiBackend
                 aiBackends[backend.account.id] = aiBackend
             }
+        }
+        if let localBackend {
+            backends[localBackend.account.id] = localBackend
+        }
+        refreshLocalFolders()
+    }
+
+    /// Refreshes the cached local-folder list and the visibility flag the
+    /// sidebar uses for the synthetic local account (ADR-0077 decision 1).
+    /// Call after local folder create/rename/delete and after imports.
+    public func refreshLocalFolders() {
+        guard let localBackend else { return }
+        Task {
+            localFolders = await (try? localBackend.folders()) ?? []
+            hasLocalFolders = !localFolders.isEmpty
         }
     }
 
@@ -842,6 +881,15 @@ public final class AppSession {
             }
         }
         restoreContactsAccessIfNoDemoMailboxRemains()
+    }
+
+    /// Flushes every connected backend's deferred local-cache writes. Called
+    /// before process suspension or termination so debounced disk writes are
+    /// not lost when the app goes away without a `disconnect()`.
+    public func flushLocalCaches() async {
+        for backend in backends.values {
+            await backend.flushLocalCaches()
+        }
     }
 
     public func finishInitialMailboxSelection(for accountID: BrevAccount.ID) {

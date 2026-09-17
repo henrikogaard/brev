@@ -12,7 +12,7 @@
 
 import Foundation
 
-struct FolderPreferences: Equatable, Sendable {
+struct FolderPreferences: Equatable, Sendable, Codable {
     enum Key {
         static let showStarred = "folders.showStarred"
         static let showSnoozed = "folders.showSnoozed"

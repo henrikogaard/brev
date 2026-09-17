@@ -149,3 +149,234 @@ native sequence; rendered and behavior tests are tracked separately.
 - Backend follow-up: automated tests now cover 120 cached IMAP headers beyond
   the normal 50-result search cap, Gmail secondary labels, duplicate rows,
   combined/negative folder membership, and Sent/Trash labels outside primary folders.
+
+
+### Issue #28 Undo acceptance
+
+- Compare toolbar, context-menu, swipe and bulk read/flag/archive/move/delete.
+  Verify the latest action remains available in Edit > Undo after the toast
+  disappears; Command-Z in search/compose text must use native text history.
+- Reverse an IMAP move and verify the restored message uses the new server UID;
+  repeat across folder/profile navigation and a mailbox replacement. A changed
+  UIDVALIDITY must fail safely without moving a different message.
+- Verify Gmail move Undo preserves existing custom labels and subsequent
+  unrelated flag updates. Retry a compound Undo after a partial failure and
+  confirm already restored batches are not moved again.
+- Remove/replace an account while a reversal is pending; no stale error or
+  action should reappear in the replacement session.
+- Native interaction and live-account checks remain pending. Unit/contract and
+  snapshot results do not establish those acceptance outcomes.
+
+### Issue #28 native Undo check, 2026-09-05
+
+Dated mock app from `feature/mail-client-parity`, launched with the guarded
+build script and inspected by CUA using its exact worktree bundle path:
+
+| Check | Observed result |
+| --- | --- |
+| Toolbar Archive | Selected mock bill left Inbox; 29 messages became 28 |
+| Native Undo after toast expiry | Edit menu retained Undo Mail Action; message returned and count became 29 |
+| Compose text Undo / Redo | Entered text cleared with Cmd-Z and returned with Shift-Cmd-Z |
+| Mail action after editor closes | Row flag remained during text editing and reverted with Cmd-Z after closing the empty composer |
+
+This verifies native routing and successful mock reversal. It does not prove
+live provider failures, offline replay, complete selection restoration, or
+multi-account/performance acceptance.
+
+### Issue #28 restored reader, 2026-09-05
+
+The selection-restoration mock build passed startup verification. CUA selected
+the mock bill, archived it through the toolbar, and invoked Cmd-Z. Inbox returned
+from 28 to 29 messages and the reader reopened that same bill, with its matching
+sender context. Automated tests cover reassigned IMAP IDs, incomplete first-page
+refreshes, source collisions, All Inboxes, and navigation during reversal.
+Live-provider and offline queued-action acceptance remain separate.
+
+### Issue #28 full-folder export, 2026-09-06
+
+The exporter reads original MIME data from every server page in one captured
+mailbox/folder. Full-folder enumeration requires a connection and fails on an
+incomplete offline cache or later-page connection loss. Ordinary offline browsing
+and cached single-message Save As remain available. Automated tests verify
+attachment and non-UTF8 payloads, empty
+intermediate pages, cancellation/failure preserving an existing archive, EML
+directory collisions, bounded Unicode filenames, and retired picker rejection.
+The controller reports progress, cancellation and retryable failure independently
+of navigation. Account additions/reordering preserve the request; backend
+retirement invalidates it even after Settings switches to another account.
+
+Local evidence:
+
+| Check | Result |
+| --- | --- |
+| Backend and Mail suites | 1,030 Backend, 1,543 Mail, and 6 separately run Contacts tests passed |
+| Export feedback | Light/dark status snapshots passed and were inspected |
+| Settings | 338 tests passed excluding the older AI Writer macOS snapshot suite; its 3 tests reported 9 pixel mismatches, also reproduced on unchanged base `1250634` |
+| macOS | Dated September 6 mock build and startup passed |
+| iOS | Settings package compiled for iOS Simulator; no app installation or Files-provider interaction |
+| Native interaction | CUA could not inspect the app because the Mac was locked |
+
+Remaining acceptance: export a real IMAP and Gmail folder larger than one page,
+read the archive in another mail client, compare message/attachment counts, and
+cancel during a slow source fetch. Exercise both native destination pickers,
+including an iOS Files provider, denial/revocation of destination access, and
+account removal/replacement while a picker is open. Verify Settings account and
+mailbox selection, File-menu availability, progress/footer layout, and retry.
+Switch between Settings sections during export and confirm its footer remains
+visible and the same export continues. Verify window/sheet dismissal and task
+release separately on each platform.
+The mock backend intentionally does not offer original-source export. These
+tests do not establish real provider import, local archive, backup, or restore
+support.
+
+### Issue #28 Gmail scheduled delivery, 2026-09-06
+
+- Schedule a real Gmail message with an attachment for a future time. Verify
+  Outbox appears for that account, the content remains unsent before its due
+  time, and delivery appears once in Sent with the actual delivery Date header.
+- Save a draft after choosing a date without submitting Schedule Send; verify
+  no schedule is created. Change a submitted schedule's time, then cancel one
+  and confirm its draft is retained. Full-content editing handoff and unified
+  Outbox across accounts remain follow-up work.
+- Restart with a future schedule, and separately with an interrupted delivery.
+  Only waiting due entries may send automatically. Review-held entries require
+  checking Sent and an explicit reviewed retry. Ordinary stale date sheets must
+  not bypass that review.
+- Verify transport errors, quota/authentication backoff, ten-attempt exhaustion,
+  confirmed delivery followed by local cleanup failure, and account removal
+  during a pending request. No ambiguous attempt should be automatically resent.
+- Verify sidebar count changes do not reload Inbox bodies, multi-account source
+  switching does not publish another account's count, and native quit warnings
+  accurately describe process/connection requirements.
+- Local evidence covers state transitions, competing claims/live owners,
+  restart, frozen/newer content, rate delay, failed initialization, and light/dark
+  row snapshots. Native CUA interaction was blocked by the locked Mac. Live
+  provider delivery, background/sleep/quit behavior and native control acceptance
+  are not established by those tests or by successful app builds.
+
+### Issue #28 IMAP scheduled editing, 2026-09-06
+
+- In each IMAP account's Outbox, change a future schedule and cancel another.
+  Confirm the account scope, date, count and retained draft content. If the local
+  draft is unavailable, cancellation must still withdraw the intent.
+- Hold SMTP delivery open. Editing that message must fail visibly while editing
+  another schedule remains available. Repeat with two backend instances sharing
+  one account and confirm only one submission occurs.
+- Reconnect after a known failure before its retry date. Confirm no immediate
+  second attempt. Ten failures must require review. Interrupt a claimed attempt
+  and confirm neither elapsed time nor an ordinary date edit releases it.
+- Simulate an uncertain SMTP DATA outcome. The message must remain in Outbox
+  with a Check Sent warning and no duplicate offline-conflict retry entry.
+- Remove an account during pending delivery, recreate its local draft identity,
+  and release the old response. The replacement draft and metadata must survive.
+- These checks have injected-transport regression coverage. Native interaction,
+  real SMTP delivery, sleep/quit behavior and cross-client Sent verification remain
+  acceptance work. Legacy IMAP metadata is not an atomic draft/schedule journal;
+  full-content editing handoff and frozen submitted IMAP content remain open.
+
+### Issue #28 IMAP search completeness, 2026-09-06
+
+- Search a real IMAP folder with more than 200 matches, including replies older
+  than the loaded message list. Compare results with the provider or another
+  client. Repeat across folders with colliding numeric UIDs.
+- Seed a partial local cache, repeat online, and confirm cached hits do not hide
+  server matches. Offline/cache-only results must remain local and include all
+  cached matches; their coverage is still limited by retained/indexed data.
+- Cancel or switch query/account during a later server page. Confirm no stale
+  results appear. Simulate repeated cursors, empty intermediate pages, and a
+  failed later page; incomplete server collections must not be reported complete.
+- Ordinary search must not fetch MIME bodies. Attachment-predicate search retains
+  its explicit-fetch disclosure and cancellation behavior.
+- Measure time to first result, total search time, memory and scrolling with large
+  result sets. The existing array contract still waits for all pages; progressive
+  results and more explicit coverage/error presentation remain work in #28.
+
+### Issue #28 progressive search, 2026-09-07
+
+- Search an IMAP folder larger than one page. Verify first-page rows are readable
+  while older pages load. A selected message must stay open across each update.
+- Repeat identical query text quickly and change folder/account during a slow
+  request. Neither callbacks nor finalization from the old request may replace
+  new rows, clear its progress state or change selection.
+- Search multiple mailboxes with different response speeds and overlapping raw
+  message IDs. Each source must appear independently with correct reader routing.
+- Seed cached matches then search online. Verify cached status changes to server
+  completion only after all pages; a complete empty server result removes stale
+  cached hits. First-request offline fallback stays labeled as cached-only.
+- Fail a later page or one mailbox. Retain useful partial rows, show incomplete
+  search and Retry, and verify retry starts a fresh request. Array-only providers
+  must not claim confirmed server coverage.
+- Search both with and without attachments. Both show the download disclosure
+  only during active source inspection; cache-only does not show active fetching.
+- Light/dark compact status snapshots are recorded and inspected. Automated tests
+  cover publication before the next page, callback cancellation, coverage, source
+  collisions, stale request IDs, terminal updates and reader preservation. Native
+  large-mailbox latency, memory, scrolling and accessibility remain acceptance work.
+
+Native mock evidence: the first invoice search initially left Searching visible,
+then showed a false incomplete state after basic finalization was added. A shared
+cancellable worker and consolidated trigger resolved the underlying replacement
+race. The rebuilt September 7 test app completes that first search without Retry,
+showing its array-only coverage caveat and preserving the visible result/reader.
+Further Local/All Inboxes input was refused when the window stopped resolving in
+AXWindows; these checks and live delayed-page measurements remain unverified.
+
+### Issue #28 Gmail search parity, 2026-09-07
+
+- Search an authenticated Gmail account with more than 5,000 matches. Verify older
+  results are reachable, first-page results appear before completion, and cancel
+  stops further requests. Compare counts with Gmail after the mailbox settles.
+- Test custom labels containing spaces/quotes and messages with multiple labels;
+  verify scoped reading and online/local membership. Compare All Mail, Spam,
+  Trash, and unscoped `in:anywhere`. Test false read/star/attachment predicates.
+- Restart disconnected and run cached-only search. Confirm no provider requests,
+  all cached matches across pages, and cached coverage. Auto search should start
+  server work after one cache preview; an initial transport failure must complete
+  the cached scan. A later failure must retain partial results without completion.
+- Retire/re-add the account while a message response is paused. Old responses must
+  not publish progress or write into replacement storage. Preserve typed auth and
+  rate-limit errors on later pages.
+- Tests cover 5,001 matches, empty pages, duplicate/cyclic cursors, max-four fetch
+  concurrency, callback cancellation, retired responses, stable-label/negative
+  scope, bounded cache previews and SQLite keyset/account isolation. Live provider
+  acceptance, native large-account measurements and date precision remain open.
+
+
+## Cross-folder conversation foundation — ADR-0074
+
+- Automated domain checks cover source isolation, selected anchor retention,
+  Inbox/Sent/Archive reply graphs, absent parents, cycles, duplicate physical
+  locations, reused identifiers, comments, malformed fields and bounded metadata.
+  The parser conservatively rejects unsupported/invalid syntax; it does not guess
+  reply links from subjects or prose. Provider indexing must handle such errors
+  as incomplete metadata before this resolver is wired to the reader.
+- Gmail cached lookup is advertised while disconnected and makes no transport
+  requests. Tests retain uncached anchors, select related Sent/custom-label mail,
+  exclude Spam/Trash by default and include them explicitly. Label-array order
+  cannot choose Unread as folder provenance. Existing selected label memberships
+  are retained; a cache-confirmed moved anchor keeps its source/message identity
+  and display metadata while receiving its current folder locator.
+- A version-three SQLite database migrates to the thread keyset index without
+  losing messages or scheduled drafts. Cursor/account isolation, deletion and
+  thread changes are covered. Production reads decode only one requested page.
+- Still pending: IMAP cache/index integration, References ingestion, consented
+  provider discovery, reader/action integration, native rendering, live-provider
+  acceptance and representative large-mailbox performance measurements. This
+  foundation must not be reported as complete conversation reading.
+
+
+### IMAP relationship-index follow-up
+
+- Verify a version-four cache upgrades to schema five with reply chains and
+  original MIME provenance intact. Opening a conversation must read matching
+  identifier rows, without decoding unrelated account headers or message bodies.
+- Expunging the connecting reply must remove its graph edges; clearing a folder
+  or account must cascade the same index rows. Cached UIDVALIDITY changes reject
+  stale known-generation anchors. Unknown generations never authorize UID actions.
+- Malformed linkage leaves ordinary cached mail usable; only safely parsed
+  identifiers participate. An identifier with over 500 candidates or traversal
+  reaching 10,000 candidates/identifiers reports partial coverage.
+- Automated SQLite/in-memory tests cover cross-folder resolution, restart,
+  migration, source isolation, exclusions, deletion, malformed metadata and
+  bounded coverage. References persistence/ingestion, provider wiring, rendered
+  reader integration and measured live-mailbox performance remain pending.

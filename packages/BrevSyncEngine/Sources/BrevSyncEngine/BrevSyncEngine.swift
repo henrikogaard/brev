@@ -49,7 +49,7 @@ import Foundation
 /// `cachedBody` reads raw RFC 5322 source bytes stored via `storeBody(_:for:account:)`,
 /// which is a public method on the concrete type (not part of `SyncEngineProtocol`).
 /// `IMAPSMTPBackend` can call it after fetching a message body to populate the cache.
-public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
+public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConversationIndex {
     private static let pageSize = 50
 
     let store: any SyncStoreProtocol
@@ -120,6 +120,73 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
         try await store.setSyncState(newState)
     }
 
+    /// Walks only indexed reply links, with explicit partial coverage when work is bounded.
+    public func cachedConversation(around anchor: ConversationMember,
+                                   excludingFolderIDs: Set<Folder.ID>) async throws -> ConversationSnapshot {
+        guard anchor.sourceID.accountID == anchor.sourceID.mailboxID else {
+            throw ConversationLookupError.foreignSource
+        }
+        _ = try ConversationSnapshot(anchor: anchor.location, members: [anchor], coverage: .cached)
+        try await validateConversationGeneration(anchor)
+        let anchorReferences = anchor.effectiveReferences
+        guard (anchorReferences ?? []).reduce(0, { $0 + $1.utf8.count }) <= 65536 else {
+            throw ConversationLookupError.invalidMetadata
+        }
+        var pending = try ConversationMembershipResolver.identifiers(in: anchor.header.rfcMessageID)
+        pending += try ConversationMembershipResolver.identifiers(in: anchor.header.inReplyTo)
+        for value in anchorReferences ?? [] {
+            pending += try ConversationMembershipResolver.identifiers(in: value)
+        }
+        let initialIdentifiers = Set(pending)
+        pending = Array(initialIdentifiers.sorted().prefix(10000))
+        var queued = Set(pending)
+        var visited = Set<String>()
+        var candidates: [ConversationLocation: ConversationMember] = [:]
+        var partial = initialIdentifiers.count > pending.count
+        while let identifier = pending.popLast() {
+            try Task.checkCancellation()
+            guard visited.insert(identifier).inserted else { continue }
+            let matches = try await store.conversationCandidates(identifier: identifier, source: anchor.sourceID, limit: 501)
+            if matches.count > 500 { partial = true }
+            for member in matches.prefix(500) where !excludingFolderIDs.contains(member.header.folderID) {
+                // The selected header remains authoritative for its display and identity.
+                guard member.header.id != anchor.header.id || member.header.folderID != anchor.header.folderID else { continue }
+                guard candidates[member.location] == nil else { continue }
+                guard candidates.count < 10000 else { partial = true; break }
+                candidates[member.location] = member
+                let memberLinks = ConversationMembershipResolver
+                    .cachedLinkIdentifiers(for: member.header, references: member.references) ?? []
+                for next in memberLinks where !queued.contains(next) {
+                    guard queued.count < 10000 else { partial = true; break }
+                    queued.insert(next)
+                    pending.append(next)
+                }
+            }
+            if candidates.count >= 10000 || visited.count >= 10000 { partial = true; break }
+        }
+        try Task.checkCancellation()
+        try await validateConversationGeneration(anchor)
+        var checkedFolders = Set<Folder.ID>()
+        for member in candidates.values where member.folderGeneration != nil {
+            if checkedFolders.insert(member.header.folderID).inserted {
+                try await validateConversationGeneration(member)
+            }
+        }
+        try Task.checkCancellation()
+        let resolved = try ConversationMembershipResolver.cached(around: anchor, candidates: Array(candidates.values))
+        return try ConversationSnapshot(anchor: resolved.anchor, members: resolved.members,
+                                        coverage: partial ? .partial : .cached, excludedFolderIDs: Array(excludingFolderIDs),
+                                        ambiguousIdentifiers: resolved.ambiguousIdentifiers)
+    }
+
+    private func validateConversationGeneration(_ member: ConversationMember) async throws {
+        guard let expected = member.folderGeneration else { return }
+        let state = await store.syncState(accountID: member.sourceID.accountID, folderID: member.header.folderID)
+        guard let current = state?.uidValidity, UInt64(exactly: current) == expected else {
+            throw ConversationLookupError.invalidSnapshot
+        }
+    }
+
     // MARK: SyncEngineProtocol — reading cached data
 
     public func cachedHeaders(
@@ -168,6 +235,19 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
         account: BrevAccount
     ) async -> Data? {
         await cachedBody(for: messageID, account: account)
+    }
+
+    /// Returns source bytes only when the cache records their original MIME provenance.
+    public func cachedOriginalRawMessage(for messageID: MessageHeader.ID, account: BrevAccount) async -> Data? {
+        await store.originalBody(accountID: account.id, messageID: messageID)
+    }
+
+    /// Persists original source and provenance together using the normal content-cache lifecycle.
+    public func storeOriginalRawMessage(_ data: Data, for messageID: MessageHeader.ID, account: BrevAccount) async {
+        do {
+            try await store.ensureAccount(id: account.id)
+            try await store.storeOriginalBody(data, accountID: account.id, messageID: messageID)
+        } catch { return }
     }
 
     public func search(
@@ -264,6 +344,53 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex {
 
     public func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics? {
         await store.metrics(accountID: account.id)
+    }
+
+    // MARK: MailLocalSearchIndex — attachment text index (ADR-0078)
+
+    public func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {
+        try await store.indexAttachmentText(
+            accountID: accountID,
+            messageID: messageID,
+            folderID: folderID,
+            attachmentID: attachmentID,
+            name: name,
+            text: text
+        )
+    }
+
+    public func removeAttachmentText(
+        accountID: String,
+        messageIDs: [MessageHeader.ID]
+    ) async throws {
+        try await store.removeAttachmentText(accountID: accountID, messageIDs: messageIDs)
+    }
+
+    public func removeAllAttachmentText(accountID: String) async throws {
+        try await store.removeAllAttachmentText(accountID: accountID)
+    }
+
+    public func attachmentIndexBytes(accountID: String) async -> Int {
+        await store.attachmentIndexBytes(accountID: accountID)
+    }
+
+    public func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> {
+        await store.indexedAttachmentMessageIDs(accountID: accountID)
+    }
+
+    public func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        await store.attachmentMatchNames(query, accountID: account.id, messageIDs: messageIDs)
     }
 
     // MARK: SyncEngineProtocol — invalidation
