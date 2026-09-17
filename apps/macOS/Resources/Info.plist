@@ -51,7 +51,9 @@
 	<key>BRDistributionChannel</key>
 	<string>direct-download</string>
 	<key>SUFeedURL</key>
-	<string>https://updates.brevmail.eu/appcast.xml</string>
+	<string>$(BREV_SPARKLE_FEED_URL)</string>
+	<key>BRReleaseRing</key>
+	<string>$(BREV_RELEASE_RING)</string>
 	<key>SUPublicEDKey</key>
 	<string>$(BREV_SPARKLE_PUBLIC_ED_KEY)</string>
 	<key>SUEnableAutomaticChecks</key>

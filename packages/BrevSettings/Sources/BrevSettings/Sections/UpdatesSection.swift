@@ -55,15 +55,19 @@ struct UpdatesSection: View {
     private let updateActions: SettingsUpdateActions
     /// The installed app version, sourced from CFBundleShortVersionString.
     private let installedVersion: String
+    /// Build-time release ring (ADR-0080); read-only in the UI.
+    private let ring: UpdateRing
 
     init(
         settingsStore: SettingsPersistenceStore = .standard,
         updateActions: SettingsUpdateActions = .unavailable,
-        installedVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0"
+        installedVersion: String = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.0.0",
+        ring: UpdateRing = .stable
     ) {
         self.settingsStore = settingsStore
         self.updateActions = updateActions
         self.installedVersion = installedVersion
+        self.ring = ring
         _settings = State(initialValue: settingsStore.updateSettings())
     }
 
@@ -74,7 +78,7 @@ struct UpdatesSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 cadenceGroup
-                channelGroup
+                releaseRingGroup
                 githubReleaseGroup
                 manualCheckGroup
             }
@@ -106,7 +110,7 @@ struct UpdatesSection: View {
                 SettingsInfoCallout(
                     symbolName: "network",
                     message: String(
-                        localized: "Update checks contact updates.brevmail.eu only for direct-download macOS builds.",
+                        localized: "Update checks contact the GitHub Pages appcast feed (henrikogaard.github.io) only for direct-download macOS builds.",
                         bundle: .module
                     ),
                     tone: .info
@@ -115,32 +119,37 @@ struct UpdatesSection: View {
         }
     }
 
-    private var channelGroup: some View {
+    private var releaseRingGroup: some View {
         SettingsGroup(
-            title: String(localized: "Release channel", bundle: .module),
-            subtitle: String(localized: "Switch between stable and beta appcasts.", bundle: .module),
-            symbolName: "point.3.connected.trianglepath.dotted"
+            title: String(localized: "Release ring", bundle: .module),
+            subtitle: String(localized: "The ring is fixed per build; Stable and Nightly are separate apps.", bundle: .module),
+            symbolName: "shippingbox"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsPickerRow(
-                    symbolName: "shippingbox",
-                    title: String(localized: "Channel", bundle: .module),
-                    subtitle: settings.channel.appcastURL.absoluteString,
-                    selection: binding(for: \.channel)
-                ) {
-                    ForEach(UpdateChannel.allCases) { channel in
-                        Text(channel.title).tag(channel)
-                    }
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(ring.title)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                    Text(ring.subtitle)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
                 }
 
-                if settings.channel == .beta {
-                    SettingsInfoCallout(
-                        symbolName: "exclamationmark.triangle",
-                        message: String(localized: "Beta updates may be less stable and are always opt-in.", bundle: .module),
-                        tone: .warning
-                    )
+                Link(destination: ring.otherRingDownloadURL) {
+                    Label(otherRingLinkTitle, systemImage: "arrow.down.circle")
+                        .brevFont(.body)
+                        .foregroundStyle(theme.accent.color)
                 }
             }
+        }
+    }
+
+    private var otherRingLinkTitle: String {
+        switch ring {
+        case .stable:
+            return String(localized: "Get Brev Nightly", bundle: .module)
+        case .nightly:
+            return String(localized: "Get Brev Stable", bundle: .module)
         }
     }
 
@@ -219,7 +228,7 @@ struct UpdatesSection: View {
     private var manualCheckGroup: some View {
         SettingsGroup(
             title: String(localized: "Sparkle", bundle: .module),
-            subtitle: String(localized: "Ask Sparkle to check the selected appcast now.", bundle: .module),
+            subtitle: String(localized: "Ask Sparkle to check the update feed now.", bundle: .module),
             symbolName: "arrow.down.circle"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {

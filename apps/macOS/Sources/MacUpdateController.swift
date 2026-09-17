@@ -36,6 +36,9 @@ final class MacUpdateController: NSObject, SPUUpdaterDelegate {
         super.init()
     }
 
+    /// Build-time release ring (ADR-0080), surfaced read-only in Settings.
+    var releaseRing: UpdateRing { buildConfiguration.ring }
+
     var settingsActions: SettingsUpdateActions {
         SettingsUpdateActions(
             isManualCheckAvailable: buildConfiguration.canInitializeSparkle,
@@ -103,6 +106,6 @@ final class MacUpdateController: NSObject, SPUUpdaterDelegate {
     }
 
     func feedURLString(for updater: SPUUpdater) -> String? {
-        buildConfiguration.appcastURL(for: currentSettings).absoluteString
+        buildConfiguration.appcastURL.absoluteString
     }
 }

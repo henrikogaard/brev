@@ -307,6 +307,21 @@ struct AIWriterSectionMacSnapshotTests {
                 size: CGSize(width: 700, height: 560))
     }
 
+    /// ADR-0080: the Updates section shows the build-time ring read-only
+    /// with a link to the other ring's download page.
+    @Test("UpdatesSection renders both release rings", arguments: ["light", "dark"])
+    func updatesSectionRings(_ mode: String) {
+        guard #available(macOS 26.0, *) else { return }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let defaults = UserDefaults(suiteName: "UpdatesRing-" + UUID().uuidString)!
+        let store = SettingsPersistenceStore(defaults: defaults)
+        for ring in UpdateRing.allCases {
+            capture(UpdatesSection(settingsStore: store, ring: ring),
+                    theme: theme, name: "updates-ring-\(ring.rawValue)-" + mode,
+                    size: CGSize(width: 700, height: 780))
+        }
+    }
+
     private func capture<V: View>(_ view: V, theme: BrevTheme, name: String, size: CGSize) {
         let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme)
             .tint(theme.accent.color).environment(

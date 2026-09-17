@@ -42,6 +42,7 @@ public struct SettingsView: View {
     private let accountStore: any AccountStore
     private let settingsStore: SettingsPersistenceStore
     private let updateActions: SettingsUpdateActions
+    private let updateRing: UpdateRing
     private let developerActions: DeveloperSettingsActions
     @Binding private var activeTheme: BrevTheme
     @Binding private var activeAppIcon: AppIconVariant
@@ -68,6 +69,7 @@ public struct SettingsView: View {
         mailboxContext: SettingsMailboxContext = .init(),
         settingsStore: SettingsPersistenceStore = .standard,
         updateActions: SettingsUpdateActions = .unavailable,
+        updateRing: UpdateRing = .stable,
         developerActions: DeveloperSettingsActions = .unavailable,
         allFolders: [Folder] = [],
         currentFolderSourceID: MailSourceID? = nil,
@@ -86,6 +88,7 @@ public struct SettingsView: View {
         _selectedSourceID = State(initialValue: mailboxContext.selectedSourceID)
         self.settingsStore = settingsStore
         self.updateActions = updateActions
+        self.updateRing = updateRing
         self.developerActions = developerActions
         _activeTheme = activeTheme
         _activeAppIcon = activeAppIcon
@@ -571,7 +574,8 @@ public struct SettingsView: View {
         case .updates:
             UpdatesSection(
                 settingsStore: settingsStore,
-                updateActions: updateActions
+                updateActions: updateActions,
+                ring: updateRing
             )
         case .aiWriter:
             AIWriterSection(

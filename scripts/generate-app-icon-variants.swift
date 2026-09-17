@@ -78,6 +78,11 @@ private let variants: [IconVariant] = [
 
 private let defaultAppIconAssetName = "BrevIconAuroraOriginal"
 
+/// Nightly ring (ADR-0080): a distinct dark tile so `Brev Nightly.app` is
+/// visually separate in the Dock. `BREV_APP_ICON_NAME` selects it at build
+/// time via `ASSETCATALOG_COMPILER_APPICON_NAME`.
+private let nightlyAppIconAssetName = "BrevIconInvertedGraphite"
+
 private let iosEntries = [
     AppIconEntry(idiom: "iphone", size: "20x20", scale: "2x", filename: "icon_20x20@2x.png", pixels: 40),
     AppIconEntry(idiom: "iphone", size: "20x20", scale: "3x", filename: "icon_20x20@3x.png", pixels: 60),
@@ -144,6 +149,16 @@ private func generateCatalogs() throws {
         name: "AppIcon",
         entries: macEntries,
         variant: defaultVariant,
+        mode: .sourceArtwork
+    )
+    guard let nightlyVariant = variants.first(where: { $0.assetName == nightlyAppIconAssetName }) else {
+        throw IconGenerationError.missingDefault(nightlyAppIconAssetName)
+    }
+    try writeAppIconSet(
+        catalog: macCatalog,
+        name: "AppIcon-Nightly",
+        entries: macEntries,
+        variant: nightlyVariant,
         mode: .sourceArtwork
     )
     try writeAppIconSet(
