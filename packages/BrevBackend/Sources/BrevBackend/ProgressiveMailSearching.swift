@@ -27,13 +27,23 @@ public struct MailSearchUpdate: Sendable {
     public let replacesResults: Bool
     /// No more updates are expected on successful completion of this search.
     public let isComplete: Bool
+    /// Attachment names for results matched by local attachment content only
+    /// (ADR-0078 §5). Messages that also matched the message index are absent.
+    public let attachmentMatchNames: [MessageHeader.ID: String]
 
     /// Creates an incremental update or an explicit result replacement.
-    public init(headers: [MessageHeader], coverage: MailSearchCoverage, replacesResults: Bool = false, isComplete: Bool = false) {
+    public init(
+        headers: [MessageHeader],
+        coverage: MailSearchCoverage,
+        replacesResults: Bool = false,
+        isComplete: Bool = false,
+        attachmentMatchNames: [MessageHeader.ID: String] = [:]
+    ) {
         self.headers = headers
         self.coverage = coverage
         self.replacesResults = replacesResults
         self.isComplete = isComplete
+        self.attachmentMatchNames = attachmentMatchNames
     }
 }
 

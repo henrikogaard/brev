@@ -182,6 +182,12 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     let searchRelatedHeadersOperation: RelatedHeaderSearchOperation?
     /// Consent boundary for remote related-header discovery (ADR-0074/ADR-0006).
     let relatedConversationConsent: (any RelatedConversationConsenting)?
+    /// Per-account opt-in store for attachment content indexing (ADR-0078).
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
+    /// Cache-only attachment indexer; nil when no local search index or
+    /// consent store is wired. Internal for tests.
+    private(set) var attachmentIndexer: AttachmentIndexer?
+    private var attachmentConsentObserver: NSObjectProtocol?
     private let disconnectSessionOperation: SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
@@ -296,7 +302,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         offlineMutationQueue: (any OfflineMutationQueue)? = nil,
         offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
         outboundMessagePreparer: (any OutboundMessagePreparing)? = nil,
-        sentMessageLedger: SentMessageLedger? = nil
+        sentMessageLedger: SentMessageLedger? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil
     ) {
         self.account = account
         scheduledWorkGate = ScheduledSendWorkGate.forAccount(account.id)
@@ -339,6 +346,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         self.offlineMutationConflictStore = offlineMutationConflictStore
         self.outboundMessagePreparer = outboundMessagePreparer
         self.sentMessageLedger = sentMessageLedger
+        self.attachmentIndexConsent = attachmentIndexConsent
+        let hasAttachmentIndex = localSearchIndex != nil
         var advertisedCapabilities: BackendCapabilities = [.providerSyncHealth]
         if createFolder != nil {
             advertisedCapabilities.insert(.folderCreate)
@@ -392,13 +401,51 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         if fetchMessageSource != nil {
             advertisedExtendedCapabilities.formUnion([.rawMessageSource, .rawMessageBytes])
         }
+        if hasAttachmentIndex {
+            // Local-only indexing of bytes already on device (ADR-0078 §8);
+            // the consent gate is enforced per unit of work by the indexer.
+            advertisedExtendedCapabilities.insert(.localAttachmentIndex)
+        }
         extendedCapabilities = advertisedExtendedCapabilities
+
+        // Constructed last: its closures capture `self`, so every stored
+        // property must be initialized first.
+        attachmentIndexer = localSearchIndex.map { index in
+            AttachmentIndexer(
+                accountID: account.id,
+                isEnabled: { attachmentIndexConsent?.isEnabled(accountID: account.id) ?? false },
+                index: index,
+                sweepEntries: { [weak self] in
+                    await self?.attachmentSweepEntries() ?? []
+                },
+                rawMessageProvider: { [weak self] messageID in
+                    await self?.cachedMessageSource(messageID: messageID)?.rawMessage
+                }
+            )
+        }
+
+        if let attachmentIndexConsent {
+            attachmentConsentObserver = NotificationCenter.default.addObserver(
+                forName: AttachmentIndexConsentStore.didChangeNotification,
+                object: attachmentIndexConsent,
+                queue: nil
+            ) { [weak self] note in
+                guard (note.userInfo?["accountID"] as? String) == account.id else { return }
+                Task { [weak self] in
+                    await self?.attachmentIndexingConsentChanged()
+                }
+            }
+        }
     }
 
     public func connect() async throws {
         let generation = await scheduledEditingLifetime.currentGeneration()
         try await connect(retryOAuthCredential: true)
         try await scheduledEditingLifetime.activate(generation)
+        // Low-priority catch-up pass over already-cached sources (ADR-0078 §2).
+        trackBackgroundWork { [weak self] in
+            await self?.attachmentIndexer?.sweep()
+        }
     }
 
     private func connect(retryOAuthCredential: Bool) async throws {
@@ -526,6 +573,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     public func disconnect() async {
         await scheduledEditingLifetime.close()
         stopScheduledSendPoller()
+        await attachmentIndexer?.stop()
         cancelBackgroundWork()
         cancelRemoteDraftDiscovery()
         deferredStartupLock.withLock { didStartDeferredStartupWork = false }
@@ -537,7 +585,63 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     public func flushLocalCaches() async {
+        await attachmentIndexer?.stop()
         await headerCache?.flushPendingWrites()
+    }
+
+    /// Local attachment-content matches for cached search results (ADR-0078 §5).
+    public func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        await localSearchIndex?.matchedAttachmentNames(
+            matching: query, account: account, messageIDs: messageIDs
+        ) ?? [:]
+    }
+
+    /// Size of this account's local attachment-content index (ADR-0078).
+    public func attachmentIndexBytes() async -> Int {
+        await localSearchIndex?.attachmentIndexBytes(accountID: account.id) ?? 0
+    }
+
+    /// Clears the attachment index and re-sweeps cached sources (Mail Storage
+    /// "Rebuild" action). Respects the current consent flag.
+    public func rebuildAttachmentIndex() async {
+        await attachmentIndexer?.rebuild()
+    }
+
+    /// Removes every indexed attachment row and stops indexing work.
+    public func removeAttachmentIndex() async {
+        await attachmentIndexer?.disable()
+    }
+
+    /// Re-applies the consent boundary: enabling starts a sweep; disabling
+    /// stops work and removes every indexed row for this account.
+    func attachmentIndexingConsentChanged() async {
+        guard let attachmentIndexConsent else { return }
+        if attachmentIndexConsent.isEnabled(accountID: account.id) {
+            await attachmentIndexer?.sweep()
+        } else {
+            await attachmentIndexer?.disable()
+        }
+    }
+
+    /// Cached messages eligible for attachment indexing, read from caches only.
+    private func attachmentSweepEntries() async -> [AttachmentIndexer.SweepEntry] {
+        let folders: [Folder]
+        if let cached = await folderCache?.snapshot(accountID: account.id)?.folders {
+            folders = cached
+        } else {
+            folders = await (try? state.requireConnectedFolders()) ?? []
+        }
+        var entries: [AttachmentIndexer.SweepEntry] = []
+        for folder in folders {
+            for header in await allIndexedHeaders(folder: folder) ?? [] where header.hasAttachments {
+                entries.append(.init(messageID: header.id, folderID: folder.id))
+            }
+        }
+        return entries
     }
 
     /// Spawns a tracked fire-and-forget task that is cancelled on `disconnect()`.
@@ -4340,6 +4444,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         // A freshly cached source may now carry a parseable date, so allow the
         // repair pass to re-attempt this message.
         clearUnrepairableDate(messageID)
+        // Index its attachments only if the account opted in (ADR-0078 §2).
+        if let reference = try? Self.messageReference(from: messageID) {
+            await attachmentIndexer?.noteSourceCached(
+                messageID: messageID,
+                folderID: reference.folderID
+            )
+        }
     }
 
     private func cachedMessageSource(messageID: MessageHeader.ID,
@@ -4385,6 +4496,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     }
 
     private func clearLocalCaches() async {
+        await attachmentIndexer?.stop()
         threadResolutionLock.withLock { threadResolvers.removeAll() }
         await folderCache?.clear(accountID: account.id)
         await headerCache?.clear(accountID: account.id)

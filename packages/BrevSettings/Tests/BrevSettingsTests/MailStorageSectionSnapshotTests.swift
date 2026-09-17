@@ -61,5 +61,48 @@ struct MailStorageSectionSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    /// ADR-0078: the per-account "Attachment index" row with Rebuild/Remove
+    /// renders inside the search-index group when the backend advertises
+    /// `.localAttachmentIndex`.
+    @Test("attachment index row shows size and actions", arguments: ["light", "dark"])
+    func attachmentIndexRow(_ mode: String) throws {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let account = BrevAccount(
+            id: "imap-smtp:ada@example.org",
+            displayName: "Ada",
+            emailAddress: "ada@example.org"
+        )
+        let backend = MockBackend(
+            account: account,
+            extendedCapabilities: [.localAttachmentIndex],
+            folders: [],
+            messagesByFolder: [:]
+        )
+        let suiteName = "MailStorageAttachIdx-\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let view = MailStorageSection(
+            account: account,
+            backend: backend,
+            settingsStore: SettingsPersistenceStore(defaults: defaults),
+            initiallyAdvancedExpanded: true
+        )
+        .frame(width: 560, height: 720)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: mode == "dark" ? .darkAqua : .aqua)
+        host.view.frame.size = CGSize(width: 560, height: 720)
+        host.view.layoutSubtreeIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.3))
+        host.view.layoutSubtreeIfNeeded()
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 560, height: 720)),
+            named: "mailstorage-attachment-index-" + mode,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

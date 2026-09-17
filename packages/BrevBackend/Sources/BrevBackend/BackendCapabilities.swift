@@ -200,6 +200,12 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// the account's related-mail consent before invoking it (ADR-0074,
     /// ADR-0006). Never implies background or automatic fetching.
     public static let relatedConversationLoading = BackendExtendedCapabilities(rawValue: 1 << 15)
+
+    /// The backend can feed already-cached attachment bytes to the local
+    /// attachment-content index (ADR-0078). The flag only means the backend
+    /// can supply bytes it already has; indexing itself is opt-in per account
+    /// and never downloads anything.
+    public static let localAttachmentIndex = BackendExtendedCapabilities(rawValue: 1 << 16)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.

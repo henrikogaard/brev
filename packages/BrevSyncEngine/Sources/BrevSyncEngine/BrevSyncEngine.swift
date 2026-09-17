@@ -346,6 +346,53 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         await store.metrics(accountID: account.id)
     }
 
+    // MARK: MailLocalSearchIndex — attachment text index (ADR-0078)
+
+    public func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {
+        try await store.indexAttachmentText(
+            accountID: accountID,
+            messageID: messageID,
+            folderID: folderID,
+            attachmentID: attachmentID,
+            name: name,
+            text: text
+        )
+    }
+
+    public func removeAttachmentText(
+        accountID: String,
+        messageIDs: [MessageHeader.ID]
+    ) async throws {
+        try await store.removeAttachmentText(accountID: accountID, messageIDs: messageIDs)
+    }
+
+    public func removeAllAttachmentText(accountID: String) async throws {
+        try await store.removeAllAttachmentText(accountID: accountID)
+    }
+
+    public func attachmentIndexBytes(accountID: String) async -> Int {
+        await store.attachmentIndexBytes(accountID: accountID)
+    }
+
+    public func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> {
+        await store.indexedAttachmentMessageIDs(accountID: accountID)
+    }
+
+    public func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        await store.attachmentMatchNames(query, accountID: account.id, messageIDs: messageIDs)
+    }
+
     // MARK: SyncEngineProtocol — invalidation
 
     public func invalidate(

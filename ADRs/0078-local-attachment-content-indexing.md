@@ -29,8 +29,9 @@ What exists now:
 - ADR-0034 retention evicts bodies/sources by age; Mail Storage lets the
   user clear caches per account.
 - Apple frameworks can extract text on-device: `PDFDocument.string`
-  (PDFKit, both platforms), `NSAttributedString(url:options:)` for RTF,
-  plain text, HTML and — on macOS only — Office Open XML.
+  (PDFKit, both platforms), `NSAttributedString` for RTF. HTML and Office
+  documents are handled without document importers (HTML by string
+  stripping; Office excluded) because the importers can reach the network.
 
 The constraints: zero network by default (ADR-0006), no automatic downloads
 (ADR-0041), views branch on capabilities not backends (ADR-0028), untrusted
@@ -56,9 +57,14 @@ reverse what the index costs on disk.
 3. **Extraction is on-device and bounded.** `AttachmentTextExtractor` in
    `BrevBackend` maps MIME type/extension to an extractor: PDF via
    `PDFDocument.string` (encrypted or non-text PDFs yield nothing — no OCR);
-   `text/*`, `.csv`, `.md`, `.rtf`, `.html` via `NSAttributedString`;
-   `.docx/.xlsx/.pptx` via `NSAttributedString` with `.officeOpenXML` on
-   macOS only. Limits: attachments over 25 MB are skipped, extracted text is
+   `text/*`, `.csv`, `.md` via `String` decoding with charset fallback;
+   `.rtf` via `NSAttributedString`; `.html` via pure-string tag/entity
+   stripping (the `NSAttributedString` HTML importer resolves remote
+   subresources, which would violate decision 2's no-network rule).
+   `.docx/.xlsx/.pptx` are *not* extracted: whether the platform OOXML
+   importer fetches external relationships is undocumented, so the format
+   table stays closed without it — this narrows the originally drafted
+   `NSAttributedString` coverage on review. Limits: attachments over 25 MB are skipped, extracted text is
    truncated at 512 KB, each document runs under a 10 s cooperative
    cancellation budget, and one extraction runs at a time per account.
    Failures are counted, not surfaced per file. Anything not in the table
@@ -112,8 +118,10 @@ reverse what the index costs on disk.
   consent model. Users who want everything indexed already have the
   "keep bodies offline" retention setting to make everything cached.
 - *Apple frameworks over bundled parsers:* no new dependency, sandbox-safe,
-  covers the formats users actually search (PDF, Office, text); OCR and
-  exotic formats are explicitly out until someone asks.
+  covers the formats users actually search (PDF, text); OCR and exotic
+  formats are explicitly out until someone asks. Where a platform importer
+  can reach the network (HTML, Office Open XML), the format is stripped
+  in-process or excluded rather than trusting the importer.
 - *Second FTS table over widening `message_search.body`:* keeps the badge
   possible (we know *which* attachment matched), keeps per-attachment
   truncation simple, and lets the whole feature be removed by dropping one
@@ -130,10 +138,11 @@ reverse what the index costs on disk.
   the Gmail backend, using its cached raw messages) coordinated with the
   existing source-cache write path; it must respect `flushLocalCaches()` /
   disconnect and stop promptly.
-- iOS indexes PDF and text only; the Settings copy on iOS must not claim
-  Office documents.
+- Neither platform indexes Office documents; Settings copy must not claim
+  them anywhere.
 - Tests: extractor per format with fixtures (small PDF, RTF, plain text,
-  docx on macOS), size/time limits, schema migration, purge cascades, search
+  HTML with remote references staying inert), size/time limits, schema
+  migration, purge cascades, search
   union with badge, toggle-off deletion, capability gating, and snapshots for
   the toggle, the Mail Storage row and the badge.
 

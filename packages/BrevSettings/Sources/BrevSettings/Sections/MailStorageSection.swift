@@ -611,6 +611,8 @@ struct MailStorageSection: View {
 
     @State private var breakdown: MailStorageBreakdown?
     @State private var localFoldersBytes: Int64?
+    @State private var attachmentIndexBytes: Int?
+    @State private var isRunningAttachmentIndexAction = false
     @State private var storageURL: URL?
     @State private var sourceID: MailSourceID?
     @State private var syncHealth: AccountSyncHealth?
@@ -802,6 +804,9 @@ struct MailStorageSection: View {
                     message: MailStoragePresentation.indexSummary(for: syncHealth),
                     tone: indexCalloutTone
                 )
+                if supportsAttachmentIndexing {
+                    attachmentIndexRow
+                }
                 if let statusMessage {
                     SettingsInfoCallout(
                         symbolName: "info.circle",
@@ -811,6 +816,56 @@ struct MailStorageSection: View {
                 }
             }
         }
+    }
+
+    /// Whether the account's backend can index attachment text locally
+    /// (ADR-0078). Gates the Attachment index row and its actions.
+    private var supportsAttachmentIndexing: Bool {
+        backend?.extendedCapabilities.contains(.localAttachmentIndex) ?? false
+    }
+
+    /// Per-account attachment-content index size plus Rebuild/Remove.
+    /// Removal clears every indexed row; rebuilding re-sweeps cached sources.
+    private var attachmentIndexRow: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            storageValueRow(
+                title: String(localized: "Attachment index", bundle: .module),
+                value: attachmentIndexBytes
+                    .map { MailStorageInfo.formattedSize(Int64($0)) } ?? "Calculating..."
+            )
+            HStack(spacing: BrevSpacing.sm) {
+                BrevButton(
+                    String(localized: "Rebuild", bundle: .module),
+                    style: .secondary
+                ) {
+                    Task { await runAttachmentIndexAction(rebuild: true) }
+                }
+                BrevButton(
+                    String(localized: "Remove", bundle: .module),
+                    style: .destructive
+                ) {
+                    Task { await runAttachmentIndexAction(rebuild: false) }
+                }
+            }
+            .disabled(isRunningAttachmentIndexAction)
+        }
+    }
+
+    private func runAttachmentIndexAction(rebuild: Bool) async {
+        guard let backend, !isRunningAttachmentIndexAction else { return }
+        isRunningAttachmentIndexAction = true
+        defer { isRunningAttachmentIndexAction = false }
+        if rebuild {
+            await backend.rebuildAttachmentIndex()
+            statusMessage = String(
+                localized: "Rebuilding the attachment index from cached mail.",
+                bundle: .module
+            )
+        } else {
+            await backend.removeAttachmentIndex()
+            statusMessage = String(localized: "Removed the attachment index.", bundle: .module)
+        }
+        attachmentIndexBytes = await backend.attachmentIndexBytes()
     }
 
     private var retentionGroup: some View {
@@ -956,6 +1011,11 @@ struct MailStorageSection: View {
         syncHealth = nil
         if let localBackend {
             localFoldersBytes = try? await localBackend.size()
+        }
+        if let backend, backend.extendedCapabilities.contains(.localAttachmentIndex) {
+            attachmentIndexBytes = await backend.attachmentIndexBytes()
+        } else {
+            attachmentIndexBytes = nil
         }
         guard let account else {
             breakdown = nil

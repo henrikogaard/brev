@@ -116,6 +116,38 @@ protocol SyncStoreProtocol: Sendable {
 
     func metrics(accountID: String) async -> LocalSearchIndexMetrics?
 
+    // MARK: Attachment text index (ADR-0078)
+
+    /// Inserts or replaces extracted text for one attachment of a message.
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws
+
+    /// Removes attachment rows for the given messages.
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) async throws
+
+    /// Removes every attachment row for the account (consent revocation).
+    func removeAllAttachmentText(accountID: String) async throws
+
+    /// Approximate index size in characters (`SUM(LENGTH(content))`).
+    func attachmentIndexBytes(accountID: String) async -> Int
+
+    /// Message IDs that already have at least one indexed attachment.
+    func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID>
+
+    /// Deterministic matched-attachment name per message for hits that came
+    /// from `attachment_search` only (not `message_search`).
+    func attachmentMatchNames(
+        _ query: SearchQuery,
+        accountID: String,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String]
+
     // MARK: Search
 
     func searchHeaders(
@@ -139,7 +171,7 @@ extension SyncStoreProtocol {
 /// Used in unit tests so that `BrevSyncEngine` can be exercised without a
 /// real SQLite database file.
 actor InMemorySyncStore: SyncStoreProtocol {
-    let currentSchemaVersion = 5
+    let currentSchemaVersion = 6
 
     private var syncStates: [String: FolderSyncState] = [:]
     // ["\(accountID)|\(folderID)": [messageID: MessageHeader]]
@@ -152,6 +184,15 @@ actor InMemorySyncStore: SyncStoreProtocol {
     private var bodies: [String: StoredBody] = [:]
     // element format: "\(accountID)|\(messageID)"
     private var dirty: Set<String> = []
+    private struct StoredAttachmentText {
+        let folderID: String
+        let attachmentID: String
+        let name: String
+        let text: String
+    }
+
+    // key format: "\(accountID)|\(messageID)"
+    private var attachmentTexts: [String: [StoredAttachmentText]] = [:]
 
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
         var result: [ConversationMember] = []
@@ -177,6 +218,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         headersByFolder = headersByFolder.filter { !$0.key.hasPrefix(prefix) }
         bodies = bodies.filter { !$0.key.hasPrefix(prefix) }
         dirty = dirty.filter { !$0.hasPrefix(prefix) }
+        attachmentTexts = attachmentTexts.filter { !$0.key.hasPrefix(prefix) }
     }
 
     func syncState(accountID: String, folderID: String) -> FolderSyncState? {
@@ -303,12 +345,18 @@ actor InMemorySyncStore: SyncStoreProtocol {
     func deleteBodies(messageIDs: [MessageHeader.ID], accountID: String) throws {
         for messageID in messageIDs {
             bodies.removeValue(forKey: "\(accountID)|\(messageID)")
+            attachmentTexts.removeValue(forKey: "\(accountID)|\(messageID)")
         }
     }
 
     func deleteBodies(accountID: String, folderID: String) throws {
         let prefix = "\(accountID)|\(folderID):"
         bodies = bodies.filter { key, _ in
+            guard key.hasPrefix(prefix) else { return true }
+            let suffix = key.dropFirst(prefix.count)
+            return suffix.isEmpty || suffix.contains { !$0.isNumber }
+        }
+        attachmentTexts = attachmentTexts.filter { key, _ in
             guard key.hasPrefix(prefix) else { return true }
             let suffix = key.dropFirst(prefix.count)
             return suffix.isEmpty || suffix.contains { !$0.isNumber }
@@ -323,6 +371,13 @@ actor InMemorySyncStore: SyncStoreProtocol {
             let suffix = key.dropFirst(prefix.count)
             // Keep entries that are not a direct-UID member of this folder,
             // or whose message ID is in the except set.
+            let isDirectMember = !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
+            return !isDirectMember || exceptMessageIDs.contains(messageID)
+        }
+        attachmentTexts = attachmentTexts.filter { key, _ in
+            guard key.hasPrefix(prefix) else { return true }
+            let messageID = String(key.dropFirst("\(accountID)|".count))
+            let suffix = key.dropFirst(prefix.count)
             let isDirectMember = !suffix.isEmpty && suffix.allSatisfy(\.isNumber)
             return !isDirectMember || exceptMessageIDs.contains(messageID)
         }
@@ -377,6 +432,92 @@ actor InMemorySyncStore: SyncStoreProtocol {
         return results
     }
 
+    // MARK: Attachment text index (ADR-0078)
+
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) throws {
+        let key = "\(accountID)|\(messageID)"
+        var rows = attachmentTexts[key] ?? []
+        rows.removeAll { $0.attachmentID == attachmentID }
+        rows.append(StoredAttachmentText(
+            folderID: folderID, attachmentID: attachmentID, name: name, text: text
+        ))
+        attachmentTexts[key] = rows
+    }
+
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) throws {
+        for messageID in messageIDs {
+            attachmentTexts.removeValue(forKey: "\(accountID)|\(messageID)")
+        }
+    }
+
+    func removeAllAttachmentText(accountID: String) throws {
+        let prefix = "\(accountID)|"
+        attachmentTexts = attachmentTexts.filter { !$0.key.hasPrefix(prefix) }
+    }
+
+    func attachmentIndexBytes(accountID: String) -> Int {
+        let prefix = "\(accountID)|"
+        return attachmentTexts
+            .filter { $0.key.hasPrefix(prefix) }
+            .values
+            .flatMap { $0 }
+            .reduce(0) { $0 + $1.text.count }
+    }
+
+    func indexedAttachmentMessageIDs(accountID: String) -> Set<MessageHeader.ID> {
+        let prefix = "\(accountID)|"
+        return Set(attachmentTexts.keys.compactMap {
+            $0.hasPrefix(prefix) ? String($0.dropFirst(prefix.count)) : nil
+        })
+    }
+
+    func attachmentMatchNames(
+        _ query: SearchQuery,
+        accountID: String,
+        messageIDs: [MessageHeader.ID]
+    ) -> [MessageHeader.ID: String] {
+        let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
+        let tokens = Self.searchTokens(for: text)
+        guard !tokens.isEmpty else { return [:] }
+        let normalizedTokens = tokens.map(Self.normalizedSearchText)
+        var bodyTextByID: [MessageHeader.ID: String] = [:]
+        for (key, data) in bodies where key.hasPrefix("\(accountID)|") {
+            let messageID = String(key.dropFirst(accountID.count + 1))
+            bodyTextByID[messageID] = Self.searchableBodyText(from: data.data, messageID: messageID)
+        }
+        var result: [MessageHeader.ID: String] = [:]
+        for messageID in messageIDs {
+            let key = "\(accountID)|\(messageID)"
+            guard let rows = attachmentTexts[key], !rows.isEmpty else { continue }
+            // A message that itself matches the query gets no badge.
+            if let header = headersByFolder.values
+                .compactMap({ $0[messageID] })
+                .first,
+                Self.searchQuery(query, matches: header, bodyText: bodyTextByID[messageID]) {
+                continue
+            }
+            let matchingNames = rows
+                .filter { row in
+                    let haystack = Self.normalizedSearchText(row.name + " " + row.text)
+                    return normalizedTokens.allSatisfy { haystack.contains($0) }
+                }
+                .map(\.name)
+            if let name = matchingNames.min(by: {
+                $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+            }) {
+                result[messageID] = name
+            }
+        }
+        return result
+    }
+
     // MARK: Private
 
     private func folderKey(_ accountID: String, _ folderID: String) -> String {
@@ -398,6 +539,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             let key = "\(accountID)|\(messageID)"
             bodies.removeValue(forKey: key)
             dirty.remove(key)
+            attachmentTexts.removeValue(forKey: key)
         }
     }
 

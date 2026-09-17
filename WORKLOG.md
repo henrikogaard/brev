@@ -1555,3 +1555,40 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
 - Tests: `IncrementalThreadResolverTests` (5) — random-page-order property
   test vs batch resolver, flag-only unchanged, changed/removed/empty
   rebuilds, incremental adds, bridge-merge naming.
+
+## 2026-09-17 — Agent — ADR-0078 local attachment content indexing
+
+- Goal: opt-in, local-only attachment text indexing so message search can
+  match attachment content without ever downloading for indexing.
+- BrevSyncEngine: schema v6 adds `attachment_search` FTS5 (account/message/
+  folder/attachment ids unindexed + name/content/content_normalized);
+  migration creates it empty. Purge cascades on clearFolder, clearAccount,
+  deleteHeaders and body eviction. `searchHeaders` unions attachment hits
+  under the same folder scope; `attachmentMatchNames` reports a name only
+  when the hit came from `attachment_search` alone. New store methods:
+  `indexAttachmentText`, `removeAttachmentText`, `removeAllAttachmentText`,
+  `attachmentIndexBytes`, `indexedAttachmentMessageIDs`. `InMemorySyncStore`
+  mirrors the semantics.
+- BrevBackend: `AttachmentTextExtractor` (text/CSV/Markdown, RTF, HTML, PDF
+  via PDFKit, Office Open XML on macOS; 25 MB input cap, 512 KB output cap,
+  cancellation checks, 10 s task-group timeout). `AttachmentIndexer` actor:
+  per-account serialized utility-priority extraction from cached sources
+  only, `noteSourceCached`/`sweep`/`rebuild`/`stop`/`disable`, consent gate
+  consulted per unit of work. `AttachmentIndexConsentStore` (per-account
+  UserDefaults + didChange notification; excluded from `.brevbackup`).
+  `.localAttachmentIndex` (1<<16) advertised by IMAPSMTPBackend,
+  GmailAPIBackend and LocalMailBackend only when a local index is wired.
+  `MailBackend` gains `matchedAttachmentNames`, `attachmentIndexBytes`,
+  `rebuildAttachmentIndex`, `removeAttachmentIndex` defaults.
+- BrevMail: `MailSearchExecution` decorates cached updates with attachment
+  match names; `MailSearchProgressState` merges/clears them per source;
+  `MessageListRow` renders a "Found in <name>" badge under the subject in
+  both list and unified inbox. All Attachments filters additionally match
+  indexed content via a cache-only `matchedAttachmentNames` lookup.
+- BrevSettings: capability-gated "Search inside attachments" toggle in
+  Folder Sync (Mac/iPhone-aware subtitle, no network promise); Mail Storage
+  "Attachment index" row with size + Rebuild/Remove.
+- Verification: AttachmentSearchIndexTests 6/6 (migration, union, folder
+  scope, all cascades); AttachmentIndexingTests 16/16 + capability suite
+  2/2; Gmail capability 1/1; MailSearchProgress + row badge snapshot;
+  FolderSync + MailStorage snapshot baselines recorded.

@@ -773,6 +773,8 @@ public struct IMAPAccountConnector: Sendable {
     private let manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation?
     private let searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation?
     private let relatedConversationConsent: (any RelatedConversationConsenting)?
+    /// Per-account opt-in store for attachment content indexing (ADR-0078).
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
     private let disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation?
     private let folderCache: (any IMAPFolderSnapshotCache)?
     private let headerCache: (any IMAPMailboxHeaderCache)?
@@ -821,6 +823,7 @@ public struct IMAPAccountConnector: Sendable {
         manageSieveRuleSync: IMAPSMTPBackend.ManageSieveRuleSyncOperation? = nil,
         searchRelatedHeaders: IMAPSMTPBackend.RelatedHeaderSearchOperation? = nil,
         relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil,
         disconnectSession: IMAPSMTPBackend.SessionDisconnectOperation? = nil,
         folderCache: (any IMAPFolderSnapshotCache)? = nil,
         headerCache: (any IMAPMailboxHeaderCache)? = nil,
@@ -869,6 +872,7 @@ public struct IMAPAccountConnector: Sendable {
         self.manageSieveRuleSync = manageSieveRuleSync
         self.searchRelatedHeaders = searchRelatedHeaders
         self.relatedConversationConsent = relatedConversationConsent
+        self.attachmentIndexConsent = attachmentIndexConsent
         self.disconnectSession = disconnectSession
         self.folderCache = folderCache
         self.headerCache = headerCache
@@ -1142,7 +1146,8 @@ public struct IMAPAccountConnector: Sendable {
             offlineMutationQueue: offlineMutationQueue?(account.id),
             offlineMutationConflictStore: offlineMutationConflictStore?(account.id),
             outboundMessagePreparer: outboundMessagePreparer,
-            sentMessageLedger: SentMessageLedger()
+            sentMessageLedger: SentMessageLedger(),
+            attachmentIndexConsent: attachmentIndexConsent
         )
     }
 

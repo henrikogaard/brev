@@ -31,6 +31,12 @@ All notable changes to Brev are documented here.
   until you delete a folder. On macOS, create folders from the sidebar and
   use Copy/Move to Local Folder on any message; on iOS local folders are
   readable. Local folders are searchable and browsable like any account.
+- Optional attachment-content indexing per account (Settings › Folder Sync ›
+  "Search inside attachments"): Brev extracts text locally from attachments
+  already cached on this device — nothing is downloaded for indexing — so
+  message search can match attachment text and label the hit with "Found in
+  <name>". Turning the toggle off deletes the account's attachment index;
+  Mail Storage shows its size with Rebuild/Remove actions.
 
 ### Changed
 

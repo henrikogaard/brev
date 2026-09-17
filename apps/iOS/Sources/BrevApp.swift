@@ -444,7 +444,12 @@ extension AppSession {
         let gmailConnector = GmailAccountConnector.standard(
             applicationSupportURL: applicationSupportURL,
             configurationStore: UserDefaultsGmailAccountConfigurationStore(),
-            tokenStore: KeychainTokenStore()
+            tokenStore: KeychainTokenStore(),
+            localSearchIndexFactory: { accountID in
+                try? BrevSyncEngine(
+                    databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
+                )
+            }
         )
         return AppSessionFactory.makeDefault(
             configuration: AppSessionFactory.Configuration(

@@ -64,6 +64,13 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private var scheduledStore: (any GmailScheduledSendStore)? { store as? any GmailScheduledSendStore }
     /// Consent boundary for remote related-header discovery (ADR-0074/ADR-0006).
     private let relatedConversationConsent: (any RelatedConversationConsenting)?
+    /// Per-account opt-in store for attachment content indexing (ADR-0078).
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
+    /// Shared local index receiving attachment-content rows (ADR-0078).
+    private let localSearchIndex: (any MailLocalSearchIndex)?
+    /// Cache-only attachment indexer; nil when no index/consent store is wired.
+    private(set) var attachmentIndexer: AttachmentIndexer?
+    private var attachmentConsentObserver: NSObjectProtocol?
     private let offlineMutationQueue: (any OfflineMutationQueue)?
     private let offlineMutationConflictStore: (any OfflineMutationConflictStore)?
     private let lock = NSLock()
@@ -91,7 +98,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         draftStaging: (any GmailDraftStagingStore)? = nil,
         offlineMutationQueue: (any OfflineMutationQueue)? = nil,
         offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
-        relatedConversationConsent: (any RelatedConversationConsenting)? = nil
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
+        localSearchIndex: (any MailLocalSearchIndex)? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil
     ) {
         self.account = account
         self.transport = transport
@@ -103,6 +112,33 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         self.offlineMutationQueue = offlineMutationQueue
         self.offlineMutationConflictStore = offlineMutationConflictStore
         self.relatedConversationConsent = relatedConversationConsent
+        self.attachmentIndexConsent = attachmentIndexConsent
+        self.localSearchIndex = localSearchIndex
+        if let localSearchIndex {
+            attachmentIndexer = AttachmentIndexer(
+                accountID: account.id,
+                isEnabled: { attachmentIndexConsent?.isEnabled(accountID: account.id) ?? false },
+                index: localSearchIndex,
+                sweepEntries: { [weak self] in
+                    await self?.attachmentSweepEntries() ?? []
+                },
+                rawMessageProvider: { [weak self] messageID in
+                    await self?.cachedRawMessageForIndexing(messageID: messageID)
+                }
+            )
+        }
+        if let attachmentIndexConsent {
+            attachmentConsentObserver = NotificationCenter.default.addObserver(
+                forName: AttachmentIndexConsentStore.didChangeNotification,
+                object: attachmentIndexConsent,
+                queue: nil
+            ) { [weak self] note in
+                guard (note.userInfo?["accountID"] as? String) == account.id else { return }
+                Task { [weak self] in
+                    await self?.attachmentIndexingConsentChanged()
+                }
+            }
+        }
     }
 
     /// Creates a backend using a typed client for Gmail write operations.
@@ -178,6 +214,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             if relatedConversationConsent != nil {
                 result.insert(.relatedConversationLoading)
             }
+            if attachmentIndexer != nil {
+                result.insert(.localAttachmentIndex)
+            }
             return result
         }
     }
@@ -245,6 +284,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             try await draftOperations.activate(generation: draftGeneration)
             try requireConnectionGeneration(generation)
             try await prepareScheduledDelivery(generation: generation)
+            await attachmentIndexer?.sweep()
         } catch {
             lock.withLock {
                 guard connectionGeneration == generation else { return }
@@ -256,6 +296,66 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
             throw Self.providerNeutralError(error)
         }
+    }
+
+    /// Re-applies the consent boundary: enabling sweeps cached sources;
+    /// disabling stops work and removes every indexed row (ADR-0078 §1).
+    private func attachmentIndexingConsentChanged() async {
+        guard let attachmentIndexConsent else { return }
+        if attachmentIndexConsent.isEnabled(accountID: account.id) {
+            await attachmentIndexer?.sweep()
+        } else {
+            await attachmentIndexer?.disable()
+        }
+    }
+
+    /// Local attachment-content matches for cached search results (ADR-0078 §5).
+    public func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        await localSearchIndex?.matchedAttachmentNames(
+            matching: query, account: account, messageIDs: messageIDs
+        ) ?? [:]
+    }
+
+    /// Size of this account's local attachment-content index (ADR-0078).
+    public func attachmentIndexBytes() async -> Int {
+        await localSearchIndex?.attachmentIndexBytes(accountID: account.id) ?? 0
+    }
+
+    /// Clears the attachment index and re-sweeps cached sources.
+    public func rebuildAttachmentIndex() async {
+        await attachmentIndexer?.rebuild()
+    }
+
+    /// Removes every indexed attachment row and stops indexing work.
+    public func removeAttachmentIndex() async {
+        await attachmentIndexer?.disable()
+    }
+
+    /// Every canonical message as an indexing sweep entry; the indexer skips
+    /// messages with no cached source and rows already indexed.
+    private func attachmentSweepEntries() async -> [AttachmentIndexer.SweepEntry] {
+        let messages = await (try? store.messages(accountID: account.id)) ?? []
+        let labels = lock.withLock { labelCatalog }
+        return messages.map { message in
+            AttachmentIndexer.SweepEntry(
+                messageID: message.id,
+                folderID: Self.primaryFolderID(for: message, labels: labels)
+            )
+        }
+    }
+
+    /// Cache-only raw source for indexing: original bytes first, then the
+    /// legacy decoded-text cache. Never fetches (ADR-0078 §2).
+    private func cachedRawMessageForIndexing(messageID: String) async -> String? {
+        if let data = try? await readCache?.cachedRawMessageData(accountID: account.id, messageID: messageID),
+           !data.isEmpty {
+            return IMAPMessageBodyParser().rawMessageString(from: data)
+        }
+        return try? await readCache?.cachedRawSource(accountID: account.id, messageID: messageID)
     }
 
     private func requireConnectionGeneration(_ expected: UUID) throws {
@@ -282,6 +382,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
         await scheduledDelivery.cancel()
         await draftOperations.deactivate()
+        await attachmentIndexer?.stop()
         continuations.forEach { $0.finish() }
     }
 
@@ -483,6 +584,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             throw GmailAPIError.malformedResponse
         }
         try await readCache?.storeRawMessageData(data, accountID: account.id, messageID: messageID)
+        // The source is now on device; index its attachments when the account
+        // opted in (ADR-0078 §2). Folder is derived from the local store only.
+        if let cached = try? await store.message(accountID: account.id, messageID: messageID) {
+            let labels = lock.withLock { labelCatalog }
+            await attachmentIndexer?.noteSourceCached(
+                messageID: messageID,
+                folderID: Self.primaryFolderID(for: cached, labels: labels)
+            )
+        }
         return data
     }
 

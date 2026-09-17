@@ -18,6 +18,25 @@ import Foundation
 /// network calls (ADR-0041).
 protocol AttachmentSearchRecordProviding: Sendable {
     func attachmentRecords() async -> [AttachmentSearchRecord]
+
+    /// Message IDs whose indexed attachment *content* matches `query`
+    /// (ADR-0078 §5). Read-only and cache-only; default returns empty for
+    /// providers without an attachment index.
+    func attachmentContentMatchedMessageIDs(
+        query: String,
+        candidateMessageIDs: [MessageHeader.ID]
+    ) async -> Set<MessageHeader.ID>
+}
+
+extension AttachmentSearchRecordProviding {
+    func attachmentContentMatchedMessageIDs(
+        query: String,
+        candidateMessageIDs: [MessageHeader.ID]
+    ) async -> Set<MessageHeader.ID> {
+        _ = query
+        _ = candidateMessageIDs
+        return []
+    }
 }
 
 /// Fixed records, for previews and snapshot tests.

@@ -165,7 +165,8 @@ public enum AppSessionFactory {
 
         let localBackend = (configuration.localBackendFactory ?? {
             LocalMailBackend(
-                localSearchIndex: configuration.localSearchIndex?(LocalMailBackend.accountID)
+                localSearchIndex: configuration.localSearchIndex?(LocalMailBackend.accountID),
+                attachmentIndexConsent: AttachmentIndexConsentStore.shared
             )
         })()
 

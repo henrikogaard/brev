@@ -35,6 +35,7 @@ public extension IMAPAccountConnector {
         tokenStore: (any TokenStore)? = nil,
         outboundMessagePreparer: (any OutboundMessagePreparing)? = nil,
         relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = AttachmentIndexConsentStore.shared,
         imapTransportFactory: @escaping IMAPTransportFactory = {
             NetworkIMAPSessionTransport()
         },
@@ -304,6 +305,7 @@ public extension IMAPAccountConnector {
                 )
             },
             relatedConversationConsent: relatedConversationConsent,
+            attachmentIndexConsent: attachmentIndexConsent,
             disconnectSession: { configuration in
                 await imapSessionPool.disconnect(accountID: configuration.accountID)
             },

@@ -20,12 +20,17 @@ public struct PerFolderSyncSection: View {
     @State private var settings: AccountMailboxSyncSettings
     @State private var visibilityPreferences: FolderVisibilityPreferences
     @State private var relatedAutoLoadEnabled = false
+    @State private var attachmentIndexingEnabled = false
     @State private var filter = ""
 
     private let folders: [Folder]
     private let sourceID: MailSourceID?
     private let settingsStore: SettingsPersistenceStore
     private let relatedConsentStore: RelatedConversationConsentStore
+    private let attachmentConsentStore: AttachmentIndexConsentStore
+    /// Whether the mailbox's backend supports local attachment indexing
+    /// (ADR-0078). Gates the "Search inside attachments" control.
+    private let supportsAttachmentIndexing: Bool
     private let emptyFolderMessage: String
     private let onReload: (() -> Void)?
     private let isLoading: Bool
@@ -38,6 +43,8 @@ public struct PerFolderSyncSection: View {
         settings: AccountMailboxSyncSettings,
         settingsStore: SettingsPersistenceStore = .standard,
         relatedConsentStore: RelatedConversationConsentStore = .shared,
+        attachmentConsentStore: AttachmentIndexConsentStore = .shared,
+        supportsAttachmentIndexing: Bool = false,
         emptyFolderMessage: String? = nil,
         isLoading: Bool = false,
         onReload: (() -> Void)? = nil,
@@ -50,6 +57,8 @@ public struct PerFolderSyncSection: View {
         self.sourceID = sourceID
         self.settingsStore = settingsStore
         self.relatedConsentStore = relatedConsentStore
+        self.attachmentConsentStore = attachmentConsentStore
+        self.supportsAttachmentIndexing = supportsAttachmentIndexing
         self.emptyFolderMessage = emptyFolderMessage ?? String(
             localized: "No folders available. Open a mailbox to configure per-folder sync.",
             bundle: .module
@@ -68,11 +77,15 @@ public struct PerFolderSyncSection: View {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 folderOverridesGroup
                 relatedMailGroup
+                attachmentIndexingGroup
             }
         }
         .task(id: sourceID) {
             relatedAutoLoadEnabled = sourceID.map {
                 relatedConsentStore.isAutoLoadEnabled(accountID: $0.accountID)
+            } ?? false
+            attachmentIndexingEnabled = sourceID.map {
+                attachmentConsentStore.isEnabled(accountID: $0.accountID)
             } ?? false
         }
     }
@@ -132,6 +145,79 @@ public struct PerFolderSyncSection: View {
                 relatedAutoLoadEnabled = newValue
                 guard let accountID = sourceID?.accountID else { return }
                 relatedConsentStore.setAutoLoadEnabled(newValue, accountID: accountID)
+            }
+        )
+    }
+
+    /// Per-account opt-in for local attachment-content indexing (ADR-0078).
+    /// Capability-gated: only shown when the mailbox's backend advertises
+    /// `.localAttachmentIndex`. All extraction is local; nothing is
+    /// downloaded for indexing. Disabling removes every indexed row.
+    private var attachmentIndexingGroup: some View {
+        Group {
+            if supportsAttachmentIndexing {
+                SettingsGroup(
+                    title: String(localized: "Attachments", bundle: .module),
+                    subtitle: String(
+                        localized: "Search the text inside attachments on this device.",
+                        bundle: .module
+                    ),
+                    symbolName: "doc.text.magnifyingglass"
+                ) {
+                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                        if sourceID == nil {
+                            SettingsInfoCallout(
+                                symbolName: "tray",
+                                message: String(
+                                    localized: "Open a mailbox to control attachment indexing.",
+                                    bundle: .module
+                                ),
+                                tone: .info
+                            )
+                        } else {
+                            SettingsToggleRow(
+                                symbolName: "doc.text.magnifyingglass",
+                                title: String(localized: "Search inside attachments", bundle: .module),
+                                subtitle: attachmentIndexingSubtitle,
+                                isOn: attachmentIndexingBinding
+                            )
+
+                            SettingsInfoCallout(
+                                symbolName: "shield",
+                                message: String(
+                                    localized: "Local only. Indexed text never leaves this device, and turning this off deletes the index.",
+                                    bundle: .module
+                                ),
+                                tone: .info
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var attachmentIndexingSubtitle: String {
+        #if os(iOS)
+        String(
+            localized: "Indexes text from attachments already on this iPhone; nothing is downloaded for it.",
+            bundle: .module
+        )
+        #else
+        String(
+            localized: "Indexes text from attachments already on this Mac; nothing is downloaded for it.",
+            bundle: .module
+        )
+        #endif
+    }
+
+    private var attachmentIndexingBinding: Binding<Bool> {
+        Binding(
+            get: { attachmentIndexingEnabled },
+            set: { newValue in
+                attachmentIndexingEnabled = newValue
+                guard let accountID = sourceID?.accountID else { return }
+                attachmentConsentStore.setEnabled(newValue, accountID: accountID)
             }
         )
     }
@@ -348,6 +434,8 @@ struct FolderSyncSettingsSection: View {
                 sourceID: sourceID,
                 settings: settingsStore.accountMailboxSyncSettings(),
                 settingsStore: settingsStore,
+                supportsAttachmentIndexing: backend?.extendedCapabilities
+                    .contains(.localAttachmentIndex) ?? false,
                 emptyFolderMessage: emptyFolderMessage,
                 isLoading: isLoading,
                 onReload: backend != nil && sourceID != nil ? { Task { await loadFolders() } } : nil

@@ -31,6 +31,9 @@ struct AttachmentSearchFilter: Equatable, Sendable {
     var folderID: Folder.ID?
     var startDate: Date?
     var endDate: Date?
+    /// Messages whose indexed attachment content matched `query` (ADR-0078).
+    /// Populated by the view, not by filter controls.
+    var attachmentContentMessageIDs: Set<MessageHeader.ID>
 
     init(
         query: String = "",
@@ -38,7 +41,8 @@ struct AttachmentSearchFilter: Equatable, Sendable {
         sender: String? = nil,
         folderID: Folder.ID? = nil,
         startDate: Date? = nil,
-        endDate: Date? = nil
+        endDate: Date? = nil,
+        attachmentContentMessageIDs: Set<MessageHeader.ID> = []
     ) {
         self.query = query
         self.fileType = fileType
@@ -46,6 +50,7 @@ struct AttachmentSearchFilter: Equatable, Sendable {
         self.folderID = folderID
         self.startDate = startDate
         self.endDate = endDate
+        self.attachmentContentMessageIDs = attachmentContentMessageIDs
     }
 }
 
@@ -157,7 +162,7 @@ enum AttachmentSearchPresentation {
 
         return haystacks.contains { value in
             value.range(of: query, options: [.caseInsensitive, .diacriticInsensitive]) != nil
-        }
+        } || filter.attachmentContentMessageIDs.contains(record.header.id)
     }
 
     private static func row(for record: AttachmentSearchRecord) -> AttachmentSearchRow {

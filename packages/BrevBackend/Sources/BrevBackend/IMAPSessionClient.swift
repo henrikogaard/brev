@@ -922,28 +922,7 @@ public struct IMAPMessageListing: Sendable, Hashable {
     /// style/script content (not prose) and a final tag the byte-limited
     /// peek cut in half, which then has no closing bracket to match.
     private static func strippingHTMLMarkup(_ text: String) -> String {
-        text
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*?</\1\s*>"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?is)<(style|script)\b[^>]*>.*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(
-                of: #"(?s)<!--.*?-->"#,
-                with: " ",
-                options: .regularExpression
-            )
-            .replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
-            .replacingOccurrences(
-                of: #"(?s)<[^>]*\z"#,
-                with: " ",
-                options: .regularExpression
-            )
+        HTMLTextStripper.stripMarkup(text)
     }
 
     private static func parseUID(in line: String) -> Int? {

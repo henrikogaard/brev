@@ -1400,6 +1400,30 @@ public struct BrevMailRootView: View {
         return SmartMailboxSettings.load().mailboxes.first { $0.id == id && $0.isEnabled }
     }
 
+    /// Local attachment-content lookup for the All Attachments query field
+    /// (ADR-0078 §5). Queries only backends advertising `.localAttachmentIndex`
+    /// and only over rows already on device; nil when no backend qualifies.
+    private func attachmentContentMatcher() -> (
+        @Sendable (String, [MessageHeader.ID]) async -> [MessageHeader.ID: String]
+    )? {
+        let indexingBackends = backends.filter {
+            $0.extendedCapabilities.contains(.localAttachmentIndex)
+        }
+        guard !indexingBackends.isEmpty else { return nil }
+        return { query, messageIDs in
+            var result: [MessageHeader.ID: String] = [:]
+            for backend in indexingBackends {
+                let names = await backend.matchedAttachmentNames(
+                    matching: SearchQuery(text: query, execution: .cacheOnly),
+                    account: backend.account,
+                    messageIDs: messageIDs
+                )
+                result.merge(names) { _, new in new }
+            }
+            return result
+        }
+    }
+
     /// Executes a selected saved search: attachment searches open the All
     /// Attachments surface seeded with the saved filter; message searches reuse
     /// the unified list filtered by the saved query (ADR-0041).
@@ -1412,7 +1436,8 @@ public struct BrevMailRootView: View {
                     enumerator: BackendCachedAttachmentEnumerator(
                         backends: backends,
                         sourceSections: visibleSourceSections
-                    )
+                    ),
+                    contentMatcher: attachmentContentMatcher()
                 ),
                 navigation: navigation,
                 initialFilter: AttachmentSearchFilter(
@@ -1455,7 +1480,8 @@ public struct BrevMailRootView: View {
                         enumerator: BackendCachedAttachmentEnumerator(
                             backends: backends,
                             sourceSections: visibleSourceSections
-                        )
+                        ),
+                        contentMatcher: attachmentContentMatcher()
                     ),
                     navigation: navigation,
                     onOpen: { route in openAttachmentRoute(route) }

@@ -958,6 +958,10 @@ struct UnifiedInboxListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: item.sourceContext,
+            matchedAttachmentName: searchProgress.matchedAttachmentName(
+                for: item.header.id,
+                source: item.sourceID
+            ),
             isBlockedSender: false,
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,

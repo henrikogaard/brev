@@ -559,6 +559,21 @@ provider's own synchronization settings apply.
   distinguishes cached results from completed server coverage; interrupted
   searches retain partial results with an incomplete-search notice. Both searches
   with and without attachments disclose possible source downloads.
+- **Attachment content indexing.** Off by default and opt-in per account under
+  Settings → Folder Sync. When enabled, Brev extracts text locally — on this
+  device, with no network call — from attachments already present in the local
+  cache, and stores the text in the local SQLite index so message search can
+  match it. Indexing never downloads a message or attachment for that purpose;
+  uncached content is skipped. Inputs are limited to 25 MB, extracted text is
+  truncated at 512 KB, and supported formats are plain text, CSV/Markdown,
+  RTF, HTML, and PDF. Office documents are not indexed, and HTML text is
+  extracted without loading any remote content the page references. Inline
+  attachments are skipped.
+  Turning the toggle off — or choosing Remove under Mail Storage — deletes
+  every indexed attachment row for that account. Diagnostics record counts,
+  byte totals, and durations only: never filenames, subjects, addresses, or
+  content. The setting is per-device and is not included in `.brevbackup`
+  exports.
 - **Search terms, draft contents, attachments.** Stay on your
   device unless you use mail-provider features that require them:
   server-side search, saving drafts, uploading attachments, or

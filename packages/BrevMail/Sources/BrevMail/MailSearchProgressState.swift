@@ -18,6 +18,8 @@ struct MailSearchProgressState {
     private struct Source {
         var headers: [MessageHeader] = []
         var seen = Set<MessageHeader.ID>()
+        /// Attachment-content match names keyed by message ID (ADR-0078 §5).
+        var attachmentMatchNames: [MessageHeader.ID: String] = [:]
         var coverage: MailSearchCoverage?
         var complete = false
         var failed = false
@@ -26,7 +28,9 @@ struct MailSearchProgressState {
             if update.replacesResults || coverage != update.coverage {
                 headers = []
                 seen = []
+                attachmentMatchNames = [:]
             }
+            attachmentMatchNames.merge(update.attachmentMatchNames) { _, new in new }
             coverage = update.coverage
             complete = update.isComplete
             let added = update.headers.filter { seen.insert($0.id).inserted }.sorted(by: Self.precedes)
@@ -97,6 +101,12 @@ struct MailSearchProgressState {
     }
 
     func headers(for source: MailSourceID) -> [MessageHeader] { sources[source]?.headers ?? [] }
+
+    /// The matched attachment name for a search-result message, or nil when
+    /// the hit came from the message itself rather than attachment content.
+    func matchedAttachmentName(for messageID: MessageHeader.ID, source: MailSourceID) -> String? {
+        sources[source]?.attachmentMatchNames[messageID]
+    }
 }
 
 /// Adapts optional provider progress without claiming coverage for older array-only adapters.
@@ -107,8 +117,28 @@ enum MailSearchExecution {
         sourceID: MailSourceID?,
         onUpdate: @escaping MailSearchProgressHandler
     ) async throws -> [MessageHeader] {
+        // Decorate cached updates with attachment-content match names so the
+        // "Found in <name>" badge reaches the list (ADR-0078 §5).
+        let decorated: MailSearchProgressHandler = { update in
+            guard update.coverage == .cached, !update.headers.isEmpty else {
+                await onUpdate(update)
+                return
+            }
+            let names = await backend.matchedAttachmentNames(
+                matching: query,
+                account: backend.account,
+                messageIDs: update.headers.map(\.id)
+            )
+            await onUpdate(MailSearchUpdate(
+                headers: update.headers,
+                coverage: update.coverage,
+                replacesResults: update.replacesResults,
+                isComplete: update.isComplete,
+                attachmentMatchNames: names
+            ))
+        }
         if let progressive = backend.extensionService(ProgressiveMailSearching.self) {
-            return try await progressive.searchWithProgress(query, sourceID: sourceID, onUpdate: onUpdate)
+            return try await progressive.searchWithProgress(query, sourceID: sourceID, onUpdate: decorated)
         }
         let results: [MessageHeader]
         if let sourceID {
@@ -117,7 +147,7 @@ enum MailSearchExecution {
             results = try await backend.search(query)
         }
         try Task.checkCancellation()
-        await onUpdate(MailSearchUpdate(
+        await decorated(MailSearchUpdate(
             headers: results,
             coverage: query.execution == .cacheOnly ? .cached : .unverified,
             replacesResults: true,

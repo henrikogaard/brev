@@ -616,6 +616,32 @@ public extension MailBackend {
         return await cachedAttachmentMessages(in: folders)
     }
 
+    /// Matched attachment names for results that hit only the local
+    /// attachment-content index (ADR-0078 §5). Backends without an attachment
+    /// index return empty.
+    func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        _ = query
+        _ = account
+        _ = messageIDs
+        return [:]
+    }
+
+    /// Size in bytes of the local attachment-content index for this account
+    /// (ADR-0078). Backends without an index return 0.
+    func attachmentIndexBytes() async -> Int { 0 }
+
+    /// Rebuilds the local attachment index from already-cached sources.
+    /// Default is a no-op for backends without `.localAttachmentIndex`.
+    func rebuildAttachmentIndex() async {}
+
+    /// Removes all local attachment-index rows and stops indexing. Default
+    /// is a no-op for backends without `.localAttachmentIndex`.
+    func removeAttachmentIndex() async {}
+
     func extensionService<Service>(_ type: Service.Type) -> Service? {
         _ = type
         return nil

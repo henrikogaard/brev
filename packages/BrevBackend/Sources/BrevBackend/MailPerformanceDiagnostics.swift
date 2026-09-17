@@ -208,6 +208,18 @@ enum MailPerformanceDiagnostics {
         )
     }
 
+    /// Attachment-index diagnostics (ADR-0078 §7): counts, byte sizes, and
+    /// durations only — never attachment names or extracted text.
+    static func logAttachmentIndex(
+        count: Int,
+        bytes: Int,
+        durationMs: Int
+    ) {
+        logger.debug(
+            "mail.attachmentIndex message processed attachments=\(count, privacy: .public) bytes=\(bytes, privacy: .public) durationMs=\(durationMs, privacy: .public)"
+        )
+    }
+
     static func logSessionQueueWait(
         durationMilliseconds: Int
     ) {

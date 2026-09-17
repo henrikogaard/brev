@@ -51,6 +51,36 @@ struct MailSearchProgressTests {
         #expect(state.canRetry)
     }
 
+    @Test("attachment match names merge per source and reset on replacement")
+    func attachmentMatchNames() {
+        var state = MailSearchProgressState()
+        let request = state.begin(sources: [source])
+        state.apply(
+            MailSearchUpdate(
+                headers: [header("hit", 1)],
+                coverage: .cached,
+                attachmentMatchNames: ["hit": "invoice.pdf"]
+            ),
+            source: source,
+            request: request
+        )
+        #expect(state.matchedAttachmentName(for: "hit", source: source) == "invoice.pdf")
+        #expect(state.matchedAttachmentName(for: "hit", source: other) == nil)
+        #expect(state.matchedAttachmentName(for: "miss", source: source) == nil)
+
+        // A replacing update clears names carried by the previous page.
+        state.apply(
+            MailSearchUpdate(
+                headers: [header("hit", 1)],
+                coverage: .server,
+                replacesResults: true
+            ),
+            source: source,
+            request: request
+        )
+        #expect(state.matchedAttachmentName(for: "hit", source: source) == nil)
+    }
+
     @Test("finishing an interrupted request settles progress without affecting newer requests")
     func interruptedRequestSettles() {
         var state = MailSearchProgressState()

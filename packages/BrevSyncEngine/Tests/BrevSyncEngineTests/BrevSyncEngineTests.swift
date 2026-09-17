@@ -154,7 +154,7 @@ final class BrevSyncEngineTests: XCTestCase {
     func testInMemoryStoreReportsCurrentSchemaVersion() async {
         let store = InMemorySyncStore()
         let version = await store.currentSchemaVersion
-        XCTAssertEqual(version, 5)
+        XCTAssertEqual(version, 6)
     }
 
     // MARK: cachedHeaders returns nil before first sync
@@ -906,7 +906,7 @@ final class BrevSyncEngineTests: XCTestCase {
         defer { try? FileManager.default.removeItem(at: url) }
 
         let store = try SQLiteSyncStore(databaseURL: url)
-        XCTAssertEqual(store.currentSchemaVersion, 5)
+        XCTAssertEqual(store.currentSchemaVersion, 6)
 
         let accountID = "acc"
         try store.ensureAccount(id: accountID)
@@ -966,7 +966,7 @@ final class BrevSyncEngineTests: XCTestCase {
         )
 
         let store = try SQLiteSyncStore(databaseURL: url)
-        XCTAssertEqual(store.currentSchemaVersion, 5)
+        XCTAssertEqual(store.currentSchemaVersion, 6)
 
         let legacy = store.headers(accountID: "acc", folderID: "INBOX", limit: 10, offset: 0)
         XCTAssertEqual(legacy.map(\.id), ["INBOX:9"])
@@ -1676,7 +1676,7 @@ final class BrevSyncEngineTests: XCTestCase {
         let subjectMatches = await engine.search(SearchQuery(text: "Subject 9"), account: account)
         let bodyMatches = await engine.search(SearchQuery(text: "needle"), account: account)
 
-        XCTAssertEqual(store.currentSchemaVersion, 5)
+        XCTAssertEqual(store.currentSchemaVersion, 6)
         XCTAssertTrue(try Self.searchTableColumns(at: url).isSuperset(of: [
             "subject_normalized",
             "snippet_normalized",
@@ -1710,7 +1710,7 @@ final class BrevSyncEngineTests: XCTestCase {
         let headerMatches = await engine.search(SearchQuery(text: "moteplan"), account: account)
         let bodyMatches = await engine.search(SearchQuery(text: "mote flyttet"), account: account)
 
-        XCTAssertEqual(store.currentSchemaVersion, 5)
+        XCTAssertEqual(store.currentSchemaVersion, 6)
         XCTAssertTrue(try Self.searchTableColumns(at: url).isSuperset(of: [
             "subject_normalized",
             "snippet_normalized",

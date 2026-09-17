@@ -156,6 +156,10 @@ public struct GmailAccountConnector: Sendable {
     private let platform: GoogleOAuthPlatform
     /// Consent boundary passed through to every provisioned backend.
     private let relatedConversationConsent: (any RelatedConversationConsenting)?
+    /// Per-account opt-in store for attachment content indexing (ADR-0078).
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
+    /// Builds the shared local index an account's attachment indexer writes to.
+    private let localSearchIndexFactory: (@Sendable (String) -> (any MailLocalSearchIndex)?)?
 
     /// Creates a connector with injected storage, refresh, and transport seams.
     public init(
@@ -167,7 +171,9 @@ public struct GmailAccountConnector: Sendable {
         mutationQueueFactory: MutationQueueFactory? = nil,
         refresher: OAuthTokenRefresher,
         platform: GoogleOAuthPlatform,
-        relatedConversationConsent: (any RelatedConversationConsenting)? = nil
+        relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil,
+        localSearchIndexFactory: (@Sendable (String) -> (any MailLocalSearchIndex)?)? = nil
     ) {
         self.configurationStore = configurationStore
         self.tokenStore = tokenStore
@@ -178,6 +184,8 @@ public struct GmailAccountConnector: Sendable {
         self.refresher = refresher
         self.platform = platform
         self.relatedConversationConsent = relatedConversationConsent
+        self.attachmentIndexConsent = attachmentIndexConsent
+        self.localSearchIndexFactory = localSearchIndexFactory
     }
 
     /// Builds the production connector using UserDefaults, Keychain, SQLite,
@@ -188,7 +196,9 @@ public struct GmailAccountConnector: Sendable {
         tokenStore: any TokenStore,
         googleClientID: String = GoogleOAuthClientID,
         platform: GoogleOAuthPlatform? = nil,
-        relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared
+        relatedConversationConsent: (any RelatedConversationConsenting)? = RelatedConversationConsentStore.shared,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = AttachmentIndexConsentStore.shared,
+        localSearchIndexFactory: (@Sendable (String) -> (any MailLocalSearchIndex)?)? = nil
     ) -> GmailAccountConnector {
         let refreshCoordinator = OAuthRefreshCoordinator()
         let refresher = OAuthTokenRefresher(
@@ -223,7 +233,9 @@ public struct GmailAccountConnector: Sendable {
             },
             refresher: refresher,
             platform: resolvedPlatform,
-            relatedConversationConsent: relatedConversationConsent
+            relatedConversationConsent: relatedConversationConsent,
+            attachmentIndexConsent: attachmentIndexConsent,
+            localSearchIndexFactory: localSearchIndexFactory
         )
     }
 
@@ -366,7 +378,9 @@ public struct GmailAccountConnector: Sendable {
             syncReconciler: reconciler,
             offlineMutationQueue: mutationStores?.queue,
             offlineMutationConflictStore: mutationStores?.conflicts,
-            relatedConversationConsent: relatedConversationConsent
+            relatedConversationConsent: relatedConversationConsent,
+            localSearchIndex: localSearchIndexFactory?(accountID),
+            attachmentIndexConsent: attachmentIndexConsent
         )
         try await backend.connect()
         return GmailConnectedAccount(account: account, backend: backend)

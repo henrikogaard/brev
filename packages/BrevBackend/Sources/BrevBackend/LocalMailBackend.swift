@@ -32,15 +32,19 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
 
     public let account: BrevAccount
     public let capabilities: BackendCapabilities = [.folderCreate, .folderRename, .folderDelete]
-    public let extendedCapabilities: BackendExtendedCapabilities = [
-        .clientSideThreading, .messageCopy, .rawMessageSource, .rawMessageBytes
-    ]
+    /// `.localAttachmentIndex` only when a search index is wired to persist
+    /// extracted text (ADR-0078 §8); sources are already on-device.
+    public let extendedCapabilities: BackendExtendedCapabilities
 
     /// The Maildir store backing this backend (exposed for backup/restore and
     /// Mail Storage sizing).
     public let store: LocalMaildirStore
     private let localSearchIndex: (any MailLocalSearchIndex)?
     private let bodyParser = IMAPMessageBodyParser()
+    private let attachmentIndexConsent: AttachmentIndexConsentStore?
+    /// Cache-only attachment indexer; nil when no index/consent store is wired.
+    private(set) var attachmentIndexer: AttachmentIndexer?
+    private var attachmentConsentObserver: NSObjectProtocol?
 
     private let stateLock = NSLock()
     private var eventContinuation: AsyncStream<MailEvent>.Continuation?
@@ -62,10 +66,12 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
     public init(
         store: LocalMaildirStore = LocalMaildirStore(),
         localSearchIndex: (any MailLocalSearchIndex)? = nil,
-        account: BrevAccount? = nil
+        account: BrevAccount? = nil,
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil
     ) {
         self.store = store
         self.localSearchIndex = localSearchIndex
+        self.attachmentIndexConsent = attachmentIndexConsent
         self.account = account ?? BrevAccount(
             id: Self.accountID,
             displayName: Self.deviceAccountDisplayName,
@@ -80,6 +86,56 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
             .flatMap { try? JSONDecoder().decode([LocalMaildirStore.FolderRecord].self, from: $0) }?
             .count ?? 0
         cachedHasFolders = count > 0
+        var extended: BackendExtendedCapabilities = [
+            .clientSideThreading, .messageCopy, .rawMessageSource, .rawMessageBytes,
+        ]
+        if localSearchIndex != nil {
+            extended.insert(.localAttachmentIndex)
+        }
+        extendedCapabilities = extended
+        if let localSearchIndex {
+            let store = store
+            let parser = bodyParser
+            let accountID = self.account.id
+            attachmentIndexer = AttachmentIndexer(
+                accountID: accountID,
+                isEnabled: { attachmentIndexConsent?.isEnabled(accountID: accountID) ?? false },
+                index: localSearchIndex,
+                sweepEntries: {
+                    var entries: [AttachmentIndexer.SweepEntry] = []
+                    for record in await (try? store.folders()) ?? [] {
+                        for stored in await (try? store.enumerate(folderID: record.id)) ?? [] {
+                            entries.append(.init(
+                                messageID: Self.messageID(for: stored.ref),
+                                folderID: record.id
+                            ))
+                        }
+                    }
+                    return entries
+                },
+                rawMessageProvider: { messageID in
+                    guard let separator = messageID.firstIndex(of: ":") else { return nil }
+                    let ref = LocalMaildirStore.LocalMessageRef(
+                        folderID: String(messageID[..<separator]),
+                        uniqueID: String(messageID[messageID.index(after: separator)...])
+                    )
+                    guard let data = try? await store.data(for: ref) else { return nil }
+                    return parser.rawMessageString(from: data)
+                }
+            )
+        }
+        if let attachmentIndexConsent {
+            attachmentConsentObserver = NotificationCenter.default.addObserver(
+                forName: AttachmentIndexConsentStore.didChangeNotification,
+                object: attachmentIndexConsent,
+                queue: nil
+            ) { [weak self] note in
+                guard (note.userInfo?["accountID"] as? String) == self?.account.id else { return }
+                Task { [weak self] in
+                    await self?.attachmentIndexingConsentChanged()
+                }
+            }
+        }
     }
 
     private static var deviceAccountDisplayName: String {
@@ -112,10 +168,30 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
             }
         }
         await refreshFolderPresence()
+        // Local sources are always present, so the sweep is the indexing
+        // trigger (ADR-0078 §2); it is a no-op unless the account opted in.
+        await attachmentIndexer?.sweep()
     }
 
-    public func disconnect() async {}
-    public func flushLocalCaches() async {}
+    /// Re-applies the consent boundary: enabling sweeps; disabling stops work
+    /// and removes every indexed row for the local account.
+    func attachmentIndexingConsentChanged() async {
+        guard let attachmentIndexConsent else { return }
+        if attachmentIndexConsent.isEnabled(accountID: account.id) {
+            await attachmentIndexer?.sweep()
+        } else {
+            await attachmentIndexer?.disable()
+        }
+    }
+
+    public func disconnect() async {
+        await attachmentIndexer?.stop()
+    }
+
+    public func flushLocalCaches() async {
+        await attachmentIndexer?.stop()
+    }
+
     public func replayOfflineMutations() async {}
 
     public func subscribeToChanges() -> AsyncStream<MailEvent> {
@@ -352,6 +428,7 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
                 account: account
             )
         }
+        await attachmentIndexer?.noteSourceCached(messageID: id, folderID: folder.id)
         emit(.messagesAdded(folderID: folder.id, messageIDs: [id]))
         return id
     }
@@ -387,6 +464,32 @@ public final class LocalMailBackend: MailBackend, MailImporting, @unchecked Send
     }
 
     // MARK: - Search
+
+    /// Local attachment-content matches for search results (ADR-0078 §5).
+    public func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] {
+        await localSearchIndex?.matchedAttachmentNames(
+            matching: query, account: account, messageIDs: messageIDs
+        ) ?? [:]
+    }
+
+    /// Size of the local account's attachment-content index (ADR-0078).
+    public func attachmentIndexBytes() async -> Int {
+        await localSearchIndex?.attachmentIndexBytes(accountID: account.id) ?? 0
+    }
+
+    /// Clears the attachment index and re-sweeps stored local folders.
+    public func rebuildAttachmentIndex() async {
+        await attachmentIndexer?.rebuild()
+    }
+
+    /// Removes every indexed attachment row and stops indexing work.
+    public func removeAttachmentIndex() async {
+        await attachmentIndexer?.disable()
+    }
 
     /// Searches the shared local index under the local account ID; falls back
     /// to an in-memory header scan when no index is wired (tests, previews).

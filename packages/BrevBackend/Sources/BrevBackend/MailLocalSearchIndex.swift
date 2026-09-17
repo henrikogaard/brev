@@ -116,6 +116,38 @@ public protocol MailLocalSearchIndex: Sendable {
     /// operations can prove headers, bodies, and search documents were actually
     /// persisted before reporting a ready local index.
     func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics?
+
+    // MARK: Attachment text index (ADR-0078)
+
+    /// Inserts or replaces extracted text for one attachment of a cached message.
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws
+
+    /// Removes attachment index rows for the given messages.
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) async throws
+
+    /// Removes every attachment index row for the account.
+    func removeAllAttachmentText(accountID: String) async throws
+
+    /// Approximate attachment-index size in characters for Mail Storage.
+    func attachmentIndexBytes(accountID: String) async -> Int
+
+    /// Message IDs that already have at least one indexed attachment row.
+    func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID>
+
+    /// Deterministic matched-attachment name per result message, set only for
+    /// hits that came from attachment content rather than the message itself.
+    func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String]
 }
 
 public extension MailLocalSearchIndex {
@@ -133,4 +165,29 @@ public extension MailLocalSearchIndex {
     ) async -> [MessageHeader] {
         await search(query, account: account, limit: 200)
     }
+
+    // Attachment indexing defaults keep adapters without an attachment index
+    // compiling; they simply store and match nothing.
+    func indexAttachmentText(
+        accountID: String,
+        messageID: MessageHeader.ID,
+        folderID: Folder.ID,
+        attachmentID: String,
+        name: String,
+        text: String
+    ) async throws {}
+
+    func removeAttachmentText(accountID: String, messageIDs: [MessageHeader.ID]) async throws {}
+
+    func removeAllAttachmentText(accountID: String) async throws {}
+
+    func attachmentIndexBytes(accountID: String) async -> Int { 0 }
+
+    func indexedAttachmentMessageIDs(accountID: String) async -> Set<MessageHeader.ID> { [] }
+
+    func matchedAttachmentNames(
+        matching query: SearchQuery,
+        account: BrevAccount,
+        messageIDs: [MessageHeader.ID]
+    ) async -> [MessageHeader.ID: String] { [:] }
 }

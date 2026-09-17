@@ -739,6 +739,7 @@ public struct MessageListView: View {
             density: mailboxListDensity,
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: nil,
+            matchedAttachmentName: matchedAttachmentName(for: header.id),
             isBlockedSender: blockedSendersSettings.isBlocked(header.from.email),
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
@@ -1275,6 +1276,17 @@ public struct MessageListView: View {
             }
         }
         #endif
+    }
+
+    /// Attachment-content match name for a search row (ADR-0078 §5); nil when
+    /// no search is active or the hit came from the message itself.
+    private func matchedAttachmentName(for messageID: MessageHeader.ID) -> String? {
+        guard !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        let progressSource = sourceID
+            ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        return searchProgress.matchedAttachmentName(for: messageID, source: progressSource)
     }
 
     @ViewBuilder
@@ -3422,6 +3434,9 @@ struct MessageListRow: View {
     let density: MailboxListDensity
     let showsAbsoluteArrivalTime: Bool
     let sourceContext: String?
+    /// Attachment name when this row's search hit came from attachment
+    /// content only (ADR-0078 §5); nil renders no badge.
+    let matchedAttachmentName: String?
     let isBlockedSender: Bool
     let hasFollowUp: Bool
     let followUpDue: Bool
@@ -3451,6 +3466,7 @@ struct MessageListRow: View {
         density: MailboxListDensity,
         showsAbsoluteArrivalTime: Bool,
         sourceContext: String?,
+        matchedAttachmentName: String? = nil,
         isBlockedSender: Bool,
         hasFollowUp: Bool,
         followUpDue: Bool = false,
@@ -3473,6 +3489,7 @@ struct MessageListRow: View {
         self.density = density
         self.showsAbsoluteArrivalTime = showsAbsoluteArrivalTime
         self.sourceContext = sourceContext
+        self.matchedAttachmentName = matchedAttachmentName
         self.isBlockedSender = isBlockedSender
         self.hasFollowUp = hasFollowUp
         self.followUpDue = followUpDue
@@ -3564,6 +3581,16 @@ struct MessageListRow: View {
                     .foregroundStyle(isSelected ? selectionPalette.text
                         .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
                     .lineLimit(1)
+                if let matchedAttachmentName {
+                    HStack(spacing: BrevSpacing.xxs) {
+                        Image(systemName: "paperclip")
+                        Text("Found in \(matchedAttachmentName)", bundle: .module)
+                    }
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.accent.color)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                }
                 if contentPresentation.showsSourceContext, let sourceContext {
                     Text(sourceContext)
                         .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
