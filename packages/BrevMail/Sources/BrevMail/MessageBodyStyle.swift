@@ -38,7 +38,7 @@ struct MessageBodyStyle: Equatable, Sendable {
     let colorSchemeMeta: String
     let forcesOriginalLightCanvas: Bool
 
-    static let defaultLineHeight = 1.45
+    static let defaultLineHeight = 1.5
 
     static func resolve(
         theme: BrevTheme,
@@ -62,7 +62,7 @@ struct MessageBodyStyle: Equatable, Sendable {
                 textSize: textSize,
                 textColorHex: textHex,
                 linkColorHex: linkHex,
-                backgroundColorHex: nil,
+                backgroundColorHex: cssColor(theme.bgPrimary.hex),
                 mutedTextColorCSS: mutedHex,
                 borderColorCSS: borderHex,
                 metadataBackgroundCSS: metadataBackground,

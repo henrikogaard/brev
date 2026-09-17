@@ -232,6 +232,64 @@ import Testing
 @Suite("AI Writer macOS snapshots")
 @MainActor
 struct AIWriterSectionMacSnapshotTests {
+    @Test("Settings surfaces share readable light and dark layout", arguments: ["light", "dark"])
+    func settingsSurfaces(_ mode: String) {
+        guard #available(macOS 26.0, *) else { return }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let defaults = UserDefaults(suiteName: "SettingsSurfaces-" + UUID().uuidString)!
+        let store = SettingsPersistenceStore(defaults: defaults)
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 11),
+            Folder(id: "archive", name: "Archive", role: .archive),
+            Folder(id: "receipts", name: "Receipts", role: .custom, parentID: "archive"),
+            Folder(id: "travel", name: "Travel", role: .custom, parentID: "receipts"),
+            Folder(id: "sent", name: "Sent", role: .sent),
+            Folder(id: "drafts", name: "Drafts", role: .drafts)
+        ]
+        let account = BrevAccount(id: "account", displayName: "Personal", emailAddress: "personal@example.org")
+        let mailbox = Mailbox(id: "personal", email: "personal@example.org", displayName: "Personal")
+        let context = SettingsMailboxContext(
+            selectedSourceID: MailSourceID(accountID: account.id, mailboxID: mailbox.id),
+            mailboxes: [SettingsMailbox(account: account, mailbox: mailbox, folders: folders)]
+        )
+        capture(SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                             sectionAvailability: .allVisible, initialSection: .about, settingsStore: store),
+                theme: theme, name: "navigation-groups-" + mode, size: CGSize(width: 900, height: 940))
+        capture(SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                             initialSection: .folderSync, mailboxContext: context, settingsStore: store),
+                theme: theme, name: "folder-workspace-" + mode, size: CGSize(width: 900, height: 650))
+        capture(PerFolderSyncSection(folders: folders,
+                                     sourceID: MailSourceID(accountID: "account", mailboxID: "personal"),
+                                     settings: .defaults, settingsStore: store),
+                theme: theme, name: "folders-" + mode, size: CGSize(width: 700, height: 520))
+        capture(PerFolderSyncSection(folders: folders,
+                                     sourceID: MailSourceID(accountID: "account", mailboxID: "personal"),
+                                     settings: .defaults, settingsStore: store),
+                theme: theme, name: "folders-narrow-" + mode, size: CGSize(width: 380, height: 600))
+        capture(AppearanceSection(activeTheme: .constant(theme), activeAppIcon: .constant(.defaultVariant), settingsStore: store),
+                theme: theme, name: "appearance-" + mode, size: CGSize(width: 700, height: 800))
+        capture(MailboxViewSection(settingsStore: store),
+                theme: theme, name: "mailbox-view-" + mode, size: CGSize(width: 700, height: 720))
+        capture(
+            AccountsSection(accounts: [BrevAccount(id: "account", displayName: "Personal", emailAddress: "personal@example.org")],
+                            currentAccountID: "account", onAddAccount: {}, onSetDefault: { _ in },
+                            onSignOut: { _ in }, onRemoveAccount: { _ in }),
+            theme: theme,
+            name: "accounts-" + mode,
+            size: CGSize(width: 700, height: 540)
+        )
+    }
+
+    private func capture<V: View>(_ view: V, theme: BrevTheme, name: String, size: CGSize) {
+        let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme)
+            .tint(theme.accent.color).environment(
+                \.colorScheme,
+                theme.mode.colorScheme
+            ))
+        assertSnapshot(of: Self.retinaImage(of: host, size: size), as: .image, named: name,
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES")
+    }
+
     @Test("Settings navigation presents searchable task groups")
     func settingsNavigationPresentsSearchableTaskGroups() {
         let theme = BrevTheme.brevPaper
@@ -279,6 +337,14 @@ struct AIWriterSectionMacSnapshotTests {
         of host: NSHostingController<Content>,
         size: CGSize
     ) -> NSImage {
+        let window = NSWindow(contentRect: NSRect(origin: .zero, size: size),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = host
+        window.layoutIfNeeded()
+        // AppKit-backed SwiftUI lists finish constructing their rows on the run loop.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        defer { window.contentViewController = nil; window.close() }
         let view = host.view
         let originalSize = view.frame.size
         view.frame.size = size

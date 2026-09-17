@@ -58,6 +58,10 @@ Anything not listed is roadmap, not release-blocker.
 
 - Folder sidebar with capability-gated right-click actions: create
   subfolder, rename, delete, empty trash/junk, refresh.
+- Smart Views with all/any conditions for sender, recipients, subject/preview,
+  date, message status, mailbox, and folder. Searches use cached mail from the
+  active profile; Sent and Trash inclusion is explicit. Manage visibility and
+  mixed built-in/custom display order in Settings > Smart Views or the sidebar.
 - Message list with: thread grouping, inline thread expansion,
   Outlook-style date sections (Today / Yesterday / Last week / …),
   pinned section, quick-filter chips (Unread, Flagged, …),

@@ -15,6 +15,22 @@ import Foundation
 import Testing
 
 struct MailConcurrentWorkTests {
+    @Test("a healthy source publishes before another source finishes")
+    @MainActor
+    func healthySourcePublishesImmediately() async {
+        let barrier = MailConcurrentStartBarrier(expectedCount: 2)
+        var received: [Int] = []
+        await MailConcurrentWork.forEachResult([0, 1]) { value in
+            if value == 1 { await barrier.arrive(1) }
+            return value
+        } receive: { _, value in
+            received.append(value)
+            if value == 0 { await barrier.arrive(2) }
+        }
+        #expect(received == [0, 1])
+        #expect(await barrier.arrivalCountAtRelease == 2)
+    }
+
     @Test("runs independent mailbox work concurrently while preserving source order")
     func runsIndependentMailboxWorkConcurrentlyWhilePreservingSourceOrder() async throws {
         let barrier = MailConcurrentStartBarrier(expectedCount: 3)

@@ -317,6 +317,10 @@ public protocol MailBackend: AnyObject, Sendable {
     /// hit their search endpoint; others scan a local index.
     func search(_ query: SearchQuery) async throws -> [MessageHeader]
 
+    /// All locally cached headers for one folder, without connecting, fetching,
+    /// or applying ordinary search result limits. Used by local condition evaluators.
+    func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader]
+
     // MARK: Cached attachment enumeration
 
     /// Returns attachment-bearing messages already present in Brev's local
@@ -450,6 +454,11 @@ public protocol MailBackend: AnyObject, Sendable {
 /// that can satisfy the call should override.
 public extension MailBackend {
     func replayOfflineMutations() async {}
+
+    /// Backends without a header cache cannot enumerate saved-view candidates.
+    func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
+        throw MailBackendError.notSupported(capabilities)
+    }
 
     /// Default: no local body cache to prune, so retention is a no-op.
     /// Backends with a body cache (IMAP) override to evict bodies.

@@ -85,45 +85,64 @@ struct MailProfileManagementSheet: View {
     }
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: BrevSpacing.lg) {
-                    profileCreator
-                    BrevDivider()
-                    if draftProfiles.isEmpty {
-                        emptyState
-                    } else {
-                        profileEditor
-                    }
-                }
-                .padding(BrevSpacing.lg)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
+        #if os(macOS)
+        // Keep auxiliary-window actions in its content. NavigationStack toolbars
+        // can remain attached to the owner's window when this hosting controller closes.
+        VStack(spacing: 0) {
+            HStack {
+                Spacer()
+                Button(String(localized: "Cancel", bundle: .module)) { onClose?() }
+                    .keyboardShortcut(.cancelAction)
+                Button(String(localized: "Done", bundle: .module)) { saveAndClose() }
+                    .keyboardShortcut(.defaultAction)
             }
-            .frame(
-                minWidth: sheetFrame.minimumWidth,
-                maxWidth: sheetFrame.maximumWidth,
-                minHeight: sheetFrame.minimumHeight,
-                maxHeight: sheetFrame.maximumHeight,
-                alignment: .topLeading
-            )
-            .background(theme.bgPrimary.color)
-            .navigationTitle(String(localized: "Profiles", bundle: .module))
-            .profileSheetNavigationTitleStyle()
-            .profileSheetNavigationBackground(theme: theme)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button(String(localized: "Cancel", bundle: .module)) {
-                        onClose?()
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button(String(localized: "Done", bundle: .module)) {
-                        onSave(normalizedDraftProfiles)
-                        onClose?()
-                    }
-                }
-            }
+            .buttonStyle(.bordered)
+            .padding(.horizontal, BrevSpacing.lg)
+            .padding(.top, BrevSpacing.md)
+            profileForm
         }
+        .background(theme.bgPrimary.color)
+        #else
+        NavigationStack {
+            profileForm
+                .navigationTitle(String(localized: "Profiles", bundle: .module))
+                .profileSheetNavigationTitleStyle()
+                .profileSheetNavigationBackground(theme: theme)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "Cancel", bundle: .module)) { onClose?() }
+                    }
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button(String(localized: "Done", bundle: .module)) { saveAndClose() }
+                    }
+                }
+        }
+        #endif
+    }
+
+    private func saveAndClose() {
+        onSave(normalizedDraftProfiles)
+        onClose?()
+    }
+
+    private var profileForm: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                profileCreator
+                BrevDivider()
+                if draftProfiles.isEmpty {
+                    emptyState
+                } else {
+                    profileEditor
+                }
+            }
+            .padding(BrevSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+        }
+        .frame(minWidth: sheetFrame.minimumWidth, maxWidth: sheetFrame.maximumWidth,
+               minHeight: sheetFrame.minimumHeight, maxHeight: sheetFrame.maximumHeight,
+               alignment: .topLeading)
+        .background(theme.bgPrimary.color)
     }
 
     @ViewBuilder
@@ -155,7 +174,7 @@ struct MailProfileManagementSheet: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             let helpText = "All Mailboxes is always available. Custom profiles choose which "
-                + "sources appear in the sidebar and Unified Inbox."
+                + "mailboxes appear in the sidebar and Unified Inbox."
             Text(helpText)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
@@ -302,6 +321,21 @@ struct MailProfileManagementSheet: View {
                     )
                 }
 
+                if !unavailableSourceIDs.isEmpty {
+                    Text(
+                        "\(unavailableSourceIDs.count) unavailable mailboxes are still part of this profile. Reconnect them in Accounts, or remove their membership here.",
+                        bundle: .module
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    Button(String(localized: "Remove unavailable mailboxes", bundle: .module)) {
+                        for sourceID in unavailableSourceIDs {
+                            membershipBinding(for: sourceID).wrappedValue = false
+                        }
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accent.color)
+                }
                 Spacer(minLength: 0)
                 BrevButton("Delete Profile", style: .destructive) {
                     deleteSelectedProfile()
@@ -378,6 +412,12 @@ struct MailProfileManagementSheet: View {
     private var canMoveSelectedProfileDown: Bool {
         guard let selectedProfileIndex else { return false }
         return selectedProfileIndex < draftProfiles.count - 1
+    }
+
+    private var unavailableSourceIDs: [MailSourceID] {
+        guard let selectedProfile else { return [] }
+        let available = Set(availableSources.map(\.id))
+        return selectedProfile.sourceIDs.filter { !available.contains($0) }
     }
 
     private var normalizedDraftProfiles: [MailProfile] {

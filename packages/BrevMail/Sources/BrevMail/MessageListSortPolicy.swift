@@ -33,8 +33,8 @@ enum MessageListSortPolicy {
         by order: MailboxSortOrder,
         pinnedIDs: Set<MessageHeader.ID>
     ) -> [UnifiedInboxItem] {
-        let unpinned = items.filter { !pinnedIDs.contains($0.header.id) }
-        let pinned = items.filter { pinnedIDs.contains($0.header.id) }
+        let unpinned = items.filter { !pinnedIDs.contains($0.pinID) }
+        let pinned = items.filter { pinnedIDs.contains($0.pinID) }
 
         let sortedPinned = pinned.sorted {
             areHeadersInSortOrder($0.header, $1.header, order: order)

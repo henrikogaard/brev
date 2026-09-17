@@ -158,7 +158,7 @@ struct MessageListSortPolicyTests {
             Self.makeItem(id: "a", from: "Ada"),
         ]
 
-        let sorted = MessageListSortPolicy.sortedItems(items, by: .sender, pinnedIDs: ["pinned"])
+        let sorted = MessageListSortPolicy.sortedItems(items, by: .sender, pinnedIDs: [items[1].pinID])
 
         #expect(sorted.map(\.header.id) == ["pinned", "a", "z"])
     }

@@ -59,6 +59,7 @@ public struct MessageListView: View {
     private let folderDisplayName: String?
     private let allFolders: [Folder]
     private let searchSyntaxDescription: ServerSearchSyntaxDescription?
+    private let isMutationWorkBlocked: Bool
     private let isWorkBlocked: Bool
     private let composeActions: MailComposePresentationActions
     private let onSelectMessage: ((MessageHeader) -> Void)?
@@ -121,7 +122,7 @@ public struct MessageListView: View {
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
         InboxClassificationMode.off.rawValue
-    @AppStorage("list.pinnedMessageIDs") private var pinnedMessageIDsRaw = ""
+    @AppStorage(MailPinnedMessages.storageKey) private var pinnedMessageIDsRaw = ""
     @AppStorage(LocalRulesSettings.Key.isAutomaticExecutionEnabled)
     private var isAutomaticLocalRulesEnabled = false
     @State private var activeInboxCategory: InboxCategory = .all
@@ -152,6 +153,7 @@ public struct MessageListView: View {
         searchSyntaxDescription: ServerSearchSyntaxDescription? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
         isWorkBlocked: Bool = false,
+        isMutationWorkBlocked: Bool = false,
         composeActions: MailComposePresentationActions,
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in },
@@ -168,6 +170,7 @@ public struct MessageListView: View {
         self.allFolders = allFolders
         self.searchSyntaxDescription = searchSyntaxDescription
         self.isWorkBlocked = isWorkBlocked
+        self.isMutationWorkBlocked = isMutationWorkBlocked
         self.composeActions = composeActions
         self.onSelectMessage = onSelectMessage
         self.onMutation = onMutation
@@ -183,6 +186,7 @@ public struct MessageListView: View {
     public var body: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
+            LegacyPinNotice()
             #if os(iOS)
             MessageListSearchBand(navigation: navigation)
             #endif
@@ -259,6 +263,7 @@ public struct MessageListView: View {
             followUpSettings = FollowUpSettings.load()
         }
         .onChange(of: headers) {
+            refreshPinnedMessageIDSet()
             scheduleDebouncedThreadCountsRebuild()
         }
         .task(id: navigation.searchText) { await reloadForSearchChange() }
@@ -462,7 +467,7 @@ public struct MessageListView: View {
     }
 
     private var isMutationActionBlocked: Bool {
-        isPerformingMutation || isWorkBlocked
+        isPerformingMutation || isWorkBlocked || isMutationWorkBlocked
     }
 
     private var archiveFolder: Folder? {
@@ -1254,7 +1259,7 @@ public struct MessageListView: View {
                     isSelected: navigation.selectedMessageID == child.id
                 ) {
                     if navigation.bulkSelection.isEmpty {
-                        navigation.selectedMessageID = child.id
+                        selectMessage(child)
                     } else {
                         toggleSelection(for: child)
                     }
@@ -1656,13 +1661,14 @@ public struct MessageListView: View {
     }
 
     private func togglePinned(_ header: MessageHeader) {
-        var ids = pinnedMessageIDs
-        if ids.contains(header.id) {
-            ids.remove(header.id)
-        } else {
-            ids.insert(header.id)
+        do {
+            pinnedMessageIDsRaw = try MailPinnedMessages.toggling(
+                sourceID: workflowSourceID, messageID: header.id, in: pinnedMessageIDsRaw
+            )
+            refreshPinnedMessageIDSet()
+        } catch {
+            mutationErrorStatus = MessageListPresentation.mutationErrorStatus(for: error)
         }
-        pinnedMessageIDsRaw = ids.sorted().joined(separator: "\n")
     }
 
     private func toggleDateSection(_ sectionID: MessageListDateSection.ID) {
@@ -1683,7 +1689,7 @@ public struct MessageListView: View {
     }
 
     private func selectMessage(_ header: MessageHeader) {
-        navigation.selectedMessageID = header.id
+        navigation.selectMessage(header, from: navigationHeaders(for: headers))
         onSelectMessage?(header)
     }
 
@@ -1728,7 +1734,10 @@ public struct MessageListView: View {
 
     /// Re-parses the pinned-message identifier list from its stored string form.
     private func refreshPinnedMessageIDSet() {
-        pinnedMessageIDSet = Set(pinnedMessageIDsRaw.split(separator: "\n").map(String.init))
+        let keys = Set(pinnedMessageIDsRaw.split(separator: "\n").map(String.init))
+        pinnedMessageIDSet = Set(headers.filter {
+            keys.contains(MailPinnedMessages.key(sourceID: workflowSourceID, messageID: $0.id))
+        }.map(\.id))
     }
 
     private func reload() async {
@@ -2773,6 +2782,7 @@ public struct MessageListView: View {
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
         MessageListNavigationHeaders.headers(
             from: workflowVisibleHeaders(from: headers),
+            threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
             pinnedIDs: pinnedMessageIDs
         )
     }
@@ -3303,7 +3313,7 @@ struct MessageListRow: View {
             if isInSelectionMode {
                 Button(action: onToggleCheck) {
                     Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isChecked ? theme.accent.color : theme.textTertiary.color)
+                        .foregroundStyle(isChecked ? selectionPalette.text.color : theme.textTertiary.color)
                         .font(.system(size: 20))
                 }
                 .buttonStyle(.plain)
@@ -3336,7 +3346,7 @@ struct MessageListRow: View {
                     // truncation instead. See ADR-0023's narrow-layout risk note.
                     if threadCount > 1 {
                         Text(verbatim: "\(threadCount)")
-                            .font(fontFamily.font(size: textSize.captionPointSize))
+                            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                             .foregroundStyle(theme.textSecondary.color)
                             .padding(.horizontal, 6)
                             .padding(.vertical, 1)
@@ -3347,8 +3357,8 @@ struct MessageListRow: View {
                         // high-priority tap gesture wins over nested buttons,
                         // so the tap is routed by hit frame instead.
                         Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
-                            .font(fontFamily.font(size: textSize.captionPointSize, weight: .medium))
-                            .foregroundStyle(theme.textTertiary.color)
+                            .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
+                            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                             .frame(width: 18, height: 18)
                             .contentShape(Rectangle())
                             .background {
@@ -3361,8 +3371,8 @@ struct MessageListRow: View {
                             }
                     }
                     Text(dateLabel)
-                        .font(fontFamily.font(size: textSize.captionPointSize))
-                        .foregroundStyle(theme.textTertiary.color)
+                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
@@ -3374,12 +3384,13 @@ struct MessageListRow: View {
                         size: textSize.listDetailPointSize,
                         weight: header.isRead ? .regular : .semibold
                     ))
-                    .foregroundStyle(header.isRead ? theme.textSecondary.color : theme.textPrimary.color)
+                    .foregroundStyle(isSelected ? selectionPalette.text
+                        .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
                     .lineLimit(1)
                 if contentPresentation.showsSourceContext, let sourceContext {
                     Text(sourceContext)
-                        .font(fontFamily.font(size: textSize.captionPointSize))
-                        .foregroundStyle(theme.textTertiary.color)
+                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                         .lineLimit(1)
                 }
                 if contentPresentation.showsLabelChips {
@@ -3388,7 +3399,7 @@ struct MessageListRow: View {
                 if contentPresentation.previewLineCount > 0 {
                     Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
                         .font(fontFamily.font(size: textSize.listDetailPointSize))
-                        .foregroundStyle(theme.textTertiary.color)
+                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                         .lineLimit(contentPresentation.previewLineCount)
                 }
             }
@@ -3399,7 +3410,15 @@ struct MessageListRow: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, density.verticalPadding)
         .background(rowBackground)
-        .opacity(isBlockedSender ? 0.5 : 1.0)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1)
+                    .fill(selectionPalette.indicator.color)
+                    .frame(width: 2)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .padding(.leading, BrevSpacing.xxs)
+            }
+        }
         .contentShape(Rectangle())
         .coordinateSpace(name: Self.rowCoordinateSpace)
         .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
@@ -3474,24 +3493,21 @@ struct MessageListRow: View {
         }
     }
 
-    /// macOS tints list selection with the accent while the window is active and
-    /// falls back to a neutral fill when it is not, so the selected row reads as
-    /// live rather than stale. The accent is softened so the existing row text
-    /// colours keep their contrast instead of needing an inverted treatment.
-    private var selectionFill: Color {
+    private var selectionPalette: MailSelectionPalette {
         #if os(macOS)
-        guard controlActiveState != .inactive else { return theme.selection.color }
-        return theme.accent.color.opacity(0.28)
+        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
         #else
-        return theme.selection.color
+        MailSelectionPalette(theme: theme)
         #endif
     }
+
+    private var selectionFill: Color { selectionPalette.background.color }
 
     @ViewBuilder
     private var unreadDot: some View {
         let diameter: CGFloat = 8
         Circle()
-            .fill(header.isRead ? Color.clear : theme.accent.color)
+            .fill(header.isRead ? Color.clear : theme.textPrimary.color)
             .frame(width: diameter, height: diameter)
             // Centre the dot on the sender's first line rather than a fixed
             // offset so it tracks the mailbox text-size preference.
@@ -3525,7 +3541,7 @@ struct MessageListRow: View {
 
     private func labelChip(_ text: String) -> some View {
         Text(text)
-            .font(fontFamily.font(size: textSize.captionPointSize))
+            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
             .foregroundStyle(theme.textSecondary.color)
             .lineLimit(1)
             .padding(.horizontal, 6)
@@ -3549,26 +3565,26 @@ struct MessageListRow: View {
         Group {
             ForEach(MessageListRowIndicator.indicators(for: header), id: \.self) { indicator in
                 Image(systemName: indicator.symbolName)
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(indicator.accessibilityLabel)
             }
             if isPinned {
                 Image(systemName: "pin.fill")
                     .foregroundStyle(theme.accent.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(String(localized: "Pinned", bundle: .module))
             }
             if header.isFlagged {
                 Image(systemName: "flag.fill")
                     .foregroundStyle(theme.warning.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(String(localized: "Flagged", bundle: .module))
             }
             if hasFollowUp {
                 Image(systemName: followUpDue ? "flag.fill" : "flag")
                     .foregroundStyle(theme.warning.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(
                         followUpDue
                             ? String(localized: "Follow-up reminder due", bundle: .module)
@@ -3578,13 +3594,13 @@ struct MessageListRow: View {
             if isBlockedSender {
                 Image(systemName: "nosign")
                     .foregroundStyle(theme.danger.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(String(localized: "Blocked sender", bundle: .module))
             }
             if header.hasAttachments {
                 Image(systemName: "paperclip")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(fontFamily.font(size: textSize.captionPointSize))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .accessibilityLabel(String(localized: "Has attachments", bundle: .module))
             }
         }

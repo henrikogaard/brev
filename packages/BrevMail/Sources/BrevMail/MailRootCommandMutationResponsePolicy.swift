@@ -15,6 +15,13 @@ import BrevBackend
 struct MailRootCommandMutationRequest: Equatable, Sendable {
     let id: Int
     let sourceFolderID: Folder.ID?
+    let sourceID: MailSourceID?
+
+    init(id: Int, sourceFolderID: Folder.ID?, sourceID: MailSourceID? = nil) {
+        self.id = id
+        self.sourceFolderID = sourceFolderID
+        self.sourceID = sourceID
+    }
 }
 
 enum MailRootCommandMutationStartPolicy {
@@ -41,8 +48,10 @@ enum MailRootCommandMutationResponsePolicy {
     static func canApplyResponse(
         request: MailRootCommandMutationRequest,
         activeRequest: MailRootCommandMutationRequest?,
-        currentSelectedFolderID: Folder.ID?
+        currentSelectedFolderID: Folder.ID?,
+        currentSourceID: MailSourceID? = nil
     ) -> Bool {
         activeRequest == request && currentSelectedFolderID == request.sourceFolderID
+            && request.sourceID == currentSourceID
     }
 }

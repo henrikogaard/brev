@@ -20,6 +20,8 @@ import Contacts
 #endif
 
 struct MailboxViewSection: View {
+    @State private var selectedPane = 0
+    @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.brevTheme) private var theme
     @State private var mailboxSettings: MailboxViewSettings
     @State private var inboxClassificationSettings: InboxClassificationSettings
@@ -42,13 +44,64 @@ struct MailboxViewSection: View {
             subtitle: String(localized: "Reading, list layout, sender icons, and message rendering.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
-                readingGroup
-                folderVisibilityGroup
-                listGroup
-                senderIconGroup
-                searchAndCacheGroup
+                Picker(String(localized: "Mailbox preferences", bundle: .module), selection: $selectedPane) {
+                    Text("Reading", bundle: .module).tag(0)
+                    Text("Message list", bundle: .module).tag(1)
+                    Text("Folders", bundle: .module).tag(2)
+                    Text("Sender images", bundle: .module).tag(3)
+                }
+                .pickerStyle(.segmented)
+                switch selectedPane {
+                case 1:
+                    SettingsMailPreview(settings: mailboxSettings)
+                    listGroup
+                case 2: folderVisibilityGroup
+                case 3: senderIconGroup
+                default:
+                    readingGroup
+                    searchAndCacheGroup
+                }
             }
         }
+        .onChange(of: searchTarget, initial: true) { _, target in
+            selectPane(matching: target)
+        }
+    }
+
+    private func selectPane(matching target: String?) {
+        guard let target else { return }
+        if [
+            String(localized: "Folders", bundle: .module),
+            String(localized: "Starred", bundle: .module),
+            String(localized: "Snoozed", bundle: .module),
+            String(localized: "Scheduled", bundle: .module),
+            String(localized: "All mail", bundle: .module),
+            String(localized: "Spam", bundle: .module),
+            String(localized: "Trash", bundle: .module),
+            String(localized: "Archive", bundle: .module)
+        ].contains(target) { selectedPane = 2; return }
+        if [
+            String(localized: "Mailbox list", bundle: .module),
+            String(localized: "Group conversations", bundle: .module),
+            String(localized: "Group by received date", bundle: .module),
+            String(localized: "Show arrival time", bundle: .module),
+            String(localized: "Show sender images", bundle: .module),
+            String(localized: "Sort order", bundle: .module),
+            String(localized: "Preview lines", bundle: .module),
+            String(localized: "List density", bundle: .module),
+            String(localized: "Reading pane", bundle: .module),
+            String(localized: "Show folder stats", bundle: .module),
+            String(localized: "Inbox classification", bundle: .module),
+            String(localized: "Stats detail", bundle: .module)
+        ].contains(target) { selectedPane = 1; return }
+        if [
+            String(localized: "Sender image sources", bundle: .module),
+            String(localized: "Use Contacts photos", bundle: .module),
+            String(localized: "Use Gravatar", bundle: .module),
+            String(localized: "Use BIMI logos", bundle: .module),
+            String(localized: "Use domain favicons", bundle: .module)
+        ].contains(target) { selectedPane = 3; return }
+        selectedPane = 0
     }
 
     private var folderVisibilityGroup: some View {

@@ -125,3 +125,12 @@ correct when that background is actually drawn.
 `surfaceFillOpacity`.** Rejected. `BrevDivider` does not know which
 surface role it is drawn on, and threading that through every call site
 buys accuracy the eye cannot resolve at one point.
+
+
+### 2026-09-05 split boundaries
+
+Resize hit targets paint their own themed surface behind the hairline; the hit
+area's width is independent from its visible rule. The AI Sidebar edge draws
+one physical pixel over its sidebar surface. The mail split container supplies
+a content surface beneath native split gaps, so transparent gaps cannot expose
+the window's fallback backing color. The separator wash policy is unchanged.

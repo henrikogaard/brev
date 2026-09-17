@@ -237,3 +237,333 @@ platform and test-runtime boundaries.
   ContactsAccessPolicy tests pass in separate processes, eliminating global
   demo-gate state leakage without dropping coverage.
 - BrevDesign CI suites: 35 tests passed.
+
+
+## 2026-09-04 — Codex — Multi-account review remediation and UI redesign
+
+### Goal
+
+Address the nine reviewed multi-account reliability/performance findings, then
+apply the requested conversation-reader and multi-mailbox sidebar redesign.
+Baseline: `0902c93e`; branch: `fix/multi-account-workspace`; target: `main`.
+The initial canonical checkout was clean and had no open PR.
+
+### Changes
+
+- Separated virtual collection browsing from source-owned reader selection;
+  explicit row selection restores its headers after auxiliary presentation.
+- Guarded reload/search/page publication by request ownership and cancellation;
+  root folder/mailbox/command responses and optimistic reader updates also
+  reject a different account when raw folder/message IDs collide.
+  debounced search and bounded source work. Source discovery publishes progress,
+  retains failed cached accounts, has a timeout/retry, and cancels superseded work.
+- Settled bulk mutation outcomes per source, preserving successes and restoring
+  a failed reader only when the user has not selected another message.
+- Preserved temporarily unavailable profile membership and added explicit
+  removal of unavailable memberships. Empty profiles cannot compose through an
+  unrelated account, while the existing single-account folder fallback works.
+- Scoped pins to account/mailbox/message, preserved legacy data with a visible
+  reassignment notice, and kept a global 500-pin limit with explicit feedback.
+  Added the v2 key to the existing opt-in preference-sync allowlist.
+- Kept mail roots mounted across account changes; subscriptions use backend
+  instance identity, and removed/replaced account work cannot restore stale rows.
+- Added indexed SQLite Gmail label pagination, cache-first reads, bounded cold
+  fetches, and coalesced account refresh tasks that cancel on disconnect.
+- Kept mailbox selectors above the folder tree, shortened row source labels,
+  made the profile picker discoverable, and flattened conversation sections.
+  Native profile actions now stay inside the auxiliary window instead of
+  leaving title/toolbar state in the main mail window.
+- Corrected a pre-existing test-thread race by isolating native NSToolbar tests
+  to the main actor. Updated the compact-layout contract and snapshot CI routing.
+
+### Verification
+
+- Red/green regressions covered collection preservation, stale/cancelled loads,
+  partial rollback, unavailable profiles, pin collisions, cached Gmail failures,
+  indexed pagination including 120 rows across three pages, progressive source
+  publication, search debounce, fallback context, and reader header recovery.
+- BrevMail: 1,503 tests plus six isolated ContactsAccessPolicy tests passed.
+  BrevBackend: 1,010; BrevGmail: 99; BrevSettings: 314 passed.
+- The unsplit Contacts run exposed the known process-global demo gate race;
+  final runs use the existing CI split. A native toolbar test crash exposed
+  off-main AppKit creation; the main-actor correction passed the full suite.
+- Format, strict lint, self-tests, privacy audit, and git diff checks passed.
+- Native mock build/launch and rendered interaction checks passed. The profile
+  toolbar leak and blank-reader row selection were reproduced during native QA
+  before their fixes. Updated snapshots cover sidebar, reader, and profile UI.
+- macOS and iOS Simulator builds passed. Existing app-delegate/SDK warnings are
+  distinct from build success. No physical-device or live-provider acceptance
+  is claimed; issue #2 remains outside this mock verification.
+
+### Documentation and handoff
+
+CHANGELOG, PRIVACY, ADR-0020, ADR-0050, ADR-0056, and the focused QA matrix were
+updated. README and AGENTS need no change because setup, repository layout, and
+workflow remain the same. Demo body text is fixture-only; layout changes were
+verified by rendered snapshots/native checks rather than logic-only TDD.
+
+Cold Gmail reads intentionally retain full MIME data for attachment correctness,
+so the performance improvement is cache-first indexed reads and four concurrent
+cold requests, not elimination of all cold payload transfer. Legacy pins remain
+recoverable as original records but require reassignment. These limits belong in
+the PR. Open a non-draft PR to main; do not merge or replace `/Applications/Brev.app`.
+
+
+## 2026-09-05 — Codex — PR #27 contrast and reading layout follow-up
+
+### Goal
+
+Implement the approved contrast, proportions, selection, typography, and
+conversation-density recommendations; assess Settings afterward without
+changing its specific screens. Continue `fix/multi-account-workspace` from
+`604c8c81`, targeting the existing PR #27 to main.
+
+### Changes
+
+- Revised only the default monochrome text tokens, keeping all theme IDs,
+  custom palettes, and custom accent settings intact. Added a 24-pair contrast
+  matrix with a 4.5:1 text threshold and selection indicator checks.
+- Shared opaque selection roles across main rows, thread children, and folders.
+  Active/inactive selection keeps readable foregrounds. Removed blocked-sender
+  row dimming while preserving its status indicator; raised essential metadata
+  size and retained subject/sender emphasis.
+- Added a 420-point preferred desktop list and 1440x820 new-window default while
+  preserving the 960-point compact minimum and saved geometry. Bounded thread
+  content to 840 points and reduced header/body gaps.
+- Moved thread display-mode switching into its header menu. Dark-mode WebKit
+  canvases explicitly match bgPrimary; original message styling remains an
+  available mode. Body line height is 1.5.
+- PR #27's hosted failures were all the root view expression exceeding the CI
+  compiler's type-check budget. Split it into smaller opaque view expressions
+  and extracted the backend-session observer, without changing modifier order.
+
+### Verification and handoff
+
+- Contrast, preferred-width, and body-canvas tests failed before the fixes.
+  Final focused behavior tests passed. Rendered default light/dark active and
+  inactive selections, wide conversations, and affected existing snapshots.
+- BrevThemes: 8 tests passed. BrevMail: 1,506 plus the isolated six Contacts
+  policy tests passed. Lint/format and repository self-tests passed.
+- Native mock launch and compact/wide rendering were checked with the dated
+  test identity. iOS/hosted builds are checked separately in the PR handoff.
+- Updated ADR-0069 because BuiltIns.swift is protected; no new public theme
+  fields or network behavior. README/PRIVACY/AGENTS need no change for this
+  visual and compiler follow-up. Palette/configuration and visual-layout edits
+  use calculated contrast and rendered snapshots rather than logic-only tests.
+- Settings-specific changes are intentionally outside this implementation;
+  its requested assessment follows the verified mail UI pass.
+
+### Hosted compiler follow-up
+
+- Hosted macOS compilation passed at 654f9acf. The new BrevThemes contrast test
+  hit an older-compiler type-check limit in chained channel calculations.
+  Replaced that expression with typed scalar steps; all eight focused tests
+  pass locally. This changes test compilation only, not production colors.
+- The committed dated mock build installed and launched successfully. Settings
+  was assessed read-only across Accounts, Appearance, Mailbox View, and Folder
+  Sync; no account preferences or Settings implementation were changed.
+
+
+## 2026-09-05 — Codex — PR #27 Settings consistency follow-up
+
+### Goal and changes
+
+- Fixed the seven Settings assessment findings on the existing
+  fix/multi-account-workspace branch, targeting main through PR #27.
+- Mail publishes explicit mailbox context only when its source selection or
+  workspace revision changes. Folder Sync follows that context, labels its
+  current mailbox, reuses cached folders, and loads only the requested source.
+- Folder retention now persists SourceFolderID overrides. Legacy folder-only
+  values remain fallback; choosing Default overrides that legacy value for
+  the selected source without affecting other mailboxes. Retention sweeps and
+  storage repair use the same source-aware resolution.
+- Folder Sync uses lazy compact rows, parent/child indentation, filtering,
+  native retention pickers, and explicit visibility labels. Narrow layouts
+  stack controls when needed. Settings search indexes visible control labels
+  and scrolls to a chosen result, including the appropriate Mailbox View pane.
+- Shared selection roles live in BrevDesign. Settings navigation is wider and
+  uses the same opaque selected-row styling as Mail. Account actions are in a
+  menu; default-account and default-mailbox states have distinct labels.
+- Appearance puts a sample-mail preview before optional window detail controls.
+  Mailbox View is grouped into Reading, Message list, Folders, and Sender images.
+  Storage/repair account scope and app-wide retention defaults are explicit.
+
+### Verification and handoff
+
+- Failing tests established source isolation, search omissions, missing source
+  context/hierarchy APIs, and scoped override summaries before implementation.
+- Settings and Mail package suites, separate Contacts tests, default light/dark
+  snapshots at regular/narrow sizes, macOS test installation, iOS Simulator
+  build, lint/format, and privacy checks were run. Final counts and hosted
+  results are recorded in the PR handoff.
+- Native Settings Accounts and navigation were inspected. The Mac locked during
+  Folder Sync navigation; the tool requested a manual unlock. End-to-end native
+  mailbox switching, search scrolling, and keyboard/VoiceOver checks remain
+  unavailable until unlocked. Offscreen rendered snapshots are verified.
+- Updated ADR-0012 for the shared selection/context contract and CHANGELOG for
+  the visible behavior. README, PRIVACY, and AGENTS need no changes: setup,
+  workflow, providers, and external network behavior are unchanged.
+- No merge, release, version change, issue closure, or daily-driver replacement.
+
+
+### Final rendered polish
+
+- Narrow Folder Sync rows keep the retention label beside their stacked picker;
+  the mailbox scope header fills and aligns with the Settings content column.
+- Snapshot hosting now attaches an offscreen NSWindow and drains AppKit layout,
+  so the navigation list and native controls are actually rendered. Added full
+  light/dark Folder Sync workspace captures with the visible mailbox identity.
+- This improves automated rendered evidence while leaving the locked-Mac native
+  interaction limitation explicit. No screenshot was substituted for native QA.
+
+- Final keyboard-path inspection aligned arrow navigation with pointer
+  selection: leaving an extension page clears its contribution and any old
+  search anchor. Left/right arrows remain available to native controls.
+
+
+## 2026-09-05 — Codex — PR #27 separator and navigation follow-up
+
+- Reproduced the white sidebar gutter in the running dated mock app and saved
+  before/after native captures. A pixel regression over a contrasting backing
+  failed before the fix, then passed when the full hit target owned its themed
+  backdrop. The visible boundary is one physical pixel; the wider drag target
+  stays usable. The split container also paints beneath native divider gaps.
+- Sidebar drag state now consumes successive global pointer positions, avoiding
+  moving-coordinate feedback and the dead zone after reversing from a clamp.
+  SceneStorage is updated on release, including the final pointer sample.
+  Unit tests cover ordinary movement, reversal at the limit, and release state.
+- Sampled the running mock process during repeated drag gestures and verified
+  repeated native drags moved the edge to the requested positions. This is
+  interaction evidence, not a claimed FPS or live-provider latency benchmark.
+- Accounts now belongs to App; Advanced is a normal section with flat rows.
+  Native Accounts, Advanced, and Extensions alignment were visually checked.
+  Updated grouping tests and full navigation snapshots in light/dark themes.
+- The Mac locked again while continuing the earlier pending search checks.
+  The current divider, resize, and navigation checks completed before lock;
+  prior search scrolling and full keyboard/VoiceOver acceptance remain pending.
+- The user's later mailbox/profile simplification question was answered with
+  a compact-switcher recommendation. Its implementation awaits their choice;
+  it is separate from this completed separator/navigation scope.
+- Final tests, builds, lint, self-tests, and hosted checks are recorded in the
+  PR handoff. ADR-0012/0053 and CHANGELOG updated; README/PRIVACY/AGENTS do not
+  need changes because setup, network behavior, and workflow are unchanged.
+
+
+## 2026-09-05 — Codex — PR #27 profile-filtered mailbox groups
+
+- Implemented the clarified profile model after the user's Apple Mail/eM Client
+  comparison: profiles choose which mailbox groups are visible; the groups
+  stack vertically and can be expanded independently. The profile chooser is
+  a compact native menu, and All Inboxes/Smart Views remain global shortcuts.
+- Removed two-line account cards, the redundant Mailboxes heading, and the
+  separate folder-owner caption. Each mailbox header owns its indented tree.
+  Addresses remain in help/accessibility labels; collapsed headers show counts.
+- Expansion is stored locally under mailbox.disclosureState. Saved empty state
+  is respected and hidden profile members retain their expansion choice.
+  Reading a virtual collection does not expand a mailbox; physical folder
+  selection reveals its source without closing others.
+- The two-expanded-mailbox snapshot exposed duplicate provider folder IDs being
+  reused by SwiftUI. Rows now use SourceFolderID; both Inbox trees render and
+  only the selected source/folder highlights. Snapshot stores are isolated so
+  saved disclosure state cannot pollute another fixture.
+- Updated profile-management copy to say mailboxes, and recorded the final
+  interaction model in DESIGN.md. Existing provider/profile filtering and
+  account connections remain unchanged; no new network calls or dependencies.
+- Unit and rendered checks cover independent groups, persistence, empty saved
+  state, hidden profile members, both themes, filtered profiles, and identical
+  folder IDs. Final package/build/lint/CI evidence is in the PR handoff.
+- The initial compact-menu trial was exercised natively (38-message aggregate,
+  9-message Work inbox, and Manage Profiles). The final stacked-group native
+  check was blocked when the Mac locked; an unlock was requested while code
+  checks continued. Do not count the superseded trial as native verification
+  of the final layout.
+- Documentation sweep: CHANGELOG, DESIGN, WORKLOG, and QA notes updated.
+  README/PRIVACY/AGENTS/ADRs need no change: setup, architecture, workflow,
+  theme schema, and external network behavior are unchanged. Existing ADRs
+  0002/0004/0017/0028 were consulted for layout and source ownership.
+
+
+### Hosted compiler correction
+
+- CI caught a stray @ViewBuilder annotation left on the state-restoration
+  helper when the old account-header view was removed. Removed the annotation;
+  restoration is an ordinary Void method. This has no layout or state-policy
+  change and is verified by the existing disclosure tests and rebuilt targets.
+
+
+### Preference-sync test isolation
+
+- The next hosted run passed both builds and Mail tests but exposed a parallel
+  Settings test race: an observer accepted another store's global notification.
+- Added a deterministic unrelated notification to reproduce the wrong-key
+  assertion, then restricted that observer to its own store. The production
+  notification center and local/remote sync behavior remain unchanged.
+
+
+## 2026-09-05 — Codex — PR #27 thread selection and Smart Views
+
+- Goal: repair inline reply selection and replace the clipped Smart View form
+  with consistent condition editing, visibility controls, and display ordering.
+- Reproduced the reported native blank reader with Flagged active, expanded
+  Kitchen drawings, and Kari's unflagged child selected. The reader used the
+  filtered header set while inline rows used full thread context. Added a red
+  regression, then retained context for matching threads across reconciliation.
+- Moved the saved-view editor into BrevSettings so Settings and Mail use the
+  same compact sheet. Added all/any condition groups, compatible comparisons,
+  cached header date/status predicates, source-owned mailbox/folder choices,
+  Sent/Trash inclusion, and legacy predicate migration. Name and every condition
+  must be valid before Save; long groups scroll above the fixed action footer.
+- Added Settings > Smart Views and a matching sidebar management sheet. The
+  entire section or individual built-in/custom entries can be hidden. Shared
+  display order persists separately from visibility and retains hidden entries.
+- Saved message views now use existing source-scoped cache-only search across
+  profile folders. Cache results retain thread context, deduplicate label aliases
+  while keeping a matching folder membership, and use the existing load ownership
+  guard. Query changes participate in task cancellation; typing filters completed
+  cached results without re-reading folders. No new backend API or network call.
+- Regression checks: filtered child selection failed before the fix; any/all,
+  negative/status/date/source conditions and display-order tests failed before
+  their implementations; a label-alias test caught duplicate IDs before deduplication.
+- Verification: BrevMail 1,511 tests plus the separate six ContactsAccessPolicy
+  checks pass; BrevSettings 333 tests pass. Light/dark editor, management,
+  sidebar and Settings-navigation snapshots were inspected and updated. macOS
+  test install/launch, iOS Simulator build, lint/format, and repository self-tests
+  pass. Final short status labels are covered by the focused editor snapshot run.
+- Native limitation: the Mac locked after the initial reproduction and before
+  final click-through verification. The dated mock test app is installed; final
+  reply-selection, Smart View save/cancel, reorder/hide/restore and live-provider
+  acceptance remain manual checks in docs/qa/multi-account-workspace.md.
+- Documentation sweep: updated README, CHANGELOG Unreleased, DESIGN, ADR-0041
+  implementation status and QA notes. Privacy and agent workflow are unchanged.
+  Branch remains fix/multi-account-workspace with PR #27 targeting main; no
+  merge, release, version change, or issue closure is authorized.
+
+
+## 2026-09-05 — Codex — PR #27 complete cached Smart View candidates
+
+- Final backend inspection found two correctness gaps in ordinary cache search:
+  IMAP truncates results at 50, and Gmail filters only the primary folder.
+  Added failing regressions for 120 cached IMAP headers and a secondary Gmail
+  label before replacing the saved-view candidate path.
+- Added the source-scoped, read-only `cachedMessageHeaders` protocol seam.
+  IMAP merges cached/indexed headers without the search cap; Gmail reads the
+  requested label from its indexed local store; mock data follows the same scope.
+  The fallback reports unsupported enumeration and never connects or fetches.
+- Saved rows retain all cached folder memberships. All/any and negative folder
+  conditions evaluate that set, while Sent/Trash exclusions also use reserved
+  system labels. Tests first exposed multi-label negation and scope leaks.
+- Verification: Backend 1,011, Gmail 100, Settings 335, and Mail 1,511 tests pass;
+  the separate six Contacts tests passed earlier in this unchanged test area.
+  Lint and format pass. Both app builds and final hosted checks are repeated for
+  this follow-up. Native interaction remains blocked by the locked Mac.
+- Updated ADR-0041 and the Unreleased notes to describe the final cache seam.
+  No provider request, body fetch, external network behavior, release, or merge.
+
+- Saved-view search refinements use the existing natural-language parser and
+  expose only cache execution. This keeps visible chips consistent with actual
+  matching and avoids offering a server mode that saved conditions cannot run.
+  Existing parser tests and Mail build cover the reused parser; the search-menu
+  interaction is included in the pending native pass because the Mac is locked.
+- Added a native-view initialization regression for repeated saved-list creation.
+  It failed with the prior ordinary-search default and now retains cache mode;
+  returning to the normal list restores the normal provider-aware default.

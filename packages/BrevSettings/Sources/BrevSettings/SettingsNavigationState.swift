@@ -26,9 +26,8 @@ public enum SettingsSectionAvailabilityKind: String, Sendable, Equatable {
 /// Case order defines the sidebar display order within each
 /// `SettingsSectionGroup`. See `group` and `SettingsSectionGroup.allCases`.
 public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifiable {
-    // Group: top (no header)
-    case accounts
     // Group: app
+    case accounts
     case appearance
     case notifications
     // Group: reading & composing
@@ -43,6 +42,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     case aiWriter
     /// VIP senders and follow-up reminders.
     case vipAndReminders
+    /// Saved search conditions, sidebar visibility, and display order.
+    case smartViews
     /// Server-side and local mail rules.
     case rules
     /// Vacation auto-reply.
@@ -63,7 +64,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     case privacy
     /// Message encryption, certificates, and key management.
     case security
-    // Group: advanced (collapsed until needed)
+    // Group: advanced
     case developer
     case updates
     case about
@@ -79,6 +80,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .compose: return String(localized: "Compose", bundle: .module)
         case .templates: return String(localized: "Templates", bundle: .module)
         case .vipAndReminders: return String(localized: "VIP & Reminders", bundle: .module)
+        case .smartViews: return String(localized: "Smart Views", bundle: .module)
         case .rules: return String(localized: "Rules", bundle: .module)
         case .autoReply: return String(localized: "Auto-Reply", bundle: .module)
         case .folderSync: return String(localized: "Folder Sync", bundle: .module)
@@ -104,6 +106,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .compose: return "square.and.pencil"
         case .templates: return "doc.text"
         case .vipAndReminders: return "star"
+        case .smartViews: return "line.3.horizontal.decrease.circle"
         case .rules: return "line.3.horizontal.decrease.circle"
         case .autoReply: return "airplane.departure"
         case .folderSync: return "folder.badge.gearshape"
@@ -127,7 +130,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .security:
             return .shipped
         case .accounts, .appearance, .mailboxView, .signature, .compose,
-             .templates, .vipAndReminders, .rules, .autoReply,
+             .templates, .vipAndReminders, .smartViews, .rules, .autoReply,
              .folderSync, .mailStorage, .calendarContacts, .importExport, .privacy,
              .notifications, .aiWriter, .about:
             return .shipped
@@ -138,17 +141,14 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         availability == .hiddenRoadmap
     }
 
-    /// Sidebar group this section belongs to. Groups are rendered with a
-    /// header label above their rows; `.top` is ungrouped so Accounts sits at
-    /// the very top while low-frequency destinations live
-    /// in a collapsed Advanced group.
+    /// Sidebar group this section belongs to. Accounts and Appearance share
+    /// App; Advanced uses the same heading and flat row alignment as other groups.
     public var group: SettingsSectionGroup {
         switch self {
-        case .accounts: return .top
-        case .appearance: return .app
+        case .accounts, .appearance: return .app
         case .notifications, .mailboxView, .compose, .signature, .templates, .aiWriter:
             return .readingComposing
-        case .vipAndReminders, .rules, .autoReply, .calendarContacts:
+        case .vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts:
             return .organization
         case .folderSync, .mailStorage, .importExport: return .syncStorage
         case .privacy, .security: return .privacySecurity
@@ -169,6 +169,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .templates: return ["snippets", "canned replies"]
         case .aiWriter: return ["writing", "assistant", "provider"]
         case .vipAndReminders: return ["important senders", "follow up", "reminders"]
+        case .smartViews: return ["saved search", "conditions", "filter", "display order", "hide", "sidebar"]
         case .rules: return ["filters", "automation", "sieve"]
         case .autoReply: return ["vacation", "out of office"]
         case .calendarContacts: return ["invites", "address book", "autocomplete"]
@@ -187,7 +188,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     public func matches(searchQuery query: String) -> Bool {
         let normalizedQuery = Self.normalizedSearchText(query)
         guard !normalizedQuery.isEmpty else { return true }
-        let terms = [title, group.headerLabel ?? ""] + searchKeywords
+        let terms = [title, group.headerLabel ?? ""] + searchKeywords + searchableControlTitles
         return terms.contains { Self.normalizedSearchText($0).contains(normalizedQuery) }
     }
 
@@ -198,10 +199,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     }
 }
 
-/// Task-oriented sidebar grouping for settings sections. `.top` renders
-/// without a header; the named groups render a header above their rows.
+/// Task-oriented sidebar grouping. Every group has a matching header and flat rows.
 public enum SettingsSectionGroup: String, Sendable, Hashable, CaseIterable, Identifiable {
-    case top
     case app
     case readingComposing
     case organization
@@ -212,10 +211,9 @@ public enum SettingsSectionGroup: String, Sendable, Hashable, CaseIterable, Iden
     public var id: String { rawValue }
 
     /// Header label shown above the group's rows in the sidebar.
-    /// Returns `nil` for `.top` so Accounts renders ungrouped.
+    /// All built-in groups have a visible heading.
     public var headerLabel: String? {
         switch self {
-        case .top: return nil
         case .app: return String(localized: "App", bundle: .module)
         case .readingComposing: return String(localized: "Reading & Composing", bundle: .module)
         case .organization: return String(localized: "Organization", bundle: .module)

@@ -86,15 +86,15 @@ enum MailProfileSelectionPolicy {
 
     static func normalizedCustomProfiles(
         _ customProfiles: [MailProfile],
-        availableSourceIDs: [MailSourceID]
+        availableSourceIDs _: [MailSourceID]
     ) -> [MailProfile] {
-        let available = Set(availableSourceIDs)
+        // Availability is transient. Only explicit profile edits remove membership.
         return customProfiles
             .filter { !$0.isSystem }
             .compactMap { profile in
                 let name = profile.name.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !name.isEmpty else { return nil }
-                let sourceIDs = orderedUnique(profile.sourceIDs).filter { available.contains($0) }
+                let sourceIDs = orderedUnique(profile.sourceIDs)
                 guard !sourceIDs.isEmpty else { return nil }
                 return MailProfile(
                     id: profile.id,

@@ -15,6 +15,8 @@ import BrevThemes
 import SwiftUI
 
 struct AppearanceSection: View {
+    @State private var showsWindowDetails = false
+    @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.brevTheme) private var theme
     @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
@@ -55,6 +57,7 @@ struct AppearanceSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 themeGroup
+                SettingsMailPreview(settings: settingsStore.mailboxViewSettings())
                 if appearanceControls.showsWindowTranslucencyControls {
                     SettingsGroup(
                         title: String(localized: "Window design", bundle: .module),
@@ -73,32 +76,36 @@ struct AppearanceSection: View {
                                 }
                             }
 
-                            SettingsPickerRow(
-                                symbolName: "rectangle.3.group",
-                                title: String(localized: "Apply to", bundle: .module),
-                                subtitle: windowAppearance.scope.subtitle,
-                                selection: windowAppearanceBinding(for: \.scope)
+                            DisclosureGroup(
+                                String(localized: "Window details", bundle: .module),
+                                isExpanded: $showsWindowDetails
                             ) {
-                                ForEach(WindowTranslucencyScope.allCases) { scope in
-                                    Text(scope.title).tag(scope)
+                                SettingsPickerRow(
+                                    symbolName: "rectangle.3.group",
+                                    title: String(localized: "Apply to", bundle: .module),
+                                    subtitle: windowAppearance.scope.subtitle,
+                                    selection: windowAppearanceBinding(for: \.scope)
+                                ) {
+                                    ForEach(WindowTranslucencyScope.allCases) { scope in
+                                        Text(scope.title).tag(scope)
+                                    }
                                 }
+
+                                if appearanceControls.showsTransparentTitleBarToggle {
+                                    SettingsToggleRow(
+                                        symbolName: "macwindow.on.rectangle",
+                                        title: String(localized: "Unified title bar", bundle: .module),
+                                        subtitle: String(
+                                            localized: "Extends the current surface styling into the main and Settings title bars.",
+                                            bundle: .module
+                                        ),
+                                        isOn: $transparentMainTitlebar,
+                                        isEnabled: true
+                                    )
+                                }
+
+                                if windowAppearance.mode != .solid { windowOpacityControls }
                             }
-
-                            if appearanceControls.showsTransparentTitleBarToggle {
-                                SettingsToggleRow(
-                                    symbolName: "macwindow.on.rectangle",
-                                    title: String(localized: "Unified title bar", bundle: .module),
-                                    subtitle: String(
-                                        localized: "Extends the current surface styling into the main and Settings title bars.",
-                                        bundle: .module
-                                    ),
-                                    isOn: $transparentMainTitlebar,
-                                    isEnabled: true
-                                )
-                            }
-
-                            windowOpacityControls
-
                             WindowMaterialPreview(preferences: windowAppearance)
 
                             SettingsInfoCallout(
@@ -127,6 +134,9 @@ struct AppearanceSection: View {
                     }
                 }
             }
+        }
+        .onChange(of: searchTarget, initial: true) { _, target in
+            if target != nil { showsWindowDetails = true }
         }
         .onChange(of: colorScheme) { _, _ in
             applyResolvedTheme()
@@ -158,9 +168,9 @@ struct AppearanceSection: View {
                     }
                 }
 
-                accentColorRow
-
                 themePairRow
+
+                accentColorRow
             }
         }
     }

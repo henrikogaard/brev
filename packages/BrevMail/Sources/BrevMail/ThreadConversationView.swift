@@ -46,6 +46,7 @@ public struct ThreadConversationView: View {
     let threadHeaders: [MessageHeader]
     let backend: any MailBackend
     let sourceID: MailSourceID?
+    let mailboxLabel: String?
     let navigation: MailNavigationState
     let isWorkBlocked: Bool
     let preloadedBodies: [MessageHeader.ID: RenderedBody]
@@ -73,6 +74,7 @@ public struct ThreadConversationView: View {
         threadHeaders: [MessageHeader],
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
+        mailboxLabel: String? = nil,
         navigation: MailNavigationState,
         isWorkBlocked: Bool = false,
         aiBackend: (any AIBackend)? = nil,
@@ -84,6 +86,7 @@ public struct ThreadConversationView: View {
         self.threadHeaders = threadHeaders
         self.backend = backend
         self.sourceID = sourceID
+        self.mailboxLabel = mailboxLabel
         self.navigation = navigation
         self.isWorkBlocked = isWorkBlocked
         self.aiBackend = aiBackend
@@ -142,57 +145,67 @@ public struct ThreadConversationView: View {
     public var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                // Thread subject header
-                if let subject = threadHeaders.last?.subject {
-                    Text(subject)
-                        .font(.headline)
-                        .foregroundStyle(theme.textPrimary.color)
+                VStack(alignment: .leading, spacing: 0) {
+                    // Thread subject header
+                    if let subject = threadHeaders.last?.subject {
+                        Text(subject)
+                            .font(.system(.title2, design: .default, weight: .semibold))
+                            .foregroundStyle(theme.textPrimary.color)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.top, BrevSpacing.lg)
+                            .padding(.bottom, BrevSpacing.sm)
+                            .dynamicTypeSize(denseChromeDynamicTypeRange)
+                    }
+
+                    Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, BrevSpacing.md)
-                        .padding(.top, BrevSpacing.md)
-                        .padding(.bottom, BrevSpacing.xs)
-                        .dynamicTypeSize(denseChromeDynamicTypeRange)
-                }
-
-                // Conversation controls toolbar
-                conversationControlsRow
-                    .dynamicTypeSize(denseChromeDynamicTypeRange)
-
-                if let aiSummaryState {
-                    ThreadAISummaryPanel(state: aiSummaryState)
-                        .padding(.horizontal, BrevSpacing.md)
                         .padding(.bottom, BrevSpacing.sm)
-                }
 
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleHeaders) { header in
-                        ThreadMessageCard(
-                            header: header,
-                            isExpanded: expandedMessageIDs.contains(header.id),
-                            isSelected: navigation.selectedMessageID == header.id,
-                            backend: backend,
-                            sourceID: sourceID,
-                            showsAvatar: showsAvatars,
-                            isWorkBlocked: isWorkBlocked,
-                            dateTextOverride: dateTextProvider?(header),
-                            initialRenderedBody: preloadedBodies[header.id]
-                        ) {
-                            withAnimation(.easeInOut(duration: 0.2)) {
-                                if expandedMessageIDs.contains(header.id) {
-                                    expandedMessageIDs.remove(header.id)
-                                } else {
-                                    expandedMessageIDs.insert(header.id)
+                    conversationControlsRow
+                        .dynamicTypeSize(denseChromeDynamicTypeRange)
+
+                    if let aiSummaryState {
+                        ThreadAISummaryPanel(state: aiSummaryState)
+                            .padding(.horizontal, BrevSpacing.md)
+                            .padding(.bottom, BrevSpacing.sm)
+                    }
+
+                    LazyVStack(spacing: 0) {
+                        ForEach(visibleHeaders) { header in
+                            ThreadMessageCard(
+                                header: header,
+                                isExpanded: expandedMessageIDs.contains(header.id),
+                                isSelected: navigation.selectedMessageID == header.id,
+                                backend: backend,
+                                sourceID: sourceID,
+                                showsAvatar: showsAvatars,
+                                isWorkBlocked: isWorkBlocked,
+                                dateTextOverride: dateTextProvider?(header),
+                                initialRenderedBody: preloadedBodies[header.id]
+                            ) {
+                                withAnimation(.easeInOut(duration: 0.2)) {
+                                    if expandedMessageIDs.contains(header.id) {
+                                        expandedMessageIDs.remove(header.id)
+                                    } else {
+                                        expandedMessageIDs.insert(header.id)
+                                    }
                                 }
                             }
+                            .id(header.id)
                         }
-                        .id(header.id)
-                    }
 
-                    if hiddenReadCount > 0 {
-                        hiddenReadMessagesFooter
+                        if hiddenReadCount > 0 {
+                            hiddenReadMessagesFooter
+                        }
                     }
+                    .padding(.bottom, BrevSpacing.lg)
                 }
-                .padding(.bottom, BrevSpacing.lg)
+                .frame(maxWidth: 840)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
             .onAppear {
@@ -502,7 +515,7 @@ public struct ThreadConversationView: View {
                     showUnreadOnly ? "Show All" : "Unread Only",
                     systemImage: showUnreadOnly ? "envelope.open" : "envelope.badge"
                 )
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(showUnreadOnly ? theme.accent.color : theme.textSecondary.color)
             }
             .buttonStyle(.plain)
@@ -521,14 +534,14 @@ public struct ThreadConversationView: View {
                     areAllExpanded ? "Collapse All" : "Expand All",
                     systemImage: areAllExpanded ? "chevron.up.2" : "chevron.down.2"
                 )
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
             }
             .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
-        .background(theme.bgSecondary.color)
+        .padding(.bottom, BrevSpacing.sm)
     }
 
     @ViewBuilder
@@ -553,7 +566,7 @@ public struct ThreadConversationView: View {
             }
         } label: {
             Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(aiSummaryState?.isLoading == true ? theme.accent.color : theme.textSecondary.color)
         }
         .menuStyle(.borderlessButton)
@@ -583,27 +596,14 @@ public struct ThreadConversationView: View {
 
     // MARK: - Participant summary
 
-    @ViewBuilder
     private var participantSummary: some View {
-        HStack(spacing: -6) {
-            let previewParticipants = Array(uniqueParticipants.prefix(3))
-            ForEach(Array(previewParticipants.enumerated()), id: \.offset) { index, participant in
-                BrevAvatarView(
-                    email: participant.email,
-                    displayName: participant.name,
-                    size: 20
-                )
-                .zIndex(Double(3 - index))
-            }
-        }
-        Text(participantCountLabel)
-            .brevFont(.caption)
+        Text("\(threadHeaders.count) messages", bundle: .module)
+            .brevFont(.footnote)
             .foregroundStyle(theme.textSecondary.color)
-    }
-
-    private var participantCountLabel: String {
-        let count = uniqueParticipants.count
-        return count == 1 ? "1 participant" : "\(count) participants"
+            .accessibilityLabel(String(
+                localized: "\(threadHeaders.count) messages from \(uniqueParticipants.count) participants",
+                bundle: .module
+            ))
     }
 
     // MARK: - Hidden read messages footer
@@ -615,7 +615,7 @@ public struct ThreadConversationView: View {
                 .foregroundStyle(theme.textTertiary.color)
                 .font(.system(size: 12))
             Text("\(hiddenReadCount) hidden read message\(hiddenReadCount == 1 ? "" : "s")", bundle: .module)
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .foregroundStyle(theme.textTertiary.color)
         }
         .padding(.horizontal, BrevSpacing.md)
@@ -646,7 +646,7 @@ private struct ThreadAISummaryPanel: View {
             switch state {
             case .loading(let providerLabel):
                 Text(providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             case .success(let presentation):
                 ThreadAISummarySection(title: "Summary", bullets: presentation.summaryBullets)
@@ -655,18 +655,18 @@ private struct ThreadAISummaryPanel: View {
                 }
                 if let contextNote = presentation.contextNote {
                     Text(contextNote)
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textTertiary.color)
                 }
                 Text(presentation.providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             case .failure(let message, let providerLabel):
                 Text(message)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.danger.color)
                 Text(providerLabel)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             }
         }
@@ -684,7 +684,7 @@ private struct ThreadAISummarySection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             Text(title)
-                .brevFont(.caption)
+                .brevFont(.footnote)
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.textPrimary.color)
             ForEach(Array(bullets.enumerated()), id: \.offset) { _, bullet in
@@ -692,7 +692,7 @@ private struct ThreadAISummarySection: View {
                     Text(verbatim: "•")
                         .foregroundStyle(theme.textTertiary.color)
                     Text(bullet)
-                        .brevFont(.caption)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }

@@ -44,9 +44,12 @@ struct MailPaneSurfacePolicyTests {
         #expect(MailPaneColumnWidthPolicy.messageList(platform: .iPhone) == nil)
     }
 
-    @Test("macOS message list column leaves desktop split automatic")
-    func macOSMessageListColumnLeavesDesktopSplitAutomatic() {
-        #expect(MailPaneColumnWidthPolicy.messageList(platform: .macOS) == nil)
+    @Test("macOS message list gives mail identity a readable preferred width")
+    func macOSMessageListColumnLeavesDesktopSplitAutomatic() throws {
+        let width = try #require(MailPaneColumnWidthPolicy.messageList(platform: .macOS))
+        #expect(width.minimum == 320)
+        #expect(width.ideal == 420)
+        #expect(width.maximum >= width.ideal)
     }
 
     @Test("macOS folder sidebar declares split-view column bounds")

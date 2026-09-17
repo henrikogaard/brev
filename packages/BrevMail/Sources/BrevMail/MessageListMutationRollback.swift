@@ -55,6 +55,9 @@ struct UnifiedInboxMutationRollback {
         let selectedItemIDs: Set<UnifiedInboxItem.ID>
     }
 
+    private let sourceID: MailSourceID?
+    private let folderID: Folder.ID?
+    private let collectionID: Folder.ID?
     private let items: [UnifiedInboxItem]
     private let selectedItemIDs: Set<UnifiedInboxItem.ID>
     private let currentFolderHeaders: [MessageHeader]
@@ -67,11 +70,40 @@ struct UnifiedInboxMutationRollback {
         selectedItemIDs: Set<UnifiedInboxItem.ID>,
         navigation: MailNavigationState
     ) {
+        sourceID = navigation.selectedSourceID
+        folderID = navigation.selectedFolderID
+        collectionID = navigation.selectedCollectionFolderID
         self.items = items
         self.selectedItemIDs = selectedItemIDs
         currentFolderHeaders = navigation.currentFolderHeaders
         selectedMessageID = navigation.selectedMessageID
         bulkSelection = navigation.bulkSelection
+    }
+
+    func restoring(failedSources: Set<MailSourceID>, in currentItems: [UnifiedInboxItem]) -> RestoredState {
+        let currentByID = Dictionary(currentItems.map { ($0.id, $0) }) { _, latest in latest }
+        let restored = items.compactMap { item in
+            failedSources.contains(item.sourceID) ? item : currentByID[item.id]
+        }
+        let failedIDs = Set(items.filter { failedSources.contains($0.sourceID) }.map(\.id))
+        return RestoredState(items: restored, selectedItemIDs: selectedItemIDs.intersection(failedIDs))
+    }
+
+    @MainActor
+    func restoreFailedReader(
+        in navigation: MailNavigationState,
+        failedSources: Set<MailSourceID>,
+        expectedSelectionRevision: Int
+    ) {
+        guard navigation.readerSelectionRevision == expectedSelectionRevision,
+              let sourceID, failedSources.contains(sourceID),
+              let header = currentFolderHeaders.first(where: { $0.id == selectedMessageID }) else { return }
+        if let collectionID {
+            navigation.selectSmartView(folderID: collectionID)
+        } else {
+            navigation.selectFolder(folderID, in: sourceID)
+        }
+        navigation.selectMessage(header, in: sourceID, headers: currentFolderHeaders)
     }
 
     @MainActor

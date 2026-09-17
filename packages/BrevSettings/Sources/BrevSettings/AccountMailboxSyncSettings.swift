@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import Foundation
 
 public extension Notification.Name {
@@ -130,6 +131,7 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
         static let includeArchiveFolders = "account.includeArchiveFolders"
         static let offlineRetentionPolicy = "account.offlineRetentionPolicy"
         static let folderOverrides = "account.folderOverrides"
+        static let sourceFolderOverrides = "account.sourceFolderOverrides"
     }
 
     public var roleMappingsByAccountID: [String: AccountMailboxRoleMapping]
@@ -138,6 +140,8 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
     public var includeArchiveFolders: Bool
     public var offlineRetentionPolicy: OfflineRetentionPolicy
     public var folderOverrides: [String: FolderSyncOverride]
+    /// Overrides keyed by the complete account, mailbox, and folder identity.
+    public var sourceFolderOverrides: [SourceFolderID: FolderSyncOverride]
 
     public init(
         roleMappingsByAccountID: [String: AccountMailboxRoleMapping],
@@ -145,7 +149,8 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
         includeSharedFolders: Bool,
         includeArchiveFolders: Bool,
         offlineRetentionPolicy: OfflineRetentionPolicy,
-        folderOverrides: [String: FolderSyncOverride] = [:]
+        folderOverrides: [String: FolderSyncOverride] = [:],
+        sourceFolderOverrides: [SourceFolderID: FolderSyncOverride] = [:]
     ) {
         self.roleMappingsByAccountID = roleMappingsByAccountID
         self.folderSyncScope = folderSyncScope
@@ -153,6 +158,7 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
         self.includeArchiveFolders = includeArchiveFolders
         self.offlineRetentionPolicy = offlineRetentionPolicy
         self.folderOverrides = folderOverrides
+        self.sourceFolderOverrides = sourceFolderOverrides
     }
 
     public static let defaults = AccountMailboxSyncSettings(
@@ -189,11 +195,17 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
                 defaultValue: Self.defaults.offlineRetentionPolicy,
                 defaults: defaults
             ),
-            folderOverrides: folderOverrides(from: defaults)
+            folderOverrides: folderOverrides(from: defaults),
+            sourceFolderOverrides: defaults.data(forKey: Key.sourceFolderOverrides).flatMap {
+                try? JSONDecoder().decode([SourceFolderID: FolderSyncOverride].self, from: $0)
+            } ?? [:]
         )
     }
 
     public func save(to defaults: UserDefaults = .standard) {
+        if let data = try? JSONEncoder().encode(sourceFolderOverrides) {
+            defaults.set(data, forKey: Key.sourceFolderOverrides)
+        }
         defaults.set(folderSyncScope.rawValue, forKey: Key.folderSyncScope)
         defaults.set(includeSharedFolders, forKey: Key.includeSharedFolders)
         defaults.set(includeArchiveFolders, forKey: Key.includeArchiveFolders)
@@ -224,14 +236,31 @@ public struct AccountMailboxSyncSettings: Equatable, Sendable {
         roleMappingsByAccountID[accountID] ?? AccountMailboxRoleMapping(accountID: accountID)
     }
 
-    public func policy(for folderID: String) -> OfflineRetentionPolicy {
-        folderOverrides[folderID]?.retentionPolicy ?? offlineRetentionPolicy
+    /// Resolves a folder policy without applying another mailbox's override.
+    public func policy(for folderID: String, sourceID: MailSourceID? = nil) -> OfflineRetentionPolicy {
+        override(for: folderID, sourceID: sourceID)?.retentionPolicy ?? offlineRetentionPolicy
+    }
+
+    /// Returns an explicit source override, falling back to legacy folder preferences.
+    public func override(for folderID: String, sourceID: MailSourceID? = nil) -> FolderSyncOverride? {
+        if let sourceID,
+           let scoped = sourceFolderOverrides[SourceFolderID(sourceID: sourceID, folderID: folderID)] {
+            return scoped
+        }
+        return folderOverrides[folderID]
     }
 
     public mutating func setRetentionPolicy(
         _ policy: OfflineRetentionPolicy?,
-        forFolderID folderID: String
+        forFolderID folderID: String,
+        sourceID: MailSourceID? = nil
     ) {
+        if let sourceID {
+            // Preserve an explicit Default choice even if a legacy override exists.
+            sourceFolderOverrides[SourceFolderID(sourceID: sourceID, folderID: folderID)] =
+                FolderSyncOverride(retentionPolicy: policy)
+            return
+        }
         var override = folderOverrides[folderID] ?? FolderSyncOverride()
         override.retentionPolicy = policy
         setOverride(override, forFolderID: folderID)

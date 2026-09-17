@@ -73,7 +73,12 @@ public final class MailNavigationState {
 
     /// The currently selected message in the selected folder, or `nil`
     /// while nothing is open in the reading pane.
-    public var selectedMessageID: MessageHeader.ID?
+    public var selectedMessageID: MessageHeader.ID? {
+        didSet { readerSelectionRevision &+= 1 }
+    }
+
+    /// Distinguishes a user selection made while an asynchronous mutation is pending.
+    public private(set) var readerSelectionRevision = 0
 
     /// Search query bound to the message list search field. Empty string
     /// means "no filter".
@@ -179,42 +184,48 @@ public final class MailNavigationState {
         return currentFolderHeaders.first { $0.id == id }
     }
 
+    /// The virtual collection being browsed while the reader targets a physical source.
+    public private(set) var selectedCollectionFolderID: Folder.ID?
+
+    var browsingFolderID: Folder.ID? {
+        selectedCollectionFolderID ?? (selectedSourceID == nil ? selectedFolderID : nil)
+    }
+
     public var selectedSourceFolderID: SourceFolderID? {
         guard let selectedSourceID, let selectedFolderID else { return nil }
         return SourceFolderID(sourceID: selectedSourceID, folderID: selectedFolderID)
     }
 
     public var isUnifiedInboxSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.unifiedInboxFolderID
+        browsingFolderID == Self.unifiedInboxFolderID
     }
 
     public var isFlaggedSmartViewSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.flaggedSmartViewFolderID
+        browsingFolderID == Self.flaggedSmartViewFolderID
     }
 
     public var isTodaySmartViewSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.todaySmartViewFolderID
+        browsingFolderID == Self.todaySmartViewFolderID
     }
 
     public var isSnoozedSmartViewSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.snoozedSmartViewFolderID
+        browsingFolderID == Self.snoozedSmartViewFolderID
     }
 
     public var isDoneSmartViewSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.doneSmartViewFolderID
+        browsingFolderID == Self.doneSmartViewFolderID
     }
 
     public var isVIPSmartViewSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.vipSmartViewFolderID
+        browsingFolderID == Self.vipSmartViewFolderID
     }
 
     public var isAllAttachmentsSelected: Bool {
-        selectedSourceID == nil && selectedFolderID == Self.allAttachmentsSmartViewFolderID
+        browsingFolderID == Self.allAttachmentsSmartViewFolderID
     }
 
     public var selectedSavedSearchID: SmartMailbox.ID? {
-        guard selectedSourceID == nil,
-              let folderID = selectedFolderID,
+        guard let folderID = browsingFolderID,
               folderID.hasPrefix(Self.savedSearchFolderIDPrefix)
         else { return nil }
         return String(folderID.dropFirst(Self.savedSearchFolderIDPrefix.count))
@@ -233,6 +244,7 @@ public final class MailNavigationState {
     }
 
     public func selectUnifiedInbox() {
+        selectedCollectionFolderID = nil
         selectedSourceID = nil
         selectedFolderID = Self.unifiedInboxFolderID
         selectedMessageID = nil
@@ -287,6 +299,7 @@ public final class MailNavigationState {
     }
 
     func selectSmartView(folderID: Folder.ID) {
+        selectedCollectionFolderID = nil
         selectedSourceID = nil
         selectedFolderID = folderID
         selectedMessageID = nil
@@ -295,11 +308,41 @@ public final class MailNavigationState {
     }
 
     /// Select a folder within a specific account/mailbox source.
-    public func selectFolder(_ folderID: Folder.ID, in sourceID: MailSourceID) {
+    public func selectFolder(_ folderID: Folder.ID?, in sourceID: MailSourceID?) {
+        selectedCollectionFolderID = nil
         selectedSourceID = sourceID
         selectedFolderID = folderID
         selectedMessageID = nil
         currentFolderHeaders = []
+        bulkSelection.removeAll()
+    }
+
+    /// Clears a reader whose account left the profile without leaving the virtual collection.
+    public func reconcileReaderSources(_ sourceIDs: Set<MailSourceID>) {
+        guard let source = selectedSourceID, !sourceIDs.contains(source) else { return }
+        let collection = selectedCollectionFolderID
+        selectedSourceID = nil
+        selectedFolderID = collection
+        selectedCollectionFolderID = nil
+        selectedMessageID = nil
+        currentFolderHeaders = []
+        bulkSelection.removeAll()
+    }
+
+    /// Selects a row from the visible list without changing its folder/search scope.
+    public func selectMessage(_ header: MessageHeader, from headers: [MessageHeader]) {
+        currentFolderHeaders = headers
+        selectedMessageID = header.id
+        bulkSelection.removeAll()
+    }
+
+    /// Selects a source-owned message for the reader.
+    public func selectMessage(_ header: MessageHeader, in sourceID: MailSourceID, headers: [MessageHeader]) {
+        selectedCollectionFolderID = browsingFolderID
+        selectedSourceID = sourceID
+        selectedFolderID = header.folderID
+        selectedMessageID = header.id
+        currentFolderHeaders = headers
         bulkSelection.removeAll()
     }
 
@@ -311,6 +354,12 @@ public final class MailNavigationState {
             return
         }
         mutate(&currentFolderHeaders[index])
+    }
+
+    /// Applies an optimistic update only to the reader's owning source.
+    public func updateHeader(id: MessageHeader.ID, sourceID: MailSourceID, _ mutate: (inout MessageHeader) -> Void) {
+        guard selectedSourceID == sourceID else { return }
+        updateHeader(id: id, mutate)
     }
 
     /// Replace the loaded headers after a backend reload while keeping
@@ -428,6 +477,7 @@ public final class MailNavigationState {
     /// Clear state tied to the active mailbox before rebuilding the
     /// folder/message surface for a newly selected mailbox.
     public func resetForMailboxSwitch() {
+        selectedCollectionFolderID = nil
         selectedSourceID = nil
         selectedFolderID = nil
         selectedMessageID = nil

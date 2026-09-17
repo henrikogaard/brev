@@ -18,6 +18,22 @@ import Testing
 
 @Suite("MailRetentionSweepPlan")
 struct MailRetentionSweepPlanTests {
+    @Test("retention sweeps honor the selected source's override for duplicate folder IDs")
+    func sourceOverrides() {
+        let work = MailSourceID(accountID: "account", mailboxID: "work")
+        let personal = MailSourceID(accountID: "account", mailboxID: "personal")
+        var settings = AccountMailboxSyncSettings.defaults
+        settings.setRetentionPolicy(.headersOnly, forFolderID: "INBOX", sourceID: work)
+        let folders = [Folder(id: "INBOX", name: "Inbox", role: .inbox)]
+        let workTargets = MailRetentionSweepPlan.targets(sourceSections: [], fallbackSourceID: work,
+                                                         fallbackFolders: folders, settings: settings)
+        let personalTargets = MailRetentionSweepPlan.targets(sourceSections: [], fallbackSourceID: personal,
+                                                             fallbackFolders: folders, settings: settings)
+        #expect(workTargets.first?.keepsBodies == false)
+        #expect(personalTargets.first?.keepsBodies == true)
+        #expect(personalTargets.first?.retentionDays == 90)
+    }
+
     @Test("retention sweep waits while sync health reports indexing")
     func retentionSweepWaitsWhileSyncHealthReportsIndexing() {
         let sourceID = MailSourceID(accountID: "account-a", mailboxID: "mailbox-a")

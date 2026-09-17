@@ -138,7 +138,7 @@ struct MessageListRowSnapshotTests {
 
     /// Selected rows tint with the accent while the window is active, instead of
     /// the neutral fill macOS reserves for inactive windows.
-    @Test("selected rows tint with the accent in an active window")
+    @Test("selected rows keep opaque contrast in an active window")
     func selectedRowTintsWithAccent() {
         assertRow(named: "selected-accent-tint", isRead: true, isSelected: true)
     }

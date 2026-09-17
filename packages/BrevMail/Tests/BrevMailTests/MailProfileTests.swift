@@ -17,6 +17,19 @@ import Testing
 
 @Suite("Mail profiles")
 struct MailProfileTests {
+    @Test("a temporarily unavailable profile retains its membership and selection")
+    func unavailableProfileRetainsMembership() {
+        let work = Self.sourceID(account: "work", mailbox: "work")
+        let personal = Self.section(account: "personal", mailbox: "personal")
+        let profile = MailProfile(id: "work", name: "Work", sourceIDs: [work])
+        let profiles = MailProfileSelectionPolicy.resolvedProfiles(customProfiles: [profile], availableSourceIDs: [personal.id])
+        #expect(profiles.contains(profile))
+        #expect(MailProfileSelectionPolicy.selectedProfileID("work", profiles: profiles) == "work")
+        #expect(MailProfileSelectionPolicy.visibleSections(from: [personal], activeProfileID: "work", profiles: profiles).isEmpty)
+        let saved = MailProfileSelectionPolicy.normalizedCustomProfiles([profile], availableSourceIDs: [])
+        #expect(MailProfileStorage.decode(MailProfileStorage.encode(saved)) == [profile])
+    }
+
     @Test("All Mailboxes profile includes every available source")
     func allMailboxesProfileIncludesEveryAvailableSource() {
         let sourceIDs = [
@@ -34,7 +47,7 @@ struct MailProfileTests {
         #expect(profiles.first?.isSystem == true)
     }
 
-    @Test("custom profiles filter unavailable and duplicate source ids")
+    @Test("custom profiles retain unavailable sources and remove duplicate source ids")
     func customProfilesFilterUnavailableAndDuplicateSourceIDs() {
         let first = Self.sourceID(account: "a", mailbox: "one")
         let second = Self.sourceID(account: "b", mailbox: "two")
@@ -52,7 +65,7 @@ struct MailProfileTests {
 
         #expect(profiles.map(\.id) == [MailProfile.allMailboxesID, "focused"])
         #expect(profiles[1].name == "Focus")
-        #expect(profiles[1].sourceIDs == [first, second])
+        #expect(profiles[1].sourceIDs == [first, unavailable, second])
     }
 
     @Test("one source can belong to multiple custom profiles")
@@ -70,7 +83,7 @@ struct MailProfileTests {
         #expect(profiles[2].sourceIDs == [sourceID])
     }
 
-    @Test("custom profiles without available sources are removed")
+    @Test("empty profiles are removed but temporarily unavailable profiles remain")
     func customProfilesWithoutAvailableSourcesAreRemoved() {
         let unavailable = Self.sourceID(account: "a", mailbox: "gone")
         let profiles = MailProfileSelectionPolicy.resolvedProfiles(
@@ -81,7 +94,7 @@ struct MailProfileTests {
             availableSourceIDs: []
         )
 
-        #expect(profiles.map(\.id) == [MailProfile.allMailboxesID])
+        #expect(profiles.map(\.id) == [MailProfile.allMailboxesID, "stale"])
     }
 
     @Test("visible sections are filtered by active custom profile")

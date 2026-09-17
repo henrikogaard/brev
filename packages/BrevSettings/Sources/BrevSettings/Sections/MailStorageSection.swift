@@ -341,7 +341,7 @@ enum MailStorageRetentionPlan {
         var seenFolderIDs = Set<Folder.ID>()
         return folders.compactMap { folder in
             guard seenFolderIDs.insert(folder.id).inserted else { return nil }
-            let policy = settings.policy(for: folder.id)
+            let policy = settings.policy(for: folder.id, sourceID: sourceID)
             return MailStorageRetentionApplication(
                 sourceID: sourceID,
                 folderID: folder.id,
@@ -555,7 +555,9 @@ enum MailStoragePresentation {
     }
 
     static func retentionSummary(for settings: AccountMailboxSyncSettings) -> MailStorageRetentionSummary {
-        let overrides = settings.folderOverrides.values.filter { $0.retentionPolicy != nil }.count
+        let legacyOverrides = settings.folderOverrides.values.filter { $0.retentionPolicy != nil }.count
+        let scopedOverrides = settings.sourceFolderOverrides.values.filter { $0.retentionPolicy != nil }.count
+        let overrides = legacyOverrides + scopedOverrides
         let detail = overrides == 0
             ? String(localized: "No folder overrides", bundle: .module)
             : overrides == 1
@@ -781,7 +783,7 @@ struct MailStorageSection: View {
         let summary = MailStoragePresentation.retentionSummary(for: syncSettings)
         return SettingsGroup(
             title: String(localized: "Local retention", bundle: .module),
-            subtitle: String(localized: "Choose how far back Brev keeps full message bodies in local storage.", bundle: .module),
+            subtitle: String(localized: "Default for all accounts. Set per-folder exceptions in Folder Sync.", bundle: .module),
             symbolName: "calendar.badge.clock"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
@@ -854,6 +856,7 @@ struct MailStorageSection: View {
         Binding(
             get: { syncSettings.offlineRetentionPolicy },
             set: { newValue in
+                syncSettings = settingsStore.accountMailboxSyncSettings()
                 syncSettings.offlineRetentionPolicy = newValue
                 settingsStore.save(syncSettings)
                 let decision = MailStorageRetentionChangePolicy.decision(

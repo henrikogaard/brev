@@ -32,12 +32,15 @@ enum FolderSidebarPlatform: Equatable, Sendable {
     case macOS
 }
 
-enum FolderSidebarProfilePickerPresentation: Equatable, Sendable {
-    case dialog
-    case menu
-}
-
 enum FolderSidebarSourceExpansionPolicy {
+    /// Restores local disclosure choices, including hidden profile members and an empty selection.
+    static func restoredExpandedSourceIDs(
+        from data: Data, sourceIDs: [MailSourceID], selectedSourceID: MailSourceID?
+    ) -> Set<MailSourceID> {
+        if let saved = try? JSONDecoder().decode(Set<MailSourceID>.self, from: data) { return saved }
+        return initialExpandedSourceIDs(sourceIDs: sourceIDs, selectedSourceID: selectedSourceID)
+    }
+
     static func initialExpandedSourceIDs(
         sourceIDs: [MailSourceID],
         selectedSourceID: MailSourceID?
@@ -302,10 +305,6 @@ enum FolderSidebarPresentation {
         )
     }
 
-    static func shouldShowProfilePicker(profiles: [MailProfile]) -> Bool {
-        profiles.contains { !$0.isSystem }
-    }
-
     static func layoutMetrics(
         for platform: FolderSidebarPlatform,
         density: MailboxListDensity = .comfortable
@@ -420,17 +419,6 @@ enum FolderSidebarPresentation {
         folderRowTrailingPadding: BrevSpacing.sm,
         folderRowVerticalPadding: BrevSpacing.xxs
     )
-
-    static func profilePickerPresentation(
-        for platform: FolderSidebarPlatform
-    ) -> FolderSidebarProfilePickerPresentation {
-        switch platform {
-        case .iPhone, .iPad:
-            .dialog
-        case .macOS:
-            .menu
-        }
-    }
 
     static func mailboxHeader(
         isSwitchingMailbox: Bool,

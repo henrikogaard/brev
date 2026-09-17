@@ -82,6 +82,29 @@ struct MessageListVisibleHeadersTests {
         ).map(\.id) == [parent.id, child.id, separate.id])
     }
 
+    @Test("filtered conversations keep inline replies readable across refresh")
+    @MainActor
+    func filteredThreadReplySelection() {
+        var parent = Self.makeHeader(id: "parent", threadID: "kitchen")
+        parent.isFlagged = true
+        let reply = Self.makeHeader(id: "reply", threadID: "kitchen")
+        let unrelated = Self.makeHeader(id: "other", threadID: "other")
+        let loaded = [parent, reply, unrelated]
+        let matches = MessageListSortPolicy.filtered(
+            loaded, by: MailboxFilterQuery(activeFilters: [.flagged], senderEmail: nil)
+        )
+        let navigation = MailNavigationState(selectedFolderID: "inbox")
+        let readerHeaders = MessageListNavigationHeaders.headers(from: matches, threadContext: loaded)
+        navigation.selectMessage(reply, from: readerHeaders)
+        #expect(navigation.selectedHeader?.id == reply.id)
+        #expect(readerHeaders.map(\.id) == [parent.id, reply.id])
+        navigation.replaceCurrentFolderHeaders(readerHeaders)
+        #expect(navigation.selectedHeader?.id == reply.id)
+        #expect(ThreadMessageDerivation.threadHeaders(
+            from: readerHeaders, threadID: "kitchen"
+        ).count == 2)
+    }
+
     private static func makeHeader(
         id: String,
         threadID: String,

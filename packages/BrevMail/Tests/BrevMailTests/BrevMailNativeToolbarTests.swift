@@ -18,6 +18,7 @@ import Foundation
 import Testing
 
 @Suite("BrevMailNativeToolbar")
+@MainActor
 struct BrevMailNativeToolbarTests {
     /// The native toolbar must stay opt-in: it replaces `window.toolbar`, which
     /// breaks the KVO registration SwiftUI keeps for the `.searchable` field and

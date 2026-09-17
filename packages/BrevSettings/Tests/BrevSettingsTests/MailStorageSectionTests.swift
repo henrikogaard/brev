@@ -17,6 +17,14 @@ import Testing
 
 @Suite("MailStorageSection")
 struct MailStorageSectionTests {
+    @Test("storage summary includes scoped folder overrides")
+    func scopedRetentionSummary() {
+        var settings = AccountMailboxSyncSettings.defaults
+        settings.setRetentionPolicy(.headersOnly, forFolderID: "INBOX",
+                                    sourceID: MailSourceID(accountID: "account", mailboxID: "work"))
+        #expect(MailStoragePresentation.retentionSummary(for: settings).detail.contains("1 folder override"))
+    }
+
     @Test("mail storage section is shipped in default settings navigation")
     func mailStorageSectionIsShippedInDefaultSettingsNavigation() {
         #expect(SettingsSection.mailStorage.title == "Mail Storage")

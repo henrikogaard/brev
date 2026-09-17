@@ -38,6 +38,7 @@ struct BrevApp: App {
     @State private var updateController = MacUpdateController()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var sessionRestoreAttempted = false
+    @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
@@ -68,6 +69,7 @@ struct BrevApp: App {
                         onOpenSettings: {
                             openWindow(id: BrevWindowID.settings)
                         },
+                        onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
                         },
@@ -88,7 +90,6 @@ struct BrevApp: App {
                     .frame(minWidth: 960, minHeight: 600)
                     .environment(\.openURL, browserOpenURLAction)
                     .networkMonitor(networkMonitor)
-                    .id(mailRootIdentity)
                 } else if AppSessionRestorePresentationPolicy.shouldShowRestoreProgress(
                     visibleBackendCount: session.visibleBackends.count,
                     isRestoringSession: session.isRestoringSession,
@@ -167,6 +168,7 @@ struct BrevApp: App {
                 consumePendingBrevURL()
             }
         }
+        .defaultSize(width: 1440, height: 820)
         .windowStyle(.titleBar)
         .commands {
             CommandGroup(replacing: .newItem) {}
@@ -193,6 +195,7 @@ struct BrevApp: App {
                 sectionAvailability: settingsSectionAvailability,
                 initialAccounts: session.visibleBackends.map(\.account),
                 initialCurrentAccountID: session.backend?.account.id,
+                mailboxContext: settingsMailboxContext,
                 updateActions: updateController.settingsActions,
                 developerActions: DeveloperSettingsActions { _ in
                     restartForDeveloperModeChange()
@@ -232,13 +235,6 @@ struct BrevApp: App {
             }
             return browserLinkOpener.open(url)
         }
-    }
-
-    private var mailRootIdentity: String {
-        session.visibleBackends
-            .map(\.account.id)
-            .sorted()
-            .joined(separator: "|")
     }
 
     /// Turns a `mailto:` URL handed to the app delegate (Brev as default

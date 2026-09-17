@@ -301,7 +301,7 @@ struct AccountsSection: View {
     private var fetchScheduleGroup: some View {
         SettingsGroup(
             title: String(localized: "Fetch schedule", bundle: .module),
-            subtitle: String(localized: "How often Brev checks for new mail.", bundle: .module),
+            subtitle: String(localized: "Applies to all accounts. Choose how often Brev checks for new mail.", bundle: .module),
             symbolName: "envelope.arrow.triangle.branch"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
@@ -706,7 +706,7 @@ private struct AccountRow: View {
 
             backendBadge
 
-            accountActionButtons
+            compactActionsMenu
         }
     }
 
@@ -753,8 +753,8 @@ private struct AccountRow: View {
                 }
             }
             Text(account.emailAddress)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textTertiary.color)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
                 .lineLimit(emailLineLimit)
                 .truncationMode(.middle)
                 .fixedSize(horizontal: false, vertical: true)
@@ -774,8 +774,8 @@ private struct AccountRow: View {
     }
 
     private var defaultBadge: some View {
-        Text("Default", bundle: .module)
-            .brevFont(.caption)
+        Text("Default account", bundle: .module)
+            .brevFont(.footnote)
             .foregroundStyle(theme.accent.color)
             .lineLimit(1)
             .padding(.horizontal, BrevSpacing.sm)
@@ -784,31 +784,12 @@ private struct AccountRow: View {
             .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
     }
 
-    private var accountActionButtons: some View {
-        Group {
-            BrevButton(setDefaultPresentation.title, style: .tertiary) {
-                onSetDefault()
-            }
-            .disabled(setDefaultPresentation.isDisabled)
-
-            BrevButton(signOutPresentation.title, style: .tertiary) {
-                onSignOut()
-            }
-            .disabled(signOutPresentation.isDisabled)
-
-            BrevButton(removePresentation.title, style: .tertiary) {
-                onRemove()
-            }
-            .disabled(removePresentation.isDisabled)
-        }
-    }
-
     private var compactActionsMenu: some View {
         Menu {
-            Button(setDefaultPresentation.title) {
-                onSetDefault()
+            if !isCurrent {
+                Button(setDefaultPresentation.title) { onSetDefault() }
+                    .disabled(setDefaultPresentation.isDisabled)
             }
-            .disabled(setDefaultPresentation.isDisabled)
 
             Button(signOutPresentation.title) {
                 onSignOut()
@@ -881,12 +862,12 @@ private struct AccountRow: View {
         return HStack(alignment: .center, spacing: BrevSpacing.sm) {
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text(mailbox.displayName)
-                    .brevFont(.footnote)
+                    .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
                 Text(mailbox.email)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
                     .truncationMode(.middle)
             }
@@ -906,18 +887,19 @@ private struct AccountRow: View {
             .opacity(presentation.canToggle ? 1 : 0.65)
             .accessibilityLabel(String(localized: "Enable mailbox \(mailbox.email)", bundle: .module))
 
-            Button {
-                onSetDefaultMailbox(mailbox)
-            } label: {
-                Image(systemName: presentation.isDefault ? "checkmark.circle.fill" : "circle")
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(presentation.isDefault ? theme.accent.color : theme.textTertiary.color)
-                    .frame(width: 28, height: 28)
+            Group {
+                if presentation.isDefault {
+                    Label(String(localized: "Default mailbox", bundle: .module), systemImage: "checkmark.circle.fill")
+                        .foregroundStyle(theme.textSecondary.color)
+                } else {
+                    Button(String(localized: "Make default", bundle: .module)) { onSetDefaultMailbox(mailbox) }
+                        .buttonStyle(.borderless)
+                        .disabled(presentation.isDefaultActionDisabled)
+                        .accessibilityLabel(String(localized: "Make default mailbox \(mailbox.email)", bundle: .module))
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(presentation.isDefaultActionDisabled)
-            .help(presentation.defaultActionTitle)
-            .accessibilityLabel(String(localized: "\(presentation.defaultActionTitle) mailbox \(mailbox.email)", bundle: .module))
+            .brevFont(.footnote)
+            .frame(width: 122, height: 28, alignment: .leading)
         }
     }
 }

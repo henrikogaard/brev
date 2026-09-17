@@ -6,6 +6,65 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Selecting an unflagged reply inside a filtered conversation keeps the reader
+  open with that reply and the conversation context.
+- Smart Views share a compact condition editor in Mail and Settings, with
+  all/any matching, text comparisons, dates, status, mailbox, and folder rules.
+  Existing saved filters retain their scope when edited.
+- Smart Views settings can hide the entire sidebar section, show or hide each
+  built-in/custom view, and reorder them together without deleting definitions.
+- Saved message views search cached folders across the active profile, with
+  explicit Sent/Trash inclusion and duplicate handling for label providers.
+  They use all cached IMAP headers rather than the ordinary search-result cap,
+  and preserve complete Gmail label membership for positive/negative folder rules.
+
+- Profiles now sit above independently collapsible mailbox groups. Multiple
+  inbox/folder trees can stay open together, and expansion choices are saved
+  locally across profile changes and relaunches.
+- Mailbox headers are compact single lines, with addresses available on hover
+  and unread counts on collapsed groups. All Inboxes uses the active profile.
+- Folder rows use source-scoped identities so identical provider folder IDs
+  remain distinct when several mailboxes are expanded together.
+
+- Mail split gaps and the AI Sidebar resize gutter now paint themed backdrops,
+  preventing bright window backing from showing as thick white dividers.
+- AI Sidebar resizing uses stable pointer coordinates, responds immediately
+  when reversing from a width limit, and commits the final release position.
+- Settings groups Accounts with Appearance under App. Advanced and Extensions
+  use the same section headings and flat row alignment as the other groups.
+
+- Settings follows the selected mailbox with an explicit source selector in
+  Folder Sync. New retention overrides are isolated by account, mailbox, and
+  folder; legacy preferences remain available until overridden.
+- Folder Sync uses compact hierarchical rows, a folder filter, and labeled
+  retention and visibility controls. Settings navigation shares Mail's
+  selection palette, with clearer account and mailbox defaults.
+- Settings search finds control names and opens the matching location.
+  Appearance includes a sample-mail preview and expandable window details;
+  Mailbox View separates reading, list, folder, and sender-image preferences.
+
+- Default Mono Light and Mono Dark metadata now meets 4.5:1 contrast across
+  normal, hover, and selected surfaces. Mail rows use opaque selection fills
+  with separate indicators; custom accents no longer wash out selected text.
+- New macOS windows prefer a 1440x820 layout and a 420-point message list.
+  Conversations use a bounded 840-point reading column, tighter headers, and
+  a message display menu. Dark reading canvases match the app background.
+- Split the root view's modifier chain to avoid hosted-compiler type-check
+  timeouts while preserving its lifecycle and presentation behavior.
+
+- Reading a message keeps Unified Inbox, smart views, and saved searches open.
+  Late list/page responses no longer replace a different profile or search.
+- Bulk actions retain successful account changes when another account fails;
+  failed messages remain selected with partial-success feedback.
+- Profiles retain unavailable mailbox memberships and their active selection.
+  Account restoration updates the workspace without resetting navigation.
+- Pins are now scoped to account, mailbox, and message. Profile loads never
+  prune pins elsewhere. Legacy unscoped records are retained; an in-app notice
+  explains that older messages must be pinned again to assign their mailbox.
+- Gmail lists cached headers before reconciliation and bounds missing-message
+  requests to four at a time. Unified Inbox publishes healthy sources as they
+  finish, keeps cached content readable during refresh, and debounces searches.
+
 - The inbox category bar now floats over the message list instead of
   sitting above it, so rows scroll beneath it and fade out behind its
   translucent chrome — restoring the "list hides behind the blur"

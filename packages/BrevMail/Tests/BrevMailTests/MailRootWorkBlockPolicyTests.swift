@@ -15,6 +15,41 @@ import Testing
 
 @Suite("MailRootWorkBlockPolicy")
 struct MailRootWorkBlockPolicyTests {
+    @Test("single-account folder fallback is usable without exposing another profile's account")
+    func fallbackContextIsScoped() {
+        #expect(MailRootWorkBlockPolicy.hasMailContext(
+            visibleSourceCount: 0,
+            hasAnySources: false,
+            hasFallbackFolders: true,
+            isAllMailboxesProfile: true
+        ))
+        #expect(!MailRootWorkBlockPolicy.hasMailContext(
+            visibleSourceCount: 0,
+            hasAnySources: true,
+            hasFallbackFolders: true,
+            isAllMailboxesProfile: true
+        ))
+        #expect(!MailRootWorkBlockPolicy.hasMailContext(
+            visibleSourceCount: 0,
+            hasAnySources: false,
+            hasFallbackFolders: true,
+            isAllMailboxesProfile: false
+        ))
+    }
+
+    @Test("cached mail stays usable during a background refresh")
+    func cachedMailRemainsUsable() {
+        #expect(!MailRootWorkBlockPolicy.isMessageWorkBlocked(
+            hasPresentedSheet: false,
+            activeFolderLoadRequest: nil,
+            activeMailboxLoadRequest: nil,
+            activeRefreshRequest: MailRootRefreshRequest(id: 1, folderID: "inbox", mailboxID: "a"),
+            activeMailboxSwitchRequest: nil,
+            activeCommandMutationRequest: nil,
+            hasUsableContent: true
+        ))
+    }
+
     @Test("message work is blocked while a sheet is presented")
     func messageWorkIsBlockedWhileSheetIsPresented() {
         #expect(MailRootWorkBlockPolicy.isMessageWorkBlocked(

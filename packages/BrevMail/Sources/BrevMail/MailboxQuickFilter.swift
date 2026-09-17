@@ -233,7 +233,7 @@ struct MailboxSmartView: Equatable, Identifiable, Sendable {
 
     @MainActor
     func isSelected(in navigation: MailNavigationState) -> Bool {
-        navigation.selectedSourceID == nil && navigation.selectedFolderID == navigationFolderID
+        navigation.browsingFolderID == navigationFolderID
     }
 }
 
