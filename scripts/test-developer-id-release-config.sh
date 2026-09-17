@@ -9,9 +9,23 @@ cd "$ROOT"
 plist="scripts/export-options-developer-id.plist"
 archive_script="scripts/release-archive.sh"
 dmg_script="scripts/release-dmg.sh"
+release_workflow=".github/workflows/release.yml"
+signing_action=".github/actions/release-signing/action.yml"
 
 if [[ ! -f "$plist" ]]; then
   echo "ERROR: missing $plist" >&2
+  exit 1
+fi
+
+if ! grep -Fq 'plutil -extract TeamIdentifier.0 raw -o - "$WORK/profile.plist"' "$signing_action" ||
+    grep -Fq 'Entitlements.com-apple-developer-team-identifier.0' "$signing_action"; then
+  echo "ERROR: release signing must read and validate TeamIdentifier.0 without leaking a failed plutil probe" >&2
+  exit 1
+fi
+
+if grep -Fq "sed -e :a" "$release_workflow" ||
+    ! grep -Fq 'lines[++count]=$0' "$release_workflow"; then
+  echo "ERROR: release notes extraction must use the portable awk-only trim path" >&2
   exit 1
 fi
 

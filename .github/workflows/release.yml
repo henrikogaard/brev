@@ -98,8 +98,15 @@ jobs:
           awk -v v="$VERSION" '
             $0 ~ "^## \\[" v "\\]" { found=1; next }
             found && /^## \[/ { exit }
-            found { print }
-          ' CHANGELOG.md | sed -e :a -e '/^\n*$/{$d;N;ba}' > "$RUNNER_TEMP/notes.txt"
+            found { lines[++count]=$0 }
+            END {
+              first=1
+              while (first <= count && lines[first] ~ /^[[:space:]]*$/) first++
+              last=count
+              while (last >= first && lines[last] ~ /^[[:space:]]*$/) last--
+              for (i=first; i<=last; i++) print lines[i]
+            }
+          ' CHANGELOG.md > "$RUNNER_TEMP/notes.txt"
           if [[ ! -s "$RUNNER_TEMP/notes.txt" ]]; then
             echo "::error::CHANGELOG.md has no '## [$VERSION]' section; cut the release notes before tagging."
             exit 1

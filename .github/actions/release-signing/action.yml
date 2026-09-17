@@ -79,9 +79,12 @@ runs:
         security cms -D -i "$WORK/profile.mobileprovision" -o "$WORK/profile.plist"
         PROFILE_UUID="$(plutil -extract UUID raw -o - "$WORK/profile.plist" | tr -d '\r\n')"
         PROFILE_NAME="$(plutil -extract Name raw -o - "$WORK/profile.plist" | tr -d '\r\n')"
-        TEAM_ID="$(plutil -extract Entitlements.com-apple-developer-team-identifier.0 raw -o - "$WORK/profile.plist" 2>/dev/null \
-          || plutil -extract TeamIdentifier.0 raw -o - "$WORK/profile.plist")"
-        TEAM_ID="$(printf '%s' "$TEAM_ID" | tr -d '\r\n')"
+        TEAM_ID="$(plutil -extract TeamIdentifier.0 raw -o - "$WORK/profile.plist" 2>/dev/null \
+          | tr -d '\r\n')"
+        if [[ ! "$TEAM_ID" =~ ^[A-Za-z0-9]{10}$ ]]; then
+          echo "::error::Provisioning profile did not contain a valid 10-character team identifier"
+          exit 1
+        fi
         PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
         mkdir -p "$PROFILE_DIR"
         cp "$WORK/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"

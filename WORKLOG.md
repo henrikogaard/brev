@@ -1758,3 +1758,22 @@ Verification: `bash -n` all touched shell; actionlint clean;
 `--filter Updates` 8/8 green.
 Skipped: real signing/notarization/`gh release` — needs CI secrets and
 portal assets that do not exist yet.
+
+## 2026-09-17 — Codex — Release workflow portability follow-up
+
+- Goal: unblock the authorized `v0.1.0` signed release after the merged
+  signing-environment fix.
+- Summary: fixed macOS release-note extraction to trim section whitespace with
+  portable `awk` instead of the failing BSD `sed` expression; made provisioning
+  profile team-ID extraction use the validated `TeamIdentifier.0` field and fail
+  closed on malformed values; extended the Developer ID release configuration
+  check to cover both safeguards.
+- Verification: local release configuration test, release appcast test, lint,
+  format, and `git diff --check` passed; the hosted release
+  run had already passed signing setup and the main-build gate before reaching
+  this failure.
+- Skipped: no local notarized archive or DMG; those require the hosted release
+  secrets and Apple service path.
+- Handoff: commit and PR this workflow-only fix, merge it, retarget the
+  unpublished `v0.1.0` tag to the merged `main` commit, then rerun the release
+  and verify the GitHub asset and stable appcast.
