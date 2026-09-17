@@ -1,5 +1,38 @@
 # Worklog
 
+## 2026-09-17 — Codex — Release signing environment fix
+
+### Goal
+
+Unblock the signed `v0.1.0` release after the first tag run failed while
+exporting parsed provisioning-profile values to GitHub Actions.
+
+### Changes
+
+- Normalize provisioning-profile UUID, name, and team values to single lines
+  and write the team/profile environment entries with `printf` in the release
+  signing action.
+- Rotated the two release-environment P12 secrets with a freshly exported
+  Developer ID identity after CI rejected the previous password.
+
+### Verification
+
+- `scripts/test-developer-id-release-config.sh` — passed.
+- `scripts/test-release-appcast.sh` — passed.
+- `scripts/lint.sh` — passed.
+- `scripts/format.sh` — 0 files formatted.
+- `git diff --check` — passed.
+
+### Skipped
+
+- The release workflow rerun is pending this fix being merged.
+- Published artifact and Sparkle client update verification remain pending.
+
+### Handoff
+
+Open and merge the release-action fix, rerun the existing `v0.1.0` workflow,
+then verify the signed DMG, stable appcast, and available client update path.
+
 ## 2026-09-17 — Codex — Main Build follow-up
 
 ### Goal

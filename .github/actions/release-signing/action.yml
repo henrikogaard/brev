@@ -77,16 +77,17 @@ runs:
         # the standard profiles directory.
         printf '%s' "$PROFILE_B64" | base64 --decode >"$WORK/profile.mobileprovision"
         security cms -D -i "$WORK/profile.mobileprovision" -o "$WORK/profile.plist"
-        PROFILE_UUID="$(plutil -extract UUID raw -o - "$WORK/profile.plist")"
-        PROFILE_NAME="$(plutil -extract Name raw -o - "$WORK/profile.plist")"
+        PROFILE_UUID="$(plutil -extract UUID raw -o - "$WORK/profile.plist" | tr -d '\r\n')"
+        PROFILE_NAME="$(plutil -extract Name raw -o - "$WORK/profile.plist" | tr -d '\r\n')"
         TEAM_ID="$(plutil -extract Entitlements.com-apple-developer-team-identifier.0 raw -o - "$WORK/profile.plist" 2>/dev/null \
           || plutil -extract TeamIdentifier.0 raw -o - "$WORK/profile.plist")"
+        TEAM_ID="$(printf '%s' "$TEAM_ID" | tr -d '\r\n')"
         PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
         mkdir -p "$PROFILE_DIR"
         cp "$WORK/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
         printf '%s' "$PROFILE_UUID" >"$WORK/profile-uuid"
-        echo "BREV_TEAM_ID=$TEAM_ID" >> "$GITHUB_ENV"
-        echo "BREV_PROVISIONING_PROFILE_SPECIFIER=$PROFILE_NAME" >> "$GITHUB_ENV"
+        printf 'BREV_TEAM_ID=%s\n' "$TEAM_ID" >> "$GITHUB_ENV"
+        printf 'BREV_PROVISIONING_PROFILE_SPECIFIER=%s\n' "$PROFILE_NAME" >> "$GITHUB_ENV"
 
         printf '%s' "$ASC_P8_B64" | base64 --decode >"$WORK/AuthKey.p8"
         chmod 600 "$WORK/AuthKey.p8"
