@@ -1,5 +1,34 @@
 # Worklog
 
+## 2026-09-18 — Codex — Release certificate/profile diagnostic
+
+### Goal
+
+Make the remaining Developer ID archive failure actionable after Xcode
+reported that the stable CI profile did not contain the imported certificate.
+
+### Changes
+
+- Added a signing-action preflight that compares the imported Developer ID
+  certificate SHA-256 fingerprint with the certificate embedded in the
+  selected provisioning profile.
+- Added a regression check for the fail-closed mismatch path.
+
+### Verification
+
+- Focused release configuration checks are pending after this edit.
+
+### Skipped
+
+- Hosted archive, signed DMG, appcast publication, and Sparkle client update
+  verification remain pending the diagnostic run.
+
+### Handoff
+
+Run the focused checks, merge the diagnostic, and retag `v0.1.0` so the
+preflight identifies the exact stale certificate or profile if the pairing is
+still wrong.
+
 ## 2026-09-18 — Codex — Release signing target scope follow-up
 
 ### Goal
