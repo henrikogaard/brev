@@ -24,6 +24,13 @@ if ! grep -Fq 'plutil -extract TeamIdentifier.0 raw -o - "$WORK/profile.plist"' 
   exit 1
 fi
 
+if ! grep -Fq 'IDENTITY_CERT_SHA256=' "$signing_action" ||
+    ! grep -Fq 'PROFILE_CERT_SHA256=' "$signing_action" ||
+    ! grep -Fq 'Developer ID certificate and provisioning profile do not match' "$signing_action"; then
+  echo "ERROR: release signing must fail closed on a certificate/profile fingerprint mismatch" >&2
+  exit 1
+fi
+
 if grep -Fq "sed -e :a" "$release_workflow" ||
     ! grep -Fq 'lines[++count]=$0' "$release_workflow"; then
   echo "ERROR: release notes extraction must use the portable awk-only trim path" >&2

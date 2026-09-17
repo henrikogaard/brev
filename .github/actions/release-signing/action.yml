@@ -85,6 +85,29 @@ runs:
           echo "::error::Provisioning profile did not contain a valid 10-character team identifier"
           exit 1
         fi
+
+        # Xcode reports the profile/certificate mismatch only at archive time.
+        # Compare the public certificate fingerprints here so a stale P12 or
+        # profile fails with an actionable, non-secret diagnostic instead.
+        IDENTITY_CERT_SHA256="$(security find-certificate -a -p -c "$IDENTITY" "$KEYCHAIN" \
+          | openssl x509 -noout -fingerprint -sha256 \
+          | awk -F= 'NR == 1 {print $2}' \
+          | tr -d ':\r\n' | tr '[:lower:]' '[:upper:]')"
+        PROFILE_CERT_SHA256="$(plutil -extract DeveloperCertificates.0 raw -o - "$WORK/profile.plist" \
+          | base64 --decode \
+          | openssl x509 -inform DER -noout -fingerprint -sha256 \
+          | awk -F= 'NR == 1 {print $2}' \
+          | tr -d ':\r\n' | tr '[:lower:]' '[:upper:]')"
+        if [[ -z "$IDENTITY_CERT_SHA256" || -z "$PROFILE_CERT_SHA256" ]]; then
+          echo "::error::Could not read the Developer ID certificate fingerprints"
+          exit 1
+        fi
+        echo "Developer ID certificate SHA-256: $IDENTITY_CERT_SHA256"
+        echo "Provisioning profile certificate SHA-256: $PROFILE_CERT_SHA256"
+        if [[ "$IDENTITY_CERT_SHA256" != "$PROFILE_CERT_SHA256" ]]; then
+          echo "::error::Developer ID certificate and provisioning profile do not match"
+          exit 1
+        fi
         PROFILE_DIR="$HOME/Library/MobileDevice/Provisioning Profiles"
         mkdir -p "$PROFILE_DIR"
         cp "$WORK/profile.mobileprovision" "$PROFILE_DIR/$PROFILE_UUID.mobileprovision"
