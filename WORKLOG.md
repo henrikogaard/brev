@@ -1,5 +1,42 @@
 # Worklog
 
+## 2026-09-18 — Codex — Release archive signing scope
+
+### Goal
+
+Unblock the signed `v0.1.0` archive after Xcode rejected the global
+provisioning-profile override on SPM package targets.
+
+### Changes
+
+- Scoped manual Developer ID signing and the provisioning profile to the
+  `BrevMacOS` Release target; the archive script now passes only a custom
+  profile setting globally.
+- Updated stable and nightly export options to the actual CI profile names.
+- Added regression checks for target scoping, profile names, and removal of
+  the global profile override.
+
+### Verification
+
+- Profile metadata contains the expected Developer ID certificate and team.
+- `scripts/test-developer-id-release-config.sh` — passed.
+- `scripts/test-release-appcast.sh` — passed.
+- `scripts/format.sh` — 0 files formatted.
+- `scripts/lint.sh` — passed after updating ADR-0080.
+- `mise exec -- tuist install` and `mise exec -- tuist generate --no-open` — passed;
+  generated macOS project contains app-target-only profile settings.
+- `git diff --check` — passed.
+
+### Skipped
+
+- Hosted archive, signed DMG, appcast publication, and Sparkle client update
+  verification remain pending the fix being merged.
+
+### Handoff
+
+Run the focused release checks, open and merge the fix PR, then rerun the
+tagged `v0.1.0` release workflow.
+
 ## 2026-09-17 — Codex — Release signing environment fix
 
 ### Goal

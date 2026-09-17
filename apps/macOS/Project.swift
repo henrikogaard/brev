@@ -110,7 +110,13 @@ let project = Project(
                         "CODE_SIGN_ENTITLEMENTS": "Resources/BrevMacOS.entitlements"
                     ]),
                     .release(name: "Release", settings: [
-                        "CODE_SIGN_ENTITLEMENTS": "Resources/BrevMacOSRelease.entitlements"
+                        "CODE_SIGN_ENTITLEMENTS": "Resources/BrevMacOSRelease.entitlements",
+                        // Developer ID signing is app-target-only. Keeping the
+                        // profile here avoids applying it to SPM package targets.
+                        "CODE_SIGN_STYLE": "Manual",
+                        "CODE_SIGN_IDENTITY": "Developer ID Application",
+                        "DEVELOPMENT_TEAM": .string(BrevConstants.teamID),
+                        "PROVISIONING_PROFILE_SPECIFIER": "$(BREV_PROVISIONING_PROFILE_SPECIFIER)"
                     ])
                 ]
             )

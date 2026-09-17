@@ -8,6 +8,7 @@ cd "$ROOT"
 
 plist="scripts/export-options-developer-id.plist"
 archive_script="scripts/release-archive.sh"
+project_file="apps/macOS/Project.swift"
 dmg_script="scripts/release-dmg.sh"
 release_workflow=".github/workflows/release.yml"
 signing_action=".github/actions/release-signing/action.yml"
@@ -53,7 +54,7 @@ require_value destination export
 require_value teamID 45AD7E7G5G
 require_value signingStyle manual
 require_value signingCertificate "Developer ID Application"
-require_value 'provisioningProfiles.eu\.brevmail\.brev' "Brev Developer ID Distribution"
+require_value 'provisioningProfiles.eu\.brevmail\.brev' "Brev Stable Developer ID CI Distribution"
 
 nightly_plist="scripts/export-options-developer-id-nightly.plist"
 if [[ ! -f "$nightly_plist" ]]; then
@@ -78,11 +79,19 @@ require_nightly_value destination export
 require_nightly_value teamID 45AD7E7G5G
 require_nightly_value signingStyle manual
 require_nightly_value signingCertificate "Developer ID Application"
-require_nightly_value 'provisioningProfiles.eu\.brevmail\.brev\.nightly' "Brev Nightly Developer ID Distribution"
+require_nightly_value 'provisioningProfiles.eu\.brevmail\.brev\.nightly' "Brev Nightly Developer ID CI Distribution"
 
 if ! grep -q 'BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY' "$archive_script" ||
-    ! grep -q 'Brev Nightly Developer ID Distribution' "$archive_script"; then
+    ! grep -q 'Brev Nightly Developer ID CI Distribution' "$archive_script"; then
   echo "ERROR: release archive must support the nightly provisioning profile specifier" >&2
+  exit 1
+fi
+
+if ! grep -Fq '"CODE_SIGN_STYLE": "Manual"' "$project_file" ||
+    ! grep -Fq '"PROVISIONING_PROFILE_SPECIFIER": "$(BREV_PROVISIONING_PROFILE_SPECIFIER)"' "$project_file" ||
+    grep -Fq '  PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"' "$archive_script" ||
+    grep -Fq 'CODE_SIGN_STYLE=Manual' "$archive_script"; then
+  echo "ERROR: Developer ID profile settings must be scoped to the BrevMacOS app target" >&2
   exit 1
 fi
 
