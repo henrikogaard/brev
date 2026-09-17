@@ -16,29 +16,41 @@ import Testing
 
 @Suite("UpdateSettings")
 struct UpdateSettingsTests {
-    @Test("defaults use stable once-per-launch checks")
-    func defaultsUseStableOncePerLaunchChecks() throws {
+    @Test("defaults use once-per-launch checks")
+    func defaultsUseOncePerLaunchChecks() throws {
         let defaults = try Self.makeDefaults()
         let settings = UpdateSettings.load(from: defaults)
 
         #expect(settings.cadence == .oncePerLaunch)
-        #expect(settings.channel == .stable)
         #expect(settings.automaticallyChecksForUpdates)
         #expect(settings.scheduledCheckInterval == 86400)
-        #expect(settings.appcastURL.absoluteString == "https://updates.brevmail.eu/appcast.xml")
     }
 
-    @Test("beta channel switches appcast URL")
-    func betaChannelSwitchesAppcastURL() {
-        let settings = UpdateSettings(cadence: .weekly, channel: .beta)
+    @Test("rings expose their default appcasts and download links")
+    func ringDefaults() {
+        #expect(UpdateRing.stable.appcastURL.absoluteString
+            == "https://henrikogaard.github.io/brev/appcast.xml")
+        #expect(UpdateRing.nightly.appcastURL.absoluteString
+            == "https://henrikogaard.github.io/brev/appcast-nightly.xml")
+        #expect(UpdateRing.stable.otherRingDownloadURL.absoluteString
+            == "https://github.com/henrikogaard/brev/releases/tag/nightly")
+        #expect(UpdateRing.nightly.otherRingDownloadURL.absoluteString
+            == "https://github.com/henrikogaard/brev/releases/latest")
+    }
 
-        #expect(settings.appcastURL.absoluteString == "https://updates.brevmail.eu/appcast-beta.xml")
-        #expect(settings.scheduledCheckInterval == 604_800)
+    @Test("a leftover updates.channel default is ignored")
+    func leftoverChannelDefaultIsIgnored() throws {
+        let defaults = try Self.makeDefaults()
+        defaults.set("beta", forKey: "updates.channel")
+
+        let settings = UpdateSettings.load(from: defaults)
+
+        #expect(settings == .defaults)
     }
 
     @Test("manual cadence disables automatic checks")
     func manualCadenceDisablesAutomaticChecks() {
-        let settings = UpdateSettings(cadence: .manual, channel: .stable)
+        let settings = UpdateSettings(cadence: .manual)
 
         #expect(!settings.automaticallyChecksForUpdates)
         #expect(settings.scheduledCheckInterval == 0)
@@ -54,7 +66,7 @@ struct UpdateSettingsTests {
     @Test("saving and loading preserves update settings")
     func savingAndLoadingPreservesUpdateSettings() throws {
         let defaults = try Self.makeDefaults()
-        let settings = UpdateSettings(cadence: .weekly, channel: .beta)
+        let settings = UpdateSettings(cadence: .weekly)
 
         settings.save(to: defaults)
         let restored = UpdateSettings.load(from: defaults)
@@ -66,11 +78,52 @@ struct UpdateSettingsTests {
     func corruptStoredValuesFallBackToDefaults() throws {
         let defaults = try Self.makeDefaults()
         defaults.set("hourly-ish", forKey: UpdateSettings.Key.cadence)
-        defaults.set("nightly", forKey: UpdateSettings.Key.channel)
 
         let settings = UpdateSettings.load(from: defaults)
 
         #expect(settings == .defaults)
+    }
+
+    @Test("BRReleaseRing parses stable, nightly, and garbage")
+    func releaseRingParsesFromInfoPlist() {
+        func ring(_ value: String?) -> UpdateRing {
+            var dictionary: [String: Any] = [:]
+            if let value { dictionary["BRReleaseRing"] = value }
+            return UpdateBuildConfiguration(infoDictionary: dictionary, platform: .macOS).ring
+        }
+
+        #expect(ring(nil) == .stable)
+        #expect(ring("stable") == .stable)
+        #expect(ring("nightly") == .nightly)
+        #expect(ring("beta") == .stable)
+        #expect(ring("") == .stable)
+    }
+
+    @Test("appcast URL prefers local override, then plist feed, then ring default")
+    func appcastURLPrecedence() {
+        let ringDefault = UpdateBuildConfiguration(
+            infoDictionary: ["BRReleaseRing": "nightly"],
+            environment: [:],
+            platform: .macOS
+        )
+        #expect(ringDefault.appcastURL == UpdateRing.nightly.appcastURL)
+
+        let plistFeed = UpdateBuildConfiguration(
+            infoDictionary: ["SUFeedURL": "https://example.org/custom.xml"],
+            environment: [:],
+            platform: .macOS
+        )
+        #expect(plistFeed.appcastURL.absoluteString == "https://example.org/custom.xml")
+
+        let localOverride = UpdateBuildConfiguration(
+            infoDictionary: [
+                "SUFeedURL": "https://example.org/custom.xml",
+                "BRReleaseRing": "nightly"
+            ],
+            environment: ["BREV_LOCAL_APPCAST_URL": "http://127.0.0.1:8765/appcast.xml"],
+            platform: .macOS
+        )
+        #expect(localOverride.appcastURL.absoluteString == "http://127.0.0.1:8765/appcast.xml")
     }
 
     @Test("build policy initializes Sparkle only for configured direct-download macOS builds")
@@ -78,13 +131,13 @@ struct UpdateSettingsTests {
         let configured = UpdateBuildConfiguration(
             platform: .macOS,
             distribution: .directDownload,
-            feedURL: URL(string: "https://updates.brevmail.eu/appcast.xml"),
+            feedURL: URL(string: "https://henrikogaard.github.io/brev/appcast.xml"),
             publicEDKey: "valid-public-ed-key"
         )
         let missingKey = UpdateBuildConfiguration(
             platform: .macOS,
             distribution: .directDownload,
-            feedURL: URL(string: "https://updates.brevmail.eu/appcast.xml"),
+            feedURL: URL(string: "https://henrikogaard.github.io/brev/appcast.xml"),
             publicEDKey: "BREV_SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER"
         )
         let appStore = UpdateBuildConfiguration(
@@ -111,25 +164,24 @@ struct UpdateSettingsTests {
         let config = UpdateBuildConfiguration(
             infoDictionary: [
                 "BRDistributionChannel": "direct-download",
-                "SUFeedURL": "https://updates.brevmail.eu/appcast.xml",
+                "SUFeedURL": "https://henrikogaard.github.io/brev/appcast.xml",
                 "SUPublicEDKey": "$(BREV_SPARKLE_PUBLIC_ED_KEY)"
             ],
             platform: .macOS
         )
 
         #expect(config.distribution == .directDownload)
-        #expect(config.feedURL?.absoluteString == "https://updates.brevmail.eu/appcast.xml")
+        #expect(config.feedURL?.absoluteString == "https://henrikogaard.github.io/brev/appcast.xml")
         #expect(!config.hasConfiguredPublicEDKey)
         #expect(!config.canInitializeSparkle)
     }
 
     @Test("local appcast override accepts loopback URLs for Sparkle QA")
     func localAppcastOverrideAcceptsLoopbackURLsForSparkleQA() {
-        let settings = UpdateSettings(cadence: .manual, channel: .stable)
         let config = UpdateBuildConfiguration(
             infoDictionary: [
                 "BRDistributionChannel": "direct-download",
-                "SUFeedURL": "https://updates.brevmail.eu/appcast.xml",
+                "SUFeedURL": "https://henrikogaard.github.io/brev/appcast.xml",
                 "SUPublicEDKey": "test-public-key"
             ],
             environment: [
@@ -139,17 +191,16 @@ struct UpdateSettingsTests {
         )
 
         #expect(config.localAppcastURL?.absoluteString == "http://127.0.0.1:8765/appcast.xml")
-        #expect(config.appcastURL(for: settings).absoluteString == "http://127.0.0.1:8765/appcast.xml")
+        #expect(config.appcastURL.absoluteString == "http://127.0.0.1:8765/appcast.xml")
         #expect(config.canInitializeSparkle)
     }
 
     @Test("local appcast override accepts loopback URLs from Info plist")
     func localAppcastOverrideAcceptsLoopbackURLsFromInfoPlist() {
-        let settings = UpdateSettings(cadence: .manual, channel: .stable)
         let config = UpdateBuildConfiguration(
             infoDictionary: [
                 "BRDistributionChannel": "direct-download",
-                "SUFeedURL": "https://updates.brevmail.eu/appcast.xml",
+                "SUFeedURL": "https://henrikogaard.github.io/brev/appcast.xml",
                 "SUPublicEDKey": "test-public-key",
                 "BRLocalAppcastURL": "http://localhost:8765/appcast.xml"
             ],
@@ -158,16 +209,15 @@ struct UpdateSettingsTests {
         )
 
         #expect(config.localAppcastURL?.absoluteString == "http://localhost:8765/appcast.xml")
-        #expect(config.appcastURL(for: settings).absoluteString == "http://localhost:8765/appcast.xml")
+        #expect(config.appcastURL.absoluteString == "http://localhost:8765/appcast.xml")
     }
 
     @Test("local appcast override rejects non loopback URLs")
     func localAppcastOverrideRejectsNonLoopbackURLs() {
-        let settings = UpdateSettings(cadence: .manual, channel: .stable)
         let config = UpdateBuildConfiguration(
             infoDictionary: [
                 "BRDistributionChannel": "direct-download",
-                "SUFeedURL": "https://updates.brevmail.eu/appcast.xml",
+                "SUFeedURL": "https://henrikogaard.github.io/brev/appcast.xml",
                 "SUPublicEDKey": "test-public-key",
                 "BRLocalAppcastURL": "https://updates.example.invalid/appcast.xml"
             ],
@@ -176,7 +226,7 @@ struct UpdateSettingsTests {
         )
 
         #expect(config.localAppcastURL == nil)
-        #expect(config.appcastURL(for: settings).absoluteString == "https://updates.brevmail.eu/appcast.xml")
+        #expect(config.appcastURL.absoluteString == "https://henrikogaard.github.io/brev/appcast.xml")
     }
 
     @Test("local appcast override rejects hostnames that merely start with 127")
@@ -184,7 +234,7 @@ struct UpdateSettingsTests {
         let config = UpdateBuildConfiguration(
             infoDictionary: [
                 "BRDistributionChannel": "direct-download",
-                "SUFeedURL": "https://updates.brevmail.eu/appcast.xml",
+                "SUFeedURL": "https://henrikogaard.github.io/brev/appcast.xml",
                 "SUPublicEDKey": "test-public-key"
             ],
             environment: [

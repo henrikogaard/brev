@@ -14,17 +14,22 @@
 import Foundation
 import ServiceManagement
 
-/// Release-bundle gating for launch at login (ADR-0075, Rule 7): test
-/// builds (`Brev Test (…).app`, bundle id `eu.brevmail.brev.test.*`) must
-/// never register as a login item, so the toggle is only offered for the
-/// exact release identifier.
+/// Release-bundle gating for launch at login (ADR-0075, ADR-0080, Rule 7):
+/// test builds (`Brev Test (…).app`, bundle id `eu.brevmail.brev.test.*`)
+/// must never register as a login item, so the toggle is only offered for
+/// the exact release identifiers of the two rings.
 public enum LaunchAtLoginAvailability {
-    /// The only bundle identifier allowed to register for launch at login.
-    public static let releaseBundleIdentifier = "eu.brevmail.brev"
+    /// Bundle identifiers allowed to register for launch at login: Stable
+    /// and Nightly are separate apps (ADR-0080) and both are release builds.
+    public static let releaseBundleIdentifiers: Set<String> = [
+        "eu.brevmail.brev",
+        "eu.brevmail.brev.nightly"
+    ]
 
     /// Returns whether the current bundle may register for launch at login.
     public static func isAvailable(bundleIdentifier: String?) -> Bool {
-        bundleIdentifier == releaseBundleIdentifier
+        guard let bundleIdentifier else { return false }
+        return releaseBundleIdentifiers.contains(bundleIdentifier)
     }
 }
 

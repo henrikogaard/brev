@@ -66,6 +66,12 @@ migrate. App Store transfers between Apple accounts are supported.
 
 ### Sparkle setup
 
+> **Amended by ADR-0080.** The appcast host moved from
+> `updates.brevmail.eu` to GitHub Pages (`henrikogaard.github.io`), the
+> signing key is held in GitHub Actions secrets rather than only on
+> Henrik's release machine, and the Beta channel was replaced by the
+> Stable/Nightly release rings (`Brev.app` and `Brev Nightly.app`).
+
 - **Sparkle 2.x** for macOS auto-update.
 - **EdDSA signing keys** (not the older DSA). Private key stored in
   Keychain on Henrik's release machine; never committed to repo;
@@ -93,6 +99,12 @@ Build numbers monotonically increase across all versions (Apple
 requirement for App Store; convenient for Sparkle).
 
 ### Release cadence
+
+> **Amended by ADR-0080.** The Beta channel below is retired: there is no
+> in-app channel switch. Pre-release builds ship as `Brev Nightly.app`, a
+> separate application built from `main` nightly; Stable ships on release
+> tags. Build numbers are build timestamps so they stay monotonic across
+> both rings.
 
 - **No fixed cadence.** Releases happen when work is ready. Solo
   project — there's no obligation to ship on a schedule.

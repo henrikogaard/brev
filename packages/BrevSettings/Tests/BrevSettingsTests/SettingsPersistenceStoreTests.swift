@@ -32,7 +32,7 @@ struct SettingsPersistenceStoreTests {
         )
         let browser = BrowserSettings(preferredBrowser: .brave)
         let ai = AIWriterSettings(isEnabled: true, consentGiven: true)
-        let updates = UpdateSettings(cadence: .manual, channel: .beta)
+        let updates = UpdateSettings(cadence: .manual)
         let securityKeyMaterial = SecurityKeyMaterialSettings(
             records: [
                 .init(

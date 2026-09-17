@@ -14,13 +14,15 @@
 @testable import BrevSettings
 import Testing
 
-/// ADR-0075 / Rule 7: only the release bundle may register as a login item.
+/// ADR-0075, ADR-0080 / Rule 7: only release bundles — Stable and Nightly —
+/// may register as a login item.
 /// `SMAppService` itself is never invoked from tests.
 @Suite("LaunchAtLoginAvailability")
 struct LaunchAtLoginAvailabilityTests {
-    @Test("release bundle identifier is allowed")
-    func releaseIdentifierIsAllowed() {
+    @Test("release bundle identifiers for both rings are allowed")
+    func releaseIdentifiersAreAllowed() {
         #expect(LaunchAtLoginAvailability.isAvailable(bundleIdentifier: "eu.brevmail.brev"))
+        #expect(LaunchAtLoginAvailability.isAvailable(bundleIdentifier: "eu.brevmail.brev.nightly"))
     }
 
     @Test("test-build identifiers and nil are rejected")

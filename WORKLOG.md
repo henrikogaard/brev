@@ -1627,3 +1627,71 @@ changing its specific screens. Continue `fix/multi-account-workspace` from
   scope, all cascades); AttachmentIndexingTests 16/16 + capability suite
   2/2; Gmail capability 1/1; MailSearchProgress + row badge snapshot;
   FolderSync + MailStorage snapshot baselines recorded.
+
+## 2026-09-17 — Agent — ADR-0080 release rings, slice 1 (app side)
+
+Goal: replace the in-app Beta channel with a build-time release ring
+(stable|nightly) per ADR-0080; `Brev Nightly.app` is a separate app with
+its own bundle id, feed, icon, and preferences.
+
+Changes:
+- `UpdateSettings`: `UpdateChannel`/`updates.channel` removed (leftover
+  default ignored); new `UpdateRing` (stable|nightly) with localized
+  title/subtitle, default GitHub Pages appcasts and other-ring download
+  URLs. `UpdateBuildConfiguration` gains `ring` parsed from `BRReleaseRing`
+  and `appcastURL` = localAppcastURL > SUFeedURL > ring default.
+- `Info.plist`: `SUFeedURL`/`BRReleaseRing` now expand `BREV_SPARKLE_FEED_URL`
+  /`BREV_RELEASE_RING`; `Project.swift` defaults them to stable + GitHub
+  Pages feed and adds `BREV_APP_ICON_NAME` → `ASSETCATALOG_COMPILER_APPICON_NAME`.
+- `MacUpdateController` feeds Sparkle `buildConfiguration.appcastURL`;
+  `UpdatesSection` shows the ring read-only + a link to the other ring;
+  `SettingsView`/`BrevApp` pass the ring through.
+- `LaunchAtLoginAvailability` allows both `eu.brevmail.brev` and
+  `eu.brevmail.brev.nightly`.
+- `generate-app-icon-variants.swift` emits `AppIcon-Nightly.appiconset`
+  from the inverted-graphite variant (distinct dark tile; the pipeline
+  cannot draw a literal badge — flagged to lead).
+- Docs: ADR-0080 index row, ADR-0009 amendment notes, ADR-0006 Sparkle
+  row host change, PRIVACY.md update-check row + Nightly paragraph,
+  settings-inventory Updates row, CHANGELOG Unreleased.
+- Tests: ring parsing (missing/stable/nightly/garbage), appcast
+  precedence, leftover `updates.channel` ignored, LaunchAtLogin both ids,
+  UpdatesSection ring snapshots in the existing macOS-26-gated suite
+  (no workflow change needed).
+
+Verification: see handoff report — BrevSettings suite, tuist generate,
+stable + nightly-override unsigned macOS builds with plutil evidence of
+BRReleaseRing/SUFeedURL/CFBundleIdentifier resolution, lint, format,
+privacy-audit, git diff --check.
+Skipped: CI workflow changes (slice 2 per handoff).
+
+### Slice 2 — CI-signed Stable and Nightly releases (same entry, same day)
+
+Goal: ADR-0080 §2–§4 — ring-aware release scripts, Sparkle appcast merge,
+and the two GitHub Actions release workflows.
+
+Changes:
+- `release-archive.sh`/`release-dmg.sh`: `--ring stable|nightly`,
+  `--version`, `--build-number`; nightly injects
+  `BREV_APP_PRODUCT_NAME`/`BREV_APP_BUNDLE_ID`/`BREV_APP_ICON_NAME`,
+  nightly feed URL, `BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY`,
+  `export-options-developer-id-nightly.plist`, `Brev-Nightly-YYYYMMDD.dmg`.
+- `release-appcast-merge.py` (stdlib-only item merge; Sparkle's
+  `generate_appcast` needs every archive on disk, unusable on a fresh
+  runner), `release-appcast.sh` (sign_update + merge), self-test
+  `test-release-appcast.sh` registered in `test.sh`.
+- `.github/actions/release-signing` composite (temp keychain, p12 import,
+  profile install via `security cms -D`, .p8 + Sparkle key 0600, cleanup
+  phase); `release.yml` on `v*` tags, `nightly.yml` at 23:30 UTC + dispatch
+  with a plan job (main-only, commit-marker skip, Build-success gate).
+- `docs/release.md` "Automated releases" section + secret bootstrap
+  commands; Rollback/Future Automation updated; UpdatesSection copy nit
+  ("update feed"); CHANGELOG bullet; 4 updates-ring snapshots re-recorded.
+
+Verification: `bash -n` all touched shell; actionlint clean;
+`test-release-appcast.sh` OK (idempotency, shape, 14-cap);
+`test-developer-id-release-config.sh` OK; `release-archive.sh --dry-run
+--ring nightly` prints the resolved xcodebuild line; BrevSettings
+`--filter Updates` 8/8 green.
+Skipped: real signing/notarization/`gh release` — needs CI secrets and
+portal assets that do not exist yet.

@@ -15,23 +15,18 @@ import Foundation
 public struct UpdateSettings: Equatable, Sendable, Codable {
     public enum Key {
         public static let cadence = "updates.cadence"
-        public static let channel = "updates.channel"
     }
 
     public var cadence: UpdateCheckCadence
-    public var channel: UpdateChannel
 
     public static let defaults = UpdateSettings(
-        cadence: .oncePerLaunch,
-        channel: .stable
+        cadence: .oncePerLaunch
     )
 
     public init(
-        cadence: UpdateCheckCadence = Self.defaults.cadence,
-        channel: UpdateChannel = Self.defaults.channel
+        cadence: UpdateCheckCadence = Self.defaults.cadence
     ) {
         self.cadence = cadence
-        self.channel = channel
     }
 
     public var automaticallyChecksForUpdates: Bool {
@@ -46,22 +41,14 @@ public struct UpdateSettings: Equatable, Sendable, Codable {
         cadence.scheduledCheckInterval
     }
 
-    public var appcastURL: URL {
-        channel.appcastURL
-    }
-
     public static func load(from defaults: UserDefaults = .standard) -> UpdateSettings {
+        // `updates.channel` was removed with the Beta channel (ADR-0080); a
+        // stored value is intentionally left unread.
         UpdateSettings(
             cadence: enumValue(
                 UpdateCheckCadence.self,
                 for: Key.cadence,
                 default: Self.defaults.cadence,
-                defaults: defaults
-            ),
-            channel: enumValue(
-                UpdateChannel.self,
-                for: Key.channel,
-                default: Self.defaults.channel,
                 defaults: defaults
             )
         )
@@ -69,7 +56,6 @@ public struct UpdateSettings: Equatable, Sendable, Codable {
 
     public func save(to defaults: UserDefaults = .standard) {
         defaults.set(cadence.rawValue, forKey: Key.cadence)
-        defaults.set(channel.rawValue, forKey: Key.channel)
     }
 
     private static func enumValue<T>(
@@ -124,25 +110,46 @@ public enum UpdateCheckCadence: String, CaseIterable, Identifiable, Sendable, Co
     }
 }
 
-public enum UpdateChannel: String, CaseIterable, Identifiable, Sendable, Codable {
+/// Build-time release ring (ADR-0080). Stable and Nightly are separate apps
+/// with separate feeds; there is no in-app ring switch.
+public enum UpdateRing: String, Sendable, Codable, CaseIterable {
     case stable
-    case beta
+    case nightly
 
-    public var id: String { rawValue }
-
-    var title: String {
+    public var title: String {
         switch self {
         case .stable: return String(localized: "Stable", bundle: .module)
-        case .beta: return String(localized: "Beta", bundle: .module)
+        case .nightly: return String(localized: "Nightly", bundle: .module)
         }
     }
 
-    var appcastURL: URL {
+    /// One-line description shown under the ring name in Settings.
+    public var subtitle: String {
         switch self {
         case .stable:
-            return URL(string: "https://updates.brevmail.eu/appcast.xml")!
-        case .beta:
-            return URL(string: "https://updates.brevmail.eu/appcast-beta.xml")!
+            return String(localized: "Updates come from tagged releases.", bundle: .module)
+        case .nightly:
+            return String(localized: "Built from main every night. Expect rough edges.", bundle: .module)
+        }
+    }
+
+    /// Default appcast for the ring, served from GitHub Pages.
+    public var appcastURL: URL {
+        switch self {
+        case .stable:
+            return URL(string: "https://henrikogaard.github.io/brev/appcast.xml")!
+        case .nightly:
+            return URL(string: "https://henrikogaard.github.io/brev/appcast-nightly.xml")!
+        }
+    }
+
+    /// Where to download the other ring's app.
+    public var otherRingDownloadURL: URL {
+        switch self {
+        case .stable:
+            return URL(string: "https://github.com/henrikogaard/brev/releases/tag/nightly")!
+        case .nightly:
+            return URL(string: "https://github.com/henrikogaard/brev/releases/latest")!
         }
     }
 }
@@ -165,19 +172,22 @@ public struct UpdateBuildConfiguration: Equatable, Sendable {
     public var feedURL: URL?
     public var publicEDKey: String?
     public var localAppcastURL: URL?
+    public var ring: UpdateRing
 
     public init(
         platform: UpdatePlatform,
         distribution: UpdateDistribution,
         feedURL: URL?,
         publicEDKey: String?,
-        localAppcastURL: URL? = nil
+        localAppcastURL: URL? = nil,
+        ring: UpdateRing = .stable
     ) {
         self.platform = platform
         self.distribution = distribution
         self.feedURL = feedURL
         self.publicEDKey = publicEDKey
         self.localAppcastURL = localAppcastURL
+        self.ring = ring
     }
 
     public init(
@@ -188,6 +198,7 @@ public struct UpdateBuildConfiguration: Equatable, Sendable {
         let distributionValue = infoDictionary["BRDistributionChannel"] as? String
         let feedValue = infoDictionary["SUFeedURL"] as? String
         let publicKeyValue = infoDictionary["SUPublicEDKey"] as? String
+        let ringValue = infoDictionary["BRReleaseRing"] as? String
         let localAppcastValue = environment["BREV_LOCAL_APPCAST_URL"]
             ?? infoDictionary["BRLocalAppcastURL"] as? String
 
@@ -196,7 +207,8 @@ public struct UpdateBuildConfiguration: Equatable, Sendable {
             distribution: UpdateDistribution(infoPlistValue: distributionValue),
             feedURL: feedValue.flatMap(URL.init(string:)),
             publicEDKey: publicKeyValue,
-            localAppcastURL: Self.localAppcastURL(from: localAppcastValue)
+            localAppcastURL: Self.localAppcastURL(from: localAppcastValue),
+            ring: UpdateRing(rawValue: ringValue ?? "") ?? .stable
         )
     }
 
@@ -215,8 +227,10 @@ public struct UpdateBuildConfiguration: Equatable, Sendable {
             && hasConfiguredPublicEDKey
     }
 
-    public func appcastURL(for settings: UpdateSettings) -> URL {
-        localAppcastURL ?? settings.appcastURL
+    /// Resolved feed: the QA loopback override wins, then the plist feed,
+    /// then the ring's default GitHub Pages appcast (ADR-0080).
+    public var appcastURL: URL {
+        localAppcastURL ?? feedURL ?? ring.appcastURL
     }
 
     private static func localAppcastURL(from value: String?) -> URL? {

@@ -8,6 +8,94 @@ must not receive Developer ID certificates, App Store Connect API keys,
 or Sparkle EdDSA private keys unless a later ADR explicitly changes the
 release model.
 
+## Automated releases (ADR-0080)
+
+ADR-0080 replaced the "keys stay on the release machine" rule. Signing
+material now lives in GitHub Actions repository secrets scoped to the
+`release` environment, and two workflows produce signed builds:
+
+- **Stable** — `.github/workflows/release.yml` runs on pushes of `vX.Y.Z`
+  tags. It archives and exports `Brev.app` (`eu.brevmail.brev`), notarizes
+  and staples `Brev-X.Y.Z.dmg`, creates the GitHub Release for the tag
+  (fails rather than clobbering an existing release), and merges the new
+  item into `appcast.xml` on the `gh-pages` branch.
+- **Nightly** — `.github/workflows/nightly.yml` runs at `30 23 * * *`
+  UTC (00:30 CET / 01:30 CEST) plus manual dispatch. A `plan` job refuses
+  non-`main` refs, skips the run when `main` has not moved since the
+  commit recorded in the `nightly` pre-release body
+  (`<!-- brev-nightly-commit: SHA -->`), and requires the Build workflow
+  to have passed on that commit. The build produces `Brev Nightly.app`
+  (`eu.brevmail.brev.nightly`, version `X.Y.Z-nightly.YYYYMMDD`), force-moves
+  the `nightly` tag, replaces the assets on the rolling `nightly`
+  pre-release, and merges the item into `appcast-nightly.xml` (capped at
+  14 items). Because the dated DMG asset is deleted each night, older
+  appcast items point at dead URLs — accepted; only the newest item's
+  download works.
+
+Both feeds are served by GitHub Pages from the `gh-pages` branch root at
+`https://henrikogaard.github.io/brev/`. The workflows create an orphan
+`gh-pages` branch with `.nojekyll` on first run; enable Pages from that
+branch once (repo Settings → Pages → Deploy from a branch → `gh-pages`
+`/`).
+
+Everything below this section is the **manual fallback** for cutting a
+release locally when CI signing is unavailable or a release must be
+rebuilt by hand. The scripts it uses (`release-archive.sh`,
+`release-dmg.sh`, `release-appcast.sh`) are the same ones the workflows
+call; pass `--ring stable|nightly`, `--version`, and `--build-number`.
+
+### One-time setup for automated releases
+
+Developer portal (once):
+
+1. Create an App ID `eu.brevmail.brev.nightly` with the same capabilities
+   as `eu.brevmail.brev`, including the iCloud key-value storage
+   capability.
+2. Create a Developer ID provisioning profile named
+   `Brev Nightly Developer ID Distribution` for that App ID and download
+   it (the stable profile `Brev Developer ID Distribution` already exists
+   per the manual flow below).
+3. Generate a Sparkle EdDSA keypair once on the release machine with
+   `Tuist/.build/artifacts/sparkle/Sparkle/bin/generate_keys`; export the
+   private key with `generate_keys -x` (base64 private-key export) and
+   keep the printed public key.
+
+GitHub (once):
+
+```bash
+# Secrets (release environment scope is enforced by the workflows)
+gh secret set BREV_DEVELOPER_ID_P12_BASE64 \
+  --body "$(base64 -i dev-id-cert.p12 | tr -d '\n')"
+gh secret set BREV_DEVELOPER_ID_P12_PASSWORD --body "<p12 password>"
+gh secret set BREV_MACOS_PROFILE_STABLE_BASE64 \
+  --body "$(base64 -i 'Brev Developer ID Distribution.mobileprovision' | tr -d '\n')"
+gh secret set BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
+  --body "$(base64 -i 'Brev Nightly Developer ID Distribution.mobileprovision' | tr -d '\n')"
+gh secret set BREV_ASC_KEY_ID --body "<App Store Connect key id>"
+gh secret set BREV_ASC_ISSUER_ID --body "<issuer id>"
+gh secret set BREV_ASC_KEY_P8_BASE64 \
+  --body "$(base64 -i AuthKey.p8 | tr -d '\n')"
+gh secret set BREV_SPARKLE_PRIVATE_ED_KEY --body "<generate_keys -x output>"
+
+# Public key is a variable, not a secret — it ships inside the app bundle.
+gh variable set BREV_SPARKLE_PUBLIC_ED_KEY --body "<44-char base64 key>"
+```
+
+Then create the `release` environment (repo Settings → Environments →
+New environment → `release`) so secrets resolve only for the two release
+workflows. Operator notes:
+
+- Configure the environment with required reviewers and/or deployment
+  branch rules restricted to `main` and `v*` tags, so a stray tag push
+  from a fork clone cannot spend the secrets.
+- The Stable job refuses tags whose commit is not reachable from
+  `origin/main` or whose Build workflow run has not passed, so a bad tag
+  fails fast before any signing material is touched.
+
+Cutting a stable release is then: update `CHANGELOG.md` with a
+`## [X.Y.Z]` section (the tag workflow fails loudly without it), tag
+`vX.Y.Z`, push — the workflow does the rest.
+
 ## Release Inputs
 
 - Apple Developer Program membership for Henrik's team.
@@ -419,10 +507,14 @@ This writes per-step logs and a summary under
 ## Rollback
 
 Direct-download rollback is manual because Brev has no telemetry-based
-rollout controls.
+rollout controls. Feeds live on the `gh-pages` branch, so rollback is a
+git edit plus push:
 
-1. Remove the bad DMG link from the appcast.
-2. Re-publish the previous known-good appcast entry.
+1. Check out `gh-pages`, remove the bad `<item>` from `appcast.xml` (or
+   `appcast-nightly.xml`), commit, and push. For a Nightly, deleting the
+   `nightly` release's assets also pulls the download.
+2. Re-publish the previous known-good appcast entry if the bad item was
+   the newest.
 3. Update the GitHub Release notes to mark the broken build as pulled.
 4. If the public key is compromised, rotate the Sparkle EdDSA keypair,
    ship a manually downloaded recovery DMG signed with Developer ID,
@@ -436,15 +528,12 @@ fixed patch build and document the workaround in the release notes.
 
 ## Future Automation
 
-`scripts/release.sh` should eventually wrap:
+Done under ADR-0080: `release.yml` and `nightly.yml` automate signing,
+notarization, DMG packaging, GitHub Releases, and appcast publication
+through `release-archive.sh`, `release-dmg.sh`, and
+`release-appcast.sh`. What remains intentionally manual:
 
-- version/build-number validation
-- archive and export
-- DMG creation
-- notarization and stapling
-- Sparkle signing and appcast generation
-- SHA-256 checksum generation
-- final smoke-test prompts
-
-Keep the script interactive for secret-dependent steps so sensitive
-values stay on the release machine.
+- Rotating the Developer ID certificate, provisioning profiles, and
+  Sparkle keypair, then updating the GitHub secrets.
+- Cutting the `CHANGELOG.md` section and pushing the `vX.Y.Z` tag.
+- The installed-build smoke pass before announcing a Stable release.

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# release-dmg.sh — Export, package, notarize, and staple the macOS release DMG.
+# release-dmg.sh — Export, package, notarize, and staple the macOS release DMG (ADR-0080).
 #
 # Usage:
-#   scripts/release-dmg.sh [--dry-run] [--skip-notarize]
+#   scripts/release-dmg.sh [--ring stable|nightly] [--version X.Y.Z[-nightly.YYYYMMDD]]
+#                          [--dry-run] [--skip-notarize]
 #
 # Required environment variables:
 #   BREV_SIGNING_IDENTITY   Developer ID Application certificate
@@ -15,28 +16,62 @@
 #   build/release/BrevMail.xcarchive   (produced by release-archive.sh)
 #
 # Output:
-#   build/release/BrevMail.dmg
-#   build/release/BrevMail.dmg.sha256
+#   build/release/Brev-X.Y.Z.dmg              (stable, when --version is given)
+#   build/release/Brev-Nightly-YYYYMMDD.dmg   (nightly)
+#   <dmg>.sha256
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 
 DRY_RUN=false; SKIP_NOTARIZE=false
-for arg in "$@"; do
-  [[ "$arg" == "--dry-run" ]]        && DRY_RUN=true
-  [[ "$arg" == "--skip-notarize" ]]  && SKIP_NOTARIZE=true
+RING=stable
+VERSION=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --ring)          RING="${2:?--ring requires stable|nightly}"; shift 2 ;;
+    --version)       VERSION="${2:?--version requires a value}"; shift 2 ;;
+    --dry-run)       DRY_RUN=true; shift ;;
+    --skip-notarize) SKIP_NOTARIZE=true; shift ;;
+    -h|--help)       sed -n '2,20p' "${BASH_SOURCE[0]}"; exit 0 ;;
+    *) echo "release-dmg.sh: unknown argument: $1" >&2; exit 2 ;;
+  esac
 done
 
 ENV_FILE="$REPO_ROOT/.env.local"
 [[ -f "$ENV_FILE" ]] && { set -a; source "$ENV_FILE"; set +a; }
 
-# ── Validate ──────────────────────────────────────────────────────────────────
+# ── Ring-specific paths (ADR-0080 §1/§3) ──────────────────────────────────────
 ARCHIVE_PATH="$REPO_ROOT/build/release/BrevMail.xcarchive"
 EXPORT_DIR="$REPO_ROOT/build/release/export"
-APP_PATH="$EXPORT_DIR/Brev.app"
-DMG_PATH="$REPO_ROOT/build/release/BrevMail.dmg"
-EXPORT_OPTIONS="$REPO_ROOT/scripts/export-options-developer-id.plist"
+case "$RING" in
+  stable)
+    APP_PATH="$EXPORT_DIR/Brev.app"
+    EXPORT_OPTIONS="$REPO_ROOT/scripts/export-options-developer-id.plist"
+    VOLUME_NAME="Brev"
+    VOLICON="AppIcon.icns"
+    if [[ -n "$VERSION" ]]; then
+      DMG_PATH="$REPO_ROOT/build/release/Brev-${VERSION}.dmg"
+    else
+      DMG_PATH="$REPO_ROOT/build/release/BrevMail.dmg"
+    fi
+    ;;
+  nightly)
+    APP_PATH="$EXPORT_DIR/Brev Nightly.app"
+    EXPORT_OPTIONS="$REPO_ROOT/scripts/export-options-developer-id-nightly.plist"
+    VOLUME_NAME="Brev Nightly"
+    VOLICON="AppIcon-Nightly.icns"
+    NIGHTLY_DATE="${VERSION##*-nightly.}"
+    if [[ -z "$VERSION" || "$NIGHTLY_DATE" == "$VERSION" ]]; then
+      NIGHTLY_DATE="$(date -u +%Y%m%d)"
+    fi
+    DMG_PATH="$REPO_ROOT/build/release/Brev-Nightly-${NIGHTLY_DATE}.dmg"
+    ;;
+  *)
+    echo "ERROR: --ring must be 'stable' or 'nightly', got '$RING'." >&2
+    exit 2
+    ;;
+esac
 
 required_for_notarize=("BREV_SIGNING_IDENTITY" "BREV_ASC_KEY_ID" "BREV_ASC_ISSUER_ID" "BREV_ASC_KEY_PATH")
 if [[ "$SKIP_NOTARIZE" == "false" ]]; then
@@ -53,6 +88,10 @@ if [[ "$SKIP_NOTARIZE" == "false" ]]; then
 fi
 
 echo "=== Brev macOS Release DMG ==="
+echo "Ring             : $RING"
+echo "Version          : ${VERSION:-<unset>}"
+echo "Export options   : $EXPORT_OPTIONS"
+echo "DMG path         : $DMG_PATH"
 [[ "$DRY_RUN" == "true" ]] && echo "(DRY RUN)" && exit 0
 
 # Packaging is rerunnable: remove only the previous release outputs that this
@@ -71,7 +110,7 @@ if ! xcodebuild -exportArchive \
   # Local validation fallback: allow dev-signed archive app extraction when
   # notarization is explicitly skipped.
   if [[ "$SKIP_NOTARIZE" == "true" ]]; then
-    ARCHIVE_APP="$ARCHIVE_PATH/Products/Applications/Brev.app"
+    ARCHIVE_APP="$ARCHIVE_PATH/Products/Applications/$(basename "$APP_PATH")"
     if [[ ! -d "$ARCHIVE_APP" ]]; then
       echo "ERROR: export failed and archive app is missing at $ARCHIVE_APP" >&2
       exit 1
@@ -90,7 +129,7 @@ if [[ ! -d "$APP_PATH" && -d "$EXPORT_DIR/BrevMail.app" ]]; then
 fi
 
 if [[ ! -d "$APP_PATH" ]]; then
-  echo "ERROR: exported app bundle not found at $EXPORT_DIR/Brev.app or $EXPORT_DIR/BrevMail.app" >&2
+  echo "ERROR: exported app bundle not found at $APP_PATH or $EXPORT_DIR/BrevMail.app" >&2
   exit 1
 fi
 
@@ -100,8 +139,8 @@ APP_BUNDLE_NAME="$(basename "$APP_PATH")"
 echo "→ Creating DMG…"
 if command -v create-dmg >/dev/null 2>&1; then
   create-dmg \
-    --volname "Brev" \
-    --volicon "$APP_PATH/Contents/Resources/AppIcon.icns" \
+    --volname "$VOLUME_NAME" \
+    --volicon "$APP_PATH/Contents/Resources/$VOLICON" \
     --window-pos 200 120 \
     --window-size 600 400 \
     --icon-size 128 \
@@ -113,7 +152,7 @@ if command -v create-dmg >/dev/null 2>&1; then
 else
   echo "  WARN: create-dmg not found; using hdiutil fallback packaging" >&2
   hdiutil create \
-    -volname "Brev" \
+    -volname "$VOLUME_NAME" \
     -srcfolder "$EXPORT_DIR" \
     -ov \
     -format UDZO \

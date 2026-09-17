@@ -49,6 +49,9 @@ let project = Project(
             "SWIFT_EMIT_LOC_STRINGS": "YES",
             "LOCALIZATION_PREFERS_STRING_CATALOGS": "YES",
             "BREV_SPARKLE_PUBLIC_ED_KEY": "BREV_SPARKLE_PUBLIC_ED_KEY_PLACEHOLDER",
+            // Release ring (ADR-0080): CI overrides both for `Brev Nightly`.
+            "BREV_RELEASE_RING": "stable",
+            "BREV_SPARKLE_FEED_URL": "https://henrikogaard.github.io/brev/appcast.xml",
             // Public platform-specific OAuth values are injected into Info.plist.
             // The build environment supplies Google's non-confidential Desktop
             // credential; PKCE/state/loopback checks remain the security boundary.
@@ -95,6 +98,9 @@ let project = Project(
                 base: [
                     "BREV_APP_PRODUCT_NAME": "Brev",
                     "BREV_APP_BUNDLE_ID": .string(BrevConstants.bundleIDPrefix),
+                    // ADR-0080: nightly builds pass BREV_APP_ICON_NAME=AppIcon-Nightly.
+                    "BREV_APP_ICON_NAME": "AppIcon",
+                    "ASSETCATALOG_COMPILER_APPICON_NAME": "$(BREV_APP_ICON_NAME)",
                     "PRODUCT_NAME": "$(BREV_APP_PRODUCT_NAME)",
                     "PRODUCT_BUNDLE_IDENTIFIER": "$(BREV_APP_BUNDLE_ID)",
                     "PRODUCT_MODULE_NAME": "BrevMacOS"

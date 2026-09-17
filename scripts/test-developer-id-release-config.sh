@@ -35,6 +35,49 @@ require_value signingStyle manual
 require_value signingCertificate "Developer ID Application"
 require_value 'provisioningProfiles.eu\.brevmail\.brev' "Brev Developer ID Distribution"
 
+nightly_plist="scripts/export-options-developer-id-nightly.plist"
+if [[ ! -f "$nightly_plist" ]]; then
+  echo "ERROR: missing $nightly_plist" >&2
+  exit 1
+fi
+plutil -lint "$nightly_plist" >/dev/null
+
+require_nightly_value() {
+  local key="$1"
+  local expected="$2"
+  local actual
+  actual="$(plutil -extract "$key" raw -o - "$nightly_plist" 2>/dev/null || true)"
+  if [[ "$actual" != "$expected" ]]; then
+    echo "ERROR: nightly ${key}: expected '${expected}', got '${actual:-<missing>}'" >&2
+    exit 1
+  fi
+}
+
+require_nightly_value method developer-id
+require_nightly_value destination export
+require_nightly_value teamID 45AD7E7G5G
+require_nightly_value signingStyle manual
+require_nightly_value signingCertificate "Developer ID Application"
+require_nightly_value 'provisioningProfiles.eu\.brevmail\.brev\.nightly' "Brev Nightly Developer ID Distribution"
+
+if ! grep -q 'BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY' "$archive_script" ||
+    ! grep -q 'Brev Nightly Developer ID Distribution' "$archive_script"; then
+  echo "ERROR: release archive must support the nightly provisioning profile specifier" >&2
+  exit 1
+fi
+
+if ! grep -q 'BREV_APP_BUNDLE_ID=eu.brevmail.brev.nightly' "$archive_script" ||
+    ! grep -q 'BREV_RELEASE_RING' "$archive_script"; then
+  echo "ERROR: release archive must inject the nightly ring overrides" >&2
+  exit 1
+fi
+
+if ! grep -q 'export-options-developer-id-nightly.plist' "$dmg_script" ||
+    ! grep -q 'Brev-Nightly-' "$dmg_script"; then
+  echo "ERROR: release packaging must select the nightly export options and DMG name" >&2
+  exit 1
+fi
+
 if ! grep -q 'ENABLE_HARDENED_RUNTIME=YES' "$archive_script"; then
   echo "ERROR: release archive must enable hardened runtime for notarization" >&2
   exit 1

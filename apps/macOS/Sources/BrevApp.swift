@@ -214,6 +214,7 @@ struct BrevApp: App {
                 initialCurrentAccountID: session.backend?.account.id,
                 mailboxContext: settingsMailboxContext,
                 updateActions: updateController.settingsActions,
+                updateRing: updateController.releaseRing,
                 developerActions: DeveloperSettingsActions { _ in
                     restartForDeveloperModeChange()
                 },
