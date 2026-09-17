@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import Foundation
 
 /// Validated contents of a `.brevbackup` package, shown to the user before
@@ -31,6 +32,11 @@ struct BackupPreview {
     /// Non-secret data stripped during export (e.g. the CalDAV Keychain
     /// credential pointer), surfaced so the user knows what is absent.
     let strippedFields: [String]
+    /// `mail/*.mbox` payloads (ADR-0077), with folder names resolved through
+    /// `mail/folders.json` when present.
+    let mailPayloads: [LocalMailBackupPayload]
+    /// Total bytes of the mail payloads, for the preview's size label.
+    let mailBytes: Int64
     /// Accounts in the backup whose email already matches a signed-in
     /// account; filled in by the caller once known.
     var alreadySignedInAccounts = 0
@@ -42,6 +48,8 @@ struct BackupPreview {
     var signatureCount: Int { settings?.signature?.signatures.count ?? 0 }
     var templateCount: Int { settings?.messageTemplate?.templates.count ?? 0 }
     var vipSenderCount: Int { settings?.vipSender?.senders.count ?? 0 }
+    /// Number of local-mail folders carried in the backup.
+    var mailFolderCount: Int { mailPayloads.count }
     /// Number of non-list settings families present in the payload.
     var otherFamiliesCount: Int {
         guard let settings else { return 0 }
@@ -112,29 +120,61 @@ enum BackupReader {
 
         var settings: SettingsBackupPayload?
         var accounts: AccountsBackupPayload?
+        var mailPayloads: [LocalMailBackupPayload] = []
+        var mailBytes: Int64 = 0
+        var mailFolderNames: [String: String] = [:]
+        var mailFileNames: [String] = []
         for payload in manifest.payloads {
             let payloadURL = url.appendingPathComponent(payload.name)
-            guard let data = try? Data(contentsOf: payloadURL),
-                  BackupWriter.sha256Hex(data) == payload.sha256
+            guard let hash = try? BackupWriter.sha256Hex(contentsOf: payloadURL),
+                  hash == payload.sha256
             else { throw BackupError.corrupted(payload.name) }
             switch payload.name {
             case BackupWriter.settingsPayloadName:
+                guard let data = try? Data(contentsOf: payloadURL) else {
+                    throw BackupError.corrupted(payload.name)
+                }
                 do {
                     settings = try BackupWriter.decoder.decode(SettingsBackupPayload.self, from: data)
                 } catch {
                     throw BackupError.corrupted(payload.name)
                 }
             case BackupWriter.accountsPayloadName:
+                guard let data = try? Data(contentsOf: payloadURL) else {
+                    throw BackupError.corrupted(payload.name)
+                }
                 do {
                     accounts = try BackupWriter.decoder.decode(AccountsBackupPayload.self, from: data)
                 } catch {
                     throw BackupError.corrupted(payload.name)
                 }
+            case BackupWriter.mailFoldersIndexName:
+                guard let data = try? Data(contentsOf: payloadURL) else {
+                    throw BackupError.corrupted(payload.name)
+                }
+                let rows = (try? BackupWriter.decoder.decode([[String: String]].self, from: data)) ?? []
+                for row in rows {
+                    if let file = row["file"], let name = row["name"] {
+                        mailFolderNames[file] = name
+                    }
+                }
             default:
-                // Unknown payloads (e.g. a future mail/ archive) verify by
-                // hash but are not decoded.
+                if payload.name.hasPrefix("mail/"), payload.name.hasSuffix(".mbox") {
+                    mailFileNames.append(payload.name)
+                    let size = (try? payloadURL.resourceValues(forKeys: [.fileSizeKey]))?.fileSize
+                    mailBytes += Int64(size ?? 0)
+                }
                 continue
             }
+        }
+        for fileName in mailFileNames {
+            let fallback = URL(fileURLWithPath: fileName)
+                .deletingPathExtension().lastPathComponent
+            mailPayloads.append(LocalMailBackupPayload(
+                fileName: fileName,
+                folderName: mailFolderNames[fileName] ?? fallback,
+                fileURL: url.appendingPathComponent(fileName)
+            ))
         }
 
         return BackupPreview(
@@ -143,7 +183,9 @@ enum BackupReader {
             settings: settings,
             accounts: accounts,
             skippedUnknownKeys: skippedUnknownKeys(in: url),
-            strippedFields: strippedFields(in: settings)
+            strippedFields: strippedFields(in: settings),
+            mailPayloads: mailPayloads,
+            mailBytes: mailBytes
         )
     }
 

@@ -32,15 +32,31 @@ enum BackupWriter {
         return encoder
     }
 
+    /// One local-mail folder destined for `mail/` inside the package. The
+    /// `write` closure streams the MBOX to the given URL so multi-GB folders
+    /// never have to fit in memory (ADR-0077 decision 6).
+    struct MailFile {
+        /// Manifest payload name, e.g. `mail/<folderID>.mbox`.
+        let name: String
+        /// Display name recorded in `mail/folders.json` for restore.
+        let folderName: String
+        /// Streams the MBOX bytes to the destination URL.
+        let write: @Sendable (URL) async throws -> Void
+    }
+
+    /// Payload recording which `mail/*.mbox` file restores which folder name.
+    static let mailFoldersIndexName = "mail/folders.json"
+
     /// Creates the package at `url` (replacing an existing item) and writes
-    /// both payloads plus the manifest.
+    /// settings, accounts, optional `mail/` payloads, then the manifest last.
     static func write(
         to url: URL,
         settings: SettingsBackupPayload,
         accounts: AccountsBackupPayload,
         appVersion: String,
-        appBuild: String
-    ) throws {
+        appBuild: String,
+        mailPayloads: [MailFile] = []
+    ) async throws {
         let fileManager = FileManager.default
         if fileManager.fileExists(atPath: url.path) {
             try fileManager.removeItem(at: url)
@@ -52,10 +68,36 @@ enum BackupWriter {
             (settingsPayloadName, encoder.encode(settings)),
             (accountsPayloadName, encoder.encode(accounts))
         ] {
-            try data.write(to: url.appendingPathComponent(name), options: .atomic)
-            payloads.append(BrevBackupManifest.Payload(
+            let path = url.appendingPathComponent(name)
+            try data.write(to: path, options: .atomic)
+            try payloads.append(BrevBackupManifest.Payload(
                 name: name,
-                sha256: sha256Hex(data)
+                sha256: sha256Hex(contentsOf: path)
+            ))
+        }
+
+        if !mailPayloads.isEmpty {
+            let mailDirectory = url.appendingPathComponent("mail", isDirectory: true)
+            try fileManager.createDirectory(at: mailDirectory, withIntermediateDirectories: true)
+            var index: [[String: String]] = []
+            for mailFile in mailPayloads {
+                let destination = mailDirectory.appendingPathComponent(
+                    URL(fileURLWithPath: mailFile.name).lastPathComponent
+                )
+                try await mailFile.write(destination)
+                try payloads.append(BrevBackupManifest.Payload(
+                    name: "mail/\(destination.lastPathComponent)",
+                    sha256: sha256Hex(contentsOf: destination),
+                    encoding: "mbox"
+                ))
+                index.append(["file": "mail/\(destination.lastPathComponent)", "name": mailFile.folderName])
+            }
+            let indexData = try encoder.encode(index)
+            let indexPath = mailDirectory.appendingPathComponent("folders.json")
+            try indexData.write(to: indexPath, options: .atomic)
+            try payloads.append(BrevBackupManifest.Payload(
+                name: mailFoldersIndexName,
+                sha256: sha256Hex(contentsOf: indexPath)
             ))
         }
 
@@ -67,6 +109,18 @@ enum BackupWriter {
         )
         try encoder.encode(manifest)
             .write(to: url.appendingPathComponent(manifestName), options: .atomic)
+    }
+
+    /// Streaming SHA-256 over a file — mail payloads can be large, so they are
+    /// never loaded into memory wholesale (ADR-0077 decision 6).
+    static func sha256Hex(contentsOf url: URL) throws -> String {
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1 << 20), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     static func sha256Hex(_ data: Data) -> String {

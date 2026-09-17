@@ -22,8 +22,9 @@ import Testing
 @Suite("Backup preview sheet snapshots")
 @MainActor
 struct BackupPreviewSheetSnapshotTests {
-    @Test("Preview sheet renders in light and dark", arguments: ["light", "dark"])
-    func previewSheetRenders(_ mode: String) {
+    @Test("Preview sheet renders in light and dark",
+          arguments: ["light", "dark"], [false, true])
+    func previewSheetRenders(_ mode: String, _ withMail: Bool) {
         guard #available(macOS 26.0, *) else { return }
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
         let preview = BackupPreview(
@@ -58,9 +59,17 @@ struct BackupPreviewSheetSnapshotTests {
             ],
             skippedUnknownKeys: 1,
             strippedFields: ["calDAV.credentialAccount"],
+            mailPayloads: withMail
+                ? [LocalMailBackupPayload(
+                    fileName: "mail/saved.mbox",
+                    folderName: "Saved receipts",
+                    fileURL: URL(fileURLWithPath: "/tmp/fake/saved.mbox")
+                )]
+                : [],
+            mailBytes: withMail ? 1_234_567 : 0,
             alreadySignedInAccounts: 0
         )
-        let view = BackupPreviewSheet(preview: preview, onCancel: {}, onRestore: { _ in })
+        let view = BackupPreviewSheet(preview: preview, onCancel: {}, onRestore: { _, _ in })
             .brevTheme(theme)
             .environment(\.colorScheme, theme.mode.colorScheme)
 
@@ -100,7 +109,7 @@ struct BackupPreviewSheetSnapshotTests {
         assertSnapshot(
             of: image,
             as: .image,
-            named: "backup-preview-" + mode,
+            named: "backup-preview-" + mode + (withMail ? "-with-mail" : ""),
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES"
         )
     }

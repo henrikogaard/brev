@@ -56,6 +56,10 @@ public final class MailNavigationState {
         case moveTo(messageIDs: [String], sourceID: MailSourceID?, currentFolderID: Folder.ID?)
         /// Copy-to quick chooser for the given message IDs.
         case copyTo(messageIDs: [String], sourceID: MailSourceID?, currentFolderID: Folder.ID?)
+        /// Local-folder destination chooser for a Copy to Local Folder run.
+        case copyToLocal(messageIDs: [String], sourceID: MailSourceID?, fromFolderID: Folder.ID?)
+        /// Local-folder destination chooser for a Move to Local Folder run.
+        case moveToLocal(messageIDs: [String], sourceID: MailSourceID?, fromFolderID: Folder.ID?)
         /// Read-only metadata inspector for a single message.
         case messageProperties(header: MessageHeader)
         /// Read-only raw RFC 822 source viewer for a single message.

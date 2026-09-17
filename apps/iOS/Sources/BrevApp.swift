@@ -106,7 +106,9 @@ struct BrevApp: App {
                             pendingComposePrefill: $pendingComposePrefill,
                             pendingNotificationRoute: $pendingNotificationRoute,
                             initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
-                            onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:)
+                            onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                            localBackend: session.localBackend,
+                            onLocalFoldersChanged: { session.refreshLocalFolders() }
                         )
                         .environment(\.openURL, browserOpenURLAction)
                         .networkMonitor(networkMonitor)

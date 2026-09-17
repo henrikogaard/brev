@@ -25,9 +25,10 @@ struct BackupPreviewSheet: View {
 
     let preview: BackupPreview
     let onCancel: () -> Void
-    let onRestore: (BackupRestoreMode) -> Void
+    let onRestore: (BackupRestoreMode, _ includeMail: Bool) -> Void
 
     @State private var mode: BackupRestoreMode = .merge
+    @State private var includeMail = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
@@ -66,6 +67,16 @@ struct BackupPreviewSheet: View {
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
 
+            if preview.mailFolderCount > 0 {
+                Toggle(
+                    String(
+                        localized: "Include local folders (\(ByteCountFormatter.string(fromByteCount: preview.mailBytes, countStyle: .file)))",
+                        bundle: .module
+                    ),
+                    isOn: $includeMail
+                )
+            }
+
             SettingsInfoCallout(
                 symbolName: "lock.shield",
                 message: String(
@@ -78,7 +89,7 @@ struct BackupPreviewSheet: View {
             HStack {
                 Spacer()
                 Button(String(localized: "Cancel", bundle: .module), role: .cancel) { onCancel() }
-                Button(String(localized: "Restore", bundle: .module)) { onRestore(mode) }
+                Button(String(localized: "Restore", bundle: .module)) { onRestore(mode, includeMail) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
             }
@@ -121,6 +132,12 @@ struct BackupPreviewSheet: View {
                 String(localized: "Other preference groups", bundle: .module),
                 preview.otherFamiliesCount
             )
+            if preview.mailFolderCount > 0 {
+                countRow(
+                    String(localized: "Local folders", bundle: .module),
+                    preview.mailFolderCount
+                )
+            }
         }
     }
 

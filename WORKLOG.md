@@ -1,5 +1,80 @@
 # Worklog
 
+## 2026-09-17 — Devin — Issue #28 §9: ADR-0077 durable local mail folders
+
+### Goal
+
+Implement ADR-0077: a synthetic "On My Mac" / "On My iPhone" backend storing
+mail as Maildir files outside every cache root, with Copy/Move/Import entry
+points, search-index integration, and `.brevbackup` mail payloads.
+
+### Changes
+
+- BrevBackend: `LocalMaildirStore` (actor; `folders.json` manifest, per-folder
+  `cur`/`new`/`tmp`, atomic tmp→fsync→rename writes, Maildir flag-suffix
+  renames, `size()`), `LocalMailBackend` (`accountID = "local"`,
+  folderCreate/Rename/Delete capabilities, `importMessages`/`importRaw`,
+  `storedRFCMessageIDs`, index rebuild on connect when files exceed the
+  index), `LocalMailBackup` (payload/restore-mode/importer types).
+- BrevMail: `AppSession` registers the local backend (injectable via
+  `AppSessionFactory.Configuration.localBackendFactory`) and gates
+  `visibleBackends` on `hasFolders`; `LocalMailTransfer` implements the
+  write-local-first then undoable-server-delete ordering; `MoveToSheet` gains
+  a local-destination mode with a New Folder field; context menus and
+  `MailCommands` offer Copy/Move to Local Folder (macOS only); `FolderSidebar`
+  has "New Local Folder…" on the account-level menu; the folder delete
+  confirmation states it permanently removes kept mail; `importMessages`
+  defaults to a new local folder named after the file basename.
+- BrevSettings: Mail Storage gains a "Local folders" group with size and the
+  "Not a cache." subtitle; `.brevbackup` format bumped to v2 (reader still
+  accepts v1) with `mail/<folderID>.mbox` payloads, SHA-256 manifest entries,
+  a preview toggle (default on when folders exist), and restore Merge
+  dedupes by Message-ID / Replace recreates.
+- Docs: PRIVACY.md local-mail-folders section + backup paragraph update,
+  CHANGELOG Unreleased entries, ADRs/README index row.
+
+### Verification
+
+- `swift test packages/BrevBackend --filter 'Local|Backup|Maildir'`: 67/67.
+- `swift test packages/BrevBackend`: 1106/1106 in 108 suites.
+- `swift test packages/BrevMail --filter 'AppSession|LocalFolder|Import'`:
+  green incl. 2 AppSession local-backend tests, 4 LocalMailTransfer ordering
+  tests, 4 new snapshot cases.
+- `swift test packages/BrevSettings --filter 'Backup|MailStorage'`: green incl.
+  writer `mail/*.mbox` hashes, v1 acceptance, Merge dedupe / Replace recreate,
+  and new snapshots (preview toggle + Mail Storage row).
+- `tuist generate` OK; `tuist build BrevIOS` built; macOS
+  `xcodebuild … CODE_SIGNING_ALLOWED=NO` **BUILD SUCCEEDED**;
+  format/lint/privacy-audit/`git diff --check` all OK.
+
+### Skipped
+
+- `tuist build BrevMacOS` (signed) — no dev cert in this environment; unsigned
+  xcodebuild covers compilation.
+- iOS write UI — macOS-only by design (ADR-0077); iOS read path covered by the
+  BrevIOS build.
+
+### Review fixes (same entry)
+
+- Backup writer/reader now hash every payload by streaming CryptoKit SHA-256
+  (1 MiB `FileHandle` chunks); `mailBytes` comes from file resource values, so
+  multi-GB mboxes never load into memory.
+- Permanent message deletes confirm first via a single shape-based rule —
+  `MailUndoableDelete.isPermanentDelete` (no `.trash` folder, or already in
+  Trash) gates root `trash`, list swipe, and bulk paths; the folder-delete
+  alert copy uses the same predicate instead of the local account ID.
+- `LocalMailTransfer.move` splits write failures from source-delete failures
+  (copied-but-not-removed keeps `copiedIDs` + a distinct error) and exposes
+  `removedSourceIDs` so the list only drops sources that actually deleted.
+- "message(s)" strings replaced with count-based noun selection.
+
+Re-verified: Backup suite 20/20, LocalMail/Undoable/Delete/LocalFolder 20/20,
+format/lint/diff-check clean, unsigned macOS build succeeded.
+
+### Handoff
+
+Uncommitted on `feature/mail-client-parity` over `8cbbed14`; user commits.
+
 ## 2026-09-16 — Devin — Issue #28 / PR #30: ADR-0074 independent-review fixes
 
 ### Goal

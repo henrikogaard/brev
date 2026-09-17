@@ -47,6 +47,9 @@ public struct MailRefreshAction {
 public struct MailMessageCommandActions {
     public let isPerformingMutation: Bool
     public let isBlocked: Bool
+    /// Whether the session has a local backend, so Copy/Move to Local Folder
+    /// commands may be offered (ADR-0077).
+    public let canFileLocally: Bool
 
     public var isAvailable: Bool {
         !isPerformingMutation && !isBlocked
@@ -62,6 +65,7 @@ public struct MailMessageCommandActions {
     public init(
         isPerformingMutation: Bool = false,
         isBlocked: Bool = false,
+        canFileLocally: Bool = false,
         toggleRead: @escaping @MainActor (MessageHeader) async -> Void,
         toggleStar: @escaping @MainActor (MessageHeader) async -> Void,
         archive: @escaping @MainActor (MessageHeader) async -> Void,
@@ -71,6 +75,7 @@ public struct MailMessageCommandActions {
     ) {
         self.isPerformingMutation = isPerformingMutation
         self.isBlocked = isBlocked
+        self.canFileLocally = canFileLocally
         toggleReadAction = toggleRead
         toggleStarAction = toggleStar
         archiveAction = archive

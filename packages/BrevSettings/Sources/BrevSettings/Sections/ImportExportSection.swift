@@ -76,6 +76,10 @@ struct ImportExportSection: View {
     @State private var restorePreview: BackupPreview?
     @State private var backupResultMessage: String?
     @State private var backupErrorMessage: String?
+    @State private var includeLocalMailInBackup = true
+    @State private var localMailSummary: (folderCount: Int, bytes: Int64)?
+    /// Returns the device's local-mail backend, when one is registered.
+    private let localBackendProvider: @MainActor () -> LocalMailBackend?
 
     #if os(iOS)
     @State private var isChoosingExportFolder = false
@@ -122,7 +126,8 @@ struct ImportExportSection: View {
         accountConfigurationProvider: @escaping (String) async -> IMAPAccountConfiguration? = { accountID in
             UserDefaultsIMAPAccountConfigurationStore().configuration(for: accountID)
         },
-        pendingRestoredStore: PendingRestoredAccountsStore = .init()
+        pendingRestoredStore: PendingRestoredAccountsStore = .init(),
+        localBackendProvider: @MainActor @escaping () -> LocalMailBackend? = { nil }
     ) {
         self.backendProvider = backendProvider
         self.accounts = accounts
@@ -131,6 +136,7 @@ struct ImportExportSection: View {
         self.settingsStore = settingsStore
         self.accountConfigurationProvider = accountConfigurationProvider
         self.pendingRestoredStore = pendingRestoredStore
+        self.localBackendProvider = localBackendProvider
         _allFolders = State(initialValue: allFolders)
     }
 
@@ -156,15 +162,18 @@ struct ImportExportSection: View {
             await loadFolders()
             guard !Task.isCancelled else { return }
             await loadExportMailboxes()
+            await loadLocalMailSummary()
         }
         .task(id: selectedExportSourceID) { await loadExportFolders() }
         .sheet(item: $restorePreview) { preview in
             BackupPreviewSheet(
                 preview: preview,
                 onCancel: { restorePreview = nil },
-                onRestore: { mode in
-                    applyRestore(preview: preview, mode: mode)
-                    restorePreview = nil
+                onRestore: { mode, includeMail in
+                    Task {
+                        await applyRestore(preview: preview, mode: mode, includeMail: includeMail)
+                        restorePreview = nil
+                    }
                 }
             )
         }
@@ -446,6 +455,20 @@ struct ImportExportSection: View {
                     .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
                 #endif
 
+                if let localMailSummary, localMailSummary.folderCount > 0 {
+                    Toggle(
+                        String(
+                            localized: "Include local folders (\(ByteCountFormatter.string(fromByteCount: localMailSummary.bytes, countStyle: .file)))",
+                            bundle: .module
+                        ),
+                        isOn: $includeLocalMailInBackup
+                    )
+                    Text("Local folders are your mail, not a cache. The backup carries one MBOX file per folder.",
+                         bundle: .module)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+
                 if let backupResultMessage {
                     SettingsInfoCallout(
                         symbolName: "checkmark.circle",
@@ -481,12 +504,13 @@ struct ImportExportSection: View {
                     configurationProvider: accountConfigurationProvider
                 )
                 let info = Bundle.main.infoDictionary
-                try BackupWriter.write(
+                try await BackupWriter.write(
                     to: url,
                     settings: settings,
                     accounts: accountsPayload,
                     appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
-                    appBuild: info?["CFBundleVersion"] as? String ?? "unknown"
+                    appBuild: info?["CFBundleVersion"] as? String ?? "unknown",
+                    mailPayloads: includeLocalMailInBackup ? localMailPayloads() : []
                 )
                 backupErrorMessage = nil
                 backupResultMessage = String(
@@ -522,13 +546,41 @@ struct ImportExportSection: View {
 
     #endif
 
-    private func applyRestore(preview: BackupPreview, mode: BackupRestoreMode) {
-        let report = BackupRestorer.apply(
+    /// Builds `mail/*.mbox` payload writers for every local folder by
+    /// streaming through `MailFolderExporter` (ADR-0077 decision 5).
+    private func localMailPayloads() async -> [BackupWriter.MailFile] {
+        guard let local = localBackendProvider(),
+              let folders = try? await local.folders() else { return [] }
+        let sourceID = MailSourceID(accountID: local.account.id, mailboxID: local.account.id)
+        return folders.map { folder in
+            BackupWriter.MailFile(
+                name: "mail/\(folder.id).mbox",
+                folderName: folder.name
+            ) { destination in
+                let exporter = MailFolderExporter(
+                    backend: local, sourceID: sourceID, folder: folder
+                )
+                _ = try await exporter.export(to: destination, format: .mbox)
+            }
+        }
+    }
+
+    private func applyRestore(preview: BackupPreview, mode: BackupRestoreMode, includeMail: Bool) async {
+        let localBackend = localBackendProvider()
+        let report = await BackupRestorer.apply(
             preview: preview,
             mode: mode,
             store: settingsStore,
             signedInEmails: Set(accounts.map(\.emailAddress)),
-            pendingStore: pendingRestoredStore
+            pendingStore: pendingRestoredStore,
+            includeMail: includeMail,
+            mailRestoreHandler: localBackend.map { backend in
+                { payloads, mailMode in
+                    await LocalMailBackupImporter.restore(
+                        payloads: payloads, into: backend, mode: mailMode
+                    )
+                }
+            }
         )
         var parts = [
             String(
@@ -548,11 +600,37 @@ struct ImportExportSection: View {
                 bundle: .module
             ))
         }
+        if let mail = report.mailRestore {
+            parts.append(String(
+                localized: "Imported \(mail.messagesImported) messages into \(mail.foldersRestored) local folders.",
+                bundle: .module
+            ))
+            if mail.skippedDuplicates > 0 {
+                parts.append(String(
+                    localized: "Skipped \(mail.skippedDuplicates) messages already present.",
+                    bundle: .module
+                ))
+            }
+        }
         backupResultMessage = parts.joined(separator: " ")
         backupErrorMessage = report.failedCategories.isEmpty ? nil : String(
             localized: "Couldn't restore \(report.failedCategories.count) settings groups.",
             bundle: .module
         )
+    }
+
+    /// Loads the local-folder count and byte size for the backup toggle.
+    private func loadLocalMailSummary() async {
+        guard let local = localBackendProvider() else {
+            localMailSummary = nil
+            return
+        }
+        let folders = await (try? local.folders()) ?? []
+        guard !folders.isEmpty else {
+            localMailSummary = nil
+            return
+        }
+        localMailSummary = await (folders.count, local.store.size())
     }
 
     private var privacyNote: some View {

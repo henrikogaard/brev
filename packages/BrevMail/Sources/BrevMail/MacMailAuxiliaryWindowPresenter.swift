@@ -159,6 +159,18 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
                 toolbarStyle: .unifiedCompact,
                 isMovableByWindowBackground: true
             )
+        case .copyToLocal, .moveToLocal:
+            return Self(
+                title: "Local Folder",
+                defaultSize: CGSize(width: 380, height: 480),
+                minimumSize: CGSize(width: 320, height: 360),
+                frameAutosaveName: "BrevLocalFolderWindow",
+                styleMask: standardStyleMask,
+                titleVisibility: .hidden,
+                titlebarAppearsTransparent: true,
+                toolbarStyle: .unifiedCompact,
+                isMovableByWindowBackground: true
+            )
         case .messageProperties:
             return Self(
                 title: "Message Properties",

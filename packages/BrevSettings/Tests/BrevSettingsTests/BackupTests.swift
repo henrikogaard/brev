@@ -12,6 +12,7 @@
 
 import BrevBackend
 @testable import BrevSettings
+import CryptoKit
 import Foundation
 import Testing
 
@@ -24,7 +25,7 @@ struct BackupTests {
         return SettingsPersistenceStore(defaults: defaults)
     }
 
-    private func makeDirectory(_ name: String) throws -> URL {
+    private func makeDirectory(_ name: String) async throws -> URL {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("BackupTests-\(name)-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
@@ -48,15 +49,17 @@ struct BackupTests {
     private func writeBackup(
         to directory: URL,
         settings: SettingsBackupPayload,
-        accounts: AccountsBackupPayload = []
-    ) throws -> URL {
+        accounts: AccountsBackupPayload = [],
+        mailPayloads: [BackupWriter.MailFile] = []
+    ) async throws -> URL {
         let url = backupURL(in: directory)
-        try BackupWriter.write(
+        try await BackupWriter.write(
             to: url,
             settings: settings,
             accounts: accounts,
             appVersion: "1.2.3",
-            appBuild: "45"
+            appBuild: "45",
+            mailPayloads: mailPayloads
         )
         return url
     }
@@ -73,12 +76,12 @@ struct BackupTests {
     }
 
     @Test("Writer and reader round-trip a full payload")
-    func roundTrip() throws {
-        let directory = try makeDirectory("roundtrip")
+    func roundTrip() async throws {
+        let directory = try await makeDirectory("roundtrip")
         let sourceStore = try makeStore("source")
         sourceStore.save(LocalRulesSettings(rules: [rule("a")], isAutomaticExecutionEnabled: true))
         let payload = SettingsBackupCodec.export(from: sourceStore)
-        let url = try writeBackup(to: directory, settings: payload)
+        let url = try await writeBackup(to: directory, settings: payload)
 
         let preview = try BackupReader.validate(url: url)
         #expect(preview.sourceAppVersion == "1.2.3")
@@ -88,16 +91,16 @@ struct BackupTests {
     }
 
     @Test("Every included family survives export → write → validate → apply")
-    func everyIncludedFamilySurvives() throws {
-        let directory = try makeDirectory("families")
+    func everyIncludedFamilySurvives() async throws {
+        let directory = try await makeDirectory("families")
         let sourceStore = try makeStore("source")
         sourceStore.save(LocalRulesSettings(rules: [rule("r1"), rule("r2")], isAutomaticExecutionEnabled: true))
         let payload = SettingsBackupCodec.export(from: sourceStore)
-        let url = try writeBackup(to: directory, settings: payload)
+        let url = try await writeBackup(to: directory, settings: payload)
 
         let preview = try BackupReader.validate(url: url)
         let targetStore = try makeStore("target")
-        BackupRestorer.apply(
+        await BackupRestorer.apply(
             preview: preview,
             mode: .replace,
             store: targetStore,
@@ -117,11 +120,11 @@ struct BackupTests {
     }
 
     @Test("Tampered payload fails its SHA-256 check")
-    func tamperedPayloadIsCorrupted() throws {
-        let directory = try makeDirectory("tampered")
+    func tamperedPayloadIsCorrupted() async throws {
+        let directory = try await makeDirectory("tampered")
         let store = try makeStore()
         let payload = SettingsBackupCodec.export(from: store)
-        let url = try writeBackup(to: directory, settings: payload)
+        let url = try await writeBackup(to: directory, settings: payload)
 
         let settingsURL = url.appendingPathComponent(BackupWriter.settingsPayloadName)
         var bytes = try Data(contentsOf: settingsURL)
@@ -143,24 +146,25 @@ struct BackupTests {
     }
 
     @Test("Newer format version is rejected")
-    func unsupportedVersion() throws {
-        let directory = try makeDirectory("version")
+    func unsupportedVersion() async throws {
+        let directory = try await makeDirectory("version")
         let store = try makeStore()
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: store))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: store))
 
-        try rewriteManifest(at: url) { $0.formatVersion = 2 }
+        let tooNew = BrevBackupManifest.currentFormatVersion + 1
+        try rewriteManifest(at: url) { $0.formatVersion = tooNew }
 
         do {
             _ = try BackupReader.validate(url: url)
             Issue.record("expected unsupportedVersion error")
         } catch let error as BackupError {
-            #expect(error == .unsupportedVersion(2))
+            #expect(error == .unsupportedVersion(tooNew))
         }
     }
 
     @Test("Missing manifest and non-backup URLs are rejected")
-    func invalidPackages() throws {
-        let directory = try makeDirectory("invalid")
+    func invalidPackages() async throws {
+        let directory = try await makeDirectory("invalid")
         #expect(throws: BackupError.notABackup) {
             try BackupReader.validate(url: directory.appendingPathComponent("nope.txt"))
         }
@@ -172,10 +176,10 @@ struct BackupTests {
     }
 
     @Test("Unknown settings keys are counted and local values stay untouched")
-    func unknownKeysAreSkipped() throws {
-        let directory = try makeDirectory("unknown")
+    func unknownKeysAreSkipped() async throws {
+        let directory = try await makeDirectory("unknown")
         let sourceStore = try makeStore("source")
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         // Inject a key a newer Brev might write, and drop every known key so
         // only the unknown family remains in the payload.
@@ -202,53 +206,53 @@ struct BackupTests {
 
         let targetStore = try makeStore("target")
         targetStore.save(FetchScheduleSettings(interval: .thirtyMinutes))
-        BackupRestorer.apply(preview: preview, mode: .merge, store: targetStore, signedInEmails: [])
+        await BackupRestorer.apply(preview: preview, mode: .merge, store: targetStore, signedInEmails: [])
         #expect(targetStore.fetchScheduleSettings().interval == .thirtyMinutes)
     }
 
     @Test("Merge keeps local rule order and appends missing backup rules")
-    func mergePreservesLocalListOrder() throws {
-        let directory = try makeDirectory("merge")
+    func mergePreservesLocalListOrder() async throws {
+        let directory = try await makeDirectory("merge")
         let sourceStore = try makeStore("source")
         sourceStore.save(LocalRulesSettings(rules: [rule("b"), rule("c")], isAutomaticExecutionEnabled: true))
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         let targetStore = try makeStore("target")
         targetStore.save(LocalRulesSettings(rules: [rule("a"), rule("b")], isAutomaticExecutionEnabled: true))
         let preview = try BackupReader.validate(url: url)
-        BackupRestorer.apply(preview: preview, mode: .merge, store: targetStore, signedInEmails: [])
+        await BackupRestorer.apply(preview: preview, mode: .merge, store: targetStore, signedInEmails: [])
 
         #expect(targetStore.localRulesSettings().rules.map(\.id) == ["a", "b", "c"])
     }
 
     @Test("Replace overwrites local lists wholesale")
-    func replaceOverwrites() throws {
-        let directory = try makeDirectory("replace")
+    func replaceOverwrites() async throws {
+        let directory = try await makeDirectory("replace")
         let sourceStore = try makeStore("source")
         sourceStore.save(LocalRulesSettings(rules: [rule("b")], isAutomaticExecutionEnabled: true))
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         let targetStore = try makeStore("target")
         targetStore.save(LocalRulesSettings(rules: [rule("a"), rule("z")], isAutomaticExecutionEnabled: true))
         let preview = try BackupReader.validate(url: url)
-        BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
+        await BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
 
         #expect(targetStore.localRulesSettings().rules.map(\.id) == ["b"])
     }
 
     @Test("A failing category rolls back and does not stop other categories")
-    func perCategoryRollback() throws {
-        let directory = try makeDirectory("rollback")
+    func perCategoryRollback() async throws {
+        let directory = try await makeDirectory("rollback")
         let sourceStore = try makeStore("source")
         sourceStore.save(LocalRulesSettings(rules: [rule("b")], isAutomaticExecutionEnabled: true))
         sourceStore.save(FetchScheduleSettings(interval: .fifteenMinutes))
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         let targetStore = try makeStore("target")
         targetStore.save(LocalRulesSettings(rules: [rule("local")], isAutomaticExecutionEnabled: true))
         targetStore.save(FetchScheduleSettings(interval: .manual))
         let preview = try BackupReader.validate(url: url)
-        let report = BackupRestorer.apply(
+        let report = await BackupRestorer.apply(
             preview: preview,
             mode: .replace,
             store: targetStore,
@@ -300,8 +304,8 @@ struct BackupTests {
     }
 
     @Test("Restore drops already-signed-in accounts and parks the rest")
-    func restoredAccountsAreParked() throws {
-        let directory = try makeDirectory("accounts")
+    func restoredAccountsAreParked() async throws {
+        let directory = try await makeDirectory("accounts")
         let store = try makeStore()
         let signedIn = BrevAccount(
             id: "imap-smtp:ada@example.org",
@@ -313,7 +317,7 @@ struct BackupTests {
             displayName: "Grace",
             emailAddress: "grace@example.org"
         )
-        let url = try writeBackup(
+        let url = try await writeBackup(
             to: directory,
             settings: SettingsBackupCodec.export(from: store),
             accounts: [
@@ -328,7 +332,7 @@ struct BackupTests {
         let pendingStore = PendingRestoredAccountsStore(defaults: pendingDefaults)
 
         let preview = try BackupReader.validate(url: url)
-        let report = BackupRestorer.apply(
+        let report = await BackupRestorer.apply(
             preview: preview,
             mode: .merge,
             store: store,
@@ -342,13 +346,13 @@ struct BackupTests {
     }
 
     @Test("Device-bound notification fields never leave the local value")
-    func deviceBoundNotificationFieldsSurviveRestore() throws {
-        let directory = try makeDirectory("devicebound")
+    func deviceBoundNotificationFieldsSurviveRestore() async throws {
+        let directory = try await makeDirectory("devicebound")
         let sourceStore = try makeStore("source")
         var sourceNotifications = sourceStore.notificationSettings()
         sourceNotifications.notificationsEnabled = true
         sourceStore.save(sourceNotifications)
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         // The backup JSON must not even contain the device-bound keys.
         let data = try Data(
@@ -365,7 +369,7 @@ struct BackupTests {
         targetStore.save(targetNotifications)
 
         let preview = try BackupReader.validate(url: url)
-        BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
+        await BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
 
         let restored = targetStore.notificationSettings()
         #expect(restored.notificationsEnabled == true)
@@ -374,8 +378,8 @@ struct BackupTests {
     }
 
     @Test("CalDAV credential pointer is stripped and the local one survives")
-    func calDAVCredentialAccountStripped() throws {
-        let directory = try makeDirectory("caldav")
+    func calDAVCredentialAccountStripped() async throws {
+        let directory = try await makeDirectory("caldav")
         let sourceStore = try makeStore("source")
         sourceStore.save(CalDAVSettings(
             featureFlagEnabled: true,
@@ -386,7 +390,7 @@ struct BackupTests {
             credentialAccount: "keychain-acct-ref",
             useLocalBasicAuth: false
         ))
-        let url = try writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
+        let url = try await writeBackup(to: directory, settings: SettingsBackupCodec.export(from: sourceStore))
 
         let data = try Data(
             contentsOf: url.appendingPathComponent(BackupWriter.settingsPayloadName)
@@ -402,13 +406,13 @@ struct BackupTests {
         var local = targetStore.calDAVSettings()
         local.credentialAccount = "local-acct-ref"
         targetStore.save(local)
-        BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
+        await BackupRestorer.apply(preview: preview, mode: .replace, store: targetStore, signedInEmails: [])
         #expect(targetStore.calDAVSettings().credentialAccount == "local-acct-ref")
         #expect(targetStore.calDAVSettings().serverURL == "https://caldav.example.org")
     }
 
     @Test("Every settings accessor is either backed up or explicitly excluded")
-    func settingsAccessorCompleteness() {
+    func settingsAccessorCompleteness() async {
         // Every `func xxxSettings()/xxxPreferences()/xxx()` reader on
         // SettingsPersistenceStore must be classified here: either the codec
         // exports it, or it is listed with the reason it is not backed up.
@@ -446,7 +450,7 @@ struct BackupTests {
     }
 
     @Test("Related-mail consent exports only enabled accounts")
-    func relatedMailConsentExport() throws {
+    func relatedMailConsentExport() async throws {
         let suiteName = "BackupTests-consent-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))
         defaults.removePersistentDomain(forName: suiteName)
@@ -469,5 +473,139 @@ struct BackupTests {
         SettingsBackupCodec.apply(payload, to: store, mode: .merge, consentStore: targetConsent)
         #expect(targetConsent.isAutoLoadEnabled(accountID: "imap-smtp:a@example.org"))
         #expect(!targetConsent.isAutoLoadEnabled(accountID: "imap-smtp:b@example.org"))
+    }
+
+    // MARK: - Local mail payloads (ADR-0077)
+
+    private func makeLocalBackend(_ name: String) throws -> (LocalMailBackend, URL) {
+        let root = FileManager.default.temporaryDirectory
+            .appendingPathComponent("BackupTests-local-\(name)-\(UUID().uuidString)")
+        return (LocalMailBackend(store: LocalMaildirStore(rootURL: root)), root)
+    }
+
+    private func mboxFile(body: String, messageID: String) -> BackupWriter.MailFile {
+        BackupWriter.MailFile(name: "mail/archive.mbox", folderName: "Archive") { url in
+            let mbox = """
+            From alice@example.org Tue Sep 16 10:30:00 2026
+            From: Alice <alice@example.org>
+            Subject: Kept mail
+            Date: Tue, 16 Sep 2026 10:30:00 +0000
+            Message-ID: \(messageID)
+
+            \(body)
+            """
+            try Data(mbox.utf8).write(to: url)
+        }
+    }
+
+    @Test("Writer includes mail/*.mbox payloads with verified hashes")
+    func writerIncludesMailPayloads() async throws {
+        let directory = try await makeDirectory("mail")
+        let url = try await writeBackup(
+            to: directory,
+            settings: SettingsBackupCodec.export(from: makeStore("source")),
+            mailPayloads: [mboxFile(body: "hello", messageID: "<m1@example.org>")]
+        )
+        let preview = try BackupReader.validate(url: url)
+        #expect(preview.mailFolderCount == 1)
+        #expect(preview.mailPayloads.first?.folderName == "Archive")
+        #expect(preview.mailBytes > 0)
+        let manifest = preview.manifest
+        #expect(manifest.formatVersion == 2)
+        #expect(manifest.payloads.contains { $0.name == "mail/archive.mbox" && $0.encoding == "mbox" })
+        #expect(manifest.payloads.contains { $0.name == "mail/folders.json" })
+    }
+
+    @Test("Large mail payloads hash by streaming and verify round-trip")
+    func largeMailPayloadStreams() async throws {
+        // 8 MB mbox — the writer and reader must hash it in chunks, never
+        // load it wholesale (ADR-0077 decision 6).
+        let directory = try await makeDirectory("stream")
+        let bigBody = Data(repeating: UInt8(ascii: "x"), count: 8 << 20)
+        let payload = BackupWriter.MailFile(name: "mail/big.mbox", folderName: "Big") { url in
+            try bigBody.write(to: url)
+        }
+        let url = try await writeBackup(
+            to: directory,
+            settings: SettingsBackupCodec.export(from: makeStore("source")),
+            mailPayloads: [payload]
+        )
+        let preview = try BackupReader.validate(url: url)
+        #expect(preview.mailBytes == Int64(bigBody.count))
+        let manifest = preview.manifest
+        let expected = SHA256.hash(data: bigBody).map { String(format: "%02x", $0) }.joined()
+        #expect(manifest.payloads.first { $0.name == "mail/big.mbox" }?.sha256 == expected)
+    }
+
+    @Test("Reader accepts a formatVersion-1 package without mail payloads")
+    func readerAcceptsVersion1() async throws {
+        let directory = try await makeDirectory("v1")
+        let url = try await writeBackup(
+            to: directory,
+            settings: SettingsBackupCodec.export(from: makeStore("source"))
+        )
+        try rewriteManifest(at: url) { $0.formatVersion = 1 }
+        let preview = try BackupReader.validate(url: url)
+        #expect(preview.mailPayloads.isEmpty)
+        // And a version newer than supported is still rejected.
+        try rewriteManifest(at: url) { $0.formatVersion = 99 }
+        #expect(throws: BackupError.unsupportedVersion(99)) {
+            try BackupReader.validate(url: url)
+        }
+    }
+
+    @Test("Mail restore Merge dedupes by Message-ID; Replace recreates")
+    func mailRestoreModes() async throws {
+        let directory = try await makeDirectory("mailrestore")
+        let url = try await writeBackup(
+            to: directory,
+            settings: SettingsBackupCodec.export(from: makeStore("source")),
+            mailPayloads: [mboxFile(body: "kept", messageID: "<dup@example.org>")]
+        )
+        let preview = try BackupReader.validate(url: url)
+        let (backend, root) = try makeLocalBackend("restore")
+        defer { try? FileManager.default.removeItem(at: root) }
+
+        let handler: ([LocalMailBackupPayload], LocalMailRestoreMode) async throws
+            -> LocalMailRestoreSummary = { payloads, mode in
+                await LocalMailBackupImporter.restore(payloads: payloads, into: backend, mode: mode)
+            }
+
+        // First restore creates the folder and imports.
+        var report = try await BackupRestorer.apply(
+            preview: preview, mode: .merge,
+            store: makeStore("target1"), signedInEmails: [],
+            mailRestoreHandler: handler
+        )
+        #expect(report.mailRestore?.messagesImported == 1)
+        #expect(report.succeededCategories.contains("localMail"))
+
+        // Merge again skips the duplicate Message-ID.
+        report = try await BackupRestorer.apply(
+            preview: preview, mode: .merge,
+            store: makeStore("target2"), signedInEmails: [],
+            mailRestoreHandler: handler
+        )
+        #expect(report.mailRestore?.messagesImported == 0)
+        #expect(report.mailRestore?.skippedDuplicates == 1)
+
+        // Replace recreates the folder and reimports.
+        report = try await BackupRestorer.apply(
+            preview: preview, mode: .replace,
+            store: makeStore("target3"), signedInEmails: [],
+            mailRestoreHandler: handler
+        )
+        #expect(report.mailRestore?.messagesImported == 1)
+
+        // includeMail == false leaves the payloads untouched.
+        report = try await BackupRestorer.apply(
+            preview: preview, mode: .merge,
+            store: makeStore("target4"), signedInEmails: [],
+            includeMail: false,
+            mailRestoreHandler: handler
+        )
+        #expect(report.mailRestore == nil)
+        let remainingFolders = try await backend.folders()
+        #expect(remainingFolders.count == 1)
     }
 }

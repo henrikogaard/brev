@@ -104,6 +104,30 @@ enum MailFlagUndo {
 
 /// Shared delete semantics for toolbar, row, and bulk actions.
 enum MailUndoableDelete {
+    /// True when deleting from `folder` bypasses Trash entirely — either the
+    /// source has no Trash folder at all (local folders, ADR-0077) or the
+    /// message is already inside Trash. Permanent deletes require prior user
+    /// confirmation; callers funnel through this predicate before `perform`.
+    static func isPermanentDelete(from folder: Folder, folders: [Folder]) -> Bool {
+        guard let trash = folders.first(where: { $0.role == .trash }) else { return true }
+        return folder.id == trash.id
+    }
+
+    /// Alert copy for a permanent delete confirmation.
+    static func permanentDeleteMessage(count: Int, folders: [Folder]) -> String {
+        let noun = count == 1 ? "message" : "messages"
+        if folders.contains(where: { $0.role == .trash }) {
+            return String(
+                localized: "Permanently delete \(count) \(noun)? They are already in Trash, so this cannot be undone.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Permanently delete \(count) \(noun)? There is no Trash for this folder, so this cannot be undone.",
+            bundle: .module
+        )
+    }
+
     static func perform(messageIDs: [MessageHeader.ID], from folder: Folder, folders: [Folder],
                         sourceID: MailSourceID, backend: any MailBackend) async throws -> MailMoveUndo? {
         if let trash = folders.first(where: { $0.role == .trash }), folder.id != trash.id {

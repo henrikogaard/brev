@@ -54,6 +54,8 @@ public struct MessageListView: View {
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
+    /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
+    private let canFileLocally: Bool
     private let accountOwnedMailboxEmails: Set<String>
     private let folder: Folder?
     private let folderDisplayName: String?
@@ -100,6 +102,7 @@ public struct MessageListView: View {
     @State private var collapsedDateSectionIDs: Set<MessageListDateSection.ID> = []
     @State private var expandedThreadIDs: Set<String> = []
     @State private var pendingDeleteHeaderID: MessageHeader.ID?
+    @State private var isBulkPermanentDeletePresented = false
     @State private var pendingBlockSenderHeader: MessageHeader?
     @State private var pendingSnoozeHeaders: [MessageHeader] = []
     @State private var searchScope: SearchScope = .all
@@ -148,6 +151,7 @@ public struct MessageListView: View {
         navigation: MailNavigationState,
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
+        canFileLocally: Bool = false,
         accountOwnedMailboxEmails: Set<String> = [],
         folder: Folder?,
         folderDisplayName: String? = nil,
@@ -166,6 +170,7 @@ public struct MessageListView: View {
         _localMessageWorkflowState = localMessageWorkflowState
         self.backend = backend
         self.sourceID = sourceID
+        self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmails = accountOwnedMailboxEmails
         self.folder = folder
         self.folderDisplayName = folderDisplayName
@@ -325,10 +330,25 @@ public struct MessageListView: View {
             }
         } message: {
             if let header = pendingDeleteHeader {
-                Text("Delete \"\(header.subject)\"?", bundle: .module)
+                if isPermanentDelete(for: header) {
+                    Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
+                } else {
+                    Text("Delete \"\(header.subject)\"?", bundle: .module)
+                }
             } else {
                 Text("Delete this message?", bundle: .module)
             }
+        }
+        .alert(String(localized: "Permanently Delete?", bundle: .module),
+               isPresented: $isBulkPermanentDeletePresented) {
+            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                Task { await bulkDelete(confirmedPermanent: true) }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text(MailUndoableDelete.permanentDeleteMessage(
+                count: navigation.bulkSelection.count, folders: allFolders
+            ))
         }
         .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
             Button(String(localized: "Block", bundle: .module), role: .destructive) {
@@ -823,6 +843,8 @@ public struct MessageListView: View {
                 from: allFolders,
                 currentFolderID: folder?.id
             ).isEmpty,
+            canFileLocally: canFileLocally
+                && backend.account.id != LocalMailBackend.accountID,
             junkActionTitle: MessageCommandPresentation.junkActionTitle(
                 currentFolder: folder,
                 capabilities: backend.capabilities,
@@ -1048,6 +1070,28 @@ public struct MessageListView: View {
                     messageIDs: [header.id],
                     sourceID: sourceID,
                     currentFolderID: folder?.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .copyToLocalFolder:
+            Button {
+                navigation.presentedSheet = .copyToLocal(
+                    messageIDs: [header.id],
+                    sourceID: sourceID,
+                    fromFolderID: folder?.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .moveToLocalFolder:
+            Button {
+                navigation.presentedSheet = .moveToLocal(
+                    messageIDs: [header.id],
+                    sourceID: sourceID,
+                    fromFolderID: folder?.id
                 )
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
@@ -1289,7 +1333,11 @@ public struct MessageListView: View {
         case .delete:
             Button(role: .destructive) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await deleteRow(header: header) }
+                if isPermanentDelete(for: header) {
+                    pendingDeleteHeaderID = header.id
+                } else {
+                    Task { await deleteRow(header: header) }
+                }
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
@@ -2371,6 +2419,14 @@ public struct MessageListView: View {
         }
     }
 
+    /// A delete is permanent when the source has no Trash (local folders,
+    /// ADR-0077) or the message is already inside Trash — confirm first.
+    private func isPermanentDelete(for header: MessageHeader) -> Bool {
+        let origin = allFolders.first { $0.id == header.folderID }
+            ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
+        return MailUndoableDelete.isPermanentDelete(from: origin, folders: allFolders)
+    }
+
     private func deleteRow(header: MessageHeader) async {
         guard canStartMutation() else { return }
         let request = startMutationRequest()
@@ -2650,11 +2706,16 @@ public struct MessageListView: View {
         }
     }
 
-    private func bulkDelete() async {
+    private func bulkDelete(confirmedPermanent: Bool = false) async {
         let ids = Array(navigation.bulkSelection)
         guard !ids.isEmpty, canStartMutation() else { return }
         let idSet = Set(ids)
         let originals = headers.filter { idSet.contains($0.id) }
+        if !confirmedPermanent,
+           originals.contains(where: { isPermanentDelete(for: $0) }) {
+            isBulkPermanentDeletePresented = true
+            return
+        }
         let request = startMutationRequest()
         let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }

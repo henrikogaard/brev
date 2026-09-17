@@ -27,6 +27,7 @@ public struct MoveToSheet: View {
     @State private var isMoving = false
     @State private var moveError: String?
     @State private var recentFolderIDs: [Folder.ID]
+    @State private var newFolderName = ""
 
     private let allFolders: [Folder]
     private let messageIDs: [String]
@@ -36,6 +37,9 @@ public struct MoveToSheet: View {
     private let folderAliasPreferences: FolderAliasPreferences
     private let recentStore: MoveToRecentFolderStore
     private let onMove: ([String], Folder) async throws -> Void
+    /// When set, shows an inline "New Folder" field; the created folder is
+    /// then passed to `onMove` (ADR-0077 local-folder destinations).
+    private let onCreateFolder: ((String) async throws -> Folder)?
     private let onClose: (() -> Void)?
 
     public init(
@@ -47,6 +51,7 @@ public struct MoveToSheet: View {
         folderAliasPreferences: FolderAliasPreferences = .defaults,
         recentStore: MoveToRecentFolderStore = MoveToRecentFolderStore(),
         onMove: @escaping ([String], Folder) async throws -> Void,
+        onCreateFolder: ((String) async throws -> Folder)? = nil,
         onClose: (() -> Void)? = nil
     ) {
         self.allFolders = allFolders
@@ -57,6 +62,7 @@ public struct MoveToSheet: View {
         self.folderAliasPreferences = folderAliasPreferences
         self.recentStore = recentStore
         self.onMove = onMove
+        self.onCreateFolder = onCreateFolder
         self.onClose = onClose
         _recentFolderIDs = State(initialValue: sourceID.map { recentStore.recentFolderIDs(for: $0) } ?? [])
     }
@@ -68,6 +74,9 @@ public struct MoveToSheet: View {
             searchField
             BrevDivider()
             folderList
+            if onCreateFolder != nil {
+                newFolderFooter
+            }
             if let moveError {
                 errorFooter(moveError)
             }
@@ -213,6 +222,54 @@ public struct MoveToSheet: View {
         .padding(.vertical, BrevSpacing.sm)
     }
 
+    private var newFolderFooter: some View {
+        let trimmed = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return VStack(spacing: 0) {
+            BrevDivider()
+            HStack(spacing: BrevSpacing.sm) {
+                Image(systemName: "folder.badge.plus")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: 20, alignment: .center)
+                TextField(
+                    String(localized: "New folder name", bundle: .module),
+                    text: $newFolderName
+                ) {
+                    if !trimmed.isEmpty {
+                        Task { await createAndMove(named: trimmed) }
+                    }
+                }
+                .brevFont(.subheadline)
+                .textFieldStyle(.plain)
+                Button {
+                    Task { await createAndMove(named: trimmed) }
+                } label: {
+                    Text("Create", bundle: .module)
+                        .brevFont(.subheadline)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(trimmed.isEmpty ? theme.textTertiary.color : theme.accent.color)
+                .disabled(trimmed.isEmpty || isMoving)
+            }
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.sm)
+        }
+    }
+
+    private func createAndMove(named name: String) async {
+        guard let onCreateFolder, !isMoving else { return }
+        isMoving = true
+        moveError = nil
+        do {
+            let folder = try await onCreateFolder(name)
+            newFolderName = ""
+            isMoving = false
+            await performMove(to: folder)
+        } catch {
+            moveError = error.localizedDescription
+            isMoving = false
+        }
+    }
+
     // MARK: - Helpers
 
     private var filteredFolders: [Folder] {
@@ -266,6 +323,61 @@ public struct MoveToSheet: View {
         case .starred: return "flag"
         case .allMail: return "tray.full"
         case .custom: return "folder"
+        }
+    }
+}
+
+/// Local-folder destination chooser for Copy/Move to Local Folder
+/// (ADR-0077). Loads folders from the local backend, offers an inline
+/// "New Folder" field, and forwards the choice to `onMove`/`onCreateFolder`.
+public struct LocalFolderDestinationSheet: View {
+    @State private var folders: [Folder] = []
+    @State private var isLoading = true
+
+    private let localBackend: LocalMailBackend
+    private let messageIDs: [String]
+    private let title: String
+    private let onMove: ([String], Folder) async throws -> Void
+    private let onClose: (() -> Void)?
+
+    /// Creates the sheet.
+    ///
+    /// - Parameters:
+    ///   - localBackend: The durable local-mail backend.
+    ///   - messageIDs: Messages to file once a destination is chosen.
+    ///   - title: Sheet title ("Copy to Local Folder" / "Move to Local Folder").
+    ///   - onMove: Performs the transfer into the chosen folder.
+    ///   - onClose: Dismisses the sheet.
+    public init(
+        localBackend: LocalMailBackend,
+        messageIDs: [String],
+        title: String,
+        onMove: @escaping ([String], Folder) async throws -> Void,
+        onClose: (() -> Void)? = nil
+    ) {
+        self.localBackend = localBackend
+        self.messageIDs = messageIDs
+        self.title = title
+        self.onMove = onMove
+        self.onClose = onClose
+    }
+
+    public var body: some View {
+        MoveToSheet(
+            allFolders: folders,
+            messageIDs: messageIDs,
+            title: title,
+            onMove: onMove,
+            onCreateFolder: { name in
+                let folder = try await localBackend.createFolder(name: name, parentID: nil)
+                folders = await (try? localBackend.folders()) ?? folders + [folder]
+                return folder
+            },
+            onClose: onClose
+        )
+        .task {
+            folders = await (try? localBackend.folders()) ?? []
+            isLoading = false
         }
     }
 }

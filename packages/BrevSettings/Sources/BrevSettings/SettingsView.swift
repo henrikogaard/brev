@@ -547,7 +547,8 @@ public struct SettingsView: View {
             MailStorageSection(
                 account: currentAccount,
                 backend: currentBackend,
-                settingsStore: settingsStore
+                settingsStore: settingsStore,
+                localBackend: backendProvider(LocalMailBackend.accountID) as? LocalMailBackend
             )
             .id(selectedSourceID?.accountID)
         case .calendarContacts:

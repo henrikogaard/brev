@@ -57,6 +57,8 @@ struct UnifiedInboxListView: View {
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backends: [any MailBackend]
     private let sourceSections: [MailSourceSection]
+    /// Whether Copy/Move to Local Folder may be offered (ADR-0077, macOS).
+    private let canFileLocally: Bool
     private let accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>]
     private let smartView: MailboxSmartView?
     /// When non-nil this list is showing a persisted saved search: the unified
@@ -89,6 +91,7 @@ struct UnifiedInboxListView: View {
     @State private var mutationErrorStatus: MessageListFooterStatus?
     @State private var loadMoreErrorStatus: MessageListFooterStatus?
     @State private var pendingDeleteItemID: UnifiedInboxItem.ID?
+    @State private var isBulkPermanentDeletePresented = false
     @State private var pendingSnoozeItems: [UnifiedInboxItem] = []
     @State private var followUpSettings = FollowUpSettings.load()
     /// Progressive disclosure for unified search execution chips.
@@ -123,6 +126,7 @@ struct UnifiedInboxListView: View {
         navigation: MailNavigationState,
         backends: [any MailBackend],
         sourceSections: [MailSourceSection],
+        canFileLocally: Bool = false,
         accountOwnedMailboxEmailsByAccountID: [BrevAccount.ID: Set<String>] = [:],
         smartView: MailboxSmartView? = nil,
         savedSearchID: String? = nil,
@@ -139,6 +143,7 @@ struct UnifiedInboxListView: View {
         _localMessageWorkflowState = localMessageWorkflowState
         self.backends = backends
         self.sourceSections = sourceSections
+        self.canFileLocally = canFileLocally
         self.accountOwnedMailboxEmailsByAccountID = accountOwnedMailboxEmailsByAccountID
         self.smartView = smartView
         self.savedSearchID = savedSearchID
@@ -336,10 +341,29 @@ struct UnifiedInboxListView: View {
             }
         } message: {
             if let item = pendingDeleteItem {
-                Text("Delete \"\(item.header.subject)\"?", bundle: .module)
+                if isPermanentDelete(for: item) {
+                    Text(MailUndoableDelete.permanentDeleteMessage(
+                        count: 1, folders: foldersForPermanentDelete(of: item)
+                    ))
+                } else {
+                    Text("Delete \"\(item.header.subject)\"?", bundle: .module)
+                }
             } else {
                 Text("Delete this message?", bundle: .module)
             }
+        }
+        .alert(String(localized: "Permanently Delete?", bundle: .module),
+               isPresented: $isBulkPermanentDeletePresented) {
+            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                Task { await delete(selectedItems, confirmedPermanent: true) }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text(MailUndoableDelete.permanentDeleteMessage(
+                count: selectedItems.count,
+                folders: selectedItems.first(where: { isPermanentDelete(for: $0) })
+                    .map { foldersForPermanentDelete(of: $0) } ?? []
+            ))
         }
         .sheet(isPresented: isUnifiedSnoozePickerPresented) {
             if let item = pendingSnoozeItems.first {
@@ -398,7 +422,7 @@ struct UnifiedInboxListView: View {
         }
         performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
         defer { pendingDeleteItemID = nil }
-        await delete(item)
+        await delete([item], confirmedPermanent: true)
     }
 
     private struct LoadKey: Equatable {
@@ -1008,6 +1032,8 @@ struct UnifiedInboxListView: View {
             canArchive: item.archiveFolder != nil,
             canMove: !moveFolderCandidates(for: item).isEmpty,
             canCopyToFolder: !moveFolderCandidates(for: item).isEmpty,
+            canFileLocally: canFileLocally
+                && item.sourceID.accountID != LocalMailBackend.accountID,
             junkActionTitle: junkActionTitle(for: item),
             canBlockSender: false,
             canDelete: true,
@@ -1191,6 +1217,28 @@ struct UnifiedInboxListView: View {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .copyToLocalFolder:
+            Button {
+                navigation.presentedSheet = .copyToLocal(
+                    messageIDs: [item.header.id],
+                    sourceID: item.sourceID,
+                    fromFolderID: item.folder.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .moveToLocalFolder:
+            Button {
+                navigation.presentedSheet = .moveToLocal(
+                    messageIDs: [item.header.id],
+                    sourceID: item.sourceID,
+                    fromFolderID: item.folder.id
+                )
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
         case .setJunk:
             Button {
                 let isInSpam = item.folder.role == .spam
@@ -1302,7 +1350,11 @@ struct UnifiedInboxListView: View {
         case .delete:
             Button(role: .destructive) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await delete(item) }
+                if isPermanentDelete(for: item) {
+                    pendingDeleteItemID = item.id
+                } else {
+                    Task { await delete(item) }
+                }
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
@@ -2042,11 +2094,29 @@ struct UnifiedInboxListView: View {
         undoQueue?.registerBatch(actions, description: MailJunkUndo.description(isJunk), lease: undoLease)
     }
 
+    /// A delete is permanent when the source has no Trash (local folders,
+    /// ADR-0077) or the message is already inside Trash — confirm first.
+    private func isPermanentDelete(for item: UnifiedInboxItem) -> Bool {
+        MailUndoableDelete.isPermanentDelete(
+            from: item.folder,
+            folders: foldersForPermanentDelete(of: item)
+        )
+    }
+
+    private func foldersForPermanentDelete(of item: UnifiedInboxItem) -> [Folder] {
+        sourceSections.first { $0.id == item.sourceID }?.folders ?? []
+    }
+
     private func delete(_ item: UnifiedInboxItem) async {
         await delete([item])
     }
 
-    private func delete(_ targetItems: [UnifiedInboxItem]) async {
+    private func delete(_ targetItems: [UnifiedInboxItem], confirmedPermanent: Bool = false) async {
+        if !confirmedPermanent,
+           targetItems.contains(where: { isPermanentDelete(for: $0) }) {
+            isBulkPermanentDeletePresented = true
+            return
+        }
         let undoLease = undoQueue?.beginMutation(navigation: navigation)
         defer { if let undoLease { undoQueue?.endMutation(undoLease) } }
         var receipts: [MailMoveUndo?] = []

@@ -24,6 +24,8 @@ struct BackupRestoreReport {
     var pendingRestoredAccounts = 0
     /// Backup accounts dropped because the email is already signed in.
     var alreadySignedInAccounts = 0
+    /// Local-mail restore outcome (ADR-0077): folders/messages/duplicates.
+    var mailRestore: LocalMailRestoreSummary?
 }
 
 /// Applies a validated `BackupPreview` (ADR-0076 decision 4). Each category
@@ -46,6 +48,10 @@ enum BackupRestorer {
     ///   - pendingStore: Where unsigned-in restored accounts are parked.
     ///   - injectedFailures: Test hook — category names that should throw
     ///     after their write, exercising rollback.
+    ///   - includeMail: Whether `mail/` payloads are applied (preview toggle).
+    ///   - mailRestoreHandler: Imports `mail/*.mbox` payloads into the local
+    ///     backend; when nil the payloads are skipped and counted as failed
+    ///     only when they exist — the caller wires the local backend.
     /// - Returns: A report of applied and rolled-back categories.
     @discardableResult
     static func apply(
@@ -55,8 +61,11 @@ enum BackupRestorer {
         signedInEmails: Set<String>,
         consentStore: RelatedConversationConsentStore = .shared,
         pendingStore: PendingRestoredAccountsStore = .init(),
-        injectedFailures: Set<String> = []
-    ) -> BackupRestoreReport {
+        injectedFailures: Set<String> = [],
+        includeMail: Bool = true,
+        mailRestoreHandler: (([LocalMailBackupPayload], LocalMailRestoreMode) async throws
+            -> LocalMailRestoreSummary)? = nil
+    ) async -> BackupRestoreReport {
         var report = BackupRestoreReport()
 
         if let settings = preview.settings {
@@ -107,6 +116,31 @@ enum BackupRestorer {
             } catch {
                 pendingStore.setEntries(before)
                 report.failedCategories.append(("accounts", error.localizedDescription))
+            }
+        }
+
+        // Local folders restore through the injected local backend. Merge
+        // dedupes by Message-ID; Replace recreates the folder (ADR-0077).
+        if includeMail, !preview.mailPayloads.isEmpty {
+            do {
+                guard let mailRestoreHandler else {
+                    throw InjectedCategoryFailure(category: "localMail")
+                }
+                let summary = try await mailRestoreHandler(
+                    preview.mailPayloads,
+                    mode == .replace ? .replace : .merge
+                )
+                report.mailRestore = summary
+                if summary.errors.isEmpty {
+                    report.succeededCategories.append("localMail")
+                } else {
+                    report.failedCategories.append((
+                        "localMail",
+                        summary.errors.joined(separator: "; ")
+                    ))
+                }
+            } catch {
+                report.failedCategories.append(("localMail", error.localizedDescription))
             }
         }
 

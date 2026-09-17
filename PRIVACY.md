@@ -499,6 +499,20 @@ Import adds messages to the chosen mailbox. A provider-backed import can upload
 the imported messages to that provider. Current import availability depends on
 the account's importer support.
 
+## Local mail folders
+
+Brev can keep mail in local folders ("On My Mac" / "On My iPhone"), stored as
+Maildir files under the app's Application Support directory — outside every
+cache root. This data is not a cache: it is never evicted by retention sweeps,
+never uploaded, and never sent anywhere. It persists until you delete a local
+folder (which permanently removes its messages) or remove the app's data.
+Creating, renaming, and deleting local folders and copying or moving mail into
+them are macOS-only actions; on iOS local folders are read-only. When you copy
+mail from a provider account into a local folder, the full message is read from
+that provider and written locally; moving mail additionally deletes it from the
+server through the same undoable path as a server-side move. Local folders are
+indexed by the same on-device search index as cached mail.
+
 ## Brev backups
 
 Settings › Import / Export can write a `.brevbackup` package — a folder
@@ -508,8 +522,11 @@ never include passwords, OAuth tokens, Keychain references, or other
 credentials; the manifest records `containsSecrets: false` and a SHA-256 hash
 of each payload so a restore can detect tampering. Restored accounts are
 parked under "Restored accounts — sign in to finish" until you sign in again.
-The file is written where you choose; if that location is managed by iCloud
-or another file provider, that provider's own synchronization settings apply.
+When local folders exist, the backup preview offers to include them as
+`mail/*.mbox` payloads (on by default); unlike the settings payload, those
+files contain full messages and attachments. The file is written where you
+choose; if that location is managed by iCloud or another file provider, that
+provider's own synchronization settings apply.
 
 ## What data does *not* leave your device, ever
 

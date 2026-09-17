@@ -37,7 +37,8 @@ public struct BrevBackupManifest: Codable, Equatable, Sendable {
     }
 
     /// Highest format version this build can read and write.
-    public static let currentFormatVersion = 1
+    /// Version 2 adds `mail/` payloads (ADR-0077); readers accept ≤ 2.
+    public static let currentFormatVersion = 2
 
     public var formatVersion: Int
     public var createdAt: Date

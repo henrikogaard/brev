@@ -63,6 +63,10 @@ public enum AppSessionFactory {
         /// Clears native Google account state during sign-out/removal.
         public let googleOAuthRemovalCoordinator:
             (@MainActor (BrevAccount.ID) async throws -> Void)?
+        /// Creates the durable local-mail backend (ADR-0077). Defaults to a
+        /// Maildir store under `applicationSupportURL/LocalFolders`; tests can
+        /// inject a temporary root.
+        public let localBackendFactory: (@Sendable () -> LocalMailBackend)?
 
         /// Creates the platform dependencies for the shared session factory.
         ///
@@ -94,7 +98,8 @@ public enum AppSessionFactory {
             googleOAuthRestoreCoordinator:
             (@MainActor (BrevAccount) async throws -> AppSession.LoginResult?)? = nil,
             googleOAuthRemovalCoordinator:
-            (@MainActor (BrevAccount.ID) async throws -> Void)? = nil
+            (@MainActor (BrevAccount.ID) async throws -> Void)? = nil,
+            localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL
             self.oauthPresentationAnchor = oauthPresentationAnchor
@@ -105,6 +110,7 @@ public enum AppSessionFactory {
                 googleOAuthAccountProvisioningCoordinator
             self.googleOAuthRestoreCoordinator = googleOAuthRestoreCoordinator
             self.googleOAuthRemovalCoordinator = googleOAuthRemovalCoordinator
+            self.localBackendFactory = localBackendFactory
         }
     }
 
@@ -157,6 +163,12 @@ public enum AppSessionFactory {
         let demoLoginCoordinator: AppSession.DemoLoginCoordinator? = nil
         #endif
 
+        let localBackend = (configuration.localBackendFactory ?? {
+            LocalMailBackend(
+                localSearchIndex: configuration.localSearchIndex?(LocalMailBackend.accountID)
+            )
+        })()
+
         let googleOAuthLoginCoordinator: AppSession.GoogleOAuthLoginCoordinator? =
             configuration.googleOAuthAccountProvisioningCoordinator.map { provisioner in
                 {
@@ -168,6 +180,7 @@ public enum AppSessionFactory {
             }
 
         return AppSession(
+            localBackend: localBackend,
             accountStore: accountStore,
             tokenStore: tokenStore,
             imapAccountSetupCoordinator: { request in

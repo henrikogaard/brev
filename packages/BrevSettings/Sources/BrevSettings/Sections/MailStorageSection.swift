@@ -605,8 +605,12 @@ struct MailStorageSection: View {
     private let account: BrevAccount?
     private let backend: (any MailBackend)?
     private let settingsStore: SettingsPersistenceStore
+    /// Durable local-mail backend (ADR-0077); its size is shown alongside the
+    /// cache sizes with "not a cache" copy.
+    private let localBackend: LocalMailBackend?
 
     @State private var breakdown: MailStorageBreakdown?
+    @State private var localFoldersBytes: Int64?
     @State private var storageURL: URL?
     @State private var sourceID: MailSourceID?
     @State private var syncHealth: AccountSyncHealth?
@@ -622,11 +626,13 @@ struct MailStorageSection: View {
         account: BrevAccount?,
         backend: (any MailBackend)?,
         settingsStore: SettingsPersistenceStore,
+        localBackend: LocalMailBackend? = nil,
         initiallyAdvancedExpanded: Bool = false
     ) {
         self.account = account
         self.backend = backend
         self.settingsStore = settingsStore
+        self.localBackend = localBackend
         _syncSettings = State(initialValue: settingsStore.accountMailboxSyncSettings())
         _isAdvancedExpanded = State(initialValue: initiallyAdvancedExpanded)
     }
@@ -640,6 +646,9 @@ struct MailStorageSection: View {
             )
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                if localBackend != nil {
+                    localFoldersGroup
+                }
                 if account == nil {
                     SettingsInfoCallout(
                         symbolName: "tray",
@@ -672,6 +681,22 @@ struct MailStorageSection: View {
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
         } message: {
             Text(storageResetPresentation.message)
+        }
+    }
+
+    private var localFoldersGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Local folders", bundle: .module),
+            subtitle: String(
+                localized: "Not a cache. Cleared only when you delete a local folder.",
+                bundle: .module
+            ),
+            symbolName: "externaldrive"
+        ) {
+            storageValueRow(
+                title: String(localized: "Size on disk", bundle: .module),
+                value: localFoldersBytes.map { MailStorageInfo.formattedSize($0) } ?? "Calculating..."
+            )
         }
     }
 
@@ -929,6 +954,9 @@ struct MailStorageSection: View {
     private func reload() async {
         sourceID = nil
         syncHealth = nil
+        if let localBackend {
+            localFoldersBytes = try? await localBackend.size()
+        }
         guard let account else {
             breakdown = nil
             storageURL = nil
