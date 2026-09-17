@@ -80,6 +80,10 @@ repository checks.
 | 67 | Google Desktop client credential and native SSO | Accepted |
 | 68 | Default blue accent and system appearance bootstrap | Accepted |
 | 69 | Monochrome default theme pair | Accepted |
+| 70 | Opt-in background mail on macOS | Superseded by ADR-0075 |
+| 71 | Native Microsoft Graph mail and shared mailboxes | Superseded by ADR-0079 |
+| 72 | Provider-neutral calendar and contact authoring | Proposed |
+| 73 | Durable local mail archives and portable backups | Superseded by ADR-0076, ADR-0077 |
 | 74 | Complete source-owned conversations | Accepted |
 | 75 | macOS background mail presence and launch at login | Accepted |
 | 76 | Versioned settings and account backup | Accepted |

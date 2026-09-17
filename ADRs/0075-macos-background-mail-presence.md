@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-16
 - **Deciders:** Henrik
+- **Supersedes:** ADR-0070
 
 ## Context
 

@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-17
 - **Deciders:** Henrik
+- **Supersedes:** ADR-0073
 - **Amends:** ADR-0034, ADR-0076
 - **Related:** ADR-0028, ADR-0030, ADR-0041, ADR-0045
 

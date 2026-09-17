@@ -274,16 +274,16 @@ columns: `Backlog`, `Ready`, `In progress`, `In review`, and `Done`.
 ### Issue And PR Completion Discipline
 
 - When work is tied to an issue, identify the issue number, target branch, and
-  expected integration branch before implementation. Default integration branch
-  is `development` when it exists; otherwise use repo-level instructions or
-  ask.
+  expected integration branch before implementation. Brev's integration branch
+  is `main`; feature branches start from `main` and normal PRs target `main`.
 - Before starting implementation, record the current branch/worktree and
   whether the branch already has an open PR.
 - Implementation is not complete until all of these are true:
   - relevant tests/checks have run, or skipped checks are explicitly justified
   - changes are committed on a named branch
   - the branch is pushed
-  - a PR exists targeting the correct integration branch, usually `development`
+  - a PR exists targeting `main` (or the immediate parent branch for a
+    dependent stack slice)
   - the PR description links the issue and includes verification evidence
   - project/issue status is moved to `In review` when repo rules use that state
 - If the agent cannot push or create a PR because of auth, detached HEAD,
@@ -301,6 +301,19 @@ columns: `Backlog`, `Ready`, `In progress`, `In review`, and `Done`.
 - Before final response on implementation tasks, run `git status --short`,
   `git branch --show-current`, and check whether the branch is pushed / has a
   PR when the repo uses GitHub.
+
+### Pull-request shape and stacks
+
+- One PR should deliver one coherent outcome. Before creating a branch or PR,
+  inspect open PRs and branch ancestry for the same outcome; continue the
+  existing branch and PR instead of creating a sibling.
+- Independent outcomes target `main`. Dependent, reviewable slices may use a
+  linear stack where each child PR targets its immediate parent branch. Link
+  adjacent PRs and keep the stack order explicit in each description.
+- If `main` or a parent branch moves, update the owned stack with a cascading
+  rebase and push each affected layer. This is the explicit stack-maintenance
+  exception to the ordinary no-rewrite rule; never rebase unrelated or shared
+  work.
 
 ### Documentation sweep
 
@@ -402,6 +415,9 @@ and object store, so broad git operations can affect another session.
 - Do not run `git add .`, `git add -A`, broad `git checkout`, `git pull`,
   `git merge`, `git rebase`, `git reset`, or history-rewriting commands
   unless Henrik explicitly asks for that exact operation.
+- A cascading rebase of a stack owned by this session is the one workflow
+  exception when `main` or the parent branch moves. Rebase only that stack,
+  verify every affected layer, and never rewrite unrelated or shared work.
 - Stage only explicit paths you intentionally changed.
 - Before committing, pushing, or opening a PR, run `git status`. If a
   file you did not intentionally edit appears modified or untracked,

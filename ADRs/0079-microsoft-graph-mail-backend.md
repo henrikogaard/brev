@@ -3,6 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-09-17
 - **Deciders:** Henrik
+- **Supersedes:** ADR-0071
 - **Amends:** ADR-0040, ADR-0066
 - **Related:** ADR-0006, ADR-0028, ADR-0065, ADR-0067, ADR-0074
 
