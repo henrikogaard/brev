@@ -1,5 +1,36 @@
 # Worklog
 
+## 2026-09-18 — Codex — Release signing target scope follow-up
+
+### Goal
+
+Unblock the signed `v0.1.0` archive after the first scoped-profile retry
+showed that a globally passed Developer ID identity still forced manual
+signing on SPM package targets.
+
+### Changes
+
+- Removed global team and full certificate identity overrides from the archive
+  command; Release target settings now own all Developer ID signing inputs.
+- Added regression checks that keep team, identity, signing style, and profile
+  target-scoped.
+- Clarified the app-only signing invariant in ADR-0080.
+
+### Verification
+
+- Focused release configuration and appcast checks are pending after this
+  follow-up edit.
+
+### Skipped
+
+- Hosted archive, signed DMG, appcast publication, and Sparkle client update
+  verification remain pending the fix being merged.
+
+### Handoff
+
+Run the focused checks, open and merge the follow-up, then rerun the tagged
+`v0.1.0` release workflow.
+
 ## 2026-09-18 — Codex — Release archive signing scope
 
 ### Goal

@@ -90,6 +90,8 @@ fi
 if ! grep -Fq '"CODE_SIGN_STYLE": "Manual"' "$project_file" ||
     ! grep -Fq '"PROVISIONING_PROFILE_SPECIFIER": "$(BREV_PROVISIONING_PROFILE_SPECIFIER)"' "$project_file" ||
     grep -Fq '  PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"' "$archive_script" ||
+    grep -Fq '  CODE_SIGN_IDENTITY="$BREV_SIGNING_IDENTITY"' "$archive_script" ||
+    grep -Fq '  DEVELOPMENT_TEAM="$BREV_TEAM_ID"' "$archive_script" ||
     grep -Fq 'CODE_SIGN_STYLE=Manual' "$archive_script"; then
   echo "ERROR: Developer ID profile settings must be scoped to the BrevMacOS app target" >&2
   exit 1
