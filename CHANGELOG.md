@@ -37,8 +37,21 @@ All notable changes to Brev are documented here.
   message search can match attachment text and label the hit with "Found in
   <name>". Turning the toggle off deletes the account's attachment index;
   Mail Storage shows its size with Rebuild/Remove actions.
+- Brev Nightly: a separate pre-release app (`Brev Nightly.app`,
+  `eu.brevmail.brev.nightly`) with its own app icon, preferences, and
+  Sparkle feed. Update feeds are now hosted on GitHub Pages with DMGs on
+  GitHub Releases; Settings › Updates shows the installed release ring and
+  links to the other ring's download.
 
 ### Changed
+
+- The Beta update channel is retired in favour of the Stable/Nightly
+  release rings (ADR-0080). The Stable/Beta picker is gone — the ring is
+  fixed per build — and update checks moved from `updates.brevmail.eu` to
+  `henrikogaard.github.io` / `github.com`.
+- Signed releases are now automated: pushing a `vX.Y.Z` tag builds, signs,
+  notarizes, and publishes a Stable release, and a Nightly build ships from
+  `main` each night (00:30 UTC) when main has moved (ADR-0080).
 
 - Mail import now defaults to a new local folder named after the imported
   file; provider folder destinations remain available in the destination step.

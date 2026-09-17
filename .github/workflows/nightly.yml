@@ -1,0 +1,220 @@
+name: Nightly
+
+# Nightly ring: a signed Brev Nightly.app built from main every night
+# (ADR-0080 §2–§4). The rolling `nightly` pre-release keeps only the
+# current DMG; older appcast items therefore point at deleted assets —
+# accepted, the feed caps at 14 items.
+on:
+  schedule:
+    - cron: '30 23 * * *'
+  workflow_dispatch:
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      skip: ${{ steps.decide.outputs.skip }}
+      sha: ${{ steps.decide.outputs.sha }}
+      prev: ${{ steps.decide.outputs.prev }}
+    steps:
+      - name: Decide whether a nightly build is needed
+        id: decide
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          if [[ "$GITHUB_REF" != "refs/heads/main" ]]; then
+            echo "::error::Nightly builds main only; refusing $GITHUB_REF"
+            exit 1
+          fi
+          SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          echo "sha=$SHA" >> "$GITHUB_OUTPUT"
+
+          PREV=""
+          if BODY="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/nightly" --jq .body 2>/dev/null)"; then
+            PREV="$(printf '%s' "$BODY" | sed -n 's/.*brev-nightly-commit: \([0-9a-f]*\).*/\1/p' | head -1)"
+          fi
+          echo "prev=$PREV" >> "$GITHUB_OUTPUT"
+
+          if [[ "$PREV" == "$SHA" && "$GITHUB_EVENT_NAME" == "schedule" ]]; then
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "main has not moved since the last nightly ($SHA); skipping."
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          RUNS="$(gh run list --workflow Build --commit "$SHA" --status success --limit 1 --json databaseId --jq length)"
+          if [[ "$RUNS" == "0" && "$PREV" != "$SHA" ]]; then
+            echo "::error::Build workflow has not passed on $SHA; not shipping a nightly."
+            exit 1
+          fi
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.skip != 'true'
+    runs-on: macos-15
+    timeout-minutes: 60
+    environment: release
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ needs.plan.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Resolve nightly version
+        run: |
+          MARKETING="$(sed -n 's/.*marketingVersion = "\(.*\)".*/\1/p' \
+            Tuist/ProjectDescriptionHelpers/BrevConstants.swift | head -1)"
+          if [[ -z "$MARKETING" ]]; then
+            echo "::error::Could not read marketingVersion from BrevConstants.swift"
+            exit 1
+          fi
+          NIGHTLY_DATE="$(date -u +%Y%m%d)"
+          {
+            echo "NIGHTLY_DATE=$NIGHTLY_DATE"
+            echo "VERSION=${MARKETING}-nightly.${NIGHTLY_DATE}"
+            echo "BUILD_NUMBER=$(date -u +%Y%m%d%H)"
+          } >> "$GITHUB_ENV"
+
+      - name: Install mise
+        uses: jdx/mise-action@c37c93293d6b742fc901e1406b8f764f6fb19dac # v2.4.4
+        with:
+          install: true
+          cache: true
+
+      - name: Select Xcode
+        run: |
+          if [[ -n "${BREV_XCODE_APP:-}" ]]; then
+            sudo xcode-select -s "$BREV_XCODE_APP/Contents/Developer"
+          elif [[ -d /Applications/Xcode.app/Contents/Developer ]]; then
+            sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+          fi
+
+      - name: Tuist install
+        run: mise exec -- tuist install
+
+      - name: Tuist generate
+        run: mise exec -- tuist generate --no-open
+
+      - name: Set up signing material
+        uses: ./.github/actions/release-signing
+        with:
+          phase: setup
+          p12-base64: ${{ secrets.BREV_DEVELOPER_ID_P12_BASE64 }}
+          p12-password: ${{ secrets.BREV_DEVELOPER_ID_P12_PASSWORD }}
+          profile-base64: ${{ secrets.BREV_MACOS_PROFILE_NIGHTLY_BASE64 }}
+          asc-key-p8-base64: ${{ secrets.BREV_ASC_KEY_P8_BASE64 }}
+          sparkle-private-ed-key: ${{ secrets.BREV_SPARKLE_PRIVATE_ED_KEY }}
+
+      - name: Export release environment
+        env:
+          BREV_ASC_KEY_ID: ${{ secrets.BREV_ASC_KEY_ID }}
+          BREV_ASC_ISSUER_ID: ${{ secrets.BREV_ASC_ISSUER_ID }}
+          BREV_SPARKLE_PUBLIC_ED_KEY: ${{ vars.BREV_SPARKLE_PUBLIC_ED_KEY }}
+        run: |
+          {
+            echo "BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY=$BREV_PROVISIONING_PROFILE_SPECIFIER"
+            echo "BREV_ASC_KEY_ID=$BREV_ASC_KEY_ID"
+            echo "BREV_ASC_ISSUER_ID=$BREV_ASC_ISSUER_ID"
+            echo "BREV_SPARKLE_PUBLIC_ED_KEY=$BREV_SPARKLE_PUBLIC_ED_KEY"
+          } >> "$GITHUB_ENV"
+
+      - name: Extract nightly notes
+        env:
+          PLAN_SHA: ${{ needs.plan.outputs.sha }}
+          PLAN_PREV: ${{ needs.plan.outputs.prev }}
+        run: |
+          PREV="$PLAN_PREV"
+          {
+            echo "Nightly build of main at $PLAN_SHA."
+            echo ""
+            if [[ -n "$PREV" ]] && git cat-file -e "$PREV" 2>/dev/null; then
+              git log --format='- %s (%h)' "$PREV..HEAD"
+            else
+              git log --format='- %s (%h)' --since="24 hours ago" HEAD
+            fi
+          } > "$RUNNER_TEMP/notes.txt"
+          cat "$RUNNER_TEMP/notes.txt"
+
+      - name: Build signed archive
+        run: scripts/release-archive.sh --ring nightly --version "$VERSION" --build-number "$BUILD_NUMBER"
+
+      - name: Export, notarize, and package DMG
+        run: scripts/release-dmg.sh --ring nightly --version "$VERSION"
+
+      - name: Verify artifact
+        run: scripts/release-artifact-verify.sh --dmg-path "build/release/Brev-Nightly-${NIGHTLY_DATE}.dmg"
+
+      - name: Move nightly tag and publish pre-release
+        env:
+          PLAN_SHA: ${{ needs.plan.outputs.sha }}
+        run: |
+          git tag -f nightly "$PLAN_SHA"
+          git push -f origin nightly
+
+          {
+            echo "<!-- brev-nightly-commit: $PLAN_SHA -->"
+            cat "$RUNNER_TEMP/notes.txt"
+          } > "$RUNNER_TEMP/release-body.md"
+
+          DMG="build/release/Brev-Nightly-${NIGHTLY_DATE}.dmg"
+          if gh release view nightly >/dev/null 2>&1; then
+            gh release edit nightly --tag nightly --prerelease \
+              --title "Brev Nightly ${NIGHTLY_DATE}" \
+              --notes-file "$RUNNER_TEMP/release-body.md"
+            # Remove stale assets before uploading; the dated DMG name
+            # changes nightly so --clobber alone would accumulate them.
+            for asset in $(gh release view nightly --json assets --jq '.assets[].name'); do
+              gh release delete-asset nightly "$asset" --yes
+            done
+            gh release upload nightly "$DMG" "$DMG.sha256"
+          else
+            gh release create nightly --prerelease \
+              --title "Brev Nightly ${NIGHTLY_DATE}" \
+              --notes-file "$RUNNER_TEMP/release-body.md" \
+              "$DMG" "$DMG.sha256"
+          fi
+
+      - name: Publish nightly appcast to gh-pages
+        run: |
+          SITE="$RUNNER_TEMP/site"
+          if git ls-remote --exit-code origin gh-pages >/dev/null 2>&1; then
+            git clone --depth 1 --branch gh-pages \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" "$SITE"
+          else
+            mkdir -p "$SITE"
+            git -C "$SITE" init -b gh-pages
+            git -C "$SITE" remote add origin \
+              "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          fi
+          touch "$SITE/.nojekyll"
+          scripts/release-appcast.sh --ring nightly \
+            --dmg "build/release/Brev-Nightly-${NIGHTLY_DATE}.dmg" \
+            --version "$VERSION" \
+            --build-number "$BUILD_NUMBER" \
+            --download-url "https://github.com/${GITHUB_REPOSITORY}/releases/download/nightly/Brev-Nightly-${NIGHTLY_DATE}.dmg" \
+            --notes-file "$RUNNER_TEMP/notes.txt" \
+            --site-dir "$SITE"
+          git -C "$SITE" config user.name "github-actions[bot]"
+          git -C "$SITE" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$SITE" add -A
+          git -C "$SITE" commit -m "appcast: nightly $VERSION" || echo "appcast unchanged"
+          git -C "$SITE" push origin gh-pages
+
+      - name: Clean up signing material
+        if: always()
+        uses: ./.github/actions/release-signing
+        with:
+          phase: cleanup
