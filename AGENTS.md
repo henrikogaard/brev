@@ -361,7 +361,10 @@ Before opening a PR:
 
 1. `scripts/lint.sh` passes.
 2. `scripts/format.sh` produces no changes.
-3. New or changed views have snapshot tests.
+3. New or changed views have snapshot tests. New macOS pixel-snapshot
+   suites must also be added to the macOS<26 skip list in
+   `.github/workflows/build.yml` and, when they should still run on a
+   compatible host, to the `snapshot-macos` job's `-only-testing` list.
 4. If protected paths touched: ADR drafted/updated.
 5. If new external network call: opt-in gate + ADR-0006 entry +
    PRIVACY.md update.

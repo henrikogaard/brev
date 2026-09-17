@@ -24,6 +24,31 @@ struct BackgroundMailCoordinatorTests {
         emailAddress: "test@example.org"
     )
 
+    /// A tick source the test drives by hand plus a signal the refresh
+    /// closure yields into, so assertions await real work instead of
+    /// sleeping for wall-clock ticks.
+    private struct DrivenTicks {
+        let continuation: AsyncStream<Void>.Continuation
+        let stream: AsyncStream<Void>
+        let refreshContinuation: AsyncStream<Void>.Continuation
+        var refreshes: AsyncStream<Void>.Iterator
+
+        init() {
+            let (stream, continuation) = AsyncStream<Void>.makeStream()
+            let (refreshes, refreshContinuation) = AsyncStream<Void>.makeStream()
+            self.stream = stream
+            self.continuation = continuation
+            self.refreshContinuation = refreshContinuation
+            self.refreshes = refreshes.makeAsyncIterator()
+        }
+
+        /// Lets one tick through and suspends until its refresh ran.
+        mutating func tick() async {
+            continuation.yield()
+            _ = await refreshes.next()
+        }
+    }
+
     private func makeCoordinator(
         refresh: @escaping @Sendable ([any MailBackend]) async -> String?
     ) -> BackgroundMailCoordinator {
@@ -33,18 +58,33 @@ struct BackgroundMailCoordinatorTests {
         )
     }
 
+    private func makeCoordinator(
+        ticks: DrivenTicks,
+        refresh: @escaping @Sendable ([any MailBackend]) async -> String?
+    ) -> BackgroundMailCoordinator {
+        BackgroundMailCoordinator(
+            backendsProvider: { [MockBackend(account: Self.account)] },
+            refresh: refresh,
+            tickSource: { _ in ticks.stream }
+        )
+    }
+
     @Test("ticks drive repeated refreshes and record success")
-    func ticksDriveRefreshes() async throws {
+    func ticksDriveRefreshes() async {
         let counter = RefreshCounter()
-        let coordinator = makeCoordinator { _ in
+        var ticks = DrivenTicks()
+        let signal = ticks.refreshContinuation
+        let coordinator = makeCoordinator(ticks: ticks) { _ in
             await counter.bump()
+            signal.yield()
             return nil
         }
-        coordinator.start(interval: 0.05)
-        try await Task.sleep(for: .milliseconds(230))
+        coordinator.start(interval: 60)
+        await ticks.tick()
+        await ticks.tick()
         coordinator.stop()
 
-        #expect(await counter.value >= 2)
+        #expect(await counter.value == 2)
         #expect(coordinator.lastSuccessfulRefresh != nil)
         #expect(coordinator.lastFailureSummary == nil)
         #expect(!coordinator.isManualSchedule)
@@ -60,35 +100,49 @@ struct BackgroundMailCoordinatorTests {
     }
 
     @Test("stop halts further ticks")
-    func stopHaltsTicks() async throws {
+    func stopHaltsTicks() async {
         let counter = RefreshCounter()
-        let coordinator = makeCoordinator { _ in
+        var ticks = DrivenTicks()
+        let signal = ticks.refreshContinuation
+        let coordinator = makeCoordinator(ticks: ticks) { _ in
             await counter.bump()
+            signal.yield()
             return nil
         }
-        coordinator.start(interval: 0.05)
-        try await Task.sleep(for: .milliseconds(120))
+        coordinator.start(interval: 60)
+        await ticks.tick()
         coordinator.stop()
-        let settled = await counter.value
-        try await Task.sleep(for: .milliseconds(150))
+        // A tick yielded after stop must be dropped: the cancelled loop
+        // checks Task.isCancelled before refreshing.
+        ticks.continuation.yield()
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
 
-        #expect(settled >= 1)
-        #expect(await counter.value == settled)
+        #expect(await counter.value == 1)
         #expect(!coordinator.isActive)
     }
 
     @Test("manual schedule activates without ticking")
-    func manualScheduleSkipsTicks() async throws {
+    func manualScheduleSkipsTicks() async {
         let counter = RefreshCounter()
-        let coordinator = makeCoordinator { _ in
-            await counter.bump()
-            return nil
-        }
+        let tickSourceRequested = Flag()
+        let coordinator = BackgroundMailCoordinator(
+            backendsProvider: { [MockBackend(account: Self.account)] },
+            refresh: { _ in
+                await counter.bump()
+                return nil
+            },
+            tickSource: { _ in
+                tickSourceRequested.value = true
+                return AsyncStream<Void>.makeStream().stream
+            }
+        )
         coordinator.start(interval: nil)
-        try await Task.sleep(for: .milliseconds(120))
 
         #expect(coordinator.isActive)
         #expect(coordinator.isManualSchedule)
+        #expect(!tickSourceRequested.value)
         #expect(await counter.value == 0)
         coordinator.stop()
     }
@@ -113,4 +167,9 @@ struct BackgroundMailCoordinatorTests {
 private actor RefreshCounter {
     private(set) var value = 0
     func bump() { value += 1 }
+}
+
+/// Mutable box for observing a `@Sendable` tick-source closure.
+private final class Flag: @unchecked Sendable {
+    var value = false
 }

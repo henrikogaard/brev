@@ -127,7 +127,7 @@ public enum MailFetchScheduler {
     /// immediate fire on subscription), matching Apple Mail behaviour.
     /// If `intervalSeconds` is `nil` the stream completes immediately
     /// with no ticks.
-    static func ticks(every intervalSeconds: TimeInterval?) -> AsyncStream<Void> {
+    public static func ticks(every intervalSeconds: TimeInterval?) -> AsyncStream<Void> {
         guard let intervalSeconds, intervalSeconds > 0 else {
             return AsyncStream { $0.finish() }
         }

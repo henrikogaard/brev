@@ -43,6 +43,7 @@ public final class BackgroundMailCoordinator {
     /// Supplies the currently connected backends at each refresh.
     public var backendsProvider: @MainActor () -> [any MailBackend]
     private let refresh: @Sendable ([any MailBackend]) async -> String?
+    private let tickSource: @Sendable (TimeInterval) -> AsyncStream<Void>
     private var tickTask: Task<Void, Never>?
     private var intervalSeconds: TimeInterval?
 
@@ -51,14 +52,20 @@ public final class BackgroundMailCoordinator {
     ///   - refresh: performs one refresh over the given backends and returns
     ///     a failure summary, or `nil` on success. Defaults to
     ///     `MailFetchScheduler.performBackgroundRefresh`.
+    ///   - tickSource: produces the tick stream for a given interval;
+    ///     injectable so tests can drive ticks deterministically.
     public init(
         backendsProvider: @escaping @MainActor () -> [any MailBackend] = { [] },
-        refresh: (@Sendable ([any MailBackend]) async -> String?)? = nil
+        refresh: (@Sendable ([any MailBackend]) async -> String?)? = nil,
+        tickSource: @escaping @Sendable (TimeInterval) -> AsyncStream<Void> = {
+            MailFetchScheduler.ticks(every: $0)
+        }
     ) {
         self.backendsProvider = backendsProvider
         self.refresh = refresh ?? { backends in
             await MailFetchScheduler.performBackgroundRefresh(backends: backends)
         }
+        self.tickSource = tickSource
     }
 
     /// Starts the cadence. A `nil` interval (manual schedule) activates
@@ -72,8 +79,8 @@ public final class BackgroundMailCoordinator {
         isManualSchedule = interval == nil
         isActive = true
         if let interval {
-            tickTask = Task { @MainActor [weak self] in
-                for await _ in MailFetchScheduler.ticks(every: interval) {
+            tickTask = Task { @MainActor [weak self, tickSource] in
+                for await _ in tickSource(interval) {
                     guard let self, !Task.isCancelled else { break }
                     await refreshNow()
                 }
