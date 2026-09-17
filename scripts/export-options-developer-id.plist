@@ -16,7 +16,7 @@
   <key>provisioningProfiles</key>
   <dict>
     <key>eu.brevmail.brev</key>
-    <string>Brev Developer ID Distribution</string>
+    <string>Brev Stable Developer ID CI Distribution</string>
   </dict>
   <key>stripSwiftSymbols</key>
   <true/>

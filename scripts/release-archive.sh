@@ -16,10 +16,10 @@
 # Optional environment variables:
 #   BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER
 #                           Stable Developer ID provisioning profile
-#                           (default "Brev Developer ID Distribution")
+#                           (default "Brev Stable Developer ID CI Distribution")
 #   BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY
 #                           Nightly Developer ID provisioning profile
-#                           (default "Brev Nightly Developer ID Distribution")
+#                           (default "Brev Nightly Developer ID CI Distribution")
 #   BREV_SPARKLE_FEED_URL   Appcast URL override (defaults to the ring feed)
 #
 # Output:
@@ -57,11 +57,11 @@ NIGHTLY_OVERRIDES=()
 case "$RING" in
   stable)
     DEFAULT_FEED_URL="https://henrikogaard.github.io/brev/appcast.xml"
-    PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER:-Brev Developer ID Distribution}"
+    PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER:-Brev Stable Developer ID CI Distribution}"
     ;;
   nightly)
     DEFAULT_FEED_URL="https://henrikogaard.github.io/brev/appcast-nightly.xml"
-    PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY:-Brev Nightly Developer ID Distribution}"
+    PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY:-Brev Nightly Developer ID CI Distribution}"
     NIGHTLY_OVERRIDES=(
       "BREV_APP_PRODUCT_NAME=Brev Nightly"
       "BREV_APP_BUNDLE_ID=eu.brevmail.brev.nightly"
@@ -124,9 +124,10 @@ XCBUILD_ARGS=(
   -archivePath "$ARCHIVE_PATH"
   DEVELOPMENT_TEAM="$BREV_TEAM_ID"
   CODE_SIGN_IDENTITY="$BREV_SIGNING_IDENTITY"
-  CODE_SIGN_STYLE=Manual
   ENABLE_HARDENED_RUNTIME=YES
-  PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
+  # This custom setting is consumed only by the BrevMacOS app target's
+  # Release configuration; package targets must not receive a profile.
+  BREV_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
   CURRENT_PROJECT_VERSION="$BREV_BUILD_NUMBER"
   BREV_RELEASE_RING="$RING"
   BREV_SPARKLE_FEED_URL="$BREV_SPARKLE_FEED_URL"
