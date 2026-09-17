@@ -29,6 +29,12 @@ if grep -Fq "sed -e :a" "$release_workflow" ||
   exit 1
 fi
 
+if ! grep -Fq 'BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID: ${{ secrets.BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID }}' "$release_workflow" ||
+    ! grep -Fq 'BREV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.BREV_GOOGLE_OAUTH_CLIENT_SECRET }}' "$release_workflow"; then
+  echo "ERROR: the release archive must receive the configured Google OAuth values" >&2
+  exit 1
+fi
+
 plutil -lint "$plist" >/dev/null
 
 require_value() {

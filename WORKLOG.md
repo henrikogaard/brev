@@ -1777,3 +1777,20 @@ portal assets that do not exist yet.
 - Handoff: commit and PR this workflow-only fix, merge it, retarget the
   unpublished `v0.1.0` tag to the merged `main` commit, then rerun the release
   and verify the GitHub asset and stable appcast.
+
+## 2026-09-17 — Codex — Release OAuth environment follow-up
+
+- Goal: pass the configured Google OAuth values into the hosted stable archive
+  build after the release run reached archive validation.
+- Summary: mapped the release-environment OAuth secrets explicitly onto the
+  archive step and extended the Developer ID release configuration test to
+  guard that mapping.
+- Verification: local release configuration test, release appcast test, lint,
+  format, and `git diff --check` will be run before handoff; the hosted run
+  confirmed signing setup and changelog extraction, then failed only because
+  these values were absent from the archive-step environment.
+- Skipped: no local notarized archive or DMG; those require the hosted release
+  secrets and Apple service path.
+- Handoff: merge this fix, recreate the unpublished `v0.1.0` tag at the final
+  green `main` commit, rerun the release, and verify the GitHub asset and
+  stable appcast.
