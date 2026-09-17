@@ -19,7 +19,7 @@ repository checks.
 | 6 | Telemetry, privacy, and GDPR compliance | Accepted |
 | 7 | Calendar invitation handling | Accepted |
 | 8 | AI Writer architecture | Accepted |
-| 9 | Distribution and code signing | Accepted |
+| 9 | Distribution and code signing | Accepted (amended by ADR-0080) |
 | 10 | MailResources compatibility shim | Accepted |
 | 11 | BrevMail package — composite mail UI lives outside apps | Accepted |
 | 12 | Settings surface — `BrevSettings` package, v1 sections | Accepted |
@@ -90,6 +90,7 @@ repository checks.
 | 77 | Durable local mail folders | Accepted |
 | 78 | Local attachment content indexing | Accepted |
 | 79 | Native Microsoft 365 mail through Microsoft Graph | Proposed |
+| 80 | Stable and Nightly release rings with CI-signed updates | Accepted |
 
 ## Conventions
 
