@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.1.0</title><pubDate>Thu, 17 Sep 2026 23:43:30 GMT</pubDate><sparkle:version>2026091723</sparkle:version><sparkle:shortVersionString>0.1.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Added
+
+- Initial public source baseline for the native macOS and iOS apps.
+- Native Gmail API support for Gmail and Google Workspace accounts.
+- Standards-based IMAP/SMTP support for other mail providers.
+- Local-first mail storage, search, compose, settings, and privacy controls.
+
+[Unreleased]: https://github.com/henrikogaard/brev/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/henrikogaard/brev/releases/tag/v0.1.0</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.1.0/Brev-0.1.0.dmg" length="27094799" type="application/octet-stream" sparkle:edSignature="dB/g0udCEVC6b5kU9PqGKQSErcA+Eve0b7LD0oR2Y6JxHNJhWxkZcxpSPXitL7UuFLkY6WS0NAOcBZrVa0l9DA==" /></item></channel></rss>
