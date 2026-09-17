@@ -106,12 +106,14 @@ are the single implementation and gain `--ring stable|nightly`,
 one path. Notarization, stapling, DMG creation, and Sparkle signing are
 unchanged in mechanism.
 
-The Developer ID signing style and ring-specific provisioning profile are
-configured on the `BrevMacOS` app target's Release configuration. The archive
-script passes the selected profile through the custom
+The Developer ID signing style, certificate, team, and ring-specific
+provisioning profile are configured on the `BrevMacOS` app target's Release
+configuration. The archive script passes the selected profile through the
+custom
 `BREV_PROVISIONING_PROFILE_SPECIFIER` build setting rather than setting
-`PROVISIONING_PROFILE_SPECIFIER` globally. SPM package targets do not support
-provisioning profiles and must remain outside that app-only signing scope.
+`PROVISIONING_PROFILE_SPECIFIER`, certificate, or team globally. SPM package
+targets do not support the release provisioning profile and must remain
+outside that app-only signing scope.
 
 ### 3. Hosting: GitHub Releases and GitHub Pages
 

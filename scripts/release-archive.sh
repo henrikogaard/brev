@@ -122,8 +122,6 @@ XCBUILD_ARGS=(
   -scheme BrevMacOS
   -configuration Release
   -archivePath "$ARCHIVE_PATH"
-  DEVELOPMENT_TEAM="$BREV_TEAM_ID"
-  CODE_SIGN_IDENTITY="$BREV_SIGNING_IDENTITY"
   ENABLE_HARDENED_RUNTIME=YES
   # This custom setting is consumed only by the BrevMacOS app target's
   # Release configuration; package targets must not receive a profile.
