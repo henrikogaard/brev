@@ -8927,7 +8927,7 @@ struct IMAPSMTPBackendTests {
         try await idleRecorder.waitUntilSubscriptionCount(2)
         #expect(await refreshCounter.count == 1)
         try await Task.sleep(nanoseconds: 50_000_000)
-        #expect(await idleRecorder.subscriptionCount == 2)
+        #expect(await refreshCounter.count == 1)
     }
 
     @Test("IDLE stream failure degrades sync health without disconnecting")

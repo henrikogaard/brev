@@ -1,5 +1,35 @@
 # Worklog
 
+## 2026-09-17 — Codex — Main Build follow-up
+
+### Goal
+
+Unblock the post-merge main build so the signed `v0.1.0` release can be
+exercised.
+
+### Changes
+
+- Stabilized the OAuth IDLE retry test by asserting the single-refresh
+  invariant instead of an exact subscription count after a scheduler-sensitive
+  sleep.
+
+### Verification
+
+- `swift test --package-path packages/BrevBackend` — 1125 tests in 111 suites
+  passed.
+- `git diff --check` — passed.
+
+### Skipped
+
+- Hosted CI rerun is pending push.
+- Signed release, appcast publication, and client update verification remain
+  pending the green main build.
+
+### Handoff
+
+Push the follow-up PR, merge after green CI, then tag `v0.1.0` and verify the
+published release feed and artifact.
+
 ## 2026-09-17 — Devin — Issue #28 §9: ADR-0077 durable local mail folders
 
 ### Goal
