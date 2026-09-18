@@ -255,6 +255,111 @@ enum NaturalLanguageSearchPlanner {
     }
 }
 
+/// Memoizes `MessageListSearchQueryPolicy.plan(...).chips` per list body.
+/// Chip detection runs regexes over the search text and is read several
+/// times per body evaluation, so the result is cached on the inputs that
+/// can change it — including the calendar day, since relative-date phrases
+/// resolve against "today".
+final class MessageListSearchChipsCache {
+    private struct Input: Equatable {
+        let text: String
+        let folderID: Folder.ID?
+        let execution: SearchExecution
+        let searchScope: SearchScope
+        let dayStart: Date
+    }
+
+    private var lastInput: Input?
+    private var lastChips: [NaturalLanguageSearchChip] = []
+
+    func chips(
+        text: String,
+        folderID: Folder.ID?,
+        execution: SearchExecution,
+        searchScope: SearchScope,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [NaturalLanguageSearchChip] {
+        let input = Input(
+            text: text,
+            folderID: folderID,
+            execution: execution,
+            searchScope: searchScope,
+            dayStart: calendar.startOfDay(for: now)
+        )
+        if input != lastInput {
+            lastInput = input
+            lastChips = MessageListSearchQueryPolicy.plan(
+                text: text,
+                folderID: folderID,
+                execution: execution,
+                searchScope: searchScope,
+                now: now,
+                calendar: calendar
+            ).chips
+        }
+        return lastChips
+    }
+}
+
+/// Memoizes unified-inbox search-chip detection per body. The chip set is
+/// read several times per body evaluation; it only depends on the trimmed
+/// text, the search mode (saved search vs. live), the inbox folder, the
+/// execution, and "today" for relative-date phrases.
+final class UnifiedInboxSearchChipsCache {
+    private struct Input: Equatable {
+        let text: String
+        let isSavedSearch: Bool
+        let inboxFolderID: Folder.ID?
+        let execution: SearchExecution
+        let dayStart: Date
+    }
+
+    private var lastInput: Input?
+    private var lastChips: [NaturalLanguageSearchChip] = []
+
+    func chips(
+        text: String,
+        isSavedSearch: Bool,
+        inboxFolderID: Folder.ID?,
+        execution: SearchExecution,
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> [NaturalLanguageSearchChip] {
+        let input = Input(
+            text: text,
+            isSavedSearch: isSavedSearch,
+            inboxFolderID: inboxFolderID,
+            execution: execution,
+            dayStart: calendar.startOfDay(for: now)
+        )
+        if input != lastInput {
+            lastInput = input
+            if isSavedSearch {
+                lastChips = NaturalLanguageSearchPlanner.plan(
+                    for: text,
+                    execution: .cacheOnly,
+                    now: now,
+                    calendar: calendar
+                ).chips
+            } else {
+                guard let inboxFolderID else {
+                    lastChips = []
+                    return lastChips
+                }
+                lastChips = UnifiedInboxSearchPolicy.searchPlan(
+                    text: text,
+                    inboxFolderID: inboxFolderID,
+                    execution: execution,
+                    now: now,
+                    calendar: calendar
+                ).chips
+            }
+        }
+        return lastChips
+    }
+}
+
 enum MessageListSearchQueryPolicy {
     static func plan(
         text: String,

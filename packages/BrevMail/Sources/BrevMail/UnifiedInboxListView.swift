@@ -93,7 +93,11 @@ struct UnifiedInboxListView: View {
     @State private var pendingDeleteItemID: UnifiedInboxItem.ID?
     @State private var isBulkPermanentDeletePresented = false
     @State private var pendingSnoozeItems: [UnifiedInboxItem] = []
-    @State private var followUpSettings = FollowUpSettings.load()
+    /// Active follow-up reminders indexed by message, rebuilt on settings
+    /// reload so each rendered row's reminder lookup stays O(1)-ish.
+    @State private var followUpReminderIndex = FollowUpReminderIndex(
+        settings: FollowUpSettings.load()
+    )
     /// Progressive disclosure for unified search execution chips.
     @State private var isSearchOptionsExpanded = false
 
@@ -121,6 +125,14 @@ struct UnifiedInboxListView: View {
     /// a raw `threadID` would collide across accounts.
     @State private var expandedThreadKeys: Set<String> = []
     @State private var pinnedMessageIDSet: Set<MessageHeader.ID> = []
+    /// Buckets the last-week temporal invalidation scan so building the
+    /// snapshot-cache key doesn't walk every item date per body evaluation.
+    @State private var temporalInvalidationTracker = MailboxListTemporalInvalidationTracker()
+    /// Materializes workflow-state membership once per state change instead
+    /// of per row.
+    @State private var workflowLookupCache = LocalMessageWorkflowLookupCache()
+    /// Memoizes search-chip detection per (text, mode, execution) triple.
+    @State private var searchChipsCache = UnifiedInboxSearchChipsCache()
 
     init(
         navigation: MailNavigationState,
@@ -257,7 +269,8 @@ struct UnifiedInboxListView: View {
                                         visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
                                         visibleCount: presentation.visibleItems.count,
                                         pinnedMessageIDs: presentation.pinnedMessageIDs,
-                                        threadCounts: presentation.threadCounts
+                                        threadCounts: presentation.threadCounts,
+                                        itemsByThreadKey: presentation.itemsByThreadKey
                                     )
                                 }
                             }
@@ -268,7 +281,8 @@ struct UnifiedInboxListView: View {
                                     visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
                                     visibleCount: presentation.visibleItems.count,
                                     pinnedMessageIDs: presentation.pinnedMessageIDs,
-                                    threadCounts: presentation.threadCounts
+                                    threadCounts: presentation.threadCounts,
+                                    itemsByThreadKey: presentation.itemsByThreadKey
                                 )
                             }
                         }
@@ -306,7 +320,7 @@ struct UnifiedInboxListView: View {
             selectedItemIDs.removeAll()
             navigation.bulkSelection.removeAll()
             reconcileSearchExecutionWithVisibleSources()
-            followUpSettings = FollowUpSettings.load()
+            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             if !trimmedSearchText.isEmpty {
                 guard await loadOwnership.debounceSearch(request) else { return }
             }
@@ -327,7 +341,7 @@ struct UnifiedInboxListView: View {
         }
         .onChange(of: pinnedMessageIDsRaw) { refreshPinnedMessageIDSet() }
         .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
-            followUpSettings = FollowUpSettings.load()
+            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
         }
         .onChange(of: searchCapabilityKey) {
             reconcileSearchExecutionWithVisibleSources()
@@ -456,8 +470,8 @@ struct UnifiedInboxListView: View {
     private var presentationSnapshot: UnifiedInboxPresentationSnapshot {
         _ = inboxCategoryOverrideRevision
         let now = Date()
-        let temporalInvalidationKey = MailboxListTemporalInvalidationKey.items(
-            items,
+        let temporalInvalidationKey = temporalInvalidationTracker.key(
+            items: items,
             filter: navigation.mailboxFilter,
             workflowMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
@@ -498,7 +512,8 @@ struct UnifiedInboxListView: View {
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: now,
                 calendar: calendar,
-                threadCounts: listed.threadCounts
+                threadCounts: listed.threadCounts,
+                sourceItems: items
             )
         }
     }
@@ -640,10 +655,13 @@ struct UnifiedInboxListView: View {
             MessageListFolderStats(
                 folderName: savedSearchTitle ?? smartView?.title ?? "Unified Inbox",
                 totalCount: max(unifiedInboxTotalCount, items.count),
-                unreadCount: max(unifiedInboxUnreadCount, items.filter { !$0.header.isRead }.count),
+                // Unread/pinned tallies come from the cached snapshot's
+                // single source pass — identical to the old per-render
+                // filters over `items`.
+                unreadCount: max(unifiedInboxUnreadCount, presentation.unreadItemCount),
                 loadedCount: items.count,
                 visibleCount: presentation.visibleItems.count,
-                pinnedCount: items.filter { presentation.pinnedMessageIDs.contains($0.pinID) }.count,
+                pinnedCount: presentation.pinnedItemCount,
                 isThreaded: false,
                 isConstrained: navigation.mailboxFilter.isActive || !trimmedSearchText.isEmpty
             ),
@@ -669,16 +687,22 @@ struct UnifiedInboxListView: View {
 
     private var naturalLanguageSearchChips: [NaturalLanguageSearchChip] {
         if savedSearchQuery != nil {
-            return NaturalLanguageSearchPlanner.plan(for: trimmedSearchText, execution: .cacheOnly).chips
+            return searchChipsCache.chips(
+                text: trimmedSearchText,
+                isSavedSearch: true,
+                inboxFolderID: nil,
+                execution: navigation.searchExecution,
+                calendar: calendar
+            )
         }
-        guard !trimmedSearchText.isEmpty,
-              let inboxID = sourceSections.first?.folders.first(where: { $0.role == .inbox })?.id
-        else { return [] }
-        return UnifiedInboxSearchPolicy.searchPlan(
+        guard !trimmedSearchText.isEmpty else { return [] }
+        return searchChipsCache.chips(
             text: trimmedSearchText,
-            inboxFolderID: inboxID,
-            execution: navigation.searchExecution
-        ).chips
+            isSavedSearch: false,
+            inboxFolderID: sourceSections.first?.folders.first(where: { $0.role == .inbox })?.id,
+            execution: navigation.searchExecution,
+            calendar: calendar
+        )
     }
 
     private func removeSearchChip(_ chip: NaturalLanguageSearchChip) {
@@ -789,6 +813,9 @@ struct UnifiedInboxListView: View {
 
     @ViewBuilder
     private var bulkActionBar: some View {
+        // Resolve the selection once per bar build instead of re-filtering
+        // the whole item list on every button's enable check and action.
+        let selected = selectedItems
         HStack(spacing: BrevSpacing.xs) {
             Text("\(selectedItemIDs.count) selected", bundle: .module)
                 .brevFont(.subheadline)
@@ -821,7 +848,7 @@ struct UnifiedInboxListView: View {
             BulkActionIconButton(
                 label: "Archive",
                 systemImage: "archivebox",
-                isDisabled: isMutationActionBlocked || !selectedItems.allSatisfy { $0.archiveFolder != nil }
+                isDisabled: isMutationActionBlocked || !selected.allSatisfy { $0.archiveFolder != nil }
             ) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
                 Task { await bulkArchive() }
@@ -835,7 +862,7 @@ struct UnifiedInboxListView: View {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
                 Task { await bulkDelete() }
             }
-            unifiedBulkOverflowMenu
+            unifiedBulkOverflowMenu(selectedItems: selected)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -848,7 +875,9 @@ struct UnifiedInboxListView: View {
     }
 
     @ViewBuilder
-    private var unifiedBulkOverflowMenu: some View {
+    private func unifiedBulkOverflowMenu(
+        selectedItems: [UnifiedInboxItem]
+    ) -> some View {
         let moveSourceID = singleMoveSourceID(for: selectedItems)
         Menu {
             Button(String(localized: "Unflag", bundle: .module)) {
@@ -894,7 +923,8 @@ struct UnifiedInboxListView: View {
         visibleIndex: Int,
         visibleCount: Int,
         pinnedMessageIDs: Set<MessageHeader.ID>,
-        threadCounts: [String: Int]
+        threadCounts: [String: Int],
+        itemsByThreadKey: [String: [UnifiedInboxItem]]
     ) -> some View {
         let threadKey = UnifiedInboxThreadGrouping.key(for: item)
         let threadCount = threadCounts[threadKey] ?? 1
@@ -907,11 +937,11 @@ struct UnifiedInboxListView: View {
             threadCount: threadCount
         )
         if threadCount > 1, expandedThreadKeys.contains(threadKey) {
-            let children = UnifiedInboxThreadGrouping.children(
-                for: threadKey,
-                excludingParentID: item.id,
-                from: items
-            )
+            // Buckets are pre-grouped and sorted oldest → newest in the
+            // cached snapshot, so an expanded row no longer re-filters the
+            // whole unified list per render.
+            let children = (itemsByThreadKey[threadKey] ?? [])
+                .filter { $0.id != item.id }
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child.header,
@@ -941,7 +971,7 @@ struct UnifiedInboxListView: View {
         threadKey: String,
         threadCount: Int
     ) -> some View {
-        let followUpReminder = followUpSettings.reminder(for: item.header.id, sourceID: item.sourceID)
+        let followUpReminder = followUpReminderIndex.reminder(for: item.header.id, sourceID: item.sourceID)
         MessageListRow(
             header: item.header,
             threadCount: threadCount,
@@ -1046,7 +1076,7 @@ struct UnifiedInboxListView: View {
             canCreateMeeting: navigation.presentedSheet == nil,
             canAddNote: navigation.presentedSheet == nil,
             canFollowUp: navigation.presentedSheet == nil,
-            hasFollowUp: followUpSettings.reminder(for: item.header.id, sourceID: item.sourceID) != nil,
+            hasFollowUp: followUpReminderIndex.reminder(for: item.header.id, sourceID: item.sourceID) != nil,
             canReply: composeActions.isAvailable,
             canShowProperties: true,
             extendedCapabilities: backend(for: item.sourceID)?.extendedCapabilities ?? [],
@@ -2230,14 +2260,20 @@ struct UnifiedInboxListView: View {
         return folderIDs.count == 1 ? folderIDs.first : nil
     }
 
+    /// Membership view of the workflow state, materialized once per state
+    /// change — each row's snooze/done/note check is then O(1).
+    private var workflowLookup: LocalMessageWorkflowLookup {
+        workflowLookupCache.lookup(for: localMessageWorkflowState)
+    }
+
     private func isSnoozed(_ item: UnifiedInboxItem) -> Bool {
-        localMessageWorkflowState.isSnoozed(
+        workflowLookup.isSnoozed(
             SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
         )
     }
 
     private func isDone(_ item: UnifiedInboxItem) -> Bool {
-        localMessageWorkflowState.isDone(
+        workflowLookup.isDone(
             SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
         )
     }
@@ -2249,7 +2285,7 @@ struct UnifiedInboxListView: View {
     }
 
     private func hasNote(_ item: UnifiedInboxItem) -> Bool {
-        localMessageWorkflowState.note(
+        workflowLookup.note(
             for: SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
         ) != nil
     }

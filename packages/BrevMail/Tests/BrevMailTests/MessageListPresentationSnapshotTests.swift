@@ -75,6 +75,56 @@ struct MessageListPresentationSnapshotTests {
         #expect(buildCount == 3)
     }
 
+    @Test("unread and pinned tallies are derived over the source headers")
+    func derivesFolderStatsCountsOverSourceHeaders() {
+        let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+        var unread = Self.header(id: "unread", date: referenceDate)
+        unread.isRead = false
+        var read = Self.header(id: "read", date: referenceDate)
+        read.isRead = true
+        var hidden = Self.header(id: "hidden", date: referenceDate)
+        hidden.isRead = false
+        let sourceHeaders = [unread, read, hidden]
+
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [unread, read],
+            pinnedMessageIDs: [unread.id, hidden.id],
+            groupByDate: false,
+            collapsedDateSectionIDs: [],
+            referenceDate: referenceDate,
+            sourceHeaders: sourceHeaders
+        )
+
+        #expect(snapshot.unreadHeaderCount == 2)
+        #expect(snapshot.pinnedHeaderCount == 2)
+    }
+
+    @Test("headers group by thread oldest to newest for expanded rows")
+    func groupsHeadersByThreadID() {
+        let referenceDate = Date(timeIntervalSince1970: 1_800_000_000)
+        let parent = Self.header(id: "parent", threadID: "thread-a", date: referenceDate)
+        let oldest = Self.header(
+            id: "oldest",
+            threadID: "thread-a",
+            date: referenceDate.addingTimeInterval(-3600)
+        )
+        let other = Self.header(id: "other", threadID: "thread-b", date: referenceDate)
+
+        let snapshot = MessageListPresentationSnapshot(
+            headers: [parent],
+            pinnedMessageIDs: [],
+            groupByDate: false,
+            collapsedDateSectionIDs: [],
+            referenceDate: referenceDate,
+            sourceHeaders: [parent, oldest, other]
+        )
+
+        // Same result the per-render `ThreadMessageDerivation` filter
+        // produced, without re-walking the folder.
+        #expect(snapshot.headersByThreadID["thread-a"]?.map(\.id) == ["oldest", "parent"])
+        #expect(snapshot.headersByThreadID["thread-b"]?.map(\.id) == ["other"])
+    }
+
     private static func key(
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>
     ) -> MessageListPresentationSnapshotCache.Key {
@@ -117,10 +167,14 @@ struct MessageListPresentationSnapshotTests {
         )
     }
 
-    private static func header(id: String, date: Date) -> MessageHeader {
+    private static func header(
+        id: String,
+        threadID: String? = nil,
+        date: Date
+    ) -> MessageHeader {
         MessageHeader(
             id: id,
-            threadID: id,
+            threadID: threadID ?? id,
             folderID: "inbox",
             from: Correspondent(email: "sender@example.org"),
             subject: id,

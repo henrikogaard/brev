@@ -61,6 +61,16 @@ final class HTMLBodyWebViewStore: ObservableObject {
         hasScheduledContentLoad = true
     }
 
+    /// Drops the WebKit instance so a collapsed or pooled-out card stops
+    /// holding a renderer. The next `webView` access recreates it lazily;
+    /// an already-mounted representable keeps its own reference and is
+    /// unaffected.
+    func releaseWebView() {
+        storedWebView = nil
+        isPrewarmed = false
+        hasScheduledContentLoad = false
+    }
+
     private static func configuration() -> WKWebViewConfiguration {
         let config = WKWebViewConfiguration()
         let prefs = WKWebpagePreferences()

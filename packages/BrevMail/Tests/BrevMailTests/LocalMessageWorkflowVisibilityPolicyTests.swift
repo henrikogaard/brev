@@ -196,6 +196,112 @@ struct LocalMessageWorkflowVisibilityPolicyTests {
         #expect(after.lastWeekIncludedCount == 0)
     }
 
+    @Test("temporal tracker matches the direct key at every boundary")
+    func temporalTrackerMatchesDirectKey() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let inside = MessageHeader(
+            id: "inside",
+            threadID: "thread-inside",
+            folderID: "inbox",
+            from: Correspondent(email: "ada@example.org"),
+            subject: "Inside",
+            snippet: "",
+            date: now.addingTimeInterval(-604_000)
+        )
+        let boundary = MessageHeader(
+            id: "boundary",
+            threadID: "thread-boundary",
+            folderID: "inbox",
+            from: Correspondent(email: "ada@example.org"),
+            subject: "Boundary",
+            snippet: "",
+            date: now.addingTimeInterval(-604_795)
+        )
+        let headers = [inside, boundary]
+        let filter = MailboxFilterQuery(activeFilters: [.lastWeek])
+        let tracker = MailboxListTemporalInvalidationTracker()
+
+        // Advance through the boundary minute-by-minute: the tracker's
+        // memoized window must produce the same key as a full rescan.
+        for offset in stride(from: 0, through: 120, by: 7) {
+            let tick = now.addingTimeInterval(TimeInterval(offset))
+            let direct = MailboxListTemporalInvalidationKey.headers(
+                headers,
+                filter: filter,
+                workflowMode: .active,
+                workflowState: .defaults,
+                now: tick
+            )
+            let tracked = tracker.key(
+                headers: headers,
+                filter: filter,
+                workflowMode: .active,
+                workflowState: .defaults,
+                now: tick
+            )
+            #expect(tracked == direct)
+        }
+    }
+
+    @Test("temporal tracker rescans when the header buffer changes")
+    func temporalTrackerRescansOnNewBuffer() {
+        let now = Date(timeIntervalSince1970: 1_000_000)
+        let header = MessageHeader(
+            id: "rolling",
+            threadID: "thread-rolling",
+            folderID: "inbox",
+            from: Correspondent(email: "ada@example.org"),
+            subject: "Rolling",
+            snippet: "",
+            date: now.addingTimeInterval(-604_795)
+        )
+        let filter = MailboxFilterQuery(activeFilters: [.lastWeek])
+        let tracker = MailboxListTemporalInvalidationTracker()
+        let before = tracker.key(
+            headers: [header],
+            filter: filter,
+            workflowMode: .active,
+            workflowState: .defaults,
+            now: now
+        )
+        // A new buffer holding a header the window doesn't know about must
+        // not reuse the previous count even though `now` is unchanged.
+        let after = tracker.key(
+            headers: [header, header],
+            filter: filter,
+            workflowMode: .active,
+            workflowState: .defaults,
+            now: now
+        )
+        #expect(before.lastWeekIncludedCount == 1)
+        #expect(after.lastWeekIncludedCount == 2)
+    }
+
+    @Test("workflow lookup answers match the state queries")
+    func workflowLookupMatchesStateQueries() {
+        let now = Date(timeIntervalSince1970: 5000)
+        let snoozedID = SourceMessageID(sourceID: source, messageID: "snoozed")
+        let doneID = SourceMessageID(sourceID: source, messageID: "done")
+        let state = LocalMessageWorkflowStatePolicy.markingDone(
+            [doneID],
+            now: now,
+            in: LocalMessageWorkflowStatePolicy.snoozing(
+                snoozedID,
+                until: now.addingTimeInterval(3600),
+                now: now,
+                in: .defaults
+            )
+        )
+        let lookup = LocalMessageWorkflowLookup(state: state)
+
+        #expect(lookup.isSnoozed(snoozedID, at: now) == state.isSnoozed(snoozedID, at: now))
+        #expect(lookup.isSnoozed(doneID, at: now) == state.isSnoozed(doneID, at: now))
+        #expect(lookup.isDone(doneID) == state.isDone(doneID))
+        #expect(lookup.isDone(snoozedID) == state.isDone(snoozedID))
+        #expect(lookup.activeSnooze(for: snoozedID, at: now)?.wakeAt
+            == state.activeSnooze(for: snoozedID, at: now)?.wakeAt)
+    }
+
     private static func header(id: String) -> MessageHeader {
         MessageHeader(
             id: id,

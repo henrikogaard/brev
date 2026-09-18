@@ -53,6 +53,69 @@ struct ComposeHTMLPublicationTests {
         #expect(published == ["html:latest"])
     }
 
+    @Test("producer thunk is only invoked when the debounce fires")
+    @MainActor
+    func producerThunkDefersSnapshotMaterialization() {
+        var produced = 0
+        var published: [String] = []
+        let controller = ComposeHTMLPublicationController<String>(
+            delayNanoseconds: .max,
+            serialize: { "html:\($0)" },
+            publish: { published.append($0) }
+        )
+
+        // Scheduling must not materialize the snapshot — that would pay a
+        // full attributed-string copy per keystroke.
+        controller.schedule(produce: {
+            produced += 1
+            return "latest"
+        })
+        #expect(produced == 0)
+
+        controller.flush()
+        #expect(produced == 1)
+        #expect(published == ["html:latest"])
+    }
+
+    @Test("unchanged serializations are not republished")
+    @MainActor
+    func unchangedSerializationsAreNotRepublished() {
+        var published: [String] = []
+        let controller = ComposeHTMLPublicationController<String>(
+            delayNanoseconds: .max,
+            serialize: { "html:\($0)" },
+            publish: { published.append($0) }
+        )
+
+        controller.schedule("body")
+        controller.flush()
+        controller.schedule("body")
+        controller.flush()
+
+        #expect(published == ["html:body"])
+    }
+
+    @Test("cancel clears the last-published marker so re-entry republishes")
+    @MainActor
+    func cancelClearsLastPublishedMarker() {
+        var published: [String] = []
+        let controller = ComposeHTMLPublicationController<String>(
+            delayNanoseconds: .max,
+            serialize: { "html:\($0)" },
+            publish: { published.append($0) }
+        )
+
+        controller.schedule("body")
+        controller.flush()
+        // Leaving rich mode clears the binding through the cancel path; the
+        // same content must publish again when rich mode re-engages.
+        controller.cancel()
+        controller.schedule("body")
+        controller.flush()
+
+        #expect(published == ["html:body", "html:body"])
+    }
+
     @Test("publication debounce stays below one interactive frame budget")
     func publicationDebounceStaysBounded() {
         #expect(ComposeHTMLPublicationPolicy.debounceNanoseconds <= 100_000_000)

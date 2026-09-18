@@ -42,6 +42,12 @@ struct ContactsAccessPolicyTests {
     @Test("a real mailbox leaves Contacts available")
     func realMailboxLeavesContactsAvailable() throws {
         let defaults = try Self.makeDefaults()
+        // Suites run in parallel and `allowsSystemContactsAccess` is
+        // process-wide; pin it so a demo sign-in in another suite cannot
+        // flip the outcome mid-test.
+        let original = AvatarPermissionPolicy.allowsSystemContactsAccess
+        AvatarPermissionPolicy.allowsSystemContactsAccess = true
+        defer { AvatarPermissionPolicy.allowsSystemContactsAccess = original }
 
         let isEnabled = ContactsAccessPolicy.isEnabled(
             environment: [:],

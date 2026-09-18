@@ -332,10 +332,26 @@ struct SenderContextPanel: View {
     private static let relationshipLabelWidth: CGFloat = 72
 
     private func formattedDate(_ date: Date) -> String {
+        Self.mediumDateFormatter(locale: locale).string(from: date)
+    }
+
+    // `DateFormatter` is expensive to construct and this runs once per
+    // relationship row on every panel render, so configured instances are
+    // cached — the same pattern as `MessageListDatePresentation`.
+    private static let formatterLock = NSLock()
+    private nonisolated(unsafe) static var dateFormatterCache: [String: DateFormatter] = [:]
+
+    private static func mediumDateFormatter(locale: Locale) -> DateFormatter {
+        let key = "\(locale.identifier)|\(TimeZone.autoupdatingCurrent.identifier)"
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        if let cached = dateFormatterCache[key] { return cached }
         let formatter = DateFormatter()
         formatter.locale = locale
+        formatter.timeZone = .autoupdatingCurrent
         formatter.dateStyle = .medium
         formatter.timeStyle = .none
-        return formatter.string(from: date)
+        dateFormatterCache[key] = formatter
+        return formatter
     }
 }

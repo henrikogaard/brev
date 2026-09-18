@@ -60,8 +60,12 @@ struct ComposeDebouncedPublicationState<Value> {
 /// Main-actor bridge that coalesces rich HTML serialization and supports a
 /// synchronous flush before a draft is saved or sent.
 final class ComposeHTMLPublicationController<Value> {
-    private var state = ComposeDebouncedPublicationState<Value>()
+    /// The pending payload is a producer, not a snapshot: building the value
+    /// (a full attributed-string copy for the rich editor) is only paid when
+    /// the debounce actually fires, not on every keystroke or SwiftUI update.
+    private var state = ComposeDebouncedPublicationState<() -> Value>()
     private var publicationTask: Task<Void, Never>?
+    private var lastPublished: String?
     private let serialize: (Value) -> String
     private let publish: (String) -> Void
     private let delayNanoseconds: UInt64
@@ -77,8 +81,9 @@ final class ComposeHTMLPublicationController<Value> {
         self.publish = publish
     }
 
-    /// Schedules the newest editor snapshot for publication.
-    func schedule(_ value: Value) {
+    /// Schedules the newest editor snapshot for publication. The producer is
+    /// invoked only if this generation survives the debounce window.
+    func schedule(produce value: @escaping () -> Value) {
         let generation = state.schedule(value)
         publicationTask?.cancel()
         publicationTask = Task { @MainActor [weak self] in
@@ -92,10 +97,15 @@ final class ComposeHTMLPublicationController<Value> {
                   let pending = state.takePending(for: generation) else {
                 return
             }
-            let serialized = serialize(pending)
+            let serialized = serialize(pending())
             guard !Task.isCancelled, state.isCurrent(generation) else { return }
-            publish(serialized)
+            publishIfChanged(serialized)
         }
+    }
+
+    /// Schedules an already-materialized snapshot for publication.
+    func schedule(_ value: Value) {
+        schedule(produce: { value })
     }
 
     /// Publishes the newest pending snapshot synchronously for save/send.
@@ -103,7 +113,7 @@ final class ComposeHTMLPublicationController<Value> {
         publicationTask?.cancel()
         publicationTask = nil
         guard let pending = state.flush() else { return }
-        publish(serialize(pending))
+        publishIfChanged(serialize(pending()))
     }
 
     /// Cancels delayed work and drops any unpublished snapshot.
@@ -111,6 +121,17 @@ final class ComposeHTMLPublicationController<Value> {
         publicationTask?.cancel()
         publicationTask = nil
         _ = state.flush()
+        // The caller clears the published value itself (e.g. leaving rich
+        // mode), so the next publication must not be skipped as unchanged.
+        lastPublished = nil
+    }
+
+    /// Skips redundant binding writes when serialization produced the exact
+    /// HTML that is already published.
+    private func publishIfChanged(_ serialized: String) {
+        guard serialized != lastPublished else { return }
+        lastPublished = serialized
+        publish(serialized)
     }
 
     deinit {
