@@ -28,6 +28,20 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "622E4B2D82365E42D6AAE248"
+               BuildableName = "BrevIOSTests.xctest"
+               BlueprintName = "BrevIOSTests"
+               ReferencedContainer = "container:apps/iOS/BrevIOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "8AD226FBE5683CD167B0D31B"
                BuildableName = "Brev.app"
                BlueprintName = "BrevMacOS"
@@ -70,6 +84,17 @@
       selectedLauncherIdentifier = "Xcode.DebuggerFoundation.Launcher.LLDB"
       shouldUseLaunchSchemeArgsEnv = "YES">
       <Testables>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "622E4B2D82365E42D6AAE248"
+               BuildableName = "BrevIOSTests.xctest"
+               BlueprintName = "BrevIOSTests"
+               ReferencedContainer = "container:apps/iOS/BrevIOS.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
    </TestAction>
    <LaunchAction

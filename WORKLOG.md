@@ -2043,3 +2043,87 @@ portal assets that do not exist yet.
 - Handoff: merge this fix, recreate the unpublished `v0.1.0` tag at the final
   green `main` commit, rerun the release, and verify the GitHub asset and
   stable appcast.
+
+## 2026-09-18 — Devin — iOS backup/restore (feature/ios-daily-driver)
+
+- Goal: enable Brev backup export/restore in Settings › Import / Export on iOS.
+- Summary: replaced the iOS “Mac only” stub with backup/restore buttons; added
+  iOS `.fileImporter` flows that pick a destination folder for
+  `Brev backup.brevbackup` and pick the `.brevbackup` package as a folder
+  (no exported UTI exists); shared `writeBackupPackage` /
+  `presentRestorePreview` with macOS; held the iOS security scope across the
+  write and across preview→`applyRestore`; made `BackupPreviewSheet` min width
+  macOS-only; added an Import/Export render smoke case; updated CHANGELOG.
+- Verification: `swift build --package-path packages/BrevSettings` OK;
+  `xcodebuild -workspace Brev.xcworkspace -scheme BrevIOS -destination
+  "platform=iOS Simulator,OS=27.0,name=iPhone 18 Pro" build
+  CODE_SIGNING_ALLOWED=NO` OK; `scripts/lint.sh`, `scripts/format.sh`,
+  `git diff --check` OK; `CompactSettingsViewSmokeTests` 9/9 OK.
+- Skipped/blocked: full `swift test --package-path packages/BrevSettings`
+  still reports 2 unrelated pre-existing macOS snapshot mismatches in
+  `folders-attachment-index-{light,dark}` (Folder Sync, untouched). Real iOS
+  picker behavior for directory packages needs device/simulator UI QA.
+- Handoff: do not commit per request; if green baseline is required, refresh
+  or investigate the unrelated Folder Sync snapshots separately.
+
+## 2026-09-18 — Devin — iOS local-folder writes (feature/ios-daily-driver)
+
+- Goal: enable local-folder write actions on iOS per ADR-0077 decision 8.
+- Summary: removed the `#if os(macOS)` gate around Copy/Move to Local Folder
+  in `MessageCommandPresentation.contextMenu` (the only remaining write gate —
+  sidebar New/rename/delete local folder, `MailCommands`,
+  `LocalFolderDestinationSheet`, `LocalMaildirStore`/`LocalMailBackend`, the
+  folder-name alert and the import-destination dialog were already
+  platform-neutral); updated the wiring-table platform strings; wired
+  `localBackendProvider` into `ImportExportSection` (pre-existing gap — the
+  "Include local folders" backup toggle and `mail/` restore handler never
+  engaged from the real Settings UI on either platform); added a
+  `canFileLocally` presentation test; updated ADR-0077 decision 8 and
+  CHANGELOG. MBOX/Maildir import stays macOS-only pending the
+  Files-app/share-sheet path; the shared destination step already defaults
+  to a new local folder.
+- Verification: `swift test --package-path packages/BrevMail` 1603/1603
+  (258 suites); `swift test --package-path packages/BrevSettings` 373
+  tests, only the 2 pre-existing unrelated `folders-attachment-index`
+  snapshot mismatches; `xcodebuild -workspace Brev.xcworkspace -scheme
+  BrevIOS -destination "platform=iOS Simulator,OS=27.0,name=iPhone 18 Pro"
+  build CODE_SIGNING_ALLOWED=NO` BUILD SUCCEEDED; `scripts/lint.sh`,
+  `scripts/format.sh`, `git diff --check` all OK.
+- Skipped/blocked: real iOS UX of the destination sheet, sidebar context
+  menus, and undo toast after Move needs device/simulator UI QA. iOS has
+  no MBOX/Maildir import entry point (per ADR-0077 deferral); the Settings
+  "Import mail" group stays disabled on iOS (`canImport` returns false
+  there by design, pending the Files-app/share-sheet path).
+- Handoff: do not commit per request. Note `localBackendProvider` wiring
+  also fixes the same dead path on macOS — before this, Settings backups
+  never included `mail/*.mbox` and mail restore never ran from the app UI.
+
+## 2026-09-18 — Devin — iOS daily-driver slices
+
+### Goal
+Bring iOS to daily-driver parity where the platform allows.
+
+### Changes
+- Backup/restore on iOS: `.fileImporter` destination-folder + package pickers
+  with security-scoped access held across the async write and the restore
+  preview sheet. `writeBackupPackage`/`presentRestorePreview` shared with
+  the macOS panels. `BackupPreviewSheet` min width made macOS-only.
+- Wired `localBackendProvider` into `ImportExportSection` — fixes backups
+  never carrying local mail on macOS either (was unwired since c3d7229f).
+- Local folder writes un-gated on iOS (ADR-0077 decision 8 updated):
+  Copy/Move to Local Folder, new/rename/delete local folders work through
+  the shared surfaces. MBOX/Maildir import stays macOS-only.
+- New `BrevIOSTests` unit-test target (first app-level test target):
+  BGTask coordinator scheduling, `OneShotBGCompletion` exactly-once,
+  `ShareHandoffURL` cap/confinement. Wired into the BrevIOS scheme +
+  CI build job.
+- Fixed `test-ios-extension-plists.sh` broken by #43's notification
+  category array (scalar → index assertions).
+
+### Verification
+- BrevIOSTests: 17/17 on iPhone 18 Pro simulator (xcodebuild test).
+- BrevMail 1603/1603; BrevSettings green except 2 pre-existing
+  folders-attachment-index maintainer-host snapshot drift.
+- iOS + macOS builds succeed; self-tests, lint, format, diff-check clean.
+- Manual QA owed: iOS document picker on a real .brevbackup; long-press
+  local-folder menus; move-to-local undo toast.

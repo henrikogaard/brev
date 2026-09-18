@@ -69,6 +69,18 @@ jobs:
             -skipMacroValidation \
             build || (echo "::error::xcodebuild failed for ${{ matrix.scheme }}"; exit 1)
 
+      - name: Test iOS app unit tests
+        if: matrix.scheme == 'BrevIOS'
+        run: |
+          destination="$(scripts/ios-simulator-destination.sh)"
+          xcodebuild \
+            -workspace Brev.xcworkspace \
+            -scheme BrevIOS \
+            -configuration Debug \
+            -destination "$destination" \
+            -skipMacroValidation \
+            test || (echo "::error::xcodebuild test failed for BrevIOS"; exit 1)
+
   # Runs deterministic Swift-package logic suites. UIKit snapshot suites run in
   # the iOS Simulator job below.
   test:
