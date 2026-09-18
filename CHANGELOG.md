@@ -251,6 +251,13 @@ All notable changes to Brev are documented here.
   blur band also retries briefly while the material's layer tree is
   still building, and logs (subsystem `eu.brevmail.brev`, category
   `ScrollEdgeBlur`) if it has to disable itself.
+- Mail import on macOS: the file picker accepts choosing a Maildir
+  folder again. The content-type filter was disabling directory
+  selection, making the advertised Maildir import unreachable;
+  non-Maildir folders are still rejected by the importer itself.
+- Opening a `mailto:` link and a `brev://` deep link in the same open
+  event no longer drops the deep link; both are handed to the app
+  instead of only the last matching URL.
 
 ## [0.1.0] - 2026-08-28
 

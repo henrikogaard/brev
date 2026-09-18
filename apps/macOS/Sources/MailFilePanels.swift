@@ -46,7 +46,11 @@ func presentImportMailPanel(onPick: @escaping @MainActor (MailImportRequest) -> 
     panel.title = String(localized: "Import Mail")
     panel.prompt = String(localized: "Import")
     panel.message = String(localized: "Choose an .mbox archive, .eml file, or Maildir folder to import.")
-    panel.allowedContentTypes = [.mbox, .eml]
+    // `.folder` must stay in the allowed list: a type-filtered NSOpenPanel
+    // disables directory selection otherwise, which would make the advertised
+    // Maildir folder import unreachable. Non-Maildir directories are rejected
+    // by the importer, not by the panel.
+    panel.allowedContentTypes = [.mbox, .eml, .folder]
     panel.allowsMultipleSelection = false
     panel.canChooseDirectories = true
     panel.canChooseFiles = true
