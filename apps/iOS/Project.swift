@@ -100,7 +100,14 @@ let project = Project(
             sources: ["BrevShareExtension/**"],
             resources: ["BrevShareExtension/Resources/Localizable.xcstrings"],
             entitlements: .file(path: "BrevShareExtension/BrevShareExtension.entitlements"),
-            dependencies: []
+            dependencies: [],
+            settings: .settings(
+                base: [
+                    // ADR-0004: compile extensions in the application-extension
+                    // context so extension-prohibited APIs are hard errors.
+                    "APPLICATION_EXTENSION_API_ONLY": "YES"
+                ]
+            )
         ),
         .target(
             name: "BrevNotificationContent",
@@ -110,7 +117,14 @@ let project = Project(
             deploymentTargets: BrevConstants.iOSDeploymentTarget,
             infoPlist: .file(path: "BrevNotificationContent/Info.plist"),
             sources: ["BrevNotificationContent/**"],
-            dependencies: []
+            dependencies: [],
+            settings: .settings(
+                base: [
+                    // ADR-0004: compile extensions in the application-extension
+                    // context so extension-prohibited APIs are hard errors.
+                    "APPLICATION_EXTENSION_API_ONLY": "YES"
+                ]
+            )
         )
     ],
     schemes: [

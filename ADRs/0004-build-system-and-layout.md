@@ -151,6 +151,16 @@ asset-name mapping. The iOS target manifest lists every non-primary catalog in
 primary catalog. Icon-family changes must update these surfaces together so a
 Settings choice always resolves to an asset compiled into both app targets.
 
+### Extension target API boundaries
+
+The iOS app extensions (`BrevShareExtension`, `BrevNotificationContent`)
+compile with `APPLICATION_EXTENSION_API_ONLY = YES` so APIs the SDK marks
+unavailable to extensions (for example `UIApplication.shared`) fail the
+build instead of surviving until App Store validation. Extension code that
+must reach app-only APIs does so through extension-safe surfaces only
+(e.g. the responder chain for `UIApplication.open`, which carries no
+extension restriction).
+
 ### Main macOS window chrome
 
 The main macOS scene keeps its native title-bar window style and logical
