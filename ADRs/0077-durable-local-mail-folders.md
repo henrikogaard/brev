@@ -107,9 +107,14 @@ the capability flags in `BackendCapabilities`.
 
 8. **Platform sequencing.** The store, backend and backup payload are
    platform-neutral and ship together. Copy/Move/Import/New Local Folder UI
-   ships on macOS first; iOS shows existing local folders read-only (browse,
-   search, read) in the same slice, and gains the write actions in a
-   follow-up once the Files-app/share-sheet import path is designed.
+   shipped on macOS first with iOS read-only; the write actions — Copy/Move
+   to Local Folder, New/rename/delete local folder — have since been
+   enabled on iOS through the same shared surfaces (message context menus,
+   `LocalFolderDestinationSheet`, the sidebar account and folder menus,
+   `MailCommands`). MBOX/Maildir import remains macOS-only until the
+   Files-app/share-sheet import path is designed; the shared
+   import-destination step already defaults to a new local folder and needs
+   no change once an iOS entry point lands.
 
 ## Rationale
 
