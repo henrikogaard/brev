@@ -251,7 +251,7 @@ public enum MessageCommandPresentation {
             wiring: .visible(
                 handler: "LocalFolderDestinationSheet copy mode",
                 dependency: "LocalMailBackend.importRaw",
-                platforms: "macOS"
+                platforms: "macOS, iOS"
             )
         ),
         .init(
@@ -261,7 +261,7 @@ public enum MessageCommandPresentation {
             wiring: .visible(
                 handler: "LocalFolderDestinationSheet move mode",
                 dependency: "LocalMailBackend.importRaw + undoable source delete",
-                platforms: "macOS"
+                platforms: "macOS, iOS"
             )
         ),
         .init(
@@ -507,8 +507,7 @@ public enum MessageCommandPresentation {
                 symbolName: "folder.badge.plus"
             ))
         }
-        // ADR-0077 decision 8: local-folder writes are macOS-only for now.
-        #if os(macOS)
+        // ADR-0077 decision 8: local-folder writes run on both platforms.
         if canFileLocally {
             filingActions.append(.init(
                 action: .copyToLocalFolder,
@@ -521,7 +520,6 @@ public enum MessageCommandPresentation {
                 symbolName: "externaldrive.fill"
             ))
         }
-        #endif
         if let junkActionTitle {
             filingActions.append(.init(action: .setJunk, title: junkActionTitle, symbolName: "xmark.octagon"))
         }

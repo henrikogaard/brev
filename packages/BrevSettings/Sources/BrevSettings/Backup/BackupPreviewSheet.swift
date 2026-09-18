@@ -95,7 +95,17 @@ struct BackupPreviewSheet: View {
             }
         }
         .padding(BrevSpacing.xl)
-        .frame(minWidth: 420)
+        .frame(minWidth: minimumSheetWidth)
+    }
+
+    /// iPhone sheets are already narrower than 420pt — a minimum width would
+    /// clip; only macOS needs it.
+    private var minimumSheetWidth: CGFloat? {
+        #if os(macOS)
+        420
+        #else
+        nil
+        #endif
     }
 
     private var modeExplanation: String {

@@ -83,6 +83,11 @@ struct ImportExportSection: View {
 
     #if os(iOS)
     @State private var isChoosingExportFolder = false
+    @State private var isChoosingBackupDestination = false
+    @State private var isChoosingBackupPackage = false
+    /// Security scope held while the restore preview sheet is on screen;
+    /// `applyRestore` re-reads `mail/*.mbox` payloads after the user confirms.
+    @State private var accessedRestoreScope: URL?
     @State private var mobileExportRequest: MobileExportRequest?
 
     private struct MobileExportRequest: Sendable {
@@ -165,7 +170,7 @@ struct ImportExportSection: View {
             await loadLocalMailSummary()
         }
         .task(id: selectedExportSourceID) { await loadExportFolders() }
-        .sheet(item: $restorePreview) { preview in
+        .sheet(item: $restorePreview, onDismiss: releaseRestoreScope) { preview in
             BackupPreviewSheet(
                 preview: preview,
                 onCancel: { restorePreview = nil },
@@ -202,6 +207,36 @@ struct ImportExportSection: View {
                 ? MailFolderExporter.availableArchiveURL(in: directory, folderName: request.folderName) : directory
             exportController.start(request.exporter, to: target, format: request.format, sourceTitle: request.title,
                                    replacingExistingFile: false, accessing: directory, sessionToken: request.sessionToken)
+        }
+        .fileImporter(isPresented: $isChoosingBackupDestination, allowedContentTypes: [.folder]) { result in
+            switch result {
+            case .success(let directory):
+                let package = directory
+                    .appendingPathComponent("Brev backup.\(BackupWriter.packageExtension)")
+                // The picker's security scope must span the whole write.
+                let accessed = directory.startAccessingSecurityScopedResource()
+                Task {
+                    defer { if accessed { directory.stopAccessingSecurityScopedResource() } }
+                    await writeBackupPackage(to: package)
+                }
+            case .failure(let error):
+                reportBackupPickerFailure(error)
+            }
+        }
+        .fileImporter(isPresented: $isChoosingBackupPackage, allowedContentTypes: [.folder]) { result in
+            // `.brevbackup` has no exported UTI, so the document picker treats
+            // the package as a plain folder; `BackupReader.validate` rejects
+            // anything that is not a real backup package.
+            switch result {
+            case .success(let url):
+                if url.startAccessingSecurityScopedResource() {
+                    accessedRestoreScope = url
+                }
+                presentRestorePreview(for: url)
+                if restorePreview == nil { releaseRestoreScope() }
+            case .failure(let error):
+                reportBackupPickerFailure(error)
+            }
         }
         #endif
     }
@@ -441,7 +476,6 @@ struct ImportExportSection: View {
             symbolName: "archivebox"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                #if os(macOS)
                 HStack(spacing: BrevSpacing.sm) {
                     Button(String(localized: "Back up settings and accounts…", bundle: .module)) {
                         startBackupExport()
@@ -450,10 +484,6 @@ struct ImportExportSection: View {
                         startBackupRestore()
                     }
                 }
-                #else
-                Text("Backup is currently available on Mac.", bundle: .module)
-                    .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
-                #endif
 
                 if let localMailSummary, localMailSummary.folderCount > 0 {
                     Toggle(
@@ -487,52 +517,43 @@ struct ImportExportSection: View {
         }
     }
 
-    #if os(macOS)
-    private func startBackupExport() {
-        let panel = NSSavePanel()
-        panel.nameFieldStringValue = "Brev backup.\(BackupWriter.packageExtension)"
-        panel.canCreateDirectories = true
-        guard panel.runModal() == .OK, let url = panel.url else { return }
-        Task {
-            do {
-                let settings = SettingsBackupCodec.export(
-                    from: settingsStore,
-                    accountIDs: accounts.map(\.id)
-                )
-                let accountsPayload = await AccountsBackupCodec.export(
-                    accounts: accounts,
-                    configurationProvider: accountConfigurationProvider
-                )
-                let info = Bundle.main.infoDictionary
-                try await BackupWriter.write(
-                    to: url,
-                    settings: settings,
-                    accounts: accountsPayload,
-                    appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
-                    appBuild: info?["CFBundleVersion"] as? String ?? "unknown",
-                    mailPayloads: includeLocalMailInBackup ? localMailPayloads() : []
-                )
-                backupErrorMessage = nil
-                backupResultMessage = String(
-                    localized: "Backup saved to \(url.lastPathComponent). Passwords and tokens were not included.",
-                    bundle: .module
-                )
-            } catch {
-                backupResultMessage = nil
-                backupErrorMessage = String(
-                    localized: "Backup failed: \(error.localizedDescription)",
-                    bundle: .module
-                )
-            }
+    /// Writes the whole package; shared by the macOS save panel and the iOS
+    /// folder picker (which wraps this in the picked folder's security scope).
+    private func writeBackupPackage(to url: URL) async {
+        do {
+            let settings = SettingsBackupCodec.export(
+                from: settingsStore,
+                accountIDs: accounts.map(\.id)
+            )
+            let accountsPayload = await AccountsBackupCodec.export(
+                accounts: accounts,
+                configurationProvider: accountConfigurationProvider
+            )
+            let info = Bundle.main.infoDictionary
+            try await BackupWriter.write(
+                to: url,
+                settings: settings,
+                accounts: accountsPayload,
+                appVersion: info?["CFBundleShortVersionString"] as? String ?? "unknown",
+                appBuild: info?["CFBundleVersion"] as? String ?? "unknown",
+                mailPayloads: includeLocalMailInBackup ? localMailPayloads() : []
+            )
+            backupErrorMessage = nil
+            backupResultMessage = String(
+                localized: "Backup saved to \(url.lastPathComponent). Passwords and tokens were not included.",
+                bundle: .module
+            )
+        } catch {
+            backupResultMessage = nil
+            backupErrorMessage = String(
+                localized: "Backup failed: \(error.localizedDescription)",
+                bundle: .module
+            )
         }
     }
 
-    private func startBackupRestore() {
-        let panel = NSOpenPanel()
-        panel.canChooseDirectories = true
-        panel.canChooseFiles = false
-        panel.allowsMultipleSelection = false
-        guard panel.runModal() == .OK, let url = panel.url else { return }
+    /// Validates the picked package and opens the preview sheet on success.
+    private func presentRestorePreview(for url: URL) {
         do {
             var preview = try BackupReader.validate(url: url)
             preview = preview.countingSignedIn(emails: Set(accounts.map(\.emailAddress)))
@@ -544,6 +565,51 @@ struct ImportExportSection: View {
         }
     }
 
+    /// Drops the iOS security scope held while a restore preview was shown;
+    /// a no-op on macOS where panels return persistent URLs.
+    private func releaseRestoreScope() {
+        #if os(iOS)
+        accessedRestoreScope?.stopAccessingSecurityScopedResource()
+        accessedRestoreScope = nil
+        #endif
+    }
+
+    /// Surfaces a fileImporter failure; user cancellation stays silent.
+    private func reportBackupPickerFailure(_ error: Error) {
+        guard (error as? CocoaError)?.code != .userCancelled else { return }
+        backupResultMessage = nil
+        backupErrorMessage = error.localizedDescription
+    }
+
+    #if os(macOS)
+    private func startBackupExport() {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "Brev backup.\(BackupWriter.packageExtension)"
+        panel.canCreateDirectories = true
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task {
+            await writeBackupPackage(to: url)
+        }
+    }
+
+    private func startBackupRestore() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        presentRestorePreview(for: url)
+    }
+    #endif
+
+    #if os(iOS)
+    private func startBackupExport() {
+        isChoosingBackupDestination = true
+    }
+
+    private func startBackupRestore() {
+        isChoosingBackupPackage = true
+    }
     #endif
 
     /// Builds `mail/*.mbox` payload writers for every local folder by

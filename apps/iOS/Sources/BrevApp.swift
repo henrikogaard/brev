@@ -350,6 +350,18 @@ enum BrevBackgroundRefreshCoordinator {
         }
     }
 
+    /// Minimum delay before the system may begin the next refresh window.
+    static let minimumRefreshDelay: TimeInterval = 15 * 60
+
+    /// Builds the request submitted for the next background refresh window.
+    ///
+    /// - Parameter now: The reference date `earliestBeginDate` is offset from.
+    static func makeRefreshRequest(now: Date = Date()) -> BGAppRefreshTaskRequest {
+        let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
+        request.earliestBeginDate = now.addingTimeInterval(minimumRefreshDelay)
+        return request
+    }
+
     /// Submits a `BGAppRefreshTaskRequest` with a 15-minute earliest-begin date.
     ///
     /// Call this when the app transitions to the background so the system can
@@ -357,11 +369,13 @@ enum BrevBackgroundRefreshCoordinator {
     /// If scheduling fails (e.g. the identifier is not registered), the error
     /// is logged and silently swallowed — a missed background refresh is not a
     /// critical failure.
-    static func scheduleNextRefresh() {
-        let request = BGAppRefreshTaskRequest(identifier: taskIdentifier)
-        request.earliestBeginDate = Date(timeIntervalSinceNow: 15 * 60)
+    ///
+    /// - Parameter submit: The scheduler seam; defaults to `BGTaskScheduler.shared`.
+    static func scheduleNextRefresh(
+        submit: (BGAppRefreshTaskRequest) throws -> Void = { try BGTaskScheduler.shared.submit($0) }
+    ) {
         do {
-            try BGTaskScheduler.shared.submit(request)
+            try submit(makeRefreshRequest())
         } catch {
             Logger().warning(
                 "BGTaskScheduler: failed to schedule mailRefresh: \(error.localizedDescription, privacy: .public)"
@@ -405,12 +419,24 @@ enum BrevBackgroundRefreshCoordinator {
 /// Ensures `BGTask.setTaskCompleted` is invoked at most once, whichever of the
 /// work or the expiration handler reaches it first. A second call would raise
 /// the system's "marked complete multiple times" exception and crash the app.
-private final class OneShotBGCompletion: @unchecked Sendable {
+final class OneShotBGCompletion: @unchecked Sendable {
     private let lock = NSLock()
     private var didComplete = false
-    private let task: BGTask
+    private let finish: (Bool) -> Void
 
-    init(_ task: BGTask) { self.task = task }
+    /// Creates a completion that forwards the first `complete` call to `finish`.
+    ///
+    /// - Parameter finish: Receives the first `success` value; later calls are dropped.
+    init(finish: @escaping (Bool) -> Void) {
+        self.finish = finish
+    }
+
+    /// Creates a completion that calls `task.setTaskCompleted` exactly once.
+    convenience init(_ task: BGTask) {
+        self.init { success in
+            task.setTaskCompleted(success: success)
+        }
+    }
 
     func complete(success: Bool) {
         lock.lock()
@@ -420,7 +446,7 @@ private final class OneShotBGCompletion: @unchecked Sendable {
         }
         didComplete = true
         lock.unlock()
-        task.setTaskCompleted(success: success)
+        finish(success)
     }
 }
 

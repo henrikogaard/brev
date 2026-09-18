@@ -254,6 +254,47 @@ struct CompactSettingsViewSmokeTests {
         #endif
     }
 
+    @Test("settings entry point can open Import / Export at desktop size")
+    @MainActor
+    func settingsEntryPointCanOpenImportExportAtDesktopSize() async throws {
+        let account = BrevAccount(
+            id: "settings-import-export-account",
+            displayName: "Backup Test",
+            emailAddress: "backup@example.org"
+        )
+        let view = try CompactSettingsViewContainer(
+            accountStore: InMemoryAccountStore(accounts: [account], current: account),
+            initialSection: .importExport,
+            initialAccounts: [account],
+            initialCurrentAccountID: account.id,
+            settingsStore: SettingsPersistenceStore(defaults: Self.makeDefaults(named: "settings-import-export")),
+            backend: MockBackend(account: account)
+        )
+
+        #if os(macOS)
+        let image = try await renderMacImage(
+            view
+                .frame(width: 1100, height: 760)
+                .background(BrevTheme.brevPaper.bgPrimary.color)
+                .brevTheme(.brevPaper),
+            width: 1100,
+            height: 760
+        )
+        try recordArtifactIfRequested(image, name: "settings-import-export-1100x760")
+        #elseif canImport(UIKit)
+        let image = ImageRenderer(
+            content: view
+                .frame(width: 1100, height: 760)
+                .background(BrevTheme.brevPaper.bgPrimary.color)
+                .brevTheme(.brevPaper)
+        )
+        image.scale = 2
+        try recordArtifactIfRequested(#require(image.uiImage), name: "settings-import-export-1100x760")
+        #else
+        Issue.record("No supported image renderer is available on this platform.")
+        #endif
+    }
+
     @Test("mail storage section renders at desktop size")
     @MainActor
     func mailStorageSectionRendersAtDesktopSize() async throws {

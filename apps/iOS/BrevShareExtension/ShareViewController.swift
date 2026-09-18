@@ -13,38 +13,12 @@
 import UIKit
 import UniformTypeIdentifiers
 
-private final class ShareHandoffReservation: @unchecked Sendable {
-    private let lock = NSLock()
-    private var count = 0
-    private var bytes = 0
-    private let maximumCount: Int
-    private let maximumBytes: Int
-
-    init(maximumCount: Int, maximumBytes: Int) {
-        self.maximumCount = maximumCount
-        self.maximumBytes = maximumBytes
-    }
-
-    func reserve(bytes: Int) -> Bool {
-        lock.lock()
-        defer { lock.unlock() }
-        guard count < maximumCount, self.bytes + bytes <= maximumBytes else { return false }
-        count += 1
-        self.bytes += bytes
-        return true
-    }
-}
-
 final class ShareViewController: UIViewController {
     private static let appGroupIdentifier = "group.eu.brevmail.brev"
     private nonisolated static let maximumAttachmentCount = 20
     private nonisolated static let maximumAttachmentBytes = 25 * 1024 * 1024
     private nonisolated static let maximumSingleAttachmentBytes = 10 * 1024 * 1024
     private nonisolated static let staleHandoffAge: TimeInterval = 24 * 60 * 60
-    // Upper bound for text handed to the app through the `brev://compose`
-    // URL. The OS drops oversized custom-scheme URLs, so larger shares are
-    // excluded up front instead of failing the handoff.
-    private nonisolated static let maximumSharedTextBytes = 256 * 1024
 
     private var sharedText: String?
     private var sharedURLs: [URL] = []
@@ -270,7 +244,7 @@ final class ShareViewController: UIViewController {
         // silently shortened draft is worse than a missing one. URLs and
         // attachments the user shared still open.
         var textOverflowMessage: String?
-        if let text = sharedText, text.utf8.count > Self.maximumSharedTextBytes {
+        if let text = sharedText, !ShareHandoffURL.canHandoff(text: text) {
             sharedText = nil
             textOverflowMessage = String(
                 localized: "Shared text is too large to include and was left out."
@@ -346,36 +320,11 @@ final class ShareViewController: UIViewController {
     }
 
     private func buildShareURL() -> URL? {
-        let sharedPayload = buildSharePayload()
-        guard !sharedPayload.isEmpty else { return nil }
-
-        var components = URLComponents()
-        components.scheme = "brev"
-        components.host = "compose"
-        components.queryItems = [
-            URLQueryItem(name: "shared", value: sharedPayload)
-        ]
-        return components.url
-    }
-
-    private func buildSharePayload() -> String {
-        var queryItems: [URLQueryItem] = []
-
-        if let text = sharedText, !text.isEmpty {
-            queryItems.append(URLQueryItem(name: "text", value: text))
-        }
-
-        for url in sharedURLs {
-            queryItems.append(URLQueryItem(name: "url", value: url.absoluteString))
-        }
-
-        for url in sharedAttachmentURLs {
-            queryItems.append(URLQueryItem(name: "attachment", value: url.absoluteString))
-        }
-
-        var components = URLComponents()
-        components.queryItems = queryItems
-        return components.percentEncodedQuery ?? ""
+        ShareHandoffURL.url(
+            text: sharedText,
+            urls: sharedURLs,
+            attachments: sharedAttachmentURLs
+        )
     }
 
     private func prepareHandoffDirectory() throws -> URL {

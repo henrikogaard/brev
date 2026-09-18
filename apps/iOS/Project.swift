@@ -109,6 +109,27 @@ let project = Project(
                 ]
             )
         ),
+        // BrevIOSTests — the iOS app unit test bundle (ADR-0004).
+        //
+        // Depends on BrevIOS for `@testable` access to the app shell
+        // (background-refresh coordinator, URL handling). The share
+        // extension cannot be linked by a test bundle, so its pure
+        // handoff-URL source file is compiled into this target directly.
+        .target(
+            name: "BrevIOSTests",
+            destinations: [.iPhone],
+            product: .unitTests,
+            bundleId: "\(BrevConstants.bundleIDPrefix).ios.tests",
+            deploymentTargets: BrevConstants.iOSDeploymentTarget,
+            sources: [
+                "../iOSTests/**",
+                "BrevShareExtension/ShareHandoffURL.swift"
+            ],
+            dependencies: [
+                .target(name: "BrevIOS"),
+                .package(product: "BrevMail", type: .runtime)
+            ]
+        ),
         .target(
             name: "BrevNotificationContent",
             destinations: [.iPhone, .iPad],
@@ -132,6 +153,7 @@ let project = Project(
             name: "BrevIOS",
             shared: true,
             buildAction: .buildAction(targets: ["BrevIOS"]),
+            testAction: .targets(["BrevIOSTests"]),
             runAction: .runAction(configuration: "Debug", executable: "BrevIOS")
         )
     ]

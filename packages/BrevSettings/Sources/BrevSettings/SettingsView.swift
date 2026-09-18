@@ -563,7 +563,10 @@ public struct SettingsView: View {
                 currentAccountID: selectedSourceID?.accountID ?? currentAccountID,
                 exportController: folderExportController,
                 allFolders: allFolders,
-                settingsStore: settingsStore
+                settingsStore: settingsStore,
+                localBackendProvider: {
+                    backendProvider(LocalMailBackend.accountID) as? LocalMailBackend
+                }
             )
         case .security:
             SecuritySection(settingsStore: settingsStore)

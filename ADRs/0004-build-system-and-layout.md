@@ -58,12 +58,13 @@ brev/
 │   │   ├── Sources/                # App entry, scenes, view layer
 │   │   ├── Resources/              # Assets, Info.plist, entitlements
 │   │   └── Project.swift           # Tuist target
-│   └── iOS/                        # Brev for iPhone/iPad
-│       ├── Sources/
-│       ├── Resources/
-│       ├── ShareExtension/         # Share extension target
-│       ├── NotificationServiceExtension/
-│       └── Project.swift
+│   ├── iOS/                        # Brev for iPhone/iPad
+│   │   ├── Sources/
+│   │   ├── Resources/
+│   │   ├── ShareExtension/         # Share extension target
+│   │   ├── NotificationServiceExtension/
+│   │   └── Project.swift
+│   └── iOSTests/                   # BrevIOSTests app unit test bundle
 ├── packages/
 │   ├── previous backend/                   # retired: API, Cache, Models, selected Utils
 │   │   ├── Sources/                # Modified previous package (Matomo/Sentry stripped)
@@ -160,6 +161,16 @@ build instead of surviving until App Store validation. Extension code that
 must reach app-only APIs does so through extension-safe surfaces only
 (e.g. the responder chain for `UIApplication.open`, which carries no
 extension restriction).
+
+### iOS app unit test target
+
+`BrevIOSTests` (`apps/iOSTests/`) is the app shell's unit test bundle. It
+depends on the `BrevIOS` app target for `@testable` access; Tuist hosts the
+bundle in the app (`TEST_HOST`), so tests can also assert against the app's
+Info.plist. An app extension cannot be linked by a test bundle, so pure
+share-extension logic that needs coverage (currently `ShareHandoffURL.swift`)
+is compiled into the test target alongside `apps/iOSTests/**`. The `BrevIOS`
+scheme's test action runs the bundle via `xcodebuild test`.
 
 ### Main macOS window chrome
 

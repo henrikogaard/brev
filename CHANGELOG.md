@@ -23,14 +23,16 @@ All notable changes to Brev are documented here.
   see status in the menu bar, and open Brev at login (Settings ›
   Notifications; off by default).
 - Back up and restore Brev settings and account setup from Settings ›
-  Import / Export. Backups never include passwords or tokens; restored
-  accounts ask you to sign in. Backups can now include local folders as
-  `mail/*.mbox` payloads (on by default when local folders exist).
+  Import / Export, on macOS and iOS. Backups never include passwords or
+  tokens; restored accounts ask you to sign in. Backups can now include
+  local folders as `mail/*.mbox` payloads (on by default when local
+  folders exist).
 - Durable local folders ("On My Mac" / "On My iPhone") keep mail on this
   device outside every cache — nothing is evicted, uploaded, or removed
-  until you delete a folder. On macOS, create folders from the sidebar and
-  use Copy/Move to Local Folder on any message; on iOS local folders are
-  readable. Local folders are searchable and browsable like any account.
+  until you delete a folder. On macOS and iOS, create folders from the
+  sidebar and use Copy/Move to Local Folder on any message. Local folders
+  are searchable and browsable like any account. MBOX/Maildir import into
+  a local folder remains macOS-only for now.
 - Optional attachment-content indexing per account (Settings › Folder Sync ›
   "Search inside attachments"): Brev extracts text locally from attachments
   already cached on this device — nothing is downloaded for indexing — so

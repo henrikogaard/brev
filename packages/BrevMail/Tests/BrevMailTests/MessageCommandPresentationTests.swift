@@ -299,6 +299,31 @@ struct MessageCommandPresentationTests {
         #expect(menu(copy: false, canMove: true).action(.copyToFolder) == nil)
     }
 
+    @Test("local-folder filing actions appear only when a local backend is present")
+    func localFolderFilingActionsRequireLocalBackend() {
+        func menu(canFileLocally: Bool) -> MessageContextMenuPresentation {
+            MessageCommandPresentation.contextMenu(
+                for: Self.makeHeader(),
+                isSelected: false,
+                isPinned: false,
+                isSnoozed: false,
+                isDone: false,
+                canOpenInNewWindow: false,
+                canArchive: false,
+                canMove: true,
+                canFileLocally: canFileLocally,
+                junkActionTitle: nil,
+                canBlockSender: false,
+                canDelete: true
+            )
+        }
+
+        #expect(menu(canFileLocally: true).action(.copyToLocalFolder)?.isEnabled == true)
+        #expect(menu(canFileLocally: true).action(.moveToLocalFolder)?.isEnabled == true)
+        #expect(menu(canFileLocally: false).action(.copyToLocalFolder) == nil)
+        #expect(menu(canFileLocally: false).action(.moveToLocalFolder) == nil)
+    }
+
     @Test("print, export PDF, and properties enable when their backing is available")
     func printExportAndPropertiesEnableWhenBackingIsAvailable() {
         let menu = MessageCommandPresentation.contextMenu(

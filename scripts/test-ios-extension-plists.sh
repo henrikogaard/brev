@@ -123,7 +123,8 @@ if [[ -f "$notification_plist" ]]; then
   plutil -lint "$notification_plist" >/dev/null || fail "$notification_plist is not valid plist"
   require_value "$notification_plist" ":NSExtension:NSExtensionPointIdentifier" "com.apple.usernotifications.content-extension"
   require_non_empty "$notification_plist" ":NSExtension:NSExtensionPrincipalClass"
-  require_value "$notification_plist" ":NSExtension:NSExtensionAttributes:UNNotificationExtensionCategory" "brev.newMail"
+  require_value "$notification_plist" ":NSExtension:NSExtensionAttributes:UNNotificationExtensionCategory:0" "brev.newMail"
+  require_value "$notification_plist" ":NSExtension:NSExtensionAttributes:UNNotificationExtensionCategory:1" "brev.newMail.replyEnabled"
 fi
 
 if [[ -f "$share_scheme" ]]; then
