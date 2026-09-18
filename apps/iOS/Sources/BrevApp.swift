@@ -56,63 +56,65 @@ struct BrevApp: App {
     var body: some Scene {
         WindowGroup {
             Group {
-                if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
+                // Settings sits above the mailbox-root decision so the
+                // restore-error alert's "Open Settings" action works even
+                // when every account failed to restore and the window would
+                // otherwise show the login screen.
+                if showSettings {
+                    SettingsView(
+                        accountStore: session.accountStore,
+                        activeTheme: $session.theme,
+                        activeAppIcon: appIconBinding,
+                        initialAccounts: session.visibleBackends.map(\.account),
+                        initialCurrentAccountID: session.backend?.account.id,
+                        mailboxContext: settingsMailboxContext,
+                        backendProvider: { accountID in session.backends[accountID] },
+                        onAddAccount: { isShowingAddAccountSheet = true },
+                        onSignOut: { account in await session.signOut(account: account) },
+                        onRemoveAccount: { account in await session.removeAccount(account) },
+                        onAIProviderConfigurationChanged: {
+                            await session.reloadConfiguredAIBackends()
+                        },
+                        onClose: { showSettings = false }
+                    )
+                    .brevTheme(session.theme)
+                    .environment(\.openURL, browserOpenURLAction)
+                } else if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
                     visibleBackendCount: session.visibleBackends.count,
                     isRestoringSession: session.isRestoringSession
                 ) {
-                    if showSettings {
-                        SettingsView(
-                            accountStore: session.accountStore,
-                            activeTheme: $session.theme,
-                            activeAppIcon: appIconBinding,
-                            initialAccounts: session.visibleBackends.map(\.account),
-                            initialCurrentAccountID: session.backend?.account.id,
-                            mailboxContext: settingsMailboxContext,
-                            backendProvider: { accountID in session.backends[accountID] },
-                            onAddAccount: { isShowingAddAccountSheet = true },
-                            onSignOut: { account in await session.signOut(account: account) },
-                            onRemoveAccount: { account in await session.removeAccount(account) },
-                            onAIProviderConfigurationChanged: {
-                                await session.reloadConfiguredAIBackends()
-                            },
-                            onClose: { showSettings = false }
-                        )
-                        .brevTheme(session.theme)
-                        .environment(\.openURL, browserOpenURLAction)
-                    } else {
-                        BrevMailRootView(
-                            backends: session.visibleBackends,
-                            aiBackends: session.aiBackends,
-                            onSignOut: { await session.signOut() },
-                            onChangeTheme: { newTheme in
-                                session.theme = newTheme
-                            },
-                            onOpenSettings: {
-                                showSettings = true
-                            },
-                            onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
-                            signatureContextProvider: { account in
-                                AppSessionFactory.composeSignatureContext(for: account)
-                            },
-                            composeSecurityDefaultsProvider: { account in
-                                AppSessionFactory.composeSecurityDefaults(for: account)
-                            },
-                            trustedSigningIdentityCountProvider: { account in
-                                AppSessionFactory.trustedSigningIdentityCount(for: account)
-                            },
-                            trustedEncryptionIdentityCountProvider: { account in
-                                AppSessionFactory.trustedEncryptionIdentityCount(for: account)
-                            },
-                            pendingComposePrefill: $pendingComposePrefill,
-                            pendingNotificationRoute: $pendingNotificationRoute,
-                            initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
-                            onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
-                            localBackend: session.localBackend,
-                            onLocalFoldersChanged: { session.refreshLocalFolders() }
-                        )
-                        .environment(\.openURL, browserOpenURLAction)
-                        .networkMonitor(networkMonitor)
-                    }
+                    BrevMailRootView(
+                        backends: session.visibleBackends,
+                        aiBackends: session.aiBackends,
+                        onSignOut: { await session.signOut() },
+                        onChangeTheme: { newTheme in
+                            session.theme = newTheme
+                        },
+                        onOpenSettings: {
+                            showSettings = true
+                        },
+                        onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
+                        signatureContextProvider: { account in
+                            AppSessionFactory.composeSignatureContext(for: account)
+                        },
+                        composeSecurityDefaultsProvider: { account in
+                            AppSessionFactory.composeSecurityDefaults(for: account)
+                        },
+                        trustedSigningIdentityCountProvider: { account in
+                            AppSessionFactory.trustedSigningIdentityCount(for: account)
+                        },
+                        trustedEncryptionIdentityCountProvider: { account in
+                            AppSessionFactory.trustedEncryptionIdentityCount(for: account)
+                        },
+                        pendingComposePrefill: $pendingComposePrefill,
+                        pendingNotificationRoute: $pendingNotificationRoute,
+                        initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
+                        onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                        localBackend: session.localBackend,
+                        onLocalFoldersChanged: { session.refreshLocalFolders() }
+                    )
+                    .environment(\.openURL, browserOpenURLAction)
+                    .networkMonitor(networkMonitor)
                 } else if AppSessionRestorePresentationPolicy.shouldShowRestoreProgress(
                     visibleBackendCount: session.visibleBackends.count,
                     isRestoringSession: session.isRestoringSession,
@@ -163,8 +165,9 @@ struct BrevApp: App {
                 if session.visibleBackends.isEmpty {
                     installUnavailableNotificationReplyHandler()
                 }
-                if !session.accountRestoreErrors.isEmpty,
-                   !session.visibleBackends.isEmpty {
+                if AppSessionRestorePresentationPolicy.shouldShowRestoreErrorAlert(
+                    accountRestoreErrorCount: session.accountRestoreErrors.count
+                ) {
                     showRestoreErrorAlert = true
                 }
             }
@@ -296,9 +299,8 @@ final class BrevIOSAppDelegate: NSObject, UIApplicationDelegate {
     /// Updated by `BrevApp` when the scene transitions to `.background`
     /// so the `BGAppRefreshTask` handler can reach live backend instances
     /// without needing a direct reference to the SwiftUI `@State`.
-    /// Nonisolated storage is safe here: writes always happen on the main
-    /// actor (scene-phase callbacks), and reads happen inside a `Task`
-    /// that the BGTask handler dispatches to `@MainActor`.
+    /// MainActor-isolated: writes happen in scene-phase callbacks, and the
+    /// BGTask handler reads it through `MainActor.run`.
     @MainActor
     static var currentBackends: [any MailBackend] = []
 
@@ -446,9 +448,7 @@ extension AppSession {
             configurationStore: UserDefaultsGmailAccountConfigurationStore(),
             tokenStore: KeychainTokenStore(),
             localSearchIndexFactory: { accountID in
-                try? BrevSyncEngine(
-                    databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
-                )
+                makeLocalSearchIndex(accountID: accountID)
             }
         )
         return AppSessionFactory.makeDefault(
@@ -456,9 +456,7 @@ extension AppSession {
                 applicationSupportURL: applicationSupportURL,
                 oauthPresentationAnchor: oauthPresentationAnchor,
                 localSearchIndex: { accountID in
-                    try? BrevSyncEngine(
-                        databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
-                    )
+                    makeLocalSearchIndex(accountID: accountID)
                 },
                 googleOAuthAccountProvisioningCoordinator: { result in
                     let connected = try await gmailConnector.provision(result)
@@ -497,4 +495,19 @@ extension AppSession {
 
 private var applicationSupportURL: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+}
+
+/// Builds the per-account local search index, logging instead of silently
+/// disabling search when the sync database can't be opened.
+private func makeLocalSearchIndex(accountID: BrevAccount.ID) -> (any MailLocalSearchIndex)? {
+    do {
+        return try BrevSyncEngine(
+            databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
+        )
+    } catch {
+        Logger().error(
+            "Failed to open the local search database for \(String(describing: accountID), privacy: .private(mask: .hash)) — local search is disabled for this account: \(error.localizedDescription, privacy: .public)"
+        )
+        return nil
+    }
 }
