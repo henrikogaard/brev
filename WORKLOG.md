@@ -1,5 +1,34 @@
 # Worklog
 
+## 2026-09-18 — Codex — Nightly archive environment
+
+### Goal
+
+Finish the Nightly repair after the corrected no-checkout planning job exposed
+the next archive-stage failure.
+
+### Changes
+
+- Mapped the configured Google OAuth client ID and secret into Nightly's
+  signed-archive step, matching the stable release workflow.
+- Added a regression check requiring both OAuth mappings in Nightly.
+
+### Verification
+
+- Nightly run `35313161111` passed `plan` and reached the signed archive step;
+  its failure identified the missing OAuth environment variables.
+- `scripts/test-developer-id-release-config.sh`
+- `git diff --check`
+
+### Skipped
+
+- Hosted Nightly retry is pending this follow-up change.
+
+### Handoff
+
+Commit and push the patch, open the follow-up PR, merge it after checks pass,
+and confirm the next Nightly run publishes the signed pre-release and appcast.
+
 ## 2026-09-18 — Codex — Nightly workflow repository scoping
 
 ### Goal
