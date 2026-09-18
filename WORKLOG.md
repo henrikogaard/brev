@@ -45,6 +45,53 @@ Fix the actionable findings from the iOS app code review and open a PR to main.
   should be untracked; populate the empty share-extension String Catalog;
   confirm `ITSAppUsesNonExemptEncryption=false` is deliberate given the
   built-in S/MIME crypto.
+## 2026-09-18 — ZCode — macOS app review fixes
+
+### Goal
+
+Address the findings from a full code review of `apps/macOS`
+(P1 Maildir panel, P2 defaults-trigger and developer-relaunch, P3
+cleanups) on branch `fix/macos-review-findings`.
+
+### Changes
+
+- `MailFilePanels.swift`: include `.folder` in the import panel's
+  `allowedContentTypes`; a type-filtered `NSOpenPanel` disables directory
+  selection otherwise, which made the advertised Maildir import
+  unreachable. The importer still rejects non-Maildir directories.
+- `BrevApp.swift`: debounce the `UserDefaults.didChangeNotification`
+  background-mail reconcile (every defaults write in the process,
+  including window-frame saves, re-ran it); gate
+  `restartForDeveloperModeChange()` behind `#if DEBUG` so release builds
+  cannot self-relaunch or mutate the launchd environment; localize the
+  account-restore alert message with `String(localized:)`; handle every
+  matching URL in `application(_:open:)` (last per scheme wins) so a
+  `mailto:` + `brev://` pair in one open event is no longer truncated.
+- `MacUpdateController.swift`: remove write-only `currentSettings`
+  (orphaned by the ADR-0080 `appcastURL` change).
+- Refined during implementation: `BrevProgressSurface(label:)` takes a
+  `LocalizedStringKey`, so the bare literal at that call site is already
+  the String Catalog convention and was intentionally left unchanged.
+
+### Verification
+
+- `scripts/format.sh` — OK, produced no changes.
+- `scripts/lint.sh` — OK (SwiftFormat lint, SwiftLint strict, coverage
+  self-test, ADR-required check).
+- `xcodebuild build -scheme BrevMacOS -workspace Brev.xcworkspace
+  -destination 'platform=macOS,arch=arm64' CODE_SIGNING_ALLOWED=NO` —
+  BUILD SUCCEEDED. Plain `tuist build` fails in this environment at code
+  signing (no development certificate in the keychain); the signing
+  failure predates these changes and is unrelated.
+- Not run: package tests (no package sources touched); GUI check of the
+  import panel (no app test target covers `NSOpenPanel` behavior).
+
+### Handoff
+
+- Hand-verify the P1 fix in a test build: File → Import Mail…, select a
+  Maildir directory, confirm it is accepted and imports.
+- No GitHub project board card exists for this review-fix work; nothing
+  to move on the board.
 
 ## 2026-09-18 — Codex — Nightly archive environment
 

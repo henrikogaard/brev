@@ -45,6 +45,9 @@ struct BrevApp: App {
     @State private var pendingComposePrefill: ComposePrefill?
     @State private var pendingNotificationRoute: NotificationMailRoute?
     @State private var showRestoreErrorAlert = false
+    /// Coalesces bursts of `UserDefaults.didChangeNotification` into one
+    /// background-mail reconcile.
+    @State private var reconcileDebounceTask: Task<Void, Never>?
     /// Menu-bar presence mirrors the per-device setting (ADR-0075); reconciled
     /// on launch and whenever defaults change.
     @State private var backgroundMailInserted = NotificationSettings.load().backgroundMailEnabled
@@ -129,7 +132,9 @@ struct BrevApp: App {
                 }
             } message: {
                 Text(
-                    "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account."
+                    String(
+                        localized: "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account."
+                    )
                 )
             }
             .sheet(isPresented: $isShowingAddAccountSheet) {
@@ -178,11 +183,19 @@ struct BrevApp: App {
                 consumePendingBrevURL()
             }
             // Covers both `notifications.backgroundMailEnabled` and
-            // `fetch.interval` writes from any settings pane.
+            // `fetch.interval` writes from any settings pane. UserDefaults
+            // posts didChangeNotification for *every* write in the process
+            // (including window-frame saves on each resize/move), so the
+            // reconcile is debounced rather than run per write.
             .onReceive(
                 NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
             ) { _ in
-                reconcileBackgroundMail()
+                reconcileDebounceTask?.cancel()
+                reconcileDebounceTask = Task { @MainActor in
+                    try? await Task.sleep(for: .seconds(0.3))
+                    guard !Task.isCancelled else { return }
+                    reconcileBackgroundMail()
+                }
             }
         }
         .defaultSize(width: 1440, height: 820)
@@ -365,6 +378,7 @@ struct BrevApp: App {
 
     @MainActor
     private func restartForDeveloperModeChange() {
+        #if DEBUG
         let clearEnvironment = Process()
         clearEnvironment.executableURL = URL(fileURLWithPath: "/bin/launchctl")
         clearEnvironment.arguments = ["unsetenv", "BREV_USE_MOCK"]
@@ -376,6 +390,12 @@ struct BrevApp: App {
         process.arguments = ["-n", Bundle.main.bundleURL.path]
         try? process.run()
         NSApplication.shared.terminate(nil)
+        #else
+        // The developer section is only offered in DEBUG builds
+        // (`settingsSectionAvailability`); a release build must never
+        // self-relaunch or mutate the launchd environment.
+        assertionFailure("Developer-mode restart is unavailable outside DEBUG builds")
+        #endif
     }
 }
 
@@ -446,21 +466,28 @@ final class BrevMacOSAppDelegate: NSObject, NSApplicationDelegate {
 
     /// Receives external URLs and keeps the existing main window in charge
     /// instead of letting SwiftUI spawn a new `WindowGroup` instance.
+    ///
+    /// Every matching URL is stored (last of each scheme wins, matching the
+    /// single prefill/route slots downstream), so a `mailto:` and a `brev://`
+    /// delivered in one open event both survive.
     func application(_ application: NSApplication, open urls: [URL]) {
-        guard let url = urls.last(where: { url in
+        let matchingURLs = urls.filter { url in
             let scheme = url.scheme?.lowercased()
             return scheme == "mailto" || scheme == "brev"
-        }) else { return }
+        }
+        guard !matchingURLs.isEmpty else { return }
         Task { @MainActor in
-            switch url.scheme?.lowercased() {
-            case "mailto":
-                Self.pendingMailtoURL = url
-                NotificationCenter.default.post(name: .brevDidReceiveMailtoURL, object: nil)
-            case "brev":
-                Self.pendingBrevURL = url
-                NotificationCenter.default.post(name: .brevDidReceiveDeepLinkURL, object: nil)
-            default:
-                return
+            for url in matchingURLs {
+                switch url.scheme?.lowercased() {
+                case "mailto":
+                    Self.pendingMailtoURL = url
+                    NotificationCenter.default.post(name: .brevDidReceiveMailtoURL, object: nil)
+                case "brev":
+                    Self.pendingBrevURL = url
+                    NotificationCenter.default.post(name: .brevDidReceiveDeepLinkURL, object: nil)
+                default:
+                    continue
+                }
             }
             NSApplication.shared.activate()
         }

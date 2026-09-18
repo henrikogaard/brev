@@ -19,7 +19,6 @@ final class MacUpdateController: NSObject, SPUUpdaterDelegate {
     private let settingsStore: SettingsPersistenceStore
     private let buildConfiguration: UpdateBuildConfiguration
     private var updaterController: SPUStandardUpdaterController?
-    private var currentSettings = UpdateSettings.defaults
     private var lastAppliedSettings: UpdateSettings?
     private var didStartUpdater = false
     private var didRunLaunchCheck = false
@@ -55,7 +54,6 @@ final class MacUpdateController: NSObject, SPUUpdaterDelegate {
         let settings = settingsStore.updateSettings()
         guard buildConfiguration.canInitializeSparkle else { return }
 
-        currentSettings = settings
         guard settings.startsUpdaterOnLaunch else { return }
 
         ensureUpdaterController()
@@ -79,7 +77,6 @@ final class MacUpdateController: NSObject, SPUUpdaterDelegate {
     }
 
     private func apply(_ settings: UpdateSettings) {
-        currentSettings = settings
         guard buildConfiguration.canInitializeSparkle else { return }
         ensureUpdaterController()
         guard lastAppliedSettings != settings else { return }
