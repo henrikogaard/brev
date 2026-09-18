@@ -60,6 +60,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Nightly release archives now receive the configured Google OAuth values, so
+  scheduled and manually dispatched builds can pass the archive preflight.
+
 - Nightly release planning now scopes its GitHub Actions Build lookup
   explicitly, allowing the no-checkout gate to run on scheduled builds.
 

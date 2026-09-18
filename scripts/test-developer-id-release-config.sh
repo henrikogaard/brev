@@ -44,6 +44,12 @@ if ! grep -Fq 'BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID: ${{ secrets.BREV_GOOGLE_OAUTH_
   exit 1
 fi
 
+if ! grep -Fq 'BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID: ${{ secrets.BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID }}' "$nightly_workflow" ||
+    ! grep -Fq 'BREV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.BREV_GOOGLE_OAUTH_CLIENT_SECRET }}' "$nightly_workflow"; then
+  echo "ERROR: the nightly archive must receive the configured Google OAuth values" >&2
+  exit 1
+fi
+
 if ! grep -Fq -- 'gh run list' "$nightly_workflow" ||
     ! grep -Fq -- '--repo "$GITHUB_REPOSITORY"' "$nightly_workflow" ||
     ! grep -Fq -- '--workflow Build' "$nightly_workflow" ||
