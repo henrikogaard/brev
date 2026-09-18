@@ -34,4 +34,15 @@ public enum AppSessionRestorePresentationPolicy {
     ) -> Bool {
         visibleBackendCount == 0 && (isRestoringSession || !sessionRestoreAttempted)
     }
+
+    /// Surface the restore-error alert whenever any account failed to restore,
+    /// including the total-failure case where no backend is visible and the
+    /// window shows the login screen. Gating this on `visibleBackendCount > 0`
+    /// used to leave total failures silent — the user's accounts would vanish
+    /// behind the login screen with no explanation.
+    public static func shouldShowRestoreErrorAlert(
+        accountRestoreErrorCount: Int
+    ) -> Bool {
+        accountRestoreErrorCount > 0
+    }
 }

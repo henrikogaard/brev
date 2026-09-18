@@ -1,5 +1,51 @@
 # Worklog
 
+## 2026-09-18 — Claude (ZCode) — iOS review findings fix (fix/ios-review-findings)
+
+### Goal
+
+Fix the actionable findings from the iOS app code review and open a PR to main.
+
+### Summary
+
+- Privacy manifest: added `NSPrivacyAccessedAPICategoryUserDefaults` (CA92.1);
+  a repo-wide grep confirmed no other required-reason categories are in use.
+- Restore errors: `AppSessionRestorePresentationPolicy.shouldShowRestoreErrorAlert`
+  (new, TDD red→green) now drives the launch alert, so total-restore failure
+  (zero visible backends) surfaces instead of silently showing the login
+  screen; Settings hoisted above the mailbox-root decision in the iOS app so
+  the alert's "Open Settings" action works there too.
+- Notification content extension: `UNNotificationExtensionCategory` is now an
+  array covering `brev.newMail` and `brev.newMail.replyEnabled`, so
+  reply-enabled notifications get the rich preview.
+- Share extension: text handoff capped at 256 KB; oversized text is dropped
+  with an explicit message (never truncated) while remaining URLs/attachments
+  still open.
+- Config: removed the unused `processing` background mode (nothing registers a
+  `BGProcessingTask`); enabled `APPLICATION_EXTENSION_API_ONLY` for both iOS
+  extensions (ADR-0004 updated — protected path); replaced the silent `try?`
+  local-search-index factories with a logged helper; fixed the stale
+  `currentBackends` isolation comment.
+
+### Verification
+
+- `swift test --package-path packages/BrevMail --filter
+  AppSessionRestorePresentationPolicy` — 3 tests pass (red first).
+- `tuist build BrevIOS` — build succeeds with the new extension setting.
+- `plutil -lint` on all touched plists — OK. SwiftLint clean on touched
+  targets; SwiftFormat check run on touched Swift files.
+- Skipped: on-device QA of the total-failure alert path, reply-enabled rich
+  notifications, background refresh, and alternate icons (manual QA).
+
+### Handoff
+
+- Follow-ups not in this PR: unit-test target for `apps/iOS` (BGTask
+  coordinator / `OneShotBGCompletion` / share-URL building are untested);
+  decide whether tracked generated files (`apps/iOS/Derived/Sources/Tuist*`)
+  should be untracked; populate the empty share-extension String Catalog;
+  confirm `ITSAppUsesNonExemptEncryption=false` is deliberate given the
+  built-in S/MIME crypto.
+
 ## 2026-09-18 — Codex — Nightly archive environment
 
 ### Goal

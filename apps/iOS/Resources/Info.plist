@@ -126,7 +126,6 @@
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>
-		<string>processing</string>
 	</array>
 	<key>NSHumanReadableCopyright</key>
 	<string>Copyright © 2026 Henrik Øgård. Licensed under MIT.</string>
