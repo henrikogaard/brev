@@ -16,8 +16,8 @@ import SQLite3
 
 /// SQLite-backed canonical Gmail account store.
 public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagingStore, GmailScheduledSendStore,
-    @unchecked Sendable {
-    private static let currentSchemaVersion = 4
+    GmailMessageSummaryScanning, @unchecked Sendable {
+    private static let currentSchemaVersion = 5
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
 
     private let lock = NSLock()
@@ -168,7 +168,7 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
                 SELECT 1 FROM gmail_message_labels AS l
                 WHERE l.account_id = m.account_id AND l.message_id = m.message_id AND l.label_id = ?
             )
-            ORDER BY CAST(json_extract(CAST(m.message_json AS TEXT), '$.internalDate') AS INTEGER) DESC, m.message_id
+            ORDER BY m.internal_date DESC, m.message_id
             LIMIT ? OFFSET ?;
             """)
             defer { sqlite3_finalize(statement) }
@@ -340,10 +340,63 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         try begin()
         do {
             try executeScript(Self.schemaSQL)
+            // The v5 column ALTERs must land before the index that uses them.
+            try migrateMaterializedColumns()
+            try executeScript(Self.materializedIndexSQL)
             try commit()
         } catch {
             try? rollback()
             throw error
+        }
+    }
+
+    /// Adds the materialized `internal_date`/`content_hash` columns to
+    /// pre-v5 databases and backfills them from `message_json`. The column
+    /// checks keep the migration idempotent and skip the ALTER on fresh
+    /// schemas that already declare the columns.
+    private func migrateMaterializedColumns() throws {
+        var existing = Set<String>()
+        let statement = try prepare("PRAGMA table_info(gmail_messages);")
+        while sqlite3_step(statement) == SQLITE_ROW {
+            if let name = string(statement, column: 1) { existing.insert(name) }
+        }
+        sqlite3_finalize(statement)
+        if !existing.contains("internal_date") {
+            try execute("ALTER TABLE gmail_messages ADD COLUMN internal_date INTEGER;")
+        }
+        if !existing.contains("content_hash") {
+            try execute("ALTER TABLE gmail_messages ADD COLUMN content_hash INTEGER;")
+        }
+        // Backfill preserves the exact ordering semantics of the former
+        // json_extract sort expression (missing stays NULL, non-numeric is 0).
+        try execute("""
+        UPDATE gmail_messages SET internal_date =
+            CAST(json_extract(CAST(message_json AS TEXT), '$.internalDate') AS INTEGER)
+        WHERE internal_date IS NULL;
+        """)
+        let rows = try prepare("""
+        SELECT account_id, message_id, message_json FROM gmail_messages
+        WHERE content_hash IS NULL;
+        """)
+        var hashes: [(String, String, Int64)] = []
+        while sqlite3_step(rows) == SQLITE_ROW {
+            guard let accountID = string(rows, column: 0),
+                  let messageID = string(rows, column: 1),
+                  let data = blob(rows, column: 2)
+            else { continue }
+            // Hash the canonical encoding so a backfilled marker matches the
+            // one a later upsert computes for semantically identical content.
+            let hash = (try? JSONDecoder().decode(GmailMessage.self, from: data))
+                .map { GmailMessageSummary.contentHash(for: $0) }
+                ?? GmailMessageSummary.contentHash(for: data)
+            hashes.append((accountID, messageID, hash))
+        }
+        sqlite3_finalize(rows)
+        for (accountID, messageID, hash) in hashes {
+            try execute("""
+            UPDATE gmail_messages SET content_hash = ?
+            WHERE account_id = ? AND message_id = ? AND content_hash IS NULL;
+            """, bindings: [.optionalInt(Int(hash)), .text(accountID), .text(messageID)])
         }
     }
 
@@ -585,12 +638,16 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         let messageData = try JSONEncoder().encode(merged)
         try execute("""
         INSERT INTO gmail_messages
-            (account_id, message_id, thread_id, message_json)
-        VALUES (?, ?, ?, ?)
+            (account_id, message_id, thread_id, internal_date, content_hash, message_json)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(account_id, message_id) DO UPDATE SET
-            thread_id = excluded.thread_id, message_json = excluded.message_json;
+            thread_id = excluded.thread_id, internal_date = excluded.internal_date,
+            content_hash = excluded.content_hash, message_json = excluded.message_json;
         """, bindings: [
-            .text(accountID), .text(message.id), .optionalText(merged.threadID), .blob(messageData)
+            .text(accountID), .text(message.id), .optionalText(merged.threadID),
+            .optionalInt(Self.internalDateMilliseconds(of: merged)),
+            .optionalInt(Int(GmailMessageSummary.contentHash(for: merged))),
+            .blob(messageData)
         ])
         try execute(
             "DELETE FROM gmail_message_labels WHERE account_id = ? AND message_id = ?;",
@@ -602,6 +659,13 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
             VALUES (?, ?, ?);
             """, bindings: [.text(accountID), .text(message.id), .text(labelID)])
         }
+    }
+
+    /// Parses the stored millisecond date with the same semantics as the
+    /// former `CAST(json_extract(..., '$.internalDate') AS INTEGER)` sort:
+    /// missing stays NULL and non-numeric values coerce to zero.
+    private static func internalDateMilliseconds(of message: GmailMessage) -> Int? {
+        message.internalDate.map { Int(Int64($0.trimmingCharacters(in: .whitespaces)) ?? 0) }
     }
 
     private func storedMessage(accountID: String, messageID: String) -> GmailMessage? {
@@ -637,8 +701,21 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     }
 
     private func scrubContentFromMessages(accountID: String, messageIDs: Set<String>?) throws {
-        let statement = try prepare("SELECT message_id, message_json FROM gmail_messages WHERE account_id = ?;")
-        bind(accountID, to: statement, at: 1)
+        // Decode only the targeted rows; a full scrub still walks the table.
+        var bindings: [Binding] = [.text(accountID)]
+        var predicate = ""
+        if let messageIDs {
+            let placeholders = Array(repeating: "?", count: messageIDs.count).joined(separator: ", ")
+            predicate = " AND message_id IN (\(placeholders))"
+            bindings.append(contentsOf: messageIDs.sorted().map { .text($0) })
+        }
+        let statement = try prepare("""
+        SELECT message_id, message_json FROM gmail_messages
+        WHERE account_id = ?\(predicate);
+        """)
+        for (offset, binding) in bindings.enumerated() {
+            bind(binding, to: statement, at: Int32(offset + 1))
+        }
         var messages: [GmailMessage] = []
         while sqlite3_step(statement) == SQLITE_ROW {
             guard let data = blob(statement, column: 1),
@@ -888,6 +965,8 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
         account_id TEXT NOT NULL,
         message_id TEXT NOT NULL,
         thread_id TEXT,
+        internal_date INTEGER,
+        content_hash INTEGER,
         message_json BLOB NOT NULL,
         PRIMARY KEY (account_id, message_id),
         FOREIGN KEY (account_id) REFERENCES gmail_accounts(account_id) ON DELETE CASCADE
@@ -904,8 +983,6 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     );
     CREATE INDEX IF NOT EXISTS gmail_messages_thread_idx
         ON gmail_messages(account_id, thread_id);
-    CREATE INDEX IF NOT EXISTS gmail_messages_received_idx
-        ON gmail_messages(account_id, CAST(json_extract(CAST(message_json AS TEXT), '$.internalDate') AS INTEGER) DESC, message_id);
     CREATE TABLE IF NOT EXISTS gmail_bodies (
         account_id TEXT NOT NULL,
         message_id TEXT NOT NULL,
@@ -965,8 +1042,132 @@ public final class SQLiteGmailAccountStore: GmailReadCacheStore, GmailDraftStagi
     CREATE INDEX IF NOT EXISTS gmail_conversation_idx ON gmail_messages (
         account_id, COALESCE(NULLIF(thread_id, ''), message_id), message_id
     );
-    PRAGMA user_version = 4;
+    PRAGMA user_version = 5;
     """
+
+    /// Indexes over the materialized columns run after migrateMaterializedColumns:
+    /// a pre-v5 database has no internal_date column until the ALTER lands.
+    private static let materializedIndexSQL = """
+    DROP INDEX IF EXISTS gmail_messages_received_idx;
+    CREATE INDEX gmail_messages_received_idx
+        ON gmail_messages(account_id, internal_date DESC, message_id);
+    CREATE INDEX IF NOT EXISTS gmail_message_labels_label_idx
+        ON gmail_message_labels(account_id, label_id, message_id);
+    """
+}
+
+/// A lightweight per-message index row for refresh diffing and retention
+/// sweeps, read without decoding `message_json`.
+public struct GmailMessageSummary: Sendable, Equatable {
+    /// Stable Gmail message identifier.
+    public let id: String
+    /// FNV-1a hash of the stored record; a content change flips the hash.
+    public let contentHash: Int64
+    /// Label membership in stored order, used for folder attribution.
+    public let labelIDs: [String]
+    /// Received timestamp in milliseconds since the epoch, when known.
+    public let internalDateMilliseconds: Int64?
+
+    /// Creates a message summary row.
+    public init(id: String, contentHash: Int64, labelIDs: [String], internalDateMilliseconds: Int64?) {
+        self.id = id
+        self.contentHash = contentHash
+        self.labelIDs = labelIDs
+        self.internalDateMilliseconds = internalDateMilliseconds
+    }
+
+    /// Summarizes a decoded message for stores without a scan seam; hashing
+    /// the canonical encoding preserves the decoded-diff semantics exactly.
+    public init(encoding message: GmailMessage) {
+        self.init(
+            id: message.id,
+            contentHash: Self.contentHash(for: message),
+            labelIDs: message.labelIDs,
+            internalDateMilliseconds: message.internalDate
+                .map { Int64($0.trimmingCharacters(in: .whitespaces)) ?? 0 }
+        )
+    }
+
+    /// FNV-1a 64-bit hash of the message's canonical encoding. The sort makes
+    /// the marker deterministic: Foundation's keyed-container output order is
+    /// otherwise unspecified, so hashing raw bytes can flip on an unchanged
+    /// re-upsert even though the decoded content is identical.
+    public static func contentHash(for message: GmailMessage) -> Int64 {
+        let encoder = JSONEncoder()
+        encoder.outputFormatting = [.sortedKeys]
+        guard let data = try? encoder.encode(message) else { return 0 }
+        return contentHash(for: data)
+    }
+
+    /// FNV-1a 64-bit hash of stored record bytes; stable across processes so
+    /// it can also persist as a cheap change marker.
+    public static func contentHash(for data: Data) -> Int64 {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+        for byte in data {
+            hash ^= UInt64(byte)
+            hash &*= 0x0000_0100_0000_01B3
+        }
+        return Int64(bitPattern: hash)
+    }
+}
+
+/// Optional scan seam for stores that can summarize rows without decoding
+/// every stored payload. `GmailAPIBackend` falls back to decode-based
+/// snapshots when the store does not offer it.
+public protocol GmailMessageSummaryScanning: GmailAccountStore {
+    /// Lists one summary per stored message for diffing and retention sweeps.
+    func messageSummaries(accountID: String) async throws -> [GmailMessageSummary]
+}
+
+public extension SQLiteGmailAccountStore {
+    /// Reads every row's change marker and retention metadata without decoding
+    /// payloads; label order follows insertion order for folder attribution.
+    func messageSummaries(accountID: String) async throws -> [GmailMessageSummary] {
+        try validate(accountID: accountID)
+        return try lock.withLock {
+            let statement = try prepare("""
+            SELECT m.message_id, m.content_hash, m.internal_date, l.label_id
+            FROM gmail_messages AS m
+            LEFT JOIN gmail_message_labels AS l
+                ON l.account_id = m.account_id AND l.message_id = m.message_id
+            WHERE m.account_id = ?
+            ORDER BY m.message_id, l.rowid;
+            """)
+            defer { sqlite3_finalize(statement) }
+            bind(accountID, to: statement, at: 1)
+            var result: [GmailMessageSummary] = []
+            var currentID: String?
+            var contentHash: Int64 = 0
+            var internalDate: Int64?
+            var labelIDs: [String] = []
+            func flush() {
+                guard let id = currentID else { return }
+                result.append(GmailMessageSummary(
+                    id: id,
+                    contentHash: contentHash,
+                    labelIDs: labelIDs,
+                    internalDateMilliseconds: internalDate
+                ))
+            }
+            while sqlite3_step(statement) == SQLITE_ROW {
+                guard let id = string(statement, column: 0) else {
+                    throw GmailAccountStoreError.malformedStoredMessage
+                }
+                if id != currentID {
+                    flush()
+                    currentID = id
+                    contentHash = sqlite3_column_type(statement, 1) == SQLITE_NULL
+                        ? 0 : sqlite3_column_int64(statement, 1)
+                    internalDate = sqlite3_column_type(statement, 2) == SQLITE_NULL
+                        ? nil : sqlite3_column_int64(statement, 2)
+                    labelIDs = []
+                }
+                if let labelID = string(statement, column: 3) { labelIDs.append(labelID) }
+            }
+            flush()
+            return result
+        }
+    }
 }
 
 // Staged compose content is separate from the evictable message cache. It can

@@ -62,6 +62,9 @@ struct GmailAPIDraftBackendTests {
             store: SQLiteGmailAccountStore(databaseURL: url)
         )
         try await second.connect()
+        // Warm-cache connect returns after the cached hydrate; scheduled-send
+        // recovery completes on the background pass.
+        await second.initialSyncSettled()
         #expect(second.pendingScheduledSends().first?.state == .delivering)
         await transport.releaseSend()
         await delivery.value
@@ -131,6 +134,7 @@ struct GmailAPIDraftBackendTests {
             store: SQLiteGmailAccountStore(databaseURL: url)
         )
         try await restored.connect()
+        await restored.initialSyncSettled()
         await restored.deliverDueScheduledSends()
         #expect(await transport.rawSendCount() == 1)
         #expect(restored.pendingScheduledSends().first?.nextAttemptAt == entry.nextAttemptAt)
@@ -185,6 +189,7 @@ struct GmailAPIDraftBackendTests {
             store: SQLiteGmailAccountStore(databaseURL: url)
         )
         try await restored.connect()
+        await restored.initialSyncSettled()
         await restored.deliverDueScheduledSends()
         #expect(await transport.rawSendCount() == 1)
         #expect(restored.pendingScheduledSends().first?.state == .needsReview)
@@ -287,6 +292,7 @@ struct GmailAPIDraftBackendTests {
         let store = try SQLiteGmailAccountStore(databaseURL: url)
         let restored = GmailAPIBackend(account: Self.account, transport: transport, store: store)
         try await restored.connect()
+        await restored.initialSyncSettled()
         let service = try #require(restored.extensionService(ScheduledSendManaging.self))
         #expect(service.pendingScheduledSends().map(\.draftID) == [draft.id])
         #expect(await transport.sentRawMIME() == nil)

@@ -83,6 +83,9 @@ public protocol GmailAPITransporting: Sendable {
     ) async throws -> GmailMessagePage
     /// Loads one account-wide Gmail message.
     func getMessage(messageID: String, format: GmailMessageFormat) async throws -> GmailMessage
+    /// Loads one account-wide Gmail message, requesting only the listed
+    /// headers when `format` is `.metadata`.
+    func getMessage(messageID: String, format: GmailMessageFormat, metadataHeaders: [String]) async throws -> GmailMessage
     /// Loads one thread in metadata format, returning only the requested
     /// headers (ADR-0074 related-header discovery). Implementations must not
     /// upgrade to a body/full format — discovery is metadata-only.
@@ -118,6 +121,10 @@ public extension GmailAPITransporting {
             pageToken: pageToken,
             maxResults: maxResults
         )
+    }
+
+    func getMessage(messageID: String, format: GmailMessageFormat, metadataHeaders: [String]) async throws -> GmailMessage {
+        try await getMessage(messageID: messageID, format: format)
     }
 
     func getThread(threadID: String, metadataHeaders: [String] = []) async throws -> GmailThread {
@@ -577,14 +584,21 @@ public final class GmailAPITransport: GmailAPITransporting, @unchecked Sendable 
     }
 
     public func getMessage(messageID: String, format: GmailMessageFormat) async throws -> GmailMessage {
+        try await getMessage(messageID: messageID, format: format, metadataHeaders: [])
+    }
+
+    public func getMessage(messageID: String, format: GmailMessageFormat,
+                           metadataHeaders: [String]) async throws -> GmailMessage {
         guard !messageID.isEmpty, messageID != ".", messageID != ".." else {
             throw GmailAPIError.invalidRequest
         }
+        var queryItems = [URLQueryItem(name: "format", value: format.rawValue)]
+        queryItems += metadataHeaders.map { URLQueryItem(name: "metadataHeaders", value: $0) }
         return try await send(
             GmailAPIRequest(
                 method: .get,
                 path: "/users/me/messages/\(Self.pathComponent(messageID))",
-                queryItems: [URLQueryItem(name: "format", value: format.rawValue)]
+                queryItems: queryItems
             ),
             decoding: GmailMessage.self
         )

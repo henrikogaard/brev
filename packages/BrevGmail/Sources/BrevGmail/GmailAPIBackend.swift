@@ -86,6 +86,12 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private var replayConflictCount = 0
     private var refreshedCachedFolders: [Folder.ID: Date] = [:]
     private var cachedFolderRefreshTasks: [Folder.ID: Task<Void, Never>] = [:]
+    /// The single in-flight reconcile; concurrent refresh callers join it
+    /// instead of racing a second pass over the same store.
+    private var reconcileTask: Task<Void, Error>?
+    /// The background network pass when `connect()` returned early on a
+    /// warm cache. Cancelled by `disconnect()`.
+    private var initialSyncTask: Task<Void, Never>?
 
     /// Creates a Gmail API backend with injected REST and canonical-store seams.
     public init(
@@ -229,62 +235,45 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         do {
             let cachedState = try await store.accountState(accountID: account.id)
             let cachedLabels = try await store.labels(accountID: account.id)
-            try lock.withLock {
+            let hasCachedSnapshot = try lock.withLock { () -> Bool in
                 guard connectionGeneration == generation else { throw MailBackendError.notConnected }
                 if !cachedLabels.isEmpty { labelCatalog = cachedLabels }
                 if let cachedState {
                     profile = GmailProfile(emailAddress: cachedState.emailAddress, historyID: cachedState.historyID)
                 }
                 isConnected = true
+                return cachedState != nil || !cachedLabels.isEmpty
             }
 
-            if let syncReconciler {
-                try await reconcile(syncReconciler)
-                await probeSendAsMetadata()
-                try await draftOperations.activate(generation: draftGeneration)
-                try requireConnectionGeneration(generation)
-                try await prepareScheduledDelivery(generation: generation)
+            // A warm snapshot makes the mailbox usable immediately, so the
+            // network pass runs in the background and any failure surfaces
+            // through sync health like a failed refresh would. A cold
+            // provision keeps the blocking path so a failed first sync
+            // still rolls the sign-in back.
+            guard hasCachedSnapshot else {
+                try await performConnectSync(generation: generation, draftGeneration: draftGeneration)
                 return
             }
-            let fetchedProfile = try await transport.profile()
-            let fetchedLabels = try await transport.listLabels()
-            let currentState = try await store.accountState(accountID: account.id)
-            try requireConnectionGeneration(generation)
-            let state = GmailAccountState(
-                accountID: account.id,
-                emailAddress: fetchedProfile.emailAddress,
-                historyID: fetchedProfile.historyID,
-                lastFullSyncAt: currentState?.lastFullSyncAt,
-                lastDeltaSyncAt: currentState?.lastDeltaSyncAt
-            )
-            if currentState == nil {
-                try await store.replaceSnapshot(
-                    GmailAccountSnapshot(
-                        accountID: account.id,
-                        state: state,
-                        labels: fetchedLabels,
-                        messages: []
-                    )
-                )
-            } else {
-                try await store.apply(GmailStoreDelta(
-                    accountID: account.id,
-                    upsertedLabels: fetchedLabels,
-                    historyID: fetchedProfile.historyID
-                ))
-            }
-            try lock.withLock {
-                guard connectionGeneration == generation else { throw MailBackendError.notConnected }
-                profile = fetchedProfile
-                labelCatalog = fetchedLabels
-                isConnected = true
-                lastSuccessfulSyncAt = Date()
-            }
-            await probeSendAsMetadata()
+            // Draft writes only need the connection generation, not the
+            // reconcile result — activate before the background pass so
+            // compose works while the first sync is still running.
             try await draftOperations.activate(generation: draftGeneration)
-            try requireConnectionGeneration(generation)
-            try await prepareScheduledDelivery(generation: generation)
-            await attachmentIndexer?.sweep()
+            initialSyncTask = Task { [weak self] in
+                guard let self else { return }
+                defer {
+                    self.lock.withLock { self.initialSyncTask = nil }
+                }
+                do {
+                    try await performConnectSync(
+                        generation: generation,
+                        draftGeneration: draftGeneration
+                    )
+                } catch {
+                    guard lock.withLock({ self.connectionGeneration == generation }),
+                          !(error is CancellationError) else { return }
+                    recordSyncFailure(error)
+                }
+            }
         } catch {
             lock.withLock {
                 guard connectionGeneration == generation else { return }
@@ -296,6 +285,68 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             }
             throw Self.providerNeutralError(error)
         }
+    }
+
+    /// Awaits the background network pass a warm-cache `connect()` started.
+    /// Returns immediately when connect ran synchronously (cold provision)
+    /// or the pass already finished — used by tests and lifecycle code that
+    /// need "the first sync is done" rather than "the mailbox is usable".
+    func initialSyncSettled() async {
+        await lock.withLock { initialSyncTask }?.value
+    }
+
+    /// The network half of `connect()`: reconcile through the sync engine,
+    /// or a profile/label fetch when no reconciler is wired, followed by
+    /// the send-as probe, draft-operation activation, and scheduled-send
+    /// preparation.
+    private func performConnectSync(generation: UUID, draftGeneration: UUID) async throws {
+        if let syncReconciler {
+            try await reconcileExclusive(syncReconciler)
+            await probeSendAsMetadata()
+            try await draftOperations.activate(generation: draftGeneration)
+            try requireConnectionGeneration(generation)
+            try await prepareScheduledDelivery(generation: generation)
+            return
+        }
+        let fetchedProfile = try await transport.profile()
+        let fetchedLabels = try await transport.listLabels()
+        let currentState = try await store.accountState(accountID: account.id)
+        try requireConnectionGeneration(generation)
+        let state = GmailAccountState(
+            accountID: account.id,
+            emailAddress: fetchedProfile.emailAddress,
+            historyID: fetchedProfile.historyID,
+            lastFullSyncAt: currentState?.lastFullSyncAt,
+            lastDeltaSyncAt: currentState?.lastDeltaSyncAt
+        )
+        if currentState == nil {
+            try await store.replaceSnapshot(
+                GmailAccountSnapshot(
+                    accountID: account.id,
+                    state: state,
+                    labels: fetchedLabels,
+                    messages: []
+                )
+            )
+        } else {
+            try await store.apply(GmailStoreDelta(
+                accountID: account.id,
+                upsertedLabels: fetchedLabels,
+                historyID: fetchedProfile.historyID
+            ))
+        }
+        try lock.withLock {
+            guard connectionGeneration == generation else { throw MailBackendError.notConnected }
+            profile = fetchedProfile
+            labelCatalog = fetchedLabels
+            isConnected = true
+            lastSuccessfulSyncAt = Date()
+        }
+        await probeSendAsMetadata()
+        try await draftOperations.activate(generation: draftGeneration)
+        try requireConnectionGeneration(generation)
+        try await prepareScheduledDelivery(generation: generation)
+        await attachmentIndexer?.sweep()
     }
 
     /// Re-applies the consent boundary: enabling sweeps cached sources;
@@ -373,6 +424,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             recoveredSchedules = false
             if let scheduledSession { GmailScheduledSessionRegistry.shared.retire(scheduledSession, accountID: account.id) }
             scheduledSession = nil
+            initialSyncTask?.cancel()
+            initialSyncTask = nil
+            reconcileTask?.cancel()
+            reconcileTask = nil
             cachedFolderRefreshTasks.values.forEach { $0.cancel() }
             cachedFolderRefreshTasks.removeAll()
             refreshedCachedFolders.removeAll()
@@ -397,7 +452,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     public func refresh(folder: Folder) async throws {
         do {
             if let syncReconciler {
-                try await reconcile(syncReconciler)
+                try await reconcileExclusive(syncReconciler)
                 return
             }
             let page = try await remoteMessages(in: folder, pageToken: nil)
@@ -425,22 +480,36 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     ) async {
         guard let cache = readCache else { return }
         if keepsBodies, retentionDays == nil { return }
-        let messages: [GmailMessage]
+        let cutoff = retentionDays.map { Date().addingTimeInterval(-Double($0) * 86400) }
+        let evicted: Set<String>
         do {
-            messages = try await store.messages(accountID: account.id)
+            if let scanner = store as? any GmailMessageSummaryScanning {
+                // Materialized columns answer the sweep without decoding payloads.
+                evicted = try await Set(scanner.messageSummaries(accountID: account.id).compactMap { summary in
+                    guard summary.labelIDs.contains(folderID), !keepingMessageIDs.contains(summary.id) else {
+                        return nil
+                    }
+                    guard keepsBodies else { return summary.id }
+                    guard let cutoff, let milliseconds = summary.internalDateMilliseconds else { return nil }
+                    return Date(timeIntervalSince1970: Double(milliseconds) / 1000) < cutoff ? summary.id : nil
+                })
+            } else {
+                let messages = try await store.messages(accountID: account.id)
+                evicted = Set(messages.compactMap { message -> String? in
+                    guard message.labelIDs.contains(folderID), !keepingMessageIDs.contains(message.id) else {
+                        return nil
+                    }
+                    guard keepsBodies else { return message.id }
+                    guard let cutoff, let internalDate = message.internalDate,
+                          let milliseconds = Double(internalDate)
+                    else { return nil }
+                    return Date(timeIntervalSince1970: milliseconds / 1000) < cutoff ? message.id : nil
+                })
+            }
         } catch {
             recordSyncFailure(error)
             return
         }
-        let cutoff = retentionDays.map { Date().addingTimeInterval(-Double($0) * 86400) }
-        let evicted = Set(messages.compactMap { message -> String? in
-            guard message.labelIDs.contains(folderID), !keepingMessageIDs.contains(message.id) else { return nil }
-            guard keepsBodies else { return message.id }
-            guard let cutoff, let internalDate = message.internalDate,
-                  let milliseconds = Double(internalDate)
-            else { return nil }
-            return Date(timeIntervalSince1970: milliseconds / 1000) < cutoff ? message.id : nil
-        })
         guard !evicted.isEmpty else { return }
         do {
             try await cache.removeCachedContent(accountID: account.id, messageIDs: evicted)
@@ -1251,6 +1320,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private func deliverScheduledBatch() async {
         guard let scheduledStore, lock.withLock({ isConnected }), !Task.isCancelled else { return }
+        // Nothing queued locally: skip the per-tick SQLite recovery and
+        // summary reads. Enqueues and edits always refresh the summary first.
+        guard !pendingScheduledSends().isEmpty else { return }
         do {
             let ownID = lock.withLock { scheduledSession?.id }
             try await draftOperations.withOperation(identifiers: []) { lease in
@@ -1647,7 +1719,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     public func refreshMailbox(for sourceID: MailSourceID) async throws {
         try validateSource(sourceID)
         guard let syncReconciler else { throw unsupported() }
-        try await reconcile(syncReconciler)
+        try await reconcileExclusive(syncReconciler)
     }
 
     public func syncHealth(for sourceID: MailSourceID) async -> AccountSyncHealth {
@@ -1921,8 +1993,33 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         lock.withLock { replayConflictCount += 1 }
     }
 
+    /// Runs at most one reconcile at a time. Callers arriving while a pass
+    /// is in flight — including the background pass started by `connect()`
+    /// on a warm cache — await the same task instead of racing a second
+    /// pass over the same store.
+    private func reconcileExclusive(_ reconciler: GmailSyncReconciler) async throws {
+        if let inFlight = lock.withLock({ reconcileTask }) {
+            return try await inFlight.value
+        }
+        let task = Task { try await self.reconcile(reconciler) }
+        let raced = lock.withLock { () -> Task<Void, Error>? in
+            if let existing = reconcileTask { return existing }
+            reconcileTask = task
+            return nil
+        }
+        if let raced {
+            task.cancel()
+            return try await raced.value
+        }
+        defer {
+            lock.withLock { reconcileTask = nil }
+        }
+        try await task.value
+    }
+
     private func reconcile(_ reconciler: GmailSyncReconciler) async throws {
-        let before = try await store.messages(accountID: account.id)
+        let scanner = store as? any GmailMessageSummaryScanning
+        let before = try await messageSummaries(using: scanner)
         let state: GmailAccountState
         do {
             do {
@@ -1934,7 +2031,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             recordSyncFailure(error)
             throw Self.providerNeutralError(error)
         }
-        let after = try await store.messages(accountID: account.id)
+        let after = try await messageSummaries(using: scanner)
         let labels = try await store.labels(accountID: account.id)
         lock.withLock {
             labelCatalog = labels
@@ -1968,36 +2065,52 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
     }
 
-    private func emitDiff(before: [GmailMessage], after: [GmailMessage]) {
-        let old = Dictionary(uniqueKeysWithValues: before.map { ($0.id, $0) })
-        let new = Dictionary(uniqueKeysWithValues: after.map { ($0.id, $0) })
-        let added = new.keys.filter { old[$0] == nil }.sorted()
-        let removed = old.keys.filter { new[$0] == nil }.sorted()
-        let updated = new.keys.filter { id in
-            guard let previous = old[id], let current = new[id] else { return false }
-            return previous != current
-        }.sorted()
-        let boundedAdded = Array(added.prefix(1000))
-        let boundedRemoved = Array(removed.prefix(1000))
-        let boundedUpdated = Array(updated.prefix(1000))
-        for messageID in boundedAdded {
-            emit(.messagesAdded(
-                folderID: Self.primaryFolderID(for: new[messageID]!, labels: labelCatalog),
-                messageIDs: [messageID]
-            ))
+    /// Per-message change markers for the refresh diff. Stores offering the
+    /// summary scan answer from cheap columns; other stores keep the previous
+    /// decode-based snapshot so the produced events stay identical.
+    private func messageSummaries(using scanner: (any GmailMessageSummaryScanning)?) async throws
+        -> [String: GmailMessageSummary] {
+        if let scanner {
+            return try await Dictionary(uniqueKeysWithValues: scanner
+                .messageSummaries(accountID: account.id).map { ($0.id, $0) })
         }
-        for messageID in boundedRemoved {
-            emit(.messagesRemoved(
-                folderID: Self.primaryFolderID(for: old[messageID]!, labels: labelCatalog),
-                messageIDs: [messageID]
-            ))
+        return try await Dictionary(uniqueKeysWithValues: store.messages(accountID: account.id)
+            .map { message -> (String, GmailMessageSummary) in
+                (message.id, GmailMessageSummary(encoding: message))
+            })
+    }
+
+    /// Emits one event per folder and kind; payloads carry the same message
+    /// IDs the former per-message events did.
+    private func emitDiff(before: [String: GmailMessageSummary], after: [String: GmailMessageSummary]) {
+        let added = after.keys.filter { before[$0] == nil }.sorted().prefix(1000)
+        let removed = before.keys.filter { after[$0] == nil }.sorted().prefix(1000)
+        let updated = after.keys.filter { id in
+            guard let previous = before[id], let current = after[id] else { return false }
+            return previous.contentHash != current.contentHash
+        }.sorted().prefix(1000)
+        let labels = lock.withLock { labelCatalog }
+        for (folderID, ids) in Self.groupedByFolder(added.map { ($0, after[$0]?.labelIDs ?? []) }, labels: labels) {
+            emit(.messagesAdded(folderID: folderID, messageIDs: ids))
         }
-        for messageID in boundedUpdated {
-            emit(.messagesUpdated(
-                folderID: Self.primaryFolderID(for: new[messageID]!, labels: labelCatalog),
-                messageIDs: [messageID]
-            ))
+        for (folderID, ids) in Self.groupedByFolder(removed.map { ($0, before[$0]?.labelIDs ?? []) }, labels: labels) {
+            emit(.messagesRemoved(folderID: folderID, messageIDs: ids))
         }
+        for (folderID, ids) in Self.groupedByFolder(updated.map { ($0, after[$0]?.labelIDs ?? []) }, labels: labels) {
+            emit(.messagesUpdated(folderID: folderID, messageIDs: ids))
+        }
+    }
+
+    /// Groups message IDs by their primary folder in deterministic order.
+    private static func groupedByFolder(
+        _ entries: [(id: String, labelIDs: [String])],
+        labels: [GmailLabel]
+    ) -> [(folderID: String, messageIDs: [String])] {
+        var grouped: [String: [String]] = [:]
+        for entry in entries {
+            grouped[primaryFolderID(forLabelIDs: entry.labelIDs, labels: labels), default: []].append(entry.id)
+        }
+        return grouped.keys.sorted().map { ($0, grouped[$0] ?? []) }
     }
 
     private func emit(_ event: MailEvent) {
@@ -2045,28 +2158,34 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
                     )
                 }
             }
+            // One delta per chunk keeps the whole local rewrite in a single
+            // store transaction instead of one transaction per message.
+            var upserted: [GmailMessage] = []
+            upserted.reserveCapacity(chunk.count)
             for messageID in chunk {
                 let current = try await canonicalMessage(messageID)
                 let labels = Set(current.labelIDs)
                     .subtracting(remove)
                     .union(add)
-                try await store.apply(GmailStoreDelta(
-                    accountID: account.id,
-                    upsertedMessages: [Self.message(current, labels: labels.sorted())]
-                ))
+                upserted.append(Self.message(current, labels: labels.sorted()))
             }
+            try await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: upserted))
         }
     }
 
     private func refreshStoredMessages(_ messageIDs: [String]) async throws {
         guard let client else { throw unsupported() }
+        var upserted: [GmailMessage] = []
+        upserted.reserveCapacity(messageIDs.count)
         for messageID in messageIDs {
-            let message = try await client.getMessage(
+            try await upserted.append(client.getMessage(
                 id: messageID,
                 format: .metadata,
                 metadataHeaders: GmailAPIClient.requiredMetadataHeaders
-            )
-            try await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: [message]))
+            ))
+        }
+        if !upserted.isEmpty {
+            try await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: upserted))
         }
     }
 
@@ -2103,7 +2222,13 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         if let cached = try await store.message(accountID: account.id, messageID: messageID) {
             return cached
         }
-        let fetched = try await transport.getMessage(messageID: messageID, format: .full)
+        // Listing pages only need headers; bodies and MIME upgrade on demand
+        // in `body(for:)`/`rawMessageData(for:)`, like the label-sync path.
+        let fetched = try await transport.getMessage(
+            messageID: messageID,
+            format: .metadata,
+            metadataHeaders: GmailAPIClient.requiredMetadataHeaders
+        )
         try Task.checkCancellation()
         if try await store.accountState(accountID: account.id) != nil {
             try await store.apply(GmailStoreDelta(accountID: account.id, upsertedMessages: [fetched]))
@@ -2283,7 +2408,11 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     private static func primaryFolderID(for message: GmailMessage, labels: [GmailLabel]) -> String {
-        message.labelIDs.first { id in labels.contains { $0.id == id } } ?? "ALL_MAIL"
+        primaryFolderID(forLabelIDs: message.labelIDs, labels: labels)
+    }
+
+    private static func primaryFolderID(forLabelIDs labelIDs: [String], labels: [GmailLabel]) -> String {
+        labelIDs.first { id in labels.contains { $0.id == id } } ?? "ALL_MAIL"
     }
 
     /// Builds a conversation member from a Gmail message for both the cached
