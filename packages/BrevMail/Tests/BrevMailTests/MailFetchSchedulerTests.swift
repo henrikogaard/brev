@@ -87,3 +87,70 @@ struct MailFetchBackoffTests {
         #expect(MailFetchBackoff.next(previous: 30, max: 45) == 45)
     }
 }
+
+@Suite("MailFetchBackoffSchedule")
+struct MailFetchBackoffScheduleTests {
+    private static let epoch = Date(timeIntervalSince1970: 1_000_000)
+
+    @Test("first attempt is always permitted")
+    func firstAttemptIsPermitted() {
+        let schedule = MailFetchBackoffSchedule()
+        #expect(schedule.permitsAttempt(at: Self.epoch, base: 60))
+        #expect(schedule.effectiveInterval(base: 60) == 60)
+    }
+
+    @Test("first failure keeps the base interval")
+    func firstFailureKeepsBaseInterval() {
+        var schedule = MailFetchBackoffSchedule()
+        schedule.recordAttempt(at: Self.epoch)
+        schedule.recordOutcome(succeeded: false)
+        #expect(schedule.consecutiveFailures == 1)
+        #expect(schedule.effectiveInterval(base: 60) == 60)
+        // The gate only engages once extraDelay grows; at the base
+        // cadence every tick runs so a slightly-early tick is kept.
+        #expect(schedule.permitsAttempt(at: Self.epoch + 59, base: 60))
+        #expect(schedule.permitsAttempt(at: Self.epoch + 60, base: 60))
+    }
+
+    @Test("consecutive failures stretch the effective interval")
+    func consecutiveFailuresStretchInterval() {
+        var schedule = MailFetchBackoffSchedule()
+        schedule.recordAttempt(at: Self.epoch)
+        schedule.recordOutcome(succeeded: false)
+        schedule.recordAttempt(at: Self.epoch + 60)
+        schedule.recordOutcome(succeeded: false)
+        // Second consecutive failure adds the initial 30 s delay, so the
+        // next attempt needs 60 + 30 s since the last attempt.
+        #expect(schedule.consecutiveFailures == 2)
+        #expect(schedule.effectiveInterval(base: 60) == 90)
+        #expect(!schedule.permitsAttempt(at: Self.epoch + 60 + 89, base: 60))
+        #expect(schedule.permitsAttempt(at: Self.epoch + 60 + 90, base: 60))
+    }
+
+    @Test("added delay doubles per consecutive failure")
+    func addedDelayDoubles() {
+        var schedule = MailFetchBackoffSchedule()
+        var now = Self.epoch
+        schedule.recordAttempt(at: now)
+        for expectedExtra in [0, 30, 60, 120] as [TimeInterval] {
+            schedule.recordOutcome(succeeded: false)
+            #expect(schedule.extraDelay == expectedExtra)
+            now += schedule.effectiveInterval(base: 60)
+            schedule.recordAttempt(at: now)
+        }
+    }
+
+    @Test("success resets the schedule")
+    func successResetsSchedule() {
+        var schedule = MailFetchBackoffSchedule()
+        schedule.recordAttempt(at: Self.epoch)
+        schedule.recordOutcome(succeeded: false)
+        schedule.recordAttempt(at: Self.epoch + 60)
+        schedule.recordOutcome(succeeded: false)
+        #expect(schedule.extraDelay == 30)
+        schedule.recordOutcome(succeeded: true)
+        #expect(schedule.consecutiveFailures == 0)
+        #expect(schedule.extraDelay == 0)
+        #expect(schedule.permitsAttempt(at: Self.epoch + 120, base: 60))
+    }
+}

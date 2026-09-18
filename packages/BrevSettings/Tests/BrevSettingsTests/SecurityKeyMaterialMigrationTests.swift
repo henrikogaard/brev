@@ -61,6 +61,30 @@ struct SecurityKeyMaterialMigrationTests {
         #expect(!result)
         #expect(defaults.data(forKey: SecurityKeyMaterialSettings.Key.storage) == originalData)
         #expect(defaults.bool(forKey: "encryption.openPGPEnabled"))
+
+        // The failure must not mark the migration complete: a retry with a
+        // working store finishes the cleanup and records completion.
+        let retryStore = MigrationMaterialStore()
+        #expect(await RetiredSecurityMaterialMigration.run(defaults: defaults, materialStore: retryStore))
+        #expect(await retryStore.deletedRecordIDs == ["retired"])
+    }
+
+    @Test("empty defaults run once without writing the settings payload")
+    func emptyDefaultsRunOnceWithoutSettingsWrite() async throws {
+        let suiteName = "SecurityMigrationEmpty-\(UUID())"
+        let defaults = try #require(UserDefaults(suiteName: suiteName))
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+        let store = MigrationMaterialStore()
+
+        #expect(await RetiredSecurityMaterialMigration.run(defaults: defaults, materialStore: store))
+        // No retired records means no catalog rewrite — the storage key
+        // stays absent rather than materializing an empty payload.
+        #expect(defaults.data(forKey: SecurityKeyMaterialSettings.Key.storage) == nil)
+
+        // A second invocation returns early: no keychain traffic and no
+        // further defaults work.
+        #expect(await RetiredSecurityMaterialMigration.run(defaults: defaults, materialStore: store))
+        #expect(await store.deletedRecordIDs.isEmpty)
     }
 }
 

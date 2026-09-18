@@ -99,6 +99,53 @@ struct BackgroundMailCoordinatorTests {
         #expect(coordinator.lastSuccessfulRefresh == nil)
     }
 
+    @Test("consecutive failures gate scheduled ticks until the backoff window elapses")
+    func consecutiveFailuresGateTicks() async {
+        let counter = RefreshCounter()
+        var ticks = DrivenTicks()
+        let signal = ticks.refreshContinuation
+        let failures = Flag()
+        let clock = MutableDate()
+        let coordinator = BackgroundMailCoordinator(
+            backendsProvider: { [MockBackend(account: Self.account)] },
+            refresh: { _ in
+                await counter.bump()
+                signal.yield()
+                return failures.value ? "still failing" : nil
+            },
+            tickSource: { _ in ticks.stream },
+            now: { clock.value }
+        )
+        failures.value = true
+        coordinator.start(interval: 60)
+        await ticks.tick()
+        // The first failure keeps the base interval, so the next tick 60 s
+        // later still refreshes; that second consecutive failure stretches
+        // the effective interval to 60 + 30 s.
+        clock.value += 60
+        await ticks.tick()
+
+        // A tick inside the backoff window must be skipped.
+        clock.value += 30
+        ticks.continuation.yield()
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
+        #expect(await counter.value == 2)
+
+        // Once the backoff window has elapsed the next tick refreshes.
+        clock.value += 60
+        await ticks.tick()
+        #expect(await counter.value == 3)
+
+        // A success resets the schedule back to the base interval.
+        failures.value = false
+        clock.value += 120
+        await ticks.tick()
+        #expect(await counter.value == 4)
+        coordinator.stop()
+    }
+
     @Test("stop halts further ticks")
     func stopHaltsTicks() async {
         let counter = RefreshCounter()
@@ -172,4 +219,9 @@ private actor RefreshCounter {
 /// Mutable box for observing a `@Sendable` tick-source closure.
 private final class Flag: @unchecked Sendable {
     var value = false
+}
+
+/// Mutable clock for the coordinator's injectable `now` seam.
+private final class MutableDate: @unchecked Sendable {
+    var value = Date()
 }

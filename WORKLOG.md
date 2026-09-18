@@ -1,5 +1,166 @@
 # Worklog
 
+## 2026-09-19 — Devin — Daily-driver UI + reliability perf pass (feature/perf-daily-driver)
+
+### Goal
+
+Land the BrevMail UI scan/render and launch/reliability findings from the
+daily-driver audit (batches C and D, interrupted mid-flight — this entry
+completes, fixes, and verifies them).
+
+### Summary
+
+- `ThreadConversationRenderPool` (new, `BrevMail`): one pool per
+  `ThreadConversationView` keeps an 8-slot LRU of `HTMLBodyWebViewStore`s
+  and funnels body/attachment fetches through 4 permits, so "Expand All"
+  no longer spawns a WKWebView + parallel backend read per card.
+  `HTMLBodyWebViewStore.releaseWebView()` drops the WebKit instance on
+  collapse/evict; re-expand lazily recreates it from the same store.
+- `FollowUpReminderIndex` (new): active reminders grouped by message ID
+  at settings (re)load; identical exact→account→global resolution to
+  `FollowUpSettings.reminder(for:sourceID:)` but O(bucket) per row.
+- `MailboxListTemporalInvalidationTracker` + `LocalMessageWorkflowLookup`
+  + `LocalMessageWorkflowLookupCache`: the last-week invalidation scan and
+  snooze/done/note membership checks are memoized instead of rescanning
+  all headers per body evaluation.
+- `MessageListPresentationSnapshot`/`UnifiedInboxPresentationSnapshot`
+  compute unread/pinned counts and per-thread buckets inside the cached
+  build; `blockedSenderEmailSet` materializes the blocklist once.
+- `MessageListSearchChipsCache`/`UnifiedInboxSearchChipsCache` memoize
+  NL search-chip regexes per (text, folder, execution, scope, day).
+- Compose: `ComposeBodyTextSelection(characters:)`/`ComposeBodyInsertionPoint
+  (characterCount:)` borrow the live text storage per caret update instead
+  of copying the whole document twice; `ComposeHTMLPublicationController`
+  takes a producer thunk so the attributed-string copy is only paid when
+  the debounce fires, and skips republishing unchanged HTML.
+- `SenderContextPanel`: cached `DateFormatter` per locale+timezone.
+- Reliability/launch: `MailFetchBackoffSchedule` + coordinator `now:` seam
+  stretch the fetch cadence after consecutive failures (root view and
+  background coordinator both gated); `DeferredLocalSearchIndex` defers
+  the local index's SQLite open off first paint; settings sections decode
+  persisted payloads into `@State` once and refresh via dedicated
+  notifications (`brevPendingRestoredAccountsDidChange`,
+  `brevAppearanceThemeSettingsDidChange`,
+  `brevMailboxSyncSettingsDidChange`) instead of blanket
+  `UserDefaults.didChangeNotification`; `RetiredSecurityMaterialMigration`
+  records a completion key so launch stops re-enumerating defaults;
+  `MailStorageSection` counts snapshot headers via a placeholder
+  `Decodable` envelope; `AvatarImageDecoding` cache keys hash source
+  bytes once (SHA-256) instead of pinning/re-hashing the payload;
+  share extension no longer double-handles a provider that conforms to
+  both `public.url` and a file type.
+- Gmail `connect()` on a warm cache returns after activating draft ops
+  and runs the network pass in a background `initialSyncTask`
+  (`initialSyncSettled()` is the test/lifecycle seam); `reconcileExclusive`
+  joins concurrent refresh callers to one in-flight reconcile.
+
+### Fixes made during stabilization
+
+- `MailFetchBackoffSchedule.permitsAttempt` only gates once `extraDelay`
+  has grown — the original gated on every attempt since the last, which
+  skipped all driven ticks after the first (real-clock `now`) and hung
+  every coordinator test awaiting a second refresh; it would also have
+  dropped slightly-early timer-coalesced ticks in production with no
+  failure involved. `MailFetchSchedulerTests` updated to the corrected
+  semantic.
+- `ComposeBodySelectionTests` expected `", "` to be a whitespace-only
+  selection — it trims to `","`, non-empty. Changed to `" "`.
+- `ContactsAccessPolicyTests.realMailboxLeavesContactsAvailable` pins
+  the process-wide `allowsSystemContactsAccess` with defer-restore —
+  `AppSessionTests` demo sign-ins flip it under parallel scheduling
+  (pre-existing race, flaky loss on the full suite).
+
+### Deferred findings (recorded, not implemented)
+
+- `MailNavigationState.selectMessage` re-stores `currentFolderHeaders`
+  per click — CoW makes the assignment cheap, but observers still fire;
+  needs a same-content skip that is itself not O(n).
+- `MailScrollEdgeBlurView.reduceToBareBackdrop` re-walks the material's
+  layer tree per trigger — bounded (~15 layers) with an existing retry
+  ladder; low magnitude, cosmetic code path.
+
+### Verification
+
+- `swift test --package-path packages/BrevMail` — 1627/1627 pass
+  (was hanging before the `permitsAttempt` fix; suite had 3 issues).
+- `swift test --package-path packages/BrevBackend` — 1130/1130.
+- `swift test --package-path packages/BrevGmail` — 152/152.
+- `swift test --package-path packages/BrevSyncEngine` — 78 XCTest + 16
+  Swift Testing.
+- `swift test --package-path packages/BrevSettings` — 374 tests; the 9
+  issues are pre-existing snapshot mismatches that reproduce identically
+  on clean `main` (host/baseline renderer drift), unrelated to this diff.
+- `scripts/lint.sh`, `scripts/format.sh`, `scripts/privacy-audit.sh`,
+  `git diff --check` — clean (ADR-0003 updated for the BrevAvatars
+  protected-path change).
+
+### Handoff
+
+- `GmailAPIDraftBackendTests` restart/recovery tests noted by batch B as
+  timing-flaky under full-suite parallel load; green this run.
+- Manual QA owed: expand-all on a long thread (pool behavior), settings
+  panes reflecting external writes, background-mail backoff in practice.
+
+## 2026-09-18 — Devin — Daily-driver search/index perf fixes (feature/perf-daily-driver)
+
+### Goal
+
+Address four audit findings in the local search and indexing paths on
+`feature/perf-daily-driver`, preserving exact search results and ordering.
+No commit (user request).
+
+### Summary
+
+- `SearchQuery.matches` (`BrevBackend/Models.swift`): cheap metadata
+  predicates (unread, flagged, attachments, folder scope, date range)
+  already ran first; each needle is now trimmed + normalized once per call
+  and reused across every per-field `normalizedContains` check instead of
+  re-folding per field. In-memory fallback retained — local index coverage
+  of the searched folders cannot be proven (partial pages, invalidation,
+  independent header-cache writes), so `IMAPSMTPBackend` keeps filtering.
+- `SQLiteSyncStore.searchHeaders`: metadata-only queries (empty text) now
+  scan `message_headers` directly — no `LEFT JOIN message_search`, no body
+  column. The join is kept only for tokenless non-empty text (e.g. `!!!`)
+  where the body column feeds the Swift text check.
+- Candidate scans are chunked (`searchCandidateChunkSize`: 4× limit,
+  clamped 500…4 000) via a `CandidateStream` that keeps the prepared
+  statement open; the FTS path filters while decoding and stops once
+  `limit` post-filter hits exist and every stream's unread tail is
+  strictly older than the limit-th hit. `attachmentFTSCandidates` gained a
+  `LIMIT` bound; attachment-only hits still fill only the slots left after
+  message hits (ADR-0078 §5).
+- `upsertHeaders`: a flag-only refresh (unchanged `id`, folder, subject,
+  snippet, correspondents, `messageID`/`threadID`/`inReplyTo`/`references`,
+  verified via `hasSameIndexedContent` against the already-read stored
+  JSON) now skips the `message_search` DELETE+INSERT and the
+  `conversation_links` rewrite, provided a search row exists and the
+  stored `message_id` column is unchanged. `upsertSearchRow` accepts a
+  pre-prepared DELETE+INSERT pair so batches compile it once.
+- Fixed a pre-existing `var bindings` → `let` warning in `deleteBodies`.
+
+### Verification
+
+- `swift test --package-path packages/BrevSyncEngine` — 78 XCTest + 16
+  Swift Testing pass, incl. 4 new tests (metadata-only scan, tokenless
+  body join, chunked scan past chunk boundaries, flag-only upsert
+  rowid/link stability + subject-change rewrite).
+- `swift test --package-path packages/BrevBackend` — 1 130 tests pass,
+  incl. new `SearchQuery.matches` equivalence test.
+- `swiftformat --lint` and `swiftlint --strict` clean on all touched
+  files; `git diff --check` clean.
+- Skipped: full-tree `scripts/lint.sh` fails on pre-existing uncommitted
+  changes in ~45 files outside this task's scope (BrevGmail, BrevMail,
+  BrevSettings…) — untouched per surgical-change rule. `scripts/format.sh`
+  would rewrite those files, so formatting was applied to the four
+  touched files only.
+
+### Handoff
+
+- Uncommitted on `feature/perf-daily-driver`; tree contains unrelated
+  uncommitted work from other sessions — verify scope before committing.
+- Attachment FTS scan bound (4 000 rows) is observable only when a query
+  matches more attachment rows than that; accepted per audit request.
+
 ## 2026-09-18 — Claude (ZCode) — iOS review findings fix (fix/ios-review-findings)
 
 ### Goal
@@ -2127,3 +2288,82 @@ Bring iOS to daily-driver parity where the platform allows.
 - iOS + macOS builds succeed; self-tests, lint, format, diff-check clean.
 - Manual QA owed: iOS document picker on a real .brevbackup; long-press
   local-folder menus; move-to-local undo toast.
+
+## 2026-09-18 — Devin — Gmail adapter per-refresh O(table) fixes (feature/perf-daily-driver)
+
+### Goal
+
+Remove the per-refresh/background-tick O(table) costs in the Gmail adapter:
+full-table JSON decoding on every reconcile diff and retention sweep,
+JSON-extract re-parsing on every label page, `.full` payload downloads for
+header-only page fill, and one transaction per message on label mutations.
+No commit (user request).
+
+### Summary
+
+- Schema bumped to v5 in `SQLiteGmailAccountStore`: new materialized
+  `internal_date` and `content_hash` columns on `gmail_messages`, populated
+  on every insert/upsert and backfilled by an idempotent migration
+  (`ALTER TABLE` only when the column is missing). The
+  `gmail_messages_received_idx` index was recreated as
+  `(account_id, internal_date DESC, message_id)` in a post-migration step
+  (`materializedIndexSQL`) because pre-v5 databases lack the column until
+  the ALTER lands; a `(account_id, label_id, message_id)` index covers the
+  label-membership probes.
+- New `GmailMessageSummary` (id + content hash + label IDs + received
+  timestamp) and a `GmailMessageSummaryScanning` seam the SQLite store
+  answers from the materialized columns without decoding `message_json`.
+  `contentHash` hashes the canonical `.sortedKeys` encoding — raw
+  `JSONEncoder` output has unspecified key order on Darwin, which made
+  identical re-upserts look like changes.
+- `GmailAPIBackend.reconcile` now diffs summary dictionaries instead of
+  two fully decoded message tables; `emitDiff` emits one batched
+  `messagesAdded/Removed/Updated` event per folder with the same IDs the
+  old per-message events carried (verified by a same-event equivalence
+  test). Non-scanning stores keep the decoded fallback via
+  `GmailMessageSummary(encoding:)`.
+- Label-page `messages(accountID:labelID:offset:limit:)` sorts on
+  `m.internal_date DESC` — no more `CAST(json_extract(...))` per row per
+  page. `scrubContentFromMessages` decodes only targeted IDs.
+- `message(_:)` page fill now fetches `.metadata` with
+  `requiredMetadataHeaders`; `.full` stays reserved for body/MIME opens.
+  `GmailAPITransporting` gained a `metadataHeaders` `getMessage` overload
+  (extension default keeps conformers source-compatible; `GmailAPITransport`
+  and `GmailAPIClient` forward the headers).
+- `applyLabelMutation` and `refreshStoredMessages` batch local writes into
+  a single `GmailStoreDelta` per chunk — one store transaction instead of
+  one per message.
+- `applyRetention` sweeps via `messageSummaries` (label membership,
+  `keepingMessageIDs`, `keepsBodies`, `retentionDays` cutoff) instead of
+  decoding every message per folder; decoded fallback retained.
+- `deliverScheduledBatch` returns early when `pendingScheduledSends()` is
+  empty — enqueues/edits always refresh the summary first, so an empty
+  summary means no queued rows and the per-tick SQLite recovery+read is
+  skipped.
+
+### Verification
+
+- `swift test --package-path packages/BrevGmail` — 152 tests in 15 suites
+  pass, incl. new tests: materialized-date migration + label order,
+  summary change markers, batched label mutation, summary-scan/decode diff
+  equivalence, `.metadata` page-fill count.
+- `scripts/format.sh` — clean; `swiftformat --lint` 0 files;
+  `swiftlint --strict` clean; `git diff --check` clean.
+- `scripts/lint.sh` fails only at `check-adr-required` on
+  `BrevAvatars/AvatarImageDecoding.swift` — a protected path changed by a
+  different uncommitted session in this tree, not this task's files.
+
+### Handoff
+
+- Uncommitted on `feature/perf-daily-driver`; tree contains substantial
+  uncommitted work from at least one other active session (BrevMail,
+  BrevSyncEngine, BrevSettings, ShareExtension, and an in-flight
+  warm-cache `connect()`/background-sync change in `GmailAPIBackend` with
+  matching `initialSyncSettled()` test updates). Verify scope before
+  committing.
+- `GmailAPIDraftBackendTests` restart/recovery tests are timing-flaky
+  under full-suite parallel load (two SQLite connections on one file +
+  async summary load); they pass consistently in isolation and in most
+  full runs.
+- Schema v5: `internal_date`/`content_hash` materialized + backfilled;
+  existing v4 databases migrate on open.

@@ -88,6 +88,11 @@ public struct PerFolderSyncSection: View {
                 attachmentConsentStore.isEnabled(accountID: $0.accountID)
             } ?? false
         }
+        // Retention can also change from the storage section; reload rather
+        // than keep decoding the persisted payload during body evaluation.
+        .onReceive(NotificationCenter.default.publisher(for: .brevMailboxSyncSettingsDidChange)) { _ in
+            settings = settingsStore.accountMailboxSyncSettings()
+        }
     }
 
     /// Per-mailbox consent for remote related-header lookup (ADR-0074). The
@@ -409,6 +414,7 @@ struct FolderSyncSettingsSection: View {
     @State private var sourceID: MailSourceID?
     @State private var isLoading = false
     @State private var loadErrorMessage: String?
+    @State private var mailboxSyncSettings: AccountMailboxSyncSettings
 
     private let cachedFolders: [Folder]
     private let backend: (any MailBackend)?
@@ -425,6 +431,9 @@ struct FolderSyncSettingsSection: View {
         self.settingsStore = settingsStore
         _folders = State(initialValue: folders)
         _sourceID = State(initialValue: sourceID)
+        // Decoded once at init — PerFolderSyncSection keeps itself fresh via
+        // .brevMailboxSyncSettingsDidChange, so body never re-reads the store.
+        _mailboxSyncSettings = State(initialValue: settingsStore.accountMailboxSyncSettings())
     }
 
     var body: some View {
@@ -432,7 +441,7 @@ struct FolderSyncSettingsSection: View {
             PerFolderSyncSection(
                 folders: folders,
                 sourceID: sourceID,
-                settings: settingsStore.accountMailboxSyncSettings(),
+                settings: mailboxSyncSettings,
                 settingsStore: settingsStore,
                 supportsAttachmentIndexing: backend?.extendedCapabilities
                     .contains(.localAttachmentIndex) ?? false,

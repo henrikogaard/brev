@@ -152,15 +152,23 @@ final class ShareViewController: UIViewController {
                     }
                 }
 
+                // A provider can conform to both public.url and a file type
+                // for the same payload; the URL path already copies file
+                // URLs, so the file representation only runs when the URL
+                // path did not produce a file (web URL, missing item).
+                let fileTypeIdentifier = fileTypeIdentifier(for: provider)
+
                 if provider.hasItemConformingToTypeIdentifier(UTType.url.identifier) {
                     didHandleProvider = true
                     group.enter()
                     provider.loadItem(forTypeIdentifier: UTType.url.identifier) { [weak self] item, _ in
                         defer { group.leave() }
+                        var handledFilePayload = false
                         if let url = item as? URL {
                             if url.isFileURL,
                                let self,
                                let handoffDirectory {
+                                handledFilePayload = true
                                 do {
                                     let copiedURL = try copySharedFile(
                                         from: url,
@@ -187,11 +195,34 @@ final class ShareViewController: UIViewController {
                                 collectedURLs.append(url)
                             }
                         }
+                        if !handledFilePayload,
+                           let self,
+                           let handoffDirectory,
+                           let fileTypeIdentifier {
+                            group.enter()
+                            provider.loadFileRepresentation(forTypeIdentifier: fileTypeIdentifier) { [weak self] url, _ in
+                                defer { group.leave() }
+                                guard let self, let url else { return }
+                                do {
+                                    let copiedURL = try copySharedFile(
+                                        from: url,
+                                        suggestedName: provider.suggestedName,
+                                        into: handoffDirectory,
+                                        reservation: reservation
+                                    )
+                                    resultQueue.sync {
+                                        collectedAttachments.append(copiedURL)
+                                    }
+                                } catch {
+                                    resultQueue.sync {
+                                        unsupportedCount += 1
+                                    }
+                                }
+                            }
+                        }
                     }
-                }
-
-                if let handoffDirectory,
-                   let fileTypeIdentifier = fileTypeIdentifier(for: provider) {
+                } else if let handoffDirectory,
+                          let fileTypeIdentifier {
                     didHandleProvider = true
                     group.enter()
                     provider.loadFileRepresentation(forTypeIdentifier: fileTypeIdentifier) { [weak self] url, _ in

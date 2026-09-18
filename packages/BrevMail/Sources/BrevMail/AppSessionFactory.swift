@@ -165,7 +165,12 @@ public enum AppSessionFactory {
 
         let localBackend = (configuration.localBackendFactory ?? {
             LocalMailBackend(
-                localSearchIndex: configuration.localSearchIndex?(LocalMailBackend.accountID),
+                // Deferred so session bootstrap never blocks first paint on
+                // the index's SQLite open/migration; it is only needed for
+                // search and attachment indexing.
+                localSearchIndex: configuration.localSearchIndex.map { factory in
+                    DeferredLocalSearchIndex { factory(LocalMailBackend.accountID) }
+                },
                 attachmentIndexConsent: AttachmentIndexConsentStore.shared
             )
         })()

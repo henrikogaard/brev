@@ -5095,43 +5095,51 @@ public struct BrevMailRootView: View {
         }
     }
 
-    private func refreshSelectedFolder() async {
+    /// Returns whether the refresh ran and succeeded — `nil` when the
+    /// attempt never reached the backend (blocked or superseded), so the
+    /// periodic scheduler's failure backoff only records real outcomes.
+    @discardableResult
+    private func refreshSelectedFolder() async -> Bool? {
         guard canStartRefresh(),
-              let selectedFolder else { return }
+              let selectedFolder else { return nil }
         let request = startRefreshRequest(folderID: selectedFolder.id, mailboxID: activeMailboxID)
         clearRootStatus()
         do {
             try await refresh(folder: selectedFolder)
             guard canApplyRefreshResponse(request) else {
                 finishRefresh(request)
-                return
+                return nil
             }
             navigation.requestReload()
             await loadFolders()
             finishRefresh(request)
+            return true
         } catch {
             guard canApplyRefreshResponse(request) else {
                 finishRefresh(request)
-                return
+                return nil
             }
             rootStatus = MailRefreshPresentation.refreshErrorStatus(for: error)
             finishRefresh(request)
+            return false
         }
     }
 
-    private func refreshVisibleMail() async {
+    @discardableResult
+    private func refreshVisibleMail() async -> Bool? {
         switch visibleRefreshTarget {
         case .selectedFolder:
-            await refreshSelectedFolder()
+            return await refreshSelectedFolder()
         case .unifiedInbox:
-            await refreshUnifiedInbox()
+            return await refreshUnifiedInbox()
         case nil:
-            return
+            return nil
         }
     }
 
-    private func refreshUnifiedInbox() async {
-        guard canStartRefresh() else { return }
+    @discardableResult
+    private func refreshUnifiedInbox() async -> Bool? {
+        guard canStartRefresh() else { return nil }
         let request = startRefreshRequest(
             folderID: MailNavigationState.unifiedInboxFolderID,
             mailboxID: activeMailboxID
@@ -5144,7 +5152,7 @@ public struct BrevMailRootView: View {
         await loadSourceSections(supersedingActiveLoads: true)
         guard canApplyRefreshResponse(request) else {
             finishRefresh(request)
-            return
+            return nil
         }
         let failureMessage = await MailFetchScheduler.performVisibleInboxRefresh(
             backends: backends,
@@ -5152,7 +5160,7 @@ public struct BrevMailRootView: View {
         )
         guard canApplyRefreshResponse(request) else {
             finishRefresh(request)
-            return
+            return nil
         }
         navigation.requestReload()
         // Rebuild every source after refresh so a mailbox whose earlier folder
@@ -5162,7 +5170,7 @@ public struct BrevMailRootView: View {
         await loadSourceSections(supersedingActiveLoads: true)
         guard canApplyRefreshResponse(request) else {
             finishRefresh(request)
-            return
+            return nil
         }
         if let failureMessage {
             rootStatus = MailRefreshPresentation.refreshErrorStatus(
@@ -5170,6 +5178,7 @@ public struct BrevMailRootView: View {
             )
         }
         finishRefresh(request)
+        return failureMessage == nil
     }
 
     /// Runs the periodic automatic-fetch loop for the current `fetchIntervalRaw`.
@@ -5185,12 +5194,20 @@ public struct BrevMailRootView: View {
     /// interval-change restart.
     private func runPeriodicFetchScheduler() async {
         let interval = FetchInterval(rawValue: fetchIntervalRaw) ?? .manual
-        for await _ in MailFetchScheduler.ticks(every: interval.intervalSeconds) {
+        guard let baseInterval = interval.intervalSeconds else { return }
+        var backoff = MailFetchBackoffSchedule()
+        for await _ in MailFetchScheduler.ticks(every: baseInterval) {
             guard !Task.isCancelled else { break }
             guard BackgroundMailOwnershipPolicy.rootViewOwnsTicks(
                 backgroundMailEnabled: NotificationSettings.load().backgroundMailEnabled
             ) else { continue }
-            await refreshVisibleMail()
+            // Consecutive failures stretch the effective interval so a
+            // stuck account is not polled at full cadence forever.
+            guard backoff.permitsAttempt(at: Date(), base: baseInterval) else { continue }
+            backoff.recordAttempt(at: Date())
+            if let succeeded = await refreshVisibleMail() {
+                backoff.recordOutcome(succeeded: succeeded)
+            }
         }
     }
 

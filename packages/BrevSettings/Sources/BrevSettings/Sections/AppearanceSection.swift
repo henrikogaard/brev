@@ -26,6 +26,7 @@ struct AppearanceSection: View {
     @Binding var activeAppIcon: AppIconVariant
     @State private var themeSettings: AppearanceThemeSettings
     @State private var windowAppearance: WindowAppearancePreferences
+    @State private var mailboxSettings: MailboxViewSettings
     @State private var isThemePickerPresented = false
 
     private let appearanceControls = AppearanceControlsPolicy.current
@@ -48,6 +49,7 @@ struct AppearanceSection: View {
         self.settingsStore = settingsStore
         _themeSettings = State(initialValue: settingsStore.appearanceThemeSettings())
         _windowAppearance = State(initialValue: settingsStore.windowAppearancePreferences())
+        _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
     }
 
     var body: some View {
@@ -57,7 +59,7 @@ struct AppearanceSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 themeGroup
-                SettingsMailPreview(settings: settingsStore.mailboxViewSettings())
+                SettingsMailPreview(settings: mailboxSettings)
                 if appearanceControls.showsWindowTranslucencyControls {
                     SettingsGroup(
                         title: String(localized: "Window design", bundle: .module),
