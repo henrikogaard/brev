@@ -41,6 +41,10 @@ final class ShareViewController: UIViewController {
     private nonisolated static let maximumAttachmentBytes = 25 * 1024 * 1024
     private nonisolated static let maximumSingleAttachmentBytes = 10 * 1024 * 1024
     private nonisolated static let staleHandoffAge: TimeInterval = 24 * 60 * 60
+    // Upper bound for text handed to the app through the `brev://compose`
+    // URL. The OS drops oversized custom-scheme URLs, so larger shares are
+    // excluded up front instead of failing the handoff.
+    private nonisolated static let maximumSharedTextBytes = 256 * 1024
 
     private var sharedText: String?
     private var sharedURLs: [URL] = []
@@ -261,6 +265,18 @@ final class ShareViewController: UIViewController {
         activityIndicator.stopAnimating()
         composeButton.isEnabled = true
 
+        // Oversized text cannot round-trip through the handoff URL, so drop
+        // it instead of failing the handoff — never truncate, since a
+        // silently shortened draft is worse than a missing one. URLs and
+        // attachments the user shared still open.
+        var textOverflowMessage: String?
+        if let text = sharedText, text.utf8.count > Self.maximumSharedTextBytes {
+            sharedText = nil
+            textOverflowMessage = String(
+                localized: "Shared text is too large to include and was left out."
+            )
+        }
+
         var parts: [String] = []
         if let text = sharedText, !text.isEmpty {
             parts.append(text)
@@ -275,14 +291,18 @@ final class ShareViewController: UIViewController {
         if unsupportedItemCount > 0 {
             parts.append(String(localized: "\(unsupportedItemCount) unsupported"))
         }
+        if let textOverflowMessage {
+            parts.append(textOverflowMessage)
+        }
 
         if let extractionErrorMessage {
             subtitleLabel.text = extractionErrorMessage
             composeButton.isEnabled = sharedText != nil || !sharedURLs.isEmpty
         } else if sharedText == nil, sharedURLs.isEmpty, sharedAttachmentURLs.isEmpty {
-            subtitleLabel.text = unsupportedItemCount > 0
-                ? String(localized: "This content type is not supported yet.")
-                : String(localized: "No content to share")
+            subtitleLabel.text = textOverflowMessage
+                ?? (unsupportedItemCount > 0
+                    ? String(localized: "This content type is not supported yet.")
+                    : String(localized: "No content to share"))
             composeButton.isEnabled = false
         } else {
             subtitleLabel.text = parts.joined(separator: " · ")
