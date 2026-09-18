@@ -60,6 +60,17 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iOS: the account-restore error alert now also appears when every account
+  fails to restore, and its "Open Settings" action is reachable from the
+  login screen, so accounts no longer vanish silently behind the login page.
+- iOS: notifications that offer a quick reply now also show the rich
+  sender/subject/snippet preview.
+- iOS: sharing very large text into Brev now explains that the text was left
+  out (with any links and attachments still included) instead of silently
+  failing to open the app.
+- iOS: the app's privacy manifest now declares its UserDefaults required-reason
+  API usage, preventing App Store Connect ITMS-91053 warnings.
+
 - Nightly release archives now receive the configured Google OAuth values, so
   scheduled and manually dispatched builds can pass the archive preflight.
 
