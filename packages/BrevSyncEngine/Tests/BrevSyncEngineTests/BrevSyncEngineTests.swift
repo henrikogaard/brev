@@ -1595,6 +1595,224 @@ final class BrevSyncEngineTests: XCTestCase {
         XCTAssertEqual(textAndMetadataMatches.map(\.id), ["INBOX:999"])
     }
 
+    func testSQLiteMetadataOnlySearchDoesNotReadJoinedBody() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let accountID = "acc"
+        try store.ensureAccount(id: accountID)
+        let target = Date(timeIntervalSince1970: 1_780_000_000)
+
+        try store.upsertHeaders([
+            testHeader(
+                uid: 1, folderID: "INBOX", date: target,
+                isRead: false, subject: "Alpha", isFlagged: true, hasAttachments: true
+            ),
+            testHeader(
+                uid: 2, folderID: "INBOX", date: target - 10,
+                isRead: true, subject: "Beta"
+            ),
+            testHeader(
+                uid: 3, folderID: "Archive", date: target - 20,
+                isRead: false, subject: "Gamma"
+            ),
+        ], accountID: accountID)
+        // A cached body whose text would flip the outcome if the metadata-only
+        // scan still joined and consulted `message_search.body`.
+        try store.storeBody(
+            Data("From: sender@example.com\r\n\r\nread receipt body".utf8),
+            accountID: accountID,
+            messageID: "INBOX:2"
+        )
+
+        let unread = store.searchHeaders(
+            SearchQuery(isUnread: true), accountID: accountID, limit: 10
+        )
+        let flaggedWithAttachments = store.searchHeaders(
+            SearchQuery(hasAttachments: true, isFlagged: true),
+            accountID: accountID, limit: 10
+        )
+        let folderScoped = store.searchHeaders(
+            SearchQuery(folderID: "Archive", isUnread: true),
+            accountID: accountID, limit: 10
+        )
+        let dateRanged = store.searchHeaders(
+            SearchQuery(dateRange: (target - 15) ... target),
+            accountID: accountID, limit: 10
+        )
+
+        XCTAssertEqual(unread.map(\.id), ["INBOX:1", "Archive:3"])
+        XCTAssertEqual(flaggedWithAttachments.map(\.id), ["INBOX:1"])
+        XCTAssertEqual(folderScoped.map(\.id), ["Archive:3"])
+        XCTAssertEqual(dateRanged.map(\.id), ["INBOX:1", "INBOX:2"])
+    }
+
+    func testSQLiteTokenlessTextSearchStillReadsJoinedBody() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let accountID = "acc"
+        try store.ensureAccount(id: accountID)
+        try store.upsertHeaders([
+            testHeader(uid: 1, folderID: "INBOX", subject: "Plain subject"),
+        ], accountID: accountID)
+        try store.storeBody(
+            Data("From: sender@example.com\r\n\r\nBody with !!! inside".utf8),
+            accountID: accountID,
+            messageID: "INBOX:1"
+        )
+
+        // "!!!" yields zero FTS tokens, so the header-table scan must keep the
+        // body column to satisfy the text predicate.
+        let hits = store.searchHeaders(
+            SearchQuery(text: "!!!"), accountID: accountID, limit: 10
+        )
+        let miss = store.searchHeaders(
+            SearchQuery(text: "???"), accountID: accountID, limit: 10
+        )
+
+        XCTAssertEqual(hits.map(\.id), ["INBOX:1"])
+        XCTAssertTrue(miss.isEmpty)
+    }
+
+    func testSQLiteChunkedSearchPreservesResultsPastChunkBoundaries() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-test-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let accountID = "acc"
+        try store.ensureAccount(id: accountID)
+        // 1 200 headers — beyond one 500-row fetch chunk. Only UIDs < 100 are
+        // unread, so a limited unread search must scan several chunks before
+        // it can stop.
+        try store.upsertHeaders(
+            (1 ... 1200).map { uid in
+                testHeader(
+                    uid: uid, folderID: "INBOX",
+                    date: Date(timeIntervalSince1970: TimeInterval(uid)),
+                    isRead: uid >= 100,
+                    subject: "Shared needle \(uid)"
+                )
+            },
+            accountID: accountID
+        )
+
+        let unreadTextHits = store.searchHeaders(
+            SearchQuery(text: "shared needle", isUnread: true),
+            accountID: accountID, limit: 10
+        )
+        let unreadMetadataHits = store.searchHeaders(
+            SearchQuery(isUnread: true), accountID: accountID, limit: 10
+        )
+        let allTextHits = store.searchHeaders(
+            SearchQuery(text: "shared needle"), accountID: accountID, limit: 10
+        )
+        let expectedUnread = (0 ..< 10).map { "INBOX:\(99 - $0)" }
+        let expectedAll = (0 ..< 10).map { "INBOX:\(1200 - $0)" }
+
+        XCTAssertEqual(unreadTextHits.map(\.id), expectedUnread)
+        XCTAssertEqual(unreadMetadataHits.map(\.id), expectedUnread)
+        XCTAssertEqual(allTextHits.map(\.id), expectedAll)
+    }
+
+    func testSQLiteFlagOnlyUpsertDoesNotRewriteSearchRowOrConversationLinks() throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-test-\(UUID().uuidString).sqlite")
+        defer {
+            try? FileManager.default.removeItem(at: url)
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + "-wal"))
+            try? FileManager.default.removeItem(at: URL(fileURLWithPath: url.path + "-shm"))
+        }
+
+        let store = try SQLiteSyncStore(databaseURL: url)
+        let accountID = "acc"
+        try store.ensureAccount(id: accountID)
+
+        // References + Message-ID give the header real conversation links.
+        let first = MessageHeader(
+            id: "INBOX:1",
+            threadID: "<thread-1@example.com>",
+            folderID: "INBOX",
+            from: Correspondent(name: "Sender", email: "sender@example.com"),
+            subject: "Stable subject",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 100),
+            isRead: false,
+            isFlagged: false,
+            messageID: "<m1@example.com>",
+            inReplyTo: "<m0@example.com>",
+            references: ["m0@example.com"]
+        )
+        try store.upsertHeaders(
+            [first, testHeader(uid: 2, folderID: "INBOX", subject: "Second subject")],
+            accountID: accountID
+        )
+
+        func searchRowID() throws -> Int64? {
+            try Self.firstInt64(
+                at: url,
+                sql: "SELECT rowid FROM message_search WHERE account_id = ? AND message_id = ?;",
+                bindings: [accountID, first.id]
+            )
+        }
+        func firstLinkRowID() throws -> Int64? {
+            try Self.firstInt64(
+                at: url,
+                sql: """
+                    SELECT rowid FROM conversation_links
+                    WHERE account_id = ? AND folder_id = 'INBOX' AND uid = 1
+                    ORDER BY identifier LIMIT 1;
+                """,
+                bindings: [accountID]
+            )
+        }
+
+        let initialSearchRowID = try XCTUnwrap(searchRowID())
+        let initialLinkRowID = try XCTUnwrap(firstLinkRowID())
+
+        // CONDSTORE-style flag flip: every field feeding message_search and
+        // conversation_links is unchanged, so both rowids must survive.
+        var flagUpdate = first
+        flagUpdate.isRead = true
+        flagUpdate.isFlagged = true
+        try store.upsertHeaders([flagUpdate], accountID: accountID)
+
+        XCTAssertEqual(try searchRowID(), initialSearchRowID)
+        XCTAssertEqual(try firstLinkRowID(), initialLinkRowID)
+        let stableHits = store.searchHeaders(
+            SearchQuery(text: "Stable subject"), accountID: accountID, limit: 10
+        )
+        XCTAssertEqual(stableHits.map(\.id), [first.id])
+
+        // A searchable-field change must still rewrite the search row.
+        let subjectUpdate = MessageHeader(
+            id: first.id,
+            threadID: first.threadID,
+            folderID: first.folderID,
+            from: first.from,
+            subject: "Changed subject",
+            snippet: first.snippet,
+            date: first.date,
+            isRead: first.isRead,
+            isFlagged: first.isFlagged,
+            messageID: first.messageID,
+            inReplyTo: first.inReplyTo,
+            references: first.references
+        )
+        try store.upsertHeaders([subjectUpdate], accountID: accountID)
+
+        XCTAssertNotEqual(try searchRowID(), initialSearchRowID)
+        let changedHits = store.searchHeaders(
+            SearchQuery(text: "Changed subject"), accountID: accountID, limit: 10
+        )
+        XCTAssertEqual(changedHits.map(\.id), [first.id])
+    }
+
     func testSQLiteMetricsReportDatabaseAndRecordCounts() async throws {
         let url = FileManager.default.temporaryDirectory
             .appendingPathComponent("brev-test-\(UUID().uuidString).sqlite")
@@ -2422,6 +2640,26 @@ final class BrevSyncEngineTests: XCTestCase {
             sqlite3_free(errPtr)
             XCTFail(message)
         }
+    }
+
+    /// Opens a read-only second connection and returns the first column of
+    /// the first row, for schema-state assertions (e.g. FTS rowid stability).
+    private static func firstInt64(
+        at url: URL,
+        sql: String,
+        bindings: [String]
+    ) throws -> Int64? {
+        var db: OpaquePointer?
+        XCTAssertEqual(sqlite3_open_v2(url.path, &db, SQLITE_OPEN_READONLY, nil), SQLITE_OK)
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer?
+        XCTAssertEqual(sqlite3_prepare_v2(db, sql, -1, &stmt, nil), SQLITE_OK)
+        defer { sqlite3_finalize(stmt) }
+        for (index, value) in bindings.enumerated() {
+            sqlite3_bind_text(stmt, Int32(index + 1), value, -1, sqliteTransient)
+        }
+        guard sqlite3_step(stmt) == SQLITE_ROW else { return nil }
+        return sqlite3_column_int64(stmt, 0)
     }
 
     private static func allocatedSize(_ url: URL) throws -> Int64 {

@@ -255,6 +255,46 @@ struct SearchQueryMatchesTests {
 
     // MARK: - Combined predicates
 
+    @Test("combined string predicates reuse one normalized needle per field set")
+    func combinedStringPredicatesReuseNormalizedNeedles() {
+        // Every string predicate in one call: each needle is normalized once
+        // and must behave exactly like the per-field normalization did —
+        // case- and diacritic-insensitive, including the explicit Norwegian
+        // transliteration (ø→o, æ→ae, å→a).
+        let header = Self.makeHeader(
+            subject: "Årsrapport møte",
+            from: Correspondent(name: "Søren", email: "soren@example.com"),
+            to: [Correspondent(name: "Bjørn", email: "bjorn@example.com")],
+            snippet: "Vedlegg følger"
+        )
+        let query = SearchQuery(
+            text: "vedlegg folger",
+            from: "soren",
+            to: "bjorn",
+            subject: "arsrapport mote"
+        )
+        #expect(query.matches(header))
+
+        // Each failing needle must still reject independently.
+        #expect(!SearchQuery(text: "vedlegg", from: "odd").matches(header))
+        #expect(!SearchQuery(text: "vedlegg folger", to: "carol").matches(header))
+        #expect(!SearchQuery(text: "vedlegg folger", subject: "budsjett").matches(header))
+        #expect(!SearchQuery(text: "fravar").matches(header))
+    }
+
+    @Test("whitespace-only string needles normalize to empty and match")
+    func whitespaceOnlyNeedlesMatchEveryHeader() {
+        // A needle that trims to nothing normalizes to "" and therefore
+        // matches every value — same as the previous per-field behavior.
+        let query = SearchQuery(
+            text: "meeting",
+            from: "   ",
+            to: "\t\n",
+            subject: "  "
+        )
+        #expect(query.matches(Self.makeHeader(subject: "Meeting notes")))
+    }
+
     @Test("combined predicates all must match")
     func combinedPredicatesAllMustMatch() {
         let query = SearchQuery(
