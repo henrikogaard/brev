@@ -1,5 +1,35 @@
 # Worklog
 
+## 2026-09-18 — Codex — Nightly workflow repository scoping
+
+### Goal
+
+Restore the scheduled Nightly pipeline after its no-checkout planning job
+failed while `gh` tried to infer the repository for the Build lookup.
+
+### Changes
+
+- Scoped the Nightly plan's `gh run list` call explicitly to
+  `$GITHUB_REPOSITORY`.
+- Added a release-configuration regression check for the no-checkout query.
+
+### Verification
+
+- `scripts/test-developer-id-release-config.sh`
+- Explicit repository-scoped Build lookup returned the green main Build run.
+- `scripts/format.sh`
+- `scripts/lint.sh`
+- `git diff --check`
+
+### Skipped
+
+- Hosted Nightly rerun is pending the PR merge.
+
+### Handoff
+
+Open the PR, wait for required checks, merge it, and confirm the next Nightly
+run publishes the signed pre-release and appcast.
+
 ## 2026-09-18 — Codex — Release certificate/profile diagnostic
 
 ### Goal

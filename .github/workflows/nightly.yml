@@ -54,7 +54,14 @@ jobs:
             echo "skip=false" >> "$GITHUB_OUTPUT"
           fi
 
-          RUNS="$(gh run list --workflow Build --commit "$SHA" --status success --limit 1 --json databaseId --jq length)"
+          RUNS="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow Build \
+            --commit "$SHA" \
+            --status success \
+            --limit 1 \
+            --json databaseId \
+            --jq length)"
           if [[ "$RUNS" == "0" && "$PREV" != "$SHA" ]]; then
             echo "::error::Build workflow has not passed on $SHA; not shipping a nightly."
             exit 1

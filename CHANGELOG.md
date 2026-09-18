@@ -60,6 +60,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Nightly release planning now scopes its GitHub Actions Build lookup
+  explicitly, allowing the no-checkout gate to run on scheduled builds.
+
 - Gmail search now publishes results page by page without the former 5,000-result
   cap. Cached-only searches work disconnected and respect secondary labels.
   Auto search previews one bounded cache page before contacting Gmail, while

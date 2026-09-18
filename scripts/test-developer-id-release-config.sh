@@ -11,6 +11,7 @@ archive_script="scripts/release-archive.sh"
 project_file="apps/macOS/Project.swift"
 dmg_script="scripts/release-dmg.sh"
 release_workflow=".github/workflows/release.yml"
+nightly_workflow=".github/workflows/nightly.yml"
 signing_action=".github/actions/release-signing/action.yml"
 
 if [[ ! -f "$plist" ]]; then
@@ -40,6 +41,14 @@ fi
 if ! grep -Fq 'BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID: ${{ secrets.BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID }}' "$release_workflow" ||
     ! grep -Fq 'BREV_GOOGLE_OAUTH_CLIENT_SECRET: ${{ secrets.BREV_GOOGLE_OAUTH_CLIENT_SECRET }}' "$release_workflow"; then
   echo "ERROR: the release archive must receive the configured Google OAuth values" >&2
+  exit 1
+fi
+
+if ! grep -Fq -- 'gh run list' "$nightly_workflow" ||
+    ! grep -Fq -- '--repo "$GITHUB_REPOSITORY"' "$nightly_workflow" ||
+    ! grep -Fq -- '--workflow Build' "$nightly_workflow" ||
+    ! grep -Fq -- '--commit "$SHA"' "$nightly_workflow"; then
+  echo "ERROR: the no-checkout nightly plan must scope gh run list to GITHUB_REPOSITORY" >&2
   exit 1
 fi
 
