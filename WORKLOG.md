@@ -2749,3 +2749,17 @@ buttons, and package-aware localization.
   The separate local-folder visibility test failed under hosted load but passed
   locally (11 tests). It uses fixed 50ms sleeps around asynchronous refresh;
   final-head CI remains the merge gate.
+
+- iOS CI caught a startup crash from the appended mail Undo duplicating native
+  Command-Z. Corrected iPad mail Undo to Command-Option-Z, preserving native
+  Command-Z/Shift-Command-Z, and updated the help inventory and changelog.
+  The crashing app bootstrap is the red reproduction; app-hosted verification
+  and the iOS inventory test are required before pushing this correction.
+- App-hosted iOS startup/search-layout verification passed with xcodebuild exit
+  0 after the shortcut correction. The iPad inventory run also exposed old
+  macOS-only test assumptions; platform filtering is now asserted correctly,
+  and native Redo is listed on both platforms (red regression verified).
+- Final shortcut inventory: four tests pass on macOS and four on iPad with
+  xcodebuild exit 0. Lint/format pass. Native iOS Undo/Redo are retained, mail
+  Undo uses the non-conflicting Command-Option-Z chord, and the app-hosted
+  startup regression is green.

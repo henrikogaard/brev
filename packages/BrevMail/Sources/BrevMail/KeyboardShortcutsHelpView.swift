@@ -45,6 +45,11 @@ struct MailKeyboardShortcutSection: Equatable, Sendable {
 /// `MailKeyboardShortcutInventoryTests` pin that contract.
 enum MailKeyboardShortcutInventory {
     static var sections: [MailKeyboardShortcutSection] {
+        #if os(macOS)
+        let mailUndoShortcut = "⌘Z"
+        #else
+        let mailUndoShortcut = "⌘⌥Z"
+        #endif
         let messages: [MailKeyboardShortcut] = [
             .init(
                 action: String(localized: "New Message", bundle: .module),
@@ -122,12 +127,11 @@ enum MailKeyboardShortcutInventory {
             ),
             .init(
                 action: String(localized: "Undo Mail Action", bundle: .module),
-                shortcut: "⌘Z"
+                shortcut: mailUndoShortcut
             ),
             .init(
                 action: String(localized: "Redo", bundle: .module),
-                shortcut: "⌘⇧Z",
-                isMacOSOnly: true
+                shortcut: "⌘⇧Z"
             ),
         ]
         let mailbox: [MailKeyboardShortcut] = [

@@ -72,9 +72,12 @@ struct MailKeyboardShortcutInventoryTests {
         #expect(entry("Focus Search")?.shortcut == "⌘/")
         #expect(entry("Get New Mail")?.shortcut == "⌘⌥R")
 
-        // MailUndoCommands — ⌘Z is registered on both platforms now (iPadOS
-        // hardware-keyboard undo), so it must not be flagged macOS-only.
+        // iPad preserves native text Undo/Redo and gives mail Undo a distinct chord.
+        #if os(macOS)
         #expect(entry("Undo Mail Action")?.shortcut == "⌘Z")
+        #else
+        #expect(entry("Undo Mail Action")?.shortcut == "⌘⌥Z")
+        #endif
         #expect(entry("Undo Mail Action")?.isMacOSOnly == false)
 
         // Compose window.
@@ -92,13 +95,18 @@ struct MailKeyboardShortcutInventoryTests {
 
         // Registered only in BrevMailCommands (macOS app target) or behind
         // `#if os(macOS)` in MailCommands.
-        #expect(isMacOSOnly("Search Mail") == true)
-        #expect(isMacOSOnly("Redo") == true)
-        #expect(isMacOSOnly("Print…") == true)
-        #expect(isMacOSOnly("Export as PDF…") == true)
-        #expect(isMacOSOnly("Import Mail…") == true)
-        #expect(isMacOSOnly("Export Mail…") == true)
-        #expect(isMacOSOnly("AI Sidebar") == true)
+        #if os(macOS)
+        let expectedPlatformEntry: Bool? = true
+        #else
+        let expectedPlatformEntry: Bool? = nil
+        #endif
+        #expect(isMacOSOnly("Search Mail") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Print…") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Export as PDF…") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Import Mail…") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Export Mail…") == expectedPlatformEntry)
+        #expect(isMacOSOnly("AI Sidebar") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Redo") == false)
 
         // Settings (⌘,) exists on both platforms — the iOS app opens the
         // settings scene with the same chord.

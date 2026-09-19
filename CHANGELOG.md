@@ -77,7 +77,7 @@ All notable changes to Brev are documented here.
   thread cards offer the same menu per message, and iPad can open a
   detached reader window from list context menus. Sheets no longer carry
   macOS minimum sizes on iOS, icon buttons meet the 44 pt touch target,
-  iPad hardware keyboards get ⌘Z mail undo, action labels share one
+  iPad hardware keyboards get ⌘⌥Z mail undo without replacing native text Undo/Redo, action labels share one
   canonical wording, and shared `BrevIconButton`/quiet-surface/chip
   components replace hand-rolled copies.
 

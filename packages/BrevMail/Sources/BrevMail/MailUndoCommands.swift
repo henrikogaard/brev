@@ -54,7 +54,7 @@ public struct MailUndoCommands: Commands {
     @State private var state = MailUndoMenuState()
     #endif
 
-    /// Creates the Undo/Redo command group (macOS) or the iPadOS ⌘Z key command.
+    /// Creates native macOS Undo/Redo or the iPadOS ⌘⌥Z mail action.
     public init() {}
 
     public var body: some Commands {
@@ -72,7 +72,8 @@ public struct MailUndoCommands: Commands {
             Button(String(localized: "Undo Mail Action", bundle: .module)) {
                 mailActions?.onUndo()
             }
-            .keyboardShortcut("z", modifiers: .command)
+            // UIKit rejects a duplicate of its native Command-Z at app startup.
+            .keyboardShortcut("z", modifiers: [.command, .option])
             .disabled(mailActions?.canUndo() != true)
         }
         #endif
