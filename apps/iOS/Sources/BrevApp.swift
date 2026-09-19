@@ -54,7 +54,7 @@ struct BrevApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(for: ReaderCommandWindowPayload.self) { $readerCommandHandoff in
             Group {
                 // Settings sits above the mailbox-root decision so the
                 // restore-error alert's "Open Settings" action works even
@@ -108,6 +108,7 @@ struct BrevApp: App {
                         },
                         pendingComposePrefill: $pendingComposePrefill,
                         pendingNotificationRoute: $pendingNotificationRoute,
+                        readerCommandHandoff: readerCommandHandoff,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         localBackend: session.localBackend,

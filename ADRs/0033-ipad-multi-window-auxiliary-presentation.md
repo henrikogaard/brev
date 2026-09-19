@@ -121,6 +121,23 @@ sync, consistent with ADR-0011's composite-view seam design.
   capability-driven UI, rendering-pipeline seam) and reuses the existing
   auxiliary-presentation seam rather than bypassing it.
 
+### Reader command ownership (2026-09-19)
+
+Embedded single-message and conversation readers dispatch through their owning
+root's environment action. Commands are never process-wide notifications.
+Detached macOS readers return presentation actions to the captured mailbox
+window after closing the reader and activating that window. Inline state toggles
+can keep the macOS reader open.
+
+On iPad, a detached reader hands commands to a mailbox `WindowGroup` and dismisses
+itself, so sheet-backed actions have a visible host even after the original
+mailbox scene has closed. The scene payload contains only an opaque UUID. The
+command and source-owned header remain in a process-local, one-shot handoff until
+the new root finishes workspace loading. Consumed commands cannot replay on
+scene restoration; abandoned handoffs expire after five minutes. No message
+content or pending mutation is persisted in scene restoration data. This keeps
+the existing platform-specific window systems and shared command handlers.
+
 ### Accepted v1 limitations
 
 The following are deliberate scope cuts for the first cut. Each is a

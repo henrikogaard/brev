@@ -34,6 +34,7 @@ import UIKit
 /// based on `backend.groupsMessagesIntoThreads` and thread size.
 @MainActor
 public struct ThreadConversationView: View {
+    @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -220,7 +221,7 @@ public struct ThreadConversationView: View {
                             // Per-card parity with the single-message reader:
                             // the same consolidated, capability-gated
                             // inventory, dispatched through the detached
-                            // command bus so undo/optimistic UI stay in the
+                            // command owner so undo/optimistic UI stay in the
                             // root view's shared handlers.
                             .contextMenu { cardMenuButtons(for: header) }
                         }
@@ -389,9 +390,7 @@ public struct ThreadConversationView: View {
             from: allFolders,
             currentFolderID: header.folderID
         )
-        // Sheet-backed actions route to the main window via the command bus,
-        // which drops them when another sheet is up — mirror that here so the
-        // menu is honest instead of silently no-op'ing.
+        // Sheet-backed actions use this reader's own root presentation state.
         let canPresentSheets = navigation.presentedSheet == nil
         return MessageCommandPresentation.readerMenu(
             for: header,
@@ -500,9 +499,7 @@ public struct ThreadConversationView: View {
         }
     }
 
-    /// Print/PDF run locally (the card surface owns the print pipeline);
-    /// everything else travels the detached-command bus so the main window
-    /// performs it through the shared command handlers.
+    /// Print/PDF run locally; other commands use this conversation's owner.
     private func performCardMenuAction(
         _ action: MessageContextMenuAction,
         for header: MessageHeader
@@ -514,7 +511,7 @@ public struct ThreadConversationView: View {
             exportCardPDF(header)
         default:
             if let command = DetachedMessageCommand(menuAction: action) {
-                DetachedMessageCommandBus.post(command, header: header, sourceID: sourceID)
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
             }
         }
     }
@@ -545,7 +542,7 @@ public struct ThreadConversationView: View {
                 let messageBody = try? await body(for: header.id)
                 try MessagePrintExportRenderer.exportPDF(header: header, body: messageBody, to: url)
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #elseif os(iOS)
@@ -558,7 +555,7 @@ public struct ThreadConversationView: View {
                 )
                 pdfShareURL = url
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #endif
@@ -604,7 +601,7 @@ public struct ThreadConversationView: View {
                 let messages = await printableThreadMessages()
                 try MessagePrintExportRenderer.exportPDF(messages: messages, to: url)
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #elseif os(iOS)
@@ -614,7 +611,7 @@ public struct ThreadConversationView: View {
                 let url = try MailPrintController.exportPDF(messages: messages, fileName: pdfBaseName)
                 pdfShareURL = url
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #endif

@@ -22,6 +22,7 @@ import SwiftUI
 /// delegates rendering to `MessageDetailView` — the same view and body-loading
 /// path used in the main three-column layout.
 public struct DetachedReaderWindowView: View {
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.brevTheme) private var theme
 
@@ -62,6 +63,16 @@ public struct DetachedReaderWindowView: View {
                         allFolders: resolvedFolders,
                         closeWindow: { dismissWindow(value: payload) }
                     )
+                    .environment(\.readerCommandAction) { request in
+                        let source = request.sourceID ?? MailSourceID(
+                            accountID: backend.account.id, mailboxID: backend.account.id
+                        )
+                        let handoff = ReaderCommandHandoff.enqueue(.init(
+                            command: request.command, header: request.header, sourceID: source
+                        ))
+                        openWindow(value: handoff)
+                        dismissWindow(value: payload)
+                    }
                     .brevMailPaneSurface(.content)
                 } else if isResolving {
                     ProgressView()

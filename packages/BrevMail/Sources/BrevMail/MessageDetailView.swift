@@ -41,6 +41,7 @@ public struct MessageDetailView: View {
         category: "MessageBodyLoad"
     )
 
+    @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
@@ -52,7 +53,7 @@ public struct MessageDetailView: View {
     private let isWorkBlocked: Bool
     /// Whether Copy/Move to Local Folder may be offered (ADR-0077): the host
     /// scene has a local backend. Reader surfaces resolve actual filing
-    /// through the command bus, which re-checks against the real local backend.
+    /// through the owning command handler, which re-checks against the real local backend.
     private let canFileLocally: Bool
     /// When present, the view is shown in a standalone window and renders an
     /// in-content action bar; destructive actions invoke this to close the window.
@@ -629,9 +630,8 @@ public struct MessageDetailView: View {
             from: allFolders,
             currentFolderID: header.folderID
         )
-        // Sheet-backed actions are performed by the main window via the
-        // command bus, so in a detached reader they stay enabled even though
-        // `navigation` is nil here.
+        // Detached windows provide a handoff to a visible command owner;
+        // embedded readers use their own root's presentation state.
         let canPresentSheets = closeWindow != nil || navigation?.presentedSheet == nil
         return MessageCommandPresentation.readerMenu(
             for: header,
@@ -753,10 +753,8 @@ public struct MessageDetailView: View {
         }
     }
 
-    /// Dispatches one reader-menu action. Print/PDF run locally (they need the
-    /// loaded body); everything else travels the detached-command bus so the
-    /// main window performs it through the shared command handlers — undo,
-    /// optimistic UI, and sheet presentation stay in one place.
+    /// Print/PDF run locally; other commands go to the owner injected by the
+    /// enclosing root or detached window, never to unrelated scenes.
     private func performReaderMenuAction(
         _ action: MessageContextMenuAction,
         for header: MessageHeader
@@ -773,12 +771,11 @@ public struct MessageDetailView: View {
                 messageID: header.id
             ))
             #else
-            DetachedMessageCommandBus.post(.openInNewWindow, header: header, sourceID: sourceID)
+            readerCommandAction?(.init(command: .openInNewWindow, header: header, sourceID: sourceID))
             #endif
         default:
             if let command = DetachedMessageCommand(menuAction: action) {
-                DetachedMessageCommandBus.post(command, header: header, sourceID: sourceID)
-                if command.dismissesWindow { closeWindow?() }
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
             }
         }
     }
@@ -869,6 +866,7 @@ public struct MessageDetailView: View {
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
+            .tint(theme.textSecondary.color)
             .accessibilityLabel(String(localized: "More message actions", bundle: .module))
             .help(String(localized: "More message actions", bundle: .module))
         }
@@ -884,8 +882,7 @@ public struct MessageDetailView: View {
         header: MessageHeader
     ) -> some View {
         Button {
-            DetachedMessageCommandBus.post(command, header: header, sourceID: sourceID)
-            if command.dismissesWindow { closeWindow?() }
+            readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 14))

@@ -520,19 +520,17 @@ struct MessageCommandPresentationTests {
         #expect(DetachedMessageCommand(menuAction: .openInNewWindow) == .openInNewWindow)
     }
 
-    @Test("detached window dismisses only for actions that remove the message")
-    func detachedWindowDismissesOnlyForRemovingActions() {
+    @Test("detached presentation actions return to the visible mailbox window")
+    func detachedWindowHandsOffPresentations() {
         for command: DetachedMessageCommand in [
-            .archive, .delete, .move, .moveToLocalFolder, .setJunk, .blockSender
+            .archive, .delete, .move, .moveToLocalFolder, .setJunk, .blockSender,
+            .reply, .replyAll, .forward, .toggleSnooze, .copyToFolder,
+            .copyToLocalFolder, .saveAs, .createTask, .createRule, .createMeeting,
+            .addNote, .followUp, .properties, .showHeaders, .viewSource, .openInNewWindow
         ] {
-            #expect(command.dismissesWindow, "\(command) should dismiss the detached window")
+            #expect(command.dismissesWindow, "\(command) should return to the mailbox window")
         }
-        for command: DetachedMessageCommand in [
-            .reply, .replyAll, .forward, .toggleRead, .toggleFlag, .toggleSnooze,
-            .toggleDone, .copyToFolder, .copyToLocalFolder, .saveAs, .createTask,
-            .createRule, .createMeeting, .addNote, .followUp, .downloadOffline,
-            .properties, .showHeaders, .viewSource, .openInNewWindow
-        ] {
+        for command: DetachedMessageCommand in [.toggleRead, .toggleFlag, .toggleDone, .downloadOffline] {
             #expect(!command.dismissesWindow, "\(command) should keep the detached window")
         }
     }

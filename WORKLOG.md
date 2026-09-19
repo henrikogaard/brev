@@ -2550,3 +2550,81 @@ buttons, and package-aware localization.
 - Re-record the BrevSettings snapshot references listed above (and the
   core-surfaces references from the other entry) on the snapshot
   runner, or confirm CI's skip list covers them.
+
+
+## 2026-09-19 — Codex — PR #47 and board hygiene
+
+- Goal: assess open PR readiness, reconcile the Brev board, and select the next
+  implementation priority. No application implementation was requested.
+- Live assessment: PR #47 at `5e7227415982308346884079eed58a348d89b063`
+  targets main, has 20 successful checks and four unresolved current review
+  threads. Targeted source inspection supports concerns about scene-unscoped
+  reader commands, detached-sheet ownership, workflow selection reconciliation,
+  and unlocalized PDF errors. This was not a full independent code review.
+  The PR also records 22 BrevMail and 34 BrevSettings snapshot failures locally;
+  reference updates and native QA remain pending despite green hosted CI.
+- Board: added PR #47 as In progress/P1; assigned P1 to issues #1 and #2 while
+  retaining Ready. Kept #4 Ready and the dependent PIM work in Backlog. Corrected
+  ADR-0055 to ADR-0039 in #3/#4 and privacy ADR-0008 to ADR-0006 in #4/#5/#12/#14.
+  Updated #4 to complete the existing Proposed ADR-0072 rather than draft another.
+  Issue bodies were read back after editing. Legacy board cards were preserved.
+- Recommendation: repair #47 on its existing branch first, with regression
+  coverage for two-window routing, detached presentation, and Snooze/Done/undo
+  navigation. Reconcile snapshots and perform iPhone/iPad/macOS QA next; then
+  execute #1 accessibility and #2 real-provider lifecycle acceptance. Complete
+  and obtain acceptance of ADR-0072 before starting #5.
+- Verification: refreshed origin refs; inspected PR checks/reviews, all 255
+  pre-change project items, all 15 open public-repository issues, ADRs and source.
+  No application tests/builds or native/account QA run for this triage-only pass.
+  No merge, closure, Done transition, release, or branch/worktree deletion.
+- Documentation sweep: only this worklog needs a local update; no product,
+  architecture, privacy behavior, or release content changed. This audit entry
+  remains local and uncommitted; application source is unchanged.
+
+
+## 2026-09-19 — Codex — PR #47 review remediation
+
+- Goal: continue the assessed PR here, fixing its four current review findings.
+  Worktree: `/Users/henrik/.codex/worktrees/ff7b/brev`; local branch
+  `feature/pr47-review-fixes`, based on PR head `5e722741`. Push destination is
+  the existing `feature/uiux-consistency` branch and PR #47, targeting main.
+- Changes: replaced process-wide reader command broadcasts with an injected
+  owner, including the compact iPhone reader and thread cards. Detached macOS
+  presentation actions activate the captured mailbox window after closing the
+  reader. iPad detached commands open a mailbox scene using a one-shot opaque
+  UUID handoff; only in-memory content is retained, with abandoned handoffs
+  expiring after five minutes. Restored scenes cannot replay consumed commands.
+- Workflow: both lists observe externally changed local workflow state. Unified
+  navigation excludes workflow-hidden messages while preserving source identity
+  and search semantics. Localized per-card PDF failures. Fixed the newly added
+  detached overflow menu's light-theme tint and refreshed its inspected baseline.
+- TDD: a hosted parent-binding test failed on undo before the folder observer;
+  unified Snooze/Done cases failed before unified reconciliation. All four hosted
+  folder/unified x Done/Snooze cases pass, including real UndoQueue reversal.
+  The one-shot handoff test failed before implementation and passes with two
+  independent source-owned commands, single consumption, and no message content
+  in serialized scene payloads. Updated the old dismissal test to cover visible
+  presentation handoff while preserving inline macOS toggles.
+- Verification: iOS Simulator build succeeded (Xcode 27.0); 1,573 BrevMail and
+  365 BrevSettings non-snapshot tests passed. Lint, format, privacy audit,
+  extension-plist checks and diff-check passed. Full suites reproduced the PR's
+  22 Mail and 34 Settings pixel mismatches before the detached baseline update;
+  the full Mail run additionally exposed the now-updated old dismissal contract.
+  Remaining pixel baselines were not blindly re-recorded from this macOS 27 host.
+- Final verification: 35 focused tests across five suites passed, including the
+  refreshed detached-reader snapshot and Contacts access policy. The final full
+  BrevMail run had 1,634 tests with exactly 21 remaining snapshot issues and no
+  behavior failures. The final iOS build passed; format changed zero files and
+  lint/diff-check passed. The 34 Settings snapshot issues remain unchanged.
+- Rendered evidence: inspected the detached baseline and new render; the new
+  overflow icon was initially near-white, then visibly theme-colored after the
+  tint fix. iPhone 18 Pro / iOS 27 launched in explicit mock mode and runtime AX
+  exposed Refresh, Compose, Settings and Sort/filter names. Automated row and
+  toolbar taps did not produce the expected navigation, so this does not prove
+  reader-menu interaction, VoiceOver, or Dynamic Type acceptance. iPad multi-scene
+  presentation and real-provider lifecycle QA remain pending.
+- Documentation sweep: updated CHANGELOG and ADR-0033 for command ownership and
+  handoff behavior. README/product scope and external-network/privacy behavior
+  are unchanged. No issue closure, Done transition, merge, release or daily-driver
+  rebuild was performed. Prior hygiene entry above is historical; both worklog
+  entries are included with this PR update.

@@ -83,6 +83,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Reader and conversation-card actions execute in one owning window. Detached
+  sheet actions return to a visible mailbox window; iPad handoffs execute once
+  and do not replay when restoring a window. Snooze, Done, and undo keep folder
+  and unified-inbox reader navigation aligned with visible messages.
+- Thread-card PDF export errors use localized package strings on both platforms.
+  The detached reader overflow icon follows the theme text color.
+
 - iOS: the account-restore error alert now also appears when every account
   fails to restore, and its "Open Settings" action is reachable from the
   login screen, so accounts no longer vanish silently behind the login page.

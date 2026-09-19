@@ -207,6 +207,14 @@ public struct MessageListView: View {
     }
 
     public var body: some View {
+        workflowObservedContent
+            .onChange(of: localMessageWorkflowState) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+    }
+
+    @ViewBuilder
+    private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
             LegacyPinNotice()

@@ -193,6 +193,14 @@ struct UnifiedInboxListView: View {
     }
 
     var body: some View {
+        workflowObservedContent
+            .onChange(of: localMessageWorkflowState) {
+                reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
+            }
+    }
+
+    @ViewBuilder
+    private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
             LegacyPinNotice()
@@ -1941,11 +1949,17 @@ struct UnifiedInboxListView: View {
         )
     }
 
+    private var workflowNavigationItems: [UnifiedInboxItem] {
+        LocalMessageWorkflowVisibilityPolicy.items(
+            items, mode: workflowVisibilityMode, state: localMessageWorkflowState, now: Date()
+        )
+    }
+
     private func selectMessage(_ item: UnifiedInboxItem) {
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
-            headers: items.filter { $0.sourceID == item.sourceID }.map(\.header)
+            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header)
         )
         selectedItemIDs.removeAll()
         onSelectMessage?(item.header)
@@ -1953,7 +1967,7 @@ struct UnifiedInboxListView: View {
 
     private func reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: Bool = false) {
         if let selectedSourceID = navigation.selectedSourceID {
-            let sourceHeaders = items
+            let sourceHeaders = workflowNavigationItems
                 .filter { $0.sourceID == selectedSourceID }
                 .map(\.header)
             navigation.replaceCurrentFolderHeaders(

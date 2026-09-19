@@ -14,11 +14,8 @@ import BrevBackend
 import Foundation
 import SwiftUI
 
-/// Message actions a standalone (detached) message window can request. The
-/// window has no navigation/command context of its own, so instead of mutating
-/// state directly it posts a request that the main `BrevMailRootView` performs
-/// through its normal command handlers (preserving undo, optimistic UI, and
-/// folder refresh).
+/// Reader actions performed by a single owning mail root, preserving undo,
+/// optimistic UI, and folder refresh without process-wide broadcasts.
 enum DetachedMessageCommand: String, Sendable {
     case reply
     case replyAll
@@ -47,22 +44,23 @@ enum DetachedMessageCommand: String, Sendable {
     case viewSource
     case openInNewWindow
 
-    /// Actions that remove the message from its folder, after which the
-    /// standalone window should close.
+    /// Close the detached reader when removing its message or handing a
+    /// presentation to the owning mailbox window. Inline toggles stay open.
     var dismissesWindow: Bool {
         switch self {
-        case .archive, .delete, .move, .moveToLocalFolder, .setJunk, .blockSender:
-            return true
-        case .reply, .replyAll, .forward, .toggleRead, .toggleFlag, .toggleSnooze,
-             .toggleDone, .copyToFolder, .copyToLocalFolder, .saveAs, .createTask,
-             .createRule, .createMeeting, .addNote, .followUp, .downloadOffline,
-             .properties, .showHeaders, .viewSource, .openInNewWindow:
+        case .toggleRead, .toggleFlag, .toggleDone, .downloadOffline:
             return false
+        case .reply, .replyAll, .forward, .archive, .delete, .move,
+             .copyToFolder, .copyToLocalFolder, .moveToLocalFolder, .setJunk,
+             .blockSender, .saveAs, .createTask, .createRule, .createMeeting,
+             .addNote, .followUp, .properties, .showHeaders, .viewSource,
+             .openInNewWindow, .toggleSnooze:
+            return true
         }
     }
 
     /// Maps a consolidated reader-menu action (`MessageCommandPresentation.
-    /// readerMenu`) onto its command-bus equivalent. Returns nil for actions
+    /// readerMenu`) onto its owned-command equivalent. Returns nil for actions
     /// that are performed locally by the presenting view (Print/PDF need the
     /// loaded body) or that are row-only (Select, Pin to Top).
     init?(menuAction: MessageContextMenuAction) {
@@ -99,49 +97,52 @@ enum DetachedMessageCommand: String, Sendable {
     }
 }
 
-/// The payload delivered with `Notification.Name.brevDetachedMessageCommand`.
+/// A reader action and its source-owned target, retained only in memory.
 struct DetachedMessageCommandRequest {
     let command: DetachedMessageCommand
     let header: MessageHeader
     let sourceID: MailSourceID?
 }
 
-extension Notification.Name {
-    static let brevDetachedMessageCommand = Notification.Name("brev.detachedMessageCommand")
+/// The enclosing reader/window provides exactly one command owner.
+private struct ReaderCommandActionKey: EnvironmentKey {
+    static let defaultValue: (@MainActor (DetachedMessageCommandRequest) -> Void)? = nil
 }
 
-enum DetachedMessageCommandBus {
-    static let requestKey = "request"
-
-    @MainActor
-    static func post(_ command: DetachedMessageCommand, header: MessageHeader, sourceID: MailSourceID?) {
-        NotificationCenter.default.post(
-            name: .brevDetachedMessageCommand,
-            object: nil,
-            userInfo: [
-                requestKey: DetachedMessageCommandRequest(
-                    command: command,
-                    header: header,
-                    sourceID: sourceID
-                )
-            ]
-        )
+extension EnvironmentValues {
+    var readerCommandAction: (@MainActor (DetachedMessageCommandRequest) -> Void)? {
+        get { self[ReaderCommandActionKey.self] }
+        set { self[ReaderCommandActionKey.self] = newValue }
     }
 }
 
-/// Receives detached-window command requests and forwards them to a handler.
-/// Implemented as a `ViewModifier` so the main window's large body modifier
-/// chain stays within the Swift type-checker's limits.
-struct DetachedMessageCommandReceiver: ViewModifier {
-    let handle: (DetachedMessageCommandRequest) -> Void
+/// Opaque scene identity for a one-shot reader action handoff. Mail content is
+/// kept in memory and is never serialized into scene restoration data.
+public struct ReaderCommandWindowPayload: Codable, Hashable, Sendable {
+    let id: UUID
+}
 
-    func body(content: Content) -> some View {
-        content.onReceive(
-            NotificationCenter.default.publisher(for: .brevDetachedMessageCommand)
-        ) { note in
-            guard let request = note.userInfo?[DetachedMessageCommandBus.requestKey]
-                as? DetachedMessageCommandRequest else { return }
-            handle(request)
+@MainActor
+enum ReaderCommandHandoff {
+    private static var pending: [UUID: DetachedMessageCommandRequest] = [:]
+
+    static func enqueue(_ request: DetachedMessageCommandRequest) -> ReaderCommandWindowPayload {
+        let payload = ReaderCommandWindowPayload(id: UUID())
+        pending[payload.id] = request
+        // If scene creation is abandoned, do not retain mail content for the
+        // remainder of the app session. This does not schedule or retry actions.
+        Task { @MainActor in
+            try? await Task.sleep(for: .seconds(300))
+            pending.removeValue(forKey: payload.id)
         }
+        return payload
+    }
+
+    static func take(_ payload: ReaderCommandWindowPayload) -> DetachedMessageCommandRequest? {
+        pending.removeValue(forKey: payload.id)
+    }
+
+    static func peek(_ payload: ReaderCommandWindowPayload) -> DetachedMessageCommandRequest? {
+        pending[payload.id]
     }
 }

@@ -26,7 +26,7 @@ import AppKit
 import UIKit
 #endif
 
-/// Header plus source scope for a reader command-bus action that still needs
+/// Header plus source scope for a reader owned reader action that still needs
 /// an in-scene confirmation UI (snooze picker sheet, block-sender alert).
 private struct DetachedReaderActionTarget: Equatable, Identifiable {
     let header: MessageHeader
@@ -348,7 +348,7 @@ public struct BrevMailRootView: View {
     /// Targets for reader/detached-window actions that need an in-scene
     /// confirmation UI: the snooze-time picker sheet and the block-sender
     /// confirmation alert. Both are handled on the root view so detached
-    /// reader windows can drive them through the command bus.
+    /// reader windows can drive them through the owning command handler.
     @State private var pendingReaderSnoozeTarget: DetachedReaderActionTarget?
     @State private var pendingReaderBlockSenderTarget: DetachedReaderActionTarget?
     /// Last "open in new window" request — a double-click and a context-menu
@@ -407,6 +407,7 @@ public struct BrevMailRootView: View {
     private let trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)?
     private let pendingComposePrefill: Binding<ComposePrefill?>?
     private let pendingNotificationRoute: Binding<NotificationMailRoute?>?
+    private let readerCommandHandoff: ReaderCommandWindowPayload?
     private let isExternalModalPresented: Bool
     private let initialMailboxSelectionAccountID: BrevAccount.ID?
     private let onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)?
@@ -437,6 +438,7 @@ public struct BrevMailRootView: View {
         trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
         pendingComposePrefill: Binding<ComposePrefill?>? = nil,
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
+        readerCommandHandoff: ReaderCommandWindowPayload? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
@@ -458,6 +460,7 @@ public struct BrevMailRootView: View {
             trustedEncryptionIdentityCountProvider: trustedEncryptionIdentityCountProvider,
             pendingComposePrefill: pendingComposePrefill,
             pendingNotificationRoute: pendingNotificationRoute,
+            readerCommandHandoff: readerCommandHandoff,
             isExternalModalPresented: isExternalModalPresented,
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
             onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
@@ -482,6 +485,7 @@ public struct BrevMailRootView: View {
         trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
         pendingComposePrefill: Binding<ComposePrefill?>? = nil,
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
+        readerCommandHandoff: ReaderCommandWindowPayload? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
@@ -509,6 +513,15 @@ public struct BrevMailRootView: View {
         self.trustedEncryptionIdentityCountProvider = trustedEncryptionIdentityCountProvider
         self.pendingComposePrefill = pendingComposePrefill
         self.pendingNotificationRoute = pendingNotificationRoute
+        self.readerCommandHandoff = readerCommandHandoff
+        if let readerCommandHandoff, let request = ReaderCommandHandoff.peek(readerCommandHandoff) {
+            let initialNavigation = MailNavigationState()
+            initialNavigation.selectedSourceID = request.sourceID
+            initialNavigation.selectedFolderID = request.header.folderID
+            initialNavigation.replaceCurrentFolderHeaders([request.header])
+            initialNavigation.selectedMessageID = request.header.id
+            _navigation = State(initialValue: initialNavigation)
+        }
         self.isExternalModalPresented = isExternalModalPresented
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
@@ -793,7 +806,7 @@ public struct BrevMailRootView: View {
             }
             .sheet(item: $pendingReaderSnoozeTarget) { target in
                 // Snooze-time picker for detached-window / consolidated-reader
-                // snooze actions; hosted here so the command bus can reach it.
+                // snooze actions; hosted here for the owning reader command handler.
                 SnoozePickerView(
                     header: target.header,
                     sourceID: readerWorkflowSourceID(for: target.sourceID),
@@ -898,7 +911,7 @@ public struct BrevMailRootView: View {
                 canUndo: { undoQueue.canUndo && !isCommandMutationBlocked && activeCommandMutationRequest == nil },
                 onUndo: { performUndo() }
             ))
-            .modifier(DetachedMessageCommandReceiver(handle: handleDetachedMessageCommand))
+            .environment(\.readerCommandAction, handleDetachedMessageCommand)
             .overlay(alignment: .bottom) { undoToastOverlay }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if folderExportController.state != .idle {
@@ -1365,6 +1378,9 @@ public struct BrevMailRootView: View {
                 }
             }
         }
+        // The compact iPhone reader is a sibling of the background workspace,
+        // so install the owner here as well as on the root command context.
+        .environment(\.readerCommandAction, handleDetachedMessageCommand)
         .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
             relatedConversation.updateAnchor(
                 header: navigation.selectedHeader ?? fallbackHeader,
@@ -3683,6 +3699,16 @@ public struct BrevMailRootView: View {
             }
         )
         advanceStartupPhaseAfterWorkspaceLoad()
+        if let readerCommandHandoff, let request = ReaderCommandHandoff.take(readerCommandHandoff) {
+            if let sourceID = request.sourceID, backendAccountIDs.contains(sourceID.accountID) {
+                handleDetachedMessageCommand(request)
+            } else {
+                rootStatus = MailRootStatus(message: String(
+                    localized: "This mailbox is no longer connected. Open the message again to retry the action.",
+                    bundle: .module
+                ))
+            }
+        }
         MailUIPerformanceDiagnostics.logStartupReady(
             surface: .workspace,
             usableContent: !sourceSections.isEmpty || !folders.isEmpty || !mailboxes.isEmpty,
@@ -4617,7 +4643,8 @@ public struct BrevMailRootView: View {
             backend: backend(for: sourceID ?? navigation.selectedSourceID),
             sourceID: sourceID ?? navigation.selectedSourceID,
             allFolders: folders,
-            theme: theme
+            theme: theme,
+            onCommand: handleDetachedMessageCommand
         )
         #else
         // iPad at regular width opens a detached reader scene; iPhone and
