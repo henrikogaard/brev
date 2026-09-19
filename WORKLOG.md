@@ -2628,3 +2628,8 @@ buttons, and package-aware localization.
   are unchanged. No issue closure, Done transition, merge, release or daily-driver
   rebuild was performed. Prior hygiene entry above is historical; both worklog
   entries are included with this PR update.
+
+- Post-push integration check: GitHub reported a CHANGELOG-only conflict with
+  main's TestFlight entry at the same insertion point. Moved this follow-up's
+  changelog bullets within Unreleased to preserve both entries without merging
+  branches or rewriting history. No application source changed in this follow-up.
