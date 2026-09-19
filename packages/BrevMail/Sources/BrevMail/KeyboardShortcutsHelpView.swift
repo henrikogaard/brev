@@ -79,7 +79,7 @@ enum MailKeyboardShortcutInventory {
             ),
             .init(
                 action: String(localized: "Delete", bundle: .module),
-                shortcut: "⌫"
+                shortcut: "⌘⌫"
             ),
             .init(
                 action: String(localized: "Toggle Read / Unread", bundle: .module),

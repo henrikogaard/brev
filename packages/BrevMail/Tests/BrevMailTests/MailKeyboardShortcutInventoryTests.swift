@@ -59,7 +59,7 @@ struct MailKeyboardShortcutInventoryTests {
         #expect(entry("Forward")?.shortcut == "⌘⇧F")
         #expect(entry("Forward")?.alternates == "⌘F")
         #expect(entry("Archive")?.shortcut == "⌘E")
-        #expect(entry("Delete")?.shortcut == "⌫")
+        #expect(entry("Delete")?.shortcut == "⌘⌫")
         #expect(entry("Toggle Read / Unread")?.shortcut == "⌘⇧U")
         #expect(entry("Toggle Read / Unread")?.alternates == "⌘U")
         #expect(entry("Flag / Unflag")?.shortcut == "⌘⇧L")

@@ -518,15 +518,19 @@ public struct ThreadConversationView: View {
 
     private func printCardMessage(_ header: MessageHeader) {
         Task { @MainActor in
-            let messageBody = try? await body(for: header.id)
-            #if os(macOS)
-            MessagePrintExportRenderer.presentPrintPanel(header: header, body: messageBody)
-            #elseif os(iOS)
-            MailPrintController.presentPrint(
-                messages: [(header, messageBody)],
-                jobName: header.subject
-            )
-            #endif
+            do {
+                let messageBody = try await body(for: header.id)
+                #if os(macOS)
+                MessagePrintExportRenderer.presentPrintPanel(header: header, body: messageBody)
+                #elseif os(iOS)
+                MailPrintController.presentPrint(
+                    messages: [(header, messageBody)],
+                    jobName: header.subject
+                )
+                #endif
+            } catch {
+                printExportErrorMessage = String(localized: "Print failed: \(error.localizedDescription)", bundle: .module)
+            }
         }
     }
 

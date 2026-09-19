@@ -2694,3 +2694,15 @@ buttons, and package-aware localization.
   The full 152-test local Gmail suite passed, as did ten consecutive focused
   runs. No Gmail delivery code was changed; the final head must pass hosted CI.
   The pre-fix archive is superseded and will not be uploaded.
+
+- Cross-device verification found text antialiasing drift between the iPad and
+  iPhone hosts in the new narrow-compose reference. Visually inspected both
+  images and their difference, then aligned the reference with the iPhone CI
+  host. No production code changed in this baseline correction.
+- Final review follow-up: card Print now reports body-fetch errors instead of
+  opening incomplete output, and shortcut help restores Command-Delete. The
+  shortcut inventory failed first against the incorrect glyph. Native print
+  panel error automation is impractical in the package runner; error flow was
+  inspected and both platform builds cover the call sites. Device print QA
+  remains pending. All five phone snapshot comparisons passed after the
+  reviewed antialiasing-only reference correction.

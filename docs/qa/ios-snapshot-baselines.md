@@ -85,3 +85,8 @@ height proposal. This behavioral sizing test does not depend on pixels.
 The same suite also covers a 660pt regular-width compose scene with a signature.
 The reference was inspected on iPad Pro 13-inch / iOS 27 after moving secondary
 iOS compose tools into overflow; Close, Send and More remain visible.
+
+The narrow compose reference uses the iPhone-hosted regular-width fixture to
+match the required CI destination. Comparing it with the iPad-hosted render
+showed text antialiasing differences only; control positions, labels and state
+were unchanged. The iPad comparison passed against its original capture.
