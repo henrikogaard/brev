@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-09-19 — Codex — Public TestFlight beta without demo mail
+
+### Goal
+
+Create a public TestFlight signup path while ensuring externally distributed
+Release builds cannot launch or expose the demo mailbox.
+
+### Changes
+
+- Created the App Store Connect external group `Public Beta` and configured its
+  public link. The link is not operational while the group has zero builds. No
+  historical build was added because the existing processed builds predate the
+  current source baseline and cannot be tied to this guard.
+- Moved the demo-startup branch in `AppSessionFactory.makeDefault` behind a
+  compile-time `DEBUG` gate, so an injected request is ignored in Release.
+- Added a Release-compiled regression test and CI invocation for the exact
+  injection seam.
+- Added a separate external-TestFlight export policy. The existing internal
+  policy remains explicitly internal-only.
+- Documented the external upload flow and public group link.
+
+### Verification
+
+- Red: the new Release test proved an injected request created `MockBackend`
+  before the factory gate was added.
+- Green: the focused Release test and the Debug `AppSessionFactoryTests` suite
+  pass; the internal/external export-policy test, format, lint, ADR check, and
+  `git diff --check` pass. Existing unrelated Swift 6 concurrency warnings were
+  emitted while compiling `BrevMail`.
+
+### Handoff
+
+- Upload a fresh Release archive from the reviewed/merged commit, wait for App
+  Store Connect processing, add it to `Public Beta`, and complete Beta App
+  Review. The public group intentionally has zero builds until then.
+
 ## 2026-09-19 — Devin — Daily-driver UI + reliability perf pass (feature/perf-daily-driver)
 
 ### Goal
@@ -160,7 +196,6 @@ No commit (user request).
   uncommitted work from other sessions — verify scope before committing.
 - Attachment FTS scan bound (4 000 rows) is observable only when a query
   matches more attachment rows than that; accepted per audit request.
-
 ## 2026-09-18 — Claude (ZCode) — iOS review findings fix (fix/ios-review-findings)
 
 ### Goal

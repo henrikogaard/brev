@@ -117,6 +117,7 @@ public enum AppSessionFactory {
     /// Creates a session with persistent account, credential, cache, and sync wiring.
     @MainActor
     public static func makeDefault(configuration: Configuration) -> AppSession {
+        #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
             let store = InMemoryAccountStore(accounts: [mock.account], current: mock.account)
@@ -130,6 +131,7 @@ public enum AppSessionFactory {
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
+        #endif
 
         let accountStore = UserDefaultsAccountStore()
         let configurationStore = UserDefaultsIMAPAccountConfigurationStore()
