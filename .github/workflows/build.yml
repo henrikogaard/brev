@@ -234,6 +234,7 @@ jobs:
             -skipMacroValidation \
             -testLanguage en \
             -testRegion en_US \
+            '-only-testing:BrevMailTests/PhoneMailboxSnapshotTests' \
             '-only-testing:BrevMailTests/BrevMailRootViewSnapshotTests/rootViewWideLayout()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/bodyLoadErrorState()' \
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/threadMessageCardCollapsedRenders()' \

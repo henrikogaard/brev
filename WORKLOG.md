@@ -2633,3 +2633,34 @@ buttons, and package-aware localization.
   main's TestFlight entry at the same insertion point. Moved this follow-up's
   changelog bullets within Unreleased to preserve both entries without merging
   branches or rewriting history. No application source changed in this follow-up.
+
+## 2026-09-19 — Codex — PR #47 iPhone layout correction
+
+- Goal: address the supplied Mailboxes/Inbox screenshots before acceptance.
+  Continued `feature/pr47-review-fixes` in the ff7b worktree, pushing to the
+  existing `feature/uiux-consistency` PR targeting main; board moved to In progress.
+- Fixed an unbounded UIKit search field (319pt in the red simulator test, now
+  44pt). Raised iOS sender/subject typography while preserving size preferences,
+  restored configured previews, and allowed phone subjects to wrap to two lines.
+  Added navigation titles, moved Compose to the bottom toolbar, kept Settings
+  only in the mailbox toolbar, and distinguished the workspace AI menu icon.
+  Removed empty leading disclosure space and redundant account indentation on
+  iOS folder rows; expandable folders retain a separate 44pt trailing control.
+- TDD: search sizing reproduced the 319pt failure in a hosted iPhone simulator
+  before passing. Preview/Settings policy tests failed first, then passed.
+  Final focused Mac package run: 44 tests across four suites passed. Four new
+  iOS pixel references (two parameterized tests) were inspected and comparison
+  passed in light/dark; the required iOS snapshot CI lane includes them.
+  iOS app build, lint, format and snapshot metadata checks passed.
+- Rendered QA: iPhone 18 Pro/iOS 27 in explicit mock mode. Verified mailbox
+  selection, message opening, search narrowing to GitHub, and Compose open/close.
+  The automation tap helper was ineffective; explicit touch-down/up plus field
+  focus made these interactions work. Reader screenshot was inspected, but its
+  runtime AX snapshot did not settle, so reader-menu/Back and VoiceOver are not
+  claimed verified. No real-account mail was sent or changed.
+- Remaining: full VoiceOver/Dynamic Type and iPad acceptance, real-account QA,
+  and the separately recorded 21 Mail/34 Settings baseline mismatches. Those
+  older baselines were not refreshed in this pass. No merge/release/Done action.
+- Documentation sweep: CHANGELOG and iOS snapshot policy updated. README, ADRs,
+  privacy documentation, and external network behavior need no changes for this
+  platform layout correction; architecture and public APIs are unchanged.

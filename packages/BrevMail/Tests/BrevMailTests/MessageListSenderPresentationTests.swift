@@ -30,7 +30,7 @@ struct MessageListSenderPresentationTests {
 
         #expect(!compact.showsSourceContext)
         #expect(!compact.showsLabelChips)
-        #expect(compact.previewLineCount == 0)
+        #expect(compact.previewLineCount == 2)
         #expect(!compact.showsStatusIcons)
     }
 

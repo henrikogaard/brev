@@ -279,17 +279,17 @@ struct MailRootSettingsToolbarPolicyTests {
         #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .iOS))
     }
 
-    @Test("settings shows in sidebar and iOS message list toolbars")
+    @Test("settings has one entry point in the iOS mailbox sidebar")
     func settingsShowsInSidebarAndIOSMessageListToolbars() {
         #expect(MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .sidebar,
             platform: .iOS
         ))
-        #expect(MailRootSettingsToolbarPolicy.showsSettingsButton(
+        #expect(!MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .messageList,
             platform: .iOS
         ))
-        #expect(MailRootSettingsToolbarPolicy.showsSettingsButton(
+        #expect(!MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .detail,
             platform: .iOS
         ))

@@ -68,3 +68,16 @@ Run `scripts/check-ios-snapshot-baselines.sh` before changing the lane. It
 fails if required references disappear or a deferred suite is no longer
 documented, preventing a failing suite from being dropped just to make CI
 green.
+
+## PR #47 phone layout follow-up — 2026-09-19
+
+`PhoneMailboxSnapshotTests` adds four iOS 27 references (inbox/search and folder
+hierarchy, light and dark). These are intentional layout baselines: the search
+control is bounded to 44 points, phone rows retain previews and wrap subjects,
+and folder disclosure no longer consumes an empty leading column. The references
+were visually inspected before comparison. The required iOS lane now selects
+this suite. Older deferred snapshot debt remains separate.
+
+The app-hosted `MailboxLayoutTests` reproduces the unbounded UIKit field at
+319 points before the fix, then verifies a 44–52 point field under a full-screen
+height proposal. This behavioral sizing test does not depend on pixels.

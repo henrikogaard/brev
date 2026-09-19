@@ -1279,9 +1279,7 @@ public struct BrevMailRootView: View {
             onOpenOutbox: {
                 navigation.presentedSheet = .outbox
             },
-            onOpenSettings: {
-                presentSettings()
-            },
+            onOpenSettings: nil,
             onOpenMessages: {
                 openSelectedMessagesOnCompact()
             },
@@ -1291,14 +1289,18 @@ public struct BrevMailRootView: View {
             }
         )
         .brevMailPaneSurface(.sidebar)
-        .brevMailFallbackToolbar { toolbarSidebar }
-        .brevMailPaneScrollEdgeBlur()
-        // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
-        // configures the enclosing `NSSplitViewItem`, and the surface wrapper
-        // puts the column inside a `.frame(maxWidth: .infinity)` — applied
-        // underneath that frame the bounds never reached the split view, so
-        // the divider dragged past the minimum and the content stretched.
-        .brevMailPaneColumnWidth(folderSidebarColumnWidth)
+        #if os(iOS)
+            .navigationTitle(Text("Mailboxes", bundle: .module))
+            .navigationBarTitleDisplayMode(.large)
+        #endif
+            .brevMailFallbackToolbar { toolbarSidebar }
+            .brevMailPaneScrollEdgeBlur()
+            // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
+            // configures the enclosing `NSSplitViewItem`, and the surface wrapper
+            // puts the column inside a `.frame(maxWidth: .infinity)` — applied
+            // underneath that frame the bounds never reached the split view, so
+            // the divider dragged past the minimum and the content stretched.
+            .brevMailPaneColumnWidth(folderSidebarColumnWidth)
     }
 
     private func threadHeadersForSelection(fallbackHeader: MessageHeader? = nil) -> [MessageHeader] {
@@ -1631,7 +1633,11 @@ public struct BrevMailRootView: View {
         // section (see `toolbarList`), not via `.searchable`, whose
         // window-level item re-lays out and collapses to a magnifying glass on
         // its own whenever the AI Sidebar column appears.
-        .brevMailFallbackToolbar { toolbarList }
+        #if os(iOS)
+            .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
+            .navigationBarTitleDisplayMode(.large)
+        #endif
+            .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the
         // band on its own scroll viewport (see MessageListView), which sits
         // below the inbox category and action bars when those are present. A
@@ -1816,7 +1822,6 @@ public struct BrevMailRootView: View {
                 platform: toolbarPlatform
             ) {
                 refreshToolbarButton
-                composeToolbarButton
             }
 
             if MailRootSettingsToolbarPolicy.showsSettingsButton(
@@ -1825,6 +1830,12 @@ public struct BrevMailRootView: View {
             ) {
                 settingsToolbarButton
             }
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Spacer()
+        }
+        ToolbarItem(placement: .bottomBar) {
+            composeToolbarButton
         }
         #endif
     }
@@ -2159,9 +2170,12 @@ public struct BrevMailRootView: View {
                                 .disabled(!canPresentSettings())
                             }
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: toolbarPlatform == .iOS
+                                ? MailContextColumnVisibility.toolbarSymbolName : "ellipsis.circle")
                         }
-                        .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+                        .accessibilityLabel(toolbarPlatform == .iOS
+                            ? String(localized: "AI Sidebar", bundle: .module)
+                            : String(localized: "More message actions", bundle: .module))
                     }
                 }
             } else {

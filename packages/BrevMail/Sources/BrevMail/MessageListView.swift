@@ -3361,7 +3361,7 @@ enum MessageListRowContentPolicy {
         MessageListRowContentPresentation(
             showsSourceContext: !isCompactWidth,
             showsLabelChips: !isCompactWidth,
-            previewLineCount: isCompactWidth ? 0 : requestedPreviewLineCount,
+            previewLineCount: requestedPreviewLineCount,
             // Compact rows keep these states in their VoiceOver value and in the
             // message detail. The visual icons yield so sender and subject remain
             // recognizable at phone width.
@@ -3457,6 +3457,26 @@ struct MessageListRow: View {
     /// Coordinate space the row's tap gesture and the thread chevron share.
     fileprivate static let rowCoordinateSpace = "brev.messageListRow"
 
+    #if os(iOS)
+    @ScaledMetric(relativeTo: .body) private var phoneTextScale: CGFloat = 1
+    #endif
+
+    private var senderPointSize: CGFloat {
+        #if os(iOS)
+        (textSize.listTitlePointSize + 3) * phoneTextScale
+        #else
+        textSize.listTitlePointSize
+        #endif
+    }
+
+    private var detailPointSize: CGFloat {
+        #if os(iOS)
+        (textSize.listDetailPointSize + 2) * phoneTextScale
+        #else
+        textSize.listDetailPointSize
+        #endif
+    }
+
     @State private var isHovered = false
     @State private var threadToggleFrame: CGRect = .zero
 
@@ -3534,7 +3554,7 @@ struct MessageListRow: View {
                 HStack(spacing: BrevSpacing.xs) {
                     Text(header.from.displayName)
                         .font(fontFamily.font(
-                            size: textSize.listTitlePointSize,
+                            size: senderPointSize,
                             weight: MessageListSenderPresentation.fontWeight
                         ))
                         .foregroundStyle(theme.textPrimary.color)
@@ -3585,12 +3605,12 @@ struct MessageListRow: View {
                 // sender keeps the emphasis established in #366.
                 Text(header.subject)
                     .font(fontFamily.font(
-                        size: textSize.listDetailPointSize,
+                        size: detailPointSize,
                         weight: header.isRead ? .regular : .semibold
                     ))
                     .foregroundStyle(isSelected ? selectionPalette.text
                         .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
-                    .lineLimit(1)
+                    .lineLimit(isCompactWidth ? 2 : 1)
                 if let matchedAttachmentName {
                     HStack(spacing: BrevSpacing.xxs) {
                         Image(systemName: "paperclip")
@@ -3612,7 +3632,7 @@ struct MessageListRow: View {
                 }
                 if contentPresentation.previewLineCount > 0 {
                     Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
-                        .font(fontFamily.font(size: textSize.listDetailPointSize))
+                        .font(fontFamily.font(size: detailPointSize))
                         .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                         .lineLimit(contentPresentation.previewLineCount)
                 }
@@ -3622,7 +3642,7 @@ struct MessageListRow: View {
             }
         }
         .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, density.verticalPadding)
+        .padding(.vertical, isCompactWidth ? max(12, density.verticalPadding) : density.verticalPadding)
         .background(rowBackground)
         .overlay(alignment: .leading) {
             if isSelected {

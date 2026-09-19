@@ -289,6 +289,12 @@ All notable changes to Brev are documented here.
 - Thread-card PDF export errors use localized package strings on both platforms.
   The detached reader overflow icon follows the theme text color.
 
+- iPhone mailboxes: keep search at one-row height, use larger sender and subject
+  text with previews and two-line subjects, label Mailboxes/Inbox navigation,
+  move Compose to the bottom toolbar, and remove duplicate Settings controls.
+  Folder rows no longer reserve an empty desktop disclosure column; nested
+  folders retain indentation and a separate expand/collapse target.
+
 ## [0.1.0] - 2026-08-28
 
 ### Added

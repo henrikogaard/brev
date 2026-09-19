@@ -68,7 +68,7 @@ struct MessageListSearchField: View {
         }
         .padding(.leading, BrevSpacing.md)
         .padding(.trailing, text.isEmpty ? BrevSpacing.md : BrevSpacing.xs)
-        .frame(minHeight: chromeHeight)
+        .frame(height: chromeHeight)
         .background(BrevWindowSurfaceBackground(role: .card))
         .overlay {
             RoundedRectangle(cornerRadius: BrevRadius.md)
@@ -94,7 +94,7 @@ struct MessageListSearchBand: View {
     var body: some View {
         MessageListSearchField(
             text: $navigation.searchText,
-            prompt: "Search messages",
+            prompt: String(localized: "Search messages", bundle: .module),
             focusRequestID: navigation.searchFocusRequestID
         )
         .padding(.horizontal, BrevSpacing.md)
@@ -112,6 +112,8 @@ private struct KeyboardSafeSearchTextField: UIViewRepresentable {
     func makeUIView(context: Context) -> UITextField {
         let textField = UITextField()
         textField.delegate = context.coordinator
+        textField.font = .preferredFont(forTextStyle: .body)
+        textField.adjustsFontForContentSizeCategory = true
         textField.borderStyle = .none
         textField.clearButtonMode = .never
         textField.returnKeyType = .search
