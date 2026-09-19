@@ -2734,3 +2734,18 @@ buttons, and package-aware localization.
   at the scene call site. No new policy or visual layout was introduced; this
   private scene-wiring correction uses the existing command policy test and
   iOS build, with native multi-window acceptance still pending.
+
+- Pre-merge source safety: a detached action now requires its loaded source
+  section, synchronously applies that source's folders/mailbox context, and
+  rejects unavailable sources. A queued mutation also rejects a later source
+  switch. Reader-menu calls use the same handoff. The two-account regression
+  failed six assertions before the fix, including the wrong permanent-delete
+  classification when the previous source lacked Trash.
+- iPad mail Undo now appends to the native Undo/Redo group instead of replacing
+  it. Native command-menu automation is unavailable in the package runner;
+  existing Undo routing tests and iOS compilation validate the supported seams.
+- Verification: all 36 focused source-handoff, source-sync, command and native
+  Undo routing tests passed after the red regression; lint and format passed.
+  The separate local-folder visibility test failed under hosted load but passed
+  locally (11 tests). It uses fixed 50ms sleeps around asynchronous refresh;
+  final-head CI remains the merge gate.

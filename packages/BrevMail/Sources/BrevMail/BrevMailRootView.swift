@@ -4500,23 +4500,25 @@ public struct BrevMailRootView: View {
     /// (The related feature request).
     /// Performs an action requested by a standalone (detached) message window
     /// through the main window's normal command handlers, so undo, optimistic UI,
-    /// and folder refresh all apply. Commands act in the active command context;
-    /// the message is assumed to belong to the currently active account.
+    /// and folder refresh all apply. Resolve the message's source context before
+    /// dispatch so destinations cannot come from a previously selected account.
     private func handleDetachedMessageCommand(_ request: DetachedMessageCommandRequest) {
-        let header = request.header
-        // Act on the message's own account, not whatever the main window currently
-        // has selected, so mutations hit the right backend and replies compose from
-        // the right address. Resolving the source through the active context keeps
-        // the existing command handlers (undo, optimistic UI, refresh) intact. For a
-        // single account this is a no-op; with multiple accounts it activates the
-        // message's account in the main window.
-        if let sourceID = request.sourceID {
-            if navigation.selectedSourceID != sourceID {
-                navigation.selectedSourceID = sourceID
-            }
-            navigation.composeSourceID = sourceID
+        let sourceID = request.sourceID ?? navigation.selectedSourceID
+        guard sourceID.map({ backendAccountIDs.contains($0.accountID) }) ?? true,
+              ReaderCommandSourceHandoff.prepare(
+                  request, navigation: navigation, sections: sourceSections,
+                  applySection: { section in
+                      handleSelectedSourceChange()
+                      applySelectedSourceSection(section)
+                  }
+              ) else {
+            rootStatus = MailRootStatus(message: String(
+                localized: "Mailbox folders are not ready. Wait for the mailbox to load and try again.",
+                bundle: .module
+            ))
+            return
         }
-        performDetachedCommand(request.command, header: header, sourceID: request.sourceID)
+        performDetachedCommand(request.command, header: request.header, sourceID: sourceID)
     }
 
     /// Performs a message action on behalf of a detached reader window or the
@@ -4536,17 +4538,17 @@ public struct BrevMailRootView: View {
         case .forward:
             presentForward(of: header)
         case .toggleRead:
-            Task { await toggleRead(for: header) }
+            performDetachedMutation(sourceID: sourceID) { await toggleRead(for: header) }
         case .toggleFlag:
-            Task { await toggleStar(for: header) }
+            performDetachedMutation(sourceID: sourceID) { await toggleStar(for: header) }
         case .toggleSnooze:
             readerToggleSnooze(header: header, sourceID: sourceID)
         case .toggleDone:
             readerToggleDone(header: header, sourceID: sourceID)
         case .archive:
-            Task { await archive(header: header) }
+            performDetachedMutation(sourceID: sourceID) { await archive(header: header) }
         case .delete:
-            Task { await trash(header: header) }
+            performDetachedMutation(sourceID: sourceID) { await trash(header: header) }
         case .move:
             guard navigation.presentedSheet == nil else { return }
             navigation.presentedSheet = .moveTo(
@@ -4577,7 +4579,7 @@ public struct BrevMailRootView: View {
             )
         case .setJunk:
             let isInSpam = folders.first { $0.id == header.folderID }?.role == .spam
-            Task { await setJunk(!isInSpam, for: header) }
+            performDetachedMutation(sourceID: sourceID) { await setJunk(!isInSpam, for: header) }
         case .blockSender:
             pendingReaderBlockSenderTarget = DetachedReaderActionTarget(header: header, sourceID: sourceID)
         case .saveAs:
@@ -4613,6 +4615,17 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private func performDetachedMutation(
+        sourceID: MailSourceID?,
+        operation: @escaping @MainActor () async -> Void
+    ) {
+        Task { @MainActor in
+            // A queued action must not follow a later user selection to another source.
+            guard navigation.selectedSourceID == sourceID else { return }
+            await operation()
+        }
+    }
+
     /// Maps a consolidated reader-menu action onto the detached-command
     /// dispatcher. Print/PDF are intentionally absent — they are performed
     /// locally by `MessageDetailView`, which owns the loaded body.
@@ -4622,7 +4635,7 @@ public struct BrevMailRootView: View {
         sourceID: MailSourceID?
     ) {
         if let command = DetachedMessageCommand(menuAction: action) {
-            performDetachedCommand(command, header: header, sourceID: sourceID)
+            handleDetachedMessageCommand(.init(command: command, header: header, sourceID: sourceID))
         }
     }
 

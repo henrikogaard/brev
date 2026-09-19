@@ -147,3 +147,25 @@ enum ReaderCommandHandoff {
         pending[payload.id]
     }
 }
+
+/// Applies a reader's source context before its owner can dispatch a mutation.
+@MainActor
+enum ReaderCommandSourceHandoff {
+    static func prepare(
+        _ request: DetachedMessageCommandRequest,
+        navigation: MailNavigationState,
+        sections: [MailSourceSection],
+        applySection: (MailSourceSection) -> Void
+    ) -> Bool {
+        if let sourceID = request.sourceID ?? navigation.selectedSourceID {
+            guard let section = sections.first(where: { $0.id == sourceID }),
+                  section.loadError == nil else { return false }
+            if navigation.selectedSourceID != sourceID {
+                navigation.selectFolder(request.header.folderID, in: sourceID)
+            }
+            navigation.composeSourceID = sourceID
+            applySection(section)
+        }
+        return true
+    }
+}

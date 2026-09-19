@@ -18,6 +18,41 @@ import Testing
 @Suite("Reader command handoff")
 @MainActor
 struct ReaderCommandHandoffTests {
+    @Test("source folders replace another account before a reader mutation can run")
+    func sourceContextPrecedesMutation() {
+        let navigation = MailNavigationState()
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        let other = MailSourceID(accountID: "b", mailboxID: "b")
+        navigation.selectFolder("b-inbox", in: other)
+        let inbox = Folder(id: "a-inbox", name: "Inbox", role: .inbox)
+        let trash = Folder(id: "a-trash", name: "Trash", role: .trash)
+        let section = MailSourceSection(id: source,
+                                        account: BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org"),
+                                        mailbox: Mailbox(id: "a", email: "a@example.org", displayName: "A", isPrimary: true),
+                                        folders: [inbox, trash])
+        let header = MessageHeader(id: "message", threadID: "thread", folderID: inbox.id,
+                                   from: Correspondent(email: "fixture@example.org"),
+                                   subject: "Subject", snippet: "Preview", date: .distantPast)
+        var ownerFolders = [Folder(id: "b-inbox", name: "Inbox", role: .inbox)]
+        let prepared = ReaderCommandSourceHandoff.prepare(
+            .init(command: .delete, header: header, sourceID: source),
+            navigation: navigation, sections: [section], applySection: { ownerFolders = $0.folders }
+        )
+        #expect(prepared)
+        #expect(navigation.selectedSourceID == source)
+        #expect(navigation.selectedFolderID == inbox.id)
+        #expect(ownerFolders.first { $0.role == .trash }?.id == "a-trash")
+        #expect(!MailUndoableDelete.isPermanentDelete(from: inbox, folders: ownerFolders))
+
+        let missingSource = MailSourceID(accountID: "missing", mailboxID: "missing")
+        #expect(!ReaderCommandSourceHandoff.prepare(
+            .init(command: .delete, header: header, sourceID: missingSource),
+            navigation: navigation, sections: [section], applySection: { ownerFolders = $0.folders }
+        ))
+        #expect(navigation.selectedSourceID == source)
+        #expect(ownerFolders == section.folders)
+    }
+
     @Test("two window handoffs keep their source and command separate and execute once")
     func independentWindows() throws {
         let header = MessageHeader(id: "same-id", threadID: "thread", folderID: "inbox",

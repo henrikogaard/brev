@@ -45,10 +45,8 @@ public extension FocusedValues {
 }
 
 /// Native Edit-menu shortcuts with live text-editor and mail-context routing.
-/// On iPadOS the same command group supplies hardware-keyboard ⌘Z for mail
-/// undo: UIKit consults first-responder key commands (text editing undo)
-/// before scene commands, so text-editor ⌘Z keeps working — the mail command
-/// only fires when no text responder claims it.
+/// On iPadOS mail Undo is appended after the native Undo/Redo group, preserving
+/// text-editing menu commands and first-responder hardware-keyboard routing.
 @MainActor
 public struct MailUndoCommands: Commands {
     @FocusedValue(\.mailUndoActions) private var mailActions
@@ -70,7 +68,7 @@ public struct MailUndoCommands: Commands {
                 .disabled(!canRedo)
         }
         #else
-        CommandGroup(replacing: .undoRedo) {
+        CommandGroup(after: .undoRedo) {
             Button(String(localized: "Undo Mail Action", bundle: .module)) {
                 mailActions?.onUndo()
             }
