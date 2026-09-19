@@ -15,6 +15,13 @@ import Testing
 
 @Suite("AppSessionRestorePresentationPolicy")
 struct AppSessionRestorePresentationPolicyTests {
+    @Test("reader command scenes take precedence over shared Settings presentation")
+    func readerCommandPrecedesSettings() {
+        #expect(!AppSessionRestorePresentationPolicy.shouldShowSettings(isRequested: true, hasReaderCommandHandoff: true))
+        #expect(AppSessionRestorePresentationPolicy.shouldShowSettings(isRequested: true, hasReaderCommandHandoff: false))
+        #expect(!AppSessionRestorePresentationPolicy.shouldShowSettings(isRequested: false, hasReaderCommandHandoff: false))
+    }
+
     @Test("mailbox root shows once any backend is visible, even while restoring")
     func mailboxRootShowsOnceAnyBackendIsVisible() {
         #expect(AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(

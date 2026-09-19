@@ -60,7 +60,12 @@ struct BrevApp: App {
                 // restore-error alert's "Open Settings" action works even
                 // when every account failed to restore and the window would
                 // otherwise show the login screen.
-                if showSettings {
+                // A detached command must reach its mailbox even when another
+                // scene has opened the shared Settings surface.
+                if AppSessionRestorePresentationPolicy.shouldShowSettings(
+                    isRequested: showSettings,
+                    hasReaderCommandHandoff: readerCommandHandoff != nil
+                ) {
                     SettingsView(
                         accountStore: session.accountStore,
                         activeTheme: $session.theme,
@@ -91,6 +96,7 @@ struct BrevApp: App {
                             session.theme = newTheme
                         },
                         onOpenSettings: {
+                            readerCommandHandoff = nil
                             showSettings = true
                         },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
@@ -134,6 +140,7 @@ struct BrevApp: App {
             ) {
                 Button(String(localized: "Open Settings")) {
                     session.clearAccountRestoreErrors()
+                    readerCommandHandoff = nil
                     showSettings = true
                 }
                 Button(String(localized: "Dismiss"), role: .cancel) {

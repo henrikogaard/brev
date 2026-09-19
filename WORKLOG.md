@@ -2832,3 +2832,12 @@ buttons, and package-aware localization.
 - All four compact Settings snapshot cases pass with xcodebuild exit 0 after
   visual review; lint, format and baseline metadata checks pass. Native menu
   interaction and real-account acceptance remain TestFlight QA items.
+
+- Reader-command iPad scenes now take precedence over the shared Settings flag.
+  Opening Settings explicitly clears that scene's consumed payload, preserving
+  subsequent Settings access. The routing regression failed before the fix;
+  all four restore/presentation policy tests now pass. Native multi-window
+  interaction remains device QA; no additional visual layout changed.
+- App-hosted iOS startup/search tests pass with xcodebuild exit 0 after the
+  routing change; lint, formatting and diff-check pass. No snapshot refresh
+  needed because only scene selection changed.

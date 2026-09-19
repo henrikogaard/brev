@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iPad detached reader commands reach their mailbox even when Settings is open in another scene.
+
 - Unified Inbox reader navigation applies the same category, mailbox and saved
   search filters as the list when reconciling Snooze, Done and Undo.
 
