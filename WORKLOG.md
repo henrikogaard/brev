@@ -2720,3 +2720,9 @@ buttons, and package-aware localization.
   test. Final-head hosted CI remains required. The five phone snapshots also
   passed with xcodebuild exit 0 when simulator diagnostic collection was
   disabled; the earlier post-test stall was in diagnostic collection.
+
+- Final detached-reader finding: Read, Flag, and Done now return to the owning
+  mailbox, like other stateful detached commands. This deliberately avoids
+  retaining an immutable header after mutation; subsequent actions use the
+  owner's refreshed state. The policy test failed for all three actions before
+  the fix. Offline download still keeps the detached reader open.

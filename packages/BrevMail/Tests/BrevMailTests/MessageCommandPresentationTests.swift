@@ -526,11 +526,12 @@ struct MessageCommandPresentationTests {
             .archive, .delete, .move, .moveToLocalFolder, .setJunk, .blockSender,
             .reply, .replyAll, .forward, .toggleSnooze, .copyToFolder,
             .copyToLocalFolder, .saveAs, .createTask, .createRule, .createMeeting,
-            .addNote, .followUp, .properties, .showHeaders, .viewSource, .openInNewWindow
+            .addNote, .followUp, .properties, .showHeaders, .viewSource, .openInNewWindow,
+            .toggleRead, .toggleFlag, .toggleDone
         ] {
             #expect(command.dismissesWindow, "\(command) should return to the mailbox window")
         }
-        for command: DetachedMessageCommand in [.toggleRead, .toggleFlag, .toggleDone, .downloadOffline] {
+        for command: DetachedMessageCommand in [.downloadOffline] {
             #expect(!command.dismissesWindow, "\(command) should keep the detached window")
         }
     }

@@ -44,17 +44,18 @@ enum DetachedMessageCommand: String, Sendable {
     case viewSource
     case openInNewWindow
 
-    /// Close the detached reader when removing its message or handing a
-    /// presentation to the owning mailbox window. Inline toggles stay open.
+    /// Return mutations and presentations to the owning mailbox window.
+    /// Detached readers capture an immutable header, so stateful toggles must
+    /// leave that snapshot instead of allowing a second stale-header action.
     var dismissesWindow: Bool {
         switch self {
-        case .toggleRead, .toggleFlag, .toggleDone, .downloadOffline:
+        case .downloadOffline:
             return false
         case .reply, .replyAll, .forward, .archive, .delete, .move,
              .copyToFolder, .copyToLocalFolder, .moveToLocalFolder, .setJunk,
              .blockSender, .saveAs, .createTask, .createRule, .createMeeting,
              .addNote, .followUp, .properties, .showHeaders, .viewSource,
-             .openInNewWindow, .toggleSnooze:
+             .openInNewWindow, .toggleSnooze, .toggleRead, .toggleFlag, .toggleDone:
             return true
         }
     }
