@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.1.0-nightly.20260918</title><pubDate>Fri, 18 Sep 2026 06:33:10 GMT</pubDate><sparkle:version>2026091806</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260918</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 3c0598a126bfc37bde610fae35f4fc55e4b795d4.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.1.0-nightly.20260919</title><pubDate>Sat, 19 Sep 2026 01:30:39 GMT</pubDate><sparkle:version>2026091901</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260919</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 703f42fd5fedf70fc4c22b2a57f881c5cd5be669.
+
+- Merge pull request #44 from henrikogaard/feature/ios-daily-driver (703f42f)
+- test(ios): add BrevIOSTests target for app-shell logic (e85d62d)
+- feat(mail): enable local folder writes on iOS (8b2b1ad)
+- feat(settings): backup and restore on iOS via document picker (cd2746e)
+- Merge pull request #42 from henrikogaard/fix/macos-review-findings (db941af)
+- fix(macos): address remaining macOS app review findings (6ac20a9)
+- fix(macos): allow Maildir folder selection in the import panel (7135ffa)
+- Merge pull request #43 from henrikogaard/fix/ios-review-findings (4e8c093)
+- docs: record iOS review fixes in changelog and worklog (29b2ae0)
+- chore(ios): drop unused processing mode, enforce extension-API-only builds (0b6aab9)
+- fix(ios): cap share-extension text handoff at 256 KB (ae00eed)
+- fix(ios): rich notification preview for reply-enabled notifications (0d2fd3e)
+- fix(ios): surface restore errors when no account remains visible (24d666b)
+- fix(ios): declare UserDefaults required-reason API in privacy manifest (e97783d)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260919.dmg" length="26680765" type="application/octet-stream" sparkle:edSignature="T4drYKEyayfxi4cvgzu72PkxhomjUFNg1khshQBAC7t69micMcQ1BKxMdEa0AX3P3ayIqGxanZiu/GRqF7FvAQ==" /></item><item><title>0.1.0-nightly.20260918</title><pubDate>Fri, 18 Sep 2026 06:33:10 GMT</pubDate><sparkle:version>2026091806</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260918</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 3c0598a126bfc37bde610fae35f4fc55e4b795d4.
 
 - Merge pull request #41 from henrikogaard/fix/nightly-workflow-repo-context (3c0598a)
 - fix(release): pass OAuth values to nightly archive (7ee14ea)
@@ -31,4 +46,4 @@
 - ci: make background-mail tests deterministic and gate new pixel snapshots (cc4b157)
 - feat(search): opt-in local attachment content indexing (7348f51)
 - docs(adr): attachment content indexing and Graph backend designs; live perf run script (4ce5b2a)
-- feat(mail): durable local mail folders with copy, move, import and backup (c3d7229)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260918.dmg" length="26682516" type="application/octet-stream" sparkle:edSignature="yK98/qN8rvr2q/mNGOvazKLMhVy8BI0AXcy62/1yPQJ9RexuAubr3d0s5wM72PpFhggBDgDfe2Ba6GL0gpIrCg==" /></item></channel></rss>
+- feat(mail): durable local mail folders with copy, move, import and backup (c3d7229)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260918.dmg" length="26682516" type="application/octet-stream" sparkle:edSignature="yK98/qN8rvr2q/mNGOvazKLMhVy8BI0AXcy62/1yPQJ9RexuAubr3d0s5wM72PpFhggBDgDfe2Ba6GL0gpIrCg==" /></item></channel></rss>
