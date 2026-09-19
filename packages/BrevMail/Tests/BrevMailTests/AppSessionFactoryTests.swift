@@ -29,7 +29,24 @@ import Testing
 @Suite("AppSessionFactory")
 @MainActor
 struct AppSessionFactoryTests {
-    @Test("demo policy builds the same usable demo session for either app target")
+    #if !DEBUG
+    @Test("release builds ignore injected demo requests")
+    func releaseBuildIgnoresInjectedDemoRequest() {
+        let configuration = AppSessionFactory.Configuration(
+            applicationSupportURL: URL(filePath: "/tmp/brev-app-session-factory-release-tests"),
+            oauthPresentationAnchor: { fatalError("OAuth anchor is not needed in this wiring test") },
+            isDemoModeRequested: { true }
+        )
+
+        let session = AppSessionFactory.makeDefault(configuration: configuration)
+
+        #expect(session.backend == nil)
+        #expect(!session.canUseDemoAccount)
+    }
+    #endif
+
+    #if DEBUG
+    @Test("developer demo policy builds the same usable session for either app target")
     func demoPolicyBuildsDemoSession() async {
         let demo = MockBackend()
         let configuration = AppSessionFactory.Configuration(
@@ -46,6 +63,7 @@ struct AppSessionFactoryTests {
         #expect(!session.canUseDemoAccount)
         #expect(session.canUseInteractiveSignIn)
     }
+    #endif
 
     @Test("production policy wires every account setup and restore coordinator")
     func productionPolicyWiresAccountCoordinators() {
