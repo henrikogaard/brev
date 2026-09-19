@@ -2706,3 +2706,17 @@ buttons, and package-aware localization.
   inspected and both platform builds cover the call sites. Device print QA
   remains pending. All five phone snapshot comparisons passed after the
   reviewed antialiasing-only reference correction.
+
+- The latest hosted Gmail run reproduced the restart test failure. Inspection
+  found the test assumed each delivery request starts a fresh pass, whereas
+  GmailScheduledDeliveryDriver explicitly joins an in-flight startup pass.
+  After reviewed rescheduling, that pass may retain its earlier due-message
+  snapshot. The test now drives bounded subsequent passes before asserting
+  exactly two sends and an empty outbox; its no-automatic-retry assertions are
+  unchanged. Production Gmail scheduling code is unchanged.
+- Verification of the scheduling-test correction: the revised restart test
+  passed in all ten full-suite repetitions. Nine complete 152-test runs passed;
+  one encountered an unrelated SQLite trigger-setup failure in the cleanup
+  test. Final-head hosted CI remains required. The five phone snapshots also
+  passed with xcodebuild exit 0 when simulator diagnostic collection was
+  disabled; the earlier post-test stall was in diagnostic collection.
