@@ -188,7 +188,7 @@ snippets for #96, #97, #98, #99, and the umbrella #6. Review logs for
 secrets before posting them, and leave project cards in `In review`
 until maintainer QA accepts the release artifact.
 
-## iOS Internal TestFlight
+## iOS TestFlight
 
 The App Store Connect record is **Brev Mail** (`6789346666`) with bundle
 identifier `eu.brevmail.brev.ios`. Internal builds use Apple team
@@ -239,15 +239,35 @@ xcodebuild -exportArchive \
 
 ```
 
-The checked-in export options preserve the repository version/build and
-set `testFlightInternalTestingOnly=true`. Builds uploaded with that flag
-cannot later be used for external TestFlight or App Store distribution;
-use a separately reviewed export policy for release candidates.
+The internal export options preserve the repository version/build and set
+`testFlightInternalTestingOnly=true`. Builds uploaded with that flag cannot
+later be used for external TestFlight or App Store distribution.
 
-After upload, wait for App Store Connect processing, resolve encryption
-compliance when prompted, and add the build only to an internal testing
-group. Missing third-party dSYMs do not necessarily block an internal
-upload, but treat them as a release-quality issue before public submission.
+For an external beta release candidate, first prove the Release-only demo
+mailbox guard and use the external export policy:
+
+```bash
+swift test -c release --package-path packages/BrevMail \
+  --filter AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest
+
+xcodebuild -exportArchive \
+  -archivePath build/testflight/BrevIOS.xcarchive \
+  -exportPath build/testflight/external-upload \
+  -exportOptionsPlist scripts/export-options-testflight-external.plist \
+  -allowProvisioningUpdates
+```
+
+The external `Public Beta` group has a public link configured for anyone at
+<https://testflight.apple.com/join/zY1HCUcx>. TestFlight does not accept new
+testers while the group has no approved build. Add only a Release archive that
+passes the guard above, then complete Beta App Review before announcing that
+the link is operational.
+
+After upload, wait for App Store Connect processing and resolve encryption
+compliance when prompted. Keep internal-only exports in an internal testing
+group; add external release candidates to `Public Beta` for Beta App Review.
+Missing third-party dSYMs do not necessarily block an internal upload, but
+treat them as a release-quality issue before public submission.
 
 ## Local Test vs Daily-Driver Builds
 
