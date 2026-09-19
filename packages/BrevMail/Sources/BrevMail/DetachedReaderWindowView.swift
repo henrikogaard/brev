@@ -74,7 +74,9 @@ public struct DetachedReaderWindowView: View {
                             command: request.command, header: request.header, sourceID: source
                         ))
                         openWindow(value: handoff)
-                        dismissWindow(value: payload)
+                        if request.command.dismissesWindow {
+                            dismissWindow(value: payload)
+                        }
                     }
                     .brevMailPaneSurface(.content)
                 } else if isResolving {

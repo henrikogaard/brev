@@ -2726,3 +2726,11 @@ buttons, and package-aware localization.
   retaining an immutable header after mutation; subsequent actions use the
   owner's refreshed state. The policy test failed for all three actions before
   the fix. Offline download still keeps the detached reader open.
+
+### 2026-09-20 — Codex — PR #47 final iPad handoff
+
+- All twenty checks passed at c60830d. A final review found iPad handoff ignored
+  the non-dismissal policy for Keep Offline. Applied the existing tested policy
+  at the scene call site. No new policy or visual layout was introduced; this
+  private scene-wiring correction uses the existing command policy test and
+  iOS build, with native multi-window acceptance still pending.
