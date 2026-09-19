@@ -99,7 +99,8 @@ public struct BrevButton: View {
             .brevFont(.headline)
             .padding(.horizontal, BrevSpacing.lg)
             .padding(.vertical, BrevSpacing.sm)
-            .frame(minHeight: 32)
+            // iOS keeps the 44 pt touch-target floor; macOS stays compact.
+            .frame(minHeight: minimumHeight)
             .background(background)
             .foregroundStyle(foreground)
             .overlay(border)
@@ -120,6 +121,14 @@ public struct BrevButton: View {
         case .secondary, .tertiary:
             Color.clear
         }
+    }
+
+    private var minimumHeight: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        32
+        #endif
     }
 
     private var foreground: Color {

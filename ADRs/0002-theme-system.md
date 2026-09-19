@@ -92,9 +92,27 @@ Text(message.subject)
 The hard rule, enforced by SwiftLint custom rule (ADR-0005):
 
 > No `Color(...)`, `Color.<systemName>`, or hex literal anywhere in
-> `apps/macOS/`, `apps/iOS/`, or `packages/BrevDesign/`. All colors
+> `apps/macOS/`, `apps/iOS/`, `packages/BrevDesign/`,
+> `packages/BrevMail/`, or `packages/BrevSettings/`. All colors
 > come from `theme.<token>.color`. Only exception: `Color.clear`,
 > which is structural.
+
+(2026-09: the rule's `included` list grew to cover `BrevMail` and
+`BrevSettings` — the packages where most view code lives — and the
+regex now also matches `Color(hex:`.)
+
+### Shared component surfaces
+
+Recurring view recipes live in `BrevDesign` so call sites cannot drift
+on opacity, spacing, or hit-area values:
+
+- `BrevButton` — the only sanctioned button; keeps a 44 pt minimum
+  height on iOS (32 pt on macOS).
+- `BrevIconButton` — icon-only actions; 44 pt minimum hit area on iOS
+  regardless of glyph size, mandatory accessibility label.
+- `brevQuietSurface()` — the one "quiet card" recipe (secondary fill at
+  0.42, border hairline at 0.45); replaces hand-rolled copies.
+- `brevChip(selected:)` — capsule styling for filter/toggle chips.
 
 ### Theme distribution
 

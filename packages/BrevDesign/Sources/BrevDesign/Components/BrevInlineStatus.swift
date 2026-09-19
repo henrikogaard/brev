@@ -95,12 +95,20 @@ public struct BrevInlineStatus: View {
                 Button(actionTitle, action: onAction)
                     .buttonStyle(.borderless)
                     .foregroundStyle(theme.accent.color)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                #endif
             }
 
             if let onDismiss {
                 Button(action: onDismiss) {
                     Image(systemName: "xmark")
                         .accessibilityHidden(true)
+                    #if os(iOS)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(theme.textTertiary.color)
