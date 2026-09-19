@@ -545,63 +545,32 @@ public struct MessageListView: View {
 
     @ViewBuilder
     private func bulkActionBar(visibleHeaders: [MessageHeader]) -> some View {
-        HStack(spacing: BrevSpacing.xs) {
-            Text("\(navigation.bulkSelection.count) selected", bundle: .module)
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textPrimary.color)
-            Spacer(minLength: BrevSpacing.sm)
-            BulkActionIconButton(
-                label: "Mark Read",
-                systemImage: "envelope.open",
-                isDisabled: isMutationActionBlocked
-            ) {
+        MailBulkActionBar(
+            selectionCount: navigation.bulkSelection.count,
+            showsArchive: archiveFolder != nil,
+            isDisabled: isMutationActionBlocked,
+            onMarkRead: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
                 Task { await bulkSetRead(true) }
-            }
-            BulkActionIconButton(
-                label: "Mark Unread",
-                systemImage: "envelope.badge",
-                isDisabled: isMutationActionBlocked
-            ) {
+            },
+            onMarkUnread: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
                 Task { await bulkSetRead(false) }
-            }
-            BulkActionIconButton(
-                label: "Star",
-                systemImage: "star",
-                isDisabled: isMutationActionBlocked
-            ) {
+            },
+            onFlag: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
                 Task { await bulkSetFlag(true) }
-            }
-            if archiveFolder != nil {
-                BulkActionIconButton(
-                    label: "Archive",
-                    systemImage: "archivebox",
-                    isDisabled: isMutationActionBlocked
-                ) {
-                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                    Task { await bulkArchive() }
-                }
-            }
-            BulkActionIconButton(
-                label: "Delete",
-                systemImage: "trash",
-                isDisabled: isMutationActionBlocked,
-                isDestructive: true
-            ) {
+            },
+            onArchive: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+                Task { await bulkArchive() }
+            },
+            onDelete: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
                 Task { await bulkDelete() }
             }
+        ) {
             bulkOverflowMenu(visibleHeaders: visibleHeaders)
-        }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.sm)
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
         }
     }
 
@@ -625,7 +594,7 @@ public struct MessageListView: View {
                 }
             }
             .disabled(isPerformingMutation)
-            Button(String(localized: "Unstar", bundle: .module)) {
+            Button(String(localized: "Unflag", bundle: .module)) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
                 Task { await bulkSetFlag(false) }
             }
@@ -1333,14 +1302,18 @@ public struct MessageListView: View {
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child,
-                    isSelected: navigation.selectedMessageID == child.id
-                ) {
-                    if navigation.bulkSelection.isEmpty {
-                        selectMessage(child)
-                    } else {
-                        toggleSelection(for: child)
-                    }
-                }
+                    isSelected: navigation.selectedMessageID == child.id,
+                    onSelect: {
+                        if navigation.bulkSelection.isEmpty {
+                            selectMessage(child)
+                        } else {
+                            toggleSelection(for: child)
+                        }
+                    },
+                    fontFamily: mailboxFontFamily,
+                    textSize: mailboxTextSize,
+                    density: mailboxListDensity
+                )
                 .padding(.leading, BrevSpacing.xl)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
@@ -3219,20 +3192,7 @@ struct InboxCategoryBar: View {
                     .font(.caption.weight(.medium))
                     .lineLimit(1)
             }
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xs)
-            .background(
-                Capsule()
-                    .fill(isSelected ? theme.accent.color.opacity(0.18) : theme.bgSecondary.color.opacity(0.46))
-            )
-            .overlay {
-                Capsule()
-                    .stroke(
-                        isSelected ? theme.accent.color.opacity(0.55) : theme.border.color.opacity(0.68),
-                        lineWidth: 0.5
-                    )
-            }
-            .foregroundStyle(isSelected ? theme.accent.color : theme.textPrimary.color)
+            .brevChip(selected: isSelected)
             .fixedSize(horizontal: true, vertical: false)
             .inboxCategoryTouchTarget()
         }
@@ -3758,6 +3718,11 @@ struct MessageListRow: View {
             // Centre the dot on the sender's first line rather than a fixed
             // offset so it tracks the mailbox text-size preference.
             .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - diameter) / 2))
+            // The dot is the row's only unread affordance at regular widths —
+            // give it a label so the combined row element announces "Unread"
+            // rather than staying silent (compact rows carry a status value).
+            .accessibilityLabel(String(localized: "Unread", bundle: .module))
+            .accessibilityHidden(header.isRead)
     }
 
     /// Provider label chips (Gmail labels). `header.labels` is only populated
@@ -3790,8 +3755,8 @@ struct MessageListRow: View {
             .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
             .foregroundStyle(theme.textSecondary.color)
             .lineLimit(1)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
+            .padding(.horizontal, BrevSpacing.xs)
+            .padding(.vertical, BrevSpacing.xxs)
             .background(Capsule().fill(theme.bgSecondary.color))
             .overlay(Capsule().stroke(theme.border.color, lineWidth: 0.5))
     }

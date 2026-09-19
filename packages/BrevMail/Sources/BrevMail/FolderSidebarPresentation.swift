@@ -487,12 +487,15 @@ enum FolderSidebarPresentation {
         isExpanded: Bool = true,
         canExpandAll: Bool = false,
         canCollapseAll: Bool = false,
-        canOpenInNewWindow: Bool = false,
         canShowInProfile: Bool = false,
         canOpenAccountSettings: Bool = false,
-        canShowProperties: Bool = false,
-        canDownloadOffline: Bool = false
+        canShowProperties: Bool = false
     ) -> FolderSidebarDesktopContextMenuPresentation {
+        // Dead capability inputs `canOpenInNewWindow` / `canDownloadOffline`
+        // were removed: no renderer ever consumed them, so a caller could
+        // have produced inert menu entries (the honesty problem the UI/UX
+        // consistency pass removed). Reintroduce an action only alongside a
+        // real `FolderSidebar` handler.
         let presentation = contextMenu(
             folder: folder,
             capabilities: capabilities,
@@ -501,16 +504,6 @@ enum FolderSidebarPresentation {
             hasLocalAlias: hasLocalAlias
         )
         var sections: [FolderSidebarContextMenuSection] = []
-        appendSection(
-            &sections,
-            actions: canOpenInNewWindow ? [
-                .init(
-                    action: .openInNewWindow,
-                    title: String(localized: "Open in New Window", bundle: .module),
-                    symbolName: "arrow.up.forward.square"
-                )
-            ] : []
-        )
         appendSection(
             &sections,
             actions: [
@@ -635,9 +628,7 @@ enum FolderSidebarPresentation {
         // NOTE: account-level "Download for Offline" is intentionally NOT offered
         // — there is no renderer for it in FolderSidebar (it would be an inert
         // menu item, the honesty problem #262 removed). Re-add here only once a
-        // real handler exists. `canDownloadOffline` is retained for the eventual
-        // wiring but currently produces no menu entry.
-        _ = canDownloadOffline
+        // real handler exists.
         appendSection(&sections, actions: accountActions)
         return FolderSidebarDesktopContextMenuPresentation(sections: sections)
     }

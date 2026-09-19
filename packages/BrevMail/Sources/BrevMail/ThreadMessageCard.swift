@@ -290,12 +290,7 @@ struct ThreadMessageCard: View {
             }
             .padding(.horizontal, BrevSpacing.sm)
             .padding(.vertical, BrevSpacing.xxs)
-            .background(theme.bgSecondary.color.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-            .overlay {
-                RoundedRectangle(cornerRadius: BrevRadius.sm)
-                    .stroke(theme.border.color.opacity(0.45), lineWidth: 0.5)
-            }
+            .brevQuietSurface(cornerRadius: BrevRadius.sm)
         }
     }
 
@@ -789,15 +784,15 @@ private struct ThreadCalendarInviteCard: View {
 
             if presentation.showsActions {
                 HStack(spacing: BrevSpacing.sm) {
-                    BrevButton("Accept", style: .primary) {
+                    BrevButton("Accept", style: .primary, bundle: .module) {
                         onRespond(.accepted)
                     }
                     .disabled(isResponding || isBlocked)
-                    BrevButton("Maybe", style: .secondary) {
+                    BrevButton("Maybe", style: .secondary, bundle: .module) {
                         onRespond(.tentative)
                     }
                     .disabled(isResponding || isBlocked)
-                    BrevButton("Decline", style: .tertiary) {
+                    BrevButton("Decline", style: .tertiary, bundle: .module) {
                         onRespond(.declined)
                     }
                     .disabled(isResponding || isBlocked)
@@ -807,7 +802,7 @@ private struct ThreadCalendarInviteCard: View {
                     }
                 }
             } else if let failedResponse {
-                BrevButton("Retry", style: .secondary) {
+                BrevButton("Retry", style: .secondary, bundle: .module) {
                     onRetry(failedResponse)
                 }
                 .disabled(isResponding || isBlocked)

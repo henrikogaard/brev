@@ -48,47 +48,58 @@ struct ThreadInlineChildRow: View {
     let header: MessageHeader
     let isSelected: Bool
     let onSelect: () -> Void
+    /// Mailbox typography preferences, matching `MessageListRow` so expanded
+    /// thread children honor the same font family, text size, and density.
+    var fontFamily: MailboxFontFamily = .system
+    var textSize: MailboxTextSize = .medium
+    var density: MailboxListDensity = .comfortable
     /// "Now" for the relative date label. Injectable so snapshots don't
     /// drift as wall-clock time passes the fixture date.
     var referenceDate = Date()
 
     var body: some View {
         HStack(spacing: BrevSpacing.sm) {
-            // Unread indicator
+            // Unread indicator — labelled so the combined row element
+            // announces the state instead of a bare dot being skipped.
             Circle()
                 .fill(header.isRead ? Color.clear : theme.textPrimary.color)
                 .frame(width: 7, height: 7)
+                .accessibilityLabel(String(localized: "Unread", bundle: .module))
+                .accessibilityHidden(header.isRead)
 
-            // Sender avatar
+            // Sender avatar — slightly smaller than the top-level row to keep
+            // the subordinate hierarchy, but still density-driven.
             BrevAvatarView(
                 email: header.from.email,
                 displayName: header.from.name,
-                size: 28
+                size: max(20, density.avatarSize - 8)
             )
 
             // Sender + snippet
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
                     Text(header.from.name ?? header.from.email)
-                        .font(.subheadline)
-                        .fontWeight(MessageListSenderPresentation.fontWeight)
+                        .font(fontFamily.font(
+                            size: textSize.listTitlePointSize,
+                            weight: MessageListSenderPresentation.fontWeight
+                        ))
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
 
                     Spacer()
 
                     Text(dateLabel)
-                        .font(.footnote)
+                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                         .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                 }
 
                 Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
-                    .font(.footnote)
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
             }
         }
-        .padding(.vertical, BrevSpacing.xs)
+        .padding(.vertical, density.verticalPadding * 0.75)
         .padding(.horizontal, BrevSpacing.md)
         .background(rowBackground)
         .overlay(alignment: .leading) {

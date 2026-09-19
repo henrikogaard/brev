@@ -145,7 +145,10 @@ struct MessageCommandPresentationTests {
             canMove: true,
             junkActionTitle: "Report Junk",
             canBlockSender: true,
-            canDelete: true
+            canDelete: true,
+            canPrint: true,
+            canExportPDF: true,
+            canShowProperties: true
         )
 
         // With no extended capabilities, Copy to Folder, Save As, View Source,
@@ -404,6 +407,134 @@ struct MessageCommandPresentationTests {
         #expect(mailboxMenu.action(.pinToTop)?.title == "Unpin")
         #expect(mailboxMenu.action(.toggleSnooze)?.title == "Unsnooze")
         #expect(mailboxMenu.action(.toggleDone)?.title == "Mark as Not Done")
+    }
+
+    @Test("print and PDF export are omitted when the surface does not support them")
+    func printAndExportAreOmittedWhenUnsupported() {
+        let menu = MessageCommandPresentation.contextMenu(
+            for: Self.makeHeader(),
+            isSelected: false,
+            isPinned: false,
+            isSnoozed: false,
+            isDone: false,
+            canOpenInNewWindow: false,
+            canArchive: false,
+            canMove: false,
+            junkActionTitle: nil,
+            canBlockSender: false,
+            canDelete: true
+        )
+
+        // iOS row menus never pass these flags — the actions must be absent,
+        // not disabled (honesty rule: no dead menu items).
+        #expect(menu.action(.print) == nil)
+        #expect(menu.action(.exportPDF) == nil)
+        #expect(menu.action(.downloadOffline)?.isEnabled == true)
+    }
+
+    @Test("reader menu drops row-only actions but keeps the shared inventory")
+    func readerMenuDropsRowOnlyActions() {
+        let header = Self.makeHeader(isRead: false, isFlagged: false)
+        let menu = MessageCommandPresentation.readerMenu(
+            for: header,
+            isSnoozed: false,
+            isDone: false,
+            canOpenInNewWindow: true,
+            canArchive: true,
+            canMove: true,
+            canFileLocally: true,
+            junkActionTitle: "Report Junk",
+            canBlockSender: true,
+            canDelete: true,
+            canPrint: true,
+            canExportPDF: true,
+            canShowProperties: true,
+            extendedCapabilities: [.messageCopy, .rawMessageSource, .rawMessageBytes],
+            canExportEML: true
+        )
+        let actions = menu.sections.flatMap { $0.actions.map(\.action) }
+
+        #expect(!actions.contains(.select))
+        #expect(!actions.contains(.pinToTop))
+        for expected: MessageContextMenuAction in [
+            .openInNewWindow, .toggleRead, .toggleFlag, .toggleSnooze,
+            .toggleDone, .reply, .replyAll, .forward, .archive, .move,
+            .copyToFolder, .copyToLocalFolder, .moveToLocalFolder, .setJunk,
+            .blockSender, .delete, .print, .exportPDF, .saveAs,
+            .downloadOffline, .createTask, .createRule, .createMeeting,
+            .addNote, .followUp, .properties, .showHeaders, .viewSource
+        ] {
+            #expect(actions.contains(expected), "reader menu is missing \(expected)")
+        }
+        #expect(menu.action(.delete)?.role == .destructive)
+        #expect(menu.action(.blockSender)?.role == .destructive)
+    }
+
+    @Test("reader menu hides unsupported actions instead of disabling them")
+    func readerMenuHidesUnsupportedActions() {
+        let menu = MessageCommandPresentation.readerMenu(
+            for: Self.makeHeader(),
+            isSnoozed: false,
+            isDone: false,
+            canOpenInNewWindow: false,
+            canArchive: false,
+            canMove: false,
+            junkActionTitle: nil,
+            canBlockSender: false,
+            canDelete: true
+        )
+
+        #expect(menu.action(.openInNewWindow) == nil)
+        #expect(menu.action(.archive) == nil)
+        #expect(menu.action(.setJunk) == nil)
+        #expect(menu.action(.blockSender) == nil)
+        #expect(menu.action(.print) == nil)
+        #expect(menu.action(.exportPDF) == nil)
+        #expect(menu.action(.saveAs) == nil)
+        #expect(menu.action(.viewSource) == nil)
+        #expect(menu.action(.properties) == nil)
+        // Move stays visible but disabled — supported, just no destination.
+        #expect(menu.action(.move)?.isEnabled == false)
+    }
+
+    @Test("detached command mapping covers every reader-menu action")
+    func detachedCommandMappingCoversReaderMenuActions() {
+        // Actions performed locally by the presenting surface or meaningful
+        // only on list rows must not map onto the detached command bus.
+        #expect(DetachedMessageCommand(menuAction: .print) == nil)
+        #expect(DetachedMessageCommand(menuAction: .exportPDF) == nil)
+        #expect(DetachedMessageCommand(menuAction: .select) == nil)
+        #expect(DetachedMessageCommand(menuAction: .pinToTop) == nil)
+
+        // Every other action must round-trip so no reader-menu item is dead.
+        for action in MessageContextMenuAction.allCases
+            where ![.print, .exportPDF, .select, .pinToTop].contains(action) {
+            #expect(
+                DetachedMessageCommand(menuAction: action) != nil,
+                "no detached command for \(action)"
+            )
+        }
+        #expect(DetachedMessageCommand(menuAction: .toggleRead) == .toggleRead)
+        #expect(DetachedMessageCommand(menuAction: .blockSender) == .blockSender)
+        #expect(DetachedMessageCommand(menuAction: .viewSource) == .viewSource)
+        #expect(DetachedMessageCommand(menuAction: .openInNewWindow) == .openInNewWindow)
+    }
+
+    @Test("detached window dismisses only for actions that remove the message")
+    func detachedWindowDismissesOnlyForRemovingActions() {
+        for command: DetachedMessageCommand in [
+            .archive, .delete, .move, .moveToLocalFolder, .setJunk, .blockSender
+        ] {
+            #expect(command.dismissesWindow, "\(command) should dismiss the detached window")
+        }
+        for command: DetachedMessageCommand in [
+            .reply, .replyAll, .forward, .toggleRead, .toggleFlag, .toggleSnooze,
+            .toggleDone, .copyToFolder, .copyToLocalFolder, .saveAs, .createTask,
+            .createRule, .createMeeting, .addNote, .followUp, .downloadOffline,
+            .properties, .showHeaders, .viewSource, .openInNewWindow
+        ] {
+            #expect(!command.dismissesWindow, "\(command) should keep the detached window")
+        }
     }
 
     @Test("mutation errors include a refresh action and localized message")

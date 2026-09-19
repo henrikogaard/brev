@@ -204,7 +204,13 @@ struct BrevApp: App {
                 }
             }
         }
-        .commands { MailCommands() }
+        .commands {
+            MailCommands()
+            // iPad hardware-keyboard ⌘Z for mail undo (ADR-0033 era follow-up):
+            // text editors keep their own responder-chain undo ahead of this
+            // scene key command.
+            MailUndoCommands()
+        }
 
         // iPad detached reader window — opened via openWindow(value:) in
         // MessageDetailView when the user taps "Open in New Window" on a

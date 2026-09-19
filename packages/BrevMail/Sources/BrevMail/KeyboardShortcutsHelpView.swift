@@ -14,50 +14,175 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
-private struct ShortcutEntry: Identifiable {
-    let id = UUID()
+/// One row in the keyboard-shortcuts reference: a user-facing action name and
+/// its display-form shortcut glyphs (e.g. "⌘⇧U"). `alternates` lists secondary
+/// bindings registered for the same action.
+struct MailKeyboardShortcut: Equatable, Sendable {
     let action: String
     let shortcut: String
+    let alternates: String?
+    /// Whether the command is registered only on macOS (the help window is
+    /// macOS-only today, but the inventory is shared with iOS tests).
+    let isMacOSOnly: Bool
+
+    init(action: String, shortcut: String, alternates: String? = nil, isMacOSOnly: Bool = false) {
+        self.action = action
+        self.shortcut = shortcut
+        self.alternates = alternates
+        self.isMacOSOnly = isMacOSOnly
+    }
 }
 
-private let shortcutSections: [(title: String, entries: [ShortcutEntry])] = [
-    (
-        title: "Messages",
-        entries: [
-            ShortcutEntry(action: "New Message", shortcut: "⌘N"),
-            ShortcutEntry(action: "Reply", shortcut: "⌘R"),
-            ShortcutEntry(action: "Reply All", shortcut: "⌘⇧R"),
-            ShortcutEntry(action: "Forward", shortcut: "⌘⇧F"),
-            ShortcutEntry(action: "Send", shortcut: "⌘↵"),
-            ShortcutEntry(action: "Cancel / Close Compose", shortcut: "Escape"),
+struct MailKeyboardShortcutSection: Equatable, Sendable {
+    let title: String
+    let entries: [MailKeyboardShortcut]
+}
+
+/// The single source of truth for the shortcuts listed in the Keyboard
+/// Shortcuts help window. Every entry must correspond to a real
+/// `keyboardShortcut` registration in `MailCommands`, `BrevMailCommands`
+/// (macOS), `MailUndoCommands`, or the compose window — the
+/// `MailKeyboardShortcutInventoryTests` pin that contract.
+enum MailKeyboardShortcutInventory {
+    static var sections: [MailKeyboardShortcutSection] {
+        let messages: [MailKeyboardShortcut] = [
+            .init(
+                action: String(localized: "New Message", bundle: .module),
+                shortcut: "⌘N"
+            ),
+            .init(
+                action: String(localized: "Reply", bundle: .module),
+                shortcut: "⌘R"
+            ),
+            .init(
+                action: String(localized: "Reply All", bundle: .module),
+                shortcut: "⌘⇧R"
+            ),
+            .init(
+                action: String(localized: "Forward", bundle: .module),
+                shortcut: "⌘⇧F",
+                alternates: "⌘F"
+            ),
+            .init(
+                action: String(localized: "Send", bundle: .module),
+                shortcut: "⌘↵"
+            ),
+            .init(
+                action: String(localized: "Cancel / Close Compose", bundle: .module),
+                shortcut: "Escape"
+            ),
         ]
-    ),
-    (
-        title: "Message Actions",
-        entries: [
-            ShortcutEntry(action: "Archive", shortcut: "⌘E"),
-            ShortcutEntry(action: "Delete", shortcut: "⌘⌫"),
-            ShortcutEntry(action: "Toggle Read / Unread", shortcut: "⌘U"),
-            ShortcutEntry(action: "Toggle Star / Flag", shortcut: "⌘S"),
-            ShortcutEntry(action: "Move To…", shortcut: "⌘M"),
+        let actions: [MailKeyboardShortcut] = [
+            .init(
+                action: String(localized: "Archive", bundle: .module),
+                shortcut: "⌘E"
+            ),
+            .init(
+                action: String(localized: "Delete", bundle: .module),
+                shortcut: "⌫"
+            ),
+            .init(
+                action: String(localized: "Toggle Read / Unread", bundle: .module),
+                shortcut: "⌘⇧U",
+                alternates: "⌘U"
+            ),
+            // Canonical terminology is Flag/Unflag.
+            .init(
+                action: String(localized: "Flag / Unflag", bundle: .module),
+                shortcut: "⌘⇧L",
+                alternates: "⌘S"
+            ),
+            .init(
+                action: String(localized: "Report Junk", bundle: .module),
+                shortcut: "⌘⇧J"
+            ),
         ]
-    ),
-    (
-        title: "Navigation",
-        entries: [
-            ShortcutEntry(action: "Previous Message", shortcut: "⌘["),
-            ShortcutEntry(action: "Next Message", shortcut: "⌘]"),
-            ShortcutEntry(action: "Focus Search", shortcut: "⌘/"),
+        let navigation: [MailKeyboardShortcut] = [
+            .init(
+                action: String(localized: "Previous Message", bundle: .module),
+                shortcut: "⌘↑",
+                alternates: "⌘["
+            ),
+            .init(
+                action: String(localized: "Next Message", bundle: .module),
+                shortcut: "⌘↓",
+                alternates: "⌘]"
+            ),
+            // Two distinct search bindings exist: ⌘/ focuses the list's
+            // search field on every platform; ⌘⌥F is the macOS Edit-menu
+            // "Search Mail" command (Apple Mail parity).
+            .init(
+                action: String(localized: "Focus Search", bundle: .module),
+                shortcut: "⌘/"
+            ),
+            .init(
+                action: String(localized: "Search Mail", bundle: .module),
+                shortcut: "⌘⌥F",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Undo Mail Action", bundle: .module),
+                shortcut: "⌘Z"
+            ),
+            .init(
+                action: String(localized: "Redo", bundle: .module),
+                shortcut: "⌘⇧Z",
+                isMacOSOnly: true
+            ),
         ]
-    ),
-    (
-        title: "Mailbox",
-        entries: [
-            ShortcutEntry(action: "Get New Mail", shortcut: "⌘⌥R"),
-            ShortcutEntry(action: "Settings", shortcut: "⌘,"),
+        let mailbox: [MailKeyboardShortcut] = [
+            .init(
+                action: String(localized: "Get New Mail", bundle: .module),
+                shortcut: "⌘⌥R"
+            ),
+            .init(
+                action: String(localized: "Print…", bundle: .module),
+                shortcut: "⌘P",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Export as PDF…", bundle: .module),
+                shortcut: "⌘⇧P",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Import Mail…", bundle: .module),
+                shortcut: "⌘⇧I",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Export Mail…", bundle: .module),
+                shortcut: "⌘⇧E",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "AI Sidebar", bundle: .module),
+                shortcut: "⌘⌥I",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Settings", bundle: .module),
+                shortcut: "⌘,"
+            ),
         ]
-    ),
-]
+        let sections: [MailKeyboardShortcutSection] = [
+            .init(title: String(localized: "Messages", bundle: .module), entries: messages),
+            .init(title: String(localized: "Message Actions", bundle: .module), entries: actions),
+            .init(title: String(localized: "Navigation", bundle: .module), entries: navigation),
+            .init(title: String(localized: "Mailbox", bundle: .module), entries: mailbox),
+        ]
+        #if os(macOS)
+        return sections
+        #else
+        return sections.map { section in
+            MailKeyboardShortcutSection(
+                title: section.title,
+                entries: section.entries.filter { !$0.isMacOSOnly }
+            )
+        }
+        #endif
+    }
+}
 
 /// Read-only reference panel listing every Brev keyboard shortcut.
 ///
@@ -71,7 +196,7 @@ public struct KeyboardShortcutsHelpView: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
-                ForEach(shortcutSections, id: \.title) { section in
+                ForEach(MailKeyboardShortcutInventory.sections, id: \.title) { section in
                     sectionView(section)
                 }
             }
@@ -79,11 +204,13 @@ public struct KeyboardShortcutsHelpView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
         }
         .background(theme.bgPrimary.color)
-        .frame(minWidth: 380, idealWidth: 440, minHeight: 400, idealHeight: 520)
+        #if os(macOS)
+            .frame(minWidth: 380, idealWidth: 440, minHeight: 400, idealHeight: 520)
+        #endif
     }
 
     @ViewBuilder
-    private func sectionView(_ section: (title: String, entries: [ShortcutEntry])) -> some View {
+    private func sectionView(_ section: MailKeyboardShortcutSection) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             Text(section.title)
                 .brevFont(.headline)
@@ -91,19 +218,24 @@ public struct KeyboardShortcutsHelpView: View {
 
             BrevDivider()
 
-            ForEach(section.entries) { entry in
+            ForEach(section.entries, id: \.action) { entry in
                 HStack {
                     Text(entry.action)
                         .brevFont(.body)
                         .foregroundStyle(theme.textPrimary.color)
                     Spacer()
+                    if let alternates = entry.alternates {
+                        Text(alternates)
+                            .brevFont(.footnote)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
                     Text(entry.shortcut)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .padding(.horizontal, BrevSpacing.xs)
-                        .padding(.vertical, 2)
+                        .padding(.vertical, BrevSpacing.xxs)
                         .background(
-                            RoundedRectangle(cornerRadius: 4)
+                            RoundedRectangle(cornerRadius: BrevRadius.sm)
                                 .fill(theme.bgSecondary.color)
                         )
                 }

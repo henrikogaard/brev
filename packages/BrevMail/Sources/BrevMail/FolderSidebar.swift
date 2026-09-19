@@ -954,15 +954,7 @@ public struct FolderSidebar: View {
                     minHeight: sidebarMetrics.profilePickerMinimumHeight,
                     alignment: .leading
                 )
-                .background {
-                    RoundedRectangle(cornerRadius: BrevRadius.md)
-                        .fill(theme.bgSecondary.color.opacity(0.42))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.md)
-                        .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+                .brevQuietSurface()
                 .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
                 #else
                 HStack(spacing: BrevSpacing.sm) {
