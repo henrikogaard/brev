@@ -18,6 +18,7 @@ import SwiftUI
 public struct SmartViewsSection: View {
     @Environment(\.brevTheme) private var theme
     @AppStorage(SmartMailboxSettings.storageKey) private var settingsData = Data()
+    @State private var settings: SmartMailboxSettings
     @State private var editing: SmartMailbox?
     @State private var showsEditor = false
     private let mailboxes: [SettingsMailbox]
@@ -28,6 +29,9 @@ public struct SmartViewsSection: View {
         self.mailboxes = mailboxes
         self.settingsStore = settingsStore
         _settingsData = AppStorage(wrappedValue: Data(), SmartMailboxSettings.storageKey, store: settingsStore.defaults)
+        // Decoded once at init and again only when the persisted payload
+        // changes — body evaluation never re-runs the JSON decode.
+        _settings = State(initialValue: SmartMailboxSettings.load(from: settingsStore.defaults))
     }
 
     public var body: some View {
@@ -58,10 +62,11 @@ public struct SmartViewsSection: View {
                 showsEditor = false
             }
         }
-    }
-
-    private var settings: SmartMailboxSettings {
-        (try? JSONDecoder().decode(SmartMailboxSettings.self, from: settingsData)) ?? .defaults
+        .onChange(of: settingsData) { _, data in
+            // External writers (editor sheet, sidebar) share this AppStorage
+            // key, so the cached value follows the persisted payload.
+            settings = (try? JSONDecoder().decode(SmartMailboxSettings.self, from: data)) ?? .defaults
+        }
     }
 
     private func update(_ change: (inout SmartMailboxSettings) -> Void) {

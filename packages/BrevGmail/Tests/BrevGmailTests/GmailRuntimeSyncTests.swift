@@ -58,6 +58,38 @@ struct GmailRuntimeSyncTests {
         #expect(await client.historyCalls() == 1)
     }
 
+    @Test("the summary-scan diff emits the same event as the decode-based diff")
+    func sqliteDiffMatchesDecodedDiff() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-runtime-sync-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let client = RuntimeClient()
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress, historyID: "h0"),
+            labels: Self.labels,
+            messages: [Self.message(labels: ["INBOX"])]
+        ))
+        await client.setDelta(message: Self.message(labels: ["INBOX", "STARRED"]))
+        let backend = Self.backend(client: client, store: store)
+        let stream = backend.subscribeToChanges()
+        let eventTask = Task { var iterator = stream.makeAsyncIterator(); return await iterator.next() }
+
+        try await backend.connect()
+
+        let receivedEvent = await eventTask.value
+        let event = try #require(receivedEvent)
+        guard case .messagesUpdated(let folderID, let messageIDs) = event else {
+            Issue.record("Expected a committed messagesUpdated event")
+            return
+        }
+        #expect(folderID == "INBOX")
+        #expect(messageIDs == ["m1"])
+        #expect(try await store.messageLabelIDs(accountID: Self.account.id, messageID: "m1") == ["INBOX", "STARRED"])
+        await backend.disconnect()
+    }
+
     @Test("expired history cursor performs one full reconciliation")
     func expiredCursorFallsBackToFullSync() async throws {
         let client = RuntimeClient(historyExpired: true)
@@ -71,6 +103,9 @@ struct GmailRuntimeSyncTests {
         let backend = Self.backend(client: client, store: store)
 
         try await backend.connect()
+        // Warm-cache connect returns after the cached hydrate; the reconcile
+        // completes on the background pass.
+        await backend.initialSyncSettled()
 
         #expect(try await store.accountState(accountID: Self.account.id)?.historyID == "h1")
         #expect(await client.historyCalls() == 1)
@@ -119,7 +154,7 @@ struct GmailRuntimeSyncTests {
         GmailMessage(id: "m1", threadID: "t1", labelIDs: labels, snippet: "Runtime")
     }
 
-    private static func backend(client: RuntimeClient, store: InMemoryGmailAccountStore) -> GmailAPIBackend {
+    private static func backend(client: RuntimeClient, store: any GmailAccountStore) -> GmailAPIBackend {
         let reconciler = GmailSyncReconciler(client: client, store: store, accountID: account.id)
         return GmailAPIBackend(
             account: account,

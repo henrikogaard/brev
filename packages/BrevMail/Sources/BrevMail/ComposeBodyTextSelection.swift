@@ -31,6 +31,26 @@ struct ComposeBodyTextSelection: Equatable, Sendable {
         self.selectedText = selectedText
     }
 
+    /// Creates a selection straight from the editor's live character buffer.
+    /// Used by the per-caret-update path so it only materializes the selected
+    /// range instead of copying the whole document. NSTextView/UITextView
+    /// always produce grapheme-aligned ranges, matching the `Range(_:in:)`
+    /// boundary validation of the String-based initializer.
+    init?(characters: NSString, nsRange: NSRange) {
+        guard nsRange.location != NSNotFound, nsRange.length > 0 else {
+            return nil
+        }
+        guard nsRange.upperBound <= characters.length else {
+            return nil
+        }
+        let selectedText = characters.substring(with: nsRange)
+        guard !selectedText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            return nil
+        }
+        self.nsRange = nsRange
+        self.selectedText = selectedText
+    }
+
     func replacingSelection(in bodyText: String, with replacement: String) -> String? {
         guard let range = Range(nsRange, in: bodyText) else {
             return nil
@@ -49,6 +69,18 @@ struct ComposeBodyInsertionPoint: Equatable, Sendable {
             return nil
         }
         guard Range(nsRange, in: bodyText) != nil else {
+            return nil
+        }
+        self.nsRange = nsRange
+    }
+
+    /// Validates an insertion point against a UTF-16 character count — the
+    /// cheap path used by per-caret-updates that only needs the range itself.
+    init?(characterCount: Int, nsRange: NSRange) {
+        guard nsRange.location != NSNotFound, nsRange.length == 0 else {
+            return nil
+        }
+        guard nsRange.location <= characterCount else {
             return nil
         }
         self.nsRange = nsRange

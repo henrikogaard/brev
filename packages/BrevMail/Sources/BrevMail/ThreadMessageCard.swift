@@ -54,7 +54,10 @@ struct ThreadMessageCard: View {
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
     @State private var pendingSuspiciousLink: MessageSecurityLinkWarning?
-    @StateObject private var htmlWebViewStore = HTMLBodyWebViewStore()
+    @StateObject private var htmlWebViewStore: HTMLBodyWebViewStore
+    /// Shared per-conversation pool: bounds how many WebKit renderers a fully
+    /// expanded thread keeps warm and how many body/CID fetches run at once.
+    private let renderPool: ThreadConversationRenderPool
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
@@ -78,6 +81,7 @@ struct ThreadMessageCard: View {
         isWorkBlocked: Bool = false,
         dateTextOverride: String? = nil,
         initialRenderedBody: RenderedBody? = nil,
+        renderPool: ThreadConversationRenderPool? = nil,
         onToggle: @escaping () -> Void
     ) {
         self.header = header
@@ -89,7 +93,14 @@ struct ThreadMessageCard: View {
         self.isWorkBlocked = isWorkBlocked
         self.dateTextOverride = dateTextOverride
         self.onToggle = onToggle
+        let renderPool = renderPool ?? ThreadConversationRenderPool()
+        self.renderPool = renderPool
         _renderedBody = State(initialValue: initialRenderedBody)
+        // The pool returns a warm store when this card remounts. Checkout
+        // happens eagerly in init so `StateObject`'s thunk only captures an
+        // already-resolved store — the store itself stays lazy about WebKit.
+        let pooledStore = renderPool.checkoutWebViewStore(for: header.id)
+        _htmlWebViewStore = StateObject(wrappedValue: pooledStore)
     }
 
     var body: some View {
@@ -135,7 +146,15 @@ struct ThreadMessageCard: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
         .task(id: isExpanded) {
-            guard isExpanded, !isLoading else { return }
+            guard isExpanded else {
+                // Collapsed cards must not hold a WebKit renderer; the pool
+                // frees the slot so another card can reuse it. Re-expanding
+                // lazily recreates the web view from the same store.
+                renderPool.releaseWebViewStore(for: header.id)
+                htmlWebViewStore.releaseWebView()
+                return
+            }
+            guard !isLoading else { return }
             if renderedBody == nil {
                 await loadBody()
             } else {
@@ -467,13 +486,17 @@ struct ThreadMessageCard: View {
     }
 
     private func bodyWithReaderTimeout(for messageID: String) async throws -> MessageBody {
-        try await MessageBodyLoadTimeoutRace.load(
-            messageID: messageID,
-            sourceID: sourceID,
-            backend: backend,
-            timeoutNanoseconds: Self.bodyLoadTimeoutNanoseconds,
-            timeoutError: { ThreadMessageBodyLoadTimeoutError() }
-        )
+        // Expansion fetches share the conversation's permit budget so
+        // "Expand All" cannot fan out into N parallel backend reads.
+        try await renderPool.withBodyLoadPermit {
+            try await MessageBodyLoadTimeoutRace.load(
+                messageID: messageID,
+                sourceID: sourceID,
+                backend: backend,
+                timeoutNanoseconds: Self.bodyLoadTimeoutNanoseconds,
+                timeoutError: { ThreadMessageBodyLoadTimeoutError() }
+            )
+        }
     }
 
     private func updateDerivedBodyState() async {
@@ -612,10 +635,14 @@ struct ThreadMessageCard: View {
     }
 
     private func downloadAttachment(_ attachment: Attachment) async throws -> Data {
-        if let sourceID {
-            return try await backend.downloadAttachment(attachment, sourceID: sourceID)
+        // CID images and invite attachments go through the same permit pool
+        // as the body fetch so mass expansion stays inside the fetch budget.
+        try await renderPool.withBodyLoadPermit {
+            if let sourceID {
+                return try await backend.downloadAttachment(attachment, sourceID: sourceID)
+            }
+            return try await backend.downloadAttachment(attachment)
         }
-        return try await backend.downloadAttachment(attachment)
     }
 
     private func replyToCalendarInvite(

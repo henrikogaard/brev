@@ -647,4 +647,14 @@ extension GmailAPIClient: GmailAPITransporting {
     ) async throws -> GmailMessage {
         try await getMessage(id: messageID, format: format)
     }
+
+    /// Loads one Gmail message in the requested representation, requesting
+    /// only the listed headers for metadata-format reads.
+    public func getMessage(
+        messageID: String,
+        format: GmailMessageFormat,
+        metadataHeaders: [String]
+    ) async throws -> GmailMessage {
+        try await getMessage(id: messageID, format: format, metadataHeaders: metadataHeaders)
+    }
 }

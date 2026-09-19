@@ -66,19 +66,204 @@ struct MailboxListTemporalInvalidationKey: Equatable, Sendable {
         workflowState: LocalMessageWorkflowState,
         now: Date
     ) -> MailboxListTemporalInvalidationKey where Dates.Element == Date {
-        let expiredSnoozeCount = switch workflowMode {
+        MailboxListTemporalInvalidationKey(
+            expiredSnoozeCount: expiredSnoozeCount(
+                workflowMode: workflowMode,
+                workflowState: workflowState,
+                now: now
+            ),
+            lastWeekIncludedCount: filter.activeFilters.contains(.lastWeek)
+                ? dates.lazy.filter { $0 > lastWeekCutoff(now) }.count
+                : 0
+        )
+    }
+
+    static func expiredSnoozeCount(
+        workflowMode: LocalMessageWorkflowVisibilityMode,
+        workflowState: LocalMessageWorkflowState,
+        now: Date
+    ) -> Int {
+        switch workflowMode {
         case .active, .snoozed:
             workflowState.snoozes.lazy.filter { $0.wakeAt <= now }.count
         case .done, .search:
             0
         }
-        let lastWeekIncludedCount = filter.activeFilters.contains(.lastWeek)
-            ? dates.lazy.filter { $0 > now.addingTimeInterval(-604_800) }.count
-            : 0
-        return MailboxListTemporalInvalidationKey(
-            expiredSnoozeCount: expiredSnoozeCount,
-            lastWeekIncludedCount: lastWeekIncludedCount
+    }
+
+    static func lastWeekCutoff(_ now: Date) -> Date {
+        now.addingTimeInterval(-604_800)
+    }
+}
+
+/// Memoizes the last-week membership scan inside
+/// `MailboxListTemporalInvalidationKey` so building the presentation-cache
+/// key no longer walks every header date on each body evaluation.
+///
+/// The window cutoff only moves forward, and membership can only shrink once
+/// it reaches the oldest date still inside the window — so a previous scan
+/// stays valid until `now` crosses that date or the source buffer changes.
+/// Results therefore match the direct scan exactly.
+final class MailboxListTemporalInvalidationTracker {
+    private struct LastWeekWindow {
+        var cutoff = Date.distantPast
+        var includedCount = 0
+        var oldestIncludedDate: Date?
+    }
+
+    private var headersWindow = LastWeekWindow()
+    private var itemsWindow = LastWeekWindow()
+    /// Retained so the buffer-identity check stays sound — a stored array's
+    /// backing storage cannot be freed and reallocated while we hold it.
+    private var retainedHeaders: [MessageHeader]?
+    private var retainedItems: [UnifiedInboxItem]?
+
+    func key(
+        headers: [MessageHeader],
+        filter: MailboxFilterQuery,
+        workflowMode: LocalMessageWorkflowVisibilityMode,
+        workflowState: LocalMessageWorkflowState,
+        now: Date
+    ) -> MailboxListTemporalInvalidationKey {
+        let key = MailboxListTemporalInvalidationKey(
+            expiredSnoozeCount: MailboxListTemporalInvalidationKey.expiredSnoozeCount(
+                workflowMode: workflowMode,
+                workflowState: workflowState,
+                now: now
+            ),
+            lastWeekIncludedCount: lastWeekIncludedCount(
+                dates: headers.lazy.map(\.date),
+                filter: filter,
+                now: now,
+                sourceUnchanged: retainedHeaders.map {
+                    headers.sharesRetainedBuffer(with: $0)
+                } ?? false,
+                window: &headersWindow
+            )
         )
+        if filter.activeFilters.contains(.lastWeek) {
+            retainedHeaders = headers
+        }
+        return key
+    }
+
+    func key(
+        items: [UnifiedInboxItem],
+        filter: MailboxFilterQuery,
+        workflowMode: LocalMessageWorkflowVisibilityMode,
+        workflowState: LocalMessageWorkflowState,
+        now: Date
+    ) -> MailboxListTemporalInvalidationKey {
+        let key = MailboxListTemporalInvalidationKey(
+            expiredSnoozeCount: MailboxListTemporalInvalidationKey.expiredSnoozeCount(
+                workflowMode: workflowMode,
+                workflowState: workflowState,
+                now: now
+            ),
+            lastWeekIncludedCount: lastWeekIncludedCount(
+                dates: items.lazy.map(\.header.date),
+                filter: filter,
+                now: now,
+                sourceUnchanged: retainedItems.map {
+                    items.sharesRetainedBuffer(with: $0)
+                } ?? false,
+                window: &itemsWindow
+            )
+        )
+        if filter.activeFilters.contains(.lastWeek) {
+            retainedItems = items
+        }
+        return key
+    }
+
+    private func lastWeekIncludedCount<Dates: Sequence>(
+        dates: Dates,
+        filter: MailboxFilterQuery,
+        now: Date,
+        sourceUnchanged: Bool,
+        window: inout LastWeekWindow
+    ) -> Int where Dates.Element == Date {
+        guard filter.activeFilters.contains(.lastWeek) else { return 0 }
+        let cutoff = MailboxListTemporalInvalidationKey.lastWeekCutoff(now)
+        if sourceUnchanged,
+           cutoff >= window.cutoff,
+           window.oldestIncludedDate.map({ cutoff < $0 }) ?? true {
+            return window.includedCount
+        }
+        var count = 0
+        var oldest: Date?
+        for date in dates where date > cutoff {
+            count += 1
+            if oldest.map({ date < $0 }) ?? true {
+                oldest = date
+            }
+        }
+        window = LastWeekWindow(
+            cutoff: cutoff,
+            includedCount: count,
+            oldestIncludedDate: oldest
+        )
+        return count
+    }
+}
+
+/// Pre-materialized membership view of `LocalMessageWorkflowState`. Built
+/// once per list rebuild (or shared across a body evaluation) so per-message
+/// checks are O(1) lookups instead of linear scans of `snoozes`,
+/// `doneMessages`, and `notes` for every row.
+struct LocalMessageWorkflowLookup: Sendable {
+    private let snoozesByMessageID: [SourceMessageID: LocalMessageSnooze]
+    private let doneMessageIDs: Set<SourceMessageID>
+    private let notesByMessageID: [SourceMessageID: LocalMessageNote]
+
+    init(state: LocalMessageWorkflowState) {
+        snoozesByMessageID = Dictionary(
+            state.snoozes.map { ($0.messageID, $0) },
+            uniquingKeysWith: { _, last in last }
+        )
+        doneMessageIDs = Set(state.doneMessages.map(\.messageID))
+        notesByMessageID = Dictionary(
+            state.notes.map { ($0.messageID, $0) },
+            uniquingKeysWith: { _, last in last }
+        )
+    }
+
+    func activeSnooze(
+        for messageID: SourceMessageID,
+        at now: Date = Date()
+    ) -> LocalMessageSnooze? {
+        guard let snooze = snoozesByMessageID[messageID], snooze.isActive(at: now) else {
+            return nil
+        }
+        return snooze
+    }
+
+    func isSnoozed(_ messageID: SourceMessageID, at now: Date = Date()) -> Bool {
+        activeSnooze(for: messageID, at: now) != nil
+    }
+
+    func isDone(_ messageID: SourceMessageID) -> Bool {
+        doneMessageIDs.contains(messageID)
+    }
+
+    func note(for messageID: SourceMessageID) -> LocalMessageNote? {
+        notesByMessageID[messageID]
+    }
+}
+
+/// Memoizes `LocalMessageWorkflowLookup` across body evaluations: the
+/// materialization is a pure function of the workflow state, which is
+/// `Equatable`, so it only needs rebuilding when the state value changes.
+final class LocalMessageWorkflowLookupCache {
+    private var state: LocalMessageWorkflowState?
+    private var lookup = LocalMessageWorkflowLookup(state: .defaults)
+
+    func lookup(for state: LocalMessageWorkflowState) -> LocalMessageWorkflowLookup {
+        if self.state != state {
+            self.state = state
+            lookup = LocalMessageWorkflowLookup(state: state)
+        }
+        return lookup
     }
 }
 
@@ -90,11 +275,12 @@ enum LocalMessageWorkflowVisibilityPolicy {
         state: LocalMessageWorkflowState,
         now: Date = Date()
     ) -> [MessageHeader] {
-        headers.filter { header in
+        let lookup = LocalMessageWorkflowLookup(state: state)
+        return headers.filter { header in
             matches(
                 SourceMessageID(sourceID: sourceID, messageID: header.id),
                 mode: mode,
-                state: state,
+                lookup: lookup,
                 now: now
             )
         }
@@ -106,11 +292,12 @@ enum LocalMessageWorkflowVisibilityPolicy {
         state: LocalMessageWorkflowState,
         now: Date = Date()
     ) -> [UnifiedInboxItem] {
-        items.filter { item in
+        let lookup = LocalMessageWorkflowLookup(state: state)
+        return items.filter { item in
             matches(
                 SourceMessageID(sourceID: item.sourceID, messageID: item.header.id),
                 mode: mode,
-                state: state,
+                lookup: lookup,
                 now: now
             )
         }
@@ -119,17 +306,17 @@ enum LocalMessageWorkflowVisibilityPolicy {
     private static func matches(
         _ messageID: SourceMessageID,
         mode: LocalMessageWorkflowVisibilityMode,
-        state: LocalMessageWorkflowState,
+        lookup: LocalMessageWorkflowLookup,
         now: Date
     ) -> Bool {
         switch mode {
         case .active:
-            return !state.isDone(messageID)
-                && !state.isSnoozed(messageID, at: now)
+            return !lookup.isDone(messageID)
+                && !lookup.isSnoozed(messageID, at: now)
         case .snoozed:
-            return state.isSnoozed(messageID, at: now)
+            return lookup.isSnoozed(messageID, at: now)
         case .done:
-            return state.isDone(messageID)
+            return lookup.isDone(messageID)
         case .search:
             return true
         }

@@ -133,8 +133,16 @@ public struct MessageListView: View {
     @State private var activeInboxCategory: InboxCategory = .all
     @State private var inboxCategoryOverrideRevision = 0
     @State private var inboxCategoryOverrideStore = InboxCategoryOverrideStore()
-    @State private var blockedSendersSettings = BlockedSendersSettings.load()
-    @State private var followUpSettings = FollowUpSettings.load()
+    /// Lowercased blocklist materialized once per load so each rendered row's
+    /// `isBlockedSender` check is a Set hit instead of a scan.
+    @State private var blockedSenderEmailSet = Set(
+        BlockedSendersSettings.load().blockedEmails.map { $0.lowercased() }
+    )
+    /// Active follow-up reminders indexed by message, rebuilt on settings
+    /// reload so each rendered row's reminder lookup stays O(1)-ish.
+    @State private var followUpReminderIndex = FollowUpReminderIndex(
+        settings: FollowUpSettings.load()
+    )
     // Derived caches: rebuilt only when their inputs change rather than on every
     // body pass. `threadCounts` keeps the per-row thread tally O(1) instead of an
     // O(n) scan per row (which made list rendering O(n^2)); `pinnedMessageIDSet`
@@ -142,6 +150,14 @@ public struct MessageListView: View {
     @State private var threadCounts: [String: Int] = [:]
     @State private var pinnedMessageIDSet: Set<MessageHeader.ID> = []
     @State private var presentationSnapshotCache = MessageListPresentationSnapshotCache()
+    /// Buckets the last-week temporal invalidation scan so building the
+    /// snapshot-cache key doesn't walk every header date per body evaluation.
+    @State private var temporalInvalidationTracker = MailboxListTemporalInvalidationTracker()
+    /// Materializes workflow-state membership once per state change instead
+    /// of per row.
+    @State private var workflowLookupCache = LocalMessageWorkflowLookupCache()
+    /// Memoizes search-chip detection per (text, folder, execution, scope).
+    @State private var searchChipsCache = MessageListSearchChipsCache()
     // Debounce handle for `rebuildThreadCounts`. Rapid `headers` changes (sync
     // bursts, flag-only mutations) coalesce into one O(n) pass instead of
     // rebuilding on every intermediate update.
@@ -256,7 +272,7 @@ public struct MessageListView: View {
                     )
                 }
             }
-            if let footer = folderStatsFooterPresentation(visibleCount: presentation.headers.count) {
+            if let footer = folderStatsFooterPresentation(presentation: presentation) {
                 MessageListFolderStatsFooter(presentation: footer)
             }
         }
@@ -267,11 +283,11 @@ public struct MessageListView: View {
             isSearchOptionsExpanded = false
             reconcileSearchExecutionWithBackendCapabilities()
             refreshPinnedMessageIDSet()
-            followUpSettings = FollowUpSettings.load()
+            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             await reloadVisibleMessages()
         }
         .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
-            followUpSettings = FollowUpSettings.load()
+            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
         }
         .onChange(of: headers) {
             refreshPinnedMessageIDSet()
@@ -593,6 +609,9 @@ public struct MessageListView: View {
     private func bulkOverflowMenu(visibleHeaders: [MessageHeader]) -> some View {
         let allVisible = Set(visibleHeaders.map(\.id))
         let allSelected = !allVisible.isEmpty && allVisible.isSubset(of: navigation.bulkSelection)
+        // Resolve the selection once per menu build instead of re-filtering
+        // the folder on every button's enable/disable check.
+        let selectedHeaders = selectedBulkHeaders
         let moveFolderCandidates = MessageCommandPresentation.moveFolderCandidates(
             from: allFolders,
             currentFolderID: folder?.id
@@ -612,17 +631,17 @@ public struct MessageListView: View {
             }
             .disabled(isMutationActionBlocked)
             Button(String(localized: "Snooze…", bundle: .module)) {
-                pendingSnoozeHeaders = selectedBulkHeaders
+                pendingSnoozeHeaders = selectedHeaders
             }
-            .disabled(isMutationActionBlocked || selectedBulkHeaders.isEmpty)
+            .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
             Button(workflowVisibilityMode == .done ? "Not Done" : "Done") {
                 if workflowVisibilityMode == .done {
-                    clearDone(headers: selectedBulkHeaders)
+                    clearDone(headers: selectedHeaders)
                 } else {
-                    markDone(headers: selectedBulkHeaders)
+                    markDone(headers: selectedHeaders)
                 }
             }
-            .disabled(isMutationActionBlocked || selectedBulkHeaders.isEmpty)
+            .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
             if !moveFolderCandidates.isEmpty {
                 Button(String(localized: "Move…", bundle: .module)) {
                     performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .move))
@@ -671,7 +690,8 @@ public struct MessageListView: View {
                             messageRow(
                                 for: header,
                                 visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
-                                visibleCount: presentation.headers.count
+                                visibleCount: presentation.headers.count,
+                                threadChildrenByID: presentation.headersByThreadID
                             )
                         }
                     }
@@ -680,7 +700,8 @@ public struct MessageListView: View {
                         messageRow(
                             for: header,
                             visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
-                            visibleCount: presentation.headers.count
+                            visibleCount: presentation.headers.count,
+                            threadChildrenByID: presentation.headersByThreadID
                         )
                     }
                 }
@@ -722,7 +743,7 @@ public struct MessageListView: View {
         visibleIndex: Int,
         visibleCount: Int
     ) -> some View {
-        let followUpReminder = followUpSettings.reminder(for: header.id, sourceID: sourceID)
+        let followUpReminder = followUpReminderIndex.reminder(for: header.id, sourceID: sourceID)
         MessageListRow(
             header: header,
             threadCount: threadCount(for: header),
@@ -740,7 +761,7 @@ public struct MessageListView: View {
             showsAbsoluteArrivalTime: showAbsoluteArrivalTime,
             sourceContext: nil,
             matchedAttachmentName: matchedAttachmentName(for: header.id),
-            isBlockedSender: blockedSendersSettings.isBlocked(header.from.email),
+            isBlockedSender: blockedSenderEmailSet.contains(header.from.email.lowercased()),
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
@@ -858,7 +879,7 @@ public struct MessageListView: View {
             canCreateMeeting: navigation.presentedSheet == nil,
             canAddNote: navigation.presentedSheet == nil,
             canFollowUp: navigation.presentedSheet == nil,
-            hasFollowUp: followUpSettings.reminder(for: header.id, sourceID: sourceID) != nil,
+            hasFollowUp: followUpReminderIndex.reminder(for: header.id, sourceID: sourceID) != nil,
             canReply: composeActions.isAvailable,
             canPrint: supportsRowPrinting,
             canExportPDF: supportsRowPrinting,
@@ -1293,7 +1314,8 @@ public struct MessageListView: View {
     private func messageRow(
         for header: MessageHeader,
         visibleIndex: Int,
-        visibleCount: Int
+        visibleCount: Int,
+        threadChildrenByID: [String: [MessageHeader]]
     ) -> some View {
         parentMessageRow(
             for: header,
@@ -1303,11 +1325,11 @@ public struct MessageListView: View {
         if backend.groupsMessagesIntoThreads,
            threadCount(for: header) > 1,
            expandedThreadIDs.contains(header.threadID) {
-            let children = MessageListInlineExpansion.childHeaders(
-                for: header.threadID,
-                excludingParentID: header.id,
-                from: headers
-            )
+            // Buckets are pre-grouped and sorted oldest → newest in the
+            // cached snapshot, so an expanded row no longer re-filters the
+            // whole folder per render.
+            let children = (threadChildrenByID[header.threadID] ?? [])
+                .filter { $0.id != header.id }
             ForEach(children) { child in
                 ThreadInlineChildRow(
                     header: child,
@@ -1574,8 +1596,8 @@ public struct MessageListView: View {
 
     private var presentationSnapshot: MessageListPresentationSnapshot {
         let now = Date()
-        let temporalInvalidationKey = MailboxListTemporalInvalidationKey.headers(
-            headers,
+        let temporalInvalidationKey = temporalInvalidationTracker.key(
+            headers: headers,
             filter: navigation.mailboxFilter,
             workflowMode: workflowVisibilityMode,
             workflowState: localMessageWorkflowState,
@@ -1615,7 +1637,8 @@ public struct MessageListView: View {
                 groupByDate: groupByDate,
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: now,
-                calendar: calendar
+                calendar: calendar,
+                sourceHeaders: headers
             )
         }
     }
@@ -1657,17 +1680,19 @@ public struct MessageListView: View {
     }
 
     private func folderStatsFooterPresentation(
-        visibleCount: Int
+        presentation: MessageListPresentationSnapshot
     ) -> MessageListFolderStatsFooterPresentation? {
         guard showFolderStats, let folder else { return nil }
+        // Unread/pinned tallies come from the cached snapshot's single source
+        // pass — the values match the previous per-render filters exactly.
         return MessageListPresentation.folderStatsFooter(
             MessageListFolderStats(
                 folderName: folderDisplayName ?? folder.name,
                 totalCount: max(folder.totalCount, max(loadedFolderHeaders.count, headers.count)),
-                unreadCount: max(folder.unreadCount, headers.filter { !$0.isRead }.count),
+                unreadCount: max(folder.unreadCount, presentation.unreadHeaderCount),
                 loadedCount: max(loadedFolderHeaders.count, headers.count),
-                visibleCount: visibleCount,
-                pinnedCount: headers.filter { pinnedMessageIDs.contains($0.id) }.count,
+                visibleCount: presentation.headers.count,
+                pinnedCount: presentation.pinnedHeaderCount,
                 isThreaded: groupByThread,
                 isConstrained: navigation.mailboxFilter.isActive || !trimmedSearchText.isEmpty
             ),
@@ -1690,12 +1715,13 @@ public struct MessageListView: View {
 
     private var naturalLanguageSearchChips: [NaturalLanguageSearchChip] {
         guard !trimmedSearchText.isEmpty else { return [] }
-        return MessageListSearchQueryPolicy.plan(
+        return searchChipsCache.chips(
             text: trimmedSearchText,
             folderID: folder?.id,
             execution: navigation.searchExecution,
-            searchScope: searchScope
-        ).chips
+            searchScope: searchScope,
+            calendar: calendar
+        )
     }
 
     private func removeSearchChip(_ chip: NaturalLanguageSearchChip) {
@@ -2857,14 +2883,20 @@ public struct MessageListView: View {
         }
     }
 
+    /// Membership view of the workflow state, materialized once per state
+    /// change — each row's snooze/done/note check is then O(1).
+    private var workflowLookup: LocalMessageWorkflowLookup {
+        workflowLookupCache.lookup(for: localMessageWorkflowState)
+    }
+
     private func isSnoozed(_ header: MessageHeader) -> Bool {
-        localMessageWorkflowState.isSnoozed(
+        workflowLookup.isSnoozed(
             SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
         )
     }
 
     private func isDone(_ header: MessageHeader) -> Bool {
-        localMessageWorkflowState.isDone(
+        workflowLookup.isDone(
             SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
         )
     }
@@ -2876,7 +2908,7 @@ public struct MessageListView: View {
     }
 
     private func hasNote(_ header: MessageHeader) -> Bool {
-        localMessageWorkflowState.note(
+        workflowLookup.note(
             for: SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
         ) != nil
     }
@@ -3382,9 +3414,19 @@ private extension View {
     }
 
     @ViewBuilder
-    func accessibilityCompactStatusValue(_ enabled: Bool, value: String) -> some View {
-        if enabled, !value.isEmpty {
-            accessibilityValue(Text(verbatim: value))
+    func accessibilityCompactStatusValue(
+        _ enabled: Bool,
+        value: @autoclosure () -> String
+    ) -> some View {
+        // Autoclosure keeps the localized status string from being built on
+        // every row render when compact mode is off.
+        if enabled {
+            let resolved = value()
+            if !resolved.isEmpty {
+                accessibilityValue(Text(verbatim: resolved))
+            } else {
+                self
+            }
         } else {
             self
         }

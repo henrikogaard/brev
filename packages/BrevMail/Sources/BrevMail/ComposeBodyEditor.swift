@@ -441,12 +441,16 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
 
         func updateSelection(from textView: NSTextView) {
             let selectedRange = textView.selectedRange()
+            // Borrow the live text storage instead of copying `textView.string`
+            // twice per caret movement; only the selected range materializes.
+            let characters = textView.textStorage?.mutableString
+                ?? textView.string as NSString
             selection = ComposeBodyTextSelection(
-                bodyText: textView.string,
+                characters: characters,
                 nsRange: selectedRange
             )
             insertionPoint = ComposeBodyInsertionPoint(
-                bodyText: textView.string,
+                characterCount: characters.length,
                 nsRange: selectedRange
             )
         }
@@ -457,7 +461,9 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                 richHTML = nil
                 return
             }
-            htmlPublicationController.schedule(textView.attributedString())
+            // Lazy: the attributed-string copy is only paid when the debounce
+            // actually fires, not per keystroke or SwiftUI update.
+            htmlPublicationController.schedule { textView.attributedString() }
         }
 
         // MARK: - Responder-chain actions (#251)
@@ -936,12 +942,15 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
 
         func updateSelection(from textView: UITextView) {
             let selectedRange = textView.selectedRange
+            // Borrow the live text storage instead of copying `textView.text`
+            // twice per caret movement; only the selected range materializes.
+            let characters = textView.textStorage.mutableString
             selection = ComposeBodyTextSelection(
-                bodyText: textView.text,
+                characters: characters,
                 nsRange: selectedRange
             )
             insertionPoint = ComposeBodyInsertionPoint(
-                bodyText: textView.text,
+                characterCount: characters.length,
                 nsRange: selectedRange
             )
         }
@@ -952,7 +961,9 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 richHTML = nil
                 return
             }
-            htmlPublicationController.schedule(textView.attributedText)
+            // Lazy: the attributed-string copy is only paid when the debounce
+            // actually fires, not per keystroke or SwiftUI update.
+            htmlPublicationController.schedule { textView.attributedText }
         }
 
         // MARK: ComposeIOSRichTextTarget

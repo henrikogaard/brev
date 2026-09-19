@@ -230,7 +230,8 @@ struct GmailAPIBackendTests {
         try await backend.connect()
         let page = try await backend.messages(in: Folder(id: "INBOX", name: "Inbox", role: .inbox), pageToken: nil)
         #expect(page.headers.map(\.id) == messages.map(\.id))
-        #expect(await transport.fullMessageRequestCount() == 8)
+        #expect(await transport.metadataMessageRequestCount() == 8)
+        #expect(await transport.fullMessageRequestCount() == 0)
         #expect(await transport.maximumConcurrentRequests() > 1)
         #expect(await transport.maximumConcurrentRequests() <= 4)
     }
@@ -977,6 +978,7 @@ private actor StubGmailTransport: GmailAPITransporting {
     private var query: String?
     private(set) var requestedLabelID: String?
     private var fullRequests = 0
+    private var metadataRequests = 0
     private var rawRequests = 0
     private var attachmentRequests = 0
     private var includeSpamTrash = false
@@ -1042,6 +1044,7 @@ private actor StubGmailTransport: GmailAPITransporting {
         await messageObserver?(messageID)
         if messageDelay > 0 { try await Task.sleep(nanoseconds: messageDelay) }
         if format == .full { fullRequests += 1 }
+        if format == .metadata { metadataRequests += 1 }
         if format == .raw { rawRequests += 1 }
         guard let message = messages[messageID] else { throw GmailAPIError.httpFailure(statusCode: 404) }
         return message
@@ -1076,6 +1079,7 @@ private actor StubGmailTransport: GmailAPITransporting {
     func lastQuery() -> String? { query }
     func lastIncludeSpamTrash() -> Bool { includeSpamTrash }
     func fullMessageRequestCount() -> Int { fullRequests }
+    func metadataMessageRequestCount() -> Int { metadataRequests }
     func rawMessageRequestCount() -> Int { rawRequests }
     func attachmentRequestCount() -> Int { attachmentRequests }
 }

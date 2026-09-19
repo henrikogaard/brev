@@ -157,3 +157,59 @@ enum MailFetchBackoff {
     /// Initial backoff delay after the first consecutive failure.
     static let initial: TimeInterval = 30
 }
+
+/// Tracks consecutive scheduled-refresh failures and stretches the
+/// effective fetch cadence so a persistently failing account (for
+/// example one stuck in `reauthenticationRequired`) is not polled at
+/// full rate forever.
+///
+/// The first failure keeps the base interval — only *consecutive*
+/// failures add delay. The added delay doubles per failure via
+/// `MailFetchBackoff` (30 s up to the 900 s cap). Any success resets
+/// the schedule.
+struct MailFetchBackoffSchedule {
+    /// Consecutive recorded failures. Resets on success.
+    private(set) var consecutiveFailures = 0
+    /// Extra delay currently added on top of the base interval.
+    private(set) var extraDelay: TimeInterval = 0
+    /// When the most recent scheduled attempt started.
+    private var lastAttemptAt: Date?
+
+    /// The effective cadence for the next attempt: the base interval
+    /// plus any failure-grown delay.
+    func effectiveInterval(base: TimeInterval) -> TimeInterval {
+        base + extraDelay
+    }
+
+    /// Whether a scheduled attempt may run at `now`. The gate only
+    /// engages once consecutive failures have grown `extraDelay`; at the
+    /// base cadence every tick runs so a slightly-early tick is never
+    /// dropped. Once grown, attempts wait for `effectiveInterval(base:)`
+    /// to elapse since the last one.
+    func permitsAttempt(at now: Date, base: TimeInterval) -> Bool {
+        guard extraDelay > 0, let lastAttemptAt else { return true }
+        return now.timeIntervalSince(lastAttemptAt) >= effectiveInterval(base: base)
+    }
+
+    /// Records that a scheduled attempt started at `now`.
+    mutating func recordAttempt(at now: Date) {
+        lastAttemptAt = now
+    }
+
+    /// Records an attempt's outcome. The first consecutive failure keeps
+    /// the base interval; each further failure doubles the added delay
+    /// via `MailFetchBackoff`. Success resets the schedule.
+    mutating func recordOutcome(succeeded: Bool) {
+        if succeeded {
+            consecutiveFailures = 0
+            extraDelay = 0
+        } else {
+            consecutiveFailures += 1
+            if consecutiveFailures > 1 {
+                extraDelay = extraDelay == 0
+                    ? MailFetchBackoff.initial
+                    : MailFetchBackoff.next(previous: extraDelay)
+            }
+        }
+    }
+}

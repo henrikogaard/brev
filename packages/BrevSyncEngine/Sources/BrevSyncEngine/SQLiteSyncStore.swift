@@ -55,14 +55,6 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }()
 
     private static let transient = unsafeBitCast(-1, to: sqlite3_destructor_type.self)
-    /// "No `LIMIT`" sentinel for the candidate scan (`-1` is SQLite's documented
-    /// unbounded value). The metadata-only path (no free-text token) must
-    /// over-fetch because the final predicates (isUnread/isFlagged/from/to) are
-    /// applied in Swift, not SQL. The folder and date-range predicates are pushed
-    /// into SQL to shrink the scan; capping further needs is_unread/is_flagged
-    /// columns (schema migration). The FTS-miss path no longer falls through here
-    /// — when FTS returns empty for a text query, the search short-circuits.
-    private static let unboundedSearchCandidateLimit = -1
 
     // MARK: Init / deinit
 
@@ -427,6 +419,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         try lock.withLock {
             let links = try prepareConversationStatements()
             defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
+            let searchRow = try prepareSearchRowStatements()
+            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
             let sql = """
                 INSERT INTO message_headers
                     (account_id, folder_id, uid, message_id, date_ts, header_json)
@@ -455,13 +449,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                         uid: uid
                     )
                     var header = header
+                    let storedHeader = previous?.headerJSON
+                        .flatMap { try? Self.decoder.decode(MessageHeader.self, from: $0) }
                     // A refresh written without the References attribute (a
                     // flag-only update or a server that ignored the section)
                     // must not regress known links back to unknown.
-                    if header.references == nil,
-                       let storedJSON = previous?.headerJSON,
-                       let stored = try? Self.decoder.decode(MessageHeader.self, from: storedJSON) {
-                        header.references = stored.references
+                    if header.references == nil, let storedHeader {
+                        header.references = storedHeader.references
                     }
                     let previousMessageID = previous?.messageID
                     let data: Data
@@ -485,6 +479,25 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     sqlite3_reset(stmt)
                     sqlite3_clear_bindings(stmt)
                     if headerWasStored {
+                        // A flag-only refresh (CONDSTORE \Seen/\Flagged flips)
+                        // leaves every field feeding message_search and
+                        // conversation_links unchanged; rewriting them is pure
+                        // churn, so it is skipped. The search row must still be
+                        // verified to exist — an absent row means this header
+                        // was never indexed and takes the full path below. A
+                        // changed stored message_id likewise takes the full
+                        // path so the stale-row cleanup below still runs.
+                        let indexedContentUnchanged = storedHeader.map {
+                            Self.hasSameIndexedContent($0, header)
+                        } ?? false
+                        if indexedContentUnchanged,
+                           previousMessageID == nil || previousMessageID == header.id,
+                           existingSearchBodyText(
+                               accountID: accountID,
+                               messageID: header.id
+                           ) != nil {
+                            continue
+                        }
                         try upsertConversationLinks(header, accountID: accountID, statements: links)
                         if let previousMessageID, previousMessageID != header.id {
                             let staleMessageIDs = [previousMessageID][...]
@@ -500,7 +513,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                             accountID: accountID,
                             messageID: header.id
                         ) ?? bodyTextForSearch(accountID: accountID, messageID: header.id)
-                        try upsertSearchRow(header, accountID: accountID, bodyText: bodyText)
+                        try upsertSearchRow(
+                            header,
+                            accountID: accountID,
+                            bodyText: bodyText,
+                            statements: searchRow
+                        )
                     }
                 }
             } catch {
@@ -780,6 +798,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     func deleteBodies(messageIDs: [MessageHeader.ID], accountID: String) throws {
         guard !messageIDs.isEmpty else { return }
         try lock.withLock {
+            let searchRow = try prepareSearchRowStatements()
+            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 try forEachMessageIDChunk(messageIDs) { chunk in
@@ -787,7 +807,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 }
                 for messageID in messageIDs {
                     if let header = header(accountID: accountID, messageID: messageID) {
-                        try upsertSearchRow(header, accountID: accountID, bodyText: nil)
+                        try upsertSearchRow(
+                            header,
+                            accountID: accountID,
+                            bodyText: nil,
+                            statements: searchRow
+                        )
                     }
                 }
             } catch {
@@ -800,6 +825,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
     func deleteBodies(accountID: String, folderID: String) throws {
         try lock.withLock {
+            let searchRow = try prepareSearchRowStatements()
+            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 let headers = headersUnlocked(
@@ -813,7 +840,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     folderID: folderID
                 )
                 for header in headers {
-                    try upsertSearchRow(header, accountID: accountID, bodyText: nil)
+                    try upsertSearchRow(
+                        header,
+                        accountID: accountID,
+                        bodyText: nil,
+                        statements: searchRow
+                    )
                 }
             } catch {
                 try? execSQL("ROLLBACK;")
@@ -825,6 +857,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
     func deleteBodies(accountID: String, folderID: String, exceptMessageIDs: Set<MessageHeader.ID>) throws {
         try lock.withLock {
+            let searchRow = try prepareSearchRowStatements()
+            defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
             try execSQL("BEGIN IMMEDIATE;")
             do {
                 let allHeaders = headersUnlocked(
@@ -839,7 +873,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     exceptMessageIDs: exceptMessageIDs
                 )
                 for header in allHeaders where !exceptMessageIDs.contains(header.id) {
-                    try upsertSearchRow(header, accountID: accountID, bodyText: nil)
+                    try upsertSearchRow(
+                        header,
+                        accountID: accountID,
+                        bodyText: nil,
+                        statements: searchRow
+                    )
                 }
             } catch {
                 try? execSQL("ROLLBACK;")
@@ -882,63 +921,143 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     ) -> [MessageHeader] {
         guard query.hasSearchCriteria, limit > 0 else { return [] }
         return lock.withLock {
-            let candidates: [(MessageHeader, String?)]
-            var attachmentOnlyHitIDs = Set<MessageHeader.ID>()
             let text = query.text.trimmingCharacters(in: .whitespacesAndNewlines)
             let ftsQueries = Self.ftsQueries(for: text)
             let folderScope = Self.folderScope(for: query)
+            let chunkSize = Self.searchCandidateChunkSize(limit: limit)
+
             if !ftsQueries.isEmpty {
-                let ftsResults = Self.deduplicatedSearchCandidates(ftsQueries.flatMap {
-                    ftsCandidates(
-                        ftsQuery: $0,
-                        accountID: accountID,
-                        folderScope: folderScope,
-                        limit: Self.unboundedSearchCandidateLimit
-                    )
-                })
-                // ADR-0078 §5: union attachment_search hits into the candidate
-                // set under the same folder scope. Messages that also matched
-                // message_search keep the message path (no attachment badge).
-                let messageMatchIDs = Set(ftsResults.map(\.0.id))
-                var headerByID: [MessageHeader.ID: MessageHeader] = [:]
-                for ftsQuery in ftsQueries {
-                    for (header, _) in attachmentFTSCandidates(
-                        ftsQuery: ftsQuery,
-                        accountID: accountID,
-                        folderScope: folderScope
-                    ) where !messageMatchIDs.contains(header.id) {
-                        headerByID[header.id] = header
-                    }
-                }
-                attachmentOnlyHitIDs = Set(headerByID.keys)
-                candidates = ftsResults + headerByID.values.map { ($0, nil) }
-                // FTS is the authoritative text index: if it finds nothing, there are
-                // no text matches — the full-scan fallback would also yield nothing
-                // after Swift-side text filtering, so skip it.
-                guard !candidates.isEmpty else { return [] }
-            } else {
-                candidates = headerCandidates(
+                return searchFTSHeaders(
+                    ftsQueries: ftsQueries,
+                    query: query,
                     accountID: accountID,
                     folderScope: folderScope,
-                    dateRange: query.dateRange,
-                    limit: Self.unboundedSearchCandidateLimit
+                    limit: limit,
+                    chunkSize: chunkSize
                 )
             }
 
+            // No usable FTS tokens: scan the header table directly. The
+            // stream order (date_ts DESC, uid DESC) is the result order, so
+            // the scan stops as soon as `limit` rows pass the filter. The
+            // LEFT JOIN to message_search is only needed when a tokenless
+            // non-empty text makes the body column part of the text check —
+            // an empty text never reads it, and joining on the unindexed
+            // account_id/message_id columns would cost a lookup per row.
+            var stream = headerCandidateStream(
+                accountID: accountID,
+                folderScope: folderScope,
+                dateRange: query.dateRange,
+                includeBody: !text.isEmpty
+            )
+            defer { sqlite3_finalize(stream.stmt) }
             var seen = Set<MessageHeader.ID>()
-            return candidates
-                .filter { header, bodyText in
-                    guard seen.insert(header.id).inserted else { return false }
-                    return Self.searchQuery(
-                        query,
-                        matches: header,
-                        bodyText: bodyText,
-                        attachmentMatched: attachmentOnlyHitIDs.contains(header.id)
-                    )
+            var results: [MessageHeader] = []
+            while !stream.exhausted {
+                for (header, bodyText) in nextCandidateChunk(&stream, count: chunkSize) {
+                    guard seen.insert(header.id).inserted,
+                          Self.searchQuery(query, matches: header, bodyText: bodyText)
+                    else { continue }
+                    results.append(header)
+                    if results.count == limit { return results }
                 }
-                .prefix(limit)
-                .map(\.0)
+            }
+            return results
         }
+    }
+
+    /// Message-search FTS path: every `message_search`/`attachment_search`
+    /// hit used to be fetched and decoded before the metadata filter ran.
+    /// Instead each FTS stream is read in chunks and filtered as rows
+    /// arrive, stopping once `limit` post-filter hits exist and no unread
+    /// row can still displace them.
+    private func searchFTSHeaders(
+        ftsQueries: [String],
+        query: SearchQuery,
+        accountID: String,
+        folderScope: Set<String>?,
+        limit: Int,
+        chunkSize: Int
+    ) -> [MessageHeader] {
+        var streams = ftsQueries.map {
+            ftsCandidateStream(ftsQuery: $0, accountID: accountID, folderScope: folderScope)
+        }
+        defer { for stream in streams {
+            sqlite3_finalize(stream.stmt)
+        } }
+
+        // `seen` doubles as the message-match ID set used below to keep
+        // attachment hits out of the message path (ADR-0078 §5); it is
+        // complete whenever the streams run to exhaustion.
+        var seen = Set<MessageHeader.ID>()
+        var passing: [(MessageHeader, String?)] = []
+
+        /// True once `limit` post-filter hits exist AND every stream's
+        /// unread tail is strictly older than the current limit-th hit —
+        /// the point where no unread row can still sort ahead of a
+        /// collected result under the (date DESC, id DESC) ordering.
+        /// Unread rows have `date_ts <= lastDateTs`; requiring
+        /// `lastDateTs < trunc(kth.date) - 1` keeps every unread row's date
+        /// strictly below the limit-th hit's, for positive and negative
+        /// timestamps alike.
+        func horizonReached() -> Bool {
+            guard passing.count >= limit else { return false }
+            let kthDate = Self.deduplicatedSearchCandidates(passing)[limit - 1].0.date
+            let cutoff = Int64(kthDate.timeIntervalSince1970) - 1
+            return streams.allSatisfy { $0.exhausted || $0.lastDateTs < cutoff }
+        }
+
+        while true {
+            var progressed = false
+            for index in streams.indices where !streams[index].exhausted {
+                for (header, bodyText) in nextCandidateChunk(&streams[index], count: chunkSize) {
+                    progressed = true
+                    guard seen.insert(header.id).inserted else { continue }
+                    if Self.searchQuery(query, matches: header, bodyText: bodyText) {
+                        passing.append((header, bodyText))
+                    }
+                }
+            }
+            if !progressed || horizonReached() { break }
+        }
+
+        let ordered = Self.deduplicatedSearchCandidates(passing)
+        guard ordered.count < limit else {
+            // The page is full of message hits; attachment hits are appended
+            // after all message hits and could not appear in the output.
+            return Array(ordered.prefix(limit).map(\.0))
+        }
+
+        // ADR-0078 §5: union attachment_search hits into the candidate set
+        // under the same folder scope. Messages that also matched
+        // message_search keep the message path (no attachment badge).
+        // Attachment-only hits fill at most the slots left after the
+        // message hits and are appended in dictionary order, so the scan is
+        // bounded — a bound that is only observable once a query matches
+        // more attachment rows than it.
+        var results = ordered.map(\.0)
+        var headerByID: [MessageHeader.ID: MessageHeader] = [:]
+        for ftsQuery in ftsQueries {
+            for (header, _) in attachmentFTSCandidates(
+                ftsQuery: ftsQuery,
+                accountID: accountID,
+                folderScope: folderScope,
+                limit: Self.searchCandidateChunkSize(limit: limit)
+            ) where !seen.contains(header.id) {
+                headerByID[header.id] = header
+            }
+        }
+        for header in headerByID.values {
+            guard Self.searchQuery(
+                query,
+                matches: header,
+                bodyText: nil,
+                attachmentMatched: true
+            ) else { continue }
+            results.append(header)
+            if results.count == limit { break }
+        }
+        return results
     }
 
     // MARK: SyncStoreProtocol — attachment text index (ADR-0078)
@@ -1291,11 +1410,14 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
     private func rebuildSearchRowsFromStoredMessages() throws {
         let rows = storedHeaderRows()
+        let searchRow = try prepareSearchRowStatements()
+        defer { sqlite3_finalize(searchRow.delete); sqlite3_finalize(searchRow.insert) }
         for row in rows {
             try upsertSearchRow(
                 row.header,
                 accountID: row.accountID,
-                bodyText: bodyTextForSearch(accountID: row.accountID, messageID: row.header.id)
+                bodyText: bodyTextForSearch(accountID: row.accountID, messageID: row.header.id),
+                statements: searchRow
             )
         }
     }
@@ -1439,17 +1561,17 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return String(cString: ptr)
     }
 
-    private func upsertSearchRow(
-        _ header: MessageHeader,
-        accountID: String,
-        bodyText: String?
-    ) throws {
-        try execStmt(
+    /// The DELETE+INSERT pair that rewrites one `message_search` row, prepared
+    /// once so a batch of header upserts doesn't recompile it per message.
+    private func prepareSearchRowStatements() throws -> (delete: OpaquePointer?, insert: OpaquePointer?) {
+        var delete: OpaquePointer?
+        var insert: OpaquePointer?
+        guard sqlite3_prepare_v2(
+            db,
             "DELETE FROM message_search WHERE account_id = ? AND message_id = ?;",
-            bindings: [.text(accountID), .text(header.id)]
-        )
-        var stmt: OpaquePointer?
-        let sql = """
+            -1, &delete, nil
+        ) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+        let insertSQL = """
             INSERT INTO message_search
                 (
                     account_id,
@@ -1466,11 +1588,38 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+        guard sqlite3_prepare_v2(db, insertSQL, -1, &insert, nil) == SQLITE_OK else {
+            sqlite3_finalize(delete)
             throw SyncStoreError.prepareFailed(errMsg())
         }
-        defer { sqlite3_finalize(stmt) }
+        return (delete, insert)
+    }
 
+    private func upsertSearchRow(
+        _ header: MessageHeader,
+        accountID: String,
+        bodyText: String?
+    ) throws {
+        let statements = try prepareSearchRowStatements()
+        defer { sqlite3_finalize(statements.delete); sqlite3_finalize(statements.insert) }
+        try upsertSearchRow(header, accountID: accountID, bodyText: bodyText, statements: statements)
+    }
+
+    private func upsertSearchRow(
+        _ header: MessageHeader,
+        accountID: String,
+        bodyText: String?,
+        statements: (delete: OpaquePointer?, insert: OpaquePointer?)
+    ) throws {
+        sqlite3_bind_text(statements.delete, 1, accountID, -1, Self.transient)
+        sqlite3_bind_text(statements.delete, 2, header.id, -1, Self.transient)
+        guard sqlite3_step(statements.delete) == SQLITE_DONE else {
+            throw SyncStoreError.executeFailed(errMsg())
+        }
+        sqlite3_reset(statements.delete)
+        sqlite3_clear_bindings(statements.delete)
+
+        let stmt = statements.insert
         sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
         sqlite3_bind_text(stmt, 2, header.id, -1, Self.transient)
         sqlite3_bind_text(stmt, 3, header.folderID, -1, Self.transient)
@@ -1487,6 +1636,29 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         guard sqlite3_step(stmt) == SQLITE_DONE else {
             throw SyncStoreError.executeFailed(errMsg())
         }
+        sqlite3_reset(stmt)
+        sqlite3_clear_bindings(stmt)
+    }
+
+    /// True when `stored` and `updated` would produce identical
+    /// `message_search` and `conversation_links` rows — i.e. the upsert only
+    /// touched fields the indexes don't read (read/flag state, labels,
+    /// attachment markers). The search row additionally carries body text,
+    /// but that text is preserved from the existing row rather than derived
+    /// from the header, so it does not participate in this comparison.
+    private static func hasSameIndexedContent(_ stored: MessageHeader, _ updated: MessageHeader) -> Bool {
+        stored.id == updated.id
+            && stored.folderID == updated.folderID
+            && stored.subject == updated.subject
+            && stored.snippet == updated.snippet
+            && stored.from == updated.from
+            && stored.to == updated.to
+            && stored.cc == updated.cc
+            && stored.bcc == updated.bcc
+            && stored.messageID == updated.messageID
+            && stored.threadID == updated.threadID
+            && stored.inReplyTo == updated.inReplyTo
+            && stored.references == updated.references
     }
 
     private func deleteSearchRows(messageIDs: ArraySlice<MessageHeader.ID>, accountID: String) throws {
@@ -1512,7 +1684,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
 
     private func deleteBodies(messageIDs: ArraySlice<MessageHeader.ID>, accountID: String) throws {
         let placeholders = messageIDs.map { _ in "?" }.joined(separator: ", ")
-        var bindings: [Binding] = [.text(accountID)] + messageIDs.map { .text($0) }
+        let bindings: [Binding] = [.text(accountID)] + messageIDs.map { .text($0) }
         // Source eviction loses the attachment rows with it (ADR-0078 §2).
         try execStmt(
             """
@@ -1641,17 +1813,71 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         return ("\(column) IN (\(placeholders))", Array(scope))
     }
 
-    private func ftsCandidates(
+    /// One open candidate query. The prepared statement stays alive between
+    /// chunk fetches so a search can stop reading (and stop paying for
+    /// `header_json` decodes) the moment enough rows pass the metadata
+    /// filter. Rows arrive in `date_ts DESC, uid DESC` order.
+    private struct CandidateStream {
+        var stmt: OpaquePointer?
+        /// Set once `sqlite3_step` reports `SQLITE_DONE` — or when the
+        /// statement failed to prepare and can never yield a row.
+        var exhausted = false
+        /// `date_ts` of the last row read. `Int64.max` before the first row
+        /// so an unread stream can never satisfy the early-stop horizon.
+        var lastDateTs = Int64.max
+    }
+
+    /// Candidate rows decoded per fetch round. 4× the requested limit lets a
+    /// selective metadata filter stop after the first round; the 500 floor
+    /// keeps the batch useful for tiny limits, and the cap bounds decode
+    /// work when callers ask for an effectively unbounded page.
+    private static func searchCandidateChunkSize(limit: Int) -> Int {
+        let quadrupled = limit > Int.max / 4 ? Int.max : 4 * limit
+        return min(max(quadrupled, 500), 4000)
+    }
+
+    /// Steps the stream up to `count` rows and returns the decoded
+    /// candidates. Column layout for every stream: `header_json` (0),
+    /// `date_ts` (1), optional `body` text (2).
+    private func nextCandidateChunk(
+        _ stream: inout CandidateStream,
+        count: Int
+    ) -> [(header: MessageHeader, body: String?)] {
+        var rows: [(MessageHeader, String?)] = []
+        rows.reserveCapacity(count)
+        while rows.count < count {
+            guard sqlite3_step(stream.stmt) == SQLITE_ROW else {
+                stream.exhausted = true
+                break
+            }
+            stream.lastDateTs = sqlite3_column_int64(stream.stmt, 1)
+            guard let bytes = sqlite3_column_blob(stream.stmt, 0) else { continue }
+            let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stream.stmt, 0)))
+            guard let header = try? Self.decoder.decode(MessageHeader.self, from: data) else {
+                continue
+            }
+            var body: String?
+            if sqlite3_column_count(stream.stmt) > 2,
+               let text = sqlite3_column_text(stream.stmt, 2) {
+                body = String(cString: text)
+            }
+            rows.append((header, body))
+        }
+        return rows
+    }
+
+    private func ftsCandidateStream(
         ftsQuery: String,
         accountID: String,
-        folderScope: Set<String>?,
-        limit: Int
-    ) -> [(MessageHeader, String?)] {
+        folderScope: Set<String>?
+    ) -> CandidateStream {
         var stmt: OpaquePointer?
         let folderPredicate = Self.folderPredicate(column: "message_search.folder_id", scope: folderScope)
         let folderClause = folderPredicate.sql.isEmpty ? "" : "AND \(folderPredicate.sql)"
+        // No LIMIT: the caller stops stepping the moment the result limit is
+        // satisfied instead of bounding (or un-bounding) the row set here.
         let sql = """
-            SELECT h.header_json, message_search.body
+            SELECT h.header_json, h.date_ts, message_search.body
             FROM message_search
             JOIN message_headers h
               ON h.account_id = message_search.account_id
@@ -1659,11 +1885,11 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             WHERE message_search MATCH ?
               AND message_search.account_id = ?
               \(folderClause)
-            ORDER BY h.date_ts DESC, h.uid DESC
-            LIMIT ?;
+            ORDER BY h.date_ts DESC, h.uid DESC;
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            return CandidateStream(stmt: nil, exhausted: true)
+        }
 
         var index: Int32 = 1
         sqlite3_bind_text(stmt, index, ftsQuery, -1, Self.transient)
@@ -1674,86 +1900,42 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             sqlite3_bind_text(stmt, index, folderID, -1, Self.transient)
             index += 1
         }
-        sqlite3_bind_int64(stmt, index, Int64(limit))
-        return decodeSearchCandidateRows(stmt)
+        return CandidateStream(stmt: stmt)
     }
 
-    /// FTS candidates from `attachment_search` (ADR-0078 §5), joined to
-    /// `message_headers` under the same folder scope as message candidates.
-    /// Rows arrive ordered by attachment name so the first row per message is
-    /// the deterministic badge name.
-    private func attachmentFTSCandidates(
-        ftsQuery: String,
-        accountID: String,
-        folderScope: Set<String>?
-    ) -> [(MessageHeader, String)] {
-        var stmt: OpaquePointer?
-        let folderPredicate = Self.folderPredicate(column: "a.folder_id", scope: folderScope)
-        let folderClause = folderPredicate.sql.isEmpty ? "" : "AND \(folderPredicate.sql)"
-        let sql = """
-            SELECT h.header_json, a.name
-            FROM attachment_search a
-            JOIN message_headers h
-              ON h.account_id = a.account_id
-             AND h.message_id = a.message_id
-            WHERE attachment_search MATCH ?
-              AND a.account_id = ?
-              \(folderClause)
-            ORDER BY a.name COLLATE NOCASE, a.attachment_id;
-        """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
-
-        var index: Int32 = 1
-        sqlite3_bind_text(stmt, index, ftsQuery, -1, Self.transient)
-        index += 1
-        sqlite3_bind_text(stmt, index, accountID, -1, Self.transient)
-        index += 1
-        for folderID in folderPredicate.values {
-            sqlite3_bind_text(stmt, index, folderID, -1, Self.transient)
-            index += 1
-        }
-
-        var rows: [(MessageHeader, String)] = []
-        var seen = Set<MessageHeader.ID>()
-        while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let bytes = sqlite3_column_blob(stmt, 0),
-                  let namePtr = sqlite3_column_text(stmt, 1)
-            else { continue }
-            let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
-            guard let header = try? Self.decoder.decode(MessageHeader.self, from: data),
-                  seen.insert(header.id).inserted
-            else { continue }
-            rows.append((header, String(cString: namePtr)))
-        }
-        return rows
-    }
-
-    private func headerCandidates(
+    private func headerCandidateStream(
         accountID: String,
         folderScope: Set<String>?,
         dateRange: ClosedRange<Date>?,
-        limit: Int
-    ) -> [(MessageHeader, String?)] {
+        includeBody: Bool
+    ) -> CandidateStream {
         var stmt: OpaquePointer?
         // Push the column-backed predicates (folder, date range) into SQL to
-        // shrink the candidate set; non-column predicates are filtered in Swift.
+        // shrink the candidate set; non-column predicates are filtered in
+        // Swift. `includeBody` adds the message_search LEFT JOIN — only the
+        // tokenless non-empty-text path reads the body column.
         var predicates = ["h.account_id = ?"]
         let folderPredicate = Self.folderPredicate(column: "h.folder_id", scope: folderScope)
         if !folderPredicate.sql.isEmpty { predicates.append(folderPredicate.sql) }
         if dateRange != nil { predicates.append("h.date_ts BETWEEN ? AND ?") }
-        let sql = """
-            SELECT h.header_json, message_search.body
-            FROM message_headers h
+        let bodyColumn = includeBody ? ", message_search.body" : ""
+        let joinClause = includeBody
+            ? """
             LEFT JOIN message_search
               ON message_search.account_id = h.account_id
              AND message_search.message_id = h.message_id
+            """
+            : ""
+        let sql = """
+            SELECT h.header_json, h.date_ts\(bodyColumn)
+            FROM message_headers h
+            \(joinClause)
             WHERE \(predicates.joined(separator: "\n              AND "))
-            ORDER BY h.date_ts DESC, h.uid DESC
-            LIMIT ?;
+            ORDER BY h.date_ts DESC, h.uid DESC;
         """
-        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
-        defer { sqlite3_finalize(stmt) }
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+            return CandidateStream(stmt: nil, exhausted: true)
+        }
 
         var index: Int32 = 1
         sqlite3_bind_text(stmt, index, accountID, -1, Self.transient)
@@ -1768,25 +1950,61 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             sqlite3_bind_int64(stmt, index, Int64(dateRange.upperBound.timeIntervalSince1970))
             index += 1
         }
-        sqlite3_bind_int64(stmt, index, Int64(limit))
-        return decodeSearchCandidateRows(stmt)
+        return CandidateStream(stmt: stmt)
     }
 
-    private func decodeSearchCandidateRows(_ stmt: OpaquePointer?) -> [(MessageHeader, String?)] {
-        var rows: [(MessageHeader, String?)] = []
+    /// FTS candidates from `attachment_search` (ADR-0078 §5), joined to
+    /// `message_headers` under the same folder scope as message candidates.
+    /// Rows arrive ordered by attachment name so the first row per message is
+    /// the deterministic badge name. `limit` bounds the rows scanned (and
+    /// therefore the `header_json` decodes) — attachment-only hits can fill
+    /// at most `limit` result slots, so a generous bound is sufficient.
+    private func attachmentFTSCandidates(
+        ftsQuery: String,
+        accountID: String,
+        folderScope: Set<String>?,
+        limit: Int
+    ) -> [(MessageHeader, String)] {
+        var stmt: OpaquePointer?
+        let folderPredicate = Self.folderPredicate(column: "a.folder_id", scope: folderScope)
+        let folderClause = folderPredicate.sql.isEmpty ? "" : "AND \(folderPredicate.sql)"
+        let sql = """
+            SELECT h.header_json, a.name
+            FROM attachment_search a
+            JOIN message_headers h
+              ON h.account_id = a.account_id
+             AND h.message_id = a.message_id
+            WHERE attachment_search MATCH ?
+              AND a.account_id = ?
+              \(folderClause)
+            ORDER BY a.name COLLATE NOCASE, a.attachment_id
+            LIMIT ?;
+        """
+        guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { return [] }
+        defer { sqlite3_finalize(stmt) }
+
+        var index: Int32 = 1
+        sqlite3_bind_text(stmt, index, ftsQuery, -1, Self.transient)
+        index += 1
+        sqlite3_bind_text(stmt, index, accountID, -1, Self.transient)
+        index += 1
+        for folderID in folderPredicate.values {
+            sqlite3_bind_text(stmt, index, folderID, -1, Self.transient)
+            index += 1
+        }
+        sqlite3_bind_int64(stmt, index, Int64(limit))
+
+        var rows: [(MessageHeader, String)] = []
+        var seen = Set<MessageHeader.ID>()
         while sqlite3_step(stmt) == SQLITE_ROW {
-            guard let bytes = sqlite3_column_blob(stmt, 0) else { continue }
+            guard let bytes = sqlite3_column_blob(stmt, 0),
+                  let namePtr = sqlite3_column_text(stmt, 1)
+            else { continue }
             let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
-            guard let header = try? Self.decoder.decode(MessageHeader.self, from: data) else {
-                continue
-            }
-            let bodyText: String?
-            if let text = sqlite3_column_text(stmt, 1) {
-                bodyText = String(cString: text)
-            } else {
-                bodyText = nil
-            }
-            rows.append((header, bodyText))
+            guard let header = try? Self.decoder.decode(MessageHeader.self, from: data),
+                  seen.insert(header.id).inserted
+            else { continue }
+            rows.append((header, String(cString: namePtr)))
         }
         return rows
     }

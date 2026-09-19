@@ -30,6 +30,62 @@ struct ComposeBodySelectionTests {
         #expect(ComposeBodyTextSelection(bodyText: body, nsRange: NSRange(location: 999, length: 3)) == nil)
     }
 
+    @Test("selection snapshot from the live character buffer matches bodyText init")
+    func selectionFromCharactersMatchesBodyTextInit() throws {
+        let body = "Hello Henrik, ship Brev."
+        let characters = body as NSString
+        let range = characters.range(of: "Henrik")
+
+        let fromCharacters = try #require(ComposeBodyTextSelection(
+            characters: characters,
+            nsRange: range
+        ))
+        let fromBodyText = try #require(ComposeBodyTextSelection(
+            bodyText: body,
+            nsRange: range
+        ))
+
+        #expect(fromCharacters == fromBodyText)
+        #expect(ComposeBodyTextSelection(
+            characters: characters,
+            nsRange: NSRange(location: range.location, length: 0)
+        ) == nil)
+        #expect(ComposeBodyTextSelection(
+            characters: characters,
+            nsRange: NSRange(location: 999, length: 3)
+        ) == nil)
+        // Whitespace-only selections stay nil, matching the String init.
+        #expect(ComposeBodyTextSelection(
+            characters: characters,
+            nsRange: characters.range(of: " ")
+        ) == nil)
+    }
+
+    @Test("insertion point validates against a character count")
+    func insertionPointValidatesAgainstCharacterCount() throws {
+        let body = "Draft body"
+        let characters = body as NSString
+
+        let insertionPoint = try #require(ComposeBodyInsertionPoint(
+            characterCount: characters.length,
+            nsRange: NSRange(location: 5, length: 0)
+        ))
+        #expect(insertionPoint.nsRange == NSRange(location: 5, length: 0))
+        // Caret at end-of-document stays valid, just like `Range(_:in:)`.
+        #expect(ComposeBodyInsertionPoint(
+            characterCount: characters.length,
+            nsRange: NSRange(location: characters.length, length: 0)
+        ) != nil)
+        #expect(ComposeBodyInsertionPoint(
+            characterCount: characters.length,
+            nsRange: NSRange(location: characters.length + 1, length: 0)
+        ) == nil)
+        #expect(ComposeBodyInsertionPoint(
+            characterCount: characters.length,
+            nsRange: NSRange(location: 0, length: 2)
+        ) == nil)
+    }
+
     @Test("selected-text shortcut request uses only selected text")
     func selectedTextShortcutRequestUsesOnlySelectedText() throws {
         let body = "Please ship Brev today."

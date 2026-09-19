@@ -11,6 +11,7 @@
  */
 
 import CoreGraphics
+import CryptoKit
 import Foundation
 import ImageIO
 
@@ -69,24 +70,27 @@ actor AvatarImageDecoder {
 }
 
 private final class AvatarImageCacheKey: NSObject {
-    private let data: Data
+    /// Source bytes hashed once up front: keeping the full `Data` in the key
+    /// meant every NSCache lookup hashed and compared up to ~512KB inside
+    /// the shared decoder actor, and each retained key pinned the payload.
+    private let digest: SHA256Digest
     private let maximumPixelDimension: Int
 
     init(data: Data, maximumPixelDimension: Int) {
-        self.data = data
+        digest = SHA256.hash(data: data)
         self.maximumPixelDimension = maximumPixelDimension
     }
 
     override var hash: Int {
         var hasher = Hasher()
-        hasher.combine(data)
+        hasher.combine(digest)
         hasher.combine(maximumPixelDimension)
         return hasher.finalize()
     }
 
     override func isEqual(_ object: Any?) -> Bool {
         guard let other = object as? AvatarImageCacheKey else { return false }
-        return data == other.data && maximumPixelDimension == other.maximumPixelDimension
+        return digest == other.digest && maximumPixelDimension == other.maximumPixelDimension
     }
 }
 

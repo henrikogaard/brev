@@ -57,6 +57,10 @@ public struct ThreadConversationView: View {
     private let bodyRenderer = BodyRenderer()
 
     @State private var expandedMessageIDs: Set<MessageHeader.ID> = []
+    /// One pool per conversation: cards check out shared WebView stores and
+    /// stage body/CID fetches through its permit budget instead of every
+    /// expanded card owning a renderer and fetching in parallel.
+    @State private var renderPool = ThreadConversationRenderPool()
     @State private var showUnreadOnly = false
     @State private var printExportErrorMessage: String?
     #if os(iOS)
@@ -185,7 +189,8 @@ public struct ThreadConversationView: View {
                                 showsAvatar: showsAvatars,
                                 isWorkBlocked: isWorkBlocked,
                                 dateTextOverride: dateTextProvider?(header),
-                                initialRenderedBody: preloadedBodies[header.id]
+                                initialRenderedBody: preloadedBodies[header.id],
+                                renderPool: renderPool
                             ) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     if expandedMessageIDs.contains(header.id) {
@@ -227,6 +232,9 @@ public struct ThreadConversationView: View {
             // Re-initialise when the selected thread changes.
             .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
                 guard newThreadID != nil else { return }
+                // Drop the previous thread's pooled renderers — their card
+                // identities are gone, so nothing still needs them warm.
+                renderPool = ThreadConversationRenderPool()
                 let defaultID = ThreadConversationExpansionPolicy.expandedID(
                     selectedID: navigation.selectedMessageID,
                     in: threadHeaders

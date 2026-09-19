@@ -127,6 +127,91 @@ struct GmailAccountStoreTests {
         #expect(try await store.messages(accountID: "absent", labelID: "INBOX", offset: 0, limit: 1).isEmpty)
     }
 
+    @Test("materialized-date migration backfills and preserves label page order")
+    func internalDateMigrationBackfillsAndOrders() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-internal-date-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        do {
+            let store = try SQLiteGmailAccountStore(databaseURL: url)
+            try await store.replaceSnapshot(Self.snapshot(
+                labels: [GmailLabel(id: "INBOX", name: "Inbox"), GmailLabel(id: "SENT", name: "Sent")],
+                messages: [
+                    GmailMessage(id: "old", labelIDs: ["INBOX"], internalDate: "9"),
+                    GmailMessage(id: "new", labelIDs: ["INBOX"], internalDate: "100"),
+                    GmailMessage(id: "undated", labelIDs: ["INBOX"]),
+                    GmailMessage(id: "sent", labelIDs: ["SENT"], internalDate: "1000")
+                ]
+            ))
+        }
+        var db: OpaquePointer?
+        #expect(sqlite3_open(url.path, &db) == SQLITE_OK)
+        guard let db else { return }
+        // Simulate a pre-v5 database: drop the materialized columns and the
+        // index, then rewind user_version so reopening re-runs the migration.
+        #expect(sqlite3_exec(
+            db,
+            "DROP INDEX gmail_messages_received_idx; "
+                + "ALTER TABLE gmail_messages DROP COLUMN internal_date; "
+                + "ALTER TABLE gmail_messages DROP COLUMN content_hash; "
+                + "PRAGMA user_version=4;",
+            nil, nil, nil
+        ) == SQLITE_OK)
+        sqlite3_close(db)
+
+        let migrated = try SQLiteGmailAccountStore(databaseURL: url)
+        // Descending received order with NULLs last, identical to the former
+        // json_extract sort.
+        #expect(try await migrated.messages(accountID: "acct-1", labelID: "INBOX", offset: 0, limit: 10)
+            .map(\.id) == ["new", "old", "undated"])
+        #expect(try await migrated.messages(accountID: "acct-1", labelID: "INBOX", offset: 1, limit: 1)
+            .map(\.id) == ["old"])
+        // Upserts keep the materialized columns current.
+        try await migrated.apply(GmailStoreDelta(
+            accountID: "acct-1",
+            upsertedMessages: [GmailMessage(id: "newest", labelIDs: ["INBOX"], internalDate: "200")]
+        ))
+        #expect(try await migrated.messages(accountID: "acct-1", labelID: "INBOX", offset: 0, limit: 1)
+            .map(\.id) == ["newest"])
+    }
+
+    @Test("message summaries expose change markers and label order without decoding")
+    func sqliteMessageSummariesTrackChanges() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-summaries-\(UUID().uuidString).sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let store = try SQLiteGmailAccountStore(databaseURL: url)
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "a", labels: ["INBOX", "STARRED"]),
+            Self.message(id: "b", labels: [])
+        ]))
+
+        let first = try await store.messageSummaries(accountID: "acct-1")
+        let byID = Dictionary(uniqueKeysWithValues: first.map { ($0.id, $0) })
+        #expect(byID["a"]?.labelIDs == ["INBOX", "STARRED"])
+        #expect(byID["b"]?.labelIDs == [])
+        #expect(byID["a"]?.contentHash != byID["b"]?.contentHash)
+
+        // An identical re-upsert keeps the hash; a label change flips it.
+        let original = try #require(byID["a"])
+        try await store.apply(GmailStoreDelta(
+            accountID: "acct-1",
+            upsertedMessages: [Self.message(id: "a", labels: ["INBOX", "STARRED"])]
+        ))
+        var summaries = try await Dictionary(uniqueKeysWithValues: store
+            .messageSummaries(accountID: "acct-1").map { ($0.id, $0) })
+        #expect(summaries["a"]?.contentHash == original.contentHash)
+        try await store.apply(GmailStoreDelta(
+            accountID: "acct-1",
+            upsertedMessages: [Self.message(id: "a", labels: ["INBOX"])]
+        ))
+        summaries = try await Dictionary(uniqueKeysWithValues: store
+            .messageSummaries(accountID: "acct-1").map { ($0.id, $0) })
+        #expect(summaries["a"]?.contentHash != original.contentHash)
+        #expect(summaries["a"]?.labelIDs == ["INBOX"])
+        #expect(try await store.messageSummaries(accountID: "other").isEmpty)
+    }
+
     @Test("stores one message once while retaining two label joins")
     func storesManyToManyMessageLabels() async throws {
         let store = InMemoryGmailAccountStore()

@@ -164,6 +164,37 @@ struct GmailAPIMutationTests {
         #expect(await client.createdLabelNames() == ["Parent/Child"])
     }
 
+    @Test("bulk label mutation commits every message in one store delta")
+    func bulkMutationAppliesAllChanges() async throws {
+        let messages = ["m1", "m2", "m3"].map {
+            GmailMessage(id: $0, threadID: "t\($0)", labelIDs: ["INBOX", "UNREAD"], snippet: "")
+        }
+        let client = MutationClient(messages: messages)
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: Self.account.id,
+            state: GmailAccountState(accountID: Self.account.id, emailAddress: Self.account.emailAddress),
+            labels: client.labelCatalog,
+            messages: messages
+        ))
+        let backend = GmailAPIBackend(
+            account: Self.account,
+            transport: client,
+            store: store,
+            client: client,
+            grantedScopes: ["https://mail.google.com/"]
+        )
+        try await backend.connect()
+
+        try await backend.setRead(true, for: ["m1", "m2", "m3"])
+        try await backend.setFlagged(true, for: ["m1", "m2", "m3"])
+
+        for id in ["m1", "m2", "m3"] {
+            #expect(try await Set(store.messageLabelIDs(accountID: Self.account.id, messageID: id))
+                == ["INBOX", "STARRED"])
+        }
+    }
+
     @Test("provider failure leaves local labels unchanged")
     func rollsBackOnProviderFailure() async throws {
         let client = MutationClient(messages: [Self.message(labels: ["INBOX"])], shouldFailWrites: true)

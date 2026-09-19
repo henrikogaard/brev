@@ -84,6 +84,15 @@ final class MessageListPresentationSnapshotCache {
 struct MessageListPresentationSnapshot {
     let headers: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
+    /// Unread/pinned tallies over the *source* header list, not the visible
+    /// projection. The folder-stats footer reads them every body evaluation;
+    /// deriving them here keeps that O(n) pass inside the cached build.
+    let unreadHeaderCount: Int
+    let pinnedHeaderCount: Int
+    /// All source headers grouped by thread, each bucket sorted oldest →
+    /// newest. An expanded row reads its children from the bucket in
+    /// O(thread size) instead of filtering the whole folder per render.
+    let headersByThreadID: [String: [MessageHeader]]
 
     private let visibleIndexesByHeaderID: [MessageHeader.ID: Int]
 
@@ -93,9 +102,19 @@ struct MessageListPresentationSnapshot {
         groupByDate: Bool,
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date = Date(),
-        calendar: Calendar = .current
+        calendar: Calendar = .current,
+        sourceHeaders: [MessageHeader]? = nil
     ) {
         self.headers = headers
+        let sourceHeaders = sourceHeaders ?? headers
+        unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
+            count += header.isRead ? 0 : 1
+        }
+        pinnedHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
+            count += pinnedMessageIDs.contains(header.id) ? 1 : 0
+        }
+        headersByThreadID = Dictionary(grouping: sourceHeaders, by: \.threadID)
+            .mapValues { $0.sorted { $0.date < $1.date } }
         visibleIndexesByHeaderID = Dictionary(
             headers.enumerated().map { ($0.element.id, $0.offset) },
             uniquingKeysWith: { first, _ in first }

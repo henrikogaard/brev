@@ -20,12 +20,18 @@ public enum RetiredSecurityMaterialMigration {
     private static let retiredEncryptionToggle = "encryption." + "openPGPEnabled"
     private static let retiredDiscoveryMode = "recipientKeyDiscovery.mode"
     private static let retiredPinPrefix = "brev." + "wkd.pin."
+    private static let completionKey = "security." + "retiredMaterialMigration.v1"
 
     @discardableResult
     public static func run(
         defaults: UserDefaults = .standard,
         materialStore: any SecurityKeyMaterialStore = SecurityKeychainMaterialStore()
     ) async -> Bool {
+        // The retired family cannot produce new state, so a completed pass
+        // never needs to touch defaults again — the early return keeps every
+        // later launch free of the preference read/write + notification pass.
+        guard !defaults.bool(forKey: completionKey) else { return true }
+
         let retiredRecordIDs = SecurityKeyMaterialSettings.retiredRecordIDs(from: defaults)
         do {
             for recordID in retiredRecordIDs {
@@ -35,12 +41,25 @@ public enum RetiredSecurityMaterialMigration {
             return false
         }
 
-        SecurityKeyMaterialSettings.load(from: defaults).save(to: defaults)
-        defaults.removeObject(forKey: retiredEncryptionToggle)
-        defaults.removeObject(forKey: retiredDiscoveryMode)
+        // Rewriting the catalog only matters when retired records were
+        // stripped; an unchanged payload still posts a did-change
+        // notification to every defaults observer.
+        if !retiredRecordIDs.isEmpty {
+            SecurityKeyMaterialSettings.load(from: defaults).save(to: defaults)
+        }
+        if defaults.object(forKey: retiredEncryptionToggle) != nil {
+            defaults.removeObject(forKey: retiredEncryptionToggle)
+        }
+        if defaults.object(forKey: retiredDiscoveryMode) != nil {
+            defaults.removeObject(forKey: retiredDiscoveryMode)
+        }
+        // Key enumeration runs once per install — only while the migration
+        // is still incomplete — so the whole-dictionary materialization does
+        // not repeat every launch.
         for key in defaults.dictionaryRepresentation().keys where key.hasPrefix(retiredPinPrefix) {
             defaults.removeObject(forKey: key)
         }
+        defaults.set(true, forKey: completionKey)
         return true
     }
 }

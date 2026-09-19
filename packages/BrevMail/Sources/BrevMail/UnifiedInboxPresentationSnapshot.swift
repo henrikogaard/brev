@@ -79,6 +79,15 @@ struct UnifiedInboxPresentationSnapshot {
     /// Messages per thread, keyed by `UnifiedInboxThreadGrouping.key(for:)`.
     /// Empty when thread grouping is off.
     let threadCounts: [String: Int]
+    /// Unread/pinned tallies over the *source* item list, not the visible
+    /// projection. The folder-stats footer reads them every body evaluation;
+    /// deriving them here keeps that O(n) pass inside the cached build.
+    let unreadItemCount: Int
+    let pinnedItemCount: Int
+    /// All source items grouped by `UnifiedInboxThreadGrouping.key(for:)`,
+    /// each bucket sorted oldest → newest. An expanded row reads its children
+    /// from the bucket in O(thread size) instead of filtering every item.
+    let itemsByThreadKey: [String: [UnifiedInboxItem]]
 
     private let visibleIndexesByItemID: [UnifiedInboxItem.ID: Int]
 
@@ -89,7 +98,8 @@ struct UnifiedInboxPresentationSnapshot {
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
-        threadCounts: [String: Int] = [:]
+        threadCounts: [String: Int] = [:],
+        sourceItems: [UnifiedInboxItem]? = nil
     ) {
         self.init(
             visibleItems: visibleItems,
@@ -98,7 +108,8 @@ struct UnifiedInboxPresentationSnapshot {
             collapsedDateSectionIDs: collapsedDateSectionIDs,
             referenceDate: referenceDate,
             calendar: calendar,
-            threadCounts: threadCounts
+            threadCounts: threadCounts,
+            sourceItems: sourceItems
         )
     }
 
@@ -109,11 +120,23 @@ struct UnifiedInboxPresentationSnapshot {
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
-        threadCounts: [String: Int] = [:]
+        threadCounts: [String: Int] = [:],
+        sourceItems: [UnifiedInboxItem]? = nil
     ) {
         self.visibleItems = visibleItems
         self.pinnedMessageIDs = pinnedMessageIDs
         self.threadCounts = threadCounts
+        let sourceItems = sourceItems ?? visibleItems
+        unreadItemCount = sourceItems.reduce(into: 0) { count, item in
+            count += item.header.isRead ? 0 : 1
+        }
+        pinnedItemCount = sourceItems.reduce(into: 0) { count, item in
+            count += pinnedMessageIDs.contains(item.pinID) ? 1 : 0
+        }
+        itemsByThreadKey = Dictionary(
+            grouping: sourceItems,
+            by: UnifiedInboxThreadGrouping.key(for:)
+        ).mapValues { $0.sorted { $0.header.date < $1.header.date } }
         visibleIndexesByItemID = Dictionary(
             uniqueKeysWithValues: visibleItems.enumerated().map { ($0.element.id, $0.offset) }
         )

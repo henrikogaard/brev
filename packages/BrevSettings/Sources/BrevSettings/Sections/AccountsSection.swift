@@ -253,8 +253,10 @@ struct AccountsSection: View {
             await loadMailboxesForAccounts()
         }
         .task { reloadPendingRestoredAccounts() }
+        // Dedicated store notification — a blanket UserDefaults observer
+        // would re-decode the pending list on every unrelated defaults write.
         .onReceive(
-            NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)
+            NotificationCenter.default.publisher(for: .brevPendingRestoredAccountsDidChange)
         ) { _ in
             reloadPendingRestoredAccounts()
         }

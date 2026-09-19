@@ -798,64 +798,77 @@ public struct SearchQuery: Sendable, Hashable, Codable {
     /// server-side search) and the local SQLite/FTS search index.
     /// Text matching is case- and diacritic-insensitive.
     public func matches(_ header: MessageHeader) -> Bool {
+        // Cheap predicates first: folder scope, flags, and the date range
+        // reject most rows without paying for string normalization.
         if let isUnread, header.isRead == isUnread { return false }
         if let isFlagged, header.isFlagged != isFlagged { return false }
         if let hasAttachments, header.hasAttachments != hasAttachments { return false }
         if let folderScope, !folderScope.contains(header.folderID) { return false }
         if let dateRange, !dateRange.contains(header.date) { return false }
+        // Each needle is trimmed and normalized once per call; the per-field
+        // checks below reuse that needle instead of re-folding the same query
+        // string for every field.
         if let from {
-            let q = from.trimmingCharacters(in: .whitespacesAndNewlines)
-            let matchFrom = Self.normalizedContains(header.from.email, q)
-                || Self.normalizedContains(header.from.name ?? "", q)
+            let needle = Self.normalizedSearchString(
+                from.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            let matchFrom = Self.normalizedContains(header.from.email, needle)
+                || Self.normalizedContains(header.from.name ?? "", needle)
             if !matchFrom { return false }
         }
         if let to {
-            let q = to.trimmingCharacters(in: .whitespacesAndNewlines)
+            let needle = Self.normalizedSearchString(
+                to.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
             let matchTo = header.to.contains {
-                Self.normalizedContains($0.email, q)
-                    || Self.normalizedContains($0.name ?? "", q)
+                Self.normalizedContains($0.email, needle)
+                    || Self.normalizedContains($0.name ?? "", needle)
             }
                 || header.cc.contains {
-                    Self.normalizedContains($0.email, q)
-                        || Self.normalizedContains($0.name ?? "", q)
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
                 }
                 || header.bcc.contains {
-                    Self.normalizedContains($0.email, q)
-                        || Self.normalizedContains($0.name ?? "", q)
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
                 }
             if !matchTo { return false }
         }
         if let subject {
-            let q = subject.trimmingCharacters(in: .whitespacesAndNewlines)
-            if !Self.normalizedContains(header.subject, q) { return false }
+            let needle = Self.normalizedSearchString(
+                subject.trimmingCharacters(in: .whitespacesAndNewlines)
+            )
+            if !Self.normalizedContains(header.subject, needle) { return false }
         }
         let trimmedText = text.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmedText.isEmpty {
-            let matchText = Self.normalizedContains(header.subject, trimmedText)
-                || Self.normalizedContains(header.snippet, trimmedText)
-                || Self.normalizedContains(header.from.email, trimmedText)
-                || Self.normalizedContains(header.from.name ?? "", trimmedText)
+            let needle = Self.normalizedSearchString(trimmedText)
+            let matchText = Self.normalizedContains(header.subject, needle)
+                || Self.normalizedContains(header.snippet, needle)
+                || Self.normalizedContains(header.from.email, needle)
+                || Self.normalizedContains(header.from.name ?? "", needle)
                 || header.to.contains {
-                    Self.normalizedContains($0.email, trimmedText)
-                        || Self.normalizedContains($0.name ?? "", trimmedText)
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
                 }
                 || header.cc.contains {
-                    Self.normalizedContains($0.email, trimmedText)
-                        || Self.normalizedContains($0.name ?? "", trimmedText)
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
                 }
                 || header.bcc.contains {
-                    Self.normalizedContains($0.email, trimmedText)
-                        || Self.normalizedContains($0.name ?? "", trimmedText)
+                    Self.normalizedContains($0.email, needle)
+                        || Self.normalizedContains($0.name ?? "", needle)
                 }
             if !matchText { return false }
         }
         return true
     }
 
-    private static func normalizedContains(_ value: String, _ query: String) -> Bool {
-        let normalizedQuery = normalizedSearchString(query)
-        guard !normalizedQuery.isEmpty else { return true }
-        return normalizedSearchString(value).contains(normalizedQuery)
+    /// `normalizedNeedle` must already be folded via `normalizedSearchString`;
+    /// an empty needle matches every value.
+    private static func normalizedContains(_ value: String, _ normalizedNeedle: String) -> Bool {
+        guard !normalizedNeedle.isEmpty else { return true }
+        return normalizedSearchString(value).contains(normalizedNeedle)
     }
 
     private static func normalizedSearchString(_ value: String) -> String {

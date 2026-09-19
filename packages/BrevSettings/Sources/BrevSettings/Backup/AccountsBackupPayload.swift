@@ -77,6 +77,15 @@ public enum AccountsBackupCodec {
     }
 }
 
+public extension Notification.Name {
+    /// Posted when the pending restored-accounts list changes. Settings
+    /// surfaces observe this instead of `UserDefaults.didChangeNotification`
+    /// so unrelated defaults writes do not re-decode the payload.
+    static let brevPendingRestoredAccountsDidChange = Notification.Name(
+        "eu.brevmail.settings.pendingRestoredAccounts.changed"
+    )
+}
+
 /// Restored-but-unsigned-in accounts waiting for the user to finish
 /// sign-in (ADR-0076 decision 5). Stored as a Codable list under
 /// `backup.pendingRestoredAccounts`; surfaced in Settings › Accounts as
@@ -102,6 +111,7 @@ public final class PendingRestoredAccountsStore: @unchecked Sendable {
     public func setEntries(_ entries: [AccountBackupEntry]) {
         guard let data = try? JSONEncoder().encode(entries) else { return }
         defaults.set(data, forKey: Self.key)
+        NotificationCenter.default.post(name: .brevPendingRestoredAccountsDidChange, object: nil)
     }
 
     /// Removes one entry — after sign-in or an explicit Remove.

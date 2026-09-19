@@ -44,8 +44,12 @@ public final class BackgroundMailCoordinator {
     public var backendsProvider: @MainActor () -> [any MailBackend]
     private let refresh: @Sendable ([any MailBackend]) async -> String?
     private let tickSource: @Sendable (TimeInterval) -> AsyncStream<Void>
+    private let now: @Sendable () -> Date
     private var tickTask: Task<Void, Never>?
     private var intervalSeconds: TimeInterval?
+    /// Consecutive-failure tracker that stretches the effective cadence
+    /// so a stuck account is not polled at full rate forever.
+    private var backoff = MailFetchBackoffSchedule()
 
     /// - Parameters:
     ///   - backendsProvider: returns the currently connected backends.
@@ -54,18 +58,22 @@ public final class BackgroundMailCoordinator {
     ///     `MailFetchScheduler.performBackgroundRefresh`.
     ///   - tickSource: produces the tick stream for a given interval;
     ///     injectable so tests can drive ticks deterministically.
+    ///   - now: supplies the current time for backoff gating; injectable
+    ///     so tests can advance the clock deterministically.
     public init(
         backendsProvider: @escaping @MainActor () -> [any MailBackend] = { [] },
         refresh: (@Sendable ([any MailBackend]) async -> String?)? = nil,
         tickSource: @escaping @Sendable (TimeInterval) -> AsyncStream<Void> = {
             MailFetchScheduler.ticks(every: $0)
-        }
+        },
+        now: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.backendsProvider = backendsProvider
         self.refresh = refresh ?? { backends in
             await MailFetchScheduler.performBackgroundRefresh(backends: backends)
         }
         self.tickSource = tickSource
+        self.now = now
     }
 
     /// Starts the cadence. A `nil` interval (manual schedule) activates
@@ -82,6 +90,10 @@ public final class BackgroundMailCoordinator {
             tickTask = Task { @MainActor [weak self, tickSource] in
                 for await _ in tickSource(interval) {
                     guard let self, !Task.isCancelled else { break }
+                    // Consecutive failures stretch the effective interval;
+                    // ticks inside the backoff window are skipped.
+                    guard backoff.permitsAttempt(at: now(), base: interval) else { continue }
+                    backoff.recordAttempt(at: now())
                     await refreshNow()
                 }
             }
@@ -102,9 +114,11 @@ public final class BackgroundMailCoordinator {
         defer { isRefreshing = false }
         if let failure = await refresh(backendsProvider()) {
             lastFailureSummary = failure
+            backoff.recordOutcome(succeeded: false)
         } else {
             lastSuccessfulRefresh = Date()
             lastFailureSummary = nil
+            backoff.recordOutcome(succeeded: true)
         }
     }
 }

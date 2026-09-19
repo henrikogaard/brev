@@ -60,6 +60,15 @@ this cascade and stops at the first hit:
 Steps 1, 2, 6 are local. Steps 3, 4, 5 are network calls, gated by
 explicit user opt-in.
 
+### In-memory decode cache
+
+Decoded `CGImage`s are cached in an `NSCache` inside the shared
+`AvatarImageDecoder` actor. Cache keys hash the source bytes once
+(SHA-256) rather than retaining and re-hashing the full payload per
+lookup — a ~512 KB avatar made every row's key comparison a large
+byte scan inside the actor. The digest pins no payload bytes and
+keeps lookups O(key size).
+
 ### First-run onboarding
 
 On first launch, a privacy panel explains the avatar system and offers

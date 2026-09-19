@@ -13,6 +13,15 @@
 import BrevThemes
 import Foundation
 
+public extension Notification.Name {
+    /// Posted when `AppearanceThemeSettings.save(to:)` persists a change so
+    /// cached copies (root appearance, settings panes) reload once instead
+    /// of re-reading defaults on every view evaluation.
+    static let brevAppearanceThemeSettingsDidChange = Notification.Name(
+        "eu.brevmail.settings.appearanceTheme.changed"
+    )
+}
+
 public enum AppearanceThemeMode: String, CaseIterable, Identifiable, Sendable, Codable {
     case followSystem
     case alwaysLight
@@ -101,6 +110,7 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
         } else {
             defaults.removeObject(forKey: Key.accentHex)
         }
+        NotificationCenter.default.post(name: .brevAppearanceThemeSettingsDidChange, object: nil)
     }
 
     func resolvedThemeID(prefersDark: Bool) -> String {

@@ -59,6 +59,18 @@ All notable changes to Brev are documented here.
   file; provider folder destinations remain available in the destination step.
 - Related-mail auto-loading is now set per mailbox under Settings › Folder Sync;
   Smart Views has its own sidebar icon.
+- Performance: message lists and unified inbox no longer rescan every header
+  per render pass (blocked senders, follow-ups, snooze/done state, last-week
+  counts, and search chips are indexed once per change); expanding a long
+  thread shares a bounded pool of renderers and fetches instead of one
+  WebKit view and parallel fetch per card; Gmail refresh diffs lightweight
+  message summaries instead of decoding the whole table twice; local search
+  skips redundant index joins and rewrites; and launch does less blocking
+  work (local search index opens on first use, the key-material migration
+  runs once, and several settings payloads decode once instead of per
+  evaluation).
+- Automatic mail fetching now backs off after consecutive failures instead
+  of polling a stuck account at full rate.
 
 ### Fixed
 
