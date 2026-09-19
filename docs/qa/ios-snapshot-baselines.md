@@ -81,3 +81,7 @@ this suite. Older deferred snapshot debt remains separate.
 The app-hosted `MailboxLayoutTests` reproduces the unbounded UIKit field at
 319 points before the fix, then verifies a 44–52 point field under a full-screen
 height proposal. This behavioral sizing test does not depend on pixels.
+
+The same suite also covers a 660pt regular-width compose scene with a signature.
+The reference was inspected on iPad Pro 13-inch / iOS 27 after moving secondary
+iOS compose tools into overflow; Close, Send and More remain visible.

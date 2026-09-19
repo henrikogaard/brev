@@ -22,6 +22,22 @@ import UIKit
 @Suite("Phone mailbox snapshots", .serialized)
 @MainActor
 struct PhoneMailboxSnapshotTests {
+    @Test("compose actions fit a narrow regular-width scene")
+    func narrowCompose() {
+        let backend = MockBackend()
+        let view = ComposeView(backend: backend, from: backend.account,
+                               signatureContext: ComposeSignatureContext(
+                                   selectedSignatureID: "work",
+                                   options: [.init(id: "work", title: "Work signature", body: "Best regards")]
+                               ))
+                               .environment(\.horizontalSizeClass, .regular)
+                               .brevTheme(.brevMonoLight)
+                               .htmlBodyRenderTarget(.staticSnapshot)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 660, height: 560),
+                                            traits: .init(displayScale: 2)), named: "narrow-compose")
+    }
+
     @Test("phone folder hierarchy", arguments: [false, true])
     func mailboxes(dark: Bool) throws {
         let theme = dark ? BrevTheme.brevMonoDark : .brevMonoLight

@@ -183,22 +183,13 @@ struct ComposePresentationTests {
         ].joined(separator: ", "))
     }
 
-    @Test("regular toolbar keeps secondary compose controls direct")
-    func regularToolbarKeepsSecondaryComposeControlsDirect() {
+    @Test("regular iPad keeps Send visible and moves secondary tools into overflow")
+    func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
-
-        #expect(layout.directActions == [
-            .close,
-            .attach,
-            .signature,
-            .templates,
-            .security,
-            .aiWriter,
-            .saveDraft,
-            .scheduleSend,
-            .send
-        ])
-        #expect(layout.overflowActions.isEmpty)
+        #expect(layout.directActions == [.close, .send, .moreActions])
+        #expect(layout.overflowActions.contains(.signature))
+        #expect(layout.overflowActions.contains(.security))
+        #expect(layout.overflowActions.contains(.attach))
     }
 
     @Test("macOS toolbar controls use an accessible hit target around compact icons")

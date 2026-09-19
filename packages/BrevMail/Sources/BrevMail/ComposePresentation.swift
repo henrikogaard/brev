@@ -222,7 +222,7 @@ enum ComposePresentation {
 
     static func toolbarActionLayout(for platform: ComposeLayoutPlatform) -> ComposeToolbarActionLayout {
         switch platform {
-        case .compactIOSAccessibility:
+        case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
                 directActions: [.close, .send, .moreActions],
                 overflowActions: [
@@ -235,7 +235,7 @@ enum ComposePresentation {
                     .scheduleSend
                 ]
             )
-        case .compactIOS, .regularIOS, .macOS:
+        case .macOS:
             ComposeToolbarActionLayout(
                 directActions: [
                     .close,

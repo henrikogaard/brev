@@ -4656,7 +4656,7 @@ public struct BrevMailRootView: View {
             header: header,
             backend: backend(for: sourceID ?? navigation.selectedSourceID),
             sourceID: sourceID ?? navigation.selectedSourceID,
-            allFolders: folders,
+            allFolders: moveFolders(for: sourceID ?? navigation.selectedSourceID),
             canFileLocally: localBackend != nil,
             theme: theme,
             onCommand: handleDetachedMessageCommand

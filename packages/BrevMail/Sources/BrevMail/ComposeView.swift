@@ -728,7 +728,7 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var toolbar: some View {
-        if composeLayoutPlatform == .compactIOS || composeLayoutPlatform == .compactIOSAccessibility {
+        if !toolbarActionLayout.overflowActions.isEmpty {
             compactAccessibilityToolbar
         } else {
             defaultToolbar

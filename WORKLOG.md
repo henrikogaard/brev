@@ -2682,3 +2682,15 @@ buttons, and package-aware localization.
   with explicit version/build overrides from the merged main commit. The checked-in
   internal-only export policy and existing Henrik Internal QA group are used.
   Upload and Apple processing will be recorded separately from merge/build.
+
+- Further pre-merge review: fixed per-card PDF body failures being swallowed,
+  localized the empty-subject export filename, hid Archive for already-archived
+  reader/card messages, resolved detached folders from the clicked source, and
+  condensed all iOS compose toolbars so narrow regular-width iPad scenes retain
+  Send. The compose policy regression failed first (four assertions), then the
+  63-test focused suite passed. Added a visually inspected 660pt regular-width
+  compose reference, rendered on the iPad Pro 13-inch simulator.
+- The first hosted Gmail run failed the existing scheduled-send restart test.
+  The full 152-test local Gmail suite passed, as did ten consecutive focused
+  runs. No Gmail delivery code was changed; the final head must pass hosted CI.
+  The pre-fix archive is superseded and will not be uploaded.

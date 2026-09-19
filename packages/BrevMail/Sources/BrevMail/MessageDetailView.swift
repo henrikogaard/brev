@@ -640,7 +640,7 @@ public struct MessageDetailView: View {
             isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,
             canOpenInNewWindow: canOpenReaderInNewWindow,
-            canArchive: allFolders.contains { $0.role == .archive },
+            canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
             canMove: !moveCandidates.isEmpty,
             canCopyToFolder: !moveCandidates.isEmpty,
             canFileLocally: canFileLocally

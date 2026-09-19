@@ -399,7 +399,7 @@ public struct ThreadConversationView: View {
             isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
             hasNote: lookup.note(for: workflowID) != nil,
             canOpenInNewWindow: canOpenCardInNewWindow,
-            canArchive: allFolders.contains { $0.role == .archive },
+            canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
             canMove: !moveCandidates.isEmpty,
             canFileLocally: canFileLocally
                 && backend.account.id != LocalMailBackend.accountID,
@@ -539,7 +539,7 @@ public struct ThreadConversationView: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         Task { @MainActor in
             do {
-                let messageBody = try? await body(for: header.id)
+                let messageBody = try await body(for: header.id)
                 try MessagePrintExportRenderer.exportPDF(header: header, body: messageBody, to: url)
             } catch {
                 printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
@@ -548,7 +548,7 @@ public struct ThreadConversationView: View {
         #elseif os(iOS)
         Task { @MainActor in
             do {
-                let messageBody = try? await body(for: header.id)
+                let messageBody = try await body(for: header.id)
                 let url = try MailPrintController.exportPDF(
                     messages: [(header, messageBody)],
                     fileName: cardPDFBaseName(for: header)
@@ -562,7 +562,7 @@ public struct ThreadConversationView: View {
     }
 
     private func cardPDFBaseName(for header: MessageHeader) -> String {
-        let fallback = header.subject.isEmpty ? "message" : header.subject
+        let fallback = header.subject.isEmpty ? String(localized: "message", bundle: .module) : header.subject
         let invalid = CharacterSet(charactersIn: ":/\\?%*|\"<>")
         return fallback.components(separatedBy: invalid).joined(separator: "_")
     }
