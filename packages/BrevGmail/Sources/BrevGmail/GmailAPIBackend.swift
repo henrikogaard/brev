@@ -41,7 +41,7 @@ public enum GmailAccountIdentity {
 public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderLabelCatalogManaging,
     ServerSearchSyntaxProviding, MailboxBackgroundRefreshing, SyncHealthReporting,
     MutationApplying, OutboxManaging, SyncConflictManaging, ScheduledSendEditing, ProgressiveMailSearching,
-    CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
+    CachedMessageHeaderProviding, CachedConversationProviding, RelatedConversationLoading, @unchecked Sendable {
     private static let pageSize = 50
 
     /// The account this adapter serves.
@@ -203,7 +203,12 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// consented related-conversation loading.
     public var extendedCapabilities: BackendExtendedCapabilities {
         lock.withLock {
-            var result: BackendExtendedCapabilities = [.rawMessageSource, .rawMessageBytes, .cachedConversations]
+            var result: BackendExtendedCapabilities = [
+                .rawMessageSource,
+                .rawMessageBytes,
+                .cachedConversations,
+                .cachedMessageHeaders
+            ]
             if isConnected, sendAsProbeCompleted, let aliases = sendAsAliases {
                 result.insert(.serverAliases)
                 if aliases.contains(where: {
@@ -685,6 +690,16 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             attachmentID: String(resource[resource.index(after: separator)...]),
             cacheID: attachment.id
         )
+    }
+
+    /// Reads one cached message by ID, preserving the requested label membership without network access.
+    public func cachedMessageHeader(messageID: MessageHeader.ID, folderID: Folder.ID) async -> MessageHeader? {
+        guard let message = try? await store.message(accountID: account.id, messageID: messageID) else { return nil }
+        let belongsToFolder = folderID == "ALL_MAIL"
+            ? !message.labelIDs.contains("TRASH") && !message.labelIDs.contains("SPAM")
+            : message.labelIDs.contains(folderID)
+        guard belongsToFolder, let labels = try? await store.labels(accountID: account.id) else { return nil }
+        return Self.header(from: message, folderID: folderID, labels: labels)
     }
 
     /// Reads cached label membership without fetching MIME data or using the primary folder.
@@ -1687,7 +1702,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     public func extensionService<Service>(_ type: Service.Type) -> Service? {
         switch ObjectIdentifier(type) {
-        case ObjectIdentifier(CachedConversationProviding.self):
+        case ObjectIdentifier(CachedMessageHeaderProviding.self), ObjectIdentifier(CachedConversationProviding.self):
             return self as? Service
         case ObjectIdentifier(RelatedConversationLoading.self):
             guard relatedConversationConsent != nil else { return nil }

@@ -45,11 +45,9 @@ enum DetachedWindowResolver {
         sourceID: MailSourceID? = nil
     ) async -> MessageHeader? {
         if let sourceID, sourceID.accountID != backend.account.id { return nil }
-        if let header = await resolveHeader(
-            messageID: messageID,
-            using: backend.extensionService(CachedMessageHeaderProviding.self),
-            folders: folders
-        ) { return header }
+        if let provider = backend.extensionService(CachedMessageHeaderProviding.self) {
+            return await resolveHeader(messageID: messageID, using: provider, folders: folders)
+        }
         let cacheSource: MailSourceID
         if let sourceID {
             cacheSource = sourceID

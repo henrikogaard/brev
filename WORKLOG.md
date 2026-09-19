@@ -2841,3 +2841,15 @@ buttons, and package-aware localization.
 - App-hosted iOS startup/search tests pass with xcodebuild exit 0 after the
   routing change; lint, formatting and diff-check pass. No snapshot refresh
   needed because only scene selection changed.
+
+- Gmail now vends the existing cached-header extension using its account/message
+  point lookup and preserves label/All Mail membership. Detached resolution
+  treats an available point service's miss as authoritative, avoiding fallback
+  folder scans for absent messages. The service regression failed before the fix.
+- Final CI encountered a signal-11 crash in the unchanged native window test
+  and a timing-sensitive attachment extraction timeout assertion. The 30 window
+  policy tests pass locally; no production behavior was changed for either.
+- Verification: all 30 Gmail reader tests, 12 detached resolver tests and 11
+  attachment extractor tests pass; lint/format/diff-check pass. Cache-only
+  service tests cover label membership, All Mail exclusion, missing IDs and
+  zero transport calls. No visible layout changed or new network path added.

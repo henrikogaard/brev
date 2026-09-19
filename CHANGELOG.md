@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Native Gmail detached readers look up cached messages by ID without decoding whole folders.
+
 - iPad detached reader commands reach their mailbox even when Settings is open in another scene.
 
 - Unified Inbox reader navigation applies the same category, mailbox and saved
