@@ -733,12 +733,7 @@ private struct AccountRow: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private func conflictBanner(title: String) -> some View {
@@ -882,7 +877,11 @@ private struct AccountRow: View {
             Image(systemName: "ellipsis.circle")
                 .symbolRenderingMode(.hierarchical)
                 .foregroundStyle(theme.accent.color)
+            #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+            #else
                 .frame(width: 32, height: 32)
+            #endif
                 .contentShape(Rectangle())
         }
         .accessibilityLabel(String(localized: "Account actions for \(account.emailAddress)", bundle: .module))

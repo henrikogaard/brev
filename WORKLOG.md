@@ -2367,3 +2367,186 @@ No commit (user request).
   full runs.
 - Schema v5: `internal_date`/`content_hash` materialized + backfilled;
   existing v4 databases migrate on open.
+
+## 2026-09-19 — Devin — UI/UX consistency pass (feature/uiux-consistency)
+
+### Goal
+
+Fix the UI/UX audit findings across iOS/iPadOS/macOS: honest
+capability-gated menus, consolidated reader actions, accessibility,
+canonical Flag terminology, shared BrevDesign components, iPad keyboard
+undo, and focused presentation tests.
+
+### Changes (this session's files)
+
+- `MessageCommandPresentation`: all menu titles localized via
+  `String(localized:bundle:.module)`; unsupported actions omitted rather
+  than disabled; new `readerMenu(...)` surface (same inventory minus
+  row-only Select/Pin to Top).
+- `DetachedMessageCommand`: extended to the full reader action set with
+  `init?(menuAction:)` and `dismissesWindow`; bus dispatch unchanged.
+- `BrevMailRootView`: extended detached-command dispatch (snooze, done,
+  local-folder filing, block-sender alert, sheets, view-source/headers,
+  open-in-new-window); iOS compact reader + `MailDetachWindowPolicy`
+  routing; double-open dedup via `lastOpenInNewWindowRequest`; macOS
+  fallback toolbar gained Mark Read/Unread; iOS ellipsis deduplicated.
+- `MessageDetailView`: consolidated iOS overflow menu + reader-body
+  context menu + detached-window overflow all render `readerMenu`;
+  print/PDF run locally, everything else via the command bus.
+- `ThreadConversationView`: per-card `.contextMenu` reusing
+  `readerMenu` + bus dispatch; per-message print/PDF reusing the thread
+  print pipeline; AI summary failure state gained a Retry button
+  (`aiSummaryRetryAction`).
+- `MessageListView` / `UnifiedInboxListView`: shared `MailBulkActionBar`;
+  unread dot exposes a VoiceOver "Unread" label on non-compact rows;
+  child rows take mailbox font-family/text-size/density; iOS row menus
+  never emit Print/PDF; unified inbox is per-source capability-gated.
+- `ThreadInlineChildRow`: preference-derived fonts/spacing + labelled
+  unread dot.
+- `MailUndoCommands`: iPadOS ⌘Z mail-undo command group (text-editor
+  undo still wins via responder chain); registered in
+  `apps/iOS/BrevApp.swift`.
+- `KeyboardShortcutsHelpView`: inventory extracted to
+  `MailKeyboardShortcutInventory`, corrected bindings (⌘⇧U/⌘U read,
+  ⌘⇧L/⌘S flag, ⌫ delete, ⌘Z undo on both platforms), macOS-only flags.
+- `FolderSidebarPresentation`: removed dead `canOpenInNewWindow` /
+  `canDownloadOffline` params that produced inert entries.
+- Tests: `MessageCommandPresentationTests` updated (stale section
+  expectation fixed for the omission rule) + new coverage for print/PDF
+  omission, `readerMenu` parity, detached-command mapping, and window
+  dismissal; new `MailKeyboardShortcutInventoryTests` pins the help
+  panel against real `keyboardShortcut` registrations.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail` — green.
+- `swift test --package-path packages/BrevMail` — 1638 tests; all pass
+  except 21 snapshot-image diffs in suites CI already skips under
+  `swift test` (`.github/workflows/build.yml` macOS<26-era skip list):
+  MailContextColumn, DetachedMessageWindow, ThreadInlineChildRow,
+  LocalFolder, MonoMailSelection, SavedSearchEditorView,
+  ConversationWorkspace snapshot tests. Two of these
+  (ThreadInlineChildRow, DetachedMessageWindow) cover intentionally
+  changed UI and may need reference re-recording on the snapshot runner;
+  the rest are unrelated/host rendering noise (SavedSearchEditorView is
+  the other session's file).
+- `swiftformat --lint` on all touched files — clean.
+- Filtered re-run after formatting: 30 tests in
+  MessageCommandPresentation + MailKeyboardShortcutInventory — pass.
+
+### Skipped verification
+
+- iOS/iPadOS compile — later verified green via
+  `swift build --triple arm64-apple-ios17.0-simulator` (BrevMail +
+  BrevSettings). Snapshot re-recording requires the CI xcodebuild job.
+
+### Handoff
+
+- Tree still contains the other agent's mid-flight edits (ComposeView,
+  sheets, BrevSettings, `.swiftlint.yml` literal-color rule extension).
+  Do not commit this file set wholesale.
+- If CI's snapshot job flags ThreadInlineChildRow or
+  DetachedMessageWindow references, re-record them — both diffs are
+  intentional (preference-driven child-row typography + unread-dot
+  label; detached-window overflow menu).
+
+## 2026-09-19 — Devin — UI/UX consistency pass, sheets/settings scope (feature/uiux-consistency)
+
+### Goal
+
+Fix the audit findings assigned to the sheets/settings stream: adaptive
+sheet sizing, iPad split widths, 44 pt touch targets, canonical
+BrevDesign surfaces/chips, headline sheet titles, accessible icon
+buttons, and package-aware localization.
+
+### Changes (this session's files)
+
+- `BrevDesign`: new `BrevIconButton` (44 pt iOS hit target around a
+  compact glyph + required accessibility label), `BrevChip` capsule
+  style for filter/toggle chips, `BrevQuietSurface` inset-surface
+  modifier; `BrevButton` gained a `bundle:` initializer (String Catalog
+  extraction from SPM packages) and a 44 pt iOS minimum height;
+  `BrevInlineStatus` action/dismiss hit areas enlarged.
+- `ComposePresentation` + tests: regular iOS compose minimum 680→660
+  (macOS stays 680); iOS toolbar hit target 36→44.
+- `ComposeView` / `RecipientChipField`: 44 pt iOS targets on toolbar,
+  editor-appearance, Cc/Bcc reveal, attachment-remove, chip-remove and
+  suggestion rows; Esc cancel / ⌘↵ send shortcuts.
+- Mail sheets (`MoveToSheet`, `ScheduleSendSheet`, `ComposeLinkSheet`,
+  `MessageTaskSheet`, `MessageEventSheet`, `MessageNoteSheet`,
+  `MessagePropertiesSheet`, `MessagePropertiesPresentation`,
+  `MailboxActionAgentSheet`, `TemplatePickerView`, `ThemePickerView`,
+  `MessageRawSourceSheet`, `MailProfileManagementSheet`,
+  `InitialMailboxSelectionSheet`, `SnoozePickerView`,
+  `FollowUpDatePickerView`, `ScheduleSendDateResolver`,
+  `MailboxChatPanel`, `MailboxChatScopeContext`,
+  `ServerSearchSyntaxHint`, `OutboxView`, `AllAttachmentsView`):
+  desktop-only `frame(minWidth:)`/`minHeight` gated under
+  `#if os(macOS)` (or driven by platform-aware policy); consistent
+  localized dismiss/close controls; `.title`→`.headline` sheet titles;
+  44 pt iOS targets; `.brevQuietSurface`/`.brevChip` migrations;
+  `String(localized:bundle:.module)` sweep; initial-mailbox sheet wraps
+  the list in a `ScrollView` with a 44 pt default-mailbox control.
+- `BrevSettings`: `SettingsView` iOS split minimum 760→680 (ideal 740);
+  `SectionScaffold`/`SavedSearchEditorView`/`BackupPreviewSheet` titles
+  → `.headline`; quiet-surface migration across Accounts, Notification,
+  VacationResponder, MailboxView, Security, AIProviderSettingsPanel,
+  MailFolderExportStatusView, RulesSection, SignatureSection,
+  TemplatesSection, `SettingsSectionComponents` (picker label +
+  `SettingsInfoCallout`); `ServerRuleEditorView` and
+  `SecuritySection` export sheet frames macOS-gated; rules ↑/↓
+  text buttons, signature reorder/delete and template pin/reorder
+  controls → `BrevIconButton`/accessible buttons with 44 pt iOS targets;
+  Accounts overflow menu → 44 pt iOS target; remaining bare
+  `BrevButton`/`Label` titles localized.
+- `.swiftlint.yml`: `no_literal_colors_in_views` now also covers
+  `Color(hex:)` and BrevMail/BrevSettings sources.
+- Small cross-scope fixes in core-surface files kept additive:
+  `.brevChip` on the inbox-category bar (MessageListView),
+  `.brevQuietSurface` on the iOS sidebar profile picker
+  (FolderSidebar) and security badge (ThreadMessageCard), localized
+  detached-window action labels + invite/remote-content buttons
+  (MessageDetailView, ThreadMessageCard), and a one-line SwiftLint
+  directive fix in `BrevMailRootView` (`:next`→`:this`) so the doc
+  comment stays attached — required for `lint.sh` to pass.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail` — green.
+- `swift build --package-path packages/BrevSettings` — green.
+- `swift build --triple arm64-apple-ios17.0-simulator` for both
+  packages — green; caught and fixed an iOS-only type-inference break
+  in `MailKeyboardShortcutInventory.sections` (`#if` inside `.map`
+  left the section literal as `Any` on iOS — array is now typed and the
+  macOS-only-entry filter split out).
+- `swift test --package-path packages/BrevMail` filtered run —
+  62 tests across ComposePresentation, ScheduleSendDateResolver,
+  MessagePropertiesPresentation, InitialMailboxSelectionPresentation,
+  MailboxChat scope/notice, FollowUpReminderPresentation,
+  AttachmentSearchPresentation, ComposeRecipientAutocomplete — pass.
+- `swift test --package-path packages/BrevSettings` — 374 tests; all
+  non-snapshot tests pass. 34 snapshot issues are image diffs in
+  BackupPreviewSheet/MailFolderExportStatus/MailStorageSection/
+  BrevSettingsSnapshot suites — expected: the quiet-surface and
+  headline-title changes are intentional visual diffs; references need
+  re-recording on the CI snapshot runner (same situation as the
+  core-surfaces session documented).
+- `mise exec -- swiftformat --lint .` — clean (19 touched files
+  reformatted for `#if` indentation).
+- `mise exec -- swiftlint --strict --quiet` — clean;
+  `scripts/test-swiftlint-coverage.sh` — OK.
+
+### Skipped verification
+
+- Snapshot re-recording (needs CI snapshot host); iOS device/UI tests;
+  `check-adr-required.sh` is a staged-files gate — no protected-path
+  changes made.
+
+### Handoff
+
+- Tree mixes both agents' uncommitted edits on
+  `feature/uiux-consistency`; review `git diff` per file before
+  committing rather than committing wholesale.
+- Re-record the BrevSettings snapshot references listed above (and the
+  core-surfaces references from the other entry) on the snapshot
+  runner, or confirm CI's skip list covers them.

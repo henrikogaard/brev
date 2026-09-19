@@ -33,12 +33,12 @@ enum ScheduleSendDateResolver {
 
         var title: String {
             switch self {
-            case .sendNow: "Send now"
-            case .inOneHour: "In 1 hour"
-            case .tonightEight: "Tonight 8:00 PM"
-            case .tomorrowNine: "Tomorrow 9:00 AM"
-            case .nextMonday: "Next Monday 9:00 AM"
-            case .custom: "Custom…"
+            case .sendNow: String(localized: "Send now", bundle: .module)
+            case .inOneHour: String(localized: "In 1 hour", bundle: .module)
+            case .tonightEight: String(localized: "Tonight 8:00 PM", bundle: .module)
+            case .tomorrowNine: String(localized: "Tomorrow 9:00 AM", bundle: .module)
+            case .nextMonday: String(localized: "Next Monday 9:00 AM", bundle: .module)
+            case .custom: String(localized: "Custom…", bundle: .module)
             }
         }
 

@@ -46,7 +46,9 @@ struct MessageTaskSheet: View {
             BrevDivider()
             footer
         }
+        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 440, idealHeight: 520)
+        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -59,14 +61,14 @@ struct MessageTaskSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer()
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Close",
+                bundle: .module,
+                iconSize: 18
+            ) {
                 onClose()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(.system(size: 18))
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -146,27 +148,29 @@ struct MessageTaskSheet: View {
                 .buttonStyle(.bordered)
             }
             Spacer()
-            BrevButton("Cancel", style: .secondary) {
+            BrevButton("Cancel", style: .secondary, bundle: .module) {
                 onClose()
             }
-            BrevButton(createButtonTitle, style: .primary) {
+            .keyboardShortcut(.cancelAction)
+            BrevButton(createButtonTitle, style: .primary, bundle: .module) {
                 Task { await createTask() }
             }
+            .keyboardShortcut(.defaultAction)
             .disabled(isCreating || !draft.isCreateEnabled || draft.target != .appleReminders)
         }
         .padding(BrevSpacing.md)
     }
 
-    private var createButtonTitle: String {
+    private var createButtonTitle: LocalizedStringKey {
         isCreating ? "Creating..." : "Create Task"
     }
 
     private func fieldGroup<Content: View>(
-        _ title: String,
+        _ title: LocalizedStringKey,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-            Text(title)
+            Text(title, bundle: .module)
                 .brevFont(.caption)
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.textSecondary.color)
@@ -191,7 +195,9 @@ struct MessageTaskSheet: View {
 enum MessageTaskSheetPresentation {
     static func errorMessage(for error: any Error) -> String {
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        return message.isEmpty ? "Couldn't create this task." : "Couldn't create this task: \(message)"
+        return message.isEmpty
+            ? String(localized: "Couldn't create this task.", bundle: .module)
+            : String(localized: "Couldn't create this task: \(message)", bundle: .module)
     }
 }
 
@@ -208,25 +214,31 @@ struct MessageTaskUnavailableSheet: View {
                     .brevFont(.headline)
                     .foregroundStyle(theme.textPrimary.color)
                 Spacer()
-                Button {
+                BrevIconButton(
+                    systemName: "xmark.circle.fill",
+                    accessibilityLabel: "Close",
+                    bundle: .module,
+                    iconSize: 18
+                ) {
                     onClose()
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(theme.textTertiary.color)
-                        .font(.system(size: 18))
                 }
-                .buttonStyle(.plain)
             }
             BrevInlineStatus(
-                message: "Open the message again before creating a task.",
+                message: String(
+                    localized: "Open the message again before creating a task.",
+                    bundle: .module
+                ),
                 tone: .info
             )
-            BrevButton("Close", style: .secondary) {
+            BrevButton("Close", style: .secondary, bundle: .module) {
                 onClose()
             }
+            .keyboardShortcut(.cancelAction)
         }
         .padding(BrevSpacing.md)
-        .frame(minWidth: 340, idealWidth: 400)
-        .background(theme.bgPrimary.color)
+        #if os(macOS)
+            .frame(minWidth: 340, idealWidth: 400)
+        #endif
+            .background(theme.bgPrimary.color)
     }
 }

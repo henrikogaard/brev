@@ -71,6 +71,15 @@ All notable changes to Brev are documented here.
   evaluation).
 - Automatic mail fetching now backs off after consecutive failures instead
   of polling a stuck account at full rate.
+- Cross-platform consistency: the iOS reader now exposes the same
+  capability-gated action menu as the message list (Reply All, Mark
+  Read/Unread, Move To, Snooze, Done, Block Sender, Print, Export PDF),
+  thread cards offer the same menu per message, and iPad can open a
+  detached reader window from list context menus. Sheets no longer carry
+  macOS minimum sizes on iOS, icon buttons meet the 44 pt touch target,
+  iPad hardware keyboards get ⌘Z mail undo, action labels share one
+  canonical wording, and shared `BrevIconButton`/quiet-surface/chip
+  components replace hand-rolled copies.
 
 ### Fixed
 

@@ -75,12 +75,7 @@ public struct VacationResponderSection: View {
             vacationCard(account: account, backend: backend)
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private func accountHeader(_ account: BrevAccount) -> some View {
@@ -282,12 +277,7 @@ private struct VacationResponderPane: View {
                 .frame(minHeight: 120)
                 .scrollContentBackground(.hidden)
                 .padding(BrevSpacing.xs)
-                .background(theme.bgSecondary.color.opacity(0.35))
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.sm)
-                        .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+                .brevQuietSurface(cornerRadius: BrevRadius.sm)
             if let validationError = draft.firstValidationError {
                 Text(validationError)
                     .brevFont(.caption)

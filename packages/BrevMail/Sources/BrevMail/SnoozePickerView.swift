@@ -34,10 +34,10 @@ struct SnoozePickerView: View {
 
         var title: String {
             switch self {
-            case .laterToday: return "Later Today (+3h)"
-            case .tomorrowMorning: return "Tomorrow Morning (9am)"
-            case .nextWeek: return "Next Week"
-            case .custom: return "Custom Date & Time"
+            case .laterToday: return String(localized: "Later today", bundle: .module)
+            case .tomorrowMorning: return String(localized: "Tomorrow morning", bundle: .module)
+            case .nextWeek: return String(localized: "Next week", bundle: .module)
+            case .custom: return String(localized: "Custom date & time", bundle: .module)
             }
         }
 
@@ -77,6 +77,11 @@ struct SnoozePickerView: View {
                 Button(String(localized: "Cancel", bundle: .module), action: onCancel)
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textSecondary.color)
+                    .keyboardShortcut(.cancelAction)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                #endif
             }
             .padding(BrevSpacing.md)
 
@@ -113,8 +118,20 @@ struct SnoozePickerView: View {
                             }
                             .padding(.horizontal, BrevSpacing.md)
                             .padding(.vertical, BrevSpacing.sm)
+                            #if os(iOS)
+                                .frame(minHeight: 44)
+                            #endif
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityValue(
+                            isCustomExpanded
+                                ? String(localized: "Expanded", bundle: .module)
+                                : String(localized: "Collapsed", bundle: .module)
+                        )
+                        .accessibilityHint(
+                            String(localized: "Shows a date picker for a custom wake time", bundle: .module)
+                        )
 
                         if isCustomExpanded {
                             DatePicker(
@@ -126,9 +143,10 @@ struct SnoozePickerView: View {
                             .datePickerStyle(.compact)
                             .padding(BrevSpacing.md)
 
-                            BrevButton("Snooze Until Selected Time", style: .primary) {
+                            BrevButton("Snooze Until Selected Time", style: .primary, bundle: .module) {
                                 onConfirm(customDate)
                             }
+                            .keyboardShortcut(.defaultAction)
                             .padding(.horizontal, BrevSpacing.md)
                             .padding(.bottom, BrevSpacing.md)
                         }
@@ -152,8 +170,16 @@ struct SnoozePickerView: View {
                             }
                             .padding(.horizontal, BrevSpacing.md)
                             .padding(.vertical, BrevSpacing.sm)
+                            #if os(iOS)
+                                .frame(minHeight: 44)
+                            #endif
+                                .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityValue(
+                            option.wakeDate()
+                                .map { $0.formatted(.dateTime.weekday(.wide).hour().minute()) } ?? ""
+                        )
                         BrevDivider()
                     }
                 }

@@ -29,11 +29,11 @@ enum MailboxChatDisabledReason: Equatable, Sendable {
     var title: String {
         switch self {
         case .missingBackend:
-            "Mailbox chat needs an AI provider for this account."
+            String(localized: "Mailbox chat needs an AI provider for this account.", bundle: .module)
         case .notEnabled:
-            "AI Writer is turned off."
+            String(localized: "AI Writer is turned off.", bundle: .module)
         case .consentRequired:
-            "AI Writer needs consent before sending message text."
+            String(localized: "AI Writer needs consent before sending message text.", bundle: .module)
         }
     }
 }
@@ -57,7 +57,10 @@ enum MailboxChatEmptyTranscriptPolicy {
     /// on. Restating the invitation, as it did, put one sentence on screen
     /// twice — and the disabled reason, which it said before that, belongs in
     /// the composer callout beside the control it disables.
-    static let message = "Answers use only the messages cached on this Mac."
+    static let message = String(
+        localized: "Answers use only the messages cached on this Mac.",
+        bundle: .module
+    )
 }
 
 enum MailboxChatSendOutcome: Equatable, Sendable {
@@ -93,8 +96,8 @@ struct MailboxChatNotice: Equatable, Sendable {
 
     var actionTitle: String {
         switch action {
-        case .openSettings: "Set Up Provider…"
-        case .showConsent: "Enable AI Writer…"
+        case .openSettings: String(localized: "Set Up Provider…", bundle: .module)
+        case .showConsent: String(localized: "Enable AI Writer…", bundle: .module)
         }
     }
 
@@ -143,7 +146,9 @@ enum MailboxChatComposerPolicy {
         subject: String,
         disabledReason: MailboxChatDisabledReason?
     ) -> String {
-        disabledReason == nil ? "Ask about \(subject)…" : "Unavailable"
+        disabledReason == nil
+            ? String(localized: "Ask about \(subject)…", bundle: .module)
+            : String(localized: "Unavailable", bundle: .module)
     }
 }
 
@@ -279,7 +284,7 @@ struct MailboxChatPanel: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             MailContextSectionHeader(
-                title: "Mailbox chat",
+                title: String(localized: "Mailbox chat", bundle: .module),
                 trailing: aiBackend?.transparencyLabel
             )
 
@@ -321,31 +326,13 @@ struct MailboxChatPanel: View {
     private func scopeChip(_ chip: MailboxChatScopeChip) -> some View {
         Text(chip.title)
             .brevFont(.caption)
-            .foregroundStyle(
-                chip.isSelected
-                    ? theme.accent.color
-                    : (chip.isEnabled ? theme.textPrimary.color : theme.textTertiary.color)
-            )
             .lineLimit(1)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xs)
-            .background(
-                Capsule()
-                    .fill(
-                        chip.isSelected
-                            ? theme.accent.color.opacity(0.12)
-                            : (chip.isEnabled ? theme.bgSecondary.color : theme.bgPrimary.color)
-                    )
-            )
-            .overlay {
-                Capsule()
-                    .stroke(
-                        chip.isSelected
-                            ? theme.accent.color.opacity(0.4)
-                            : (chip.isEnabled ? theme.border.color : theme.border.color.opacity(0.6)),
-                        lineWidth: 0.5
-                    )
-            }
+            .brevChip(selected: chip.isSelected)
+        #if os(iOS)
+            .frame(minHeight: 44)
+            .contentShape(Rectangle())
+        #endif
+            .opacity(chip.isEnabled ? 1 : 0.45)
             .accessibilityAddTraits(chip.isSelected ? .isSelected : [])
             .accessibilityLabel(chip.accessibilityLabel)
     }
@@ -388,6 +375,9 @@ struct MailboxChatPanel: View {
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
                 } else {
                     Button {
                         Task {
@@ -396,7 +386,11 @@ struct MailboxChatPanel: View {
                     } label: {
                         Image(systemName: MailboxChatComposerPolicy.sendSymbolName)
                             .fontWeight(.semibold)
+                        #if os(iOS)
+                            .frame(width: 44, height: 44)
+                        #else
                             .frame(width: 22, height: 22)
+                        #endif
                     }
                     .buttonStyle(.borderedProminent)
                     .clipShape(Circle())
@@ -486,7 +480,11 @@ struct MailboxChatPanel: View {
             .buttonStyle(.borderless)
             .brevFont(.caption)
             .foregroundStyle(tint)
-            .disabled(notice.action == .openSettings && onOpenSettings == nil)
+            #if os(iOS)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+            #endif
+                .disabled(notice.action == .openSettings && onOpenSettings == nil)
         }
         .padding(BrevSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -507,7 +505,7 @@ struct MailboxChatPanel: View {
         case .user(let text):
             transcriptBubble(
                 text: text,
-                title: "You",
+                title: String(localized: "You", bundle: .module),
                 fill: theme.accent.color.opacity(0.12),
                 border: theme.accent.color.opacity(0.3)
             )
@@ -802,20 +800,21 @@ struct MailboxChatPanel: View {
         case .sender(let email):
             return email
         case .folder:
-            return focusedFolder?.name ?? "Current folder"
+            return focusedFolder?.name ?? String(localized: "Current folder", bundle: .module)
         case .account:
-            return actionSourceScope.accountName ?? "Current account"
+            return actionSourceScope.accountName
+                ?? String(localized: "Current account", bundle: .module)
         }
     }
 
     private var emptyTranscriptTitle: String {
         switch effectiveScope ?? scope {
         case .sender:
-            "Ask about this sender"
+            String(localized: "Ask about this sender", bundle: .module)
         case .folder:
-            "Ask about this folder"
+            String(localized: "Ask about this folder", bundle: .module)
         case .account:
-            "Ask across all folders"
+            String(localized: "Ask across all folders", bundle: .module)
         }
     }
 
@@ -828,20 +827,20 @@ struct MailboxChatPanel: View {
         case .sender(let email):
             return email
         case .folder:
-            return "Current folder"
+            return String(localized: "Current folder", bundle: .module)
         case .account:
-            return "All folders"
+            return String(localized: "All folders", bundle: .module)
         }
     }
 
     private var scopePromptSubject: String {
         switch effectiveScope ?? scope {
         case .sender:
-            return "this sender"
+            return String(localized: "this sender", bundle: .module)
         case .folder:
-            return "this folder"
+            return String(localized: "this folder", bundle: .module)
         case .account:
-            return "all folders"
+            return String(localized: "all folders", bundle: .module)
         }
     }
 
@@ -923,6 +922,9 @@ private struct MailboxChatAIConsentAlert: ViewModifier {
 
     private static let message = [
         AIWriterDisclosure.defaultProvider.consentMessage,
-        "Mailbox chat uses the same AI Writer consent and can be turned off any time in Settings."
+        String(
+            localized: "Mailbox chat uses the same AI Writer consent and can be turned off any time in Settings.",
+            bundle: .module
+        )
     ].joined(separator: " ")
 }

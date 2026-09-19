@@ -39,7 +39,9 @@ struct MailboxActionAgentSheet: View {
                 .padding(BrevSpacing.md)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 360, idealWidth: 460, minHeight: 360, idealHeight: 480)
+        #endif
         .background(theme.bgPrimary.color)
     }
 
@@ -51,14 +53,14 @@ struct MailboxActionAgentSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer()
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Close",
+                bundle: .module,
+                iconSize: 18
+            ) {
                 onClose?()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(.system(size: 18))
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -84,7 +86,10 @@ struct MailboxActionAgentSheet: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .tint(theme.accent.color)
-                .disabled(!canReview)
+                #if os(iOS)
+                    .frame(minHeight: 44)
+                #endif
+                    .disabled(!canReview)
             }
         }
     }
@@ -95,13 +100,19 @@ struct MailboxActionAgentSheet: View {
         case .editing:
             EmptyView()
         case .resolving:
-            statusRow(symbol: "magnifyingglass", message: "Checking cached mail...")
+            statusRow(
+                symbol: "magnifyingglass",
+                message: String(localized: "Checking cached mail...", bundle: .module)
+            )
         case .clarification(let message):
             statusRow(symbol: "questionmark.circle", message: message)
         case .review(let plan):
             reviewContent(for: plan)
         case .executing:
-            statusRow(symbol: "clock", message: "Applying mailbox action...")
+            statusRow(
+                symbol: "clock",
+                message: String(localized: "Applying mailbox action...", bundle: .module)
+            )
         case .completed(let message):
             statusRow(symbol: "checkmark.circle", message: message)
         case .failed(let message):
@@ -145,6 +156,10 @@ struct MailboxActionAgentSheet: View {
                     phase = .editing
                     confirmationText = ""
                 }
+                #if os(iOS)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                #endif
                 .disabled(isBusy)
                 Spacer()
                 if let confirmButtonTitle = presentation.confirmButtonTitle {
@@ -153,10 +168,13 @@ struct MailboxActionAgentSheet: View {
                     }
                     .buttonStyle(.borderedProminent)
                     .tint(presentation.isDestructive ? theme.danger.color : theme.accent.color)
-                    .disabled(!MailboxActionAgentReviewInputPolicy.canConfirm(
-                        confirmationText,
-                        presentation: presentation
-                    ))
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
+                        .disabled(!MailboxActionAgentReviewInputPolicy.canConfirm(
+                            confirmationText,
+                            presentation: presentation
+                        ))
                 }
             }
         }

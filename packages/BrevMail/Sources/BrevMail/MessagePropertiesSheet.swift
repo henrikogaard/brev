@@ -44,7 +44,9 @@ struct MessagePropertiesSheet: View {
                 .padding(BrevSpacing.md)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 360, idealWidth: 440, minHeight: 320, idealHeight: 420)
+        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -57,14 +59,14 @@ struct MessagePropertiesSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer()
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Close",
+                bundle: .module,
+                iconSize: 18
+            ) {
                 onClose()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(.system(size: 18))
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)

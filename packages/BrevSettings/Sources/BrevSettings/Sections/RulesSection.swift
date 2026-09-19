@@ -410,12 +410,7 @@ private struct ServerRuleRow: View {
             }
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private var conditionSummary: String {
@@ -726,18 +721,27 @@ private struct LocalRuleRow: View {
 
             Spacer(minLength: BrevSpacing.sm)
 
-            BrevButton("↑", style: .tertiary) { onMoveUp() }.disabled(isFirst)
-            BrevButton("↓", style: .tertiary) { onMoveDown() }.disabled(isLast)
+            BrevIconButton(
+                systemName: "chevron.up",
+                accessibilityLabel: "Move Rule Up",
+                bundle: .module
+            ) {
+                onMoveUp()
+            }
+            .disabled(isFirst)
+            BrevIconButton(
+                systemName: "chevron.down",
+                accessibilityLabel: "Move Rule Down",
+                bundle: .module
+            ) {
+                onMoveDown()
+            }
+            .disabled(isLast)
             BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
             BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
         }
         .padding(BrevSpacing.sm)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private var conditionSummary: String {

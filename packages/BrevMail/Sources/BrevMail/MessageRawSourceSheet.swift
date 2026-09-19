@@ -86,7 +86,9 @@ struct MessageRawSourceSheet: View {
             BrevDivider()
             content
         }
+        #if os(macOS)
         .frame(minWidth: 420, idealWidth: 560, minHeight: 360, idealHeight: 520)
+        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.large])
         .task {

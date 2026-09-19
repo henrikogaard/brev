@@ -33,7 +33,7 @@ struct BackupPreviewSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             Text("Restore Brev backup", bundle: .module)
-                .brevFont(.title)
+                .brevFont(.headline)
             Text(preview.url.lastPathComponent)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
@@ -89,6 +89,7 @@ struct BackupPreviewSheet: View {
             HStack {
                 Spacer()
                 Button(String(localized: "Cancel", bundle: .module), role: .cancel) { onCancel() }
+                    .keyboardShortcut(.cancelAction)
                 Button(String(localized: "Restore", bundle: .module)) { onRestore(mode, includeMail) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)

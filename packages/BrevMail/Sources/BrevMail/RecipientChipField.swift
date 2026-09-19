@@ -119,31 +119,35 @@ struct RecipientChipField: View {
     @ViewBuilder
     private func chip(for address: String) -> some View {
         let isValid = RecipientAddressValidator.isLikelyEmailAddress(address)
-        HStack(spacing: 2) {
+        HStack(spacing: BrevSpacing.xxs) {
             Text(address)
                 .brevFont(.footnote)
                 .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
                 .lineLimit(1)
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Remove \(address)",
+                bundle: .module,
+                iconSize: 12
+            ) {
                 recipients.removeAll { $0 == address }
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .font(.system(size: 12))
-                    .foregroundStyle(theme.textTertiary.color)
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.sm)
-        .padding(.vertical, 3)
+        .padding(.vertical, BrevSpacing.xxs)
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .stroke(theme.danger.color.opacity(isValid ? 0 : 0.7), lineWidth: 1)
         )
-        .help(isValid ? address : "\(address) doesn't look like a valid email address")
+        .help(
+            isValid
+                ? address
+                : String(localized: "\(address) doesn't look like a valid email address", bundle: .module)
+        )
     }
 
     private var recipientPrompt: Text? {
@@ -179,18 +183,22 @@ struct RecipientChipField: View {
                     }
                     .padding(.horizontal, BrevSpacing.sm)
                     .padding(.vertical, BrevSpacing.xs)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .help(String(localized: "Add \(suggestion.email)", bundle: .module))
             }
         }
         .background(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .fill(theme.bgSecondary.color)
         )
         .overlay(
-            RoundedRectangle(cornerRadius: 6)
+            RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .stroke(theme.border.color.opacity(0.7), lineWidth: 1)
         )
         .frame(maxWidth: 360, alignment: .leading)

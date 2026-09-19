@@ -175,12 +175,7 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .padding(.horizontal, BrevSpacing.sm)
                 .padding(.vertical, BrevSpacing.xs)
-                .background(theme.bgSecondary.color.opacity(0.55))
-                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.sm)
-                        .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-                }
+                .brevQuietSurface(cornerRadius: BrevRadius.sm)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -231,12 +226,7 @@ struct SettingsInfoCallout: View {
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(BrevSpacing.sm)
-        .background(theme.bgSecondary.color.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.sm)
-                .stroke(theme.border.color.opacity(0.35), lineWidth: 1)
-        }
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
 }
 

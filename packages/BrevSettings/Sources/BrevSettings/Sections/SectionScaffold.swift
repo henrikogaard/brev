@@ -42,7 +42,7 @@ struct SectionScaffold<Content: View>: View {
                 VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                     VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                         Text(title)
-                            .brevFont(.title)
+                            .brevFont(.headline)
                             .foregroundStyle(theme.textPrimary.color)
                         if let subtitle {
                             Text(subtitle)

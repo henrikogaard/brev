@@ -294,10 +294,27 @@ private struct TemplateRow: View {
 
     var body: some View {
         HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: template.isPinned ? "pin.fill" : "pin")
-                .foregroundStyle(template.isPinned ? theme.accent.color : theme.textTertiary.color)
-                .font(.system(size: 12))
-                .onTapGesture { onPin() }
+            Button(action: onPin) {
+                Image(systemName: template.isPinned ? "pin.fill" : "pin")
+                    .foregroundStyle(template.isPinned ? theme.accent.color : theme.textTertiary.color)
+                    .font(.system(size: 12))
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .contentShape(Rectangle())
+                #endif
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                template.isPinned
+                    ? String(localized: "Unpin template", bundle: .module)
+                    : String(localized: "Pin template", bundle: .module)
+            )
+            .accessibilityAddTraits(template.isPinned ? .isSelected : [])
+            .help(
+                template.isPinned
+                    ? String(localized: "Unpin template", bundle: .module)
+                    : String(localized: "Pin template", bundle: .module)
+            )
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(template.name)
@@ -319,32 +336,29 @@ private struct TemplateRow: View {
 
             Spacer()
 
-            Button {
+            BrevIconButton(
+                systemName: "chevron.up",
+                accessibilityLabel: "Move Template Up",
+                bundle: .module
+            ) {
                 onMoveUp()
-            } label: {
-                Label(String(localized: "Move Template Up", bundle: .module), systemImage: "chevron.up")
-                    .labelStyle(.iconOnly)
             }
-            .buttonStyle(.borderless)
             .disabled(!canMoveUp)
-            .help(String(localized: "Move template up", bundle: .module))
 
-            Button {
+            BrevIconButton(
+                systemName: "chevron.down",
+                accessibilityLabel: "Move Template Down",
+                bundle: .module
+            ) {
                 onMoveDown()
-            } label: {
-                Label(String(localized: "Move Template Down", bundle: .module), systemImage: "chevron.down")
-                    .labelStyle(.iconOnly)
             }
-            .buttonStyle(.borderless)
             .disabled(!canMoveDown)
-            .help(String(localized: "Move template down", bundle: .module))
 
             BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
             BrevButton(String(localized: "Delete", bundle: .module), style: .tertiary) { onDelete() }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .background(theme.bgSecondary.color)
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
 }

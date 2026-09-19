@@ -99,6 +99,10 @@ struct ComposeLinkSheet: View {
                     }
                     .buttonStyle(.borderless)
                     .foregroundStyle(theme.danger.color)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
 
                 Spacer()
@@ -118,15 +122,17 @@ struct ComposeLinkSheet: View {
             }
         }
         .padding(BrevSpacing.xl)
-        .frame(minWidth: 380)
+        #if os(macOS)
+            .frame(minWidth: 380)
+        #endif
     }
 
     private func fieldRow<Content: View>(
-        label: String,
+        label: LocalizedStringKey,
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-            Text(label)
+            Text(label, bundle: .module)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
             content()
@@ -146,11 +152,14 @@ struct ComposeLinkSheet: View {
     private func attemptConfirm() {
         let raw = urlString.trimmingCharacters(in: .whitespaces)
         guard !raw.isEmpty else {
-            validationError = "Please enter a URL."
+            validationError = String(localized: "Please enter a URL.", bundle: .module)
             return
         }
         guard let url = ComposeLinkPolicy.normalizedURL(from: raw) else {
-            validationError = "Enter a valid URL (https://, http://) or email address."
+            validationError = String(
+                localized: "Enter a valid URL (https://, http://) or email address.",
+                bundle: .module
+            )
             return
         }
         validationError = nil

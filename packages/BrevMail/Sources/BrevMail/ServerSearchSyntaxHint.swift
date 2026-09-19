@@ -58,7 +58,11 @@ struct ServerSearchSyntaxHint: View {
             } label: {
                 Image(systemName: "info.circle")
                     .foregroundStyle(theme.textSecondary.color)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                #else
                     .frame(width: 24, height: 24)
+                #endif
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)

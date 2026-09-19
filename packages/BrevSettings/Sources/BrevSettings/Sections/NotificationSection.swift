@@ -273,12 +273,7 @@ struct NotificationSection: View {
             )
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private var quietHoursGroup: some View {
@@ -363,12 +358,7 @@ struct NotificationSection: View {
             }
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private var statusPill: some View {

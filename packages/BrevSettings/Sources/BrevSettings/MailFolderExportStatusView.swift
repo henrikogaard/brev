@@ -72,11 +72,7 @@ public struct MailFolderExportStatusView: View {
                 }
             }
             .controlSize(.small).padding(BrevSpacing.sm)
-            .background(theme.bgSecondary.color)
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-            .overlay {
-                RoundedRectangle(cornerRadius: BrevRadius.sm).stroke(theme.border.color.opacity(0.35), lineWidth: 1)
-            }
+            .brevQuietSurface(cornerRadius: BrevRadius.sm)
         }
     }
 

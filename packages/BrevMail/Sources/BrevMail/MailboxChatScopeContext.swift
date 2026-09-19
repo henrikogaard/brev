@@ -61,11 +61,11 @@ struct MailboxChatScopeContext: Equatable, Sendable {
     func chipTitle(for kind: MailboxChatScopeChipKind) -> String {
         switch kind {
         case .sender:
-            senderEmail ?? "Sender"
+            senderEmail ?? String(localized: "Sender", bundle: .module)
         case .folder:
-            folder?.name ?? "Folder"
+            folder?.name ?? String(localized: "Folder", bundle: .module)
         case .account:
-            "All folders"
+            String(localized: "All folders", bundle: .module)
         }
     }
 
@@ -75,9 +75,9 @@ struct MailboxChatScopeContext: Equatable, Sendable {
             return chipTitle(for: kind)
         case .account:
             if let accountLabel {
-                return "All folders in \(accountLabel)"
+                return String(localized: "All folders in \(accountLabel)", bundle: .module)
             }
-            return "All folders"
+            return String(localized: "All folders", bundle: .module)
         }
     }
 }
@@ -105,12 +105,21 @@ enum MailboxChatScopeSearchPolicy {
     ) -> String {
         switch scope {
         case .sender(let email):
-            return "I couldn't find cached messages from \(email) that answer that yet."
+            return String(
+                localized: "I couldn't find cached messages from \(email) that answer that yet.",
+                bundle: .module
+            )
         case .folder:
-            let name = folderName ?? "this folder"
-            return "I couldn't find cached messages in \(name) that answer that yet."
+            let name = folderName ?? String(localized: "this folder", bundle: .module)
+            return String(
+                localized: "I couldn't find cached messages in \(name) that answer that yet.",
+                bundle: .module
+            )
         case .account:
-            return "I couldn't find cached messages across this account's folders that answer that yet."
+            return String(
+                localized: "I couldn't find cached messages across this account's folders that answer that yet.",
+                bundle: .module
+            )
         }
     }
 
@@ -123,9 +132,10 @@ enum MailboxChatScopeSearchPolicy {
         case .sender(let email):
             email
         case .folder:
-            folderName ?? "current folder"
+            folderName ?? String(localized: "current folder", bundle: .module)
         case .account:
-            accountLabel.map { "all folders in \($0)" } ?? "all folders in the current account"
+            accountLabel.map { String(localized: "all folders in \($0)", bundle: .module) }
+                ?? String(localized: "all folders in the current account", bundle: .module)
         }
     }
 }

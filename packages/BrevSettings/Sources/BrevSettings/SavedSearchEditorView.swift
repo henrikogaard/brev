@@ -39,7 +39,7 @@ public struct SavedSearchEditorView: View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             Text(editingID == nil ? String(localized: "New Smart View", bundle: .module)
                 : String(localized: "Edit Smart View", bundle: .module))
-                .brevFont(.title)
+                .brevFont(.headline)
             HStack(spacing: BrevSpacing.md) {
                 Text("Name", bundle: .module)
                 TextField(String(localized: "Smart View name", bundle: .module), text: $presentation.name)

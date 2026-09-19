@@ -744,6 +744,7 @@ public struct ComposeView: View {
                 isDisabled: isBusy,
                 action: close
             )
+            .keyboardShortcut(.cancelAction)
             #endif
 
             if toolbarMetrics.leadingInset > 0 {
@@ -828,6 +829,7 @@ public struct ComposeView: View {
                 isDisabled: isBusy,
                 action: close
             )
+            .keyboardShortcut(.cancelAction)
 
             Spacer(minLength: BrevSpacing.sm)
 
@@ -1039,15 +1041,15 @@ public struct ComposeView: View {
                 height: toolbarMetrics.buttonSize
             )
             .background(
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
                     .fill(isSelected ? theme.selection.color : Color.clear)
             )
-            .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
+            .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
     }
 
     /// Compact light/dark switch for the body editor.
     private var editorAppearanceToggle: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: BrevSpacing.xxs) {
             ForEach(ComposeBodyAppearance.allCases, id: \.self) { appearance in
                 Button {
                     bodyAppearanceRaw = appearance.rawValue
@@ -1060,14 +1062,23 @@ public struct ComposeView: View {
                         )
                         .frame(width: 22, height: 22)
                         .background(
-                            RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
                                 .fill(bodyAppearanceSelection == appearance ? theme.selection.color.opacity(0.55) : Color.clear)
                         )
-                        .contentShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                        .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
+                    #if os(iOS)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .disabled(isInteractionBlocked)
                 .accessibilityLabel(appearance.label)
+                .accessibilityValue(
+                    bodyAppearanceSelection == appearance
+                        ? String(localized: "Selected", bundle: .module)
+                        : ""
+                )
                 .help(appearance.label)
             }
         }
@@ -1104,6 +1115,8 @@ public struct ComposeView: View {
         .buttonStyle(.plain)
         .disabled(isDisabled)
         .opacity(isDisabled && !isSending ? 0.45 : 1)
+        // Cmd+Return sends, matching Apple Mail's compose accelerator.
+        .keyboardShortcut(.return, modifiers: .command)
         .accessibilityLabel(
             pendingUndoSendTask != nil
                 ? String(localized: "Cancel Send", bundle: .module)
@@ -1271,7 +1284,7 @@ public struct ComposeView: View {
             isBccVisible: isBccFieldVisible
         )
         if !fields.isEmpty {
-            HStack(spacing: 4) {
+            HStack(spacing: BrevSpacing.xs) {
                 ForEach(fields) { field in
                     Button {
                         revealCarbonCopyField(field)
@@ -1280,7 +1293,11 @@ public struct ComposeView: View {
                             .brevFont(.subheadline)
                             .foregroundStyle(theme.accent.color)
                             .frame(height: ComposeLayout.fieldAccessorySize)
-                            .padding(.horizontal, 6)
+                            .padding(.horizontal, BrevSpacing.xs)
+                        #if os(iOS)
+                            .frame(minWidth: 44, minHeight: 44)
+                        #endif
+                            .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(field.accessibilityLabel)
@@ -1649,6 +1666,10 @@ public struct ComposeView: View {
                             } label: {
                                 Image(systemName: "xmark.circle.fill")
                                     .foregroundStyle(theme.textTertiary.color)
+                                #if os(iOS)
+                                    .frame(minWidth: 44, minHeight: 44)
+                                    .contentShape(Rectangle())
+                                #endif
                             }
                             .accessibilityLabel(presentation.removeAccessibilityLabel)
                             .buttonStyle(.plain)

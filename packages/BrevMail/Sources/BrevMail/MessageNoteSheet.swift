@@ -48,7 +48,9 @@ struct MessageNoteSheet: View {
             BrevDivider()
             footer
         }
+        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 340, idealHeight: 420)
+        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -73,15 +75,14 @@ struct MessageNoteSheet: View {
                     .lineLimit(1)
             }
             Spacer()
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Close",
+                bundle: .module,
+                iconSize: 18
+            ) {
                 onClose()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(.system(size: 18))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "Close", bundle: .module))
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -123,6 +124,7 @@ struct MessageNoteSheet: View {
             BrevButton("Cancel", style: .secondary, bundle: .module) {
                 onClose()
             }
+            .keyboardShortcut(.cancelAction)
             BrevButton("Save", style: .primary, bundle: .module) {
                 onSave(bodyText)
                 onClose()

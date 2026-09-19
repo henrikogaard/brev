@@ -98,34 +98,32 @@ struct SignatureSection: View {
                     .toggleStyle(.switch)
                     .tint(theme.accent.color)
 
-                Button {
+                BrevIconButton(
+                    systemName: "chevron.up",
+                    accessibilityLabel: "Move Signature Up",
+                    bundle: .module
+                ) {
                     moveSignature(signature.id, direction: .up)
-                } label: {
-                    Label(String(localized: "Move Signature Up", bundle: .module), systemImage: "chevron.up")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderless)
                 .disabled(!settings.canMoveSignature(id: signature.id, direction: .up))
-                .help(String(localized: "Move signature up", bundle: .module))
 
-                Button {
+                BrevIconButton(
+                    systemName: "chevron.down",
+                    accessibilityLabel: "Move Signature Down",
+                    bundle: .module
+                ) {
                     moveSignature(signature.id, direction: .down)
-                } label: {
-                    Label(String(localized: "Move Signature Down", bundle: .module), systemImage: "chevron.down")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderless)
                 .disabled(!settings.canMoveSignature(id: signature.id, direction: .down))
-                .help(String(localized: "Move signature down", bundle: .module))
 
-                Button(role: .destructive) {
+                BrevIconButton(
+                    systemName: "trash",
+                    accessibilityLabel: "Delete Signature",
+                    bundle: .module,
+                    isDestructive: true
+                ) {
                     removeSignature(signature.id)
-                } label: {
-                    Label(String(localized: "Delete Signature", bundle: .module), systemImage: "trash")
-                        .labelStyle(.iconOnly)
                 }
-                .buttonStyle(.borderless)
-                .help(String(localized: "Delete signature", bundle: .module))
             }
 
             TextEditor(text: bodyBinding(for: signature.id))
@@ -134,12 +132,7 @@ struct SignatureSection: View {
                 .scrollContentBackground(.hidden)
                 .padding(BrevSpacing.sm)
                 .frame(minHeight: 120)
-                .background(theme.bgSecondary.color.opacity(0.35))
-                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.md)
-                        .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-                }
+                .brevQuietSurface()
 
             if !signature.isEnabled {
                 SettingsInfoCallout(
@@ -153,12 +146,7 @@ struct SignatureSection: View {
             }
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        }
+        .brevQuietSurface()
     }
 
     private var accountDefaultsGroup: some View {

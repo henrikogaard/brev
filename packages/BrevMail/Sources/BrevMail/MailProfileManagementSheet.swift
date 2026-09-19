@@ -152,20 +152,21 @@ struct MailProfileManagementSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             HStack(spacing: BrevSpacing.sm) {
-                themedTextField("New profile name", text: $newProfileName)
+                themedTextField(String(localized: "New profile name", bundle: .module), text: $newProfileName)
                 Button {
                     addProfile()
                 } label: {
                     Image(systemName: "plus")
                         .brevFont(.headline)
                         .foregroundStyle(theme.accent.color)
-                        .frame(width: 40, height: 40)
+                        .frame(width: profileIconButtonSize, height: profileIconButtonSize)
                         .background(BrevWindowSurfaceBackground(role: .card))
                         .overlay {
                             RoundedRectangle(cornerRadius: BrevRadius.md)
                                 .stroke(theme.border.color, lineWidth: 1)
                         }
                         .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .disabled(availableSources.isEmpty)
@@ -173,8 +174,10 @@ struct MailProfileManagementSheet: View {
                 .accessibilityLabel(String(localized: "Add profile", bundle: .module))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            let helpText = "All Mailboxes is always available. Custom profiles choose which "
-                + "mailboxes appear in the sidebar and Unified Inbox."
+            let helpText = String(
+                localized: "All Mailboxes is always available. Custom profiles choose which mailboxes appear in the sidebar and Unified Inbox.",
+                bundle: .module
+            )
             Text(helpText)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
@@ -251,13 +254,17 @@ struct MailProfileManagementSheet: View {
                     }
                     .padding(.horizontal, BrevSpacing.sm)
                     .padding(.vertical, BrevSpacing.xs)
-                    .background(
-                        RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
-                            .fill(selectedProfileID == profile.id ? theme.selection.color : Color.clear)
-                    )
-                    .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
+                        .background(
+                            RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
+                                .fill(selectedProfileID == profile.id ? theme.selection.color : Color.clear)
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
                 }
                 .buttonStyle(.plain)
+                .accessibilityAddTraits(selectedProfileID == profile.id ? .isSelected : [])
             }
         }
     }
@@ -268,16 +275,24 @@ struct MailProfileManagementSheet: View {
             VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                 HStack(alignment: .center, spacing: BrevSpacing.sm) {
                     themedTextField(
-                        "Profile name",
+                        String(localized: "Profile name", bundle: .module),
                         text: Binding(
                             get: { selectedProfile.name },
                             set: { renameSelectedProfile($0) }
                         )
                     )
-                    reorderButton(systemImage: "chevron.up", label: "Move up", enabled: canMoveSelectedProfileUp) {
+                    reorderButton(
+                        systemImage: "chevron.up",
+                        label: String(localized: "Move up", bundle: .module),
+                        enabled: canMoveSelectedProfileUp
+                    ) {
                         moveSelectedProfile(.up)
                     }
-                    reorderButton(systemImage: "chevron.down", label: "Move down", enabled: canMoveSelectedProfileDown) {
+                    reorderButton(
+                        systemImage: "chevron.down",
+                        label: String(localized: "Move down", bundle: .module),
+                        enabled: canMoveSelectedProfileDown
+                    ) {
                         moveSelectedProfile(.down)
                     }
                 }
@@ -335,9 +350,13 @@ struct MailProfileManagementSheet: View {
                     }
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.accent.color)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 Spacer(minLength: 0)
-                BrevButton("Delete Profile", style: .destructive) {
+                BrevButton("Delete Profile", style: .destructive, bundle: .module) {
                     deleteSelectedProfile()
                 }
             }
@@ -355,7 +374,7 @@ struct MailProfileManagementSheet: View {
             Image(systemName: systemImage)
                 .brevFont(.subheadline)
                 .foregroundStyle(enabled ? theme.textSecondary.color : theme.textTertiary.color)
-                .frame(width: 34, height: 34)
+                .frame(width: profileIconButtonSize, height: profileIconButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
                         .fill(theme.bgSecondary.color)
@@ -429,7 +448,9 @@ struct MailProfileManagementSheet: View {
 
     private func addProfile() {
         let trimmedName = newProfileName.trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = trimmedName.isEmpty ? "New Profile" : trimmedName
+        let name = trimmedName.isEmpty
+            ? String(localized: "New Profile", bundle: .module)
+            : trimmedName
         let sourceIDs = availableSources.map(\.id)
         let profile = MailProfile(name: name, sourceIDs: sourceIDs)
         draftProfiles.append(profile)
@@ -480,6 +501,22 @@ struct MailProfileManagementSheet: View {
         self.selectedProfileID = draftProfiles.first?.id
     }
 
+    private var profileIconButtonSize: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        40
+        #endif
+    }
+
+    private var textFieldMinHeight: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        40
+        #endif
+    }
+
     @ViewBuilder
     private func themedTextField(_ title: String, text: Binding<String>) -> some View {
         TextField(title, text: text, prompt: Text(title).foregroundStyle(theme.textTertiary.color))
@@ -488,7 +525,7 @@ struct MailProfileManagementSheet: View {
             .foregroundStyle(theme.textPrimary.color)
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.sm)
-            .frame(maxWidth: .infinity, minHeight: 40, alignment: .leading)
+            .frame(maxWidth: .infinity, minHeight: textFieldMinHeight, alignment: .leading)
             .background(BrevWindowSurfaceBackground(role: .card))
             .overlay {
                 RoundedRectangle(cornerRadius: BrevRadius.md)
