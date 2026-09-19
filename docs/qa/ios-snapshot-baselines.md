@@ -100,3 +100,9 @@ references put content above Pin/Enable, Edit and a 44pt overflow menu; reorder
 and Delete remain available in that menu. These two references join the iOS 27
 CI lane. An existing iOS-only snapshot fixture enum needed internal visibility
 for the Settings test target to compile; no unrelated references were refreshed.
+
+The same suite now includes full Signature sections at 320pt and 375pt. The
+old row collapsed the name field; the reviewed references keep the field on
+its own line and put Enabled plus a 44pt action menu below it. Both sizes were
+visually inspected before comparison. All three newly enlarged settings action
+rows (templates, rules, signatures) now have compact coverage.

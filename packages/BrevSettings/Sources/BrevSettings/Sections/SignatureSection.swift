@@ -84,46 +84,66 @@ struct SignatureSection: View {
     @ViewBuilder
     private func signatureCard(_ signature: SignatureSettings.Signature) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
-                TextField(
-                    String(localized: "Signature name", bundle: .module),
-                    text: nameBinding(for: signature.id),
-                    prompt: Text("Signature name", bundle: .module)
-                )
-                .textFieldStyle(.roundedBorder)
-                .brevFont(.body)
-                .foregroundStyle(theme.textPrimary.color)
-
-                Toggle(String(localized: "Enabled", bundle: .module), isOn: enabledBinding(for: signature.id))
-                    .toggleStyle(.switch)
-                    .tint(theme.accent.color)
-
-                BrevIconButton(
-                    systemName: "chevron.up",
-                    accessibilityLabel: "Move Signature Up",
-                    bundle: .module
-                ) {
-                    moveSignature(signature.id, direction: .up)
+            Group {
+                #if os(iOS)
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    signatureNameField(signature)
+                    HStack(spacing: BrevSpacing.sm) {
+                        signatureEnabledToggle(signature)
+                        Spacer(minLength: 0)
+                        Menu {
+                            Button(String(localized: "Move Signature Up", bundle: .module)) {
+                                moveSignature(signature.id, direction: .up)
+                            }
+                            .disabled(!settings.canMoveSignature(id: signature.id, direction: .up))
+                            Button(String(localized: "Move Signature Down", bundle: .module)) {
+                                moveSignature(signature.id, direction: .down)
+                            }
+                            .disabled(!settings.canMoveSignature(id: signature.id, direction: .down))
+                            Button(String(localized: "Delete Signature", bundle: .module), role: .destructive) {
+                                removeSignature(signature.id)
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis")
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .foregroundStyle(theme.textPrimary.color)
+                        .accessibilityLabel(String(localized: "Signature actions", bundle: .module))
+                    }
                 }
-                .disabled(!settings.canMoveSignature(id: signature.id, direction: .up))
+                #else
+                HStack(alignment: .center, spacing: BrevSpacing.md) {
+                    signatureNameField(signature)
+                    signatureEnabledToggle(signature)
+                    BrevIconButton(
+                        systemName: "chevron.up",
+                        accessibilityLabel: "Move Signature Up",
+                        bundle: .module
+                    ) {
+                        moveSignature(signature.id, direction: .up)
+                    }
+                    .disabled(!settings.canMoveSignature(id: signature.id, direction: .up))
 
-                BrevIconButton(
-                    systemName: "chevron.down",
-                    accessibilityLabel: "Move Signature Down",
-                    bundle: .module
-                ) {
-                    moveSignature(signature.id, direction: .down)
-                }
-                .disabled(!settings.canMoveSignature(id: signature.id, direction: .down))
+                    BrevIconButton(
+                        systemName: "chevron.down",
+                        accessibilityLabel: "Move Signature Down",
+                        bundle: .module
+                    ) {
+                        moveSignature(signature.id, direction: .down)
+                    }
+                    .disabled(!settings.canMoveSignature(id: signature.id, direction: .down))
 
-                BrevIconButton(
-                    systemName: "trash",
-                    accessibilityLabel: "Delete Signature",
-                    bundle: .module,
-                    isDestructive: true
-                ) {
-                    removeSignature(signature.id)
+                    BrevIconButton(
+                        systemName: "trash",
+                        accessibilityLabel: "Delete Signature",
+                        bundle: .module,
+                        isDestructive: true
+                    ) {
+                        removeSignature(signature.id)
+                    }
                 }
+                #endif
             }
 
             TextEditor(text: bodyBinding(for: signature.id))
@@ -147,6 +167,23 @@ struct SignatureSection: View {
         }
         .padding(BrevSpacing.md)
         .brevQuietSurface()
+    }
+
+    private func signatureNameField(_ signature: SignatureSettings.Signature) -> some View {
+        TextField(
+            String(localized: "Signature name", bundle: .module),
+            text: nameBinding(for: signature.id),
+            prompt: Text("Signature name", bundle: .module)
+        )
+        .textFieldStyle(.roundedBorder)
+        .brevFont(.body)
+        .foregroundStyle(theme.textPrimary.color)
+    }
+
+    private func signatureEnabledToggle(_ signature: SignatureSettings.Signature) -> some View {
+        Toggle(String(localized: "Enabled", bundle: .module), isOn: enabledBinding(for: signature.id))
+            .toggleStyle(.switch)
+            .tint(theme.accent.color)
     }
 
     private var accountDefaultsGroup: some View {

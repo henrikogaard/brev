@@ -68,11 +68,21 @@ struct WorkflowNavigationReconciliationTests {
 
     @Test("external workflow changes and undo update reader membership without a reload", arguments: [false, true], [false, true])
     func externalWorkflowChange(unified: Bool, snooze: Bool) async throws {
+        try await exerciseWorkflowChange(unified: unified, snooze: snooze, unreadOnly: false)
+    }
+
+    @Test("unified workflow changes keep selection inside the visible unread filter")
+    func filteredUnifiedWorkflowChange() async throws {
+        try await exerciseWorkflowChange(unified: true, snooze: false, unreadOnly: true)
+    }
+
+    private func exerciseWorkflowChange(unified: Bool, snooze: Bool, unreadOnly: Bool) async throws {
         let folder = Folder(id: "inbox", name: "Inbox", role: .inbox)
         let headers = ["a", "b", "c"].enumerated().map { index, id in
             MessageHeader(id: id, threadID: id, folderID: folder.id,
                           from: Correspondent(email: "fixture@example.org"),
-                          subject: id, snippet: "", date: Date(timeIntervalSince1970: Double(300 - index)))
+                          subject: id, snippet: "", date: Date(timeIntervalSince1970: Double(300 - index)),
+                          isRead: unreadOnly && id == "c")
         }
         let backend = MockBackend(capabilities: [], folders: [folder], messagesByFolder: [folder.id: headers])
         let source = MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
@@ -92,6 +102,7 @@ struct WorkflowNavigationReconciliationTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         try #require(navigation.currentFolderHeaders.map(\.id) == ["a", "b", "c"])
+        if unreadOnly { navigation.mailboxFilter = MailboxFilterQuery(activeFilters: [.unread]) }
         navigation.selectedMessageID = "b"
         let messageID = SourceMessageID(sourceID: source, messageID: "b")
         let previousState = model.workflow
@@ -102,18 +113,18 @@ struct WorkflowNavigationReconciliationTests {
         model.workflow = snooze
             ? LocalMessageWorkflowStatePolicy.snoozing(messageID, until: .distantFuture, in: .defaults)
             : LocalMessageWorkflowStatePolicy.markingDone([messageID], in: .defaults)
-        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != 2 {
+        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != (unreadOnly ? 1 : 2) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        #expect(navigation.currentFolderHeaders.map(\.id) == ["a", "c"])
-        #expect(navigation.selectedMessageID == "c")
+        #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a"] : ["a", "c"]))
+        #expect(navigation.selectedMessageID == (unreadOnly ? "a" : "c"))
         let task = try #require(undo.undo())
         #expect(await task.value)
-        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != 3 {
+        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != (unreadOnly ? 2 : 3) {
             try await Task.sleep(for: .milliseconds(20))
         }
-        #expect(navigation.currentFolderHeaders.map(\.id) == ["a", "b", "c"])
-        #expect(navigation.selectedMessageID == "c")
+        #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a", "b"] : ["a", "b", "c"]))
+        #expect(navigation.selectedMessageID == (unreadOnly ? "a" : "c"))
     }
 }
 #endif

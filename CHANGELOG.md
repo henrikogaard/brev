@@ -83,9 +83,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Unified Inbox reader navigation applies the same category, mailbox and saved
+  search filters as the list when reconciling Snooze, Done and Undo.
+
 - Detached readers can resolve native Gmail headers through the cache-only
   backend contract. Removed accounts no longer fall back to another account.
-- iPhone template and local-rule rows keep their text and primary controls
+- iPhone template, signature and local-rule rows keep their text and primary controls
   visible, with reorder and Delete actions in an accessible overflow menu.
 
 - TestFlight/App Store Release builds now ignore demo-mailbox requests even if

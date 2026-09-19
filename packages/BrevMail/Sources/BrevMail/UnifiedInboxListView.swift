@@ -597,7 +597,8 @@ struct UnifiedInboxListView: View {
     private func makeVisibleItems(
         pinnedMessageIDs: Set<MessageHeader.ID>,
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        groupThreads: Bool = true
     ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int]) {
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.items(
             items,
@@ -630,7 +631,7 @@ struct UnifiedInboxListView: View {
             by: mailboxSortOrder,
             pinnedIDs: pinnedMessageIDs
         )
-        guard groupByThread else { return (sorted, [:]) }
+        guard groupThreads, groupByThread else { return (sorted, [:]) }
         let threadCounts = UnifiedInboxThreadGrouping.counts(
             for: sorted,
             isThreadedSource: isThreadedSource
@@ -1950,9 +1951,12 @@ struct UnifiedInboxListView: View {
     }
 
     private var workflowNavigationItems: [UnifiedInboxItem] {
-        LocalMessageWorkflowVisibilityPolicy.items(
-            items, mode: workflowVisibilityMode, state: localMessageWorkflowState, now: Date()
-        )
+        // Use the list's full visibility predicate and ordering, while retaining
+        // thread members for expanded-row and reader navigation.
+        makeVisibleItems(
+            pinnedMessageIDs: UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw),
+            now: Date(), calendar: calendar, groupThreads: false
+        ).items
     }
 
     private func selectMessage(_ item: UnifiedInboxItem) {

@@ -2819,3 +2819,16 @@ buttons, and package-aware localization.
   entries. This brings PR #46's Release demo-mailbox guard and export-policy
   documentation into the archive source; all earlier archives are superseded.
   Final archive source must still match merged main exactly before upload.
+
+- Unified workflow navigation now reuses the visible list's complete filter and
+  sort pipeline, retaining thread members for expanded-row navigation. The
+  hosted unread-filter regression failed four assertions before the fix; all
+  five workflow cases now pass, including Snooze/Done/Undo.
+- Signature controls now put the name field above Enabled and an overflow menu
+  on iOS. Recorded the old collapsed-field render, then inspected corrected
+  320/375pt references. Templates, rules and signatures are the complete set of
+  settings rows touched by the new 44pt icon controls.
+- The Release-only demo-mailbox guard passed locally after integrating main.
+- All four compact Settings snapshot cases pass with xcodebuild exit 0 after
+  visual review; lint, format and baseline metadata checks pass. Native menu
+  interaction and real-account acceptance remain TestFlight QA items.

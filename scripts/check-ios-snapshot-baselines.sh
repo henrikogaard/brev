@@ -18,6 +18,8 @@ required=(
   "$snapshot_root/MailContextColumnSnapshotTests/senderPanelLoadedState.sender-panel-loaded.png"
   "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-216.png"
   "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-271.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-320.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-375.png"
 )
 
 for reference in "${required[@]}"; do

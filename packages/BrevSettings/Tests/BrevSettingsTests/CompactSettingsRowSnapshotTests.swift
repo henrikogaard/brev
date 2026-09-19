@@ -22,6 +22,19 @@ import UIKit
 @Suite("Compact settings rows", .serialized)
 @MainActor
 struct CompactSettingsRowSnapshotTests {
+    @Test("signature name and controls fit a narrow phone", arguments: [320.0, 375.0])
+    func compactSignature(width: Double) throws {
+        let defaults = try #require(UserDefaults(suiteName: "CompactSignatures-" + UUID().uuidString))
+        let store = SettingsPersistenceStore(defaults: defaults)
+        var settings = SignatureSettings.defaults
+        _ = settings.addSignature(name: "Work signature", body: "Best regards", isEnabled: true)
+        store.save(settings)
+        let host = UIHostingController(rootView: SignatureSection(settingsStore: store)
+            .brevTheme(.brevMonoLight).environment(\.colorScheme, .light))
+        assertSnapshot(of: host, as: .image(size: CGSize(width: width, height: 900),
+                                            traits: .init(displayScale: 2)), named: "signature-\(Int(width))")
+    }
+
     @Test("template and local-rule actions fit narrow settings content", arguments: [216.0, 271.0])
     func compactRows(width: Double) {
         let view = VStack(spacing: 20) {
