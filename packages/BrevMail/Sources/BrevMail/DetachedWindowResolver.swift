@@ -24,36 +24,46 @@ enum DetachedWindowResolver {
     /// Selects the backend for a detached window.
     ///
     /// Matches the backend whose account equals `sourceID.accountID` when a
-    /// source is present; otherwise (no source, or no matching account) falls
-    /// back to the first available backend. Returns `nil` only when `backends`
-    /// is empty.
+    /// source is present. A removed account returns nil rather than substituting
+    /// another account; only a payload without a source uses the first backend.
     static func resolveBackend(
         sourceID: MailSourceID?,
         in backends: [any MailBackend]
     ) -> (any MailBackend)? {
-        if let accountID = sourceID?.accountID,
-           let matched = backends.first(where: { $0.account.id == accountID }) {
-            return matched
+        if let accountID = sourceID?.accountID {
+            return backends.first(where: { $0.account.id == accountID })
         }
         return backends.first
     }
 
-    /// Resolves the cached header for `messageID` from a backend's per-folder
-    /// in-memory cache via `CachedMessageHeaderProviding`.
-    ///
-    /// Convenience over ``resolveHeader(messageID:using:folders:)`` that pulls
-    /// the provider off the backend. Returns `nil` when the backend vends no
-    /// such provider or the header is not cached in any of `folders`.
+    /// Resolves a header using point lookup first, then the provider-neutral
+    /// cache-only enumeration contract. Neither path downloads message content.
     static func resolveHeader(
         messageID: MessageHeader.ID,
         in backend: any MailBackend,
-        folders: [Folder]
+        folders: [Folder],
+        sourceID: MailSourceID? = nil
     ) async -> MessageHeader? {
-        await resolveHeader(
+        if let sourceID, sourceID.accountID != backend.account.id { return nil }
+        if let header = await resolveHeader(
             messageID: messageID,
             using: backend.extensionService(CachedMessageHeaderProviding.self),
             folders: folders
-        )
+        ) { return header }
+        let cacheSource: MailSourceID
+        if let sourceID {
+            cacheSource = sourceID
+        } else {
+            guard let mailbox = try? await backend.currentMailbox() else { return nil }
+            cacheSource = backend.sourceID(for: mailbox)
+        }
+        for folder in folders {
+            if let headers = try? await backend.cachedMessageHeaders(in: folder, sourceID: cacheSource),
+               let header = headers.first(where: { $0.id == messageID }) {
+                return header
+            }
+        }
+        return nil
     }
 
     /// Scans `folders` in order and returns the first cached header `provider`

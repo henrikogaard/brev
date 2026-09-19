@@ -153,7 +153,7 @@ private struct MailboxViewSectionContainer: View {
     }
 }
 
-private enum AIWriterSectionSnapshotState: String, CaseIterable {
+enum AIWriterSectionSnapshotState: String, CaseIterable {
     case disabled
     case enabled
 

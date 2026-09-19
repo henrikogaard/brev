@@ -691,7 +691,7 @@ private struct LocalRulesPane: View {
     }
 }
 
-private struct LocalRuleRow: View {
+struct LocalRuleRow: View {
     @Environment(\.brevTheme) private var theme
     let rule: ServerRule
     let isFirst: Bool
@@ -703,45 +703,77 @@ private struct LocalRuleRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Toggle(rule.name, isOn: Binding(get: { rule.isEnabled }, set: { onToggle($0) }))
-                .toggleStyle(.switch)
-                .tint(theme.accent.color)
-                .labelsHidden()
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(rule.name)
-                    .brevFont(.subheadline)
+        Group {
+            #if os(iOS)
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                details
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: BrevSpacing.sm) {
+                    enabledControl
+                    Spacer(minLength: 0)
+                    BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                    Menu {
+                        Button(String(localized: "Move Rule Up", bundle: .module), action: onMoveUp)
+                            .disabled(isFirst)
+                        Button(String(localized: "Move Rule Down", bundle: .module), action: onMoveDown)
+                            .disabled(isLast)
+                        Button(String(localized: "Delete", bundle: .module), role: .destructive, action: onDelete)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
                     .foregroundStyle(theme.textPrimary.color)
-                Text("\(conditionSummary) → \(actionSummary)", bundle: .module)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
+                    .accessibilityLabel(String(localized: "Rule actions", bundle: .module))
+                }
             }
-
-            Spacer(minLength: BrevSpacing.sm)
-
-            BrevIconButton(
-                systemName: "chevron.up",
-                accessibilityLabel: "Move Rule Up",
-                bundle: .module
-            ) {
-                onMoveUp()
+            #else
+            HStack(spacing: BrevSpacing.sm) {
+                enabledControl
+                details
+                Spacer(minLength: BrevSpacing.sm)
+                BrevIconButton(
+                    systemName: "chevron.up",
+                    accessibilityLabel: "Move Rule Up",
+                    bundle: .module
+                ) {
+                    onMoveUp()
+                }
+                .disabled(isFirst)
+                BrevIconButton(
+                    systemName: "chevron.down",
+                    accessibilityLabel: "Move Rule Down",
+                    bundle: .module
+                ) {
+                    onMoveDown()
+                }
+                .disabled(isLast)
+                BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
             }
-            .disabled(isFirst)
-            BrevIconButton(
-                systemName: "chevron.down",
-                accessibilityLabel: "Move Rule Down",
-                bundle: .module
-            ) {
-                onMoveDown()
-            }
-            .disabled(isLast)
-            BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
-            BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
+            #endif
         }
         .padding(BrevSpacing.sm)
         .brevQuietSurface()
+    }
+
+    private var enabledControl: some View {
+        Toggle(rule.name, isOn: Binding(get: { rule.isEnabled }, set: { onToggle($0) }))
+            .toggleStyle(.switch)
+            .tint(theme.accent.color)
+            .labelsHidden()
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(rule.name)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textPrimary.color)
+            Text("\(conditionSummary) → \(actionSummary)", bundle: .module)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+        }
     }
 
     private var conditionSummary: String {

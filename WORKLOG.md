@@ -2763,3 +2763,18 @@ buttons, and package-aware localization.
   xcodebuild exit 0. Lint/format pass. Native iOS Undo/Redo are retained, mail
   Undo uses the non-conflicting Command-Option-Z chord, and the app-hosted
   startup regression is green.
+
+- Further review: detached header resolution now falls back to MailBackend's
+  cache-only enumeration contract, supporting native Gmail without a separate
+  point-lookup service. Payload source IDs are forwarded explicitly, and a
+  removed account is no longer substituted with another backend. Both resolver
+  regressions failed before the fix.
+- Compact template/rule rows now keep text above Pin/Enable and Edit, with
+  reorder/Delete in a 44pt overflow menu. Rendered the old clipping at 216/271pt
+  content widths, then visually inspected both corrected references. Added the
+  two cases to the compatible iOS snapshot lane and baseline inventory. Fixed
+  an existing iOS snapshot fixture access-level compiler error to run that target.
+- Verification: 12 resolver tests pass; both compact Settings snapshots match
+  their visually inspected references with xcodebuild exit 0. Lint and format
+  pass. No new external network calls or privacy changes; the fallback uses
+  the existing explicitly cache-only MailBackend contract.

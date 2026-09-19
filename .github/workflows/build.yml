@@ -246,6 +246,19 @@ jobs:
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
 
+      - name: Test compact settings rows on iOS Simulator
+        if: steps.snapshot-runtime.outputs.run == 'true'
+        working-directory: packages/BrevSettings
+        run: |
+          xcodebuild \
+            -scheme BrevSettings \
+            -destination '${{ steps.snapshot-runtime.outputs.destination }}' \
+            -skipMacroValidation \
+            -testLanguage en \
+            -testRegion en_US \
+            '-only-testing:BrevSettingsTests/CompactSettingsRowSnapshotTests' \
+            test
+
       - name: Report deferred iOS snapshot comparison
         if: steps.snapshot-runtime.outputs.run != 'true'
         run: echo "iOS snapshot baselines remain enforced by metadata checks and compatible iOS 27+ runs."

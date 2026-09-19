@@ -90,3 +90,13 @@ The narrow compose reference uses the iPhone-hosted regular-width fixture to
 match the required CI destination. Comparing it with the iPad-hosted render
 showed text antialiasing differences only; control positions, labels and state
 were unchanged. The iPad comparison passed against its original capture.
+
+## Compact settings rows — 2026-09-20
+
+`CompactSettingsRowSnapshotTests` covers template and local-rule rows at 216pt
+and 271pt content widths, representing padded 320–375pt phone settings. The
+before render visibly lost the text and trailing actions. The reviewed new
+references put content above Pin/Enable, Edit and a 44pt overflow menu; reorder
+and Delete remain available in that menu. These two references join the iOS 27
+CI lane. An existing iOS-only snapshot fixture enum needed internal visibility
+for the Settings test target to compile; no unrelated references were refreshed.

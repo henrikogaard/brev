@@ -16,6 +16,8 @@ required=(
   "$snapshot_root/MessageListRowSnapshotTests/readMessageSender.bold-read-sender.png"
   "$snapshot_root/ThreadInlineChildRowSnapshotTests/selectedChildRow.selected-child.png"
   "$snapshot_root/MailContextColumnSnapshotTests/senderPanelLoadedState.sender-panel-loaded.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-216.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-271.png"
 )
 
 for reference in "${required[@]}"; do

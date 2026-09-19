@@ -142,7 +142,8 @@ public struct DetachedReaderWindowView: View {
         resolvedHeader = await DetachedWindowResolver.resolveHeader(
             messageID: payload.messageID,
             in: backend,
-            folders: folders
+            folders: folders,
+            sourceID: payload.sourceID
         )
     }
 }

@@ -77,8 +77,8 @@ struct DetachedWindowResolverTests {
         #expect(DetachedWindowResolver.resolveBackend(sourceID: nil, in: backends)?.account.id == "a1")
     }
 
-    @Test("falls back to the first backend when no account matches the source id")
-    func unmatchedSourceFallsBackToFirst() {
+    @Test("does not substitute another account when the requested source is gone")
+    func unmatchedSourceReturnsNil() {
         let backends: [any MailBackend] = [
             MockBackend(account: account("a1")),
             MockBackend(account: account("a2"))
@@ -87,7 +87,7 @@ struct DetachedWindowResolverTests {
             sourceID: sourceID(account: "absent"),
             in: backends
         )
-        #expect(resolved?.account.id == "a1")
+        #expect(resolved == nil)
     }
 
     @Test("returns nil when there are no backends")
@@ -160,15 +160,29 @@ struct DetachedWindowResolverTests {
 
     // MARK: resolveHeader(in:) — backend convenience
 
-    @Test("the backend convenience returns nil when the backend vends no provider")
+    @Test("the backend convenience returns nil when neither cache path has a header")
     func backendWithoutProviderReturnsNil() async {
-        let backend = MockBackend(account: account("a1"))
+        let backend = MockBackend(account: account("a1"), messagesByFolder: [:])
         let resolved = await DetachedWindowResolver.resolveHeader(
             messageID: "m1",
             in: backend,
             folders: [folder("inbox")]
         )
         #expect(resolved == nil)
+    }
+
+    @Test("cache enumeration resolves a header without the optional point-lookup service")
+    func cacheEnumerationFallback() async {
+        let acct = account("cached")
+        let mailbox = Mailbox(id: acct.id, email: acct.emailAddress, displayName: acct.displayName, isPrimary: true)
+        let target = header("cached-message", folderID: "inbox")
+        let backend = MockBackend(account: acct, folders: [folder("inbox")],
+                                  messagesByFolder: ["inbox": [target]], mailboxes: [mailbox])
+        #expect(backend.extensionService(CachedMessageHeaderProviding.self) == nil)
+        let resolved = await DetachedWindowResolver.resolveHeader(
+            messageID: target.id, in: backend, folders: [folder("inbox")]
+        )
+        #expect(resolved == target)
     }
 
     // MARK: resolveSenderSections

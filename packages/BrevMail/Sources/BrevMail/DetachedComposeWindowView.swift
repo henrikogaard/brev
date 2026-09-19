@@ -222,7 +222,8 @@ public struct DetachedComposeWindowView: View {
             resolvedHeader = await DetachedWindowResolver.resolveHeader(
                 messageID: messageID,
                 in: backend,
-                folders: folders
+                folders: folders,
+                sourceID: payloadSourceID
             )
         }
 

@@ -83,6 +83,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Detached readers can resolve native Gmail headers through the cache-only
+  backend contract. Removed accounts no longer fall back to another account.
+- iPhone template and local-rule rows keep their text and primary controls
+  visible, with reorder and Delete actions in an accessible overflow menu.
+
 - iOS: the account-restore error alert now also appears when every account
   fails to restore, and its "Open Settings" action is reachable from the
   login screen, so accounts no longer vanish silently behind the login page.
