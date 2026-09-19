@@ -160,7 +160,7 @@ enum ReaderCommandSourceHandoff {
         if let sourceID = request.sourceID ?? navigation.selectedSourceID {
             guard let section = sections.first(where: { $0.id == sourceID }),
                   section.loadError == nil else { return false }
-            if navigation.selectedSourceID != sourceID {
+            if navigation.selectedSourceID != sourceID || navigation.selectedFolderID != request.header.folderID {
                 navigation.selectFolder(request.header.folderID, in: sourceID)
             }
             navigation.composeSourceID = sourceID

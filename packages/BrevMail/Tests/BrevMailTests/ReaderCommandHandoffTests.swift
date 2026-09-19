@@ -18,12 +18,12 @@ import Testing
 @Suite("Reader command handoff")
 @MainActor
 struct ReaderCommandHandoffTests {
-    @Test("source folders replace another account before a reader mutation can run")
-    func sourceContextPrecedesMutation() {
+    @Test("source and folder context precede mutations", arguments: [false, true])
+    func sourceContextPrecedesMutation(sameSource: Bool) {
         let navigation = MailNavigationState()
         let source = MailSourceID(accountID: "a", mailboxID: "a")
         let other = MailSourceID(accountID: "b", mailboxID: "b")
-        navigation.selectFolder("b-inbox", in: other)
+        navigation.selectFolder("b-inbox", in: sameSource ? source : other)
         let inbox = Folder(id: "a-inbox", name: "Inbox", role: .inbox)
         let trash = Folder(id: "a-trash", name: "Trash", role: .trash)
         let section = MailSourceSection(id: source,

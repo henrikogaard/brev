@@ -768,7 +768,8 @@ public struct MessageDetailView: View {
             #if os(iOS)
             openWindow(value: DetachedReaderWindowPayload(
                 sourceID: sourceID,
-                messageID: header.id
+                messageID: header.id,
+                folderID: header.folderID
             ))
             #else
             readerCommandAction?(.init(command: .openInNewWindow, header: header, sourceID: sourceID))

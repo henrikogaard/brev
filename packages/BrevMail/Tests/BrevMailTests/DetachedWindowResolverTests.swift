@@ -185,6 +185,24 @@ struct DetachedWindowResolverTests {
         #expect(resolved == target)
     }
 
+    @Test("detached lookup preserves the originating label and refuses a different membership")
+    func originatingFolderIsAuthoritative() async {
+        let acct = account("cached")
+        let mailbox = Mailbox(id: acct.id, email: acct.emailAddress, displayName: acct.displayName, isPrimary: true)
+        let inbox = header("same", folderID: "inbox")
+        let starred = header("same", folderID: "starred")
+        let backend = MockBackend(account: acct, folders: [folder("inbox"), folder("starred")],
+                                  messagesByFolder: ["inbox": [inbox], "starred": [starred]], mailboxes: [mailbox])
+        let resolved = await DetachedWindowResolver.resolveHeader(
+            messageID: "same", in: backend, folders: [folder("inbox"), folder("starred")], folderID: "starred"
+        )
+        #expect(resolved?.folderID == "starred")
+        let missing = await DetachedWindowResolver.resolveHeader(
+            messageID: "same", in: backend, folders: [folder("inbox"), folder("starred")], folderID: "gone"
+        )
+        #expect(missing == nil)
+    }
+
     // MARK: resolveSenderSections
 
     @Test("builds one sender section per mailbox, scoped to the backend's account")

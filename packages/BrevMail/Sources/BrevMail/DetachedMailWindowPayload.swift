@@ -23,9 +23,13 @@ public struct DetachedReaderWindowPayload: Codable, Hashable, Sendable {
     /// The backend message identifier.
     public let messageID: String
 
-    public init(sourceID: MailSourceID?, messageID: String) {
+    /// The originating folder membership; nil supports previously restored scenes.
+    public let folderID: Folder.ID?
+
+    public init(sourceID: MailSourceID?, messageID: String, folderID: Folder.ID? = nil) {
         self.sourceID = sourceID
         self.messageID = messageID
+        self.folderID = folderID
     }
 }
 

@@ -4685,7 +4685,8 @@ public struct BrevMailRootView: View {
         ) {
             openWindow(value: DetachedReaderWindowPayload(
                 sourceID: sourceID ?? navigation.selectedSourceID,
-                messageID: header.id
+                messageID: header.id,
+                folderID: header.folderID
             ))
         } else {
             compactReaderHeader = header

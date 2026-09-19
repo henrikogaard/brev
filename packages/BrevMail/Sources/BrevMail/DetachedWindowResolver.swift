@@ -42,9 +42,12 @@ enum DetachedWindowResolver {
         messageID: MessageHeader.ID,
         in backend: any MailBackend,
         folders: [Folder],
-        sourceID: MailSourceID? = nil
+        sourceID: MailSourceID? = nil,
+        folderID: Folder.ID? = nil
     ) async -> MessageHeader? {
         if let sourceID, sourceID.accountID != backend.account.id { return nil }
+        // A multi-label message must retain the membership it was opened from.
+        let folders = folderID.map { origin in folders.filter { $0.id == origin } } ?? folders
         if let provider = backend.extensionService(CachedMessageHeaderProviding.self) {
             return await resolveHeader(messageID: messageID, using: provider, folders: folders)
         }

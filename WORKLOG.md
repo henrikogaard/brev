@@ -2853,3 +2853,13 @@ buttons, and package-aware localization.
   attachment extractor tests pass; lint/format/diff-check pass. Cache-only
   service tests cover label membership, All Mail exclusion, missing IDs and
   zero transport calls. No visible layout changed or new network path added.
+
+- Preserved the originating folder in detached-reader scene identity and all
+  three iOS open-window call sites; exact membership lookup refuses unrelated
+  labels. Same-source cross-folder reader actions now activate their target
+  folder before mutation responses are matched. Two regressions failed three
+  assertions before the fix. This carries identifiers only, not mail content.
+- Verification: 21 tests across payload, resolver and handoff suites pass,
+  including both same-source and cross-source cases. App-hosted iOS tests pass
+  with xcodebuild exit 0; lint/format/diff-check pass. No pixel changes required
+  baseline updates; native multi-window QA remains pending.

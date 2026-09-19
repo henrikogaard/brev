@@ -143,7 +143,8 @@ public struct DetachedReaderWindowView: View {
             messageID: payload.messageID,
             in: backend,
             folders: folders,
-            sourceID: payload.sourceID
+            sourceID: payload.sourceID,
+            folderID: payload.folderID
         )
     }
 }

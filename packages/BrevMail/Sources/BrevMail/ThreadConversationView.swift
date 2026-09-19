@@ -311,12 +311,14 @@ public struct ThreadConversationView: View {
                         } label: {
                             Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
                         }
-                        if canDetach, let detachMessageID {
+                        if canDetach, let detachMessageID,
+                           let detachHeader = threadHeaders.first(where: { $0.id == detachMessageID }) {
                             Divider()
                             Button {
                                 openWindow(value: DetachedReaderWindowPayload(
                                     sourceID: sourceID,
-                                    messageID: detachMessageID
+                                    messageID: detachMessageID,
+                                    folderID: detachHeader.folderID
                                 ))
                             } label: {
                                 Label(
