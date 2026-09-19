@@ -181,6 +181,9 @@ jobs:
           if [[ '${{ matrix.package }}' == 'BrevMail' ]]; then
             swift test --package-path packages/BrevMail --filter ContactsAccessPolicyTests \
               || (echo "::error::tests failed for BrevMail/ContactsAccessPolicyTests"; exit 1)
+            swift test -c release --package-path packages/BrevMail \
+              --filter AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest \
+              || (echo "::error::release demo-mailbox guard failed for BrevMail"; exit 1)
           fi
 
   snapshot-test:

@@ -88,6 +88,9 @@ All notable changes to Brev are documented here.
 - iPhone template and local-rule rows keep their text and primary controls
   visible, with reorder and Delete actions in an accessible overflow menu.
 
+- TestFlight/App Store Release builds now ignore demo-mailbox requests even if
+  a future app integration accidentally injects one; CI compiles and tests this
+  path under Release optimization.
 - iOS: the account-restore error alert now also appears when every account
   fails to restore, and its "Open Settings" action is reachable from the
   login screen, so accounts no longer vanish silently behind the login page.
