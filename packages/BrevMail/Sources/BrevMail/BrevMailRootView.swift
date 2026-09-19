@@ -4657,6 +4657,7 @@ public struct BrevMailRootView: View {
             backend: backend(for: sourceID ?? navigation.selectedSourceID),
             sourceID: sourceID ?? navigation.selectedSourceID,
             allFolders: folders,
+            canFileLocally: localBackend != nil,
             theme: theme,
             onCommand: handleDetachedMessageCommand
         )
@@ -4783,12 +4784,15 @@ public struct BrevMailRootView: View {
         guard let target = pendingReaderBlockSenderTarget else { return }
         pendingReaderBlockSenderTarget = nil
         guard canStartCommandMutation() else { return }
+        let request = startCommandMutationRequest(sourceFolderID: target.header.folderID)
+        defer { finishCommandMutation(request) }
         do {
             if let sourceID = target.sourceID {
                 try await backend(for: sourceID).blockSender(email: target.header.from.email, sourceID: sourceID)
             } else {
                 try await selectedBackend.blockSender(email: target.header.from.email)
             }
+            guard canApplyCommandMutationResponse(request) else { return }
             // Blocked messages are treated like junk: drop the header from the
             // visible list and refresh so the sender's mail disappears (#262).
             navigation.removeHeaders(ids: [target.header.id])
@@ -4797,6 +4801,7 @@ public struct BrevMailRootView: View {
             )
             await loadFolders()
         } catch {
+            guard canApplyCommandMutationResponse(request) else { return }
             rootStatus = MessageCommandPresentation.mutationErrorStatus(for: error)
         }
     }

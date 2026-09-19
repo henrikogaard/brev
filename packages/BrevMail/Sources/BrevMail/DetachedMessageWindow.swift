@@ -51,6 +51,7 @@ enum DetachedMessageWindow {
         backend: any MailBackend,
         sourceID: MailSourceID?,
         allFolders: [Folder],
+        canFileLocally: Bool,
         theme: BrevTheme,
         onCommand: @escaping (DetachedMessageCommandRequest) -> Void
     ) {
@@ -80,6 +81,7 @@ enum DetachedMessageWindow {
             header: header,
             navigation: nil,
             allFolders: allFolders,
+            canFileLocally: canFileLocally,
             closeWindow: { [weak window] in window?.close() }
         )
         .environment(\.readerCommandAction) { [weak window] request in

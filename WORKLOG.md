@@ -2664,3 +2664,21 @@ buttons, and package-aware localization.
 - Documentation sweep: CHANGELOG and iOS snapshot policy updated. README, ADRs,
   privacy documentation, and external network behavior need no changes for this
   platform layout correction; architecture and public APIs are unchanged.
+
+## 2026-09-19 — Codex — PR #47 merge and TestFlight preparation
+
+- Henrik authorized merging PR #47 when ready and deploying the new iOS build
+  to TestFlight. Refreshed checks and all six review threads before merging.
+- Fixed the two new findings: reader Block Sender now starts/finishes the root
+  mutation request and rejects stale success/error responses; macOS and iPad
+  detached readers receive the host's local-filing availability.
+- Verification: 53 existing focused tests passed across request/source/work
+  blocking policies, action availability, handoff and workflow reconciliation;
+  iOS simulator build and lint passed. No new red/green test was added for these
+  private scene-wiring changes: the existing policy tests cover the behavior,
+  and call-site inspection plus both platform builds verify the wiring. Native
+  multi-window/slow-provider acceptance remains a TestFlight QA item.
+- Apple currently reports 0.2.2 (4) VALID. Next candidate is 0.2.3 (5), archived
+  with explicit version/build overrides from the merged main commit. The checked-in
+  internal-only export policy and existing Henrik Internal QA group are used.
+  Upload and Apple processing will be recorded separately from merge/build.

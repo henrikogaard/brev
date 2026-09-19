@@ -218,9 +218,12 @@ struct BrevApp: App {
         // regular-width iPad scene (ADR-0033).
         WindowGroup(for: DetachedReaderWindowPayload.self) { $payload in
             if let payload {
-                DetachedReaderWindowView(payload: payload, backends: session.visibleBackends)
-                    .brevTheme(session.theme)
-                    .environment(\.openURL, browserOpenURLAction)
+                DetachedReaderWindowView(
+                    payload: payload, backends: session.visibleBackends,
+                    canFileLocally: session.localBackend != nil
+                )
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
             }
         }
 

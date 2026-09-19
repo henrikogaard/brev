@@ -31,15 +31,17 @@ public struct DetachedReaderWindowView: View {
     // reflect account add/remove while this window is open — acceptable
     // because detached reader windows are short-lived.
     private let backends: [any MailBackend]
+    private let canFileLocally: Bool
 
     @State private var resolvedHeader: MessageHeader?
     @State private var resolvedBackend: (any MailBackend)?
     @State private var resolvedFolders: [Folder] = []
     @State private var isResolving = true
 
-    public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend]) {
+    public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend], canFileLocally: Bool = false) {
         self.payload = payload
         self.backends = backends
+        self.canFileLocally = canFileLocally
     }
 
     public var body: some View {
@@ -61,6 +63,7 @@ public struct DetachedReaderWindowView: View {
                         header: resolvedHeader,
                         navigation: nil,
                         allFolders: resolvedFolders,
+                        canFileLocally: canFileLocally,
                         closeWindow: { dismissWindow(value: payload) }
                     )
                     .environment(\.readerCommandAction) { request in
