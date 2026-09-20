@@ -166,7 +166,8 @@ enum MailKeyboardShortcutInventory {
             ),
             .init(
                 action: String(localized: "Settings", bundle: .module),
-                shortcut: "⌘,"
+                shortcut: "⌘,",
+                isMacOSOnly: true
             ),
         ]
         let sections: [MailKeyboardShortcutSection] = [

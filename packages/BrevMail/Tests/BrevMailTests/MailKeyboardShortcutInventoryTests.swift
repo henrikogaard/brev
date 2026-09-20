@@ -108,8 +108,7 @@ struct MailKeyboardShortcutInventoryTests {
         #expect(isMacOSOnly("AI Sidebar") == expectedPlatformEntry)
         #expect(isMacOSOnly("Redo") == false)
 
-        // Settings (⌘,) exists on both platforms — the iOS app opens the
-        // settings scene with the same chord.
-        #expect(isMacOSOnly("Settings") == false)
+        // Settings (⌘,) is registered by the macOS app only.
+        #expect(isMacOSOnly("Settings") == expectedPlatformEntry)
     }
 }

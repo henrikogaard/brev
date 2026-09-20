@@ -2934,3 +2934,11 @@ buttons, and package-aware localization.
   inventory and formatting pass. Updated ADR-0002 for the protected shared
   component API documentation, then reran lint. Native interaction and Dynamic
   Type remain device QA.
+
+- Corrected Settings keyboard-help metadata to macOS-only, matching the actual
+  command registrations. The previous test incorrectly claimed an iPad binding;
+  the corrected expectation failed before the metadata fix. No new shortcut
+  registration or settings-routing behavior was introduced.
+- Verification: all four inventory tests pass on macOS and iPad (xcodebuild
+  exit 0); lint, formatting and diff-check pass. Platform filtering is covered
+  directly by inventory tests; no new view styling or pixel references changed.
