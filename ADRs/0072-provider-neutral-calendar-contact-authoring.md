@@ -299,6 +299,40 @@ Native Google reauthorization and grant replacement require live proof; this is 
 #5 acceptance gate, not an assumed capability. Provider unknown-field fidelity,
 recurrence and unsupported conditional operations can narrow individual adapters.
 
+## Implementation contract log
+
+Concrete public API added under this decision, reviewed per ADR-0005. Each
+entry names the slice that introduced it; details live in the code.
+
+### #5 slice 1 — source lifecycle foundation (2026-09-20, BrevCalendar)
+
+- `PIMSource`, `PIMSourceKind`, `PIMSourceProvider`, `PIMSourceCapability`,
+  `PIMSourceStatus`: the provider-neutral source record and its seven-state
+  lifecycle vocabulary (disconnected, connecting, ready, syncing,
+  permission-limited, authentication-required, failed). Records carry a
+  Keychain credential reference, never secrets.
+- `PIMSourceStore` / `JSONPIMSourceStore`: record persistence.
+- `PIMSourceLocalDataStore` / `FilePIMSourceLocalDataStore`: per-source
+  local-data ownership with the two-step removal contract — cursors, drafts
+  and write markers always die with the source; readable cache only on
+  explicit choice, otherwise marked disconnected and read-only.
+- `PIMDAVTransport`, `PIMDAVClient`, `PIMDAVEndpoint`,
+  `PIMDAVValidation`, `PIMDAVConnectError`: DAV setup validation. Manual
+  endpoints and RFC 6764 well-known discovery, HTTPS enforced (loopback
+  excepted for dev), redirects followed hop-by-hop so credentials never
+  cross origins unchosen, PROPFIND current-user-principal as the
+  authenticated check, actionable error taxonomy.
+- `PIMSourceCoordinator`: serial lifecycle owner — connect stages the
+  credential before persisting the record and rolls it back on failure;
+  reconnect validates the candidate before replacing the stored reference;
+  removal never contacts the provider; linkedSources feeds mail-account
+  removal; sync opt-in is a separate explicit flag.
+- `PIMSourceStatusPresentation` / `PIMSourceStatusPresenter`: the shared
+  status presentation model for settings and future browsing surfaces.
+- Deliberately deferred to later slices: Google feature-triggered
+  reauthorization, home-set/collection discovery, sync scheduling, settings
+  UI wiring, and mail-account removal UX.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)
