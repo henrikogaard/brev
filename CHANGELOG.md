@@ -6,6 +6,13 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Calendar/Contacts source foundation (ADR-0072): provider-neutral source
+  records, a serial lifecycle coordinator covering connect / reconnect /
+  sync opt-in / removal, and CalDAV/CardDAV setup validation (manual
+  endpoints and RFC 6764 discovery with HTTPS enforcement and
+  credential-safe redirect handling). No user-facing surface yet —
+  settings UI, Google reauthorization and sync scheduling land in later
+  slices.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

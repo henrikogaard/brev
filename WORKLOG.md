@@ -1,5 +1,47 @@
 # Worklog
 
+## 2026-09-20 — Codex — Issue #5 PIM source lifecycle foundation
+
+### Goal
+
+First implementation slice for #5 (provider-neutral Calendar/Contacts
+sources, ADR-0072): the source record, serial lifecycle coordinator, DAV
+setup validation, and removal semantics. Settings UI, Google
+reauthorization and sync scheduling land in later slices.
+
+### Changes
+
+- Merged PR #52 (covers #49/#51/#53) and closed redundant PR #54.
+- Recorded ADR-0072 acceptance in PR #55 (docs-only: status, ADR-0039
+  supersede note, ADR index, README roadmap).
+- New in BrevCalendar: PIMSource record + kind/provider/capability/
+  seven-state status vocabulary; JSONPIMSourceStore record persistence;
+  FilePIMSourceLocalDataStore two-step removal (cursors/drafts always
+  die, readable cache only on explicit choice); PIMDAVClient manual +
+  RFC 6764 well-known validation with HTTPS enforcement, hop-by-hop
+  redirects, and actionable errors; PIMSourceCoordinator serial
+  lifecycle with stage-then-swap credentials and provider-free removal;
+  PIMSourceStatusPresenter shared status presentation.
+- ADR-0072 gained an implementation contract log; PRIVACY.md and
+  ADR-0006 document the new DAV setup calls (explicit connect only, no
+  background traffic).
+
+### Verification
+
+- swift test --package-path packages/BrevCalendar: 88 tests, 13 suites
+  pass — including new coverage for connect staging/rollback, rejected
+  reconnect preserving credentials, removal semantics, HTTPS/TLS/refused
+  cross-origin redirects, and status presentation.
+- swiftformat + swiftlint --strict clean on all touched files.
+- BrevCalendar is an ADR-0005 protected path: the PR includes the
+  ADR-0072 contract-log update as required.
+
+### Next
+
+- #5 slice 2: settings Sources UI + section copy update; slice 3: Google
+  feature-triggered reauthorization; live-provider smoke remains an
+  issue-level acceptance gate.
+
 ## 2026-09-19 — Codex — Public TestFlight beta without demo mail
 
 ### Goal

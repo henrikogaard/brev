@@ -368,6 +368,26 @@ configured target and an explicit invite action.
 **How to disable:** Don't configure a CalDAV target. Without one,
 accepting an invite stays local. Defaults to off.
 
+### Calendar and contacts sources (CalDAV/CardDAV setup)
+
+If enabled: when you connect a calendar or contacts source in Settings,
+Brev first tries standards discovery — an unauthenticated HTTPS
+`GET` to your address domain's `/.well-known/caldav` or
+`/.well-known/carddav` — then validates the credential you entered by
+sending it with a `PROPFIND current-user-principal` request to the
+discovered or manually entered endpoint. Credentials are only ever sent
+to the endpoint you chose: discovery redirects are followed hop-by-hop
+and a credential-bearing request is never forwarded to a different host.
+Credentials are stored only in Keychain; the source record keeps a
+reference, never the secret. Setup traffic happens only during explicit
+connect or reconnect — there is no background sync until you enable it
+for the source.
+
+**How to disable:** Don't connect a calendar or contacts source.
+Removing a source deletes its credential, sync cursors and unsent
+drafts, and optionally its cached content; it never deletes data on the
+provider. Defaults to off.
+
 ### Gravatar (sender avatars)
 
 If enabled: Brev sends an SHA-256 hash of each sender's email
