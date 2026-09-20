@@ -32,10 +32,13 @@ an accessibility-sized placeholder or address to dictate the entire sheet width.
 A hosting-controller regression failed before bounding measurement and passed
 afterwards. Measurement and placement now use the same available-width limit.
 
-- iOS: 9 focused tests in 3 suites pass (11 phone pixel cases, flow-width and
-  command-owner regressions). The owner test verifies identity and latest callback.
-- macOS: 6 focused tests in 3 suites pass (compose pixel reference, reader command
-  handoff and compact reader retention).
+- Final iOS selection: 37 tests in 5 suites pass (11 phone pixel cases, flow-width,
+  command-owner, body presentation and compose policy). The owner test verifies
+  identity and latest callback. Xcode diagnostic collection stalled in intermediate
+  runs; rerunning with `-collect-test-diagnostics never` exited successfully.
+- macOS: initial 6 focused tests in 3 suites pass (compose pixel reference, reader
+  command handoff and compact reader retention). Follow-up body/policy/compose
+  snapshot selection: 29 tests in 3 suites pass.
 - Both native Debug app builds pass. macOS uses the dated Brev Test identity.
 - Lint, zero-change format, iOS baseline inventory and diff check pass.
 - An initial broader macOS snapshot run found an existing `profileManager`

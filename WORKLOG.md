@@ -2984,6 +2984,39 @@ buttons, and package-aware localization.
   a pin, and best-effort availability. Documentation-only exception: no TDD or
   pixel update; privacy audit, lint, formatting and diff-check validate the edit.
 
+## 2026-09-20 — Codex — #4 and backlog sequencing
+
+- Expanded Proposed ADR-0072 against all ten #4 criteria: domain/service
+  contracts, source ownership, native consent constraints, caches, conditional
+  writes, field preservation, recurrence, offline drafts and delivery gates.
+- Reconciled README and ADR-0039/0009/0043 without claiming acceptance or
+  shipped PIM support. Settings replacement copy is specified for acceptance;
+  current UI remains unchanged while the old boundary still applies.
+- Verified official Google and DAV references. Google's installed-app OAuth
+  guidance excludes incremental authorization; #5 must prove feature-triggered
+  native reauthorization and credential preservation before implementation ships.
+- Board: #1/#4 In progress; #3/#5/#6/#7/#8/#11 P0 → P1 so #4 remains the
+  immediate P0 prerequisite. Added #9 as a dependency of #10's writable contact
+  actions. No issues closed or moved to Done.
+- Verification: relative ADR links, lint, format and diff-check pass.
+  Documentation-only TDD/build/snapshot exception; no code, scopes, network
+  traffic, release behavior or permissions changed. README/ADRs/WORKLOG updated;
+  PRIVACY, CHANGELOG, AGENTS and runtime settings need no change for a proposal.
+- #2 preflight: checked configuration contains macOS Google client settings,
+  but no disposable BREV_LIVE_* account values or iOS Google client settings.
+  Requested the secure test-account configuration location; no live mail sent.
+- Handoff: review and accept/narrow ADR-0072 before source/authoring work.
+
+## 2026-09-20 — Codex — PR #48 pre-merge review
+
+- Addressed the OAuth review finding: ADR-0072 now explicitly preserves the
+  required non-confidential macOS Desktop credential from accepted ADR-0067.
+  PKCE remains required; iOS uses its separate secretless native client.
+- Documentation-only correction; TDD/build exception. Checked against ADR-0067
+  and the existing token-exchange contract, with diff-check before commit.
+- Henrik authorized merging the open PRs. The architecture remains Proposed;
+  this correction does not introduce provider implementation or account changes.
+
 ## 2026-09-20 — Codex — #1 and iPhone account alignment
 
 - Reproduced account-header indentation from Henrik's screenshot. Moved the
@@ -3025,6 +3058,16 @@ buttons, and package-aware localization.
   spoken VoiceOver signoff. Continue existing PR #50; no merge or release.
 
 
+## 2026-09-20 — Codex — PR #48 review follow-up
+
+- Preserve ADR-0039’s live DAV/OAuth proof prerequisite before browsing; map legacy #121 evidence to #5, with #11 extending parity coverage.
+- Require a separate validated PIM-only grant before retaining sources during mail removal, and clear the removed mail credential.
+- Verification: checked the proposal against ADR-0039 and PRIVACY.md; documentation-only change, no runtime tests required. ADR-0072 remains Proposed.
+
+- Additional PR #48 review: route reads/writes through explicit adapter boundary in the diagram; require validated narrower shared Google grants on PIM removal, with disclosed revoke/reconnect fallback. State DAV privilege-narrowing limits. Checked scenario consistency and diff whitespace; documentation-only.
+
+- Final removal clarification for PR #48: separately delete source-owned unsent editor drafts and staged attachments after warning and confirmation; allow cancellation. Include this lifecycle in removal tests. Documentation-only, checked against the separate-draft invariant.
+
 ## 2026-09-20 — Codex — #49 / #51 native UI polish
 
 - Followed the requested merge and polish pass. PR #50 merged; PR #48 review
@@ -3054,3 +3097,11 @@ buttons, and package-aware localization.
   new desktop snapshot explicitly in CI. Configuration selection needs no TDD;
   the one-line disable restores the existing header invariant without a new
   async-send fixture. Focused body, compose policy and snapshot checks rerun.
+
+- Final handoff: PR #48 merged as a72e652e; all six review findings resolved.
+  The final documentation-only head passed local lint/diff checks; hosted rebuild
+  remained queued, with the unchanged runtime tree already green at e316db69.
+  PR #50 is merged as 98e517aa. Integrated main into PR #52, preserving both
+  append-only worklog entries. Final iOS command exits successfully with 37
+  tests/5 suites after disabling stalled diagnostic collection; macOS follow-up
+  exits successfully with 29 tests/3 suites. #49/#51 remain In review.
