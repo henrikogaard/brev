@@ -3065,3 +3065,5 @@ buttons, and package-aware localization.
 - Verification: checked the proposal against ADR-0039 and PRIVACY.md; documentation-only change, no runtime tests required. ADR-0072 remains Proposed.
 
 - Additional PR #48 review: route reads/writes through explicit adapter boundary in the diagram; require validated narrower shared Google grants on PIM removal, with disclosed revoke/reconnect fallback. State DAV privilege-narrowing limits. Checked scenario consistency and diff whitespace; documentation-only.
+
+- Final removal clarification for PR #48: separately delete source-owned unsent editor drafts and staged attachments after warning and confirmation; allow cancellation. Include this lifecycle in removal tests. Documentation-only, checked against the separate-draft invariant.

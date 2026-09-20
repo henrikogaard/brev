@@ -134,6 +134,10 @@ No background or photo network request starts merely because a view exists.
 - Removing a source stops its work and offers local-cache deletion. A retained
   cache is clearly disconnected and read-only, retains no reusable credential,
   and has an explicit later delete action. Delete its cursors and disable writes.
+  Source and account removal also delete source-owned unsent editor drafts,
+  including staged attachments, as a separate cleanup step from cache deletion.
+  Warn about unsent work before confirmation and allow cancellation; this phase
+  does not retain detached drafts after their source is removed.
   When removing a feature from a shared Google grant, stage and validate a
   replacement authorization containing only the remaining enabled features.
   Verify the removed scopes are absent before completing removal and deleting
@@ -269,7 +273,8 @@ directory search and Chat remain outside this phase. None blocks #3 closure.
 - Use red/green contract tests for source isolation, actual granted scopes,
   denial/revocation, TLS/redirect handling, pagination, stale cursors, tombstones,
   conflict preservation, recurrence, unknown fields and ambiguous retries.
-- Test cache migration and removal, source-scoped links, local search, offline
+- Test cache migration and removal (including unsent drafts and staged
+  attachments), source-scoped links, local search, offline
   drafts, partial RSVP outcomes and capability loss between render and submit.
 - Render loading/empty/error/read-only/conflict states on both platforms, with
   accessibility, localization, Dynamic Type and reduced-motion checks. Editing
