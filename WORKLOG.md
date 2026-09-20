@@ -3157,3 +3157,46 @@ buttons, and package-aware localization.
 - Updated CHANGELOG and QA evidence. README, privacy, ADRs and AGENTS need no
   change: no setup, architecture, network or workflow changes. Physical spoken
   VoiceOver and live-provider QA not run. No merge/release/version change.
+
+## 2026-09-20 — Codex / Sol — #53 / PR #52 full native audit follow-up
+
+- Started from clean feature/native-ui-polish at 1a3c6b9b, continuing open PR
+  #52 to main. Created #53 for all nine approved audit findings and moved its
+  project card to In progress. Four Sol agents own isolated sidebar, mail-shell,
+  reader/contrast and compose slices; integration owns settings and QA.
+- Removed duplicate fetch guidance and isolated the accounts pixel selection.
+  Two accounts references were inspected/refreshed; four tests in two suites
+  pass. The broad settings snapshot selection had fourteen pre-existing
+  mismatches on macOS 27; unrelated references were preserved.
+- Original iPhone snapshots pass (seven tests / eleven cases). Strengthened
+  shared fixtures with explicit text-size traits, navigation hosting and a
+  two-account/long-name/nested sidebar case. Integrated all four Sol slices and
+  reviewed follow-ups restoring custom profile names, true folder nesting,
+  active mailbox qualifiers, native menu semantics and narrow row metadata.
+- All nine audit findings are implemented: sidebar hierarchy/alignment,
+  desktop initial columns and narrow rows, Dynamic Type/contrast, primary
+  toolbars, iPhone account/status context, compact reader metadata, compose
+  hierarchy and single fetch guidance. Final render review also fixed a clipped
+  local-folder creation footer and removed the duplicate iPhone thread menu.
+- Behavioral red/green evidence comes from the slice policy/body/contrast tests;
+  cosmetic changes use failed prior-reference comparisons, visual inspection,
+  then updated pixel baselines. No mirror unit tests were added for spacing.
+  Corrected cropped/time-dependent fixtures and a 50 ms async test assumption
+  exposed by the old hosted CI failure. Unrelated snapshot debt is unchanged.
+- Final checks: BrevMail behavior 1,606 tests/247 suites; Mac mail pixel selection
+  37 tests/12 suites; iOS selection 18 tests/5 suites (13 phone renders); themes
+  9 tests; focused settings 4 tests/2 suites. Lint, zero-change format, baseline
+  inventory and diff check pass. Dated Mac mock build/startup verification and
+  iOS build/explicit mock launch pass. Native sidebar, reader, menus and compose
+  inspected on both platforms; no mail sent.
+- Fresh 1440 pt native root probe resolves sidebar/list to 240/420 pt without
+  clearing saved window state. Existing-window divider retention remains an
+  inference; the observed initial split and constraints are recorded in QA.
+- Documentation sweep: CHANGELOG, QA evidence/baseline policy and WORKLOG
+  updated; ADR-0002 documents the protected theme contrast change. README,
+  PRIVACY, ADR-0006 and AGENTS need no updates: setup, network behavior, privacy
+  and repository workflow are unchanged. Physical spoken VoiceOver, live
+  providers, unrelated Settings snapshots and maintainer acceptance remain open.
+- QA scope, commands and limitations are tracked in
+  docs/qa/native-audit-polish-2026-09-20.md. No live mail, daily-driver replacement,
+  version change, merge or release operation was performed.

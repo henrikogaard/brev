@@ -282,59 +282,6 @@ public struct ThreadConversationView: View {
                     }
                 }
             }
-            .toolbar {
-                #if os(iOS)
-                // One consolidated thread-tools menu (matching the reader's
-                // ellipsis.circle affordance): print/export plus, at iPad
-                // regular width, "Open in New Window". The detached payload
-                // addresses a single message, so we open the card the reader
-                // is actually showing — the expanded/selected message
-                // (falling back to the newest), matching the in-pane
-                // expansion. (ADR-0033)
-                let detachMessageID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: threadHeaders
-                )
-                let canDetach = MailDetachWindowPolicy.shouldDetach(
-                    idiom: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone,
-                    isRegularWidth: horizontalSizeClass == .regular
-                )
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            printThread()
-                        } label: {
-                            Label(String(localized: "Print…", bundle: .module), systemImage: "printer")
-                        }
-                        Button {
-                            exportThreadPDF()
-                        } label: {
-                            Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
-                        }
-                        if canDetach, let detachMessageID,
-                           let detachHeader = threadHeaders.first(where: { $0.id == detachMessageID }) {
-                            Divider()
-                            Button {
-                                openWindow(value: DetachedReaderWindowPayload(
-                                    sourceID: sourceID,
-                                    messageID: detachMessageID,
-                                    folderID: detachHeader.folderID
-                                ))
-                            } label: {
-                                Label(
-                                    String(localized: "Open in New Window", bundle: .module),
-                                    systemImage: "macwindow.on.rectangle"
-                                )
-                            }
-                        }
-                    } label: {
-                        Label(String(localized: "More thread actions", bundle: .module), systemImage: "ellipsis.circle")
-                    }
-                    .disabled(threadHeaders.isEmpty)
-                    .accessibilityLabel(String(localized: "More thread actions", bundle: .module))
-                }
-                #endif
-            }
             .focusedSceneValue(\.mailPrintExportActions, printExportActions)
             .alert(String(localized: "Print / Export Failed", bundle: .module), isPresented: printExportErrorBinding) {
                 Button(String(localized: "OK", bundle: .module), role: .cancel) {
@@ -767,7 +714,7 @@ public struct ThreadConversationView: View {
                 Label(
                     showUnreadOnly
                         ? String(localized: "Show All", bundle: .module)
-                        : String(localized: "Unread Only", bundle: .module),
+                        : String(localized: "Unread only", bundle: .module),
                     systemImage: showUnreadOnly ? "envelope.open" : "envelope.badge"
                 )
             }
@@ -789,6 +736,11 @@ public struct ThreadConversationView: View {
                 )
             }
             .disabled(visibleHeaders.isEmpty)
+
+            #if os(iOS)
+            Divider()
+            threadPrintExportMenuItems
+            #endif
         } label: {
             Label(String(localized: "Conversation controls", bundle: .module), systemImage: "ellipsis.circle")
                 .labelStyle(.iconOnly)
@@ -800,6 +752,36 @@ public struct ThreadConversationView: View {
         .menuStyle(.borderlessButton)
         .accessibilityLabel(String(localized: "Conversation controls", bundle: .module))
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var threadPrintExportMenuItems: some View {
+        Group {
+            Button(action: printThread) {
+                Label(String(localized: "Print…", bundle: .module), systemImage: "printer")
+            }
+            Button(action: exportThreadPDF) {
+                Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
+            }
+            // A detached reader addresses the selected/expanded message, not
+            // an arbitrary member of the conversation (ADR-0033).
+            if canOpenCardInNewWindow,
+               let messageID = ThreadConversationExpansionPolicy.expandedID(
+                   selectedID: navigation.selectedMessageID, in: threadHeaders
+               ),
+               let header = threadHeaders.first(where: { $0.id == messageID }) {
+                Button {
+                    openWindow(value: DetachedReaderWindowPayload(
+                        sourceID: sourceID, messageID: messageID, folderID: header.folderID
+                    ))
+                } label: {
+                    Label(String(localized: "Open in New Window", bundle: .module), systemImage: "macwindow.on.rectangle")
+                }
+            }
+        }
+        .disabled(threadHeaders.isEmpty)
+    }
+    #endif
 
     @ViewBuilder
     private var aiSummaryMenuItems: some View {

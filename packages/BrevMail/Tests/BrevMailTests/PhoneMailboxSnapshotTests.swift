@@ -64,7 +64,8 @@ struct PhoneMailboxSnapshotTests {
                                .htmlBodyRenderTarget(.staticSnapshot)
         let host = UIHostingController(rootView: view)
         assertSnapshot(of: host, as: .image(size: CGSize(width: 660, height: 560),
-                                            traits: .init(displayScale: 2)), named: "narrow-compose")
+                                            traits: .init(displayScale: 2)), named: "narrow-compose",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
     @Test("conversation metadata stays secondary at phone text sizes", arguments: [false, true])
@@ -91,8 +92,13 @@ struct PhoneMailboxSnapshotTests {
         .defaultAppStorage(defaults)
         .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large)
         let host = UIHostingController(rootView: view)
-        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-                       named: accessibility ? "accessibility" : "standard")
+        let traits = UITraitCollection(traitsFrom: [
+            .init(displayScale: 2),
+            .init(preferredContentSizeCategory: accessibility ? .accessibilityExtraExtraExtraLarge : .large)
+        ])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits),
+                       named: accessibility ? "accessibility" : "standard",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
     @Test("phone compose stays inside the viewport", arguments: [false, true])
@@ -104,9 +110,14 @@ struct PhoneMailboxSnapshotTests {
             .brevTheme(.brevMonoLight)
             .htmlBodyRenderTarget(.staticSnapshot)
         let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [
+            .init(displayScale: 2),
+            .init(preferredContentSizeCategory: accessibility ? .accessibilityExtraExtraExtraLarge : .large)
+        ])
         assertSnapshot(of: host, as: .image(size: CGSize(width: 320, height: 720),
-                                            traits: .init(displayScale: 2)),
-                       named: accessibility ? "accessibility" : "standard")
+                                            traits: traits),
+                       named: accessibility ? "accessibility" : "standard",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
     @Test("phone folder hierarchy", arguments: [false, true])
@@ -118,15 +129,56 @@ struct PhoneMailboxSnapshotTests {
         let mailbox = Mailbox(id: "personal", email: "me@example.org", displayName: "Personal", isPrimary: true)
         let source = MailSourceID(accountID: account.id, mailboxID: mailbox.id)
         navigation.selectFolder("INBOX", in: source)
-        let host = UIHostingController(rootView:
+        let host = UIHostingController(rootView: NavigationStack {
             FolderSidebar(navigation: navigation, folders: [], sourceSections: [
                 MailSourceSection(id: source, account: account, mailbox: mailbox,
                                   folders: MockBackend.previewFolders)
             ])
-            .background(theme.bgSecondary.color)
-            .brevTheme(theme)
-            .environment(\.colorScheme, dark ? .dark : .light)
-            .defaultAppStorage(defaults))
+            .navigationTitle("Mailboxes")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .background(theme.bgSecondary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, dark ? .dark : .light)
+        .defaultAppStorage(defaults))
+        assertSnapshot(of: host,
+                       as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+                       named: dark ? "dark" : "light",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("phone sidebar distinguishes account sections from nested folders", arguments: [false, true])
+    func twoAccountMailboxes(dark: Bool) throws {
+        let theme = dark ? BrevTheme.brevMonoDark : .brevMonoLight
+        let defaults = try #require(UserDefaults(suiteName: "TwoAccountSidebar-" + UUID().uuidString))
+        let navigation = MailNavigationState()
+        let account = BrevAccount(id: "account", displayName: "Henrik Øgård", emailAddress: "henrik@example.org")
+        let personal = Mailbox(id: "personal", email: "personal@example.org", displayName: "Personal", isPrimary: true)
+        let work = Mailbox(id: "work", email: "work@example.org", displayName: "Harbour Logistics and Operations")
+        let personalSource = MailSourceID(accountID: account.id, mailboxID: personal.id)
+        let workSource = MailSourceID(accountID: account.id, mailboxID: work.id)
+        try defaults.set(JSONEncoder().encode(Set([personalSource, workSource])), forKey: "mailbox.disclosureState")
+        navigation.selectFolder("inbox", in: workSource)
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 11),
+            Folder(id: "drafts", name: "Drafts", role: .drafts),
+            Folder(id: "archive", name: "Archive", role: .archive),
+            Folder(id: "receipts", name: "Receipts", role: .custom, parentID: "archive"),
+            Folder(id: "software", name: "Software", role: .custom, parentID: "receipts")
+        ]
+        let view = NavigationStack {
+            FolderSidebar(navigation: navigation, folders: [], sourceSections: [
+                MailSourceSection(id: personalSource, account: account, mailbox: personal, folders: folders),
+                MailSourceSection(id: workSource, account: account, mailbox: work, folders: Array(folders.prefix(2)))
+            ])
+            .navigationTitle("Mailboxes")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+        .background(theme.bgSecondary.color)
+        .brevTheme(theme)
+        .environment(\.colorScheme, dark ? .dark : .light)
+        .defaultAppStorage(defaults)
+        let host = UIHostingController(rootView: view)
         assertSnapshot(of: host,
                        as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
                        named: dark ? "dark" : "light",

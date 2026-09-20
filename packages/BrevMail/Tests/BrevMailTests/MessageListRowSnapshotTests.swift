@@ -128,7 +128,7 @@ struct MessageListRowSnapshotTests {
     /// Reproduces the narrow-column case ADR-0023 flags as a truncation risk:
     /// the widest absolute arrival label, a long sender, and a thread badge all
     /// competing inside the 280-point minimum message-list width. The timestamp
-    /// must stay on one line and the sender must absorb the truncation.
+    /// must stay on one line, moving below the sender when necessary.
     @Test("narrow rows keep the arrival timestamp on a single line")
     func narrowRowKeepsTimestampOnOneLine() {
         let theme = BrevTheme.brevSlate
@@ -247,7 +247,7 @@ struct MessageListRowSnapshotTests {
         )
     }
 
-    @Test("compact rows keep sender and subject without preview or label clutter")
+    @Test("compact rows keep sender, subject and one preview without label clutter")
     func compactRowKeepsPrimaryMailIdentity() {
         let theme = BrevTheme.brevSlate
         let header = MessageHeader(
@@ -256,8 +256,8 @@ struct MessageListRowSnapshotTests {
             folderID: "inbox",
             from: Correspondent(name: "Marcus Rodriguez-Whitfield", email: "marcus@example.org"),
             subject: "Friday standup notes and the mailbox overview review",
-            snippet: "This preview and the provider labels should yield on a compact phone row.",
-            date: Self.differentYearDate,
+            snippet: "One preview line stays visible; provider labels stay hidden on a compact phone row.",
+            date: .distantPast,
             isRead: false,
             isFlagged: true,
             hasAttachments: true,
@@ -288,6 +288,7 @@ struct MessageListRowSnapshotTests {
         .frame(width: 320, height: 72)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .environment(\.locale, Locale(identifier: "en_US"))
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 72)

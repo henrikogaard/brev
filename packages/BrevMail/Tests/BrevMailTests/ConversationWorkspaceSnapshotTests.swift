@@ -32,7 +32,8 @@ struct ConversationWorkspaceSnapshotTests {
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 680, height: 560)
         assertSnapshot(of: host, as: .image(size: CGSize(width: 680, height: 560)),
-                       named: "desktop-compose")
+                       named: "desktop-compose",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
     @Test("profile actions stay in the auxiliary window content")

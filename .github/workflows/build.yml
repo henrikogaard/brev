@@ -336,6 +336,7 @@ jobs:
             -only-testing:BrevSettingsTests/MailFolderExportStatusSnapshotTests \
             -only-testing:BrevSettingsTests/BackupPreviewSheetSnapshotTests \
             -only-testing:BrevSettingsTests/MailStorageSectionSnapshotTests \
+            '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/accountsSurface(_:)' \
             test
 
       - name: Report deferred macOS snapshot comparison

@@ -159,7 +159,7 @@ struct BrevMailSnapshotTests {
     )
     @MainActor
     func threadMessageCardCollapsedRenders() throws {
-        let theme = BrevTheme.brevBuiltIns[0]
+        let theme = BrevTheme.brevPaper
         let header = (MockBackend.previewMessages["inbox"] ?? [])
             .first { $0.threadID == "thread-standup" }!
 
@@ -167,7 +167,8 @@ struct BrevMailSnapshotTests {
             header: header,
             isExpanded: false,
             backend: MockBackend(),
-            sourceID: nil
+            sourceID: nil,
+            dateTextOverride: "12:00"
         ) {}
             .frame(width: 480, height: 80)
             .background(theme.bgPrimary.color)
@@ -179,7 +180,7 @@ struct BrevMailSnapshotTests {
 
         assertSnapshot(
             of: host,
-            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            as: .image(size: CGSize(width: 480, height: 80), traits: .init(displayScale: 2)),
             named: "collapsed-\(theme.id)"
         )
     }

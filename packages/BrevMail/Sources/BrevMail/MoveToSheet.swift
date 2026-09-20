@@ -76,6 +76,8 @@ public struct MoveToSheet: View {
             folderList
             if onCreateFolder != nil {
                 newFolderFooter
+                    .fixedSize(horizontal: false, vertical: true)
+                    .layoutPriority(1)
             }
             if let moveError {
                 errorFooter(moveError)

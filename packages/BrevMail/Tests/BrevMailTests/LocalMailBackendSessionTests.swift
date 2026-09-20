@@ -37,7 +37,7 @@ struct LocalMailBackendSessionTests {
     }
 
     @Test("local backend is hidden from visibleBackends until it has a folder")
-    func hiddenUntilFoldersExist() async {
+    func hiddenUntilFoldersExist() async throws {
         let local = Self.makeLocalBackend()
         let session = AppSession(
             backend: MockBackend(),
@@ -53,9 +53,15 @@ struct LocalMailBackendSessionTests {
             $0.account.id == LocalMailBackend.accountID
         } == false)
 
-        _ = try? await local.createFolder(name: "Saved", parentID: nil)
+        _ = try await local.createFolder(name: "Saved", parentID: nil)
         session.refreshLocalFolders()
-        try? await Task.sleep(nanoseconds: 50_000_000)
+        // The refresh is asynchronous; a busy CI host can take longer than a
+        // fixed 50 ms delay. Wait for its observable result with a bounded limit.
+        let clock = ContinuousClock()
+        let deadline = clock.now.advanced(by: .seconds(3))
+        while !session.hasLocalFolders, clock.now < deadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         #expect(session.visibleBackends.contains {
             $0.account.id == LocalMailBackend.accountID
         })

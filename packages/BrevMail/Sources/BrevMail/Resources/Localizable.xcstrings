@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Hide AI Sidebar" : {
+      "extractionState" : "manual"
+    },
+    "Conversation controls" : {
+      "extractionState" : "manual"
+    },
+    "Show All" : {
+      "extractionState" : "manual"
+    },
     "Some results could not be loaded. Other mailboxes are still being searched." : {
       "extractionState" : "manual"
     },

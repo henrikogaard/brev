@@ -382,31 +382,15 @@ struct AccountsSection: View {
             subtitle: String(localized: "Applies to all accounts. Choose how often Brev checks for new mail.", bundle: .module),
             symbolName: "envelope.arrow.triangle.branch"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsPickerRow(
-                    symbolName: "clock",
-                    title: String(localized: "Check for mail", bundle: .module),
-                    subtitle: FetchSchedulePresentation.intervalSubtitle(fetchSettings.interval),
-                    selection: fetchIntervalBinding
-                ) {
-                    ForEach(FetchInterval.allCases) { interval in
-                        Text(interval.title).tag(interval)
-                    }
+            SettingsPickerRow(
+                symbolName: "clock",
+                title: String(localized: "Check for mail", bundle: .module),
+                subtitle: FetchSchedulePresentation.intervalSubtitle(fetchSettings.interval),
+                selection: fetchIntervalBinding
+            ) {
+                ForEach(FetchInterval.allCases) { interval in
+                    Text(interval.title).tag(interval)
                 }
-
-                SettingsInfoCallout(
-                    symbolName: "battery.75percent",
-                    message: fetchSettings.interval == .manual
-                        ? String(
-                            localized: "Manual-only mode. Brev will not wake up to check for mail automatically.",
-                            bundle: .module
-                        )
-                        : String(
-                            localized: "More frequent checks use more battery. Manual-only mode is available above.",
-                            bundle: .module
-                        ),
-                    tone: fetchSettings.interval == .fiveMinutes ? .warning : .info
-                )
             }
         }
     }
