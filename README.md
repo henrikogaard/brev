@@ -314,11 +314,20 @@ them. They are not committed.
 - Read-side AI features (summarize, triage) gated on local-LLM-only
   paths and separate consent.
 
+### Calendar and Contacts proposal
+
+Brev currently ships mail-related calendar and contact workflows. Read-only
+browsing is accepted future scope under ADR-0039; first-class Google/DAV browsing
+and authoring is proposed in [ADR-0072](ADRs/0072-provider-neutral-calendar-contact-authoring.md)
+and tracked by issues #3–#11. That proposal awaits maintainer acceptance and does
+not describe functionality already available. Tasks, Meet creation, Drive picking
+and Notes remain separate follow-ups.
+
 ### Permanent non-goals
 
 - Windows or Linux ports.
-- A calendar app, a contacts app, or kDrive integration. Mail
-  only.
+- kDrive integration. Calendar/Contacts expansion is governed by the proposal
+  above, rather than an unconditional permanent exclusion.
 - Automatic AI on read or compose. AI is always user-initiated,
   per ADR-0008 and ADR-0028 invariant 6.
 - Telemetry of any kind, even "anonymous" or "crash-only".

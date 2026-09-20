@@ -4,6 +4,12 @@
 - **Date:** 2026-05-26
 - **Deciders:** Henrik
 
+## Relationship to proposed Calendar/Contacts expansion
+
+Proposed ADR-0072 does not change distribution or signing. Calendar/Contacts
+expansion is not a retroactive acceptance gate for mail-only releases; PIM builds
+require their own consent, privacy and native/provider QA before distribution.
+
 ## Context
 
 Brev needs to ship to users on both macOS and iOS. The decisions are:

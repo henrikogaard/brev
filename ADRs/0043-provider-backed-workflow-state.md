@@ -5,6 +5,12 @@
 - **Deciders:** Henrik
 - **Amends:** ADR-0042
 
+## Relationship to proposed Calendar/Contacts expansion
+
+Proposed ADR-0072 defines separate PIM sources and preserves this Local/Provider/
+Unsupported model. Calendar/Contacts acceptance would not automatically migrate
+local workflow state or enable the separate Tasks follow-up.
+
 ## Context
 
 Brev has strong local workflow features: local inbox categories, snooze, Done,
