@@ -49,6 +49,7 @@ All notable changes to Brev are documented here.
 
 - Desktop sidebar uses compact account headings, aligned top-level folders,
   regular-weight labels, quieter counts and a single rounded selection fill.
+  Profile, All Inboxes and Smart Views share aligned top controls.
 
 - The Beta update channel is retired in favour of the Stable/Nightly
   release rings (ADR-0080). The Stable/Beta picker is gone — the ring is

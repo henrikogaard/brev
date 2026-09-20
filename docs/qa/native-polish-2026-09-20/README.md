@@ -79,3 +79,9 @@ and selecting the second account Inbox. No physical VoiceOver acceptance.
 Rendered references:
 - [Dark account selection](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/compactProfileScopes-_.mailbox-dark.png)
 - [Light nested folders](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/allInboxesGlobalAlignment.all-inboxes-global-alignment.png)
+
+Top alignment follow-up: profile, All Inboxes and Smart Views share icon/text
+columns. The profile remains a native Menu with a plain button label and trailing
+chevron; native inspection confirmed All Mailboxes and Manage Profiles open.
+Smart Views disclosure leads its label. Removed the extra profile bottom gap.
+Updated the same 11 desktop references; iOS presentation remains unchanged.

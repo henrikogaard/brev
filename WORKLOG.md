@@ -3124,3 +3124,17 @@ buttons, and package-aware localization.
 - Lint, format and diff check passed. Updated CHANGELOG and QA documentation;
   no provider, privacy, public design-token, setup or architectural change, so
   README/PRIVACY/ADRs/AGENTS need no update. Physical VoiceOver remains unverified.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar top alignment
+
+- Aligned profile, All Inboxes and Smart Views text/icon columns on desktop.
+  Replaced the native borderless menu label with a plain menu button so SwiftUI
+  respects its layout; moved the profile chevron to the trailing edge. Removed
+  the extra profile gap and put Smart Views disclosure in the icon column.
+- Inspected intentional snapshot failures and refined the rendered alignment;
+  refreshed only the 11 sidebar references. Native profile menu opens with All
+  Mailboxes and Manage Profiles. Decorative symbols are hidden from accessibility.
+- Verification: macOS sidebar snapshots and unchanged phone snapshots rerun;
+  dated test-app build, lint/format and diff check. No new provider, privacy,
+  architecture or settings behavior; only CHANGELOG, QA and WORKLOG need updates.
