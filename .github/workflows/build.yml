@@ -320,6 +320,7 @@ jobs:
             -only-testing:BrevMailTests/BackgroundMailStatusViewSnapshotTests \
             -only-testing:BrevMailTests/LocalFolderSnapshotTests \
             -only-testing:BrevMailTests/RelatedConversationBarSnapshotTests \
+            '-only-testing:BrevMailTests/ConversationWorkspaceSnapshotTests/composeToolbar()' \
             test || (echo "::error::macOS BrevMail snapshot tests failed"; exit 1)
 
       - name: Test folder export feedback snapshots

@@ -332,7 +332,7 @@ struct ThreadMessageCard: View {
                     .tint(theme.accent.color)
                     .frame(maxWidth: .infinity, alignment: .leading)
             } else {
-                Text(ThreadMessageBodyPresentation.htmlFallback(html))
+                Text(ThreadMessageBodyPresentation.htmlFallback(html, plainText: renderedBody?.plainText))
                     .font(messageBodyFont)
                     .foregroundStyle(theme.textSecondary.color)
                     .textSelection(.enabled)

@@ -626,6 +626,7 @@ public struct ComposeView: View {
         VStack(spacing: 0) {
             if isAccessibilityFieldLayout {
                 toolbar
+                    .disabled(isBusy)
                 ScrollView {
                     VStack(spacing: 0) {
                         fieldPanel.disabled(isBusy)

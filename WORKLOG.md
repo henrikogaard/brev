@@ -3046,3 +3046,11 @@ buttons, and package-aware localization.
 - Documentation sweep: updated CHANGELOG, QA evidence and WORKLOG. No public
   architecture, provider, privacy, setup or workflow change; README, PRIVACY,
   ADRs and AGENTS need no change for this implementation. Hand off in review.
+
+- PR #52 follow-up: native plain-renderer QA exposed joined paragraphs while HTML
+  import was pending. Added a failing fallback regression and preserved the
+  supplied plain alternative; native screenshot now retains paragraph spacing.
+  Restored busy-state disabling on the accessibility toolbar and registered the
+  new desktop snapshot explicitly in CI. Configuration selection needs no TDD;
+  the one-line disable restores the existing header invariant without a new
+  async-send fixture. Focused body, compose policy and snapshot checks rerun.

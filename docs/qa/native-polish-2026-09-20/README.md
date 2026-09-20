@@ -14,7 +14,8 @@ Synthetic MockBackend mail only; no message sent and no live account changed.
 | Desktop mailbox and Settings | Three-column mailbox and account settings inspected in the test app; no further layout defect reproduced in this pass. |
 
 Screenshots: [loaded reader](reader-loaded.jpg), [reply compose](compose-reply.jpg),
-[largest compose](compose-largest.jpg), [largest form after scroll](compose-scrolled.jpg).
+[largest compose](compose-largest.jpg), [largest form after scroll](compose-scrolled.jpg), and
+[plain-text fallback](reader-plain.jpg).
 All addresses in these captures are synthetic `.example` fixtures.
 
 ## Diagnosis and verification
@@ -46,7 +47,14 @@ Runtime checks used one simulator/runtime and one Mac. No physical-device,
 spoken VoiceOver, another iOS runtime, real-provider or release validation was
 performed. Runtime accessibility snapshots still include background mailbox
 nodes; this pass does not establish correct VoiceOver focus isolation. The
-rich/plain rendering preference was used diagnostically before the fix, but a
-complete rich/plain provider-content matrix remains for #51 acceptance. At large
+sample reader was also checked with rich rendering disabled: it now preserves
+the supplied plain-text paragraphs while attributed import is pending or fails.
+A complete rich/plain live-provider content matrix remains for #51 acceptance. At large
 text sizes, the embedded message editor typography needs its own accessibility
 review. Issues remain open for maintainer QA.
+
+Review follow-up: preserved the busy-state disable on the accessibility toolbar
+and explicitly selected the desktop compose snapshot in the compatible-host CI
+job. The fallback paragraph regression failed before the fix and passed after it.
+Busy-state restoration reuses the existing header invariant; no new async send
+fixture was added for this one-line modifier correction.

@@ -71,7 +71,8 @@ enum ThreadMessageBodyPresentation: Equatable {
         return .empty
     }
 
-    static func htmlFallback(_ html: String) -> String {
+    static func htmlFallback(_ html: String, plainText: String? = nil) -> String {
+        if let plainText, !plainText.isEmpty { return plainText }
         let stripped = html.replacingOccurrences(
             of: "<[^>]+>",
             with: "",

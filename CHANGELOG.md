@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Preserve supplied plain-text paragraphs while attributed HTML import is pending
+  or fails.
 - Stop the iPhone conversation reader from repeatedly invalidating its command
   environment and remaining stuck at Loading message.
 - Keep compose recipient fields within the available width and allow the form
