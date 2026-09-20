@@ -2882,3 +2882,12 @@ buttons, and package-aware localization.
 - Verification: all three handoff tests (five parameterized cases total) and
   app-hosted iOS tests pass; lint, formatting and diff-check pass. The change
   affects confirmation routing only, so no pixel references were updated.
+
+- Exact detached-reader cached lookup now uses the payload folder ID directly
+  even when folder enumeration fails. The empty-catalog regression failed before
+  the fix. Added all five phone references to the baseline presence gate. A
+  temporary fixture with an empty inbox PNG passed before and fails after the
+  inventory change; the real baseline inventory passes.
+- Verification: all 14 detached resolver tests, baseline inventory, lint,
+  formatting and diff-check pass. No view layout changed; existing rendered
+  references remain valid. Release archive validation covers the iOS build.

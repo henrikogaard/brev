@@ -53,6 +53,16 @@ struct DetachedWindowResolverTests {
         }
     }
 
+    @Test("exact cached membership resolves even when the folder catalog is unavailable")
+    func cachedMembershipWithoutCatalog() async {
+        let target = header("m1", folderID: "inbox")
+        let provider = StubHeaderProvider(headersByFolder: ["inbox": ["m1": target]])
+        let resolved = await DetachedWindowResolver.resolveHeader(
+            messageID: "m1", using: provider, folders: [], folderID: "inbox"
+        )
+        #expect(resolved == target)
+    }
+
     // MARK: resolveBackend
 
     @Test("matches the backend whose account id equals the source's account id")

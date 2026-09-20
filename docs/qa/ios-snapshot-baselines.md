@@ -106,3 +106,8 @@ old row collapsed the name field; the reviewed references keep the field on
 its own line and put Enabled plus a 44pt action menu below it. Both sizes were
 visually inspected before comparison. All three newly enlarged settings action
 rows (templates, rules, signatures) now have compact coverage.
+
+All five `PhoneMailboxSnapshotTests` references are required by
+`scripts/check-ios-snapshot-baselines.sh`, including on CI hosts that cannot
+run the iOS 27 pixel comparisons. Missing or empty phone references fail the
+presence gate.

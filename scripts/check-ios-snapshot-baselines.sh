@@ -9,6 +9,11 @@ metadata="$repo_root/docs/qa/ios-snapshot-baselines.md"
 workflow="$repo_root/.github/workflows/build.yml"
 
 required=(
+  "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.dark.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.light.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/mailboxes-dark.dark.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/mailboxes-dark.light.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/narrowCompose.narrow-compose.png"
   "$snapshot_root/BrevMailRootViewSnapshotTests/rootViewWideLayout.root-wide.png"
   "$snapshot_root/MessageDetailViewSnapshotTests/bodyLoadErrorState.body-load-error.png"
   "$snapshot_root/FolderSidebarSnapshotTests/allInboxesGlobalAlignment.all-inboxes-global-alignment.png"

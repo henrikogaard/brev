@@ -49,7 +49,7 @@ enum DetachedWindowResolver {
         // A multi-label message must retain the membership it was opened from.
         let folders = folderID.map { origin in folders.filter { $0.id == origin } } ?? folders
         if let provider = backend.extensionService(CachedMessageHeaderProviding.self) {
-            return await resolveHeader(messageID: messageID, using: provider, folders: folders)
+            return await resolveHeader(messageID: messageID, using: provider, folders: folders, folderID: folderID)
         }
         let cacheSource: MailSourceID
         if let sourceID {
@@ -74,9 +74,13 @@ enum DetachedWindowResolver {
     static func resolveHeader(
         messageID: MessageHeader.ID,
         using provider: (any CachedMessageHeaderProviding)?,
-        folders: [Folder]
+        folders: [Folder],
+        folderID: Folder.ID? = nil
     ) async -> MessageHeader? {
         guard let provider else { return nil }
+        if let folderID {
+            return await provider.cachedMessageHeader(messageID: messageID, folderID: folderID)
+        }
         for folder in folders {
             if let header = await provider.cachedMessageHeader(
                 messageID: messageID,

@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Offline detached readers resolve exact cached folder membership even when the folder catalog is unavailable.
+
 - Cancelling Block Sender preserves the current conversation; folder activation waits for confirmation.
 
 - Reader presentation actions preserve the current conversation and remain available during transient folder-load errors.
