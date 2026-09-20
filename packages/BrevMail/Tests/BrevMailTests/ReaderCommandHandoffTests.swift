@@ -93,6 +93,35 @@ struct ReaderCommandHandoffTests {
         #expect(navigation.selectedFolderID == "sent")
     }
 
+    @Test("permanent delete preserves navigation until confirmed", arguments: [false, true])
+    func permanentDeleteDefersNavigation(hasTrash: Bool) {
+        let navigation = MailNavigationState()
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        navigation.selectFolder("inbox", in: source)
+        let trash = Folder(id: hasTrash ? "trash" : "custom", name: "Target", role: hasTrash ? .trash : .custom)
+        let section = MailSourceSection(id: source,
+                                        account: BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org"),
+                                        mailbox: Mailbox(id: "a", email: "a@example.org", displayName: "A", isPrimary: true),
+                                        folders: [Folder(id: "inbox", name: "Inbox", role: .inbox), trash])
+        let header = MessageHeader(id: "message", threadID: "thread", folderID: trash.id,
+                                   from: Correspondent(email: "fixture@example.org"),
+                                   subject: "Subject", snippet: "Preview", date: .distantPast)
+        let request = DetachedMessageCommandRequest(command: .delete, header: header, sourceID: source)
+        var applied = false
+        #expect(ReaderCommandSourceHandoff.prepare(
+            request,
+            navigation: navigation,
+            sections: [section],
+            applySection: { _ in applied = true }
+        ))
+        #expect(navigation.selectedFolderID == "inbox")
+        #expect(!applied)
+        #expect(ReaderCommandSourceHandoff.prepare(request, navigation: navigation, sections: [section],
+                                                   isPermanentDeleteConfirmed: true, applySection: { _ in applied = true }))
+        #expect(navigation.selectedFolderID == trash.id)
+        #expect(applied)
+    }
+
     @Test("two window handoffs keep their source and command separate and execute once")
     func independentWindows() throws {
         let header = MessageHeader(id: "same-id", threadID: "thread", folderID: "inbox",

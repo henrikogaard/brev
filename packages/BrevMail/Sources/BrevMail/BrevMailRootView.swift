@@ -344,7 +344,7 @@ public struct BrevMailRootView: View {
     @State private var outboxPendingCount = 0
     @State private var folderNamePrompt: MailFolderNamePrompt?
     @State private var folderConfirmation: MailFolderConfirmation?
-    @State private var pendingPermanentDeleteHeader: MessageHeader?
+    @State private var pendingPermanentDeleteTarget: DetachedReaderActionTarget?
     /// Targets for reader/detached-window actions that need an in-scene
     /// confirmation UI: the snooze-time picker sheet and the block-sender
     /// confirmation alert. Both are handled on the root view so detached
@@ -794,15 +794,30 @@ public struct BrevMailRootView: View {
                 isPresented: isPermanentDeleteAlertPresented
             ) {
                 Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                    guard let header = pendingPermanentDeleteHeader else { return }
-                    pendingPermanentDeleteHeader = nil
-                    Task { await trash(header: header, confirmedPermanent: true) }
+                    guard let target = pendingPermanentDeleteTarget else { return }
+                    pendingPermanentDeleteTarget = nil
+                    Task {
+                        guard canStartCommandMutation() else {
+                            rootStatus = MailRootStatus(message: String(
+                                localized: "Another mail action is still running. Wait for it to finish and try again.",
+                                bundle: .module
+                            ))
+                            return
+                        }
+                        guard prepareDetachedCommandContext(
+                            .init(command: .delete, header: target.header, sourceID: target.sourceID),
+                            isPermanentDeleteConfirmed: true
+                        ) else { return }
+                        await trash(header: target.header, confirmedPermanent: true)
+                    }
                 }
                 Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                    pendingPermanentDeleteHeader = nil
+                    pendingPermanentDeleteTarget = nil
                 }
             } message: {
-                Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: folders))
+                Text(MailUndoableDelete.permanentDeleteMessage(
+                    count: 1, folders: moveFolders(for: pendingPermanentDeleteTarget?.sourceID ?? navigation.selectedSourceID)
+                ))
             }
             .sheet(item: $pendingReaderSnoozeTarget) { target in
                 // Snooze-time picker for detached-window / consolidated-reader
@@ -4508,7 +4523,7 @@ public struct BrevMailRootView: View {
 
     private func acceptDetachedMessageCommand(_ request: DetachedMessageCommandRequest) -> Bool {
         let hasPresentation = navigation.presentedSheet != nil || pendingReaderSnoozeTarget != nil
-            || pendingReaderBlockSenderTarget != nil || pendingPermanentDeleteHeader != nil
+            || pendingReaderBlockSenderTarget != nil || pendingPermanentDeleteTarget != nil
         guard request.command.canBeAccepted(
             hasPresentation: hasPresentation,
             canStartMutation: !hasPresentation && canStartCommandMutation()
@@ -4523,13 +4538,15 @@ public struct BrevMailRootView: View {
 
     private func prepareDetachedCommandContext(
         _ request: DetachedMessageCommandRequest,
-        isBlockSenderConfirmed: Bool = false
+        isBlockSenderConfirmed: Bool = false,
+        isPermanentDeleteConfirmed: Bool = false
     ) -> Bool {
         let sourceID = request.sourceID ?? navigation.selectedSourceID
         guard sourceID.map({ backendAccountIDs.contains($0.accountID) }) ?? true,
               ReaderCommandSourceHandoff.prepare(
                   request, navigation: navigation, sections: sourceSections,
                   isBlockSenderConfirmed: isBlockSenderConfirmed,
+                  isPermanentDeleteConfirmed: isPermanentDeleteConfirmed,
                   applySection: { section in
                       handleSelectedSourceChange()
                       applySelectedSourceSection(section)
@@ -4571,7 +4588,14 @@ public struct BrevMailRootView: View {
         case .archive:
             performDetachedMutation(sourceID: sourceID) { await archive(header: header) }
         case .delete:
-            performDetachedMutation(sourceID: sourceID) { await trash(header: header) }
+            if ReaderCommandSourceHandoff.requiresPermanentDeleteConfirmation(
+                .init(command: command, header: header, sourceID: sourceID),
+                navigation: navigation, sections: sourceSections
+            ) {
+                pendingPermanentDeleteTarget = DetachedReaderActionTarget(header: header, sourceID: sourceID)
+            } else {
+                performDetachedMutation(sourceID: sourceID) { await trash(header: header) }
+            }
         case .move:
             guard navigation.presentedSheet == nil else { return }
             navigation.presentedSheet = .moveTo(
@@ -5494,9 +5518,9 @@ public struct BrevMailRootView: View {
 
     private var isPermanentDeleteAlertPresented: Binding<Bool> {
         Binding(
-            get: { pendingPermanentDeleteHeader != nil },
+            get: { pendingPermanentDeleteTarget != nil },
             set: { isPresented in
-                if !isPresented { pendingPermanentDeleteHeader = nil }
+                if !isPresented { pendingPermanentDeleteTarget = nil }
             }
         )
     }
@@ -5509,7 +5533,7 @@ public struct BrevMailRootView: View {
         // require prior confirmation — there is no undo.
         if !confirmedPermanent,
            MailUndoableDelete.isPermanentDelete(from: originalFolder, folders: folders) {
-            pendingPermanentDeleteHeader = header
+            pendingPermanentDeleteTarget = DetachedReaderActionTarget(header: header, sourceID: navigation.selectedSourceID)
             return
         }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)

@@ -2942,3 +2942,13 @@ buttons, and package-aware localization.
 - Verification: all four inventory tests pass on macOS and iPad (xcodebuild
   exit 0); lint, formatting and diff-check pass. Platform filtering is covered
   directly by inventory tests; no new view styling or pixel references changed.
+
+- Permanent-delete reader commands now retain a source-owned confirmation
+  target without activating its folder. Confirmation revalidates the source
+  before switching; cancellation preserves the original conversation. Covered
+  Trash and no-Trash accounts. Two navigation assertions failed before the fix.
+  Confirmation-time busy state reports the same explicit conflict as Block
+  Sender.
+- Verification: all 46 presentation/handoff/resolver tests pass, including both
+  permanent-delete cases; lint, formatting and diff-check pass. No rendered
+  layout changed; native confirmation interactions remain device QA.

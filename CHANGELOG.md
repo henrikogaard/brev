@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Cancelling permanent Delete preserves the conversation; confirmed deletion retains its source and folder.
+
 - iPad shortcut help no longer advertises the macOS-only Settings shortcut.
 
 - Detached-reader controls and thread-summary Retry use 44-point touch targets on iOS.

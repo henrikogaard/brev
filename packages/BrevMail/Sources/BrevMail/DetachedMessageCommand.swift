@@ -184,16 +184,32 @@ enum ReaderCommandHandoff {
 /// Applies a reader's source context before its owner can dispatch a mutation.
 @MainActor
 enum ReaderCommandSourceHandoff {
+    static func requiresPermanentDeleteConfirmation(
+        _ request: DetachedMessageCommandRequest,
+        navigation: MailNavigationState,
+        sections: [MailSourceSection]
+    ) -> Bool {
+        guard request.command == .delete,
+              let sourceID = request.sourceID ?? navigation.selectedSourceID,
+              let section = sections.first(where: { $0.id == sourceID }), section.loadError == nil else { return false }
+        let folder = section.folders.first { $0.id == request.header.folderID }
+            ?? Folder(id: request.header.folderID, name: request.header.folderID, role: .custom)
+        return MailUndoableDelete.isPermanentDelete(from: folder, folders: section.folders)
+    }
+
     static func prepare(
         _ request: DetachedMessageCommandRequest,
         navigation: MailNavigationState,
         sections: [MailSourceSection],
         isBlockSenderConfirmed: Bool = false,
+        isPermanentDeleteConfirmed: Bool = false,
         applySection: (MailSourceSection) -> Void
     ) -> Bool {
         if let sourceID = request.sourceID ?? navigation.selectedSourceID {
             guard let section = sections.first(where: { $0.id == sourceID }) else { return false }
             if request.command.requiresFolderList, section.loadError != nil { return false }
+            if !isPermanentDeleteConfirmed,
+               requiresPermanentDeleteConfirmation(request, navigation: navigation, sections: sections) { return true }
             let activatesMutation = request.command.activatesMutationFolder
                 || (request.command == .blockSender && isBlockSenderConfirmed)
             let activatesFolder = activatesMutation
