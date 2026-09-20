@@ -108,6 +108,28 @@ enum MailRootToolbarPlatform: Sendable, Equatable {
     case macOS
 }
 
+enum MailRootMessageListTitlePolicy {
+    static func accountContext(
+        mailboxDisplayName: String,
+        accountDisplayName: String,
+        mailboxEmail: String
+    ) -> String? {
+        let email = mailboxEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        let candidates = [mailboxDisplayName, accountDisplayName]
+        let displayName = candidates
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first(where: { candidate in
+                !candidate.isEmpty
+                    && candidate.localizedCaseInsensitiveCompare(email) != .orderedSame
+                    && !candidate.contains("@")
+            })
+        if let displayName {
+            return displayName
+        }
+        return email.isEmpty ? nil : email
+    }
+}
+
 enum MailRootSettingsToolbarPolicy {
     static func showsSettingsButton(
         on surface: MailRootToolbarSurface,
@@ -173,28 +195,15 @@ enum MailRootDetailToolbarPolicy {
         true
     }
 
-    /// Reader width below which the cluster condenses: Reply All, Forward,
-    /// Flag, Create Task, and Move leave their own buttons for the overflow
-    /// menu. The pre-organizer macOS cluster measured just under 500pt with
-    /// search collapsed; Create Task and Move — hosted in the root cluster
-    /// since they left `MessageDetailView`'s toolbar — add two bordered
-    /// buttons and a group gap, estimated at ~100pt (pending an on-screen
-    /// re-measure). In a narrower reader the excess buttons spill left
-    /// across the split-view divider into the message list instead of
-    /// collapsing.
-    static let condensedActionsReaderWidth: CGFloat = 600
-
-    /// How long the reader width has to hold still before the toolbar acts
-    /// on it.
+    /// How long the reader width has to hold still before the search field
+    /// sizes itself against it.
     ///
     /// Column animations sweep this width rather than stepping it, and the
     /// sweep is not monotonic: revealing the folder sidebar takes width
     /// from the reader before the message list gives some back, so the
-    /// reader dips below `condensedActionsReaderWidth` on its way to a
-    /// final width above it. Acting on every intermediate width folded the
-    /// cluster into the overflow menu and unfolded it again — two extra
-    /// animated toolbar passes on the end of a reveal that was otherwise
-    /// finished in ~300ms.
+    /// reader can dip before the message list gives some width back. Acting
+    /// on every intermediate value makes an expanded search field visibly
+    /// pulse during an otherwise smooth column reveal.
     ///
     /// The animation runs in bursts with stalls between them (measured at
     /// 107ms and 123ms), so the settle has to outlast the longest stall
@@ -202,42 +211,27 @@ enum MailRootDetailToolbarPolicy {
     static let readerWidthSettleDuration: Duration = .milliseconds(180)
 
     static func showsExtendedResponseActions(
-        platform: MailRootToolbarPlatform,
-        readerWidth: CGFloat? = nil
+        platform _: MailRootToolbarPlatform,
+        readerWidth _: CGFloat? = nil
     ) -> Bool {
-        guard platform == .macOS else { return false }
-        guard let readerWidth else { return true }
-        return readerWidth >= condensedActionsReaderWidth
+        false
     }
 
-    /// macOS gives Flag its own toolbar button instead of folding it into an
-    /// overflow menu — unless the reader is too narrow for the full cluster.
-    /// At full width that menu held Flag and nothing else there — Forward and
-    /// Settings are both excluded on macOS — so the extra press bought
-    /// nothing. iOS keeps the menu, where it still carries all three.
+    /// Flag stays secondary on both platforms so the primary cluster keeps
+    /// Reply, Archive, and Delete scannable at every reader width.
     static func showsFlagButton(
-        platform: MailRootToolbarPlatform,
-        readerWidth: CGFloat? = nil
+        platform _: MailRootToolbarPlatform,
+        readerWidth _: CGFloat? = nil
     ) -> Bool {
-        guard platform == .macOS else { return false }
-        guard let readerWidth else { return true }
-        return readerWidth >= condensedActionsReaderWidth
+        false
     }
 
-    /// macOS shows Create Task and Move as their own buttons in the root
-    /// cluster — unless the reader is too narrow, where they fold into the
-    /// overflow menu with the rest. They used to ride in from
-    /// `MessageDetailView`'s own `.toolbar`, which appends after the root's
-    /// items: that put them to the right of the AI Sidebar toggle and kept
-    /// them out of this condensation entirely, so narrow readers leaked
-    /// them across the divider. iOS keeps them in the reader's own tools
-    /// menu.
+    /// Workflow actions stay secondary on both platforms. They remain
+    /// reachable through More and their existing commands/context menus.
     static func showsMessageOrganizerActions(
-        platform: MailRootToolbarPlatform,
-        readerWidth: CGFloat? = nil
+        platform _: MailRootToolbarPlatform,
+        readerWidth _: CGFloat? = nil
     ) -> Bool {
-        guard platform == .macOS else { return false }
-        guard let readerWidth else { return true }
-        return readerWidth >= condensedActionsReaderWidth
+        false
     }
 }

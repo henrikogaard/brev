@@ -393,7 +393,7 @@ enum FolderSidebarPresentation {
         iconWidth: 20,
         unreadBadgeMinimumWidth: 20,
         unreadBadgeMinimumHeight: 18,
-        sourceHeaderHorizontalPadding: BrevSpacing.md,
+        sourceHeaderHorizontalPadding: BrevSpacing.xs,
         sourceHeaderVerticalPadding: BrevSpacing.xs,
         folderRowBaseLeadingPadding: BrevSpacing.xs,
         folderRowDepthIndent: BrevSpacing.lg,
@@ -403,7 +403,7 @@ enum FolderSidebarPresentation {
 
     private static let macOSLayoutMetrics = FolderSidebarLayoutMetrics(
         sidebarPadding: BrevSpacing.sm,
-        sectionSpacing: 0,
+        sectionSpacing: BrevSpacing.xxs,
         dividerVerticalPadding: BrevSpacing.xxs,
         profilePickerMinimumHeight: 28,
         sourceHeaderMinimumHeight: 22,

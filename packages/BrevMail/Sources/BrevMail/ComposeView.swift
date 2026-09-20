@@ -624,13 +624,36 @@ public struct ComposeView: View {
     @ViewBuilder
     private var composeContent: some View {
         VStack(spacing: 0) {
-            header
+            if isAccessibilityFieldLayout {
+                toolbar
+                    .disabled(isBusy)
+                ScrollView {
+                    VStack(spacing: 0) {
+                        fieldPanel.disabled(isBusy)
+                        composeEditorContent
+                    }
+                }
+            } else {
+                header
+                composeEditorContent
+            }
+            #if os(iOS)
+            mobileUtilityToolbar
+                .disabled(isBusy)
+            #endif
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var composeEditorContent: some View {
+        VStack(spacing: 0) {
             draftRecoveryBanner
             undoSendBanner
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     attachmentsList
                     bodyField
+                        .frame(minHeight: isAccessibilityFieldLayout ? 240 : nil)
                 }
                 .disabled(isBusy)
                 aiPreviewPanel
@@ -638,7 +661,6 @@ public struct ComposeView: View {
             scheduledSendBanner
             errorBanner
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Subtle accent outline shown while files are dragged over the window.
@@ -728,36 +750,24 @@ public struct ComposeView: View {
 
     @ViewBuilder
     private var toolbar: some View {
-        if !toolbarActionLayout.overflowActions.isEmpty {
-            compactAccessibilityToolbar
-        } else {
-            defaultToolbar
+        switch composeLayoutPlatform {
+        case .macOS:
+            desktopToolbar
+        case .compactIOS, .compactIOSAccessibility, .regularIOS:
+            mobileToolbar
         }
     }
 
-    private var defaultToolbar: some View {
+    private var desktopToolbar: some View {
         HStack(spacing: BrevSpacing.xs) {
-            #if os(iOS)
-            toolbarButton(
-                label: ComposeToolbarAction.close.accessibilityLabel,
-                systemImage: "xmark",
-                isDisabled: isBusy,
-                action: close
-            )
-            .keyboardShortcut(.cancelAction)
-            #endif
-
             if toolbarMetrics.leadingInset > 0 {
                 Color.clear
                     .frame(width: toolbarMetrics.leadingInset, height: 1)
                     .accessibilityHidden(true)
             }
 
-            // No title text — the toolbar floats like Apple Mail's compose
-            // toolbar. Controls sit borderless on the shared surface; Send is
-            // isolated at the trailing edge.
-            Spacer(minLength: BrevSpacing.sm)
-
+            // Keep frequent content actions visible; the remaining compose
+            // controls live together in one secondary menu.
             toolbarCluster {
                 toolbarButton(
                     label: ComposeToolbarAction.attach.accessibilityLabel,
@@ -767,40 +777,9 @@ public struct ComposeView: View {
                     isPickingFile = true
                 }
                 formatMenu
-                signatureMenu
-                receiptOptionsMenu
-                toolbarButton(
-                    label: ComposeToolbarAction.templates.accessibilityLabel,
-                    systemImage: "doc.on.doc",
-                    isDisabled: isBusy
-                ) {
-                    showTemplatePicker = true
-                }
-                .sheet(isPresented: $showTemplatePicker) {
-                    templatePickerSheet
-                }
-                securityMenu
-                aiWriterMenu
-                pluginToolbarButtons
             }
 
-            toolbarCluster {
-                toolbarButton(
-                    label: isSavingDraft
-                        ? String(localized: "Saving Draft", bundle: .module)
-                        : ComposeToolbarAction.saveDraft.accessibilityLabel,
-                    systemImage: isSavingDraft ? "tray.and.arrow.down.fill" : "tray.and.arrow.down",
-                    isDisabled: isInteractionBlocked || !canSave
-                ) {
-                    Task { await saveDraft() }
-                }
-                scheduleSendToolbarButton
-            }
-
-            editorAppearanceToggle
-            #if os(macOS)
-            htmlPreviewToggle
-            #endif
+            Spacer(minLength: BrevSpacing.sm)
 
             composeSecondaryActionsMenu
             sendButton
@@ -821,8 +800,8 @@ public struct ComposeView: View {
         }
     }
 
-    private var compactAccessibilityToolbar: some View {
-        HStack(spacing: BrevSpacing.xs) {
+    private var mobileToolbar: some View {
+        HStack(spacing: BrevSpacing.sm) {
             toolbarButton(
                 label: ComposeToolbarAction.close.accessibilityLabel,
                 systemImage: "xmark",
@@ -831,15 +810,55 @@ public struct ComposeView: View {
             )
             .keyboardShortcut(.cancelAction)
 
-            Spacer(minLength: BrevSpacing.sm)
+            Text(composeTitle)
+                .font(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 0)
 
             sendButton
-            toolbarSeparator
-            composeActionsMenu
         }
         .padding(.leading, BrevSpacing.sm)
-        .padding(.trailing, BrevSpacing.md)
+        .padding(.trailing, BrevSpacing.sm)
         .frame(maxWidth: .infinity, minHeight: toolbarMetrics.height, maxHeight: toolbarMetrics.height)
+        .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+
+    #if os(iOS)
+    private var mobileUtilityToolbar: some View {
+        HStack(spacing: BrevSpacing.xxs) {
+            toolbarButton(
+                label: ComposeToolbarAction.attach.accessibilityLabel,
+                systemImage: "paperclip",
+                isDisabled: isBusy
+            ) {
+                isPickingFile = true
+            }
+            composeActionsMenu
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, BrevSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: toolbarMetrics.utilityHeight,
+            maxHeight: toolbarMetrics.utilityHeight
+        )
+        .overlay(alignment: .top) {
+            BrevDivider()
+        }
+        .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+    #endif
+
+    private var composeTitle: String {
+        ComposePresentation.title(
+            isReplying: replyingTo != nil,
+            isForwarding: forwardingFrom != nil
+        )
     }
 
     private var composeActionsMenu: some View {
@@ -850,7 +869,6 @@ public struct ComposeView: View {
             toolbarControlIcon("ellipsis.circle")
         }
         .menuStyle(.borderlessButton)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(layout.moreActionsAccessibilityLabel)
         .accessibilityValue(layout.moreActionsAccessibilityValue)
         .accessibilityHint(String(localized: "Contains secondary compose actions.", bundle: .module))
@@ -862,9 +880,8 @@ public struct ComposeView: View {
         return menu
     }
 
-    /// Overflow menu for secondary compose tools on the default toolbar
-    /// (templates, security, AI, plugins, meeting suggestions). Primary
-    /// attach / draft / schedule stay as icons.
+    /// One overflow menu for the desktop compose actions that do not need
+    /// permanent toolbar space.
     private var composeSecondaryActionsMenu: some View {
         let layout = toolbarActionLayout
         return Menu {
@@ -874,6 +891,14 @@ public struct ComposeView: View {
                 Label(ComposeToolbarAction.templates.accessibilityLabel, systemImage: "doc.on.doc")
             }
             .disabled(isBusy)
+
+            if let activeSignatureContext, !activeSignatureContext.options.isEmpty {
+                Menu(ComposeToolbarAction.signature.accessibilityLabel) {
+                    signatureMenuContent
+                }
+            }
+
+            receiptOptionsMenuContent
 
             if composeSecurityDefaults.isFeatureEnabled {
                 Menu(ComposeToolbarAction.security.accessibilityLabel) {
@@ -886,11 +911,63 @@ public struct ComposeView: View {
             }
             .disabled(aiWriterMenuDisabled)
 
+            pluginToolbarButtons
+
+            Divider()
+
+            Menu(ComposeToolbarAction.editorAppearance.accessibilityLabel) {
+                editorAppearanceMenuContent
+            }
+
+            #if os(macOS)
+            Button {
+                showsHTMLPreview.toggle()
+            } label: {
+                Label(
+                    showsHTMLPreview
+                        ? String(localized: "Edit", bundle: .module)
+                        : ComposeToolbarAction.preview.accessibilityLabel,
+                    systemImage: showsHTMLPreview ? "square.and.pencil" : "eye"
+                )
+            }
+            .disabled(isInteractionBlocked)
+            #endif
+
+            Divider()
+
+            Button {
+                Task { await saveDraft() }
+            } label: {
+                Label(
+                    isSavingDraft
+                        ? String(localized: "Saving Draft", bundle: .module)
+                        : ComposeToolbarAction.saveDraft.accessibilityLabel,
+                    systemImage: isSavingDraft ? "tray.and.arrow.down.fill" : "tray.and.arrow.down"
+                )
+            }
+            .disabled(isInteractionBlocked || !canSave)
+
+            Button {
+                isScheduleSheetPresented = true
+            } label: {
+                Label(
+                    scheduledSendDate == nil
+                        ? ComposeToolbarAction.scheduleSend.accessibilityLabel
+                        : String(localized: "Edit scheduled send", bundle: .module),
+                    systemImage: "calendar.badge.clock"
+                )
+            }
+            .disabled(isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil)
         } label: {
             toolbarControlIcon("ellipsis.circle")
         }
+        #if os(macOS)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+        #else
         .menuStyle(.borderlessButton)
-        .accessibilityElement(children: .ignore)
+        #endif
         .accessibilityLabel(layout.moreActionsAccessibilityLabel)
         .accessibilityValue(layout.moreActionsAccessibilityValue)
         .accessibilityHint(String(localized: "Contains secondary compose actions.", bundle: .module))
@@ -904,13 +981,6 @@ public struct ComposeView: View {
     @ViewBuilder
     var compactComposeActionsMenuContent: some View {
         Group {
-            Button {
-                isPickingFile = true
-            } label: {
-                Label(ComposeToolbarAction.attach.accessibilityLabel, systemImage: "paperclip")
-            }
-            .disabled(isBusy)
-
             Button {
                 showTemplatePicker = true
             } label: {
@@ -979,28 +1049,14 @@ public struct ComposeView: View {
         .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
     }
 
-    private var toolbarSeparator: some View {
-        Rectangle()
-            .fill(BrevSeparator.color(for: theme))
-            .frame(width: 1, height: 18)
-            .padding(.horizontal, BrevSpacing.xxs)
-            .accessibilityHidden(true)
-    }
-
     private func toolbarButton(
         label: String,
         systemImage: String,
         isDisabled: Bool,
-        isPrimary: Bool = false,
-        isSelected: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            toolbarControlIcon(
-                systemImage,
-                isPrimary: isPrimary && !isDisabled,
-                isSelected: isSelected
-            )
+            toolbarControlIcon(systemImage)
         }
         .buttonStyle(.plain)
         .disabled(isDisabled)
@@ -1012,81 +1068,41 @@ public struct ComposeView: View {
         .help(label)
     }
 
-    private func toolbarControlIcon(
-        _ systemImage: String,
-        isPrimary: Bool = false,
-        isSelected: Bool = false
-    ) -> some View {
-        toolbarIcon(
-            systemImage,
-            isPrimary: isPrimary,
-            isSelected: isSelected
-        )
-        .frame(
-            width: toolbarMetrics.hitTargetSize,
-            height: toolbarMetrics.hitTargetSize
-        )
-        .contentShape(Rectangle())
+    private func toolbarControlIcon(_ systemImage: String) -> some View {
+        toolbarIcon(systemImage)
+            .frame(
+                width: toolbarMetrics.hitTargetSize,
+                height: toolbarMetrics.hitTargetSize
+            )
+            .contentShape(Rectangle())
     }
 
-    private func toolbarIcon(
-        _ systemImage: String,
-        isPrimary: Bool = false,
-        isSelected: Bool = false
-    ) -> some View {
+    private func toolbarIcon(_ systemImage: String) -> some View {
         Image(systemName: systemImage)
             .font(.system(size: 14, weight: .regular))
             .symbolRenderingMode(.hierarchical)
-            .foregroundStyle(isPrimary ? theme.accent.color : theme.textSecondary.color)
+            .foregroundStyle(theme.textSecondary.color)
             .frame(
                 width: toolbarMetrics.buttonSize,
                 height: toolbarMetrics.buttonSize
             )
-            .background(
-                RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
-                    .fill(isSelected ? theme.selection.color : Color.clear)
-            )
             .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
     }
 
-    /// Compact light/dark switch for the body editor.
-    private var editorAppearanceToggle: some View {
-        HStack(spacing: BrevSpacing.xxs) {
-            ForEach(ComposeBodyAppearance.allCases, id: \.self) { appearance in
-                Button {
-                    bodyAppearanceRaw = appearance.rawValue
-                } label: {
-                    Image(systemName: appearance.symbolName)
-                        .font(.system(size: 12, weight: .regular))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(
-                            bodyAppearanceSelection == appearance ? theme.accent.color : theme.textSecondary.color
-                        )
-                        .frame(width: 22, height: 22)
-                        .background(
-                            RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous)
-                                .fill(bodyAppearanceSelection == appearance ? theme.selection.color.opacity(0.55) : Color.clear)
-                        )
-                        .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
-                    #if os(iOS)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                    #endif
+    @ViewBuilder
+    private var editorAppearanceMenuContent: some View {
+        ForEach(ComposeBodyAppearance.allCases, id: \.self) { appearance in
+            Button {
+                bodyAppearanceRaw = appearance.rawValue
+            } label: {
+                if bodyAppearanceSelection == appearance {
+                    Label(appearance.label, systemImage: "checkmark")
+                } else {
+                    Label(appearance.label, systemImage: appearance.symbolName)
                 }
-                .buttonStyle(.plain)
-                .disabled(isInteractionBlocked)
-                .accessibilityLabel(appearance.label)
-                .accessibilityValue(
-                    bodyAppearanceSelection == appearance
-                        ? String(localized: "Selected", bundle: .module)
-                        : ""
-                )
-                .help(appearance.label)
             }
+            .disabled(isInteractionBlocked)
         }
-        .opacity(isInteractionBlocked ? 0.45 : 0.85)
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel(String(localized: "Editor Appearance", bundle: .module))
     }
 
     private var sendButton: some View {
@@ -1100,21 +1116,29 @@ public struct ComposeView: View {
                 }
             }
         } label: {
-            ZStack {
-                toolbarControlIcon(
-                    pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage,
-                    isPrimary: pendingUndoSendTask == nil && (!isDisabled || isSending)
-                )
+            HStack(spacing: BrevSpacing.xxs) {
+                #if os(macOS)
                 if isSending {
                     ProgressView()
                         .controlSize(.small)
-                        .scaleEffect(0.55)
-                        .tint(theme.accent.color)
                         .accessibilityHidden(true)
+                } else {
+                    Image(systemName: pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage)
+                        .symbolRenderingMode(.hierarchical)
                 }
+                #endif
+                Text(verbatim: pendingUndoSendTask != nil
+                    ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
+                    .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
+            .padding(.horizontal, BrevSpacing.xs)
+            .frame(minHeight: toolbarMetrics.hitTargetSize)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderedProminent)
+        .tint(theme.accent.color)
         .disabled(isDisabled)
         .opacity(isDisabled && !isSending ? 0.45 : 1)
         // Cmd+Return sends, matching Apple Mail's compose accelerator.
@@ -1156,20 +1180,6 @@ public struct ComposeView: View {
         if isSending { return "paperplane.fill" }
         if scheduledSendDate != nil { return "paperplane.circle.fill" }
         return "paperplane"
-    }
-
-    private var scheduleSendToolbarButton: some View {
-        let isScheduled = scheduledSendDate != nil
-        return toolbarButton(
-            label: isScheduled
-                ? String(localized: "Edit scheduled send", bundle: .module)
-                : ComposeToolbarAction.scheduleSend.accessibilityLabel,
-            systemImage: isScheduled ? "calendar.badge.clock" : "calendar.badge.clock",
-            isDisabled: isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil,
-            isSelected: isScheduled
-        ) {
-            isScheduleSheetPresented = true
-        }
     }
 
     // Header fields sit directly on the window surface — flat rows with
@@ -1604,11 +1614,12 @@ public struct ComposeView: View {
     @ViewBuilder
     private var subjectField: some View {
         fieldRow(label: String(localized: "Subject", bundle: .module)) {
-            TextField("", text: $subject, prompt: Text("Subject", bundle: .module))
+            TextField("", text: $subject)
                 .textFieldStyle(.plain)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .accessibilityLabel(String(localized: "Subject", bundle: .module))
         }
         .padding(.vertical, fieldVerticalPadding)
     }
@@ -1761,18 +1772,6 @@ public struct ComposeView: View {
         .accessibilityLabel(String(localized: "HTML preview", bundle: .module))
     }
 
-    private var htmlPreviewToggle: some View {
-        toolbarButton(
-            label: showsHTMLPreview
-                ? String(localized: "Edit", bundle: .module)
-                : String(localized: "Preview", bundle: .module),
-            systemImage: showsHTMLPreview ? "square.and.pencil" : "eye",
-            isDisabled: isInteractionBlocked,
-            isSelected: showsHTMLPreview
-        ) {
-            showsHTMLPreview.toggle()
-        }
-    }
     #endif
 
     @ViewBuilder
@@ -1920,24 +1919,11 @@ public struct ComposeView: View {
         return String(localized: "No signature", bundle: .module)
     }
 
-    private var securityMenuHelpText: String {
-        ComposeSecurityPresentation.menuHelpText(
-            isSigningEnabled: signMessage,
-            isEncryptionEnabled: encryptMessage
-        )
-    }
-
     @ViewBuilder
     private var receiptOptionsMenuContent: some View {
         Toggle(isOn: $requestReadReceipt) {
             Label(String(localized: "Request read receipt", bundle: .module), systemImage: "envelope.badge")
         }
-    }
-
-    private var receiptOptionsHelpText: String {
-        requestReadReceipt
-            ? String(localized: "Read receipt requested.", bundle: .module)
-            : String(localized: "No read receipt requested.", bundle: .module)
     }
 
     @ViewBuilder
@@ -1949,7 +1935,9 @@ public struct ComposeView: View {
             } label: {
                 toolbarControlIcon("textformat")
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
             .disabled(isInteractionBlocked)
             .opacity(isInteractionBlocked ? 0.45 : 1)
             .accessibilityLabel(String(localized: "Format", bundle: .module))
@@ -2061,23 +2049,6 @@ public struct ComposeView: View {
         }
     }
 
-    private var receiptOptionsMenu: some View {
-        Menu {
-            receiptOptionsMenuContent
-        } label: {
-            toolbarControlIcon(
-                "envelope.badge",
-                isSelected: requestReadReceipt
-            )
-        }
-        .menuStyle(.borderlessButton)
-        .disabled(isInteractionBlocked)
-        .opacity(isInteractionBlocked ? 0.45 : 1)
-        .accessibilityLabel(String(localized: "Message Options", bundle: .module))
-        .accessibilityValue(receiptOptionsHelpText)
-        .help(receiptOptionsHelpText)
-    }
-
     @ViewBuilder
     private var securityMenuContent: some View {
         Toggle(isOn: $signMessage) {
@@ -2101,48 +2072,8 @@ public struct ComposeView: View {
         }
     }
 
-    @ViewBuilder
-    private var signatureMenu: some View {
-        if let activeSignatureContext, !activeSignatureContext.options.isEmpty {
-            Menu {
-                signatureMenuContent
-            } label: {
-                toolbarControlIcon(
-                    "signature",
-                    isSelected: selectedSignatureID != nil
-                )
-            }
-            .menuStyle(.borderlessButton)
-            .disabled(isInteractionBlocked)
-            .opacity(isInteractionBlocked ? 0.45 : 1)
-            .accessibilityLabel(String(localized: "Signature", bundle: .module))
-            .accessibilityValue(signatureMenuHelpText)
-            .help(signatureMenuHelpText)
-        }
-    }
-
     private var activeSignatureContext: ComposeSignatureContext? {
         currentSignatureContext ?? signatureContext
-    }
-
-    @ViewBuilder
-    private var securityMenu: some View {
-        if composeSecurityDefaults.isFeatureEnabled {
-            Menu {
-                securityMenuContent
-            } label: {
-                toolbarControlIcon(
-                    "lock.shield",
-                    isSelected: signMessage || encryptMessage
-                )
-            }
-            .menuStyle(.borderlessButton)
-            .disabled(isInteractionBlocked)
-            .opacity(isInteractionBlocked ? 0.45 : 1)
-            .accessibilityLabel(String(localized: "Message Security", bundle: .module))
-            .accessibilityValue(securityMenuHelpText)
-            .help(securityMenuHelpText)
-        }
     }
 
     // MARK: - Templates
@@ -2274,31 +2205,6 @@ public struct ComposeView: View {
             isBusy: isInteractionBlocked,
             isAIWorking: isAIWorking
         )
-    }
-
-    @ViewBuilder
-    private var aiWriterMenu: some View {
-        Menu {
-            aiWriterMenuContent
-        } label: {
-            ZStack {
-                toolbarControlIcon("wand.and.stars", isSelected: isAIWorking)
-                if isAIWorking {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-        }
-        .menuStyle(.borderlessButton)
-        .disabled(aiWriterMenuDisabled)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(ComposeToolbarAction.aiWriter.accessibilityLabel)
-        .accessibilityValue(
-            aiWriterMenuDisabled
-                ? String(localized: "Unavailable", bundle: .module)
-                : String(localized: "Available", bundle: .module)
-        )
-        .help(String(localized: "AI Writer", bundle: .module))
     }
 
     @ViewBuilder

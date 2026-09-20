@@ -47,6 +47,22 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Desktop sidebar uses compact account headings, aligned top-level folders,
+  regular-weight labels, quieter counts and a single rounded selection fill.
+  A compact scope menu sits above All Inboxes on Mac and in the navigation
+  bar on iPhone; custom profiles keep their names. Smart Views uses a quiet
+  section heading with one menu for create/manage actions.
+- Reader headers group secondary conversation controls into one menu, with
+  larger message controls on iOS. Message bodies follow iOS Dynamic Type,
+  and built-in themes use more legible secondary text colors.
+- Mail toolbars emphasize the primary actions. Desktop columns start with a
+  narrower sidebar and wider message list, while narrow rows keep sender and
+  date readable. The iPhone inbox shows account context and groups its status
+  with Compose at the bottom.
+- Compose puts attachments and Send first, shows the compose mode on iPhone,
+  and groups formatting and delivery options in secondary menus. Account
+  settings show the fetch-interval explanation once.
+
 - The Beta update channel is retired in favour of the Stable/Nightly
   release rings (ADR-0080). The Stable/Beta picker is gone — the ring is
   fixed per build — and update checks moved from `updates.brevmail.eu` to
@@ -82,6 +98,16 @@ All notable changes to Brev are documented here.
   components replace hand-rolled copies.
 
 ### Fixed
+
+- Keep the Create Folder field visible in short folder destination sheets.
+- Preserve supplied plain-text paragraphs while attributed HTML import is pending
+  or fails.
+- Stop the iPhone conversation reader from repeatedly invalidating its command
+  environment and remaining stuck at Loading message.
+- Keep compose recipient fields within the available width and allow the form
+  to scroll at accessibility text sizes while Close, Send and More stay visible.
+- Simplify the desktop compose toolbar by grouping duplicate secondary actions
+  in its menu and giving Send a visible label.
 
 - Keep the iPhone conversation account address secondary at accessibility text
   sizes and label the compact message-loading indicator.

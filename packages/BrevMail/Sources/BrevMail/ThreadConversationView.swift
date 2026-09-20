@@ -183,20 +183,7 @@ public struct ThreadConversationView: View {
                             .dynamicTypeSize(denseChromeDynamicTypeRange)
                     }
 
-                    Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
-                        .brevFont(.footnote)
-                        .foregroundStyle(theme.textSecondary.color)
-                    #if os(iOS)
-                        // Account context belongs to the same compact chrome as the subject.
-                        .dynamicTypeSize(denseChromeDynamicTypeRange)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    #endif
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, BrevSpacing.md)
-                        .padding(.bottom, BrevSpacing.sm)
-
-                    conversationControlsRow
+                    conversationMetadataRow
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
 
                     if let aiSummaryState {
@@ -294,59 +281,6 @@ public struct ThreadConversationView: View {
                         proxy.scrollTo(selectedID, anchor: .top)
                     }
                 }
-            }
-            .toolbar {
-                #if os(iOS)
-                // One consolidated thread-tools menu (matching the reader's
-                // ellipsis.circle affordance): print/export plus, at iPad
-                // regular width, "Open in New Window". The detached payload
-                // addresses a single message, so we open the card the reader
-                // is actually showing — the expanded/selected message
-                // (falling back to the newest), matching the in-pane
-                // expansion. (ADR-0033)
-                let detachMessageID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: threadHeaders
-                )
-                let canDetach = MailDetachWindowPolicy.shouldDetach(
-                    idiom: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone,
-                    isRegularWidth: horizontalSizeClass == .regular
-                )
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Button {
-                            printThread()
-                        } label: {
-                            Label(String(localized: "Print…", bundle: .module), systemImage: "printer")
-                        }
-                        Button {
-                            exportThreadPDF()
-                        } label: {
-                            Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
-                        }
-                        if canDetach, let detachMessageID,
-                           let detachHeader = threadHeaders.first(where: { $0.id == detachMessageID }) {
-                            Divider()
-                            Button {
-                                openWindow(value: DetachedReaderWindowPayload(
-                                    sourceID: sourceID,
-                                    messageID: detachMessageID,
-                                    folderID: detachHeader.folderID
-                                ))
-                            } label: {
-                                Label(
-                                    String(localized: "Open in New Window", bundle: .module),
-                                    systemImage: "macwindow.on.rectangle"
-                                )
-                            }
-                        }
-                    } label: {
-                        Label(String(localized: "More thread actions", bundle: .module), systemImage: "ellipsis.circle")
-                    }
-                    .disabled(threadHeaders.isEmpty)
-                    .accessibilityLabel(String(localized: "More thread actions", bundle: .module))
-                }
-                #endif
             }
             .focusedSceneValue(\.mailPrintExportActions, printExportActions)
             .alert(String(localized: "Print / Export Failed", bundle: .module), isPresented: printExportErrorBinding) {
@@ -740,36 +674,51 @@ public struct ThreadConversationView: View {
         return try await backend.body(for: messageID)
     }
 
-    // MARK: - Conversation controls row
+    // MARK: - Conversation metadata
 
-    @ViewBuilder
-    private var conversationControlsRow: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            // Participant summary
+    private var conversationMetadataRow: some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Text(verbatim: "·")
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textTertiary.color)
+                .accessibilityHidden(true)
+
             participantSummary
 
             Spacer(minLength: BrevSpacing.sm)
 
+            threadActionsMenu
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.bottom, BrevSpacing.sm)
+    }
+
+    private var threadActionsMenu: some View {
+        Menu {
             if shouldShowAISummaryMenu {
-                aiSummaryMenu
+                aiSummaryMenuItems
+                Divider()
             }
 
-            // Show unread only toggle
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showUnreadOnly.toggle()
                 }
             } label: {
                 Label(
-                    showUnreadOnly ? "Show All" : "Unread Only",
+                    showUnreadOnly
+                        ? String(localized: "Show All", bundle: .module)
+                        : String(localized: "Unread only", bundle: .module),
                     systemImage: showUnreadOnly ? "envelope.open" : "envelope.badge"
                 )
-                .brevFont(.footnote)
-                .foregroundStyle(showUnreadOnly ? theme.accent.color : theme.textSecondary.color)
             }
-            .buttonStyle(.plain)
 
-            // Expand / collapse all
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if areAllExpanded {
@@ -780,46 +729,80 @@ public struct ThreadConversationView: View {
                 }
             } label: {
                 Label(
-                    areAllExpanded ? "Collapse All" : "Expand All",
+                    areAllExpanded
+                        ? String(localized: "Collapse All", bundle: .module)
+                        : String(localized: "Expand All", bundle: .module),
                     systemImage: areAllExpanded ? "chevron.up.2" : "chevron.down.2"
                 )
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
             }
-            .buttonStyle(.plain)
-        }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-        .padding(.bottom, BrevSpacing.sm)
-    }
+            .disabled(visibleHeaders.isEmpty)
 
-    @ViewBuilder
-    private var aiSummaryMenu: some View {
-        Menu {
-            if let reason = ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) {
-                if reason == .notEnabled || reason == .consentRequired {
-                    Button(String(localized: "Enable AI...", bundle: .module)) {
-                        showAISummaryConsent = true
-                    }
-                    Text(AIWriterDisclosure.defaultProvider.transparencyLabel)
-                } else {
-                    Label(reason.title, systemImage: "exclamationmark.triangle")
-                }
-            } else if let aiBackend {
-                Button {
-                    Task { await summarizeThread(with: aiBackend) }
-                } label: {
-                    Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
-                }
-                Text(aiBackend.transparencyLabel)
-            }
+            #if os(iOS)
+            Divider()
+            threadPrintExportMenuItems
+            #endif
         } label: {
-            Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")
-                .brevFont(.footnote)
-                .foregroundStyle(aiSummaryState?.isLoading == true ? theme.accent.color : theme.textSecondary.color)
+            Label(String(localized: "Conversation controls", bundle: .module), systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(theme.textSecondary.color)
+            #if os(iOS)
+                .frame(width: 44, height: 44)
+            #endif
         }
         .menuStyle(.borderlessButton)
-        .disabled(aiSummaryMenuDisabled)
+        .accessibilityLabel(String(localized: "Conversation controls", bundle: .module))
+    }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var threadPrintExportMenuItems: some View {
+        Group {
+            Button(action: printThread) {
+                Label(String(localized: "Print…", bundle: .module), systemImage: "printer")
+            }
+            Button(action: exportThreadPDF) {
+                Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
+            }
+            // A detached reader addresses the selected/expanded message, not
+            // an arbitrary member of the conversation (ADR-0033).
+            if canOpenCardInNewWindow,
+               let messageID = ThreadConversationExpansionPolicy.expandedID(
+                   selectedID: navigation.selectedMessageID, in: threadHeaders
+               ),
+               let header = threadHeaders.first(where: { $0.id == messageID }) {
+                Button {
+                    openWindow(value: DetachedReaderWindowPayload(
+                        sourceID: sourceID, messageID: messageID, folderID: header.folderID
+                    ))
+                } label: {
+                    Label(String(localized: "Open in New Window", bundle: .module), systemImage: "macwindow.on.rectangle")
+                }
+            }
+        }
+        .disabled(threadHeaders.isEmpty)
+    }
+    #endif
+
+    @ViewBuilder
+    private var aiSummaryMenuItems: some View {
+        if let reason = ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) {
+            if reason == .notEnabled || reason == .consentRequired {
+                Button(String(localized: "Enable AI...", bundle: .module)) {
+                    showAISummaryConsent = true
+                }
+                Text(AIWriterDisclosure.defaultProvider.transparencyLabel)
+            } else {
+                Label(reason.title, systemImage: "exclamationmark.triangle")
+            }
+        } else if let aiBackend {
+            Button {
+                Task { await summarizeThread(with: aiBackend) }
+            } label: {
+                Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
+            }
+            .disabled(aiSummaryMenuDisabled)
+            Text(aiBackend.transparencyLabel)
+        }
     }
 
     private var aiSummaryMenuDisabled: Bool {

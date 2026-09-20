@@ -71,7 +71,7 @@ public struct DetachedReaderWindowView: View {
                         canFileLocally: canFileLocally,
                         closeWindow: { dismissWindow(value: payload) }
                     )
-                    .environment(\.readerCommandAction) { request in
+                    .readerCommandHandler { request in
                         let source = request.sourceID ?? MailSourceID(
                             accountID: backend.account.id, mailboxID: backend.account.id
                         )

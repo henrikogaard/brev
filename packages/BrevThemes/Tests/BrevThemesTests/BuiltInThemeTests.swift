@@ -29,6 +29,18 @@ struct BuiltInThemeTests {
         #expect(Self.contrast(theme.textSecondary, theme.selection) >= 3)
     }
 
+    @Test("built-in metadata text stays readable on primary and secondary surfaces")
+    func builtInMetadataContrast() {
+        for theme in BrevTheme.brevBuiltIns {
+            for background in [theme.bgPrimary, theme.bgSecondary] {
+                for foreground in [theme.textSecondary, theme.textTertiary] {
+                    #expect(Self.contrast(foreground, background) >= 4.5,
+                            "\(theme.id): \(foreground.hex) on \(background.hex)")
+                }
+            }
+        }
+    }
+
     private static func contrast(_ first: BrevColor, _ second: BrevColor) -> Double {
         func luminance(_ color: BrevColor) -> Double {
             let rgb = UInt32(color.hex.dropFirst(), radix: 16)!

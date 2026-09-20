@@ -216,6 +216,133 @@ public struct MessageListView: View {
     @ViewBuilder
     private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
+        mailboxContent(presentation: presentation)
+            .task(id: reloadKey) {
+                navigation.bulkSelection.removeAll()
+                searchScope = .all
+                searchAllFolders = false
+                isSearchOptionsExpanded = false
+                reconcileSearchExecutionWithBackendCapabilities()
+                refreshPinnedMessageIDSet()
+                followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+                await reloadVisibleMessages()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
+                followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+            }
+            .onChange(of: headers) {
+                refreshPinnedMessageIDSet()
+                scheduleDebouncedThreadCountsRebuild()
+            }
+            .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
+            .onDisappear { searchWork.cancel() }
+            .onChange(of: groupByThread) {
+                activeMutationRequest = nil
+                // Cancel any pending debounced rebuild so a stale capture cannot
+                // undo this structural clear/rebuild after the debounce window.
+                threadCountsRebuildTask?.cancel()
+                threadCountsRebuildTask = nil
+                rebuildThreadCounts()
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: groupByDate) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: pinnedMessageIDsRaw) {
+                refreshPinnedMessageIDSet()
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            // Switching category tabs (or toggling classification) re-filters the
+            // visible rows immediately, but the reader resolves its selection
+            // against `currentFolderHeaders`, which only rebuilds on reconcile.
+            // Without these, selecting a row that the previous category filtered
+            // out leaves the reader on "No message selected" despite the highlight.
+            .onChange(of: activeInboxCategory) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: inboxClassificationModeRaw) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: backend.capabilities) {
+                reconcileSearchExecutionWithBackendCapabilities()
+            }
+            .onChange(of: isWorkBlocked) { oldValue, newValue in
+                guard MessageListWorkResumePolicy.shouldReloadVisibleMessages(
+                    wasBlocked: oldValue,
+                    isBlocked: newValue,
+                    hasPendingReload: needsReloadAfterWorkUnblocks
+                ) else { return }
+                needsReloadAfterWorkUnblocks = false
+                Task { await reloadVisibleMessages() }
+            }
+            .onChange(of: folder?.id) { _, _ in
+                expandedThreadIDs.removeAll()
+            }
+            .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteMessageAlertPresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await confirmContextMenuDelete() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingDeleteHeaderID = nil
+                }
+            } message: {
+                if let header = pendingDeleteHeader {
+                    if isPermanentDelete(for: header) {
+                        Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
+                    } else {
+                        Text("Delete \"\(header.subject)\"?", bundle: .module)
+                    }
+                } else {
+                    Text("Delete this message?", bundle: .module)
+                }
+            }
+            .alert(String(localized: "Permanently Delete?", bundle: .module),
+                   isPresented: $isBulkPermanentDeletePresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await bulkDelete(confirmedPermanent: true) }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(MailUndoableDelete.permanentDeleteMessage(
+                    count: navigation.bulkSelection.count, folders: allFolders
+                ))
+            }
+            .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
+                Button(String(localized: "Block", bundle: .module), role: .destructive) {
+                    Task { await confirmBlockSender() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingBlockSenderHeader = nil
+                }
+            } message: {
+                if let header = pendingBlockSenderHeader {
+                    Text(
+                        "Block \"\(header.from.email)\"? Future messages from this address will be marked as junk.",
+                        bundle: .module
+                    )
+                } else {
+                    Text("Block this sender?", bundle: .module)
+                }
+            }
+            .sheet(isPresented: isSnoozePickerPresented) {
+                if let header = pendingSnoozeHeaders.first {
+                    SnoozePickerView(
+                        header: header,
+                        sourceID: workflowSourceID,
+                        onConfirm: { wakeAt in
+                            snoozePendingHeaders(until: wakeAt)
+                        },
+                        onCancel: {
+                            pendingSnoozeHeaders = []
+                        }
+                    )
+                    .brevTheme(theme)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func mailboxContent(presentation: MessageListPresentationSnapshot) -> some View {
         VStack(spacing: 0) {
             LegacyPinNotice()
             #if os(iOS)
@@ -280,130 +407,29 @@ public struct MessageListView: View {
                     )
                 }
             }
+            #if !os(iOS)
             if let footer = folderStatsFooterPresentation(presentation: presentation) {
                 MessageListFolderStatsFooter(presentation: footer)
             }
+            #endif
         }
-        .task(id: reloadKey) {
-            navigation.bulkSelection.removeAll()
-            searchScope = .all
-            searchAllFolders = false
-            isSearchOptionsExpanded = false
-            reconcileSearchExecutionWithBackendCapabilities()
-            refreshPinnedMessageIDSet()
-            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
-            await reloadVisibleMessages()
+        #if os(iOS)
+        .toolbar {
+            mailboxToolbar(presentation: presentation)
         }
-        .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
-            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
-        }
-        .onChange(of: headers) {
-            refreshPinnedMessageIDSet()
-            scheduleDebouncedThreadCountsRebuild()
-        }
-        .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
-        .onDisappear { searchWork.cancel() }
-        .onChange(of: groupByThread) {
-            activeMutationRequest = nil
-            // Cancel any pending debounced rebuild so a stale capture cannot
-            // undo this structural clear/rebuild after the debounce window.
-            threadCountsRebuildTask?.cancel()
-            threadCountsRebuildTask = nil
-            rebuildThreadCounts()
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: groupByDate) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: pinnedMessageIDsRaw) {
-            refreshPinnedMessageIDSet()
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        // Switching category tabs (or toggling classification) re-filters the
-        // visible rows immediately, but the reader resolves its selection
-        // against `currentFolderHeaders`, which only rebuilds on reconcile.
-        // Without these, selecting a row that the previous category filtered
-        // out leaves the reader on "No message selected" despite the highlight.
-        .onChange(of: activeInboxCategory) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: inboxClassificationModeRaw) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: backend.capabilities) {
-            reconcileSearchExecutionWithBackendCapabilities()
-        }
-        .onChange(of: isWorkBlocked) { oldValue, newValue in
-            guard MessageListWorkResumePolicy.shouldReloadVisibleMessages(
-                wasBlocked: oldValue,
-                isBlocked: newValue,
-                hasPendingReload: needsReloadAfterWorkUnblocks
-            ) else { return }
-            needsReloadAfterWorkUnblocks = false
-            Task { await reloadVisibleMessages() }
-        }
-        .onChange(of: folder?.id) { _, _ in
-            expandedThreadIDs.removeAll()
-        }
-        .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteMessageAlertPresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await confirmContextMenuDelete() }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingDeleteHeaderID = nil
-            }
-        } message: {
-            if let header = pendingDeleteHeader {
-                if isPermanentDelete(for: header) {
-                    Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
-                } else {
-                    Text("Delete \"\(header.subject)\"?", bundle: .module)
-                }
-            } else {
-                Text("Delete this message?", bundle: .module)
-            }
-        }
-        .alert(String(localized: "Permanently Delete?", bundle: .module),
-               isPresented: $isBulkPermanentDeletePresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await bulkDelete(confirmedPermanent: true) }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
-        } message: {
-            Text(MailUndoableDelete.permanentDeleteMessage(
-                count: navigation.bulkSelection.count, folders: allFolders
-            ))
-        }
-        .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
-            Button(String(localized: "Block", bundle: .module), role: .destructive) {
-                Task { await confirmBlockSender() }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingBlockSenderHeader = nil
-            }
-        } message: {
-            if let header = pendingBlockSenderHeader {
-                Text("Block \"\(header.from.email)\"? Future messages from this address will be marked as junk.", bundle: .module)
-            } else {
-                Text("Block this sender?", bundle: .module)
-            }
-        }
-        .sheet(isPresented: isSnoozePickerPresented) {
-            if let header = pendingSnoozeHeaders.first {
-                SnoozePickerView(
-                    header: header,
-                    sourceID: workflowSourceID,
-                    onConfirm: { wakeAt in
-                        snoozePendingHeaders(until: wakeAt)
-                    },
-                    onCancel: {
-                        pendingSnoozeHeaders = []
-                    }
-                )
-                .brevTheme(theme)
+        #endif
+    }
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private func mailboxToolbar(presentation: MessageListPresentationSnapshot) -> some ToolbarContent {
+        if let footer = folderStatsFooterPresentation(presentation: presentation) {
+            ToolbarItem(placement: .bottomBar) {
+                MessageListFolderStatsToolbarLabel(presentation: footer)
             }
         }
     }
+    #endif
 
     private var isSnoozePickerPresented: Binding<Bool> {
         Binding(
@@ -697,6 +723,10 @@ public struct MessageListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // The section headers are intentionally smaller than message rows.
+            // Remove List's platform minimum so their own padding determines
+            // the gap between date groups.
+            .environment(\.defaultMinListRowHeight, 1)
             .refreshable { await reloadVisibleMessages() }
         }
     }
@@ -3338,11 +3368,13 @@ struct MessageListThreadTogglePreference: PreferenceKey {
 /// Shared type weight for sender identity throughout the message list.
 enum MessageListSenderPresentation {
     static let fontWeight: Font.Weight = .bold
+    static let preferredMinimumWidth: CGFloat = 144
 
     /// Floor for the sender column so the name stays identifiable at the 280-point
     /// minimum list width. Without it the widest ADR-0023 absolute arrival label
-    /// starves the sender down to an ellipsis; past this floor the timestamp
-    /// truncates instead, because the sender is the primary scan target.
+    /// starves the sender down to an ellipsis. If the complete metadata row still
+    /// cannot fit, the timestamp moves to its own line instead of compressing the
+    /// avatar and unread indicator outside the row.
     static let minimumWidth: CGFloat = 96
 }
 
@@ -3551,55 +3583,7 @@ struct MessageListRow: View {
             }
             unreadDot
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                HStack(spacing: BrevSpacing.xs) {
-                    Text(header.from.displayName)
-                        .font(fontFamily.font(
-                            size: senderPointSize,
-                            weight: MessageListSenderPresentation.fontWeight
-                        ))
-                        .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(
-                            minWidth: MessageListSenderPresentation.minimumWidth,
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-                    // Thread badge and timestamp sit on the trailing edge so they
-                    // never compete with the sender for width; the sender absorbs
-                    // truncation instead. See ADR-0023's narrow-layout risk note.
-                    if threadCount > 1 {
-                        Text(verbatim: "\(threadCount)")
-                            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                            .foregroundStyle(theme.textSecondary.color)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule().fill(theme.bgSecondary.color)
-                            )
-                        // Rendered as a plain glyph, not a Button: the row's
-                        // high-priority tap gesture wins over nested buttons,
-                        // so the tap is routed by hit frame instead.
-                        Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
-                            .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
-                            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
-                            .background {
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: MessageListThreadTogglePreference.self,
-                                        value: proxy.frame(in: .named(Self.rowCoordinateSpace))
-                                    )
-                                }
-                            }
-                    }
-                    Text(dateLabel)
-                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                senderMetadataHeader
                 // Unread subjects carry the weight and primary colour so the row
                 // has a read/unread signal beyond the 8-point dot alone. The
                 // sender keeps the emphasis established in #366.
@@ -3799,6 +3783,112 @@ struct MessageListRow: View {
         )
     }
 
+    private var compactDateLabel: String {
+        MessageListDatePresentation.label(
+            for: header.date,
+            showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
+            relativeStyle: .compact,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        )
+    }
+
+    @ViewBuilder
+    private var senderMetadataHeader: some View {
+        if isCompactWidth {
+            ViewThatFits(in: .horizontal) {
+                senderMetadataRow(
+                    dateLabel: compactDateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.minimumWidth
+                )
+                stackedSenderMetadata(dateLabel: compactDateLabel)
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                senderMetadataRow(
+                    dateLabel: dateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.preferredMinimumWidth
+                )
+                senderMetadataRow(
+                    dateLabel: compactDateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.minimumWidth
+                )
+                stackedSenderMetadata(dateLabel: compactDateLabel)
+            }
+        }
+    }
+
+    private func senderMetadataRow(
+        dateLabel: String,
+        senderMinimumWidth: CGFloat
+    ) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            senderIdentityRow(senderMinimumWidth: senderMinimumWidth)
+            metadataDateLabel(dateLabel)
+        }
+    }
+
+    private func stackedSenderMetadata(dateLabel: String) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
+            metadataDateLabel(dateLabel)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Text(header.from.displayName)
+                .font(fontFamily.font(
+                    size: senderPointSize,
+                    weight: MessageListSenderPresentation.fontWeight
+                ))
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(
+                    minWidth: senderMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+                .layoutPriority(1)
+            if threadCount > 1 {
+                Text(verbatim: "\(threadCount)")
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(theme.bgSecondary.color))
+                // Rendered as a plain glyph, not a Button: the row's
+                // high-priority tap gesture wins over nested buttons, so the
+                // tap is routed by hit frame instead.
+                Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: MessageListThreadTogglePreference.self,
+                                value: proxy.frame(in: .named(Self.rowCoordinateSpace))
+                            )
+                        }
+                    }
+            }
+        }
+    }
+
+    private func metadataDateLabel(_ dateLabel: String) -> some View {
+        Text(dateLabel)
+            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
+    }
+
     @ViewBuilder
     private var rowStatusIcons: some View {
         Group {
@@ -3886,7 +3976,7 @@ struct MessageListDateSectionHeader: View {
             }
             .textCase(nil)
             .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
+            .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(backgroundColor(for: presentation.style))
             .overlay(alignment: .leading) {
@@ -3933,6 +4023,14 @@ struct MessageListDateSectionHeader: View {
         for style: MessageListSectionHeaderPresentation.Style
     ) -> Color {
         style == .pinned ? theme.accentMuted.color.opacity(0.18) : Color.clear
+    }
+
+    private var verticalPadding: CGFloat {
+        #if os(iOS)
+        BrevSpacing.xxs
+        #else
+        BrevSpacing.xs
+        #endif
     }
 }
 
@@ -4015,6 +4113,23 @@ struct MessageListFolderStatsFooter: View {
         .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
+
+#if os(iOS)
+struct MessageListFolderStatsToolbarLabel: View {
+    @Environment(\.brevTheme) private var theme
+    let presentation: MessageListFolderStatsFooterPresentation
+
+    var body: some View {
+        Text(presentation.text)
+            .brevFont(.caption)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .foregroundStyle(theme.textTertiary.color)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityLabel)
+    }
+}
+#endif
 
 extension View {
     @ViewBuilder

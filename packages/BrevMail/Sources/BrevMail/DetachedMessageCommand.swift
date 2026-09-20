@@ -138,13 +138,48 @@ struct DetachedMessageCommandRequest {
     let sourceID: MailSourceID?
 }
 
+/// Stable environment identity with the latest command owner callback.
+@MainActor
+final class ReaderCommandAction {
+    private var handler: ((DetachedMessageCommandRequest) -> Void)?
+
+    func update(_ handler: @escaping (DetachedMessageCommandRequest) -> Void) {
+        self.handler = handler
+    }
+
+    func callAsFunction(_ request: DetachedMessageCommandRequest) {
+        handler?(request)
+    }
+}
+
+private struct ReaderCommandHandlerModifier: ViewModifier {
+    let handler: @MainActor (DetachedMessageCommandRequest) -> Void
+    @State private var action = ReaderCommandAction()
+
+    func body(content: Content) -> some View {
+        // This non-observable routing slot must track the current owner without
+        // publishing a new environment closure on every layout. That closure
+        // churn can keep the compact reader in an endless SwiftUI update loop.
+        action.update(handler)
+        return content.environment(\.readerCommandAction, action)
+    }
+}
+
+extension View {
+    func readerCommandHandler(
+        _ handler: @escaping @MainActor (DetachedMessageCommandRequest) -> Void
+    ) -> some View {
+        modifier(ReaderCommandHandlerModifier(handler: handler))
+    }
+}
+
 /// The enclosing reader/window provides exactly one command owner.
 private struct ReaderCommandActionKey: EnvironmentKey {
-    static let defaultValue: (@MainActor (DetachedMessageCommandRequest) -> Void)? = nil
+    static let defaultValue: ReaderCommandAction? = nil
 }
 
 extension EnvironmentValues {
-    var readerCommandAction: (@MainActor (DetachedMessageCommandRequest) -> Void)? {
+    var readerCommandAction: ReaderCommandAction? {
         get { self[ReaderCommandActionKey.self] }
         set { self[ReaderCommandActionKey.self] = newValue }
     }

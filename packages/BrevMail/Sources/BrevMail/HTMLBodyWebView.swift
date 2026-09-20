@@ -155,7 +155,16 @@ struct HTMLBodyWebView: View {
 
     @Environment(\.brevTheme) private var theme
     @Environment(\.htmlBodyRenderTarget) private var renderTarget
+    @ScaledMetric(relativeTo: .body) private var scaledBodyMetric: CGFloat = 100
     @State private var measuredHeight: CGFloat = 200
+
+    private var bodyScale: CGFloat {
+        #if os(iOS)
+        scaledBodyMetric / 100
+        #else
+        1
+        #endif
+    }
 
     var body: some View {
         let style = MessageBodyStyle.resolve(
@@ -163,7 +172,8 @@ struct HTMLBodyWebView: View {
             fontFamily: fontFamily,
             textSize: textSize,
             renderingMode: renderingMode,
-            bodyInsetPoints: bodyInsetPoints
+            bodyInsetPoints: bodyInsetPoints,
+            bodyScale: bodyScale
         )
         Group {
             switch renderTarget {
@@ -504,6 +514,7 @@ enum HTMLBodyDocument {
         let style = MessageBodyStyle(
             fontFamily: fontFamily,
             textSize: textSize,
+            bodyPointSize: textSize.bodyPointSize,
             textColorHex: text,
             linkColorHex: link,
             backgroundColorHex: forcesLightCanvas ? "#FFFFFF" : nil,

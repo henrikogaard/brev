@@ -23,6 +23,7 @@ import SwiftUI
 struct MessageBodyStyle: Equatable, Sendable {
     let fontFamily: MailboxFontFamily
     let textSize: MailboxTextSize
+    let bodyPointSize: CGFloat
     let textColorHex: String
     let linkColorHex: String
     /// `nil` means a transparent canvas (SwiftUI/WebKit host shows through).
@@ -45,8 +46,10 @@ struct MessageBodyStyle: Equatable, Sendable {
         fontFamily: MailboxFontFamily,
         textSize: MailboxTextSize,
         renderingMode: HTMLBodyRenderingMode,
-        bodyInsetPoints: CGFloat
+        bodyInsetPoints: CGFloat,
+        bodyScale: CGFloat = 1
     ) -> MessageBodyStyle {
+        let bodyPointSize = max(1, (textSize.bodyPointSize * max(bodyScale, 0.5)).rounded())
         let textHex = cssColor(theme.textPrimary.hex)
         let linkHex = cssColor(theme.accent.hex)
         let borderHex = cssColor(theme.border.hex)
@@ -60,6 +63,7 @@ struct MessageBodyStyle: Equatable, Sendable {
             return MessageBodyStyle(
                 fontFamily: fontFamily,
                 textSize: textSize,
+                bodyPointSize: bodyPointSize,
                 textColorHex: textHex,
                 linkColorHex: linkHex,
                 backgroundColorHex: cssColor(theme.bgPrimary.hex),
@@ -79,6 +83,7 @@ struct MessageBodyStyle: Equatable, Sendable {
             return MessageBodyStyle(
                 fontFamily: fontFamily,
                 textSize: textSize,
+                bodyPointSize: bodyPointSize,
                 textColorHex: forcesLightCanvas ? cssColor(theme.textPrimary.hex) : textHex,
                 linkColorHex: linkHex,
                 backgroundColorHex: forcesLightCanvas ? "#FFFFFF" : nil,
@@ -133,7 +138,7 @@ struct MessageBodyStyle: Equatable, Sendable {
         return """
         html,body{margin:0;padding:0;background:\(baseBackground);\
         color:\(bodyTextColor);\
-        font:\(textSize.htmlPointSize)px \(fontFamily.cssFamily);\
+        font:\(Int(bodyPointSize))px \(fontFamily.cssFamily);\
         line-height:\(lineHeight);-webkit-text-size-adjust:100%;}\
         body{box-sizing:border-box;padding:\(inset)px;}\
         img,video{max-width:100%;height:auto}\
@@ -157,7 +162,7 @@ struct MessageBodyStyle: Equatable, Sendable {
     }
 
     var swiftUIBodyFont: Font {
-        fontFamily.font(size: textSize.bodyPointSize)
+        fontFamily.font(size: bodyPointSize)
     }
 
     static func cssColor(_ hex: String) -> String {

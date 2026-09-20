@@ -84,7 +84,7 @@ enum DetachedMessageWindow {
             canFileLocally: canFileLocally,
             closeWindow: { [weak window] in window?.close() }
         )
-        .environment(\.readerCommandAction) { [weak window] request in
+        .readerCommandHandler { [weak window] request in
             // State changes schedule presentation for the next view update.
             // Obtain acceptance first so a busy or unavailable owner cannot
             // discard an action after this reader has already closed.

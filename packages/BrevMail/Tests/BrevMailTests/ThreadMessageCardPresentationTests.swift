@@ -17,6 +17,15 @@ import Testing
 
 @Suite("ThreadMessageBodyPresentation")
 struct ThreadMessageBodyPresentationTests {
+    @Test("HTML import fallback preserves the provided plain-text paragraphs")
+    func importFallbackPreservesPlainText() {
+        let plain = "Hello team,\n\nThe launch is ready."
+        #expect(ThreadMessageBodyPresentation.htmlFallback(
+            "<p>Hello team,</p><p>The launch is ready.</p>", plainText: plain
+        ) == plain)
+        #expect(ThreadMessageBodyPresentation.htmlFallback("<p>Hello</p>", plainText: "") == "Hello")
+    }
+
     @Test("plain text bodies keep the existing text presentation")
     func plainTextBodiesKeepTextPresentation() {
         let presentation = ThreadMessageBodyPresentation.resolve(

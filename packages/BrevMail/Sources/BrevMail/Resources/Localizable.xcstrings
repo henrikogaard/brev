@@ -1,6 +1,15 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Hide AI Sidebar" : {
+      "extractionState" : "manual"
+    },
+    "Conversation controls" : {
+      "extractionState" : "manual"
+    },
+    "Show All" : {
+      "extractionState" : "manual"
+    },
     "Some results could not be loaded. Other mailboxes are still being searched." : {
       "extractionState" : "manual"
     },
@@ -1229,6 +1238,8 @@
     "All Attachments" : { "extractionState" : "manual" },
     "All Inboxes" : { "extractionState" : "manual" },
     "All Mailboxes" : { "extractionState" : "manual" },
+    "Mailboxes" : { "extractionState" : "manual" },
+    "Smart View Actions" : { "extractionState" : "manual" },
     "Attach" : { "extractionState" : "manual" },
     "Compose actions" : { "extractionState" : "manual" },
     "Collapse All" : { "extractionState" : "manual" },

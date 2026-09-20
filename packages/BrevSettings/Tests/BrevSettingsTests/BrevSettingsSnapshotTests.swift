@@ -270,9 +270,17 @@ struct AIWriterSectionMacSnapshotTests {
                 theme: theme, name: "appearance-" + mode, size: CGSize(width: 700, height: 800))
         capture(MailboxViewSection(settingsStore: store),
                 theme: theme, name: "mailbox-view-" + mode, size: CGSize(width: 700, height: 720))
+    }
+
+    @Test("Accounts present fetch guidance once", arguments: ["light", "dark"])
+    func accountsSurface(_ mode: String) {
+        guard #available(macOS 26.0, *) else { return }
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let defaults = UserDefaults(suiteName: "AccountsSurface-" + UUID().uuidString)!
         capture(
             AccountsSection(accounts: [BrevAccount(id: "account", displayName: "Personal", emailAddress: "personal@example.org")],
-                            currentAccountID: "account", onAddAccount: {}, onSetDefault: { _ in },
+                            currentAccountID: "account", settingsStore: SettingsPersistenceStore(defaults: defaults),
+                            onAddAccount: {}, onSetDefault: { _ in },
                             onSignOut: { _ in }, onRemoveAccount: { _ in }),
             theme: theme,
             name: "accounts-" + mode,

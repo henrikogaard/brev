@@ -62,6 +62,7 @@ public struct MessageDetailView: View {
     private let bodyRenderer = BodyRenderer()
 
     @StateObject private var htmlWebViewStore = HTMLBodyWebViewStore()
+    @ScaledMetric(relativeTo: .body) private var scaledBodyMetric: CGFloat = 100
 
     // Refresh menu labels after an in-place retention toggle.
     @State private var offlineRetentionRevision = 0
@@ -394,7 +395,22 @@ public struct MessageDetailView: View {
     }
 
     private var messageBodyFont: Font {
-        mailboxFontFamily.font(size: mailboxTextSize.bodyPointSize)
+        MessageBodyStyle.resolve(
+            theme: theme,
+            fontFamily: mailboxFontFamily,
+            textSize: mailboxTextSize,
+            renderingMode: .original,
+            bodyInsetPoints: 0,
+            bodyScale: messageBodyScale
+        ).swiftUIBodyFont
+    }
+
+    private var messageBodyScale: CGFloat {
+        #if os(iOS)
+        scaledBodyMetric / 100
+        #else
+        1
+        #endif
     }
 
     private var usesRichHTMLBodyRenderer: Bool {

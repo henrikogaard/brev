@@ -3067,3 +3067,144 @@ buttons, and package-aware localization.
 - Additional PR #48 review: route reads/writes through explicit adapter boundary in the diagram; require validated narrower shared Google grants on PIM removal, with disclosed revoke/reconnect fallback. State DAV privilege-narrowing limits. Checked scenario consistency and diff whitespace; documentation-only.
 
 - Final removal clarification for PR #48: separately delete source-owned unsent editor drafts and staged attachments after warning and confirmation; allow cancellation. Include this lifecycle in removal tests. Documentation-only, checked against the separate-draft invariant.
+
+## 2026-09-20 — Codex — #49 / #51 native UI polish
+
+- Followed the requested merge and polish pass. PR #50 merged; PR #48 review
+  follow-ups preserve live DAV proof and safe removal of combined Google grants.
+- Diagnosed the sample reader freeze as repeated command environment closure
+  invalidation. Added stable routing identity with latest-owner dispatch and a
+  hosting-controller regression; verified rendered body and Reply on simulator.
+- Proved compose flow overflow with a failing width test, bounded measurement
+  and placement, added accessibility form scrolling and standard/AX5 snapshots.
+- Reduced duplicate desktop compose tools and labelled Send; inspected native
+  test-app compose, mailbox and settings. No message sent or daily app replaced.
+- Verification: iOS 9 tests/3 suites; macOS 6 tests/3 suites; native builds,
+  lint, zero-change format, baseline inventory and diff check. All 12 simulator
+  text sizes expose Close/Send/More. QA evidence and limits are in
+  docs/qa/native-polish-2026-09-20/README.md.
+- Initial broad macOS run had an unrelated profile-manager snapshot mismatch;
+  no unrelated baseline changed. Physical VoiceOver, another runtime/device and
+  live-provider coverage remain pending. No new release or version change.
+- Documentation sweep: updated CHANGELOG, QA evidence and WORKLOG. No public
+  architecture, provider, privacy, setup or workflow change; README, PRIVACY,
+  ADRs and AGENTS need no change for this implementation. Hand off in review.
+
+- PR #52 follow-up: native plain-renderer QA exposed joined paragraphs while HTML
+  import was pending. Added a failing fallback regression and preserved the
+  supplied plain alternative; native screenshot now retains paragraph spacing.
+  Restored busy-state disabling on the accessibility toolbar and registered the
+  new desktop snapshot explicitly in CI. Configuration selection needs no TDD;
+  the one-line disable restores the existing header invariant without a new
+  async-send fixture. Focused body, compose policy and snapshot checks rerun.
+
+- Final handoff: PR #48 merged as a72e652e; all six review findings resolved.
+  The final documentation-only head passed local lint/diff checks; hosted rebuild
+  remained queued, with the unchanged runtime tree already green at e316db69.
+  PR #50 is merged as 98e517aa. Integrated main into PR #52, preserving both
+  append-only worklog entries. Final iOS command exits successfully with 37
+  tests/5 suites after disabling stalled diagnostic collection; macOS follow-up
+  exits successfully with 29 tests/3 suites. #49/#51 remain In review.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar polish
+
+- Used Henrik's Brev/Apple Mail comparison to reduce desktop sidebar hierarchy
+  noise: account sections have compact labels and trailing disclosure, folders
+  no longer inherit an extra account indent, All Inboxes aligns with folder icons,
+  labels use regular body type, counts are tertiary, and selection uses one fill.
+  Quieted the desktop profile control while preserving theme tokens and iOS UI.
+- Continued feature/native-ui-polish / PR #52 targeting main; checkout was clean.
+- Visual regression loop: old macOS sidebar suite passed, intentional styling
+  produced 11 reference failures, inspected light/dark/hierarchy renders, refreshed
+  only those references and passed 39 sidebar tests across two suites. All 11
+  existing phone snapshot cases (7 tests) passed without baseline changes.
+- Native dated Brev Test build passed. Inspected both accounts, collapse/expand,
+  nested rows and selecting the second account Inbox. No live mail changes.
+- Lint, format and diff check passed. Updated CHANGELOG and QA documentation;
+  no provider, privacy, public design-token, setup or architectural change, so
+  README/PRIVACY/ADRs/AGENTS need no update. Physical VoiceOver remains unverified.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar top alignment
+
+- Aligned profile, All Inboxes and Smart Views text/icon columns on desktop.
+  Replaced the native borderless menu label with a plain menu button so SwiftUI
+  respects its layout; moved the profile chevron to the trailing edge. Removed
+  the extra profile gap and put Smart Views disclosure in the icon column.
+- Inspected intentional snapshot failures and refined the rendered alignment;
+  refreshed only the 11 sidebar references. Native profile menu opens with All
+  Mailboxes and Manage Profiles. Decorative symbols are hidden from accessibility.
+- Verification: macOS sidebar snapshots and unchanged phone snapshots rerun;
+  dated test-app build, lint/format and diff check. No new provider, privacy,
+  architecture or settings behavior; only CHANGELOG, QA and WORKLOG need updates.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar scope hierarchy
+
+- Continued clean feature/native-ui-polish / open PR #52 to main after approval
+  of the scope/destination proposal. Moved desktop scope selection into a fixed
+  Mailboxes header, preserving custom profile names and management access.
+  All Inboxes stays first; Smart Views consolidates create/manage in one menu.
+- Visual regression loop: 11 expected old-reference failures, inspected renders,
+  fixed safe-area header overlap using a separate stack header, then refreshed
+  references. Four desktop tests/11 cases and seven iOS tests/11 unchanged cases
+  pass. Native dated mock build passes; scope menu, Smart Views expansion,
+  management sheet and unified inbox checked. Lint/format/diff check pass.
+- No business-logic change; used rendered visual regression and native action
+  checks rather than a new unit test. Initial test command from workspace root
+  had no BrevMail scheme; reran successfully from packages/BrevMail.
+- Updated CHANGELOG and QA evidence. README, privacy, ADRs and AGENTS need no
+  change: no setup, architecture, network or workflow changes. Physical spoken
+  VoiceOver and live-provider QA not run. No merge/release/version change.
+
+## 2026-09-20 — Codex / Sol — #53 / PR #52 full native audit follow-up
+
+- Started from clean feature/native-ui-polish at 1a3c6b9b, continuing open PR
+  #52 to main. Created #53 for all nine approved audit findings and moved its
+  project card to In progress. Four Sol agents own isolated sidebar, mail-shell,
+  reader/contrast and compose slices; integration owns settings and QA.
+- Removed duplicate fetch guidance and isolated the accounts pixel selection.
+  Two accounts references were inspected/refreshed; four tests in two suites
+  pass. The broad settings snapshot selection had fourteen pre-existing
+  mismatches on macOS 27; unrelated references were preserved.
+- Original iPhone snapshots pass (seven tests / eleven cases). Strengthened
+  shared fixtures with explicit text-size traits, navigation hosting and a
+  two-account/long-name/nested sidebar case. Integrated all four Sol slices and
+  reviewed follow-ups restoring custom profile names, true folder nesting,
+  active mailbox qualifiers, native menu semantics and narrow row metadata.
+- All nine audit findings are implemented: sidebar hierarchy/alignment,
+  desktop initial columns and narrow rows, Dynamic Type/contrast, primary
+  toolbars, iPhone account/status context, compact reader metadata, compose
+  hierarchy and single fetch guidance. Final render review also fixed a clipped
+  local-folder creation footer and removed the duplicate iPhone thread menu.
+- Behavioral red/green evidence comes from the slice policy/body/contrast tests;
+  cosmetic changes use failed prior-reference comparisons, visual inspection,
+  then updated pixel baselines. No mirror unit tests were added for spacing.
+  Corrected cropped/time-dependent fixtures and a 50 ms async test assumption
+  exposed by the old hosted CI failure. Unrelated snapshot debt is unchanged.
+- Final checks: BrevMail behavior 1,606 tests/247 suites; Mac mail pixel selection
+  37 tests/12 suites; iOS selection 18 tests/5 suites (13 phone renders); themes
+  9 tests; focused settings 4 tests/2 suites. Lint, zero-change format, baseline
+  inventory and diff check pass. Dated Mac mock build/startup verification and
+  iOS build/explicit mock launch pass. Native sidebar, reader, menus and compose
+  inspected on both platforms; no mail sent.
+- Fresh 1440 pt native root probe resolves sidebar/list to 240/420 pt without
+  clearing saved window state. Existing-window divider retention remains an
+  inference; the observed initial split and constraints are recorded in QA.
+- Documentation sweep: CHANGELOG, QA evidence/baseline policy and WORKLOG
+  updated; ADR-0002 documents the protected theme contrast change. README,
+  PRIVACY, ADR-0006 and AGENTS need no updates: setup, network behavior, privacy
+  and repository workflow are unchanged. Physical spoken VoiceOver, live
+  providers, unrelated Settings snapshots and maintainer acceptance remain open.
+- QA scope, commands and limitations are tracked in
+  docs/qa/native-audit-polish-2026-09-20.md. No live mail, daily-driver replacement,
+  version change, merge or release operation was performed.
+- Published the integrated changes in existing PR #52 and moved #53 to
+  In review; #49/#51 remain open/In review. Resolved the obsolete compose-menu
+  review thread after checking the updated overflow policy, tests and native
+  accessibility menu role. Hosted CI then found a stale compact-layout source
+  check requiring the removed content frame. Reproduced that failure, checked
+  the policy and outer split modifier instead, and passed the focused check and
+  complete `scripts/test.sh --self-tests-only` set. No production code changed
+  for this CI correction; hosted checks must rerun on the follow-up head.

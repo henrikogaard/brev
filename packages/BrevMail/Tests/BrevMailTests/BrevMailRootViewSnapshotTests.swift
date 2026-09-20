@@ -46,7 +46,7 @@ struct BrevMailRootViewSnapshotTests {
         )
     }
 
-    @Test("Root view renders wide layout with sidebar, list, and reading pane in default theme")
+    @Test("Root view renders its initial wide empty state without a phone crop")
     func rootViewWideLayout() {
         let theme = BrevTheme.brevPaper
         let view = BrevMailRootView(
@@ -61,7 +61,11 @@ struct BrevMailRootViewSnapshotTests {
         host.view.backgroundColor = .clear
         assertSnapshot(
             of: host,
-            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            as: .image(size: CGSize(width: 960, height: 600),
+                       traits: .init(traitsFrom: [
+                           .init(displayScale: 2),
+                           .init(horizontalSizeClass: .regular)
+                       ])),
             named: "root-wide"
         )
     }
