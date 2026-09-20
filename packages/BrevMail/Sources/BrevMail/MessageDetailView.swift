@@ -863,7 +863,11 @@ public struct MessageDetailView: View {
                 Image(systemName: "ellipsis.circle")
                     .font(.system(size: 14))
                     .foregroundStyle(theme.textSecondary.color)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                #else
                     .frame(width: 30, height: 24)
+                #endif
                     .contentShape(Rectangle())
             }
             .menuStyle(.borderlessButton)
@@ -888,7 +892,11 @@ public struct MessageDetailView: View {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
                 .foregroundStyle(theme.textSecondary.color)
+            #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+            #else
                 .frame(width: 30, height: 24)
+            #endif
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

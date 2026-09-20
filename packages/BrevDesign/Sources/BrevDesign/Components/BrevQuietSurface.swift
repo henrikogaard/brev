@@ -22,10 +22,12 @@ public struct BrevQuietSurface: ViewModifier {
 
     private let cornerRadius: CGFloat
 
+    /// Creates a quiet inset surface with the supplied corner radius.
     public init(cornerRadius: CGFloat = BrevRadius.md) {
         self.cornerRadius = cornerRadius
     }
 
+    /// Applies the shared fill, rounded boundary and hairline border.
     public func body(content: Content) -> some View {
         content
             .background(theme.bgSecondary.color.opacity(0.42))

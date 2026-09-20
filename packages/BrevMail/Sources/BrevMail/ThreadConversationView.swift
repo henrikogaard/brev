@@ -870,7 +870,7 @@ public struct ThreadConversationView: View {
     }
 }
 
-private struct ThreadAISummaryPanel: View {
+struct ThreadAISummaryPanel: View {
     @Environment(\.brevTheme) private var theme
     let state: ThreadAISummaryState
     /// Non-nil when the failure is retryable — shown as a Retry button.
@@ -919,6 +919,10 @@ private struct ThreadAISummaryPanel: View {
                         onRetry()
                     } label: {
                         Label(String(localized: "Retry", bundle: .module), systemImage: "arrow.clockwise")
+                        #if os(iOS)
+                            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                        #endif
                     }
                     .brevFont(.footnote)
                     .foregroundStyle(theme.accent.color)

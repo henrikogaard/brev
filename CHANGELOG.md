@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Detached-reader controls and thread-summary Retry use 44-point touch targets on iOS.
+
 - Reader actions reserve space for snooze/delete/block confirmations and reject Block Sender while the mailbox is busy.
 
 - macOS detached readers stay open when their mailbox cannot accept an action or present another dialog.

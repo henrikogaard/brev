@@ -107,7 +107,10 @@ its own line and put Enabled plus a 44pt action menu below it. Both sizes were
 visually inspected before comparison. All three newly enlarged settings action
 rows (templates, rules, signatures) now have compact coverage.
 
-All five `PhoneMailboxSnapshotTests` references are required by
+All seven `PhoneMailboxSnapshotTests` references are required by
 `scripts/check-ios-snapshot-baselines.sh`, including on CI hosts that cannot
 run the iOS 27 pixel comparisons. Missing or empty phone references fail the
 presence gate.
+
+The detached-reader action bar (660-point regular-width scene) and thread-summary
+Retry panel have iOS 27 references covering their 44-point touch targets.

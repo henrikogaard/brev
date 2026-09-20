@@ -114,6 +114,11 @@ on opacity, spacing, or hit-area values:
   0.42, border hairline at 0.45); replaces hand-rolled copies.
 - `brevChip(selected:)` — capsule styling for filter/toggle chips.
 
+The public `BrevChipStyle(isSelected:)` and `BrevQuietSurface(cornerRadius:)`
+initializers document their selection and corner-radius inputs, and their
+modifier methods document the visual treatment. These API comments preserve
+the shared recipes above without changing theme tokens or rendering behavior.
+
 ### Theme distribution
 
 Three tiers:

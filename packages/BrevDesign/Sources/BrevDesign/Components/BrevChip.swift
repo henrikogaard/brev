@@ -22,10 +22,12 @@ public struct BrevChipStyle: ViewModifier {
 
     private let isSelected: Bool
 
+    /// Creates chip styling for the supplied selection state.
     public init(isSelected: Bool) {
         self.isSelected = isSelected
     }
 
+    /// Applies the shared selected or unselected capsule treatment.
     public func body(content: Content) -> some View {
         content
             .foregroundStyle(isSelected ? theme.accent.color : theme.textSecondary.color)

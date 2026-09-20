@@ -22,6 +22,35 @@ import UIKit
 @Suite("Phone mailbox snapshots", .serialized)
 @MainActor
 struct PhoneMailboxSnapshotTests {
+    @Test("detached reader controls have touch-sized layout")
+    func detachedReader() {
+        let header = MessageHeader(id: "message", threadID: "thread", folderID: "inbox",
+                                   from: Correspondent(name: "Harbour Logistics", email: "team@example.org"),
+                                   subject: "Terminal update", snippet: "Preview", date: .distantPast)
+        let view = MessageDetailView(backend: MockBackend(), header: header,
+                                     allFolders: MockBackend.previewFolders, closeWindow: {})
+            .environment(\.horizontalSizeClass, .regular)
+            .brevTheme(.brevMonoLight)
+            .htmlBodyRenderTarget(.staticSnapshot)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 660, height: 560),
+                                            traits: .init(displayScale: 2)), named: "detached-reader",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("summary retry has a touch-sized layout")
+    func summaryRetry() {
+        let view = ThreadAISummaryPanel(
+            state: .failure(message: "Summary unavailable. Try again.", providerLabel: "Configured provider"),
+            onRetry: {}
+        )
+        .brevTheme(.brevMonoLight)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 350, height: 220),
+                                            traits: .init(displayScale: 2)), named: "summary-retry",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
     @Test("compose actions fit a narrow regular-width scene")
     func narrowCompose() {
         let backend = MockBackend()

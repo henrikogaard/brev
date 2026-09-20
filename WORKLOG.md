@@ -2922,3 +2922,15 @@ buttons, and package-aware localization.
   formatting and diff-check. Confirmation-capable actions conservatively
   reserve a presentation slot even when their current state may avoid a prompt.
   No pixel geometry changed; native confirmation QA remains pending.
+
+- Expanded every detached-reader action and overflow target to 44pt on iOS,
+  retaining compact macOS controls. Thread-summary Retry uses the same floor.
+  Captured and inspected before renders, then the two new snapshots failed
+  against the smaller references after the fix. Added the new references to
+  the required inventory. Shared chip/surface public initializers and modifier
+  methods now document their intent.
+- Verification: all seven phone snapshot cases pass with xcodebuild exit 0
+  after visual inspection; the prior five references are unchanged. Baseline
+  inventory and formatting pass. Updated ADR-0002 for the protected shared
+  component API documentation, then reran lint. Native interaction and Dynamic
+  Type remain device QA.

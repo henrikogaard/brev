@@ -9,6 +9,8 @@ metadata="$repo_root/docs/qa/ios-snapshot-baselines.md"
 workflow="$repo_root/.github/workflows/build.yml"
 
 required=(
+  "$snapshot_root/PhoneMailboxSnapshotTests/detachedReader.detached-reader.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/summaryRetry.summary-retry.png"
   "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.dark.png"
   "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.light.png"
   "$snapshot_root/PhoneMailboxSnapshotTests/mailboxes-dark.dark.png"
