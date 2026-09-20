@@ -2135,6 +2135,96 @@ struct AppSessionTests {
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
     }
+
+    @Test("linkedPIMSources returns only sources attached to the account")
+    func linkedPIMSourcesFiltersByAccount() async throws {
+        let backend = MockBackend()
+        let sourceStore = InMemoryPIMSourceStore()
+        try await sourceStore.save(Self.pimSource(id: "cal", linkedAccountID: backend.account.id))
+        try await sourceStore.save(Self.pimSource(id: "other", linkedAccountID: "other-account"))
+        try await sourceStore.save(Self.pimSource(id: "dav", linkedAccountID: nil, provider: .calDAV))
+        let session = AppSession(
+            backend: backend,
+            accountStore: InMemoryAccountStore(accounts: [backend.account], current: backend.account),
+            tokenStore: InMemoryTokenStore(),
+            pimSourceCoordinator: PIMSourceCoordinator(
+                store: sourceStore,
+                credentials: InMemoryPIMCredentialStore(),
+                localData: InMemoryPIMLocalDataStore()
+            )
+        )
+
+        let linked = await session.linkedPIMSources(for: backend.account.id)
+
+        #expect(linked.map(\.id) == ["cal"])
+    }
+
+    @Test("removeAccount removes linked PIM sources and deletes caches on request")
+    func removeAccountRemovesLinkedSourcesDeletingCaches() async throws {
+        let backend = MockBackend()
+        let sourceStore = InMemoryPIMSourceStore()
+        let localData = InMemoryPIMLocalDataStore()
+        try await sourceStore.save(Self.pimSource(id: "cal", linkedAccountID: backend.account.id))
+        try await sourceStore.save(Self.pimSource(id: "contacts", linkedAccountID: backend.account.id))
+        try await sourceStore.save(Self.pimSource(id: "other", linkedAccountID: "other-account"))
+        try await sourceStore.save(Self.pimSource(id: "dav", linkedAccountID: nil, provider: .calDAV))
+        let session = AppSession(
+            backend: backend,
+            accountStore: InMemoryAccountStore(accounts: [backend.account], current: backend.account),
+            tokenStore: InMemoryTokenStore(),
+            pimSourceCoordinator: PIMSourceCoordinator(
+                store: sourceStore,
+                credentials: InMemoryPIMCredentialStore(),
+                localData: localData
+            )
+        )
+
+        await session.removeAccount(backend.account, deleteLinkedSourceCache: true)
+
+        let remaining = try await sourceStore.allSources().map(\.id)
+        #expect(Set(remaining) == ["other", "dav"])
+        let deleted = await localData.deletedCacheSourceIDs
+        #expect(deleted.sorted() == ["cal", "contacts"])
+    }
+
+    @Test("removeAccount keeps linked source caches readable unless deletion is requested")
+    func removeAccountKeepsLinkedSourceCaches() async throws {
+        let backend = MockBackend()
+        let sourceStore = InMemoryPIMSourceStore()
+        let localData = InMemoryPIMLocalDataStore()
+        try await sourceStore.save(Self.pimSource(id: "cal", linkedAccountID: backend.account.id))
+        let session = AppSession(
+            backend: backend,
+            accountStore: InMemoryAccountStore(accounts: [backend.account], current: backend.account),
+            tokenStore: InMemoryTokenStore(),
+            pimSourceCoordinator: PIMSourceCoordinator(
+                store: sourceStore,
+                credentials: InMemoryPIMCredentialStore(),
+                localData: localData
+            )
+        )
+
+        await session.removeAccount(backend.account)
+
+        #expect(try await sourceStore.allSources().isEmpty)
+        #expect(await localData.deletedCacheSourceIDs.isEmpty)
+        #expect(await localData.disconnectedSourceIDs == ["cal"])
+    }
+
+    private static func pimSource(
+        id: String,
+        linkedAccountID: String?,
+        provider: PIMSourceProvider = .google
+    ) -> PIMSource {
+        PIMSource(
+            id: id,
+            kind: .calendar,
+            provider: provider,
+            linkedAccountID: linkedAccountID,
+            displayName: "Source \(id)",
+            status: .ready
+        )
+    }
 }
 
 private actor AccountDataCleanupRecorder {
@@ -2356,4 +2446,53 @@ private actor InMemoryAIProviderSecretStore: AIProviderSecretStore {
 
 private struct NativeSetupFallbackError: Error, Sendable, IMAPFallbackEligibleError {
     var isIMAPFallbackEligible: Bool { true }
+}
+
+private actor InMemoryPIMSourceStore: PIMSourceStore {
+    private var records: [PIMSource] = []
+
+    func allSources() async throws -> [PIMSource] { records }
+
+    func save(_ source: PIMSource) async throws {
+        if let index = records.firstIndex(where: { $0.id == source.id }) {
+            records[index] = source
+        } else {
+            records.append(source)
+        }
+    }
+
+    func deleteSource(id: PIMSource.ID) async throws {
+        records.removeAll { $0.id == id }
+    }
+}
+
+private actor InMemoryPIMCredentialStore: CalDAVCredentialStore {
+    private var credentials: [String: CalDAVCredential] = [:]
+
+    func credential(for account: String) async throws -> CalDAVCredential? {
+        credentials[account]
+    }
+
+    func setCredential(_ credential: CalDAVCredential, for account: String) async throws {
+        credentials[account] = credential
+    }
+
+    func deleteCredential(for account: String) async throws {
+        credentials[account] = nil
+    }
+}
+
+private actor InMemoryPIMLocalDataStore: PIMSourceLocalDataStore {
+    private(set) var deletedCacheSourceIDs: [PIMSource.ID] = []
+    private(set) var disconnectedSourceIDs: [PIMSource.ID] = []
+
+    func deleteSyncAndDraftData(for sourceID: PIMSource.ID) async throws {}
+
+    func deleteCachedContent(for sourceID: PIMSource.ID) async throws {
+        deletedCacheSourceIDs.append(sourceID)
+    }
+
+    func markCacheDisconnected(for sourceID: PIMSource.ID) async throws {
+        disconnectedSourceIDs.append(sourceID)
+    }
 }

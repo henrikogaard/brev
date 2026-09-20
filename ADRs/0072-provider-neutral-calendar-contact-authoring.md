@@ -394,6 +394,31 @@ Deliberately still deferred: home-set/collection discovery, sync
 scheduling, event/contact authoring (read-only scopes only), and the
 mail-account removal UX for linked sources.
 
+### #5 slice 4 — mail-account removal lists linked sources (2026-09-20, BrevMail/BrevSettings)
+
+- `AppSession.linkedPIMSources(for:)`: the account-removal dialog's source
+  of truth — every PIM source linked to the account, so nothing is
+  silently orphaned.
+- `AppSession.removeAccount(_:deleteLinkedSourceCache:)`: account teardown
+  now removes each linked source through the coordinator — unsent drafts
+  and sync state always die, the readable cache follows the user's
+  explicit keep-or-delete choice. Removal is local-only and best-effort;
+  a failed source stays listed in Settings for explicit removal. Sign-out
+  (no dialog) removes linked sources with kept caches — the least
+  destructive default.
+- `AccountsSectionPresentation.removalMessage(linkedSources:)` and the
+  removal dialog: names the linked sources and offers "Remove, keep
+  cached copies" / "Remove and delete cached data" / Cancel, mirroring
+  the source-removal two-step cache choice. Accounts without linked
+  sources keep the historical single-line confirmation.
+- `AccountsSection.linkedSourcesProvider`: session-wired query so the
+  dialog can list sources before confirmation.
+
+Deliberately still deferred: retaining linked sources as independent PIM
+connections via a validated PIM-only grant (the ADR's retention path —
+today the dialog offers remove-or-cancel), home-set/collection
+discovery, sync scheduling, and event/contact authoring.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

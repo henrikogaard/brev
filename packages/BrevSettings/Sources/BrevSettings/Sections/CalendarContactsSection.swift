@@ -99,8 +99,8 @@ enum CalendarContactsScopePresentation {
                 ),
                 status: .available,
                 symbolName: "person.crop.rectangle.stack"
-            )
-            ,
+            ),
+
             CalendarContactsCapabilityPresentation(
                 kind: .googleSourceEnablement,
                 title: String(localized: "Google Calendar and Contacts", bundle: .module),

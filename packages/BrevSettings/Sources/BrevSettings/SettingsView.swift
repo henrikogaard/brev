@@ -52,7 +52,8 @@ public struct SettingsView: View {
     private let onAddAccount: () async -> Void
     private let onSetDefaultAccount: (BrevAccount) async -> Void
     private let onSignOut: (BrevAccount) async -> Void
-    private let onRemoveAccount: (BrevAccount) async -> Void
+    private let onRemoveAccount: (BrevAccount, Bool) async -> Void
+    private let linkedSourcesProvider: @MainActor (BrevAccount.ID) async -> [PIMSource]
     private let onSignInRestoredAccount: (AccountBackupEntry) -> Void
     private let onAIProviderConfigurationChanged: () async -> Void
     private let onClose: (() -> Void)?
@@ -81,7 +82,8 @@ public struct SettingsView: View {
         onAddAccount: @escaping () async -> Void = {},
         onSetDefaultAccount: ((BrevAccount) async -> Void)? = nil,
         onSignOut: @escaping (BrevAccount) async -> Void = { _ in },
-        onRemoveAccount: ((BrevAccount) async -> Void)? = nil,
+        onRemoveAccount: ((BrevAccount, Bool) async -> Void)? = nil,
+        linkedSourcesProvider: @MainActor @escaping (BrevAccount.ID) async -> [PIMSource] = { _ in [] },
         onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in },
         onAIProviderConfigurationChanged: @escaping () async -> Void = {},
         onClose: (() -> Void)? = nil
@@ -125,9 +127,10 @@ public struct SettingsView: View {
             await accountStore.setCurrent(account.id)
         }
         self.onSignOut = onSignOut
-        self.onRemoveAccount = onRemoveAccount ?? { account in
+        self.onRemoveAccount = onRemoveAccount ?? { account, _ in
             await accountStore.remove(account.id)
         }
+        self.linkedSourcesProvider = linkedSourcesProvider
         self.onAIProviderConfigurationChanged = onAIProviderConfigurationChanged
         self.onSignInRestoredAccount = onSignInRestoredAccount
         self.onClose = onClose
@@ -517,6 +520,7 @@ public struct SettingsView: View {
                 onSetDefault: onSetDefaultAccount,
                 onSignOut: onSignOut,
                 onRemoveAccount: onRemoveAccount,
+                linkedSourcesProvider: linkedSourcesProvider,
                 onSignInRestoredAccount: onSignInRestoredAccount
             )
         case .appearance:

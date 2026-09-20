@@ -1,6 +1,6 @@
 # Worklog
 
-## 2026-09-20 — Codex — Issue #5 Google feature-triggered reauthorization
+## 2026-09-20 — Codex — Issue #5 Google reauthorization + removal UX
 
 ### Goal
 
@@ -28,6 +28,12 @@ sync scheduling and authoring land later.
 - Docs: ADR-0072 contract log slice 3; ADR-0006 Google rows cover
   feature-triggered reauthorization; PRIVACY.md documents the reauth
   flow; CHANGELOG Unreleased updated.
+- Slice 4 (removal UX): `AppSession.linkedPIMSources` +
+  `removeAccount(_:deleteLinkedSourceCache:)` remove linked sources with
+  the account (best-effort, local-only); AccountsSection removal dialog
+  names linked sources and offers the two-step cache choice; sign-out
+  removes linked sources with kept caches. Capability summary now lists
+  Google enablement as available.
 
 ### Verification
 
@@ -40,14 +46,19 @@ sync scheduling and authoring land later.
   scopes in the authorization URL).
 - swift test BrevSettings --filter PIMSourceSettingsModel: 12 pass
   (handler gating, forward+reload, declined grant).
+- swift test BrevMail --filter 'linkedPIM|removeAccount': 5 pass
+  (linked-source query, removal deletes caches on request, keeps them
+  otherwise); BrevSettings AccountsSectionPresentation: removal message
+  coverage.
 - swift build BrevMail clean; swiftformat + swiftlint clean on touched
   files.
 
 ### Next
 
-- Land the stack: #56 (lifecycle) and #57 (settings surface) merge to
-  main, then this slice's PR. Remaining #5 scope: mail-account removal
-  UX for linked sources; live-provider smoke stays a maintainer gate.
+- Land the stack: #56 (lifecycle), #57 (settings surface), #58 (Google
+  enablement), and the removal-UX PR merge to main in order. Remaining
+  #5 scope: retain-linked-sources via PIM-only grant (ADR retention
+  path); live-provider smoke stays a maintainer gate.
 
 ## 2026-09-20 — Codex — Issue #5 PIM source lifecycle foundation
 

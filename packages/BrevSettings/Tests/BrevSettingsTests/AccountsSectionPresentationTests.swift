@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevCalendar
 @testable import BrevSettings
 import Testing
 
@@ -97,6 +98,39 @@ struct AccountsSectionPresentationTests {
             isAddingAccount: false,
             signingOutAccountIDs: ["b"]
         ) == AccountsSectionActionPresentation(title: "Remove", isDisabled: true))
+    }
+
+    @Test("removal message keeps the single-line copy without linked sources")
+    func removalMessageWithoutLinkedSources() {
+        let message = AccountsSectionPresentation.removalMessage(linkedSources: [])
+
+        #expect(message == "Brev removes this account from the local app. Server mail is not deleted.")
+    }
+
+    @Test("removal message names linked sources and the draft/cache contract")
+    func removalMessageNamesLinkedSources() {
+        let sources = [
+            PIMSource(
+                id: "cal",
+                kind: .calendar,
+                provider: .google,
+                linkedAccountID: "acct-1",
+                displayName: "Calendar (Google)"
+            ),
+            PIMSource(
+                id: "contacts",
+                kind: .contacts,
+                provider: .google,
+                linkedAccountID: "acct-1",
+                displayName: "Contacts (Google)"
+            ),
+        ]
+
+        let message = AccountsSectionPresentation.removalMessage(linkedSources: sources)
+
+        #expect(message.contains("Calendar (Google), Contacts (Google)"))
+        #expect(message.contains("unsent drafts"))
+        #expect(message.contains("provider data is never deleted"))
     }
 }
 
