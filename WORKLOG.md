@@ -3105,3 +3105,22 @@ buttons, and package-aware localization.
   append-only worklog entries. Final iOS command exits successfully with 37
   tests/5 suites after disabling stalled diagnostic collection; macOS follow-up
   exits successfully with 29 tests/3 suites. #49/#51 remain In review.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar polish
+
+- Used Henrik's Brev/Apple Mail comparison to reduce desktop sidebar hierarchy
+  noise: account sections have compact labels and trailing disclosure, folders
+  no longer inherit an extra account indent, All Inboxes aligns with folder icons,
+  labels use regular body type, counts are tertiary, and selection uses one fill.
+  Quieted the desktop profile control while preserving theme tokens and iOS UI.
+- Continued feature/native-ui-polish / PR #52 targeting main; checkout was clean.
+- Visual regression loop: old macOS sidebar suite passed, intentional styling
+  produced 11 reference failures, inspected light/dark/hierarchy renders, refreshed
+  only those references and passed 39 sidebar tests across two suites. All 11
+  existing phone snapshot cases (7 tests) passed without baseline changes.
+- Native dated Brev Test build passed. Inspected both accounts, collapse/expand,
+  nested rows and selecting the second account Inbox. No live mail changes.
+- Lint, format and diff check passed. Updated CHANGELOG and QA documentation;
+  no provider, privacy, public design-token, setup or architectural change, so
+  README/PRIVACY/ADRs/AGENTS need no update. Physical VoiceOver remains unverified.

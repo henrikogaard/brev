@@ -61,3 +61,21 @@ and explicitly selected the desktop compose snapshot in the compatible-host CI
 job. The fallback paragraph regression failed before the fix and passed after it.
 Busy-state restoration reuses the existing header invariant; no new async send
 fixture was added for this one-line modifier correction.
+
+## Desktop sidebar follow-up
+
+Matched the supplied Apple Mail reference through hierarchy and alignment:
+compact account section headings with trailing disclosure, one shared icon column
+for global/top-level destinations, regular body labels, tertiary counts and a
+single rounded selection fill. Nested folders retain depth; themes and iOS
+presentation remain intact.
+
+The original 11 macOS sidebar references passed before edits, failed with the
+intended visual changes, and were inspected and refreshed. Final result: 39
+sidebar tests in two suites pass, plus 11 unchanged phone snapshot cases across
+seven tests. Native dated Brev Test inspection verifies account collapse/expand
+and selecting the second account Inbox. No physical VoiceOver acceptance.
+
+Rendered references:
+- [Dark account selection](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/compactProfileScopes-_.mailbox-dark.png)
+- [Light nested folders](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/allInboxesGlobalAlignment.all-inboxes-global-alignment.png)

@@ -346,9 +346,6 @@ public struct FolderSidebar: View {
             Section {
                 if expandedSourceIDs.contains(section.id) {
                     folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
-                    #if os(macOS)
-                        .padding(.leading, sidebarMetrics.folderRowDepthIndent)
-                    #endif
                 }
             } header: {
                 mailboxDisclosureHeader(section)
@@ -384,7 +381,11 @@ public struct FolderSidebar: View {
                     .frame(width: sidebarMetrics.iconWidth)
                 Text(verbatim: activeProfileName)
                     .brevFont(.body)
+                #if os(macOS)
+                    .fontWeight(.regular)
+                #else
                     .fontWeight(.semibold)
+                #endif
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -400,6 +401,7 @@ public struct FolderSidebar: View {
             .contentShape(Rectangle())
         }
         #if os(macOS)
+        .tint(theme.textSecondary.color)
         .menuStyle(.borderlessButton)
         .menuIndicator(.visible)
         #endif
@@ -440,15 +442,16 @@ public struct FolderSidebar: View {
             expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
         } label: {
             HStack(spacing: BrevSpacing.xs) {
-                #if os(macOS)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: sidebarMetrics.disclosureHitSize)
-                #endif
+                #if os(iOS)
                 Image(systemName: "tray")
                     .frame(width: sidebarMetrics.iconWidth)
+                #endif
                 Text(verbatim: section.title)
+                #if os(macOS)
+                    .brevFont(.caption)
+                #else
                     .brevFont(.subheadline)
+                #endif
                     .fontWeight(.semibold)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -458,13 +461,11 @@ public struct FolderSidebar: View {
                 } else if !isExpanded {
                     unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
-                #if os(iOS)
-                // Match folder rows: only nested folders add leading indentation.
+                // Keep section disclosure separate from the folder icon column.
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
                     .frame(width: sidebarMetrics.disclosureHitSize)
                     .accessibilityHidden(true)
-                #endif
             }
             .foregroundStyle(theme.textSecondary.color)
             #if os(iOS)
@@ -861,13 +862,23 @@ public struct FolderSidebar: View {
                 + sidebarMetrics.disclosureHitSize
                 + BrevSpacing.xxs
         case .sourceHeader:
+            #if os(macOS)
+            sidebarMetrics.folderRowLeadingPadding(depth: 0)
+                + sidebarMetrics.disclosureHitSize + BrevSpacing.xxs
+            #else
             sidebarMetrics.sourceHeaderHorizontalPadding
+            #endif
         }
 
         return HStack(spacing: BrevSpacing.xs) {
             leading()
             Text(verbatim: title)
+            #if os(macOS)
+                .brevFont(.body)
+                .fontWeight(.regular)
+            #else
                 .brevFont(.subheadline)
+            #endif
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
             Spacer(minLength: BrevSpacing.sm)
@@ -885,10 +896,12 @@ public struct FolderSidebar: View {
             if isSelected {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(globalActionSelectionColor)
+                #if os(iOS)
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
                             .frame(width: 2).padding(.vertical, BrevSpacing.xs)
                     }
+                #endif
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
@@ -1066,7 +1079,8 @@ public struct FolderSidebar: View {
                     #if os(iOS)
                         .brevFont(.body)
                     #else
-                        .brevFont(.subheadline)
+                        .brevFont(.body)
+                        .fontWeight(.regular)
                     #endif
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
@@ -1096,10 +1110,12 @@ public struct FolderSidebar: View {
             if isSelected(folder, in: sourceID) {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(folderSelectionColor)
+                #if os(iOS)
                     .overlay(alignment: .leading) {
                         RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
                             .frame(width: 2).padding(.vertical, BrevSpacing.xs)
                     }
+                #endif
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
@@ -1471,7 +1487,7 @@ public struct FolderSidebar: View {
         #else
         Image(systemName: systemImage(for: role))
             .foregroundStyle(theme.textSecondary.color)
-            .imageScale(.small)
+            .font(.body)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
         #endif
     }
@@ -1494,7 +1510,7 @@ public struct FolderSidebar: View {
             #else
             Text(verbatim: "\(count)")
                 .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
+                .foregroundStyle(theme.textTertiary.color)
                 .monospacedDigit()
                 .frame(
                     minWidth: sidebarMetrics.unreadBadgeMinimumWidth,
