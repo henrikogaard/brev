@@ -346,7 +346,9 @@ public struct FolderSidebar: View {
             Section {
                 if expandedSourceIDs.contains(section.id) {
                     folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                    #if os(macOS)
                         .padding(.leading, sidebarMetrics.folderRowDepthIndent)
+                    #endif
                 }
             } header: {
                 mailboxDisclosureHeader(section)
@@ -440,7 +442,11 @@ public struct FolderSidebar: View {
             HStack(spacing: BrevSpacing.xs) {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
+                #if os(iOS)
+                    .frame(width: sidebarMetrics.iconWidth)
+                #else
                     .frame(width: sidebarMetrics.disclosureHitSize)
+                #endif
                 Image(systemName: "tray")
                     .frame(width: sidebarMetrics.iconWidth)
                 Text(verbatim: section.title)
@@ -954,15 +960,7 @@ public struct FolderSidebar: View {
                     minHeight: sidebarMetrics.profilePickerMinimumHeight,
                     alignment: .leading
                 )
-                .background {
-                    RoundedRectangle(cornerRadius: BrevRadius.md)
-                        .fill(theme.bgSecondary.color.opacity(0.42))
-                }
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.md)
-                        .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-                }
-                .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+                .brevQuietSurface()
                 .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
                 #else
                 HStack(spacing: BrevSpacing.sm) {
@@ -1046,14 +1044,20 @@ public struct FolderSidebar: View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
         return HStack(spacing: folderRowControlSpacing) {
+            #if os(macOS)
             disclosureControl(for: row, sourceID: sourceID)
+            #endif
             Button {
                 select(folder, in: sourceID)
             } label: {
                 HStack(spacing: BrevSpacing.xs) {
                     roleIcon(for: folder.role)
                     Text(title)
+                    #if os(iOS)
+                        .brevFont(.body)
+                    #else
                         .brevFont(.subheadline)
+                    #endif
                         .foregroundStyle(theme.textPrimary.color)
                         .lineLimit(1)
                     Spacer(minLength: BrevSpacing.sm)
@@ -1064,6 +1068,11 @@ public struct FolderSidebar: View {
             }
             .buttonStyle(.plain)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+            #if os(iOS)
+            if row.hasChildren {
+                disclosureControl(for: row, sourceID: sourceID)
+            }
+            #endif
         }
         .padding(.leading, folderRowLeadingPadding(depth: row.depth))
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)

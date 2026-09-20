@@ -54,13 +54,18 @@ struct BrevApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        WindowGroup(for: ReaderCommandWindowPayload.self) { $readerCommandHandoff in
             Group {
                 // Settings sits above the mailbox-root decision so the
                 // restore-error alert's "Open Settings" action works even
                 // when every account failed to restore and the window would
                 // otherwise show the login screen.
-                if showSettings {
+                // A detached command must reach its mailbox even when another
+                // scene has opened the shared Settings surface.
+                if AppSessionRestorePresentationPolicy.shouldShowSettings(
+                    isRequested: showSettings,
+                    hasReaderCommandHandoff: readerCommandHandoff != nil
+                ) {
                     SettingsView(
                         accountStore: session.accountStore,
                         activeTheme: $session.theme,
@@ -91,6 +96,7 @@ struct BrevApp: App {
                             session.theme = newTheme
                         },
                         onOpenSettings: {
+                            readerCommandHandoff = nil
                             showSettings = true
                         },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
@@ -108,6 +114,7 @@ struct BrevApp: App {
                         },
                         pendingComposePrefill: $pendingComposePrefill,
                         pendingNotificationRoute: $pendingNotificationRoute,
+                        readerCommandHandoff: readerCommandHandoff,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         localBackend: session.localBackend,
@@ -133,6 +140,7 @@ struct BrevApp: App {
             ) {
                 Button(String(localized: "Open Settings")) {
                     session.clearAccountRestoreErrors()
+                    readerCommandHandoff = nil
                     showSettings = true
                 }
                 Button(String(localized: "Dismiss"), role: .cancel) {
@@ -204,16 +212,25 @@ struct BrevApp: App {
                 }
             }
         }
-        .commands { MailCommands() }
+        .commands {
+            MailCommands()
+            // iPad hardware-keyboard ⌘Z for mail undo (ADR-0033 era follow-up):
+            // text editors keep their own responder-chain undo ahead of this
+            // scene key command.
+            MailUndoCommands()
+        }
 
         // iPad detached reader window — opened via openWindow(value:) in
         // MessageDetailView when the user taps "Open in New Window" on a
         // regular-width iPad scene (ADR-0033).
         WindowGroup(for: DetachedReaderWindowPayload.self) { $payload in
             if let payload {
-                DetachedReaderWindowView(payload: payload, backends: session.visibleBackends)
-                    .brevTheme(session.theme)
-                    .environment(\.openURL, browserOpenURLAction)
+                DetachedReaderWindowView(
+                    payload: payload, backends: session.visibleBackends,
+                    canFileLocally: session.localBackend != nil
+                )
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
             }
         }
 

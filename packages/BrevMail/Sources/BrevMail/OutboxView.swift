@@ -115,20 +115,17 @@ public struct OutboxView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: BrevSpacing.md) {
-            Image(systemName: "checkmark.circle")
-                .font(.system(size: 40))
-                .foregroundStyle(theme.textTertiary.color)
-            Text("No Pending Changes", bundle: .module)
-                .brevFont(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-            Text("Scheduled messages and changes waiting to sync appear here.", bundle: .module)
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textSecondary.color)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, BrevSpacing.lg)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        MessageListEmptyStateView(
+            status: MessageListStatus(
+                title: String(localized: "No Pending Changes", bundle: .module),
+                icon: "checkmark.circle",
+                subtitle: String(
+                    localized: "Scheduled messages and changes waiting to sync appear here.",
+                    bundle: .module
+                ),
+                actionTitle: nil
+            )
+        )
     }
 
     private var mutationList: some View {
@@ -195,10 +192,13 @@ public struct OutboxView: View {
                 .brevFont(.subheadline)
                 .foregroundStyle(theme.textPrimary.color)
             if !mutation.messageIDs.isEmpty {
-                let noun = mutation.messageIDs.count == 1 ? "message" : "messages"
-                Text(verbatim: "\(mutation.messageIDs.count) \(noun)")
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
+                Text(
+                    mutation.messageIDs.count == 1
+                        ? String(localized: "1 message", bundle: .module)
+                        : String(localized: "\(mutation.messageIDs.count) messages", bundle: .module)
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
             }
             Text(mutation.createdAt, style: .relative)
                 .brevFont(.caption)

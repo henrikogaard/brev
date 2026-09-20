@@ -29,7 +29,7 @@ struct DetachedMailWindowPayloadTests {
 
     @Test("reader payload with non-nil sourceID round-trips through Codable")
     func readerRoundTripWithSourceID() throws {
-        let payload = DetachedReaderWindowPayload(sourceID: sampleSourceID, messageID: "msg-7")
+        let payload = DetachedReaderWindowPayload(sourceID: sampleSourceID, messageID: "msg-7", folderID: "STARRED")
         let data = try JSONEncoder().encode(payload)
         #expect(try JSONDecoder().decode(DetachedReaderWindowPayload.self, from: data) == payload)
     }

@@ -26,6 +26,15 @@ import AppKit
 import UIKit
 #endif
 
+/// Header plus source scope for a reader owned reader action that still needs
+/// an in-scene confirmation UI (snooze picker sheet, block-sender alert).
+private struct DetachedReaderActionTarget: Equatable, Identifiable {
+    let header: MessageHeader
+    let sourceID: MailSourceID?
+
+    var id: String { header.id }
+}
+
 private struct MailFolderActionTarget: Equatable {
     let folder: Folder
     let sourceID: MailSourceID?
@@ -335,7 +344,18 @@ public struct BrevMailRootView: View {
     @State private var outboxPendingCount = 0
     @State private var folderNamePrompt: MailFolderNamePrompt?
     @State private var folderConfirmation: MailFolderConfirmation?
-    @State private var pendingPermanentDeleteHeader: MessageHeader?
+    @State private var pendingPermanentDeleteTarget: DetachedReaderActionTarget?
+    /// Targets for reader/detached-window actions that need an in-scene
+    /// confirmation UI: the snooze-time picker sheet and the block-sender
+    /// confirmation alert. Both are handled on the root view so detached
+    /// reader windows can drive them through the owning command handler.
+    @State private var pendingReaderSnoozeTarget: DetachedReaderActionTarget?
+    @State private var pendingReaderBlockSenderTarget: DetachedReaderActionTarget?
+    /// Last "open in new window" request — a double-click and a context-menu
+    /// invocation can both fire within a fraction of a second; repeats for the
+    /// same message inside the guard window are swallowed so only one
+    /// detached reader (or one compact-reader push) appears.
+    @State private var lastOpenInNewWindowRequest: DetachedReaderActionTarget?
     @State private var folderNameDraft = ""
     @State private var notificationCenter = BrevLocalNotificationCenter()
     @State private var badgeUpdater = UnreadBadgeUpdater()
@@ -387,6 +407,7 @@ public struct BrevMailRootView: View {
     private let trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)?
     private let pendingComposePrefill: Binding<ComposePrefill?>?
     private let pendingNotificationRoute: Binding<NotificationMailRoute?>?
+    private let readerCommandHandoff: ReaderCommandWindowPayload?
     private let isExternalModalPresented: Bool
     private let initialMailboxSelectionAccountID: BrevAccount.ID?
     private let onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)?
@@ -403,6 +424,10 @@ public struct BrevMailRootView: View {
 
     private let unreadCountReconciler = UnreadCountReconciler()
 
+    /// Creates a mailbox workspace for a single account backend.
+    /// - Parameters:
+    ///   - readerCommandHandoff: Opaque one-use token for an in-memory detached-reader command.
+    ///   - localBackend: Optional durable local-mail backend used for local-folder filing.
     public init(
         backend: any MailBackend,
         aiBackend: (any AIBackend)? = nil,
@@ -417,6 +442,7 @@ public struct BrevMailRootView: View {
         trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
         pendingComposePrefill: Binding<ComposePrefill?>? = nil,
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
+        readerCommandHandoff: ReaderCommandWindowPayload? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
@@ -438,6 +464,7 @@ public struct BrevMailRootView: View {
             trustedEncryptionIdentityCountProvider: trustedEncryptionIdentityCountProvider,
             pendingComposePrefill: pendingComposePrefill,
             pendingNotificationRoute: pendingNotificationRoute,
+            readerCommandHandoff: readerCommandHandoff,
             isExternalModalPresented: isExternalModalPresented,
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
             onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
@@ -447,6 +474,10 @@ public struct BrevMailRootView: View {
         )
     }
 
+    /// Creates a mailbox workspace sharing navigation across multiple account backends.
+    /// - Parameters:
+    ///   - readerCommandHandoff: Opaque one-use token for an in-memory detached-reader command.
+    ///   - localBackend: Optional durable local-mail backend used for local-folder filing.
     public init(
         backends: [any MailBackend],
         aiBackend: (any AIBackend)? = nil,
@@ -462,6 +493,7 @@ public struct BrevMailRootView: View {
         trustedEncryptionIdentityCountProvider: ((BrevAccount) -> Int)? = nil,
         pendingComposePrefill: Binding<ComposePrefill?>? = nil,
         pendingNotificationRoute: Binding<NotificationMailRoute?>? = nil,
+        readerCommandHandoff: ReaderCommandWindowPayload? = nil,
         isExternalModalPresented: Bool = false,
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
@@ -489,6 +521,15 @@ public struct BrevMailRootView: View {
         self.trustedEncryptionIdentityCountProvider = trustedEncryptionIdentityCountProvider
         self.pendingComposePrefill = pendingComposePrefill
         self.pendingNotificationRoute = pendingNotificationRoute
+        self.readerCommandHandoff = readerCommandHandoff
+        if let readerCommandHandoff, let request = ReaderCommandHandoff.peek(readerCommandHandoff) {
+            let initialNavigation = MailNavigationState()
+            initialNavigation.selectedSourceID = request.sourceID
+            initialNavigation.selectedFolderID = request.header.folderID
+            initialNavigation.replaceCurrentFolderHeaders([request.header])
+            initialNavigation.selectedMessageID = request.header.id
+            _navigation = State(initialValue: initialNavigation)
+        }
         self.isExternalModalPresented = isExternalModalPresented
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
@@ -761,15 +802,64 @@ public struct BrevMailRootView: View {
                 isPresented: isPermanentDeleteAlertPresented
             ) {
                 Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                    guard let header = pendingPermanentDeleteHeader else { return }
-                    pendingPermanentDeleteHeader = nil
-                    Task { await trash(header: header, confirmedPermanent: true) }
+                    guard let target = pendingPermanentDeleteTarget else { return }
+                    pendingPermanentDeleteTarget = nil
+                    Task {
+                        guard canStartCommandMutation() else {
+                            rootStatus = MailRootStatus(message: String(
+                                localized: "Another mail action is still running. Wait for it to finish and try again.",
+                                bundle: .module
+                            ))
+                            return
+                        }
+                        guard prepareDetachedCommandContext(
+                            .init(command: .delete, header: target.header, sourceID: target.sourceID),
+                            isPermanentDeleteConfirmed: true
+                        ) else { return }
+                        await trash(header: target.header, confirmedPermanent: true)
+                    }
                 }
                 Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                    pendingPermanentDeleteHeader = nil
+                    pendingPermanentDeleteTarget = nil
                 }
             } message: {
-                Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: folders))
+                Text(MailUndoableDelete.permanentDeleteMessage(
+                    count: 1, folders: moveFolders(for: pendingPermanentDeleteTarget?.sourceID ?? navigation.selectedSourceID)
+                ))
+            }
+            .sheet(item: $pendingReaderSnoozeTarget) { target in
+                // Snooze-time picker for detached-window / consolidated-reader
+                // snooze actions; hosted here for the owning reader command handler.
+                SnoozePickerView(
+                    header: target.header,
+                    sourceID: readerWorkflowSourceID(for: target.sourceID),
+                    onConfirm: { wakeAt in
+                        pendingReaderSnoozeTarget = nil
+                        readerSnooze(header: target.header, sourceID: target.sourceID, until: wakeAt)
+                    },
+                    onCancel: {
+                        pendingReaderSnoozeTarget = nil
+                    }
+                )
+                .brevTheme(theme)
+            }
+            .alert(
+                String(localized: "Block Sender?", bundle: .module),
+                isPresented: isReaderBlockSenderAlertPresented
+            ) {
+                Button(String(localized: "Block", bundle: .module), role: .destructive) {
+                    Task { await confirmReaderBlockSender() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingReaderBlockSenderTarget = nil
+                }
+            } message: {
+                if let target = pendingReaderBlockSenderTarget {
+                    Text(String(
+                        localized: "Block \(target.header.from.email)?",
+                        bundle: .module
+                    ))
+                }
             }
             .confirmationDialog(
                 String(localized: "Import Mail", bundle: .module),
@@ -838,13 +928,13 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailFolderExportAction, mailFolderExportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
             .environment(\.undoQueue, undoQueue)
-        #if os(macOS)
+            // Published on iOS too: `MailUndoCommands` registers ⌘Z for iPad
+            // hardware keyboards from the same focused value.
             .focusedSceneValue(\.mailUndoActions, MailUndoCommandActions(
                 canUndo: { undoQueue.canUndo && !isCommandMutationBlocked && activeCommandMutationRequest == nil },
                 onUndo: { performUndo() }
             ))
-        #endif
-            .modifier(DetachedMessageCommandReceiver(handle: handleDetachedMessageCommand))
+            .environment(\.readerCommandAction, handleDetachedMessageCommand)
             .overlay(alignment: .bottom) { undoToastOverlay }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if folderExportController.state != .idle {
@@ -1212,9 +1302,7 @@ public struct BrevMailRootView: View {
             onOpenOutbox: {
                 navigation.presentedSheet = .outbox
             },
-            onOpenSettings: {
-                presentSettings()
-            },
+            onOpenSettings: nil,
             onOpenMessages: {
                 openSelectedMessagesOnCompact()
             },
@@ -1224,14 +1312,18 @@ public struct BrevMailRootView: View {
             }
         )
         .brevMailPaneSurface(.sidebar)
-        .brevMailFallbackToolbar { toolbarSidebar }
-        .brevMailPaneScrollEdgeBlur()
-        // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
-        // configures the enclosing `NSSplitViewItem`, and the surface wrapper
-        // puts the column inside a `.frame(maxWidth: .infinity)` — applied
-        // underneath that frame the bounds never reached the split view, so
-        // the divider dragged past the minimum and the content stretched.
-        .brevMailPaneColumnWidth(folderSidebarColumnWidth)
+        #if os(iOS)
+            .navigationTitle(Text("Mailboxes", bundle: .module))
+            .navigationBarTitleDisplayMode(.large)
+        #endif
+            .brevMailFallbackToolbar { toolbarSidebar }
+            .brevMailPaneScrollEdgeBlur()
+            // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
+            // configures the enclosing `NSSplitViewItem`, and the surface wrapper
+            // puts the column inside a `.frame(maxWidth: .infinity)` — applied
+            // underneath that frame the bounds never reached the split view, so
+            // the divider dragged past the minimum and the content stretched.
+            .brevMailPaneColumnWidth(folderSidebarColumnWidth)
     }
 
     private func threadHeadersForSelection(fallbackHeader: MessageHeader? = nil) -> [MessageHeader] {
@@ -1293,7 +1385,9 @@ public struct BrevMailRootView: View {
                         sourceID: navigation.selectedSourceID,
                         mailboxLabel: selectedSourceSection?.mailbox.email,
                         navigation: navigation,
-                        isWorkBlocked: isCommandMutationBlocked
+                        isWorkBlocked: isCommandMutationBlocked || isComposePresentationBlocked,
+                        allFolders: folders,
+                        canFileLocally: localBackend != nil
                     )
                 } else {
                     MessageDetailView(
@@ -1302,12 +1396,16 @@ public struct BrevMailRootView: View {
                         header: navigation.selectedHeader ?? fallbackHeader,
                         navigation: navigation,
                         allFolders: folders,
-                        isWorkBlocked: isMessageWorkBlocked,
-                        isMutationWorkBlocked: isCommandMutationBlocked
+                        isWorkBlocked: isMessageWorkBlocked || isComposePresentationBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked,
+                        canFileLocally: localBackend != nil
                     )
                 }
             }
         }
+        // The compact iPhone reader is a sibling of the background workspace,
+        // so install the owner here as well as on the root command context.
+        .environment(\.readerCommandAction, handleDetachedMessageCommand)
         .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
             relatedConversation.updateAnchor(
                 header: navigation.selectedHeader ?? fallbackHeader,
@@ -1464,7 +1562,10 @@ public struct BrevMailRootView: View {
                     #if os(iOS)
                     openSelectedMessageOnCompact(header: header)
                     #endif
-                }
+                },
+                onOpenInNewWindow: canDetachReaderWindow ? { item in
+                    openMessageInNewWindow(item.header, sourceID: item.sourceID)
+                } : nil
             ) { event in
                 await handleMessageListMutation(event)
             }
@@ -1505,6 +1606,9 @@ public struct BrevMailRootView: View {
                         openSelectedMessageOnCompact(header: header)
                         #endif
                     },
+                    onOpenInNewWindow: canDetachReaderWindow ? { item in
+                        openMessageInNewWindow(item.header, sourceID: item.sourceID)
+                    } : nil,
                     onMutation: { event in
                         await handleMessageListMutation(event)
                     }
@@ -1536,7 +1640,9 @@ public struct BrevMailRootView: View {
                     onUnreadCountChanged: { folderID, delta in
                         applyUnreadCountChange(folderID: folderID, delta: delta)
                     },
-                    onOpenInNewWindow: openMessageInNewWindow
+                    onOpenInNewWindow: canDetachReaderWindow ? { header in
+                        openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
+                    } : nil
                 )
             }
         }
@@ -1550,7 +1656,11 @@ public struct BrevMailRootView: View {
         // section (see `toolbarList`), not via `.searchable`, whose
         // window-level item re-lays out and collapses to a magnifying glass on
         // its own whenever the AI Sidebar column appears.
-        .brevMailFallbackToolbar { toolbarList }
+        #if os(iOS)
+            .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
+            .navigationBarTitleDisplayMode(.large)
+        #endif
+            .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the
         // band on its own scroll viewport (see MessageListView), which sits
         // below the inbox category and action bars when those are present. A
@@ -1735,7 +1845,6 @@ public struct BrevMailRootView: View {
                 platform: toolbarPlatform
             ) {
                 refreshToolbarButton
-                composeToolbarButton
             }
 
             if MailRootSettingsToolbarPolicy.showsSettingsButton(
@@ -1744,6 +1853,12 @@ public struct BrevMailRootView: View {
             ) {
                 settingsToolbarButton
             }
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Spacer()
+        }
+        ToolbarItem(placement: .bottomBar) {
+            composeToolbarButton
         }
         #endif
     }
@@ -1953,6 +2068,21 @@ public struct BrevMailRootView: View {
                     .disabled(!canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Delete", bundle: .module))
 
+                    // macOS fallback toolbar lacked any read/unread control —
+                    // the only routes were the Message menu shortcut and the
+                    // row context menu. iOS gets the action inside the
+                    // reader's consolidated overflow menu instead.
+                    if toolbarPlatform == .macOS {
+                        Button {
+                            Task { await toggleRead(for: header) }
+                        } label: {
+                            Image(systemName: header.isRead ? "envelope.badge" : "envelope.open")
+                        }
+                        .disabled(!canStartCommandMutation())
+                        .accessibilityLabel(MessageCommandPresentation.readToggleTitle(for: header))
+                        .help(MessageCommandPresentation.readToggleTitle(for: header))
+                    }
+
                     if MailRootDetailToolbarPolicy.showsFlagButton(
                         platform: toolbarPlatform,
                         readerWidth: readerPaneWidth
@@ -1967,6 +2097,11 @@ public struct BrevMailRootView: View {
                         .help(MessageCommandPresentation.flagToggleTitle(for: header))
                     } else {
                         Menu {
+                            #if os(macOS)
+                            // macOS only: on iOS these message actions live in
+                            // the reader's consolidated overflow menu inside
+                            // `MessageDetailView` (one shared inventory), so
+                            // this ellipsis keeps window/app-scope items.
                             Button {
                                 Task { await toggleStar(for: header) }
                             } label: {
@@ -1984,17 +2119,15 @@ public struct BrevMailRootView: View {
                                 // Reply All has its own button on macOS until
                                 // the cluster condenses; iOS never shows it in
                                 // the toolbar, so the menu stays as it was.
-                                if toolbarPlatform == .macOS {
-                                    Button {
-                                        presentReplyAll(to: header)
-                                    } label: {
-                                        Label(
-                                            String(localized: "Reply All", bundle: .module),
-                                            systemImage: "arrowshape.turn.up.left.2"
-                                        )
-                                    }
-                                    .disabled(!canPresentCompose())
+                                Button {
+                                    presentReplyAll(to: header)
+                                } label: {
+                                    Label(
+                                        String(localized: "Reply All", bundle: .module),
+                                        systemImage: "arrowshape.turn.up.left.2"
+                                    )
                                 }
+                                .disabled(!canPresentCompose())
 
                                 Button {
                                     presentForward(of: header)
@@ -2003,8 +2136,7 @@ public struct BrevMailRootView: View {
                                 }
                                 .disabled(!canPresentCompose())
                             }
-
-                            #if os(iOS)
+                            #else
                             // The macOS AI Sidebar column presents as a sheet
                             // on iOS; same shared Mail Context surface.
                             Button {
@@ -2061,9 +2193,12 @@ public struct BrevMailRootView: View {
                                 .disabled(!canPresentSettings())
                             }
                         } label: {
-                            Image(systemName: "ellipsis.circle")
+                            Image(systemName: toolbarPlatform == .iOS
+                                ? MailContextColumnVisibility.toolbarSymbolName : "ellipsis.circle")
                         }
-                        .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+                        .accessibilityLabel(toolbarPlatform == .iOS
+                            ? String(localized: "AI Sidebar", bundle: .module)
+                            : String(localized: "More message actions", bundle: .module))
                     }
                 }
             } else {
@@ -2716,43 +2851,43 @@ public struct BrevMailRootView: View {
         )
     }
 
-    private func presentReply(to header: MessageHeader) {
+    private func presentReply(to header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .reply(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentReply(to: header)
+        navigation.presentReply(to: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
-    private func presentReplyAll(to header: MessageHeader) {
+    private func presentReplyAll(to header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .replyAll(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .replyAll(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentReplyAll(to: header)
+        navigation.presentReplyAll(to: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
-    private func presentForward(of header: MessageHeader) {
+    private func presentForward(of header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .forward(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .forward(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentForward(of: header)
+        navigation.presentForward(of: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
     #if os(iOS)
@@ -3601,6 +3736,16 @@ public struct BrevMailRootView: View {
             }
         )
         advanceStartupPhaseAfterWorkspaceLoad()
+        if let readerCommandHandoff, let request = ReaderCommandHandoff.take(readerCommandHandoff) {
+            if let sourceID = request.sourceID, backendAccountIDs.contains(sourceID.accountID) {
+                handleDetachedMessageCommand(request)
+            } else {
+                rootStatus = MailRootStatus(message: String(
+                    localized: "This mailbox is no longer connected. Open the message again to retry the action.",
+                    bundle: .module
+                ))
+            }
+        }
         MailUIPerformanceDiagnostics.logStartupReady(
             surface: .workspace,
             usableContent: !sourceSections.isEmpty || !folders.isEmpty || !mailboxes.isEmpty,
@@ -4378,56 +4523,386 @@ public struct BrevMailRootView: View {
     /// (The related feature request).
     /// Performs an action requested by a standalone (detached) message window
     /// through the main window's normal command handlers, so undo, optimistic UI,
-    /// and folder refresh all apply. Commands act in the active command context;
-    /// the message is assumed to belong to the currently active account.
+    /// and folder refresh all apply. Resolve the message's source context before
+    /// dispatch so destinations cannot come from a previously selected account.
     private func handleDetachedMessageCommand(_ request: DetachedMessageCommandRequest) {
-        let header = request.header
-        // Act on the message's own account, not whatever the main window currently
-        // has selected, so mutations hit the right backend and replies compose from
-        // the right address. Resolving the source through the active context keeps
-        // the existing command handlers (undo, optimistic UI, refresh) intact. For a
-        // single account this is a no-op; with multiple accounts it activates the
-        // message's account in the main window.
-        if let sourceID = request.sourceID {
-            if navigation.selectedSourceID != sourceID {
-                navigation.selectedSourceID = sourceID
-            }
-            navigation.composeSourceID = sourceID
+        _ = acceptDetachedMessageCommand(request)
+    }
+
+    private func acceptDetachedMessageCommand(_ request: DetachedMessageCommandRequest) -> Bool {
+        let hasPresentation = navigation.presentedSheet != nil || pendingReaderSnoozeTarget != nil
+            || pendingReaderBlockSenderTarget != nil || pendingPermanentDeleteTarget != nil
+        guard request.command.canBeAccepted(
+            hasPresentation: hasPresentation,
+            canStartMutation: !hasPresentation && canStartCommandMutation()
+        ) else { return false }
+        if [.reply, .replyAll, .forward].contains(request.command), !canPresentCompose() { return false }
+        if [.copyToLocalFolder, .moveToLocalFolder].contains(request.command), localBackend == nil { return false }
+        guard prepareDetachedCommandContext(request) else { return false }
+        performDetachedCommand(request.command, header: request.header,
+                               sourceID: request.sourceID ?? navigation.selectedSourceID)
+        return true
+    }
+
+    private func prepareDetachedCommandContext(
+        _ request: DetachedMessageCommandRequest,
+        isBlockSenderConfirmed: Bool = false,
+        isPermanentDeleteConfirmed: Bool = false
+    ) -> Bool {
+        let sourceID = request.sourceID ?? navigation.selectedSourceID
+        guard sourceID.map({ backendAccountIDs.contains($0.accountID) }) ?? true,
+              ReaderCommandSourceHandoff.prepare(
+                  request, navigation: navigation, sections: sourceSections,
+                  isBlockSenderConfirmed: isBlockSenderConfirmed,
+                  isPermanentDeleteConfirmed: isPermanentDeleteConfirmed,
+                  applySection: { section in
+                      handleSelectedSourceChange()
+                      applySelectedSourceSection(section)
+                  }
+              ) else {
+            rootStatus = MailRootStatus(message: String(
+                localized: "Mailbox folders are not ready. Wait for the mailbox to load and try again.",
+                bundle: .module
+            ))
+            return false
         }
-        switch request.command {
+        return true
+    }
+
+    /// Performs a message action on behalf of a detached reader window or the
+    /// reader's consolidated overflow menu. The caller has already activated
+    /// the message's account when `sourceID` is non-nil, so the shared command
+    /// handlers (`toggleRead`, `archive`, …) resolve against the right backend.
+    private func performDetachedCommand( // swiftlint:disable:this cyclomatic_complexity
+        _ command: DetachedMessageCommand,
+        header: MessageHeader,
+        sourceID: MailSourceID?
+    ) {
+        switch command {
         case .reply:
-            presentReply(to: header)
+            presentReply(to: header, sourceID: sourceID)
         case .replyAll:
-            presentReplyAll(to: header)
+            presentReplyAll(to: header, sourceID: sourceID)
         case .forward:
-            presentForward(of: header)
+            presentForward(of: header, sourceID: sourceID)
+        case .toggleRead:
+            performDetachedMutation(sourceID: sourceID) { await toggleRead(for: header) }
         case .toggleFlag:
-            Task { await toggleStar(for: header) }
+            performDetachedMutation(sourceID: sourceID) { await toggleStar(for: header) }
+        case .toggleSnooze:
+            readerToggleSnooze(header: header, sourceID: sourceID)
+        case .toggleDone:
+            readerToggleDone(header: header, sourceID: sourceID)
         case .archive:
-            Task { await archive(header: header) }
+            performDetachedMutation(sourceID: sourceID) { await archive(header: header) }
         case .delete:
-            Task { await trash(header: header) }
+            if ReaderCommandSourceHandoff.requiresPermanentDeleteConfirmation(
+                .init(command: command, header: header, sourceID: sourceID),
+                navigation: navigation, sections: sourceSections
+            ) {
+                pendingPermanentDeleteTarget = DetachedReaderActionTarget(header: header, sourceID: sourceID)
+            } else {
+                performDetachedMutation(sourceID: sourceID) { await trash(header: header) }
+            }
         case .move:
+            guard navigation.presentedSheet == nil else { return }
             navigation.presentedSheet = .moveTo(
                 messageIDs: [header.id],
-                sourceID: request.sourceID,
+                sourceID: sourceID,
                 currentFolderID: header.folderID
+            )
+        case .copyToFolder:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .copyTo(
+                messageIDs: [header.id],
+                sourceID: sourceID,
+                currentFolderID: header.folderID
+            )
+        case .copyToLocalFolder:
+            guard localBackend != nil, navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .copyToLocal(
+                messageIDs: [header.id],
+                sourceID: sourceID,
+                fromFolderID: header.folderID
+            )
+        case .moveToLocalFolder:
+            guard localBackend != nil, navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .moveToLocal(
+                messageIDs: [header.id],
+                sourceID: sourceID,
+                fromFolderID: header.folderID
             )
         case .setJunk:
             let isInSpam = folders.first { $0.id == header.folderID }?.role == .spam
-            Task { await setJunk(!isInSpam, for: header) }
+            performDetachedMutation(sourceID: sourceID) { await setJunk(!isInSpam, for: header) }
+        case .blockSender:
+            pendingReaderBlockSenderTarget = DetachedReaderActionTarget(header: header, sourceID: sourceID)
+        case .saveAs:
+            saveMessageAsEML(header, sourceID: sourceID)
+        case .createTask:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .createTask(header: header, sourceID: sourceID)
+        case .createRule:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .createRule(header: header, sourceID: sourceID)
+        case .createMeeting:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .createMeeting(header: header, sourceID: sourceID)
+        case .addNote:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .messageNote(header: header, sourceID: sourceID)
+        case .followUp:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .followUp(header: header, sourceID: sourceID)
+        case .downloadOffline:
+            toggleReaderKeepOffline(header: header, sourceID: sourceID)
+        case .properties:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .messageProperties(header: header)
+        case .showHeaders:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .showHeaders(header: header, sourceID: sourceID)
+        case .viewSource:
+            guard navigation.presentedSheet == nil else { return }
+            navigation.presentedSheet = .viewSource(header: header, sourceID: sourceID)
+        case .openInNewWindow:
+            openMessageInNewWindow(header, sourceID: sourceID)
         }
     }
 
-    private func openMessageInNewWindow(_ header: MessageHeader) {
+    private func performDetachedMutation(
+        sourceID: MailSourceID?,
+        operation: @escaping @MainActor () async -> Void
+    ) {
+        Task { @MainActor in
+            // A queued action must not follow a later user selection to another source.
+            guard navigation.selectedSourceID == sourceID else { return }
+            await operation()
+        }
+    }
+
+    /// Maps a consolidated reader-menu action onto the detached-command
+    /// dispatcher. Print/PDF are intentionally absent — they are performed
+    /// locally by `MessageDetailView`, which owns the loaded body.
+    private func performReaderMenuAction(
+        _ action: MessageContextMenuAction,
+        header: MessageHeader,
+        sourceID: MailSourceID?
+    ) {
+        if let command = DetachedMessageCommand(menuAction: action) {
+            handleDetachedMessageCommand(.init(command: command, header: header, sourceID: sourceID))
+        }
+    }
+
+    /// Whether the list surfaces should offer "Open in New Window" at all.
+    /// iPhone and compact-width iPad can't detach a scene (ADR-0033), so the
+    /// item is hidden there rather than rendered as a dead or misleading entry.
+    private var canDetachReaderWindow: Bool {
+        #if os(macOS)
+        true
+        #else
+        MailDetachWindowPolicy.shouldDetach(
+            idiom: UIDevice.current.userInterfaceIdiom,
+            horizontalSizeClass: horizontalSizeClass
+        )
+        #endif
+    }
+
+    private func openMessageInNewWindow(_ header: MessageHeader, sourceID: MailSourceID? = nil) {
+        let request = DetachedReaderActionTarget(header: header, sourceID: sourceID)
+        if lastOpenInNewWindowRequest == request {
+            return
+        }
+        lastOpenInNewWindowRequest = request
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            if lastOpenInNewWindowRequest == request {
+                lastOpenInNewWindowRequest = nil
+            }
+        }
         #if os(macOS)
         DetachedMessageWindow.open(
             header: header,
-            backend: selectedBackend,
-            sourceID: navigation.selectedSourceID,
-            allFolders: folders,
-            theme: theme
+            backend: backend(for: sourceID ?? navigation.selectedSourceID),
+            sourceID: sourceID ?? navigation.selectedSourceID,
+            allFolders: moveFolders(for: sourceID ?? navigation.selectedSourceID),
+            canFileLocally: localBackend != nil,
+            theme: theme,
+            onCommand: acceptDetachedMessageCommand
         )
+        #else
+        // iPad at regular width opens a detached reader scene; iPhone and
+        // compact-width iPad fall back to the in-place compact reader (the
+        // sheet-equivalent surface) rather than pretending a second window
+        // exists (ADR-0033).
+        if MailDetachWindowPolicy.shouldDetach(
+            idiom: UIDevice.current.userInterfaceIdiom,
+            horizontalSizeClass: horizontalSizeClass
+        ) {
+            openWindow(value: DetachedReaderWindowPayload(
+                sourceID: sourceID ?? navigation.selectedSourceID,
+                messageID: header.id,
+                folderID: header.folderID
+            ))
+        } else {
+            compactReaderHeader = header
+        }
+        #endif
+    }
+
+    // MARK: - Reader-menu workflow actions (snooze / done / offline / block)
+
+    /// Source scope for local workflow state, mirroring the lists'
+    /// `workflowSourceID` fallback so detached commands and the unified inbox
+    /// land in the same bucket.
+    private func readerWorkflowSourceID(for sourceID: MailSourceID?) -> MailSourceID {
+        sourceID ?? MailSourceID(
+            accountID: selectedBackend.account.id,
+            mailboxID: selectedBackend.account.id
+        )
+    }
+
+    private func readerWorkflowLookup() -> LocalMessageWorkflowLookup {
+        LocalMessageWorkflowLookup(state: localMessageWorkflowStateBinding.wrappedValue)
+    }
+
+    private func readerToggleSnooze(header: MessageHeader, sourceID: MailSourceID?) {
+        let messageID = SourceMessageID(
+            sourceID: readerWorkflowSourceID(for: sourceID),
+            messageID: header.id
+        )
+        if readerWorkflowLookup().isSnoozed(messageID) {
+            let previousState = localMessageWorkflowStateBinding.wrappedValue
+            localMessageWorkflowStateBinding.wrappedValue =
+                LocalMessageWorkflowStatePolicy.clearingSnooze([messageID], in: previousState)
+            pushReaderWorkflowUndo(
+                description: String(localized: "Unsnoozed", bundle: .module),
+                previousState: previousState
+            )
+        } else {
+            pendingReaderSnoozeTarget = DetachedReaderActionTarget(header: header, sourceID: sourceID)
+        }
+    }
+
+    private func readerSnooze(header: MessageHeader, sourceID: MailSourceID?, until wakeAt: Date) {
+        let previousState = localMessageWorkflowStateBinding.wrappedValue
+        let messageID = SourceMessageID(
+            sourceID: readerWorkflowSourceID(for: sourceID),
+            messageID: header.id
+        )
+        localMessageWorkflowStateBinding.wrappedValue =
+            LocalMessageWorkflowStatePolicy.snoozing(messageID, until: wakeAt, in: previousState)
+        pushReaderWorkflowUndo(
+            description: String(localized: "Snoozed", bundle: .module),
+            previousState: previousState
+        )
+    }
+
+    private func readerToggleDone(header: MessageHeader, sourceID: MailSourceID?) {
+        let messageID = SourceMessageID(
+            sourceID: readerWorkflowSourceID(for: sourceID),
+            messageID: header.id
+        )
+        let previousState = localMessageWorkflowStateBinding.wrappedValue
+        let lookup = readerWorkflowLookup()
+        if lookup.isDone(messageID) {
+            localMessageWorkflowStateBinding.wrappedValue =
+                LocalMessageWorkflowStatePolicy.clearingDone([messageID], in: previousState)
+            pushReaderWorkflowUndo(
+                description: String(localized: "Marked Not Done", bundle: .module),
+                previousState: previousState
+            )
+        } else {
+            localMessageWorkflowStateBinding.wrappedValue =
+                LocalMessageWorkflowStatePolicy.markingDone([messageID], in: previousState)
+            pushReaderWorkflowUndo(
+                description: String(localized: "Marked Done", bundle: .module),
+                previousState: previousState
+            )
+        }
+    }
+
+    private func pushReaderWorkflowUndo(
+        description: String,
+        previousState: LocalMessageWorkflowState
+    ) {
+        undoQueue.push(UndoableMutation(description: description) {
+            await MainActor.run {
+                localMessageWorkflowStateBinding.wrappedValue = previousState
+            }
+        })
+    }
+
+    /// Toggles the per-message "keep offline" pin (#268) for a reader action.
+    /// Pinning triggers a best-effort body fetch so the cached copy is more
+    /// likely to exist before the retention sweep consults the pin.
+    private func toggleReaderKeepOffline(header: MessageHeader, sourceID: MailSourceID?) {
+        _ = ReaderOfflineRetention.handle(
+            .init(command: .downloadOffline, header: header, sourceID: readerWorkflowSourceID(for: sourceID)),
+            backend: backend(for: sourceID)
+        )
+    }
+
+    private func confirmReaderBlockSender() async {
+        guard let target = pendingReaderBlockSenderTarget else { return }
+        guard canStartCommandMutation() else {
+            rootStatus = MailRootStatus(message: String(
+                localized: "Another mail action is still running. Wait for it to finish and try again.",
+                bundle: .module
+            ))
+            return
+        }
+        pendingReaderBlockSenderTarget = nil
+        guard prepareDetachedCommandContext(
+            .init(command: .blockSender, header: target.header, sourceID: target.sourceID),
+            isBlockSenderConfirmed: true
+        ), canStartCommandMutation() else { return }
+        let request = startCommandMutationRequest(sourceFolderID: target.header.folderID)
+        defer { finishCommandMutation(request) }
+        do {
+            if let sourceID = target.sourceID {
+                try await backend(for: sourceID).blockSender(email: target.header.from.email, sourceID: sourceID)
+            } else {
+                try await selectedBackend.blockSender(email: target.header.from.email)
+            }
+            guard canApplyCommandMutationResponse(request) else { return }
+            // Blocked messages are treated like junk: drop the header from the
+            // visible list and refresh so the sender's mail disappears (#262).
+            navigation.removeHeaders(ids: [target.header.id])
+            navigation.requestReloadIfVisibleFolderChanged(
+                MessageCommandRefreshPolicy.removed(target.header)
+            )
+            await loadFolders()
+        } catch {
+            guard canApplyCommandMutationResponse(request) else { return }
+            rootStatus = MessageCommandPresentation.mutationErrorStatus(for: error)
+        }
+    }
+
+    /// macOS-only .eml export from the reader overflow menu / detached window:
+    /// loads the raw RFC 822 bytes and hands them to the save panel.
+    private func saveMessageAsEML(_ header: MessageHeader, sourceID: MailSourceID?) {
+        #if canImport(AppKit)
+        Task {
+            do {
+                let resolvedSourceID = sourceID ?? navigation.selectedSourceID
+                let backend = backend(for: resolvedSourceID)
+                let rawMessageData: Data
+                if let resolvedSourceID {
+                    rawMessageData = try await backend.rawMessageData(
+                        for: header.id,
+                        sourceID: resolvedSourceID
+                    )
+                } else {
+                    rawMessageData = try await backend.rawMessageData(for: header.id)
+                }
+                _ = try MessageEMLExport.presentSavePanel(
+                    header: header,
+                    rawMessageData: rawMessageData
+                )
+            } catch {
+                rootStatus = MessageCommandPresentation.mutationErrorStatus(for: error)
+            }
+        }
         #endif
     }
 
@@ -5033,11 +5508,20 @@ public struct BrevMailRootView: View {
         }
     }
 
+    private var isReaderBlockSenderAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingReaderBlockSenderTarget != nil },
+            set: { isPresented in
+                if !isPresented { pendingReaderBlockSenderTarget = nil }
+            }
+        )
+    }
+
     private var isPermanentDeleteAlertPresented: Binding<Bool> {
         Binding(
-            get: { pendingPermanentDeleteHeader != nil },
+            get: { pendingPermanentDeleteTarget != nil },
             set: { isPresented in
-                if !isPresented { pendingPermanentDeleteHeader = nil }
+                if !isPresented { pendingPermanentDeleteTarget = nil }
             }
         )
     }
@@ -5050,7 +5534,7 @@ public struct BrevMailRootView: View {
         // require prior confirmation — there is no undo.
         if !confirmedPermanent,
            MailUndoableDelete.isPermanentDelete(from: originalFolder, folders: folders) {
-            pendingPermanentDeleteHeader = header
+            pendingPermanentDeleteTarget = DetachedReaderActionTarget(header: header, sourceID: navigation.selectedSourceID)
             return
         }
         let request = startCommandMutationRequest(sourceFolderID: header.folderID)

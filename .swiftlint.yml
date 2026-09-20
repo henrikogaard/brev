@@ -120,7 +120,7 @@ custom_rules:
     name: "No literal colors in view code"
     # Word-boundary lookbehinds keep NSColor.* / UIColor.* / SomeColor.* from
     # accidentally matching the `Color.X` pattern.
-    regex: '(?<![A-Za-z0-9_])Color\.(?!clear\b)\w+|(?<![A-Za-z0-9_])Color\(red:|(?<![A-Za-z0-9_])Color\(#'
+    regex: '(?<![A-Za-z0-9_])Color\.(?!clear\b)\w+|(?<![A-Za-z0-9_])Color\(red:|(?<![A-Za-z0-9_])Color\(#|(?<![A-Za-z0-9_])Color\(hex:'
     message: "Use theme.<token>.color — see ADR-0002. Only Color.clear is allowed."
     severity: error
     included:
@@ -129,6 +129,8 @@ custom_rules:
       - "apps/iOS/BrevShareExtension/.*\\.swift"
       - "apps/iOS/BrevNotificationContent/.*\\.swift"
       - "packages/BrevDesign/Sources/.*\\.swift"
+      - "packages/BrevMail/Sources/.*\\.swift"
+      - "packages/BrevSettings/Sources/.*\\.swift"
       - "Plugins/.*/Sources/.*\\.swift"
 
   no_telemetry_imports:

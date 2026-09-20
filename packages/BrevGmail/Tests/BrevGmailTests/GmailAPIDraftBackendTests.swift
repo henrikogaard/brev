@@ -178,7 +178,12 @@ struct GmailAPIDraftBackendTests {
         try await backend.connect()
         _ = try await backend.send(draft: Draft(id: "uncertain", to: [.init(email: "to@example.org")], subject: "Review",
                                                 scheduledFor: .distantPast))
-        await backend.deliverDueScheduledSends()
+        let firstAttemptDeadline = ContinuousClock.now.advanced(by: .seconds(2))
+        repeat {
+            await backend.deliverDueScheduledSends()
+            if backend.pendingScheduledSends().first?.state == .needsReview { break }
+            await Task.yield()
+        } while ContinuousClock.now < firstAttemptDeadline
         await backend.deliverDueScheduledSends()
         #expect(await transport.rawSendCount() == 1)
         #expect(backend.pendingScheduledSends().first?.state == .needsReview)
@@ -199,7 +204,16 @@ struct GmailAPIDraftBackendTests {
         #expect(restored.pendingScheduledSends().first?.state == .needsReview)
         await transport.setSendError(nil)
         try await restored.retryReviewedScheduledSend(id: "uncertain", for: .distantPast)
-        await restored.deliverDueScheduledSends()
+        // A request may join the startup poller's already-running pass, whose
+        // due-message snapshot predates the reviewed retry. Drive subsequent
+        // passes within a bound; the delivery contract is coalesced, not a
+        // guarantee that each request starts a fresh pass.
+        let deadline = ContinuousClock.now.advanced(by: .seconds(2))
+        repeat {
+            await restored.deliverDueScheduledSends()
+            if restored.pendingScheduledSends().isEmpty { break }
+            await Task.yield()
+        } while ContinuousClock.now < deadline
         #expect(await transport.rawSendCount() == 2)
         #expect(restored.pendingScheduledSends().isEmpty)
         await restored.disconnect()

@@ -39,7 +39,7 @@ public struct ThemePickerView: View {
     public var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
             Text("Theme", bundle: .module)
-                .brevFont(.title)
+                .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
 
             VStack(spacing: BrevSpacing.xs) {
@@ -54,19 +54,23 @@ public struct ThemePickerView: View {
                         )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(candidate.id == theme.id ? .isSelected : [])
                 }
             }
 
             HStack {
                 Spacer()
-                BrevButton("Done", style: .secondary) { close() }
+                BrevButton("Done", style: .secondary, bundle: .module) { close() }
+                    .keyboardShortcut(.cancelAction)
             }
             .padding(.top, BrevSpacing.sm)
         }
         .padding(BrevSpacing.lg)
-        .frame(minWidth: 320, idealWidth: 380)
-        .background(BrevWindowSurfaceBackground(role: .utility))
-        .brevWindowTranslucency(windowRole: .utility)
+        #if os(macOS)
+            .frame(minWidth: 320, idealWidth: 380)
+        #endif
+            .background(BrevWindowSurfaceBackground(role: .utility))
+            .brevWindowTranslucency(windowRole: .utility)
     }
 
     private func close() {
@@ -90,9 +94,13 @@ private struct ThemeRow: View {
                 Text(candidate.name)
                     .brevFont(.subheadline)
                     .foregroundStyle(theme.textPrimary.color)
-                Text(candidate.mode == .dark ? "Dark" : "Light")
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
+                Text(
+                    candidate.mode == .dark
+                        ? String(localized: "Dark", bundle: .module)
+                        : String(localized: "Light", bundle: .module)
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
             }
             Spacer()
             if isSelected {
@@ -102,13 +110,30 @@ private struct ThemeRow: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .background(isSelected ? theme.selection.color : theme.bgSecondary.color.opacity(0.42))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+        .modifier(ThemeRowSurface(isSelected: isSelected))
         .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-        .overlay(
-            RoundedRectangle(cornerRadius: BrevRadius.sm)
-                .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
-        )
+    }
+
+    /// Selected rows keep the accent-adjacent selection fill; unselected rows
+    /// use the shared quiet-surface recipe.
+    private struct ThemeRowSurface: ViewModifier {
+        @Environment(\.brevTheme) private var theme
+        let isSelected: Bool
+
+        @ViewBuilder
+        func body(content: Content) -> some View {
+            if isSelected {
+                content
+                    .background(theme.selection.color)
+                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrevRadius.sm)
+                            .stroke(theme.border.color.opacity(0.45), lineWidth: 1)
+                    }
+            } else {
+                content.brevQuietSurface(cornerRadius: BrevRadius.sm)
+            }
+        }
     }
 
     @ViewBuilder

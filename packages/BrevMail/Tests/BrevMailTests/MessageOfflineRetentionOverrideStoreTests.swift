@@ -17,6 +17,28 @@ import Testing
 
 @Suite("MessageOfflineRetentionOverrideStore")
 struct MessageOfflineRetentionOverrideStoreTests {
+    @MainActor
+    @Test("detached Keep Offline toggles locally and does not require a mailbox handoff")
+    func detachedPinHandledLocally() {
+        let store = freshStore("reader")
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        let header = MessageHeader(id: "INBOX:1", threadID: "thread", folderID: "INBOX",
+                                   from: Correspondent(email: "fixture@example.org"),
+                                   subject: "Subject", snippet: "Preview", date: .distantPast)
+        let backend = MockBackend(account: BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org"))
+        let request = DetachedMessageCommandRequest(command: .downloadOffline, header: header, sourceID: source)
+        #expect(ReaderOfflineRetention.handle(request, backend: backend, store: store))
+        #expect(store.isKeptOffline(id("INBOX:1")))
+        #expect(!store.isKeptOffline(id("INBOX:1", account: "other")))
+        #expect(ReaderOfflineRetention.handle(request, backend: backend, store: store))
+        #expect(!store.isKeptOffline(id("INBOX:1")))
+        #expect(!ReaderOfflineRetention.handle(
+            .init(command: .reply, header: header, sourceID: source),
+            backend: backend,
+            store: store
+        ))
+    }
+
     private func freshStore(_ name: String) -> MessageOfflineRetentionOverrideStore {
         let suite = "test.offlineRetention.\(name)"
         let defaults = UserDefaults(suiteName: suite)!

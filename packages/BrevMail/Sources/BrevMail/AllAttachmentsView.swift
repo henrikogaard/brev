@@ -110,20 +110,17 @@ struct AllAttachmentsView: View {
     }
 
     private var emptyState: some View {
-        VStack(spacing: BrevSpacing.md) {
-            Image(systemName: "paperclip")
-                .font(.system(size: 36))
-                .foregroundStyle(theme.textSecondary.color)
-            Text("No attachments", bundle: .module)
-                .brevFont(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-            Text("Attachments from your cached messages will appear here.", bundle: .module)
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textSecondary.color)
-                .multilineTextAlignment(.center)
-        }
-        .padding(BrevSpacing.xl)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        MessageListEmptyStateView(
+            status: MessageListStatus(
+                title: String(localized: "No attachments", bundle: .module),
+                icon: "paperclip",
+                subtitle: String(
+                    localized: "Attachments from your cached messages will appear here.",
+                    bundle: .module
+                ),
+                actionTitle: nil
+            )
+        )
     }
 }
 
@@ -161,12 +158,18 @@ struct AttachmentSearchFilterBar: View {
                 }
             } label: {
                 HStack(spacing: BrevSpacing.xs) {
-                    Image(systemName: "line.3.horizontal.decrease.circle")
+                    Image(systemName: "line.3.horizontal.decrease")
                     Text(Self.label(for: filter.fileType))
                         .brevFont(.subheadline)
                 }
-                .foregroundStyle(theme.accent.color)
+                .brevChip(selected: filter.fileType != nil)
+                #if os(iOS)
+                    .frame(minHeight: 44)
+                    .contentShape(Rectangle())
+                #endif
             }
+            .accessibilityLabel(String(localized: "Filter by file type", bundle: .module))
+            .accessibilityValue(Self.label(for: filter.fileType))
         }
         .padding(.horizontal, BrevSpacing.lg)
         .padding(.vertical, BrevSpacing.sm)
@@ -174,13 +177,13 @@ struct AttachmentSearchFilterBar: View {
 
     private static func label(for fileType: AttachmentSearchFileType?) -> String {
         switch fileType {
-        case .none: return "All"
-        case .pdf: return "PDF"
-        case .image: return "Images"
-        case .document: return "Documents"
-        case .spreadsheet: return "Spreadsheets"
-        case .archive: return "Archives"
-        case .other: return "Other"
+        case .none: return String(localized: "All", bundle: .module)
+        case .pdf: return String(localized: "PDF", bundle: .module)
+        case .image: return String(localized: "Images", bundle: .module)
+        case .document: return String(localized: "Documents", bundle: .module)
+        case .spreadsheet: return String(localized: "Spreadsheets", bundle: .module)
+        case .archive: return String(localized: "Archives", bundle: .module)
+        case .other: return String(localized: "Other", bundle: .module)
         }
     }
 }
@@ -203,7 +206,7 @@ struct AttachmentSearchRowView: View {
             return first
         }
         if row.availability == .downloadRequired {
-            return "Download required"
+            return String(localized: "Download required", bundle: .module)
         }
         return nil
     }
@@ -233,7 +236,7 @@ struct AttachmentSearchRowView: View {
                         .padding(.vertical, BrevSpacing.xxs)
                         .background(
                             RoundedRectangle(cornerRadius: BrevRadius.sm)
-                                .fill(theme.accentMuted.color)
+                                .fill(theme.accentMuted.color.opacity(0.15))
                         )
                 }
             }

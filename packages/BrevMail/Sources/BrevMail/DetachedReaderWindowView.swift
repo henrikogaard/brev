@@ -22,6 +22,7 @@ import SwiftUI
 /// delegates rendering to `MessageDetailView` — the same view and body-loading
 /// path used in the main three-column layout.
 public struct DetachedReaderWindowView: View {
+    @Environment(\.openWindow) private var openWindow
     @Environment(\.dismissWindow) private var dismissWindow
     @Environment(\.brevTheme) private var theme
 
@@ -30,15 +31,22 @@ public struct DetachedReaderWindowView: View {
     // reflect account add/remove while this window is open — acceptable
     // because detached reader windows are short-lived.
     private let backends: [any MailBackend]
+    private let canFileLocally: Bool
 
     @State private var resolvedHeader: MessageHeader?
     @State private var resolvedBackend: (any MailBackend)?
     @State private var resolvedFolders: [Folder] = []
     @State private var isResolving = true
 
-    public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend]) {
+    /// Creates a detached reader that resolves its source-owned header from cache.
+    /// - Parameters:
+    ///   - payload: Restorable source, message and originating-folder identity.
+    ///   - backends: Available accounts captured when the scene is opened.
+    ///   - canFileLocally: Whether the owning workspace has a local-filing backend.
+    public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend], canFileLocally: Bool = false) {
         self.payload = payload
         self.backends = backends
+        self.canFileLocally = canFileLocally
     }
 
     public var body: some View {
@@ -60,8 +68,21 @@ public struct DetachedReaderWindowView: View {
                         header: resolvedHeader,
                         navigation: nil,
                         allFolders: resolvedFolders,
+                        canFileLocally: canFileLocally,
                         closeWindow: { dismissWindow(value: payload) }
                     )
+                    .environment(\.readerCommandAction) { request in
+                        let source = request.sourceID ?? MailSourceID(
+                            accountID: backend.account.id, mailboxID: backend.account.id
+                        )
+                        let handoff = ReaderCommandHandoff.enqueue(.init(
+                            command: request.command, header: request.header, sourceID: source
+                        ))
+                        openWindow(value: handoff)
+                        if request.command.dismissesWindow {
+                            dismissWindow(value: payload)
+                        }
+                    }
                     .brevMailPaneSurface(.content)
                 } else if isResolving {
                     ProgressView()
@@ -126,7 +147,9 @@ public struct DetachedReaderWindowView: View {
         resolvedHeader = await DetachedWindowResolver.resolveHeader(
             messageID: payload.messageID,
             in: backend,
-            folders: folders
+            folders: folders,
+            sourceID: payload.sourceID,
+            folderID: payload.folderID
         )
     }
 }

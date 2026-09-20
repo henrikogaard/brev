@@ -16,8 +16,10 @@ import BrevThemes
 import SwiftUI
 
 enum InitialMailboxSelectionPresentation {
-    static let guidanceText =
-        "Select the mailboxes Brev should show, then choose the default mailbox for compose and first launch."
+    static let guidanceText = String(
+        localized: "Select the mailboxes Brev should show, then choose the default mailbox for compose and first launch.",
+        bundle: .module
+    )
 
     struct SelectionState: Equatable, Sendable {
         var selectedSourceIDs: Set<MailSourceID>
@@ -125,17 +127,21 @@ private struct InitialMailboxSelectionSheet: View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             header
 
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                ForEach(sourceSections) { section in
-                    mailboxRow(section)
+            ScrollView {
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    ForEach(sourceSections) { section in
+                        mailboxRow(section)
+                    }
                 }
             }
+            .scrollIndicators(.visible, axes: .vertical)
 
             HStack {
                 Spacer()
-                BrevButton("Continue", style: .primary) {
+                BrevButton("Continue", style: .primary, bundle: .module) {
                     save()
                 }
+                .keyboardShortcut(.defaultAction)
                 .disabled(selectionState.selectedSourceIDs.isEmpty || selectionState.defaultSourceID == nil)
             }
         }
@@ -147,7 +153,7 @@ private struct InitialMailboxSelectionSheet: View {
     private var header: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             Text("Choose Mailboxes", bundle: .module)
-                .brevFont(.title)
+                .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Text(InitialMailboxSelectionPresentation.guidanceText)
                 .brevFont(.body)
@@ -191,15 +197,33 @@ private struct InitialMailboxSelectionSheet: View {
                 Image(systemName: isDefault ? "checkmark.circle.fill" : "circle")
                     .symbolRenderingMode(.hierarchical)
                     .foregroundStyle(isDefault ? theme.accent.color : theme.textTertiary.color)
-                    .frame(width: 30, height: 30)
+                    .frame(minWidth: defaultButtonHitSize, minHeight: defaultButtonHitSize)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .disabled(!isEnabled && !isDefault)
-            .help(isDefault ? "Default mailbox" : "Make default mailbox")
+            .accessibilityLabel(
+                isDefault
+                    ? String(localized: "Default mailbox", bundle: .module)
+                    : String(localized: "Make default mailbox", bundle: .module)
+            )
+            .accessibilityAddTraits(isDefault ? .isSelected : [])
+            .help(
+                isDefault
+                    ? String(localized: "Default mailbox", bundle: .module)
+                    : String(localized: "Make default mailbox", bundle: .module)
+            )
         }
         .padding(BrevSpacing.md)
-        .background(theme.bgSecondary.color)
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+        .brevQuietSurface()
+    }
+
+    private var defaultButtonHitSize: CGFloat {
+        #if os(iOS)
+        44
+        #else
+        30
+        #endif
     }
 
     private func setEnabled(_ isEnabled: Bool, for sourceID: MailSourceID) {

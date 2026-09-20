@@ -59,7 +59,9 @@ struct ScheduleSendSheet: View {
             BrevDivider()
             actions
         }
+        #if os(macOS)
         .frame(minWidth: 360, idealWidth: 400)
+        #endif
         .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
         .brevWindowTranslucency(windowRole: .utility)
     }
@@ -74,14 +76,13 @@ struct ScheduleSendSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer(minLength: BrevSpacing.sm)
-            Button {
+            BrevIconButton(
+                systemName: "xmark",
+                accessibilityLabel: "Close schedule sheet",
+                bundle: .module
+            ) {
                 dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .foregroundStyle(theme.textSecondary.color)
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(String(localized: "Close schedule sheet", bundle: .module))
         }
         .padding(.horizontal, BrevSpacing.lg)
         .padding(.vertical, BrevSpacing.md)
@@ -176,14 +177,14 @@ struct ScheduleSendSheet: View {
 
     private var actions: some View {
         HStack(spacing: BrevSpacing.sm) {
-            BrevButton("Cancel", style: .secondary) {
+            BrevButton("Cancel", style: .secondary, bundle: .module) {
                 dismiss()
             }
             .keyboardShortcut(.cancelAction)
 
             Spacer(minLength: BrevSpacing.sm)
 
-            BrevButton(confirmTitle, style: .primary) {
+            BrevButton(confirmTitle, style: .primary, bundle: .module) {
                 onConfirm(chosenDate)
                 dismiss()
             }
@@ -193,7 +194,7 @@ struct ScheduleSendSheet: View {
         .padding(.vertical, BrevSpacing.md)
     }
 
-    private var confirmTitle: String {
+    private var confirmTitle: LocalizedStringKey {
         selectedOption == .sendNow ? "Send now" : "Schedule"
     }
 

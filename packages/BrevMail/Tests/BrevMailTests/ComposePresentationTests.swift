@@ -39,12 +39,16 @@ struct ComposePresentationTests {
         ) == .compactIOSAccessibility)
     }
 
-    @Test("regular compose chrome keeps roomy desktop minimum size")
-    func regularComposeChromeKeepsRoomyDesktopMinimumSize() {
+    @Test("regular iOS compose chrome fits the narrowest regular-width iPad scene")
+    func regularIOSComposeChromeFitsNarrowestRegularWidthIPadScene() {
         #expect(ComposeLayoutPolicy.frameMetrics(for: .regularIOS) == ComposeFrameMetrics(
-            minWidth: 680,
+            minWidth: 660,
             minHeight: 560
         ))
+    }
+
+    @Test("macOS compose chrome keeps roomy desktop minimum size")
+    func macOSComposeChromeKeepsRoomyDesktopMinimumSize() {
         #expect(ComposeLayoutPolicy.frameMetrics(for: .macOS) == ComposeFrameMetrics(
             minWidth: 680,
             minHeight: 560
@@ -179,22 +183,13 @@ struct ComposePresentationTests {
         ].joined(separator: ", "))
     }
 
-    @Test("regular toolbar keeps secondary compose controls direct")
-    func regularToolbarKeepsSecondaryComposeControlsDirect() {
+    @Test("regular iPad keeps Send visible and moves secondary tools into overflow")
+    func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
-
-        #expect(layout.directActions == [
-            .close,
-            .attach,
-            .signature,
-            .templates,
-            .security,
-            .aiWriter,
-            .saveDraft,
-            .scheduleSend,
-            .send
-        ])
-        #expect(layout.overflowActions.isEmpty)
+        #expect(layout.directActions == [.close, .send, .moreActions])
+        #expect(layout.overflowActions.contains(.signature))
+        #expect(layout.overflowActions.contains(.security))
+        #expect(layout.overflowActions.contains(.attach))
     }
 
     @Test("macOS toolbar controls use an accessible hit target around compact icons")
@@ -206,6 +201,19 @@ struct ComposePresentationTests {
         #expect(metrics.height == 42)
         #expect(metrics.leadingInset == 76)
         #expect(metrics.topInset == 0)
+        #expect(metrics.hitTargetSize > metrics.buttonSize)
+    }
+
+    @Test("iOS toolbar controls use a 44-point hit target around compact icons")
+    func iOSToolbarControlsUse44PointHitTargetAroundCompactIcons() {
+        let metrics = ComposeLayoutPolicy.toolbarMetrics(for: .regularIOS)
+
+        #expect(metrics.buttonSize == 26)
+        #expect(metrics.hitTargetSize == 44)
+        #expect(metrics.height == 42)
+        #expect(metrics.leadingInset == 0)
+        #expect(metrics.topInset == 0)
+        #expect(metrics.hitTargetSize >= 44)
         #expect(metrics.hitTargetSize > metrics.buttonSize)
     }
 

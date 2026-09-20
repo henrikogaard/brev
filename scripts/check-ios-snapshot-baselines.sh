@@ -9,6 +9,13 @@ metadata="$repo_root/docs/qa/ios-snapshot-baselines.md"
 workflow="$repo_root/.github/workflows/build.yml"
 
 required=(
+  "$snapshot_root/PhoneMailboxSnapshotTests/detachedReader.detached-reader.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/summaryRetry.summary-retry.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.dark.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/inbox-dark.light.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/mailboxes-dark.dark.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/mailboxes-dark.light.png"
+  "$snapshot_root/PhoneMailboxSnapshotTests/narrowCompose.narrow-compose.png"
   "$snapshot_root/BrevMailRootViewSnapshotTests/rootViewWideLayout.root-wide.png"
   "$snapshot_root/MessageDetailViewSnapshotTests/bodyLoadErrorState.body-load-error.png"
   "$snapshot_root/FolderSidebarSnapshotTests/allInboxesGlobalAlignment.all-inboxes-global-alignment.png"
@@ -16,6 +23,10 @@ required=(
   "$snapshot_root/MessageListRowSnapshotTests/readMessageSender.bold-read-sender.png"
   "$snapshot_root/ThreadInlineChildRowSnapshotTests/selectedChildRow.selected-child.png"
   "$snapshot_root/MailContextColumnSnapshotTests/senderPanelLoadedState.sender-panel-loaded.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-216.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-271.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-320.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-375.png"
 )
 
 for reference in "${required[@]}"; do

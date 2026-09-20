@@ -14,6 +14,7 @@ import BrevAvatars
 import BrevBackend
 import BrevCalendar
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import OSLog
 import QuickLook
@@ -40,6 +41,7 @@ public struct MessageDetailView: View {
         category: "MessageBodyLoad"
     )
 
+    @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
@@ -49,6 +51,10 @@ public struct MessageDetailView: View {
     private let isMutationWorkBlocked: Bool
     private var areActionsBlocked: Bool { isWorkBlocked || isMutationWorkBlocked }
     private let isWorkBlocked: Bool
+    /// Whether Copy/Move to Local Folder may be offered (ADR-0077): the host
+    /// scene has a local backend. Reader surfaces resolve actual filing
+    /// through the owning command handler, which re-checks against the real local backend.
+    private let canFileLocally: Bool
     /// When present, the view is shown in a standalone window and renders an
     /// in-content action bar; destructive actions invoke this to close the window.
     private let closeWindow: (() -> Void)?
@@ -57,6 +63,8 @@ public struct MessageDetailView: View {
 
     @StateObject private var htmlWebViewStore = HTMLBodyWebViewStore()
 
+    // Refresh menu labels after an in-place retention toggle.
+    @State private var offlineRetentionRevision = 0
     @State private var messageBody: MessageBody?
     @State private var messageSecurityState: MessageSecurityState = .none
     @State private var renderedHTML: AttributedString?
@@ -107,12 +115,24 @@ public struct MessageDetailView: View {
     @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    /// Persisted local workflow state (snooze/done/notes) — drives the
+    /// consolidated reader menu's toggle titles. Decoded on demand; the menu
+    /// is built rarely, so no cache is needed.
+    @AppStorage(LocalMessageWorkflowStateStorage.storageKey) private var localWorkflowStateData = Data()
 
     #if os(iOS)
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
+    /// Creates a source-owned message reader with capability-driven actions.
+    /// - Parameters:
+    ///   - sourceID: Account/mailbox identity used for actions and local workflow state.
+    ///   - navigation: Owning mailbox navigation, or nil for a standalone reader.
+    ///   - isWorkBlocked: Whether the owner currently blocks general message work.
+    ///   - isMutationWorkBlocked: Whether the owner currently blocks mutations.
+    ///   - canFileLocally: Whether local-folder filing is available in the owning workspace.
+    ///   - closeWindow: Standalone-window close action; enables the in-content action bar.
     public init(
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,
@@ -121,6 +141,7 @@ public struct MessageDetailView: View {
         allFolders: [Folder] = [],
         isWorkBlocked: Bool = false,
         isMutationWorkBlocked: Bool = false,
+        canFileLocally: Bool = false,
         closeWindow: (() -> Void)? = nil
     ) {
         self.backend = backend
@@ -130,6 +151,7 @@ public struct MessageDetailView: View {
         self.allFolders = allFolders
         self.isWorkBlocked = isWorkBlocked
         self.isMutationWorkBlocked = isMutationWorkBlocked
+        self.canFileLocally = canFileLocally
         self.closeWindow = closeWindow
     }
 
@@ -537,58 +559,20 @@ public struct MessageDetailView: View {
         }
         .toolbar {
             #if os(iOS)
+            // The consolidated reader overflow menu — one inventory, shared
+            // with the reader body context menu and the detached-window
+            // overflow (`MessageCommandPresentation.readerMenu`). Icon matches
+            // the root toolbar's "More" affordance (ellipsis.circle).
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    if navigation != nil {
-                        Button {
-                            presentCreateTask(for: header)
-                        } label: {
-                            Label(String(localized: "Create Task", bundle: .module), systemImage: "checklist")
-                        }
-                        .disabled(isCreateTaskDisabled)
-                        Button {
-                            presentFollowUp(for: header)
-                        } label: {
-                            Label(String(localized: "Follow Up", bundle: .module), systemImage: "flag")
-                        }
-                        .disabled(isFollowUpDisabled)
-                    }
-                    if navigation != nil, !allFolders.isEmpty {
-                        Button {
-                            presentMoveToFolder(for: header)
-                        } label: {
-                            Label(String(localized: "Move", bundle: .module), systemImage: "folder")
-                        }
-                        .disabled(areActionsBlocked)
-                    }
-                    Button {
-                        printCurrentMessage()
-                    } label: {
-                        Label(String(localized: "Print", bundle: .module), systemImage: "printer")
-                    }
-                    .disabled(isLoading || errorMessage != nil)
-                    Button {
-                        exportCurrentMessagePDF()
-                    } label: {
-                        Label(String(localized: "Export PDF", bundle: .module), systemImage: "doc.richtext")
-                    }
-                    .disabled(isLoading || errorMessage != nil)
-                    if MailDetachWindowPolicy.shouldDetach(
-                        idiom: UIDevice.current.userInterfaceIdiom,
-                        horizontalSizeClass: horizontalSizeClass
-                    ) {
-                        Button {
-                            openWindow(value: DetachedReaderWindowPayload(
-                                sourceID: sourceID,
-                                messageID: header.id
-                            ))
-                        } label: {
-                            Label(String(localized: "Open in New Window", bundle: .module), systemImage: "macwindow.on.rectangle")
-                        }
-                    }
+                    readerMenuButtons(for: header)
                 } label: {
-                    Label(String(localized: "Message Tools", bundle: .module), systemImage: "slider.horizontal.3")
+                    Label(
+                        String(localized: "More message actions", bundle: .module),
+                        systemImage: "ellipsis.circle"
+                    )
                 }
+                .accessibilityLabel(String(localized: "More message actions", bundle: .module))
             }
             #endif
             // macOS: Create Task and Move live in the root's reader cluster
@@ -598,7 +582,10 @@ public struct MessageDetailView: View {
             // condensation. The context menu below still carries both.
         }
         .contextMenu {
-            messageDetailContextMenu(for: header)
+            // Reader-body context menu: the same consolidated reader inventory
+            // as the overflow menu, so right-click/long-press parity with the
+            // row context menu holds without duplicating a second list.
+            readerMenuButtons(for: header)
         }
         .modifier(MessageDetailLinkOpenURLModifier(
             analysis: securityAnalysis,
@@ -636,96 +623,178 @@ public struct MessageDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func messageDetailContextMenu(for header: MessageHeader) -> some View {
-        ForEach(MessageCommandPresentation.detailContextActions(
-            canPresentSheets: navigation != nil,
-            hasMoveTargets: !allFolders.isEmpty
-        ), id: \.self) { action in
-            switch action {
-            case .createTask:
-                Button {
-                    presentCreateTask(for: header)
-                } label: {
-                    Label(String(localized: "Create Task", bundle: .module), systemImage: "checklist")
-                }
-                .disabled(isCreateTaskDisabled)
-            case .addNote:
-                Button {
-                    presentMessageNote(for: header)
-                } label: {
-                    Label(String(localized: "Add Note", bundle: .module), systemImage: "note.text.badge.plus")
-                }
-                .disabled(isAddNoteDisabled)
-            case .followUp:
-                Button {
-                    presentFollowUp(for: header)
-                } label: {
-                    Label(String(localized: "Follow Up", bundle: .module), systemImage: "flag")
-                }
-                .disabled(isFollowUpDisabled)
-            case .move:
-                Button {
-                    presentMoveToFolder(for: header)
-                } label: {
-                    Label(String(localized: "Move to Folder", bundle: .module), systemImage: "folder")
-                }
-                .disabled(areActionsBlocked)
-            }
-        }
-        if let junkTitle = MessageCommandPresentation.junkActionTitle(
-            currentFolder: folder(for: header),
-            capabilities: backend.capabilities,
-            folders: allFolders
-        ) {
-            Button {
-                DetachedMessageCommandBus.post(.setJunk, header: header, sourceID: sourceID)
-            } label: {
-                Label(junkTitle, systemImage: "exclamationmark.octagon")
-            }
-            .disabled(areActionsBlocked)
-        }
-    }
+    // MARK: - Consolidated reader menu
 
-    private var isCreateTaskDisabled: Bool {
-        guard let navigation else { return true }
-        return areActionsBlocked || navigation.presentedSheet != nil
-    }
-
-    /// Notes are local-only (no backend mutation), so the only gate is whether
-    /// another sheet is already presented. This matches the predicate used by the
-    /// list and unified-inbox context menus and avoids a stale `isWorkBlocked`
-    /// gate that would grey out the action during unrelated backend ops.
-    private var isAddNoteDisabled: Bool {
-        navigation?.presentedSheet != nil
-    }
-
-    private var isFollowUpDisabled: Bool {
-        navigation?.presentedSheet != nil
-    }
-
-    private func presentCreateTask(for header: MessageHeader) {
-        guard let navigation, !isCreateTaskDisabled else { return }
-        navigation.presentedSheet = .createTask(header: header, sourceID: sourceID)
-    }
-
-    private func presentMessageNote(for header: MessageHeader) {
-        guard let navigation, !isAddNoteDisabled else { return }
-        navigation.presentedSheet = .messageNote(header: header, sourceID: sourceID)
-    }
-
-    private func presentFollowUp(for header: MessageHeader) {
-        guard let navigation, !isFollowUpDisabled else { return }
-        navigation.presentedSheet = .followUp(header: header, sourceID: sourceID)
-    }
-
-    private func presentMoveToFolder(for header: MessageHeader) {
-        guard let navigation, !areActionsBlocked else { return }
-        navigation.presentedSheet = .moveTo(
-            messageIDs: [header.id],
-            sourceID: sourceID,
+    /// Capability-gated reader inventory shared by the iOS overflow menu and
+    /// the reader-body context menu. Unsupported actions are omitted, not
+    /// disabled — same honesty rule as the row context menu.
+    func readerMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+        _ = offlineRetentionRevision
+        let workflowID = SourceMessageID(
+            sourceID: readerWorkflowSourceID,
+            messageID: header.id
+        )
+        let lookup = LocalMessageWorkflowLookup(
+            state: LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        )
+        let moveCandidates = MessageCommandPresentation.moveFolderCandidates(
+            from: allFolders,
             currentFolderID: header.folderID
         )
+        // Detached windows provide a handoff to a visible command owner;
+        // embedded readers use their own root's presentation state.
+        let canPresentSheets = closeWindow != nil || navigation?.presentedSheet == nil
+        return MessageCommandPresentation.readerMenu(
+            for: header,
+            isSnoozed: lookup.isSnoozed(workflowID),
+            isDone: lookup.isDone(workflowID),
+            isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
+            hasNote: lookup.note(for: workflowID) != nil,
+            canOpenInNewWindow: canOpenReaderInNewWindow,
+            canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
+            canMove: !moveCandidates.isEmpty,
+            canCopyToFolder: !moveCandidates.isEmpty,
+            canFileLocally: canFileLocally
+                && backend.account.id != LocalMailBackend.accountID,
+            junkActionTitle: MessageCommandPresentation.junkActionTitle(
+                currentFolder: folder(for: header),
+                capabilities: backend.capabilities,
+                folders: allFolders
+            ),
+            canBlockSender: backend.capabilities.contains(.blockSender),
+            canDelete: true,
+            canCreateTask: canPresentSheets,
+            canCreateRule: canPresentSheets,
+            canCreateMeeting: canPresentSheets,
+            canAddNote: canPresentSheets,
+            canFollowUp: canPresentSheets,
+            hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
+                .reminder(for: header.id, sourceID: sourceID) != nil,
+            canReply: canPresentSheets && !areActionsBlocked,
+            canPrint: !isLoading && errorMessage == nil,
+            canExportPDF: !isLoading && errorMessage == nil,
+            canShowProperties: true,
+            extendedCapabilities: backend.extendedCapabilities,
+            canExportEML: supportsReaderEMLExport
+        )
+    }
+
+    /// "Open in New Window" from the reader: honest per platform and surface —
+    /// never inside an already-detached window, iPad-only on iOS (a detached
+    /// scene exists there), otherwise the main macOS window can spawn one.
+    private var canOpenReaderInNewWindow: Bool {
+        guard closeWindow == nil else { return false }
+        #if os(iOS)
+        return MailDetachWindowPolicy.shouldDetach(
+            idiom: UIDevice.current.userInterfaceIdiom,
+            horizontalSizeClass: horizontalSizeClass
+        )
+        #else
+        return navigation != nil
+        #endif
+    }
+
+    private var supportsReaderEMLExport: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    /// Local workflow state is keyed by the owning source; when the reader was
+    /// opened without an explicit source id it falls back to the backend's own
+    /// account scope, matching the list rows' `workflowSourceID`.
+    private var readerWorkflowSourceID: MailSourceID {
+        sourceID ?? MailSourceID(
+            accountID: backend.account.id,
+            mailboxID: backend.account.id
+        )
+    }
+
+    @ViewBuilder
+    private func readerMenuButtons(for header: MessageHeader) -> some View {
+        let menu = readerMenuPresentation(for: header)
+        ForEach(menu.sections.indices, id: \.self) { sectionIndex in
+            if sectionIndex > 0 {
+                Divider()
+            }
+            ForEach(menu.sections[sectionIndex].actions, id: \.action) { action in
+                readerMenuButton(action, for: header)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func readerMenuButton(
+        _ presentation: MessageContextMenuActionPresentation,
+        for header: MessageHeader
+    ) -> some View {
+        if presentation.role == .destructive {
+            Button(role: .destructive) {
+                performReaderMenuAction(presentation.action, for: header)
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(!presentation.isEnabled || areActionsBlocked)
+        } else {
+            Button {
+                performReaderMenuAction(presentation.action, for: header)
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(!presentation.isEnabled || isReaderActionBlocked(presentation.action))
+        }
+    }
+
+    /// Mutation-style commands respect the work/mutation blockers; purely
+    /// local or presentation actions (sheets, print, window open) do not —
+    /// matching how the row menu gates each action.
+    private func isReaderActionBlocked(_ action: MessageContextMenuAction) -> Bool {
+        switch action {
+        case .toggleRead, .toggleFlag, .toggleSnooze, .toggleDone, .archive,
+             .move, .copyToFolder, .copyToLocalFolder, .moveToLocalFolder,
+             .setJunk, .blockSender, .delete, .downloadOffline, .reply, .replyAll, .forward:
+            return areActionsBlocked
+        case .openInNewWindow, .select, .pinToTop,
+             .print, .exportPDF, .saveAs, .createMeeting, .createTask,
+             .createRule, .addNote, .followUp, .properties, .showHeaders,
+             .viewSource:
+            return false
+        }
+    }
+
+    /// Print/PDF run locally; other commands go to the owner injected by the
+    /// enclosing root or detached window, never to unrelated scenes.
+    private func performReaderMenuAction(
+        _ action: MessageContextMenuAction,
+        for header: MessageHeader
+    ) {
+        switch action {
+        case .downloadOffline:
+            _ = ReaderOfflineRetention.handle(
+                .init(command: .downloadOffline, header: header, sourceID: readerWorkflowSourceID), backend: backend
+            )
+            offlineRetentionRevision += 1
+        case .print:
+            printCurrentMessage()
+        case .exportPDF:
+            exportCurrentMessagePDF()
+        case .openInNewWindow:
+            #if os(iOS)
+            openWindow(value: DetachedReaderWindowPayload(
+                sourceID: sourceID,
+                messageID: header.id,
+                folderID: header.folderID
+            ))
+            #else
+            readerCommandAction?(.init(command: .openInNewWindow, header: header, sourceID: sourceID))
+            #endif
+        default:
+            if let command = DetachedMessageCommand(menuAction: action) {
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
+            }
+        }
     }
 
     /// Whether to render the in-content action bar — true only for the standalone
@@ -735,9 +804,24 @@ public struct MessageDetailView: View {
     @ViewBuilder
     private func windowActionBar(for header: MessageHeader) -> some View {
         HStack(spacing: BrevSpacing.xs) {
-            windowActionButton("Reply", systemImage: "arrowshape.turn.up.left", command: .reply, header: header)
-            windowActionButton("Reply All", systemImage: "arrowshape.turn.up.left.2", command: .replyAll, header: header)
-            windowActionButton("Forward", systemImage: "arrowshape.turn.up.right", command: .forward, header: header)
+            windowActionButton(
+                String(localized: "Reply", bundle: .module),
+                systemImage: "arrowshape.turn.up.left",
+                command: .reply,
+                header: header
+            )
+            windowActionButton(
+                String(localized: "Reply All", bundle: .module),
+                systemImage: "arrowshape.turn.up.left.2",
+                command: .replyAll,
+                header: header
+            )
+            windowActionButton(
+                String(localized: "Forward", bundle: .module),
+                systemImage: "arrowshape.turn.up.right",
+                command: .forward,
+                header: header
+            )
 
             Rectangle()
                 .fill(BrevSeparator.color(for: theme))
@@ -745,10 +829,25 @@ public struct MessageDetailView: View {
                 .padding(.horizontal, BrevSpacing.xs)
                 .accessibilityHidden(true)
 
-            windowActionButton("Archive", systemImage: "archivebox", command: .archive, header: header)
-            windowActionButton("Delete", systemImage: "trash", command: .delete, header: header)
+            windowActionButton(
+                String(localized: "Archive", bundle: .module),
+                systemImage: "archivebox",
+                command: .archive,
+                header: header
+            )
+            windowActionButton(
+                String(localized: "Delete", bundle: .module),
+                systemImage: "trash",
+                command: .delete,
+                header: header
+            )
             if !allFolders.isEmpty {
-                windowActionButton("Move", systemImage: "folder", command: .move, header: header)
+                windowActionButton(
+                    String(localized: "Move", bundle: .module),
+                    systemImage: "folder",
+                    command: .move,
+                    header: header
+                )
             }
             if let junkTitle = MessageCommandPresentation.junkActionTitle(
                 currentFolder: folder(for: header),
@@ -771,6 +870,26 @@ public struct MessageDetailView: View {
                 command: .toggleFlag,
                 header: header
             )
+            // Overflow: the full consolidated reader inventory (snooze, done,
+            // sheets, save-as, offline retention, …) — same menu the body
+            // context menu and iOS toolbar render.
+            Menu {
+                readerMenuButtons(for: header)
+            } label: {
+                Image(systemName: "ellipsis.circle")
+                    .font(.system(size: 14))
+                    .foregroundStyle(theme.textSecondary.color)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                #else
+                    .frame(width: 30, height: 24)
+                #endif
+                    .contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton)
+            .tint(theme.textSecondary.color)
+            .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+            .help(String(localized: "More message actions", bundle: .module))
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, mailboxListDensity.chromeVerticalPadding)
@@ -784,13 +903,16 @@ public struct MessageDetailView: View {
         header: MessageHeader
     ) -> some View {
         Button {
-            DetachedMessageCommandBus.post(command, header: header, sourceID: sourceID)
-            if command.dismissesWindow { closeWindow?() }
+            readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
         } label: {
             Image(systemName: systemImage)
                 .font(.system(size: 14))
                 .foregroundStyle(theme.textSecondary.color)
+            #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+            #else
                 .frame(width: 30, height: 24)
+            #endif
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -1213,15 +1335,15 @@ public struct MessageDetailView: View {
                responsePresentation?.showsActions == true {
                 BrevDivider()
                 HStack(spacing: BrevSpacing.sm) {
-                    BrevButton("Accept", style: .primary) {
+                    BrevButton("Accept", style: .primary, bundle: .module) {
                         Task { await respondToInvite(.accepted) }
                     }
                     .disabled(isInviteResponseActionBlocked)
-                    BrevButton("Maybe", style: .secondary) {
+                    BrevButton("Maybe", style: .secondary, bundle: .module) {
                         Task { await respondToInvite(.tentative) }
                     }
                     .disabled(isInviteResponseActionBlocked)
-                    BrevButton("Decline", style: .tertiary) {
+                    BrevButton("Decline", style: .tertiary, bundle: .module) {
                         Task { await respondToInvite(.declined) }
                     }
                     .disabled(isInviteResponseActionBlocked)
@@ -1890,15 +2012,15 @@ public struct MessageDetailView: View {
         BrevButton(primaryActionTitle, style: .primary) {
             loadRemoteContentOnce()
         }
-        BrevButton("Always allow sender", style: .secondary) {
+        BrevButton("Always allow sender", style: .secondary, bundle: .module) {
             allowRemoteContentSender(senderEmail)
         }
         if let senderDomain {
-            BrevButton("Always allow \(senderDomain)", style: .tertiary) {
+            BrevButton("Always allow \(senderDomain)", style: .tertiary, bundle: .module) {
                 allowRemoteContentDomain(senderDomain)
             }
         }
-        BrevButton("Keep blocked", style: .tertiary) {
+        BrevButton("Keep blocked", style: .tertiary, bundle: .module) {
             showRemoteContent = false
         }
     }

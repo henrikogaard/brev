@@ -123,8 +123,7 @@ struct AIProviderSettingsPanel: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
             .padding(BrevSpacing.md)
-            .background(theme.bgSecondary.color)
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            .brevQuietSurface()
 
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: BrevSpacing.sm) {

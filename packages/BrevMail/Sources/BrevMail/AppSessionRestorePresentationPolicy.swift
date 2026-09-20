@@ -11,6 +11,11 @@
  */
 
 public enum AppSessionRestorePresentationPolicy {
+    /// Keep payload-bearing scenes available to consume their reader command.
+    public static func shouldShowSettings(isRequested: Bool, hasReaderCommandHandoff: Bool) -> Bool {
+        isRequested && !hasReaderCommandHandoff
+    }
+
     /// Show the mailbox as soon as any account is connected or served from
     /// cache, even while other accounts are still restoring. The cache-first
     /// render must not wait for the slowest account to finish connecting, so

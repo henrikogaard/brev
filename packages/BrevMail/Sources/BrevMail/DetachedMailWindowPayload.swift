@@ -23,9 +23,18 @@ public struct DetachedReaderWindowPayload: Codable, Hashable, Sendable {
     /// The backend message identifier.
     public let messageID: String
 
-    public init(sourceID: MailSourceID?, messageID: String) {
+    /// The originating folder membership; nil supports previously restored scenes.
+    public let folderID: Folder.ID?
+
+    /// Creates a restorable reader identity without retaining message content.
+    /// - Parameters:
+    ///   - sourceID: Account and mailbox owning the message; nil permits default-source resolution.
+    ///   - messageID: The provider's cached message identifier.
+    ///   - folderID: Exact originating membership, including a Gmail label; nil supports older restored scenes.
+    public init(sourceID: MailSourceID?, messageID: String, folderID: Folder.ID? = nil) {
         self.sourceID = sourceID
         self.messageID = messageID
+        self.folderID = folderID
     }
 }
 

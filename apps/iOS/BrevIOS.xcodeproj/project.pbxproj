@@ -30,6 +30,7 @@
 		914EB2AE074C239C4819310B /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = 9EAE3C341A8E00F53D4F605B /* BrevMail */; };
 		97E8B9A73CE3C49104E9E480 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F9D32B7AF5A8CA2C3491139F /* Localizable.xcstrings */; };
 		9B50D7400765786055C06C4C /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E2C9F3AD1AA9A3CE9AA027DE /* InfoPlist.xcstrings */; };
+		B7B7D2B607BDA976D03F48F5 /* MailboxLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715AFE640A39C90D4F2430F5 /* MailboxLayoutTests.swift */; };
 		B83BC6C731F1584C4D2435D2 /* BrevShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5ECBA4DE24AA203E58BBEB53 /* BrevShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C6F98F8E43286F2A18A8E1DA /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1A991BCC8873E581D0CE28 /* ShareViewController.swift */; };
 		D168CFA7B2F160033DC6D73B /* TuistAssets+BrevIOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4884F3A5FFB9C3685A65317E /* TuistAssets+BrevIOS.swift */; };
@@ -133,6 +134,7 @@
 		5F06A8720CE4881145FB09A5 /* BrevIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrevIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		661BFD8D32960BA9040B4864 /* BrevExamplePlugin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevExamplePlugin; path = ../../Plugins/BrevExamplePlugin; sourceTree = "<group>"; };
 		67F7E688A1B82AEA00A3792D /* BrevDesign */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevDesign; path = ../../packages/BrevDesign; sourceTree = "<group>"; };
+		715AFE640A39C90D4F2430F5 /* MailboxLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailboxLayoutTests.swift; sourceTree = "<group>"; };
 		7580CDEE4A952782F2207EF6 /* BrevShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrevShareExtension.entitlements; sourceTree = "<group>"; };
 		7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareHandoffURL.swift; sourceTree = "<group>"; };
 		812DC1C3F19A3A27C881635F /* BrevSyncEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSyncEngine; path = ../../packages/BrevSyncEngine; sourceTree = "<group>"; };
@@ -324,6 +326,7 @@
 			isa = PBXGroup;
 			children = (
 				0432D72B495BC2BC468236F5 /* BackgroundRefreshCoordinatorTests.swift */,
+				715AFE640A39C90D4F2430F5 /* MailboxLayoutTests.swift */,
 				951FE30FC8262E51C6BB1D5F /* OneShotBGCompletionTests.swift */,
 				04D3EE8D685B58BCA01BA663 /* ShareHandoffURLTests.swift */,
 			);
@@ -535,6 +538,7 @@
 			files = (
 				3DCFCFDD37211F29BC7ECB03 /* ShareHandoffURL.swift in Sources */,
 				4025EC3E8AB1F033E994E561 /* BackgroundRefreshCoordinatorTests.swift in Sources */,
+				B7B7D2B607BDA976D03F48F5 /* MailboxLayoutTests.swift in Sources */,
 				2A450AF6FD23C144902ECC5D /* OneShotBGCompletionTests.swift in Sources */,
 				8BC66A835B49BBB01FC86B63 /* ShareHandoffURLTests.swift in Sources */,
 			);

@@ -117,8 +117,10 @@ enum MailRootSettingsToolbarPolicy {
         // chrome carries no Settings control on any surface. iOS has no menu
         // bar, so the sidebar keeps it as the primary entry point.
         switch surface {
-        case .sidebar, .messageList, .detail:
+        case .sidebar:
             platform == .iOS
+        case .messageList, .detail:
+            false
         }
     }
 }

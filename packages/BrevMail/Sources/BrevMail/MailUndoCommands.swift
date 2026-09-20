@@ -10,11 +10,14 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import Foundation
+import SwiftUI
+
 #if os(macOS)
 import AppKit
 import Combine
 import Observation
-import SwiftUI
+#endif
 
 /// Window-scoped mail Undo exposed to the menu without replacing text-editor history.
 @MainActor
@@ -42,15 +45,20 @@ public extension FocusedValues {
 }
 
 /// Native Edit-menu shortcuts with live text-editor and mail-context routing.
+/// On iPadOS mail Undo is appended after the native Undo/Redo group, preserving
+/// text-editing menu commands and first-responder hardware-keyboard routing.
 @MainActor
 public struct MailUndoCommands: Commands {
     @FocusedValue(\.mailUndoActions) private var mailActions
+    #if os(macOS)
     @State private var state = MailUndoMenuState()
+    #endif
 
-    /// Creates the macOS Undo/Redo command group.
+    /// Creates native macOS Undo/Redo or the iPadOS ⌘⌥Z mail action.
     public init() {}
 
     public var body: some Commands {
+        #if os(macOS)
         CommandGroup(replacing: .undoRedo) {
             Button(undoTitle) { state.router.undo(mail: mailActions) }
                 .keyboardShortcut("z", modifiers: .command)
@@ -59,8 +67,19 @@ public struct MailUndoCommands: Commands {
                 .keyboardShortcut("z", modifiers: [.command, .shift])
                 .disabled(!canRedo)
         }
+        #else
+        CommandGroup(after: .undoRedo) {
+            Button(String(localized: "Undo Mail Action", bundle: .module)) {
+                mailActions?.onUndo()
+            }
+            // UIKit rejects a duplicate of its native Command-Z at app startup.
+            .keyboardShortcut("z", modifiers: [.command, .option])
+            .disabled(mailActions?.canUndo() != true)
+        }
+        #endif
     }
 
+    #if os(macOS)
     private var undoTitle: String {
         _ = state.revision
         return state.router.undoTitle(mail: mailActions)
@@ -80,8 +99,10 @@ public struct MailUndoCommands: Commands {
         _ = state.revision
         return state.router.nativeManager()?.canRedo == true
     }
+    #endif
 }
 
+#if os(macOS)
 /// A non-nil context identifies text editing even when its native manager has no Undo.
 @MainActor
 struct MailTextUndoContext {

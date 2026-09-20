@@ -280,7 +280,7 @@ struct TemplatesSection: View {
 
 // MARK: - Row
 
-private struct TemplateRow: View {
+struct TemplateRow: View {
     @Environment(\.brevTheme) private var theme
     let template: MessageTemplate
     let scopeTitle: String
@@ -293,58 +293,104 @@ private struct TemplateRow: View {
     let onDelete: () -> Void
 
     var body: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: template.isPinned ? "pin.fill" : "pin")
-                .foregroundStyle(template.isPinned ? theme.accent.color : theme.textTertiary.color)
-                .font(.system(size: 12))
-                .onTapGesture { onPin() }
-
-            VStack(alignment: .leading, spacing: 2) {
-                Text(template.name)
-                    .brevFont(.subheadline)
+        Group {
+            #if os(iOS)
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                details
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                HStack(spacing: BrevSpacing.sm) {
+                    pinControl
+                    Spacer(minLength: 0)
+                    BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                    Menu {
+                        Button(String(localized: "Move Template Up", bundle: .module), action: onMoveUp)
+                            .disabled(!canMoveUp)
+                        Button(String(localized: "Move Template Down", bundle: .module), action: onMoveDown)
+                            .disabled(!canMoveDown)
+                        Button(String(localized: "Delete", bundle: .module), role: .destructive, action: onDelete)
+                    } label: {
+                        Image(systemName: "ellipsis")
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
                     .foregroundStyle(theme.textPrimary.color)
-                Text(scopeTitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
-                if let subject = template.subject {
-                    Text("Subject: \(subject)", bundle: .module)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityLabel(String(localized: "Template actions", bundle: .module))
                 }
-                Text(template.body.prefix(60).description + (template.body.count > 60 ? "…" : ""))
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
-                    .lineLimit(1)
             }
+            #else
+            HStack(spacing: BrevSpacing.sm) {
+                pinControl
+                details
+                Spacer(minLength: BrevSpacing.sm)
+                BrevIconButton(
+                    systemName: "chevron.up",
+                    accessibilityLabel: "Move Template Up",
+                    bundle: .module
+                ) {
+                    onMoveUp()
+                }
+                .disabled(!canMoveUp)
 
-            Spacer()
+                BrevIconButton(
+                    systemName: "chevron.down",
+                    accessibilityLabel: "Move Template Down",
+                    bundle: .module
+                ) {
+                    onMoveDown()
+                }
+                .disabled(!canMoveDown)
 
-            Button {
-                onMoveUp()
-            } label: {
-                Label(String(localized: "Move Template Up", bundle: .module), systemImage: "chevron.up")
-                    .labelStyle(.iconOnly)
+                BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                BrevButton(String(localized: "Delete", bundle: .module), style: .tertiary) { onDelete() }
             }
-            .buttonStyle(.borderless)
-            .disabled(!canMoveUp)
-            .help(String(localized: "Move template up", bundle: .module))
-
-            Button {
-                onMoveDown()
-            } label: {
-                Label(String(localized: "Move Template Down", bundle: .module), systemImage: "chevron.down")
-                    .labelStyle(.iconOnly)
-            }
-            .buttonStyle(.borderless)
-            .disabled(!canMoveDown)
-            .help(String(localized: "Move template down", bundle: .module))
-
-            BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
-            BrevButton(String(localized: "Delete", bundle: .module), style: .tertiary) { onDelete() }
+            #endif
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .background(theme.bgSecondary.color)
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+    }
+
+    private var pinControl: some View {
+        Button(action: onPin) {
+            Image(systemName: template.isPinned ? "pin.fill" : "pin")
+                .foregroundStyle(template.isPinned ? theme.accent.color : theme.textTertiary.color)
+                .font(.system(size: 12))
+            #if os(iOS)
+                .frame(minWidth: 44, minHeight: 44)
+                .contentShape(Rectangle())
+            #endif
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(
+            template.isPinned
+                ? String(localized: "Unpin template", bundle: .module)
+                : String(localized: "Pin template", bundle: .module)
+        )
+        .accessibilityAddTraits(template.isPinned ? .isSelected : [])
+        .help(
+            template.isPinned
+                ? String(localized: "Unpin template", bundle: .module)
+                : String(localized: "Pin template", bundle: .module)
+        )
+    }
+
+    private var details: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(template.name)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textPrimary.color)
+            Text(scopeTitle)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+            if let subject = template.subject {
+                Text("Subject: \(subject)", bundle: .module)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            Text(template.body.prefix(60).description + (template.body.count > 60 ? "…" : ""))
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+                .lineLimit(1)
+        }
     }
 }

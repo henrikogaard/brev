@@ -50,22 +50,28 @@ enum MessagePropertiesPresentation {
     ///   row layout stays deterministic and unit-testable).
     static func rows(for header: MessageHeader, dateText: String) -> [MessagePropertyRow] {
         var rows: [MessagePropertyRow] = [
-            MessagePropertyRow(label: "From", value: formatted(header.from))
+            MessagePropertyRow(label: String(localized: "From", bundle: .module), value: formatted(header.from))
         ]
         if !header.to.isEmpty {
-            rows.append(MessagePropertyRow(label: "To", value: formatted(header.to)))
+            rows.append(MessagePropertyRow(label: String(localized: "To", bundle: .module), value: formatted(header.to)))
         }
         if !header.cc.isEmpty {
-            rows.append(MessagePropertyRow(label: "Cc", value: formatted(header.cc)))
+            rows.append(MessagePropertyRow(label: String(localized: "Cc", bundle: .module), value: formatted(header.cc)))
         }
         if !header.bcc.isEmpty {
-            rows.append(MessagePropertyRow(label: "Bcc", value: formatted(header.bcc)))
+            rows.append(MessagePropertyRow(label: String(localized: "Bcc", bundle: .module), value: formatted(header.bcc)))
         }
-        rows.append(MessagePropertyRow(label: "Date", value: dateText))
+        rows.append(MessagePropertyRow(label: String(localized: "Date", bundle: .module), value: dateText))
         let subject = header.subject.trimmingCharacters(in: .whitespacesAndNewlines)
-        rows.append(MessagePropertyRow(label: "Subject", value: subject.isEmpty ? "(No subject)" : subject))
+        rows.append(MessagePropertyRow(
+            label: String(localized: "Subject", bundle: .module),
+            value: subject.isEmpty ? String(localized: "(No subject)", bundle: .module) : subject
+        ))
         if header.hasAttachments {
-            rows.append(MessagePropertyRow(label: "Attachments", value: "Yes"))
+            rows.append(MessagePropertyRow(
+                label: String(localized: "Attachments", bundle: .module),
+                value: String(localized: "Yes", bundle: .module)
+            ))
         }
         return rows
     }

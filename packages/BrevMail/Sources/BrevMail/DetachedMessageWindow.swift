@@ -51,7 +51,9 @@ enum DetachedMessageWindow {
         backend: any MailBackend,
         sourceID: MailSourceID?,
         allFolders: [Folder],
-        theme: BrevTheme
+        canFileLocally: Bool,
+        theme: BrevTheme,
+        onCommand: @escaping (DetachedMessageCommandRequest) -> Bool
     ) {
         // Capture the main window (the one the user double-clicked in) before
         // the new window becomes key, so the message window can open aligned to
@@ -79,8 +81,22 @@ enum DetachedMessageWindow {
             header: header,
             navigation: nil,
             allFolders: allFolders,
+            canFileLocally: canFileLocally,
             closeWindow: { [weak window] in window?.close() }
         )
+        .environment(\.readerCommandAction) { [weak window] request in
+            // State changes schedule presentation for the next view update.
+            // Obtain acceptance first so a busy or unavailable owner cannot
+            // discard an action after this reader has already closed.
+            DispatchQueue.main.async { [weak window] in
+                guard onCommand(request) else { return }
+                if request.command.dismissesWindow {
+                    window?.close()
+                    referenceWindow?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
+            }
+        }
         .brevMailPaneSurface(.content)
         .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
         .brevWindowTranslucency(windowRole: .utility)

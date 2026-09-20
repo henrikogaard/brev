@@ -81,7 +81,9 @@ public struct MoveToSheet: View {
                 errorFooter(moveError)
             }
         }
+        #if os(macOS)
         .frame(minWidth: 320, idealWidth: 380)
+        #endif
         .background(theme.bgPrimary.color)
     }
 
@@ -93,14 +95,14 @@ public struct MoveToSheet: View {
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer()
-            Button {
+            BrevIconButton(
+                systemName: "xmark.circle.fill",
+                accessibilityLabel: "Close",
+                bundle: .module,
+                iconSize: 18
+            ) {
                 onClose?()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-                    .font(.system(size: 18))
             }
-            .buttonStyle(.plain)
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -116,14 +118,14 @@ public struct MoveToSheet: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .textFieldStyle(.plain)
             if !searchText.isEmpty {
-                Button {
+                BrevIconButton(
+                    systemName: "xmark.circle.fill",
+                    accessibilityLabel: "Clear search",
+                    bundle: .module,
+                    iconSize: 14
+                ) {
                     searchText = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(theme.textTertiary.color)
-                        .font(.system(size: 14))
                 }
-                .buttonStyle(.plain)
             }
         }
         .padding(.horizontal, BrevSpacing.md)
@@ -199,11 +201,15 @@ public struct MoveToSheet: View {
             }
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.sm)
-            .contentShape(Rectangle())
+            #if os(iOS)
+                .frame(minHeight: 44)
+            #endif
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isCurrent || isMoving)
         .opacity(isCurrent ? 0.5 : 1)
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
     }
 
     @ViewBuilder
@@ -245,6 +251,10 @@ public struct MoveToSheet: View {
                 } label: {
                     Text("Create", bundle: .module)
                         .brevFont(.subheadline)
+                    #if os(iOS)
+                        .frame(minWidth: 44, minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(trimmed.isEmpty ? theme.textTertiary.color : theme.accent.color)

@@ -214,7 +214,9 @@ public struct SettingsView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .toolbar { settingsDismissToolbar }
         }
-        .frame(minWidth: 760, idealWidth: 820, minHeight: 680)
+        // ~640 fits the narrowest regular-width iPad split scene (~678 pt);
+        // the macOS window keeps its wider floor below.
+        .frame(minWidth: 640, idealWidth: 820, minHeight: 480)
         #else
         NavigationSplitView {
             sidebar

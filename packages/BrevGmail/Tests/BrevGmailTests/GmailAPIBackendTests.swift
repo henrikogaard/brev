@@ -17,6 +17,25 @@ import Testing
 
 @Suite("Gmail API read backend")
 struct GmailAPIBackendTests {
+    @Test("cached header point lookup respects label membership without network access")
+    func cachedHeaderPointLookup() async throws {
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(Self.snapshot(messages: [
+            Self.message(id: "selected", threadID: "thread", labels: ["INBOX"]),
+            Self.message(id: "trashed", threadID: "other", labels: ["TRASH"])
+        ]))
+        let transport = StubGmailTransport()
+        let backend = GmailAPIBackend(account: Self.account, transport: transport, store: store)
+        let provider = try #require(backend.extensionService(CachedMessageHeaderProviding.self))
+        #expect(backend.extendedCapabilities.contains(.cachedMessageHeaders))
+        #expect(await provider.cachedMessageHeader(messageID: "selected", folderID: "INBOX")?.id == "selected")
+        #expect(await provider.cachedMessageHeader(messageID: "selected", folderID: "ALL_MAIL")?.folderID == "ALL_MAIL")
+        #expect(await provider.cachedMessageHeader(messageID: "selected", folderID: "SENT") == nil)
+        #expect(await provider.cachedMessageHeader(messageID: "trashed", folderID: "ALL_MAIL") == nil)
+        #expect(await provider.cachedMessageHeader(messageID: "missing", folderID: "INBOX") == nil)
+        #expect(await transport.networkCalls == 0)
+    }
+
     @Test("cached Gmail conversations include other folders and retain an uncached selected anchor")
     func cachedConversationUsesNativeThread() async throws {
         let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)

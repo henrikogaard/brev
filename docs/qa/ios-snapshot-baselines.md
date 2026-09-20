@@ -68,3 +68,49 @@ Run `scripts/check-ios-snapshot-baselines.sh` before changing the lane. It
 fails if required references disappear or a deferred suite is no longer
 documented, preventing a failing suite from being dropped just to make CI
 green.
+
+## PR #47 phone layout follow-up — 2026-09-19
+
+`PhoneMailboxSnapshotTests` adds four iOS 27 references (inbox/search and folder
+hierarchy, light and dark). These are intentional layout baselines: the search
+control is bounded to 44 points, phone rows retain previews and wrap subjects,
+and folder disclosure no longer consumes an empty leading column. The references
+were visually inspected before comparison. The required iOS lane now selects
+this suite. Older deferred snapshot debt remains separate.
+
+The app-hosted `MailboxLayoutTests` reproduces the unbounded UIKit field at
+319 points before the fix, then verifies a 44–52 point field under a full-screen
+height proposal. This behavioral sizing test does not depend on pixels.
+
+The same suite also covers a 660pt regular-width compose scene with a signature.
+The reference was inspected on iPad Pro 13-inch / iOS 27 after moving secondary
+iOS compose tools into overflow; Close, Send and More remain visible.
+
+The narrow compose reference uses the iPhone-hosted regular-width fixture to
+match the required CI destination. Comparing it with the iPad-hosted render
+showed text antialiasing differences only; control positions, labels and state
+were unchanged. The iPad comparison passed against its original capture.
+
+## Compact settings rows — 2026-09-20
+
+`CompactSettingsRowSnapshotTests` covers template and local-rule rows at 216pt
+and 271pt content widths, representing padded 320–375pt phone settings. The
+before render visibly lost the text and trailing actions. The reviewed new
+references put content above Pin/Enable, Edit and a 44pt overflow menu; reorder
+and Delete remain available in that menu. These two references join the iOS 27
+CI lane. An existing iOS-only snapshot fixture enum needed internal visibility
+for the Settings test target to compile; no unrelated references were refreshed.
+
+The same suite now includes full Signature sections at 320pt and 375pt. The
+old row collapsed the name field; the reviewed references keep the field on
+its own line and put Enabled plus a 44pt action menu below it. Both sizes were
+visually inspected before comparison. All three newly enlarged settings action
+rows (templates, rules, signatures) now have compact coverage.
+
+All seven `PhoneMailboxSnapshotTests` references are required by
+`scripts/check-ios-snapshot-baselines.sh`, including on CI hosts that cannot
+run the iOS 27 pixel comparisons. Missing or empty phone references fail the
+presence gate.
+
+The detached-reader action bar (660-point regular-width scene) and thread-summary
+Retry panel have iOS 27 references covering their 44-point touch targets.

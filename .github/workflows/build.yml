@@ -237,6 +237,7 @@ jobs:
             -skipMacroValidation \
             -testLanguage en \
             -testRegion en_US \
+            '-only-testing:BrevMailTests/PhoneMailboxSnapshotTests' \
             '-only-testing:BrevMailTests/BrevMailRootViewSnapshotTests/rootViewWideLayout()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/bodyLoadErrorState()' \
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/threadMessageCardCollapsedRenders()' \
@@ -247,6 +248,19 @@ jobs:
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
+
+      - name: Test compact settings rows on iOS Simulator
+        if: steps.snapshot-runtime.outputs.run == 'true'
+        working-directory: packages/BrevSettings
+        run: |
+          xcodebuild \
+            -scheme BrevSettings \
+            -destination '${{ steps.snapshot-runtime.outputs.destination }}' \
+            -skipMacroValidation \
+            -testLanguage en \
+            -testRegion en_US \
+            '-only-testing:BrevSettingsTests/CompactSettingsRowSnapshotTests' \
+            test
 
       - name: Report deferred iOS snapshot comparison
         if: steps.snapshot-runtime.outputs.run != 'true'

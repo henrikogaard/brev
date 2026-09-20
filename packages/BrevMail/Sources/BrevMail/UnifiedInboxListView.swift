@@ -70,6 +70,10 @@ struct UnifiedInboxListView: View {
     private let isWorkBlocked: Bool
     private let composeActions: MailComposePresentationActions
     private let onSelectMessage: ((MessageHeader) -> Void)?
+    /// Opens the item's message in a detached/auxiliary reader window. The
+    /// item (not just the header) travels so the caller knows which source
+    /// the message belongs to.
+    private let onOpenInNewWindow: ((UnifiedInboxItem) -> Void)?
     private let onMutation: (MailEvent) async -> Void
 
     @State private var requestedScope: String?
@@ -91,6 +95,7 @@ struct UnifiedInboxListView: View {
     @State private var mutationErrorStatus: MessageListFooterStatus?
     @State private var loadMoreErrorStatus: MessageListFooterStatus?
     @State private var pendingDeleteItemID: UnifiedInboxItem.ID?
+    @State private var pendingBlockSenderItemID: UnifiedInboxItem.ID?
     @State private var isBulkPermanentDeletePresented = false
     @State private var pendingSnoozeItems: [UnifiedInboxItem] = []
     /// Active follow-up reminders indexed by message, rebuilt on settings
@@ -149,6 +154,7 @@ struct UnifiedInboxListView: View {
         isMutationWorkBlocked: Bool = false,
         composeActions: MailComposePresentationActions,
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
+        onOpenInNewWindow: ((UnifiedInboxItem) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in }
     ) {
         self.navigation = navigation
@@ -165,6 +171,7 @@ struct UnifiedInboxListView: View {
         self.isMutationWorkBlocked = isMutationWorkBlocked
         self.composeActions = composeActions
         self.onSelectMessage = onSelectMessage
+        self.onOpenInNewWindow = onOpenInNewWindow
         self.onMutation = onMutation
         // A smart view *is* a saved filter, so entering one seeds the shared
         // filter with its query. The filter now lives on the navigation state
@@ -186,6 +193,14 @@ struct UnifiedInboxListView: View {
     }
 
     var body: some View {
+        workflowObservedContent
+            .onChange(of: localMessageWorkflowState) {
+                reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
+            }
+    }
+
+    @ViewBuilder
+    private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
             LegacyPinNotice()
@@ -379,6 +394,23 @@ struct UnifiedInboxListView: View {
                     .map { foldersForPermanentDelete(of: $0) } ?? []
             ))
         }
+        .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
+            Button(String(localized: "Block Sender", bundle: .module), role: .destructive) {
+                Task { await confirmBlockSender() }
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                pendingBlockSenderItemID = nil
+            }
+        } message: {
+            if let item = pendingBlockSenderItem {
+                Text(
+                    "Block \"\(item.header.from.email)\"? Future messages from this address will be marked as junk.",
+                    bundle: .module
+                )
+            } else {
+                Text("Block this sender?", bundle: .module)
+            }
+        }
         .sheet(isPresented: isUnifiedSnoozePickerPresented) {
             if let item = pendingSnoozeItems.first {
                 SnoozePickerView(
@@ -403,6 +435,20 @@ struct UnifiedInboxListView: View {
                 if !isPresented { pendingSnoozeItems = [] }
             }
         )
+    }
+
+    private var isBlockSenderAlertPresented: Binding<Bool> {
+        Binding(
+            get: { pendingBlockSenderItemID != nil },
+            set: { isPresented in
+                if !isPresented { pendingBlockSenderItemID = nil }
+            }
+        )
+    }
+
+    private var pendingBlockSenderItem: UnifiedInboxItem? {
+        guard let pendingBlockSenderItemID else { return nil }
+        return items.first(where: { $0.id == pendingBlockSenderItemID })
     }
 
     private var isDeleteUnifiedItemAlertPresented: Binding<Bool> {
@@ -437,6 +483,30 @@ struct UnifiedInboxListView: View {
         performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
         defer { pendingDeleteItemID = nil }
         await delete([item], confirmedPermanent: true)
+    }
+
+    private func confirmBlockSender() async {
+        guard let item = pendingBlockSenderItem else {
+            pendingBlockSenderItemID = nil
+            return
+        }
+        performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+        defer { pendingBlockSenderItemID = nil }
+        await blockSender(for: item)
+    }
+
+    /// Blocks the item's sender through its own backend (`blockSender` is a
+    /// capability, so the menu only surfaces this when advertised). On success
+    /// the item leaves the list like a junk move.
+    private func blockSender(for item: UnifiedInboxItem) async {
+        await performMutation([item], removeFromList: true) { sourceID, _ in
+            guard let backend = backend(for: sourceID) else {
+                throw MailBackendError.notFound(id: sourceID.accountID)
+            }
+            try await backend.blockSender(email: item.header.from.email, sourceID: sourceID)
+        } optimisticUpdate: { _ in } event: {
+            MessageCommandRefreshPolicy.removed($0.header)
+        }
     }
 
     private struct LoadKey: Equatable {
@@ -527,7 +597,8 @@ struct UnifiedInboxListView: View {
     private func makeVisibleItems(
         pinnedMessageIDs: Set<MessageHeader.ID>,
         now: Date,
-        calendar: Calendar
+        calendar: Calendar,
+        groupThreads: Bool = true
     ) -> (items: [UnifiedInboxItem], threadCounts: [String: Int]) {
         let workflowVisible = LocalMessageWorkflowVisibilityPolicy.items(
             items,
@@ -560,7 +631,7 @@ struct UnifiedInboxListView: View {
             by: mailboxSortOrder,
             pinnedIDs: pinnedMessageIDs
         )
-        guard groupByThread else { return (sorted, [:]) }
+        guard groupThreads, groupByThread else { return (sorted, [:]) }
         let threadCounts = UnifiedInboxThreadGrouping.counts(
             for: sorted,
             isThreadedSource: isThreadedSource
@@ -816,61 +887,34 @@ struct UnifiedInboxListView: View {
         // Resolve the selection once per bar build instead of re-filtering
         // the whole item list on every button's enable check and action.
         let selected = selectedItems
-        HStack(spacing: BrevSpacing.xs) {
-            Text("\(selectedItemIDs.count) selected", bundle: .module)
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textPrimary.color)
-            Spacer(minLength: BrevSpacing.sm)
-            BulkActionIconButton(
-                label: "Mark Read",
-                systemImage: "envelope.open",
-                isDisabled: isMutationActionBlocked
-            ) {
+        MailBulkActionBar(
+            selectionCount: selectedItemIDs.count,
+            // Unified rows mix sources: Archive stays visible but disables
+            // unless every selected item has an archive folder.
+            isArchiveEnabled: selected.allSatisfy { $0.archiveFolder != nil },
+            isDisabled: isMutationActionBlocked,
+            onMarkRead: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
                 Task { await bulkSetRead(true) }
-            }
-            BulkActionIconButton(
-                label: "Mark Unread",
-                systemImage: "envelope.badge",
-                isDisabled: isMutationActionBlocked
-            ) {
+            },
+            onMarkUnread: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
                 Task { await bulkSetRead(false) }
-            }
-            BulkActionIconButton(
-                label: "Flag",
-                systemImage: "flag",
-                isDisabled: isMutationActionBlocked
-            ) {
+            },
+            onFlag: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
                 Task { await bulkSetFlag(true) }
-            }
-            BulkActionIconButton(
-                label: "Archive",
-                systemImage: "archivebox",
-                isDisabled: isMutationActionBlocked || !selected.allSatisfy { $0.archiveFolder != nil }
-            ) {
+            },
+            onArchive: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
                 Task { await bulkArchive() }
-            }
-            BulkActionIconButton(
-                label: "Delete",
-                systemImage: "trash",
-                isDisabled: isMutationActionBlocked,
-                isDestructive: true
-            ) {
+            },
+            onDelete: {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
                 Task { await bulkDelete() }
             }
+        ) {
             unifiedBulkOverflowMenu(selectedItems: selected)
-        }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.sm)
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
         }
     }
 
@@ -946,14 +990,18 @@ struct UnifiedInboxListView: View {
                 ThreadInlineChildRow(
                     header: child.header,
                     isSelected: navigation.selectedSourceID == child.sourceID
-                        && navigation.selectedMessageID == child.header.id
-                ) {
-                    if selectedItemIDs.isEmpty {
-                        selectMessage(child)
-                    } else {
-                        toggleSelection(for: child)
-                    }
-                }
+                        && navigation.selectedMessageID == child.header.id,
+                    onSelect: {
+                        if selectedItemIDs.isEmpty {
+                            selectMessage(child)
+                        } else {
+                            toggleSelection(for: child)
+                        }
+                    },
+                    fontFamily: mailboxFontFamily,
+                    textSize: mailboxTextSize,
+                    density: mailboxListDensity
+                )
                 .padding(.leading, BrevSpacing.xl)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
@@ -1062,14 +1110,14 @@ struct UnifiedInboxListView: View {
             isDone: isDone(item),
             isKeptOffline: isKeptOffline(item),
             hasNote: hasNote(item),
-            canOpenInNewWindow: false,
+            canOpenInNewWindow: onOpenInNewWindow != nil,
             canArchive: item.archiveFolder != nil,
             canMove: !moveFolderCandidates(for: item).isEmpty,
             canCopyToFolder: !moveFolderCandidates(for: item).isEmpty,
             canFileLocally: canFileLocally
                 && item.sourceID.accountID != LocalMailBackend.accountID,
             junkActionTitle: junkActionTitle(for: item),
-            canBlockSender: false,
+            canBlockSender: backend(for: item.sourceID)?.capabilities.contains(.blockSender) == true,
             canDelete: true,
             canCreateTask: navigation.presentedSheet == nil,
             canCreateRule: navigation.presentedSheet == nil,
@@ -1361,7 +1409,21 @@ struct UnifiedInboxListView: View {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
             .disabled(!presentation.isEnabled)
-        case .openInNewWindow, .blockSender, .print, .exportPDF:
+        case .openInNewWindow:
+            Button {
+                openInNewWindow(item)
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(!presentation.isEnabled)
+        case .blockSender:
+            Button(role: .destructive) {
+                pendingBlockSenderItemID = item.id
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(isMutationActionBlocked || !presentation.isEnabled)
+        case .print, .exportPDF:
             EmptyView()
         }
     }
@@ -1887,11 +1949,24 @@ struct UnifiedInboxListView: View {
         )
     }
 
+    private var workflowNavigationItems: [UnifiedInboxItem] {
+        // Use the list's full visibility predicate and ordering, while retaining
+        // thread members for expanded-row and reader navigation.
+        makeVisibleItems(
+            pinnedMessageIDs: UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw),
+            now: Date(), calendar: calendar, groupThreads: false
+        ).items
+    }
+
+    func openInNewWindow(_ item: UnifiedInboxItem) {
+        onOpenInNewWindow?(item)
+    }
+
     private func selectMessage(_ item: UnifiedInboxItem) {
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
-            headers: items.filter { $0.sourceID == item.sourceID }.map(\.header)
+            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header)
         )
         selectedItemIDs.removeAll()
         onSelectMessage?(item.header)
@@ -1899,7 +1974,7 @@ struct UnifiedInboxListView: View {
 
     private func reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: Bool = false) {
         if let selectedSourceID = navigation.selectedSourceID {
-            let sourceHeaders = items
+            let sourceHeaders = workflowNavigationItems
                 .filter { $0.sourceID == selectedSourceID }
                 .map(\.header)
             navigation.replaceCurrentFolderHeaders(

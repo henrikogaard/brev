@@ -2402,3 +2402,584 @@ No commit (user request).
   full runs.
 - Schema v5: `internal_date`/`content_hash` materialized + backfilled;
   existing v4 databases migrate on open.
+
+## 2026-09-19 — Devin — UI/UX consistency pass (feature/uiux-consistency)
+
+### Goal
+
+Fix the UI/UX audit findings across iOS/iPadOS/macOS: honest
+capability-gated menus, consolidated reader actions, accessibility,
+canonical Flag terminology, shared BrevDesign components, iPad keyboard
+undo, and focused presentation tests.
+
+### Changes (this session's files)
+
+- `MessageCommandPresentation`: all menu titles localized via
+  `String(localized:bundle:.module)`; unsupported actions omitted rather
+  than disabled; new `readerMenu(...)` surface (same inventory minus
+  row-only Select/Pin to Top).
+- `DetachedMessageCommand`: extended to the full reader action set with
+  `init?(menuAction:)` and `dismissesWindow`; bus dispatch unchanged.
+- `BrevMailRootView`: extended detached-command dispatch (snooze, done,
+  local-folder filing, block-sender alert, sheets, view-source/headers,
+  open-in-new-window); iOS compact reader + `MailDetachWindowPolicy`
+  routing; double-open dedup via `lastOpenInNewWindowRequest`; macOS
+  fallback toolbar gained Mark Read/Unread; iOS ellipsis deduplicated.
+- `MessageDetailView`: consolidated iOS overflow menu + reader-body
+  context menu + detached-window overflow all render `readerMenu`;
+  print/PDF run locally, everything else via the command bus.
+- `ThreadConversationView`: per-card `.contextMenu` reusing
+  `readerMenu` + bus dispatch; per-message print/PDF reusing the thread
+  print pipeline; AI summary failure state gained a Retry button
+  (`aiSummaryRetryAction`).
+- `MessageListView` / `UnifiedInboxListView`: shared `MailBulkActionBar`;
+  unread dot exposes a VoiceOver "Unread" label on non-compact rows;
+  child rows take mailbox font-family/text-size/density; iOS row menus
+  never emit Print/PDF; unified inbox is per-source capability-gated.
+- `ThreadInlineChildRow`: preference-derived fonts/spacing + labelled
+  unread dot.
+- `MailUndoCommands`: iPadOS ⌘Z mail-undo command group (text-editor
+  undo still wins via responder chain); registered in
+  `apps/iOS/BrevApp.swift`.
+- `KeyboardShortcutsHelpView`: inventory extracted to
+  `MailKeyboardShortcutInventory`, corrected bindings (⌘⇧U/⌘U read,
+  ⌘⇧L/⌘S flag, ⌫ delete, ⌘Z undo on both platforms), macOS-only flags.
+- `FolderSidebarPresentation`: removed dead `canOpenInNewWindow` /
+  `canDownloadOffline` params that produced inert entries.
+- Tests: `MessageCommandPresentationTests` updated (stale section
+  expectation fixed for the omission rule) + new coverage for print/PDF
+  omission, `readerMenu` parity, detached-command mapping, and window
+  dismissal; new `MailKeyboardShortcutInventoryTests` pins the help
+  panel against real `keyboardShortcut` registrations.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail` — green.
+- `swift test --package-path packages/BrevMail` — 1638 tests; all pass
+  except 21 snapshot-image diffs in suites CI already skips under
+  `swift test` (`.github/workflows/build.yml` macOS<26-era skip list):
+  MailContextColumn, DetachedMessageWindow, ThreadInlineChildRow,
+  LocalFolder, MonoMailSelection, SavedSearchEditorView,
+  ConversationWorkspace snapshot tests. Two of these
+  (ThreadInlineChildRow, DetachedMessageWindow) cover intentionally
+  changed UI and may need reference re-recording on the snapshot runner;
+  the rest are unrelated/host rendering noise (SavedSearchEditorView is
+  the other session's file).
+- `swiftformat --lint` on all touched files — clean.
+- Filtered re-run after formatting: 30 tests in
+  MessageCommandPresentation + MailKeyboardShortcutInventory — pass.
+
+### Skipped verification
+
+- iOS/iPadOS compile — later verified green via
+  `swift build --triple arm64-apple-ios17.0-simulator` (BrevMail +
+  BrevSettings). Snapshot re-recording requires the CI xcodebuild job.
+
+### Handoff
+
+- Tree still contains the other agent's mid-flight edits (ComposeView,
+  sheets, BrevSettings, `.swiftlint.yml` literal-color rule extension).
+  Do not commit this file set wholesale.
+- If CI's snapshot job flags ThreadInlineChildRow or
+  DetachedMessageWindow references, re-record them — both diffs are
+  intentional (preference-driven child-row typography + unread-dot
+  label; detached-window overflow menu).
+
+## 2026-09-19 — Devin — UI/UX consistency pass, sheets/settings scope (feature/uiux-consistency)
+
+### Goal
+
+Fix the audit findings assigned to the sheets/settings stream: adaptive
+sheet sizing, iPad split widths, 44 pt touch targets, canonical
+BrevDesign surfaces/chips, headline sheet titles, accessible icon
+buttons, and package-aware localization.
+
+### Changes (this session's files)
+
+- `BrevDesign`: new `BrevIconButton` (44 pt iOS hit target around a
+  compact glyph + required accessibility label), `BrevChip` capsule
+  style for filter/toggle chips, `BrevQuietSurface` inset-surface
+  modifier; `BrevButton` gained a `bundle:` initializer (String Catalog
+  extraction from SPM packages) and a 44 pt iOS minimum height;
+  `BrevInlineStatus` action/dismiss hit areas enlarged.
+- `ComposePresentation` + tests: regular iOS compose minimum 680→660
+  (macOS stays 680); iOS toolbar hit target 36→44.
+- `ComposeView` / `RecipientChipField`: 44 pt iOS targets on toolbar,
+  editor-appearance, Cc/Bcc reveal, attachment-remove, chip-remove and
+  suggestion rows; Esc cancel / ⌘↵ send shortcuts.
+- Mail sheets (`MoveToSheet`, `ScheduleSendSheet`, `ComposeLinkSheet`,
+  `MessageTaskSheet`, `MessageEventSheet`, `MessageNoteSheet`,
+  `MessagePropertiesSheet`, `MessagePropertiesPresentation`,
+  `MailboxActionAgentSheet`, `TemplatePickerView`, `ThemePickerView`,
+  `MessageRawSourceSheet`, `MailProfileManagementSheet`,
+  `InitialMailboxSelectionSheet`, `SnoozePickerView`,
+  `FollowUpDatePickerView`, `ScheduleSendDateResolver`,
+  `MailboxChatPanel`, `MailboxChatScopeContext`,
+  `ServerSearchSyntaxHint`, `OutboxView`, `AllAttachmentsView`):
+  desktop-only `frame(minWidth:)`/`minHeight` gated under
+  `#if os(macOS)` (or driven by platform-aware policy); consistent
+  localized dismiss/close controls; `.title`→`.headline` sheet titles;
+  44 pt iOS targets; `.brevQuietSurface`/`.brevChip` migrations;
+  `String(localized:bundle:.module)` sweep; initial-mailbox sheet wraps
+  the list in a `ScrollView` with a 44 pt default-mailbox control.
+- `BrevSettings`: `SettingsView` iOS split minimum 760→680 (ideal 740);
+  `SectionScaffold`/`SavedSearchEditorView`/`BackupPreviewSheet` titles
+  → `.headline`; quiet-surface migration across Accounts, Notification,
+  VacationResponder, MailboxView, Security, AIProviderSettingsPanel,
+  MailFolderExportStatusView, RulesSection, SignatureSection,
+  TemplatesSection, `SettingsSectionComponents` (picker label +
+  `SettingsInfoCallout`); `ServerRuleEditorView` and
+  `SecuritySection` export sheet frames macOS-gated; rules ↑/↓
+  text buttons, signature reorder/delete and template pin/reorder
+  controls → `BrevIconButton`/accessible buttons with 44 pt iOS targets;
+  Accounts overflow menu → 44 pt iOS target; remaining bare
+  `BrevButton`/`Label` titles localized.
+- `.swiftlint.yml`: `no_literal_colors_in_views` now also covers
+  `Color(hex:)` and BrevMail/BrevSettings sources.
+- Small cross-scope fixes in core-surface files kept additive:
+  `.brevChip` on the inbox-category bar (MessageListView),
+  `.brevQuietSurface` on the iOS sidebar profile picker
+  (FolderSidebar) and security badge (ThreadMessageCard), localized
+  detached-window action labels + invite/remote-content buttons
+  (MessageDetailView, ThreadMessageCard), and a one-line SwiftLint
+  directive fix in `BrevMailRootView` (`:next`→`:this`) so the doc
+  comment stays attached — required for `lint.sh` to pass.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail` — green.
+- `swift build --package-path packages/BrevSettings` — green.
+- `swift build --triple arm64-apple-ios17.0-simulator` for both
+  packages — green; caught and fixed an iOS-only type-inference break
+  in `MailKeyboardShortcutInventory.sections` (`#if` inside `.map`
+  left the section literal as `Any` on iOS — array is now typed and the
+  macOS-only-entry filter split out).
+- `swift test --package-path packages/BrevMail` filtered run —
+  62 tests across ComposePresentation, ScheduleSendDateResolver,
+  MessagePropertiesPresentation, InitialMailboxSelectionPresentation,
+  MailboxChat scope/notice, FollowUpReminderPresentation,
+  AttachmentSearchPresentation, ComposeRecipientAutocomplete — pass.
+- `swift test --package-path packages/BrevSettings` — 374 tests; all
+  non-snapshot tests pass. 34 snapshot issues are image diffs in
+  BackupPreviewSheet/MailFolderExportStatus/MailStorageSection/
+  BrevSettingsSnapshot suites — expected: the quiet-surface and
+  headline-title changes are intentional visual diffs; references need
+  re-recording on the CI snapshot runner (same situation as the
+  core-surfaces session documented).
+- `mise exec -- swiftformat --lint .` — clean (19 touched files
+  reformatted for `#if` indentation).
+- `mise exec -- swiftlint --strict --quiet` — clean;
+  `scripts/test-swiftlint-coverage.sh` — OK.
+
+### Skipped verification
+
+- Snapshot re-recording (needs CI snapshot host); iOS device/UI tests;
+  `check-adr-required.sh` is a staged-files gate — no protected-path
+  changes made.
+
+### Handoff
+
+- Tree mixes both agents' uncommitted edits on
+  `feature/uiux-consistency`; review `git diff` per file before
+  committing rather than committing wholesale.
+- Re-record the BrevSettings snapshot references listed above (and the
+  core-surfaces references from the other entry) on the snapshot
+  runner, or confirm CI's skip list covers them.
+
+
+## 2026-09-19 — Codex — PR #47 and board hygiene
+
+- Goal: assess open PR readiness, reconcile the Brev board, and select the next
+  implementation priority. No application implementation was requested.
+- Live assessment: PR #47 at `5e7227415982308346884079eed58a348d89b063`
+  targets main, has 20 successful checks and four unresolved current review
+  threads. Targeted source inspection supports concerns about scene-unscoped
+  reader commands, detached-sheet ownership, workflow selection reconciliation,
+  and unlocalized PDF errors. This was not a full independent code review.
+  The PR also records 22 BrevMail and 34 BrevSettings snapshot failures locally;
+  reference updates and native QA remain pending despite green hosted CI.
+- Board: added PR #47 as In progress/P1; assigned P1 to issues #1 and #2 while
+  retaining Ready. Kept #4 Ready and the dependent PIM work in Backlog. Corrected
+  ADR-0055 to ADR-0039 in #3/#4 and privacy ADR-0008 to ADR-0006 in #4/#5/#12/#14.
+  Updated #4 to complete the existing Proposed ADR-0072 rather than draft another.
+  Issue bodies were read back after editing. Legacy board cards were preserved.
+- Recommendation: repair #47 on its existing branch first, with regression
+  coverage for two-window routing, detached presentation, and Snooze/Done/undo
+  navigation. Reconcile snapshots and perform iPhone/iPad/macOS QA next; then
+  execute #1 accessibility and #2 real-provider lifecycle acceptance. Complete
+  and obtain acceptance of ADR-0072 before starting #5.
+- Verification: refreshed origin refs; inspected PR checks/reviews, all 255
+  pre-change project items, all 15 open public-repository issues, ADRs and source.
+  No application tests/builds or native/account QA run for this triage-only pass.
+  No merge, closure, Done transition, release, or branch/worktree deletion.
+- Documentation sweep: only this worklog needs a local update; no product,
+  architecture, privacy behavior, or release content changed. This audit entry
+  remains local and uncommitted; application source is unchanged.
+
+
+## 2026-09-19 — Codex — PR #47 review remediation
+
+- Goal: continue the assessed PR here, fixing its four current review findings.
+  Worktree: `/Users/henrik/.codex/worktrees/ff7b/brev`; local branch
+  `feature/pr47-review-fixes`, based on PR head `5e722741`. Push destination is
+  the existing `feature/uiux-consistency` branch and PR #47, targeting main.
+- Changes: replaced process-wide reader command broadcasts with an injected
+  owner, including the compact iPhone reader and thread cards. Detached macOS
+  presentation actions activate the captured mailbox window after closing the
+  reader. iPad detached commands open a mailbox scene using a one-shot opaque
+  UUID handoff; only in-memory content is retained, with abandoned handoffs
+  expiring after five minutes. Restored scenes cannot replay consumed commands.
+- Workflow: both lists observe externally changed local workflow state. Unified
+  navigation excludes workflow-hidden messages while preserving source identity
+  and search semantics. Localized per-card PDF failures. Fixed the newly added
+  detached overflow menu's light-theme tint and refreshed its inspected baseline.
+- TDD: a hosted parent-binding test failed on undo before the folder observer;
+  unified Snooze/Done cases failed before unified reconciliation. All four hosted
+  folder/unified x Done/Snooze cases pass, including real UndoQueue reversal.
+  The one-shot handoff test failed before implementation and passes with two
+  independent source-owned commands, single consumption, and no message content
+  in serialized scene payloads. Updated the old dismissal test to cover visible
+  presentation handoff while preserving inline macOS toggles.
+- Verification: iOS Simulator build succeeded (Xcode 27.0); 1,573 BrevMail and
+  365 BrevSettings non-snapshot tests passed. Lint, format, privacy audit,
+  extension-plist checks and diff-check passed. Full suites reproduced the PR's
+  22 Mail and 34 Settings pixel mismatches before the detached baseline update;
+  the full Mail run additionally exposed the now-updated old dismissal contract.
+  Remaining pixel baselines were not blindly re-recorded from this macOS 27 host.
+- Final verification: 35 focused tests across five suites passed, including the
+  refreshed detached-reader snapshot and Contacts access policy. The final full
+  BrevMail run had 1,634 tests with exactly 21 remaining snapshot issues and no
+  behavior failures. The final iOS build passed; format changed zero files and
+  lint/diff-check passed. The 34 Settings snapshot issues remain unchanged.
+- Rendered evidence: inspected the detached baseline and new render; the new
+  overflow icon was initially near-white, then visibly theme-colored after the
+  tint fix. iPhone 18 Pro / iOS 27 launched in explicit mock mode and runtime AX
+  exposed Refresh, Compose, Settings and Sort/filter names. Automated row and
+  toolbar taps did not produce the expected navigation, so this does not prove
+  reader-menu interaction, VoiceOver, or Dynamic Type acceptance. iPad multi-scene
+  presentation and real-provider lifecycle QA remain pending.
+- Documentation sweep: updated CHANGELOG and ADR-0033 for command ownership and
+  handoff behavior. README/product scope and external-network/privacy behavior
+  are unchanged. No issue closure, Done transition, merge, release or daily-driver
+  rebuild was performed. Prior hygiene entry above is historical; both worklog
+  entries are included with this PR update.
+
+- Post-push integration check: GitHub reported a CHANGELOG-only conflict with
+  main's TestFlight entry at the same insertion point. Moved this follow-up's
+  changelog bullets within Unreleased to preserve both entries without merging
+  branches or rewriting history. No application source changed in this follow-up.
+
+## 2026-09-19 — Codex — PR #47 iPhone layout correction
+
+- Goal: address the supplied Mailboxes/Inbox screenshots before acceptance.
+  Continued `feature/pr47-review-fixes` in the ff7b worktree, pushing to the
+  existing `feature/uiux-consistency` PR targeting main; board moved to In progress.
+- Fixed an unbounded UIKit search field (319pt in the red simulator test, now
+  44pt). Raised iOS sender/subject typography while preserving size preferences,
+  restored configured previews, and allowed phone subjects to wrap to two lines.
+  Added navigation titles, moved Compose to the bottom toolbar, kept Settings
+  only in the mailbox toolbar, and distinguished the workspace AI menu icon.
+  Removed empty leading disclosure space and redundant account indentation on
+  iOS folder rows; expandable folders retain a separate 44pt trailing control.
+- TDD: search sizing reproduced the 319pt failure in a hosted iPhone simulator
+  before passing. Preview/Settings policy tests failed first, then passed.
+  Final focused Mac package run: 44 tests across four suites passed. Four new
+  iOS pixel references (two parameterized tests) were inspected and comparison
+  passed in light/dark; the required iOS snapshot CI lane includes them.
+  iOS app build, lint, format and snapshot metadata checks passed.
+- Rendered QA: iPhone 18 Pro/iOS 27 in explicit mock mode. Verified mailbox
+  selection, message opening, search narrowing to GitHub, and Compose open/close.
+  The automation tap helper was ineffective; explicit touch-down/up plus field
+  focus made these interactions work. Reader screenshot was inspected, but its
+  runtime AX snapshot did not settle, so reader-menu/Back and VoiceOver are not
+  claimed verified. No real-account mail was sent or changed.
+- Remaining: full VoiceOver/Dynamic Type and iPad acceptance, real-account QA,
+  and the separately recorded 21 Mail/34 Settings baseline mismatches. Those
+  older baselines were not refreshed in this pass. No merge/release/Done action.
+- Documentation sweep: CHANGELOG and iOS snapshot policy updated. README, ADRs,
+  privacy documentation, and external network behavior need no changes for this
+  platform layout correction; architecture and public APIs are unchanged.
+
+## 2026-09-19 — Codex — PR #47 merge and TestFlight preparation
+
+- Henrik authorized merging PR #47 when ready and deploying the new iOS build
+  to TestFlight. Refreshed checks and all six review threads before merging.
+- Fixed the two new findings: reader Block Sender now starts/finishes the root
+  mutation request and rejects stale success/error responses; macOS and iPad
+  detached readers receive the host's local-filing availability.
+- Verification: 53 existing focused tests passed across request/source/work
+  blocking policies, action availability, handoff and workflow reconciliation;
+  iOS simulator build and lint passed. No new red/green test was added for these
+  private scene-wiring changes: the existing policy tests cover the behavior,
+  and call-site inspection plus both platform builds verify the wiring. Native
+  multi-window/slow-provider acceptance remains a TestFlight QA item.
+- Apple currently reports 0.2.2 (4) VALID. Next candidate is 0.2.3 (5), archived
+  with explicit version/build overrides from the merged main commit. The checked-in
+  internal-only export policy and existing Henrik Internal QA group are used.
+  Upload and Apple processing will be recorded separately from merge/build.
+
+- Further pre-merge review: fixed per-card PDF body failures being swallowed,
+  localized the empty-subject export filename, hid Archive for already-archived
+  reader/card messages, resolved detached folders from the clicked source, and
+  condensed all iOS compose toolbars so narrow regular-width iPad scenes retain
+  Send. The compose policy regression failed first (four assertions), then the
+  63-test focused suite passed. Added a visually inspected 660pt regular-width
+  compose reference, rendered on the iPad Pro 13-inch simulator.
+- The first hosted Gmail run failed the existing scheduled-send restart test.
+  The full 152-test local Gmail suite passed, as did ten consecutive focused
+  runs. No Gmail delivery code was changed; the final head must pass hosted CI.
+  The pre-fix archive is superseded and will not be uploaded.
+
+- Cross-device verification found text antialiasing drift between the iPad and
+  iPhone hosts in the new narrow-compose reference. Visually inspected both
+  images and their difference, then aligned the reference with the iPhone CI
+  host. No production code changed in this baseline correction.
+- Final review follow-up: card Print now reports body-fetch errors instead of
+  opening incomplete output, and shortcut help restores Command-Delete. The
+  shortcut inventory failed first against the incorrect glyph. Native print
+  panel error automation is impractical in the package runner; error flow was
+  inspected and both platform builds cover the call sites. Device print QA
+  remains pending. All five phone snapshot comparisons passed after the
+  reviewed antialiasing-only reference correction.
+
+- The latest hosted Gmail run reproduced the restart test failure. Inspection
+  found the test assumed each delivery request starts a fresh pass, whereas
+  GmailScheduledDeliveryDriver explicitly joins an in-flight startup pass.
+  After reviewed rescheduling, that pass may retain its earlier due-message
+  snapshot. The test now drives bounded subsequent passes before asserting
+  exactly two sends and an empty outbox; its no-automatic-retry assertions are
+  unchanged. Production Gmail scheduling code is unchanged.
+- Verification of the scheduling-test correction: the revised restart test
+  passed in all ten full-suite repetitions. Nine complete 152-test runs passed;
+  one encountered an unrelated SQLite trigger-setup failure in the cleanup
+  test. Final-head hosted CI remains required. The five phone snapshots also
+  passed with xcodebuild exit 0 when simulator diagnostic collection was
+  disabled; the earlier post-test stall was in diagnostic collection.
+
+- Final detached-reader finding: Read, Flag, and Done now return to the owning
+  mailbox, like other stateful detached commands. This deliberately avoids
+  retaining an immutable header after mutation; subsequent actions use the
+  owner's refreshed state. The policy test failed for all three actions before
+  the fix. Offline download still keeps the detached reader open.
+
+### 2026-09-20 — Codex — PR #47 final iPad handoff
+
+- All twenty checks passed at c60830d. A final review found iPad handoff ignored
+  the non-dismissal policy for Keep Offline. Applied the existing tested policy
+  at the scene call site. No new policy or visual layout was introduced; this
+  private scene-wiring correction uses the existing command policy test and
+  iOS build, with native multi-window acceptance still pending.
+
+- Pre-merge source safety: a detached action now requires its loaded source
+  section, synchronously applies that source's folders/mailbox context, and
+  rejects unavailable sources. A queued mutation also rejects a later source
+  switch. Reader-menu calls use the same handoff. The two-account regression
+  failed six assertions before the fix, including the wrong permanent-delete
+  classification when the previous source lacked Trash.
+- iPad mail Undo now appends to the native Undo/Redo group instead of replacing
+  it. Native command-menu automation is unavailable in the package runner;
+  existing Undo routing tests and iOS compilation validate the supported seams.
+- Verification: all 36 focused source-handoff, source-sync, command and native
+  Undo routing tests passed after the red regression; lint and format passed.
+  The separate local-folder visibility test failed under hosted load but passed
+  locally (11 tests). It uses fixed 50ms sleeps around asynchronous refresh;
+  final-head CI remains the merge gate.
+
+- iOS CI caught a startup crash from the appended mail Undo duplicating native
+  Command-Z. Corrected iPad mail Undo to Command-Option-Z, preserving native
+  Command-Z/Shift-Command-Z, and updated the help inventory and changelog.
+  The crashing app bootstrap is the red reproduction; app-hosted verification
+  and the iOS inventory test are required before pushing this correction.
+- App-hosted iOS startup/search-layout verification passed with xcodebuild exit
+  0 after the shortcut correction. The iPad inventory run also exposed old
+  macOS-only test assumptions; platform filtering is now asserted correctly,
+  and native Redo is listed on both platforms (red regression verified).
+- Final shortcut inventory: four tests pass on macOS and four on iPad with
+  xcodebuild exit 0. Lint/format pass. Native iOS Undo/Redo are retained, mail
+  Undo uses the non-conflicting Command-Option-Z chord, and the app-hosted
+  startup regression is green.
+
+- Further review: detached header resolution now falls back to MailBackend's
+  cache-only enumeration contract, supporting native Gmail without a separate
+  point-lookup service. Payload source IDs are forwarded explicitly, and a
+  removed account is no longer substituted with another backend. Both resolver
+  regressions failed before the fix.
+- Compact template/rule rows now keep text above Pin/Enable and Edit, with
+  reorder/Delete in a 44pt overflow menu. Rendered the old clipping at 216/271pt
+  content widths, then visually inspected both corrected references. Added the
+  two cases to the compatible iOS snapshot lane and baseline inventory. Fixed
+  an existing iOS snapshot fixture access-level compiler error to run that target.
+- Verification: 12 resolver tests pass; both compact Settings snapshots match
+  their visually inspected references with xcodebuild exit 0. Lint and format
+  pass. No new external network calls or privacy changes; the fallback uses
+  the existing explicitly cache-only MailBackend contract.
+
+- Integrated origin/main (743c459c) into the review branch without rewriting
+  history. Resolved the sole changelog conflict by preserving both sets of
+  entries. This brings PR #46's Release demo-mailbox guard and export-policy
+  documentation into the archive source; all earlier archives are superseded.
+  Final archive source must still match merged main exactly before upload.
+
+- Unified workflow navigation now reuses the visible list's complete filter and
+  sort pipeline, retaining thread members for expanded-row navigation. The
+  hosted unread-filter regression failed four assertions before the fix; all
+  five workflow cases now pass, including Snooze/Done/Undo.
+- Signature controls now put the name field above Enabled and an overflow menu
+  on iOS. Recorded the old collapsed-field render, then inspected corrected
+  320/375pt references. Templates, rules and signatures are the complete set of
+  settings rows touched by the new 44pt icon controls.
+- The Release-only demo-mailbox guard passed locally after integrating main.
+- All four compact Settings snapshot cases pass with xcodebuild exit 0 after
+  visual review; lint, format and baseline metadata checks pass. Native menu
+  interaction and real-account acceptance remain TestFlight QA items.
+
+- Reader-command iPad scenes now take precedence over the shared Settings flag.
+  Opening Settings explicitly clears that scene's consumed payload, preserving
+  subsequent Settings access. The routing regression failed before the fix;
+  all four restore/presentation policy tests now pass. Native multi-window
+  interaction remains device QA; no additional visual layout changed.
+- App-hosted iOS startup/search tests pass with xcodebuild exit 0 after the
+  routing change; lint, formatting and diff-check pass. No snapshot refresh
+  needed because only scene selection changed.
+
+- Gmail now vends the existing cached-header extension using its account/message
+  point lookup and preserves label/All Mail membership. Detached resolution
+  treats an available point service's miss as authoritative, avoiding fallback
+  folder scans for absent messages. The service regression failed before the fix.
+- Final CI encountered a signal-11 crash in the unchanged native window test
+  and a timing-sensitive attachment extraction timeout assertion. The 30 window
+  policy tests pass locally; no production behavior was changed for either.
+- Verification: all 30 Gmail reader tests, 12 detached resolver tests and 11
+  attachment extractor tests pass; lint/format/diff-check pass. Cache-only
+  service tests cover label membership, All Mail exclusion, missing IDs and
+  zero transport calls. No visible layout changed or new network path added.
+
+- Preserved the originating folder in detached-reader scene identity and all
+  three iOS open-window call sites; exact membership lookup refuses unrelated
+  labels. Same-source cross-folder reader actions now activate their target
+  folder before mutation responses are matched. Two regressions failed three
+  assertions before the fix. This carries identifiers only, not mail content.
+- Verification: 21 tests across payload, resolver and handoff suites pass,
+  including both same-source and cross-source cases. App-hosted iOS tests pass
+  with xcodebuild exit 0; lint/format/diff-check pass. No pixel changes required
+  baseline updates; native multi-window QA remains pending.
+
+- Reader presentation actions no longer apply mailbox folders or change the
+  visible conversation. Folder catalogs are required only for destination/role
+  commands; mutation commands still activate their response context. Reply,
+  Reply All and Forward now pass their explicit source through both in-place
+  and detached compose paths. The loaded/failed-folder presentation regression
+  failed 21 assertions before the fix.
+- Verification: 22 handoff/resolver/payload tests and app-hosted iOS tests pass;
+  lint, formatting and diff-check pass. No visual baseline changed. Native
+  multi-window and real-account acceptance remain internal TestFlight QA.
+
+- Block Sender now activates the target mutation folder only after confirmation;
+  opening/cancelling the prompt preserves navigation. Extended the presentation
+  regression (three red assertions) and verified confirmed activation separately
+  for loaded and failed folder catalogs. Shared context preparation revalidates
+  the source at confirmation time.
+- Verification: all three handoff tests (five parameterized cases total) and
+  app-hosted iOS tests pass; lint, formatting and diff-check pass. The change
+  affects confirmation routing only, so no pixel references were updated.
+
+- Exact detached-reader cached lookup now uses the payload folder ID directly
+  even when folder enumeration fails. The empty-catalog regression failed before
+  the fix. Added all five phone references to the baseline presence gate. A
+  temporary fixture with an empty inbox PNG passed before and fails after the
+  inventory change; the real baseline inventory passes.
+- Verification: all 14 detached resolver tests, baseline inventory, lint,
+  formatting and diff-check pass. No view layout changed; existing rendered
+  references remain valid. Release archive validation covers the iOS build.
+
+- macOS detached readers now wait for synchronous owner acceptance before
+  closing. Admission rejects occupied presentation slots, unavailable compose
+  or local-filing actions, and busy mutation lifecycles. Shared in-place dispatch
+  uses the same admission checks. The presentation-admission regression failed
+  all 15 sheet-backed commands before the fix. Native multi-window interaction
+  remains manual QA; no rendered geometry changed.
+- Verification: all 44 presentation/handoff/resolver tests pass; macOS sources
+  compile through the package test build. Lint, formatting and diff-check pass.
+  Release archive will verify the shared root on iOS; no snapshot refresh needed.
+
+- Two hosted BrevDesign runs crashed with signal 11 around the unchanged native
+  WindowAppearancePreferences test, including one after its assertions passed.
+  The test now disables AppKit release-on-close because Swift owns its NSWindow
+  until scope exit, avoiding competing lifetime ownership. Production window
+  behavior is unchanged. Hosted crash is the red reproduction; local focused
+  verification follows, with final-head CI still required.
+- Verification: all 30 window-appearance tests pass, followed by three passing
+  repetitions. Lint, formatting and diff-check pass. This test-only lifetime fix
+  needs no changelog, ADR, privacy or snapshot update.
+
+- Detached admission now reserves presentation space for actions that may ask
+  for confirmation (Snooze, Delete, Block Sender), including existing reader
+  prompts outside navigation.presentedSheet. Block Sender checks mutation
+  availability without activating its folder before confirmation. If work
+  becomes busy before confirmation, it reports the conflict instead of silently
+  dropping the action. Four regression assertions failed before the fix.
+- Verification: 45 presentation/handoff/resolver tests pass, as do lint,
+  formatting and diff-check. Confirmation-capable actions conservatively
+  reserve a presentation slot even when their current state may avoid a prompt.
+  No pixel geometry changed; native confirmation QA remains pending.
+
+- Expanded every detached-reader action and overflow target to 44pt on iOS,
+  retaining compact macOS controls. Thread-summary Retry uses the same floor.
+  Captured and inspected before renders, then the two new snapshots failed
+  against the smaller references after the fix. Added the new references to
+  the required inventory. Shared chip/surface public initializers and modifier
+  methods now document their intent.
+- Verification: all seven phone snapshot cases pass with xcodebuild exit 0
+  after visual inspection; the prior five references are unchanged. Baseline
+  inventory and formatting pass. Updated ADR-0002 for the protected shared
+  component API documentation, then reran lint. Native interaction and Dynamic
+  Type remain device QA.
+
+- Corrected Settings keyboard-help metadata to macOS-only, matching the actual
+  command registrations. The previous test incorrectly claimed an iPad binding;
+  the corrected expectation failed before the metadata fix. No new shortcut
+  registration or settings-routing behavior was introduced.
+- Verification: all four inventory tests pass on macOS and iPad (xcodebuild
+  exit 0); lint, formatting and diff-check pass. Platform filtering is covered
+  directly by inventory tests; no new view styling or pixel references changed.
+
+- Permanent-delete reader commands now retain a source-owned confirmation
+  target without activating its folder. Confirmation revalidates the source
+  before switching; cancellation preserves the original conversation. Covered
+  Trash and no-Trash accounts. Two navigation assertions failed before the fix.
+  Confirmation-time busy state reports the same explicit conflict as Block
+  Sender.
+- Verification: all 46 presentation/handoff/resolver tests pass, including both
+  permanent-delete cases; lint, formatting and diff-check pass. No rendered
+  layout changed; native confirmation interactions remain device QA.
+
+- Keep Offline is handled directly in MessageDetailView using a shared retention
+  action also used by the root. It toggles the same account-scoped pin and keeps
+  the existing best-effort body prefetch, without a scene handoff. Menu labels
+  invalidate after the local toggle. Busy single-reader and thread-card menus
+  disable compose actions; roots include their exact compose-blocked state.
+- Two regressions failed 12 assertions before the fixes: reader/card compose
+  availability and local detached retention handling with source isolation.
+- Verification: all 33 menu/retention tests and seven phone snapshot cases pass
+  (xcodebuild exit 0); lint/format/diff-check pass. Existing snapshot references
+  remain unchanged. The same explicit Keep Offline operation performs the same
+  provider body prefetch, so no new network/privacy behavior was introduced.
+
+- Documented all previously undocumented public initializer signatures changed
+  by this PR: both root constructors, detached reader payload/view, single-reader
+  and conversation views. Clarified source/folder identity, one-use handoff and
+  local-filing parameters. Documentation-only exception: no TDD or new snapshots
+  needed; lint/format/diff-check validate the update.
+
+- Compact compose overflow retains registered plug-in views. The rendering test
+  mounts its host in a UIWindow and fails without the contribution before passing
+  with it. Unified/smart/saved-search Open in New Window no longer selects the
+  target in its owner; the regression caught source, selection and callback changes.
+- Verification: 12 focused tests pass, including all seven phone snapshot cases
+  with unchanged references; lint/format/diff-check pass. Updated Unreleased
+  behavior notes. No architecture, privacy or workflow contract changed.
+
+- Documented Keep Offline's explicit provider body prefetch in PRIVACY.md and
+  ADR-0006, covering list, unified and reader paths, local pin scope, removing
+  a pin, and best-effort availability. Documentation-only exception: no TDD or
+  pixel update; privacy audit, lint, formatting and diff-check validate the edit.

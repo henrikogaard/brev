@@ -123,11 +123,15 @@ public enum MessageCommandPresentation {
     }
 
     public static func readToggleTitle(for header: MessageHeader) -> String {
-        header.isRead ? "Mark as Unread" : "Mark as Read"
+        header.isRead
+            ? String(localized: "Mark as Unread", bundle: .module)
+            : String(localized: "Mark as Read", bundle: .module)
     }
 
     public static func flagToggleTitle(for header: MessageHeader) -> String {
-        header.isFlagged ? "Unflag" : "Flag"
+        header.isFlagged
+            ? String(localized: "Unflag", bundle: .module)
+            : String(localized: "Flag", bundle: .module)
     }
 
     public static func flagToggleSymbolName(for header: MessageHeader) -> String {
@@ -398,12 +402,15 @@ public enum MessageCommandPresentation {
         folders: [Folder]
     ) -> String? {
         let isInSpam = currentFolder?.role == .spam
+        let title = isInSpam
+            ? String(localized: "Not Junk", bundle: .module)
+            : String(localized: "Report Junk", bundle: .module)
         if capabilities.contains(.junkAPI) {
-            return isInSpam ? "Not Junk" : "Report Junk"
+            return title
         }
         return junkFallbackFolder(isJunk: !isInSpam, folders: folders) == nil
             ? nil
-            : (isInSpam ? "Not Junk" : "Report Junk")
+            : title
     }
 
     public static func junkFallbackFolder(
@@ -442,6 +449,133 @@ public enum MessageCommandPresentation {
         extendedCapabilities: BackendExtendedCapabilities = [],
         canExportEML: Bool = false
     ) -> MessageContextMenuPresentation {
+        messageMenu(
+            for: header,
+            includesRowActions: true,
+            isSelected: isSelected,
+            isPinned: isPinned,
+            isSnoozed: isSnoozed,
+            isDone: isDone,
+            isKeptOffline: isKeptOffline,
+            hasNote: hasNote,
+            canOpenInNewWindow: canOpenInNewWindow,
+            canArchive: canArchive,
+            canMove: canMove,
+            canCopyToFolder: canCopyToFolder,
+            canFileLocally: canFileLocally,
+            junkActionTitle: junkActionTitle,
+            canBlockSender: canBlockSender,
+            canDelete: canDelete,
+            canCreateTask: canCreateTask,
+            canCreateRule: canCreateRule,
+            canCreateMeeting: canCreateMeeting,
+            canAddNote: canAddNote,
+            canFollowUp: canFollowUp,
+            hasFollowUp: hasFollowUp,
+            canReply: canReply,
+            canPrint: canPrint,
+            canExportPDF: canExportPDF,
+            canShowProperties: canShowProperties,
+            extendedCapabilities: extendedCapabilities,
+            canExportEML: canExportEML
+        )
+    }
+
+    /// The reader-surface menu (reader overflow, body context menu, detached
+    /// windows): the same capability-gated message inventory as the row context
+    /// menu minus row-only actions (`Select`, `Pin to Top`). Every action must
+    /// be reachable by the surface that renders it — pass `false` for any
+    /// capability with no handler so the item is omitted rather than dead.
+    static func readerMenu(
+        for header: MessageHeader,
+        isSnoozed: Bool,
+        isDone: Bool,
+        isKeptOffline: Bool = false,
+        hasNote: Bool = false,
+        canOpenInNewWindow: Bool = false,
+        canArchive: Bool,
+        canMove: Bool,
+        canCopyToFolder: Bool = false,
+        canFileLocally: Bool = false,
+        junkActionTitle: String?,
+        canBlockSender: Bool,
+        canDelete: Bool,
+        canCreateTask: Bool = true,
+        canCreateRule: Bool = true,
+        canCreateMeeting: Bool = true,
+        canAddNote: Bool = true,
+        canFollowUp: Bool = true,
+        hasFollowUp: Bool = false,
+        canReply: Bool = true,
+        canPrint: Bool = false,
+        canExportPDF: Bool = false,
+        canShowProperties: Bool = false,
+        extendedCapabilities: BackendExtendedCapabilities = [],
+        canExportEML: Bool = false
+    ) -> MessageContextMenuPresentation {
+        messageMenu(
+            for: header,
+            includesRowActions: false,
+            isSelected: false,
+            isPinned: false,
+            isSnoozed: isSnoozed,
+            isDone: isDone,
+            isKeptOffline: isKeptOffline,
+            hasNote: hasNote,
+            canOpenInNewWindow: canOpenInNewWindow,
+            canArchive: canArchive,
+            canMove: canMove,
+            canCopyToFolder: canCopyToFolder,
+            canFileLocally: canFileLocally,
+            junkActionTitle: junkActionTitle,
+            canBlockSender: canBlockSender,
+            canDelete: canDelete,
+            canCreateTask: canCreateTask,
+            canCreateRule: canCreateRule,
+            canCreateMeeting: canCreateMeeting,
+            canAddNote: canAddNote,
+            canFollowUp: canFollowUp,
+            hasFollowUp: hasFollowUp,
+            canReply: canReply,
+            canPrint: canPrint,
+            canExportPDF: canExportPDF,
+            canShowProperties: canShowProperties,
+            extendedCapabilities: extendedCapabilities,
+            canExportEML: canExportEML
+        )
+    }
+
+    // swiftlint:disable:next function_parameter_count
+    private static func messageMenu(
+        for header: MessageHeader,
+        includesRowActions: Bool,
+        isSelected: Bool,
+        isPinned: Bool,
+        isSnoozed: Bool,
+        isDone: Bool,
+        isKeptOffline: Bool,
+        hasNote: Bool,
+        canOpenInNewWindow: Bool,
+        canArchive: Bool,
+        canMove: Bool,
+        canCopyToFolder: Bool,
+        canFileLocally: Bool,
+        junkActionTitle: String?,
+        canBlockSender: Bool,
+        canDelete: Bool,
+        canCreateTask: Bool,
+        canCreateRule: Bool,
+        canCreateMeeting: Bool,
+        canAddNote: Bool,
+        canFollowUp: Bool,
+        hasFollowUp: Bool,
+        canReply: Bool,
+        canPrint: Bool,
+        canExportPDF: Bool,
+        canShowProperties: Bool,
+        extendedCapabilities: BackendExtendedCapabilities,
+        canExportEML: Bool
+    ) -> MessageContextMenuPresentation {
         // Capability-driven gates (ADR-0045): actions backed by the message-copy
         // and raw-source seams appear only when the active backend advertises
         // them. Unsupported actions are HIDDEN, not shown disabled — disabling is
@@ -456,16 +590,34 @@ public enum MessageCommandPresentation {
         appendSection(
             &sections,
             actions: canOpenInNewWindow ? [
-                .init(action: .openInNewWindow, title: "Open in New Window", symbolName: "arrow.up.forward.square")
+                .init(
+                    action: .openInNewWindow,
+                    title: String(localized: "Open in New Window", bundle: .module),
+                    symbolName: "macwindow.on.rectangle"
+                )
             ] : []
         )
-        appendSection(
-            &sections,
-            actions: [
-                .init(action: .select, title: isSelected ? "Deselect" : "Select", symbolName: "checkmark.circle"),
-                .init(action: .pinToTop, title: isPinned ? "Unpin" : "Pin to Top", symbolName: "pin")
-            ]
-        )
+        if includesRowActions {
+            appendSection(
+                &sections,
+                actions: [
+                    .init(
+                        action: .select,
+                        title: isSelected
+                            ? String(localized: "Deselect", bundle: .module)
+                            : String(localized: "Select", bundle: .module),
+                        symbolName: "checkmark.circle"
+                    ),
+                    .init(
+                        action: .pinToTop,
+                        title: isPinned
+                            ? String(localized: "Unpin", bundle: .module)
+                            : String(localized: "Pin to Top", bundle: .module),
+                        symbolName: "pin"
+                    )
+                ]
+            )
+        }
         appendSection(
             &sections,
             actions: [
@@ -477,12 +629,16 @@ public enum MessageCommandPresentation {
                 .init(action: .toggleFlag, title: flagToggleTitle(for: header), symbolName: flagToggleSymbolName(for: header)),
                 .init(
                     action: .toggleSnooze,
-                    title: isSnoozed ? "Unsnooze" : "Snooze…",
+                    title: isSnoozed
+                        ? String(localized: "Unsnooze", bundle: .module)
+                        : String(localized: "Snooze…", bundle: .module),
                     symbolName: isSnoozed ? "alarm.waves.left.and.right" : "clock"
                 ),
                 .init(
                     action: .toggleDone,
-                    title: isDone ? "Mark as Not Done" : "Mark as Done",
+                    title: isDone
+                        ? String(localized: "Mark as Not Done", bundle: .module)
+                        : String(localized: "Mark as Done", bundle: .module),
                     symbolName: isDone ? "checkmark.circle.badge.xmark" : "checkmark.circle"
                 )
             ]
@@ -490,20 +646,44 @@ public enum MessageCommandPresentation {
         appendSection(
             &sections,
             actions: [
-                .init(action: .reply, title: "Reply", symbolName: "arrowshape.turn.up.left", isEnabled: canReply),
-                .init(action: .replyAll, title: "Reply All", symbolName: "arrowshape.turn.up.left.2", isEnabled: canReply),
-                .init(action: .forward, title: "Forward", symbolName: "arrowshape.turn.up.right", isEnabled: canReply)
+                .init(
+                    action: .reply,
+                    title: String(localized: "Reply", bundle: .module),
+                    symbolName: "arrowshape.turn.up.left",
+                    isEnabled: canReply
+                ),
+                .init(
+                    action: .replyAll,
+                    title: String(localized: "Reply All", bundle: .module),
+                    symbolName: "arrowshape.turn.up.left.2",
+                    isEnabled: canReply
+                ),
+                .init(
+                    action: .forward,
+                    title: String(localized: "Forward", bundle: .module),
+                    symbolName: "arrowshape.turn.up.right",
+                    isEnabled: canReply
+                )
             ]
         )
         var filingActions: [MessageContextMenuActionPresentation] = []
         if canArchive {
-            filingActions.append(.init(action: .archive, title: "Archive", symbolName: "archivebox"))
+            filingActions.append(.init(
+                action: .archive,
+                title: String(localized: "Archive", bundle: .module),
+                symbolName: "archivebox"
+            ))
         }
-        filingActions.append(.init(action: .move, title: "Move…", symbolName: "folder", isEnabled: canMove))
+        filingActions.append(.init(
+            action: .move,
+            title: String(localized: "Move…", bundle: .module),
+            symbolName: "folder",
+            isEnabled: canMove
+        ))
         if canCopyToFolder {
             filingActions.append(.init(
                 action: .copyToFolder,
-                title: "Copy to Folder…",
+                title: String(localized: "Copy to Folder…", bundle: .module),
                 symbolName: "folder.badge.plus"
             ))
         }
@@ -511,12 +691,12 @@ public enum MessageCommandPresentation {
         if canFileLocally {
             filingActions.append(.init(
                 action: .copyToLocalFolder,
-                title: "Copy to Local Folder…",
+                title: String(localized: "Copy to Local Folder…", bundle: .module),
                 symbolName: "externaldrive"
             ))
             filingActions.append(.init(
                 action: .moveToLocalFolder,
-                title: "Move to Local Folder…",
+                title: String(localized: "Move to Local Folder…", bundle: .module),
                 symbolName: "externaldrive.fill"
             ))
         }
@@ -526,47 +706,79 @@ public enum MessageCommandPresentation {
         if canBlockSender {
             filingActions.append(.init(
                 action: .blockSender,
-                title: "Block Sender…",
+                title: String(localized: "Block Sender…", bundle: .module),
                 symbolName: "person.crop.circle.badge.xmark",
                 role: .destructive
             ))
         }
         if canDelete {
-            filingActions.append(.init(action: .delete, title: "Delete", symbolName: "trash", role: .destructive))
+            filingActions.append(.init(
+                action: .delete,
+                title: String(localized: "Delete", bundle: .module),
+                symbolName: "trash",
+                role: .destructive
+            ))
         }
         appendSection(&sections, actions: filingActions)
-        var exportActions: [MessageContextMenuActionPresentation] = [
-            .init(action: .print, title: "Print…", symbolName: "printer", isEnabled: canPrint),
-            .init(action: .exportPDF, title: "Export as PDF…", symbolName: "doc.richtext", isEnabled: canExportPDF)
-        ]
+        var exportActions: [MessageContextMenuActionPresentation] = []
+        // Print/PDF are platform-gated (macOS row surfaces only): an unsupported
+        // action is omitted entirely rather than rendered as a dead disabled
+        // item — the same honesty rule as the capability gates above.
+        if canPrint {
+            exportActions.append(.init(
+                action: .print,
+                title: String(localized: "Print…", bundle: .module),
+                symbolName: "printer"
+            ))
+        }
+        if canExportPDF {
+            exportActions.append(.init(
+                action: .exportPDF,
+                title: String(localized: "Export as PDF…", bundle: .module),
+                symbolName: "doc.richtext"
+            ))
+        }
         if canSaveAs {
-            exportActions.append(.init(action: .saveAs, title: "Save As…", symbolName: "square.and.arrow.down"))
+            exportActions.append(.init(
+                action: .saveAs,
+                title: String(localized: "Save As…", bundle: .module),
+                symbolName: "square.and.arrow.down"
+            ))
         }
         exportActions.append(.init(
             action: .downloadOffline,
-            title: isKeptOffline ? "Stop Keeping Offline" : "Keep Offline",
+            title: isKeptOffline
+                ? String(localized: "Stop Keeping Offline", bundle: .module)
+                : String(localized: "Keep Offline", bundle: .module),
             symbolName: isKeptOffline ? "arrow.down.circle.fill" : "arrow.down.circle"
         ))
         appendSection(&sections, actions: exportActions)
         appendSection(
             &sections,
             actions: [
-                .init(action: .createTask, title: "Create Task…", symbolName: "checklist", isEnabled: canCreateTask),
+                .init(
+                    action: .createTask,
+                    title: String(localized: "Create Task…", bundle: .module),
+                    symbolName: "checklist",
+                    isEnabled: canCreateTask
+                ),
                 .init(
                     action: .createRule,
-                    title: "Create Rule from Message…",
+                    title: String(localized: "Create Rule from Message…", bundle: .module),
                     symbolName: "line.3.horizontal.decrease.circle",
                     isEnabled: canCreateRule
                 ),
                 .init(
                     action: .createMeeting,
-                    title: "Create Meeting from Message…",
+                    title: String(localized: "Create Meeting from Message…", bundle: .module),
                     symbolName: "calendar.badge.plus",
                     isEnabled: canCreateMeeting
                 ),
                 .init(
                     action: .addNote,
-                    title: hasNote ? "Edit Note…" : "Add Note…",
+                    title: hasNote
+                        ? String(localized: "Edit Note…", bundle: .module)
+                        : String(localized: "Add Note…", bundle: .module),
                     symbolName: hasNote ? "note.text" : "note.text.badge.plus",
                     isEnabled: canAddNote
                 ),
@@ -580,20 +792,25 @@ public enum MessageCommandPresentation {
                 ),
             ]
         )
-        var inspectActions: [MessageContextMenuActionPresentation] = [
-            .init(action: .properties, title: "Properties…", symbolName: "info.circle", isEnabled: canShowProperties)
-        ]
+        var inspectActions: [MessageContextMenuActionPresentation] = []
+        if canShowProperties {
+            inspectActions.append(.init(
+                action: .properties,
+                title: String(localized: "Properties…", bundle: .module),
+                symbolName: "info.circle"
+            ))
+        }
         if canShowHeaders {
             inspectActions.append(.init(
                 action: .showHeaders,
-                title: "Show Headers",
+                title: String(localized: "Show Headers", bundle: .module),
                 symbolName: "list.bullet.rectangle"
             ))
         }
         if canViewSource {
             inspectActions.append(.init(
                 action: .viewSource,
-                title: "View Source",
+                title: String(localized: "View Source", bundle: .module),
                 symbolName: "chevron.left.forwardslash.chevron.right"
             ))
         }

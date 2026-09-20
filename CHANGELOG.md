@@ -71,8 +71,52 @@ All notable changes to Brev are documented here.
   evaluation).
 - Automatic mail fetching now backs off after consecutive failures instead
   of polling a stuck account at full rate.
+- Cross-platform consistency: the iOS reader now exposes the same
+  capability-gated action menu as the message list (Reply All, Mark
+  Read/Unread, Move To, Snooze, Done, Block Sender, Print, Export PDF),
+  thread cards offer the same menu per message, and iPad can open a
+  detached reader window from list context menus. Sheets no longer carry
+  macOS minimum sizes on iOS, icon buttons meet the 44 pt touch target,
+  iPad hardware keyboards get ⌘⌥Z mail undo without replacing native text Undo/Redo, action labels share one
+  canonical wording, and shared `BrevIconButton`/quiet-surface/chip
+  components replace hand-rolled copies.
 
 ### Fixed
+
+- iOS compose overflow retains registered plug-in contributions, and opening
+  a unified-inbox message in another window preserves the original selection.
+
+- Keep Offline runs in detached readers without opening extra mailbox windows; busy readers disable Reply and Forward.
+
+- Cancelling permanent Delete preserves the conversation; confirmed deletion retains its source and folder.
+
+- iPad shortcut help no longer advertises the macOS-only Settings shortcut.
+
+- Detached-reader controls and thread-summary Retry use 44-point touch targets on iOS.
+
+- Reader actions reserve space for snooze/delete/block confirmations and reject Block Sender while the mailbox is busy.
+
+- macOS detached readers stay open when their mailbox cannot accept an action or present another dialog.
+
+- Offline detached readers resolve exact cached folder membership even when the folder catalog is unavailable.
+
+- Cancelling Block Sender preserves the current conversation; folder activation waits for confirmation.
+
+- Reader presentation actions preserve the current conversation and remain available during transient folder-load errors.
+
+- Detached readers preserve their originating folder, including Gmail labels; cross-folder actions activate the correct mutation context.
+
+- Native Gmail detached readers look up cached messages by ID without decoding whole folders.
+
+- iPad detached reader commands reach their mailbox even when Settings is open in another scene.
+
+- Unified Inbox reader navigation applies the same category, mailbox and saved
+  search filters as the list when reconciling Snooze, Done and Undo.
+
+- Detached readers can resolve native Gmail headers through the cache-only
+  backend contract. Removed accounts no longer fall back to another account.
+- iPhone template, signature and local-rule rows keep their text and primary controls
+  visible, with reorder and Delete actions in an accessible overflow menu.
 
 - TestFlight/App Store Release builds now ignore demo-mailbox requests even if
   a future app integration accidentally injects one; CI compiles and tests this
@@ -275,6 +319,19 @@ All notable changes to Brev are documented here.
 - Opening a `mailto:` link and a `brev://` deep link in the same open
   event no longer drops the deep link; both are handed to the app
   instead of only the last matching URL.
+
+- Reader and conversation-card actions execute in one owning window. Detached
+  sheet actions return to a visible mailbox window; iPad handoffs execute once
+  and do not replay when restoring a window. Snooze, Done, and undo keep folder
+  and unified-inbox reader navigation aligned with visible messages.
+- Thread-card PDF export errors use localized package strings on both platforms.
+  The detached reader overflow icon follows the theme text color.
+
+- iPhone mailboxes: keep search at one-row height, use larger sender and subject
+  text with previews and two-line subjects, label Mailboxes/Inbox navigation,
+  move Compose to the bottom toolbar, and remove duplicate Settings controls.
+  Folder rows no longer reserve an empty desktop disclosure column; nested
+  folders retain indentation and a separate expand/collapse target.
 
 ## [0.1.0] - 2026-08-28
 

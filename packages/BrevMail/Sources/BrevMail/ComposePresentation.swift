@@ -62,7 +62,10 @@ enum ComposeLayoutPolicy {
         switch platform {
         case .compactIOS, .compactIOSAccessibility:
             ComposeFrameMetrics(minWidth: nil, minHeight: nil)
-        case .regularIOS, .macOS:
+        case .regularIOS:
+            // ~660 fits the narrowest regular-width iPad scene (~678 pt).
+            ComposeFrameMetrics(minWidth: 660, minHeight: 560)
+        case .macOS:
             ComposeFrameMetrics(minWidth: 680, minHeight: 560)
         }
     }
@@ -70,7 +73,7 @@ enum ComposeLayoutPolicy {
     static func toolbarMetrics(for platform: ComposeLayoutPlatform) -> ComposeToolbarMetrics {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
-            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 36, height: 42, leadingInset: 0, topInset: 0)
+            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 44, height: 42, leadingInset: 0, topInset: 0)
         case .macOS:
             ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 36, height: 42, leadingInset: 76, topInset: 0)
         }
@@ -184,7 +187,10 @@ enum ComposeCarbonCopyField: Equatable, Sendable, Hashable, Identifiable {
 }
 
 enum ComposePresentation {
-    static let aiShortcutStaleResponseMessage = "The draft changed before AI Writer finished. Try again with the current text."
+    static let aiShortcutStaleResponseMessage = String(
+        localized: "The draft changed before AI Writer finished. Try again with the current text.",
+        bundle: .module
+    )
 
     static let chrome = ComposeChromePresentation(
         toolbarClusterTreatment: .borderless,
@@ -216,7 +222,7 @@ enum ComposePresentation {
 
     static func toolbarActionLayout(for platform: ComposeLayoutPlatform) -> ComposeToolbarActionLayout {
         switch platform {
-        case .compactIOSAccessibility:
+        case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
                 directActions: [.close, .send, .moreActions],
                 overflowActions: [
@@ -229,7 +235,7 @@ enum ComposePresentation {
                     .scheduleSend
                 ]
             )
-        case .compactIOS, .regularIOS, .macOS:
+        case .macOS:
             ComposeToolbarActionLayout(
                 directActions: [
                     .close,
@@ -258,24 +264,24 @@ enum ComposePresentation {
 
     static func sendErrorMessage(for error: any Error) -> String {
         prefixedErrorMessage(
-            prefix: "Couldn't send:",
-            fallback: "Couldn't send your message.",
+            prefix: String(localized: "Couldn't send:", bundle: .module),
+            fallback: String(localized: "Couldn't send your message.", bundle: .module),
             error: error
         )
     }
 
     static func saveDraftErrorMessage(for error: any Error) -> String {
         prefixedErrorMessage(
-            prefix: "Couldn't save draft:",
-            fallback: "Couldn't save your draft.",
+            prefix: String(localized: "Couldn't save draft:", bundle: .module),
+            fallback: String(localized: "Couldn't save your draft.", bundle: .module),
             error: error
         )
     }
 
     static func aiShortcutErrorMessage(for error: any Error) -> String {
         prefixedErrorMessage(
-            prefix: "Couldn't update with AI Writer:",
-            fallback: "Couldn't update with AI Writer.",
+            prefix: String(localized: "Couldn't update with AI Writer:", bundle: .module),
+            fallback: String(localized: "Couldn't update with AI Writer.", bundle: .module),
             error: error
         )
     }

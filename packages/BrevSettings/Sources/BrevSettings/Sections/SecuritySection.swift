@@ -171,7 +171,7 @@ struct SecuritySection: View {
                 }
 
                 HStack(spacing: BrevSpacing.sm) {
-                    BrevButton("Remove All S/MIME", style: .destructive) {
+                    BrevButton("Remove All S/MIME", style: .destructive, bundle: .module) {
                         requestBulkDelete(.removeAllSMIME)
                     }
                     .disabled(!keyMaterialSettings.records.contains(where: { $0.family == .smime }))
@@ -241,10 +241,14 @@ struct SecuritySection: View {
                 .foregroundStyle(theme.textPrimary.color)
 
             HStack(spacing: BrevSpacing.sm) {
-                Label("S/MIME", systemImage: "checkmark.shield")
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .frame(maxWidth: 150, alignment: .leading)
+                Label {
+                    Text("S/MIME", bundle: .module)
+                } icon: {
+                    Image(systemName: "checkmark.shield")
+                }
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(maxWidth: 150, alignment: .leading)
 
                 Picker(String(localized: "Trust", bundle: .module), selection: $draftRecord.trust) {
                     ForEach(SecurityKeyMaterialTrustState.allCases, id: \.self) { trust in
@@ -325,8 +329,7 @@ struct SecuritySection: View {
             }
         }
         .padding(BrevSpacing.sm)
-        .background(theme.bgSecondary.color.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
 
     private var sortedRecords: [SecurityKeyMaterialSettings.Record] {
@@ -519,7 +522,9 @@ struct SecuritySection: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 520, minHeight: 360)
+        #endif
     }
 
     private func trustLabel(for trust: SecurityKeyMaterialTrustState) -> String {

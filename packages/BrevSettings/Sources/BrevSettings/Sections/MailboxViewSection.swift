@@ -438,8 +438,7 @@ struct MailboxViewSection: View {
         }
         .padding(BrevSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.bgSecondary.color.opacity(0.35))
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
+        .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
 
     private var avatarFooterText: String {

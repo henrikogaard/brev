@@ -89,7 +89,9 @@ public struct ServerRuleEditorView: View {
             }
             .task { await loadFoldersIfNeeded() }
         }
+        #if os(macOS)
         .frame(minWidth: 520, minHeight: 560)
+        #endif
     }
 
     private var identitySection: some View {
@@ -341,7 +343,9 @@ public struct LocalRuleEditorSheet: View {
                 }
             }
         }
+        #if os(macOS)
         .frame(minWidth: 480, minHeight: 460)
+        #endif
     }
 
     private func save() {

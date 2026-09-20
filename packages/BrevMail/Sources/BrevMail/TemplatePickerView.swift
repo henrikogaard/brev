@@ -59,7 +59,9 @@ struct TemplatePickerView: View {
                     }
                 }
         }
+        #if os(macOS)
         .frame(minWidth: 400, minHeight: 360)
+        #endif
     }
 
     // MARK: - Sub-views
@@ -149,12 +151,20 @@ struct TemplatePickerView: View {
                         templateSettings = MessageTemplateSettings.load()
                     }
                     .buttonStyle(.borderedProminent)
-                    .disabled(saveAsName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .keyboardShortcut(.defaultAction)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
+                        .disabled(saveAsName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                     Button(String(localized: "Cancel", bundle: .module)) {
                         saveAsName = ""
                         showSaveAsField = false
                     }
                     .buttonStyle(.bordered)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                    #endif
+                        .keyboardShortcut(.cancelAction)
                 }
                 .padding(.horizontal, BrevSpacing.lg)
                 .padding(.vertical, BrevSpacing.md)
@@ -165,6 +175,10 @@ struct TemplatePickerView: View {
                     Label(String(localized: "Save current message as template…", bundle: .module), systemImage: "plus")
                         .brevFont(.subheadline)
                         .foregroundStyle(theme.accent.color)
+                    #if os(iOS)
+                        .frame(minHeight: 44)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .frame(maxWidth: .infinity, alignment: .leading)

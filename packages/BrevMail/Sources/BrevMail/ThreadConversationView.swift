@@ -14,6 +14,7 @@ import BrevAI
 import BrevAvatars
 import BrevBackend
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import SwiftUI
 #if os(macOS)
@@ -33,6 +34,7 @@ import UIKit
 /// based on `backend.groupsMessagesIntoThreads` and thread size.
 @MainActor
 public struct ThreadConversationView: View {
+    @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
@@ -49,6 +51,12 @@ public struct ThreadConversationView: View {
     let mailboxLabel: String?
     let navigation: MailNavigationState
     let isWorkBlocked: Bool
+    /// Folders of the message's account — feeds the per-card context menu's
+    /// move/archive/junk gates (ADR-0045 capability honesty).
+    let allFolders: [Folder]
+    /// True when a local-filing backend exists and the thread's account is not
+    /// the local account itself.
+    let canFileLocally: Bool
     let preloadedBodies: [MessageHeader.ID: RenderedBody]
     let showsAvatars: Bool
     let autoScrollsToExpandedMessage: Bool
@@ -73,7 +81,16 @@ public struct ThreadConversationView: View {
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
     @AppStorage(MailboxViewPreferenceKey.threadMessageOrder)
     private var threadMessageOrderRaw = MailboxThreadOrder.oldestFirst.rawValue
+    @AppStorage(LocalMessageWorkflowStateStorage.storageKey)
+    private var localWorkflowStateData = Data()
 
+    /// Creates a conversation reader with per-message actions owned by its mailbox.
+    /// - Parameters:
+    ///   - sourceID: Account/mailbox identity shared by the conversation members.
+    ///   - isWorkBlocked: Whether owner work prevents message actions or compose presentation.
+    ///   - allFolders: Source-owned folders used to determine available destinations and roles.
+    ///   - canFileLocally: Whether the owning workspace has a local-filing backend.
+    ///   - preloadedBodies: Optional rendered bodies used for deterministic presentation.
     public init(
         threadHeaders: [MessageHeader],
         backend: any MailBackend,
@@ -81,6 +98,8 @@ public struct ThreadConversationView: View {
         mailboxLabel: String? = nil,
         navigation: MailNavigationState,
         isWorkBlocked: Bool = false,
+        allFolders: [Folder] = [],
+        canFileLocally: Bool = false,
         aiBackend: (any AIBackend)? = nil,
         preloadedBodies: [MessageHeader.ID: RenderedBody] = [:],
         showsAvatars: Bool = true,
@@ -93,6 +112,8 @@ public struct ThreadConversationView: View {
         self.mailboxLabel = mailboxLabel
         self.navigation = navigation
         self.isWorkBlocked = isWorkBlocked
+        self.allFolders = allFolders
+        self.canFileLocally = canFileLocally
         self.aiBackend = aiBackend
         self.preloadedBodies = preloadedBodies
         self.showsAvatars = showsAvatars
@@ -173,9 +194,12 @@ public struct ThreadConversationView: View {
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
 
                     if let aiSummaryState {
-                        ThreadAISummaryPanel(state: aiSummaryState)
-                            .padding(.horizontal, BrevSpacing.md)
-                            .padding(.bottom, BrevSpacing.sm)
+                        ThreadAISummaryPanel(
+                            state: aiSummaryState,
+                            onRetry: aiSummaryRetryAction
+                        )
+                        .padding(.horizontal, BrevSpacing.md)
+                        .padding(.bottom, BrevSpacing.sm)
                     }
 
                     LazyVStack(spacing: 0) {
@@ -201,6 +225,12 @@ public struct ThreadConversationView: View {
                                 }
                             }
                             .id(header.id)
+                            // Per-card parity with the single-message reader:
+                            // the same consolidated, capability-gated
+                            // inventory, dispatched through the detached
+                            // command owner so undo/optimistic UI stay in the
+                            // root view's shared handlers.
+                            .contextMenu { cardMenuButtons(for: header) }
                         }
 
                         if hiddenReadCount > 0 {
@@ -261,49 +291,54 @@ public struct ThreadConversationView: View {
             }
             .toolbar {
                 #if os(iOS)
+                // One consolidated thread-tools menu (matching the reader's
+                // ellipsis.circle affordance): print/export plus, at iPad
+                // regular width, "Open in New Window". The detached payload
+                // addresses a single message, so we open the card the reader
+                // is actually showing — the expanded/selected message
+                // (falling back to the newest), matching the in-pane
+                // expansion. (ADR-0033)
+                let detachMessageID = ThreadConversationExpansionPolicy.expandedID(
+                    selectedID: navigation.selectedMessageID,
+                    in: threadHeaders
+                )
+                let canDetach = MailDetachWindowPolicy.shouldDetach(
+                    idiom: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone,
+                    isRegularWidth: horizontalSizeClass == .regular
+                )
                 ToolbarItem(placement: .primaryAction) {
                     Menu {
                         Button {
                             printThread()
                         } label: {
-                            Label(String(localized: "Print", bundle: .module), systemImage: "printer")
+                            Label(String(localized: "Print…", bundle: .module), systemImage: "printer")
                         }
                         Button {
                             exportThreadPDF()
                         } label: {
-                            Label(String(localized: "Export PDF", bundle: .module), systemImage: "doc.richtext")
+                            Label(String(localized: "Export as PDF…", bundle: .module), systemImage: "doc.richtext")
+                        }
+                        if canDetach, let detachMessageID,
+                           let detachHeader = threadHeaders.first(where: { $0.id == detachMessageID }) {
+                            Divider()
+                            Button {
+                                openWindow(value: DetachedReaderWindowPayload(
+                                    sourceID: sourceID,
+                                    messageID: detachMessageID,
+                                    folderID: detachHeader.folderID
+                                ))
+                            } label: {
+                                Label(
+                                    String(localized: "Open in New Window", bundle: .module),
+                                    systemImage: "macwindow.on.rectangle"
+                                )
+                            }
                         }
                     } label: {
-                        Label(String(localized: "Print / Export", bundle: .module), systemImage: "printer")
+                        Label(String(localized: "More thread actions", bundle: .module), systemImage: "ellipsis.circle")
                     }
                     .disabled(threadHeaders.isEmpty)
-                }
-                // Parity with `MessageDetailView`: at iPad regular width a
-                // thread can also be detached into a standalone reader window.
-                // The detached payload addresses a single message, so we open the
-                // card the reader is actually showing — the expanded/selected
-                // message (falling back to the newest), matching the in-pane
-                // expansion. (ADR-0033; this action is absent from the
-                // single-message path's sibling because that view supplies it
-                // itself.)
-                if let detachMessageID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: threadHeaders
-                ),
-                    MailDetachWindowPolicy.shouldDetach(
-                        idiom: UIDevice.current.userInterfaceIdiom == .pad ? .pad : .phone,
-                        isRegularWidth: horizontalSizeClass == .regular
-                    ) {
-                    ToolbarItem(placement: .primaryAction) {
-                        Button {
-                            openWindow(value: DetachedReaderWindowPayload(
-                                sourceID: sourceID,
-                                messageID: detachMessageID
-                            ))
-                        } label: {
-                            Label(String(localized: "Open in New Window", bundle: .module), systemImage: "macwindow.on.rectangle")
-                        }
-                    }
+                    .accessibilityLabel(String(localized: "More thread actions", bundle: .module))
                 }
                 #endif
             }
@@ -345,6 +380,206 @@ public struct ThreadConversationView: View {
         )
     }
 
+    // MARK: - Per-card context menu
+
+    /// The same capability-gated inventory the single-message reader uses
+    /// (`MessageCommandPresentation.readerMenu`), so right-click/long-press on
+    /// a thread card exposes identical actions — hidden when unsupported,
+    /// disabled only when temporarily unavailable.
+    func cardMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+        let workflowSourceID = sourceID ?? MailSourceID(
+            accountID: backend.account.id,
+            mailboxID: backend.account.id
+        )
+        let workflowID = SourceMessageID(sourceID: workflowSourceID, messageID: header.id)
+        let lookup = LocalMessageWorkflowLookup(
+            state: LocalMessageWorkflowStateStorage.decode(localWorkflowStateData) ?? .defaults
+        )
+        let moveCandidates = MessageCommandPresentation.moveFolderCandidates(
+            from: allFolders,
+            currentFolderID: header.folderID
+        )
+        // Sheet-backed actions use this reader's own root presentation state.
+        let canPresentSheets = navigation.presentedSheet == nil
+        return MessageCommandPresentation.readerMenu(
+            for: header,
+            isSnoozed: lookup.isSnoozed(workflowID),
+            isDone: lookup.isDone(workflowID),
+            isKeptOffline: MessageOfflineRetentionOverrideStore().isKeptOffline(workflowID),
+            hasNote: lookup.note(for: workflowID) != nil,
+            canOpenInNewWindow: canOpenCardInNewWindow,
+            canArchive: allFolders.contains { $0.role == .archive && $0.id != header.folderID },
+            canMove: !moveCandidates.isEmpty,
+            canFileLocally: canFileLocally
+                && backend.account.id != LocalMailBackend.accountID,
+            junkActionTitle: MessageCommandPresentation.junkActionTitle(
+                currentFolder: allFolders.first { $0.id == header.folderID },
+                capabilities: backend.capabilities,
+                folders: allFolders
+            ),
+            canBlockSender: backend.capabilities.contains(.blockSender),
+            canDelete: true,
+            canCreateTask: canPresentSheets,
+            canCreateRule: canPresentSheets,
+            canCreateMeeting: canPresentSheets,
+            canAddNote: canPresentSheets,
+            canFollowUp: canPresentSheets,
+            hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
+                .reminder(for: header.id, sourceID: sourceID) != nil,
+            canReply: canPresentSheets && !isWorkBlocked,
+            canPrint: true,
+            canExportPDF: true,
+            canShowProperties: true,
+            extendedCapabilities: backend.extendedCapabilities,
+            canExportEML: supportsCardEMLExport
+        )
+    }
+
+    /// "Open in New Window" on a card: never offered on iPhone/compact (the
+    /// bus would just re-show the in-place reader); macOS always can, and
+    /// iPad only at regular width where a detached scene exists (ADR-0033).
+    private var canOpenCardInNewWindow: Bool {
+        #if os(iOS)
+        return MailDetachWindowPolicy.shouldDetach(
+            idiom: UIDevice.current.userInterfaceIdiom,
+            horizontalSizeClass: horizontalSizeClass
+        )
+        #else
+        return true
+        #endif
+    }
+
+    private var supportsCardEMLExport: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    @ViewBuilder
+    private func cardMenuButtons(for header: MessageHeader) -> some View {
+        let menu = cardMenuPresentation(for: header)
+        ForEach(menu.sections.indices, id: \.self) { sectionIndex in
+            if sectionIndex > 0 {
+                Divider()
+            }
+            ForEach(menu.sections[sectionIndex].actions, id: \.action) { presentation in
+                cardMenuButton(presentation, for: header)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func cardMenuButton(
+        _ presentation: MessageContextMenuActionPresentation,
+        for header: MessageHeader
+    ) -> some View {
+        if presentation.role == .destructive {
+            Button(role: .destructive) {
+                performCardMenuAction(presentation.action, for: header)
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(!presentation.isEnabled || isCardActionBlocked(presentation.action))
+        } else {
+            Button {
+                performCardMenuAction(presentation.action, for: header)
+            } label: {
+                Label(presentation.title, systemImage: presentation.symbolName)
+            }
+            .disabled(!presentation.isEnabled || isCardActionBlocked(presentation.action))
+        }
+    }
+
+    /// Mutation-style commands respect the work blocker; local/presentation
+    /// actions (sheets, print, window open) do not — same split as the reader.
+    private func isCardActionBlocked(_ action: MessageContextMenuAction) -> Bool {
+        switch action {
+        case .toggleRead, .toggleFlag, .toggleSnooze, .toggleDone, .archive,
+             .move, .copyToFolder, .copyToLocalFolder, .moveToLocalFolder,
+             .setJunk, .blockSender, .delete, .downloadOffline:
+            return isWorkBlocked
+        case .openInNewWindow, .select, .pinToTop, .reply, .replyAll, .forward,
+             .print, .exportPDF, .saveAs, .createMeeting, .createTask,
+             .createRule, .addNote, .followUp, .properties, .showHeaders,
+             .viewSource:
+            return false
+        }
+    }
+
+    /// Print/PDF run locally; other commands use this conversation's owner.
+    private func performCardMenuAction(
+        _ action: MessageContextMenuAction,
+        for header: MessageHeader
+    ) {
+        switch action {
+        case .print:
+            printCardMessage(header)
+        case .exportPDF:
+            exportCardPDF(header)
+        default:
+            if let command = DetachedMessageCommand(menuAction: action) {
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
+            }
+        }
+    }
+
+    private func printCardMessage(_ header: MessageHeader) {
+        Task { @MainActor in
+            do {
+                let messageBody = try await body(for: header.id)
+                #if os(macOS)
+                MessagePrintExportRenderer.presentPrintPanel(header: header, body: messageBody)
+                #elseif os(iOS)
+                MailPrintController.presentPrint(
+                    messages: [(header, messageBody)],
+                    jobName: header.subject
+                )
+                #endif
+            } catch {
+                printExportErrorMessage = String(localized: "Print failed: \(error.localizedDescription)", bundle: .module)
+            }
+        }
+    }
+
+    private func exportCardPDF(_ header: MessageHeader) {
+        #if os(macOS)
+        let panel = NSSavePanel()
+        panel.title = String(localized: "Export Message as PDF", bundle: .module)
+        panel.nameFieldStringValue = "\(cardPDFBaseName(for: header)).pdf"
+        panel.allowedContentTypes = [.pdf]
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        Task { @MainActor in
+            do {
+                let messageBody = try await body(for: header.id)
+                try MessagePrintExportRenderer.exportPDF(header: header, body: messageBody, to: url)
+            } catch {
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
+            }
+        }
+        #elseif os(iOS)
+        Task { @MainActor in
+            do {
+                let messageBody = try await body(for: header.id)
+                let url = try MailPrintController.exportPDF(
+                    messages: [(header, messageBody)],
+                    fileName: cardPDFBaseName(for: header)
+                )
+                pdfShareURL = url
+            } catch {
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
+            }
+        }
+        #endif
+    }
+
+    private func cardPDFBaseName(for header: MessageHeader) -> String {
+        let fallback = header.subject.isEmpty ? String(localized: "message", bundle: .module) : header.subject
+        let invalid = CharacterSet(charactersIn: ":/\\?%*|\"<>")
+        return fallback.components(separatedBy: invalid).joined(separator: "_")
+    }
+
     private var printExportErrorBinding: Binding<Bool> {
         Binding(
             get: { printExportErrorMessage != nil },
@@ -379,7 +614,7 @@ public struct ThreadConversationView: View {
                 let messages = await printableThreadMessages()
                 try MessagePrintExportRenderer.exportPDF(messages: messages, to: url)
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #elseif os(iOS)
@@ -389,7 +624,7 @@ public struct ThreadConversationView: View {
                 let url = try MailPrintController.exportPDF(messages: messages, fileName: pdfBaseName)
                 pdfShareURL = url
             } catch {
-                printExportErrorMessage = "PDF export failed: \(error.localizedDescription)"
+                printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #endif
@@ -602,6 +837,17 @@ public struct ThreadConversationView: View {
         )
     }
 
+    /// Retry affordance for a failed thread summary: offered only when the
+    /// failure is transient and the summary request can actually run again
+    /// (provider present, consent/settings OK, no work or request in flight).
+    private var aiSummaryRetryAction: (() -> Void)? {
+        guard case .failure = aiSummaryState,
+              let aiBackend,
+              ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) == nil
+        else { return nil }
+        return { Task { await summarizeThread(with: aiBackend) } }
+    }
+
     // MARK: - Participant summary
 
     private var participantSummary: some View {
@@ -631,9 +877,11 @@ public struct ThreadConversationView: View {
     }
 }
 
-private struct ThreadAISummaryPanel: View {
+struct ThreadAISummaryPanel: View {
     @Environment(\.brevTheme) private var theme
     let state: ThreadAISummaryState
+    /// Non-nil when the failure is retryable — shown as a Retry button.
+    var onRetry: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
@@ -673,6 +921,21 @@ private struct ThreadAISummaryPanel: View {
                 Text(message)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.danger.color)
+                if let onRetry {
+                    Button {
+                        onRetry()
+                    } label: {
+                        Label(String(localized: "Retry", bundle: .module), systemImage: "arrow.clockwise")
+                        #if os(iOS)
+                            .frame(minWidth: 44, minHeight: 44, alignment: .leading)
+                            .contentShape(Rectangle())
+                        #endif
+                    }
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.accent.color)
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(String(localized: "Retry thread summary", bundle: .module))
+                }
                 Text(providerLabel)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
