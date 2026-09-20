@@ -83,6 +83,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Keep the iPhone conversation account address secondary at accessibility text
+  sizes and label the compact message-loading indicator.
+
 - Align iOS account headers with top-level mailbox folders; keep disclosure
   arrows at the trailing edge and indentation only for nested folders.
 

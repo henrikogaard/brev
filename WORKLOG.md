@@ -3006,3 +3006,20 @@ buttons, and package-aware localization.
   ADRs, privacy and workflow contracts are unchanged by this layout correction.
 - Handoff: review the alignment change, verify spoken VoiceOver/reader control,
   then address #49 before calling the compose accessibility flow accepted.
+
+## 2026-09-20 — Codex — #1 / PR #50 reader hierarchy follow-up
+
+- Reproduced Henrik's oversized account-address screenshot at accessibility5.
+  Applied the existing iOS reader chrome range and middle truncation to account
+  metadata; body text is unchanged. Labelled and reduced the loading indicator.
+- Added standard/accessibility phone conversation snapshots. Inspected the old
+  oversized rendering, observed the expected changed-reference failure, recorded
+  corrected references, and passed nine phone cases across six tests.
+- Simulator build/run, native loading screenshot, lint, zero-change final format,
+  baseline inventory and diff-check pass. Stored synthetic screenshot in QA docs.
+- The sample reader still stalls. A process sample shows repeated main-thread
+  SwiftUI layout work; root cause is not established. Filed #51 Ready/P1 rather
+  than claiming the UI styling fixes delivery. Raw diagnostics remain local.
+- Updated CHANGELOG and QA evidence. No architecture, network, privacy, setup or
+  workflow change: README/ADRs/PRIVACY/AGENTS need no update. No physical-device or
+  spoken VoiceOver signoff. Continue existing PR #50; no merge or release.

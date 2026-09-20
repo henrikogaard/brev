@@ -62,3 +62,29 @@ passing inbox toolbar labels.
 - No live-provider QA ran: #2's preflight reported missing disposable account
   credentials. Its four native provider/platform combinations remain open.
 - No release, merge, device VoiceOver signoff or new TestFlight upload in this PR.
+
+## Reader hierarchy follow-up
+
+The additional screenshot reproduced an account address larger than its subject
+at the largest accessibility size. iOS now applies the reader's existing compact
+chrome range to that secondary line and truncates long addresses in the middle;
+the underlying Text still exposes the full address to accessibility. Message
+body typography is unchanged. Loading uses a small, leading-aligned spinner
+with a localized “Loading message…” label.
+
+Added standard and accessibility5 conversation pixel cases. The old rendering
+reproduced the oversized address; the corrected rendering failed comparison to
+that reference as expected, and the two inspected references were recorded.
+All nine phone pixel cases (six parameterized/non-parameterized tests) pass.
+Simulator build, lint, zero-change final format, baseline inventory and diff
+checks pass. The native loading presentation was also inspected:
+
+![Reader loading presentation with synthetic mail](reader-loading.jpg)
+
+The sample conversation still stalls in this runtime; tracked in #51. A local
+three-second process sample found the main thread repeatedly processing SwiftUI
+layout/AttributeGraph updates. This is stronger evidence of a runtime problem
+than the earlier accessibility snapshot timeout, but is not a root-cause diagnosis.
+Preloaded-body snapshots prove presentation only. Asynchronous reader delivery,
+spoken VoiceOver, and physical-device verification remain unaccepted. No raw
+process sample or private mailbox data is committed.

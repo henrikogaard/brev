@@ -186,6 +186,12 @@ public struct ThreadConversationView: View {
                     Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
+                    #if os(iOS)
+                        // Account context belongs to the same compact chrome as the subject.
+                        .dynamicTypeSize(denseChromeDynamicTypeRange)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    #endif
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.horizontal, BrevSpacing.md)
                         .padding(.bottom, BrevSpacing.sm)

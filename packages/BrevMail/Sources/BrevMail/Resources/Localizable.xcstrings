@@ -413,6 +413,9 @@
     "Loading local sender history…" : {
       "extractionState" : "manual"
     },
+    "Loading message…" : {
+      "extractionState" : "manual"
+    },
     "Mail account setup is not available in this build. Use the demo mailbox for local UI testing." : {
       "extractionState" : "manual"
     },
