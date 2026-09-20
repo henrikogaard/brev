@@ -55,6 +55,7 @@ struct ThreadMessageCard: View {
     @State private var inlineCIDResolvedMessageID: MessageHeader.ID?
     @State private var pendingSuspiciousLink: MessageSecurityLinkWarning?
     @StateObject private var htmlWebViewStore: HTMLBodyWebViewStore
+    @ScaledMetric(relativeTo: .body) private var scaledBodyMetric: CGFloat = 100
     /// Shared per-conversation pool: bounds how many WebKit renderers a fully
     /// expanded thread keeps warm and how many body/CID fetches run at once.
     private let renderPool: ThreadConversationRenderPool
@@ -123,7 +124,11 @@ struct ThreadMessageCard: View {
                     } label: {
                         Image(systemName: "ellipsis")
                             .foregroundStyle(theme.textSecondary.color)
+                        #if os(iOS)
+                            .frame(width: 44, height: 44)
+                        #else
                             .frame(width: 24, height: 28)
+                        #endif
                     }
                     .menuStyle(.borderlessButton)
                     .menuIndicator(.hidden)
@@ -437,8 +442,17 @@ struct ThreadMessageCard: View {
             fontFamily: mailboxFontFamily,
             textSize: mailboxTextSize,
             renderingMode: .original,
-            bodyInsetPoints: 0
+            bodyInsetPoints: 0,
+            bodyScale: messageBodyScale
         ).swiftUIBodyFont
+    }
+
+    private var messageBodyScale: CGFloat {
+        #if os(iOS)
+        scaledBodyMetric / 100
+        #else
+        1
+        #endif
     }
 
     private var usesRichHTMLBodyRenderer: Bool {

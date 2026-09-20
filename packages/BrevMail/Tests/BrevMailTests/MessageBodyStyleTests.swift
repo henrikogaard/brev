@@ -68,6 +68,23 @@ struct MessageBodyStyleTests {
         #expect(style.fontFamily == .rounded)
     }
 
+    @Test("body scaling preserves mailbox typography as its baseline")
+    func bodyScalingPreservesMailboxTypography() {
+        let style = MessageBodyStyle.resolve(
+            theme: .brevPaper,
+            fontFamily: .serif,
+            textSize: .medium,
+            renderingMode: .original,
+            bodyInsetPoints: 0,
+            bodyScale: 2
+        )
+
+        #expect(style.bodyPointSize == 30)
+        #expect(style.fontFamily == .serif)
+        #expect(style.textSize == .medium)
+        #expect(style.documentCSS.contains("font:30px ui-serif"))
+    }
+
     private func normalizedHex(_ hex: String) -> String {
         var stripped = hex.trimmingCharacters(in: .whitespacesAndNewlines)
         if stripped.hasPrefix("#") { stripped.removeFirst() }

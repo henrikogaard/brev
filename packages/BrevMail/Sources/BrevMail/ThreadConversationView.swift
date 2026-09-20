@@ -183,20 +183,7 @@ public struct ThreadConversationView: View {
                             .dynamicTypeSize(denseChromeDynamicTypeRange)
                     }
 
-                    Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
-                        .brevFont(.footnote)
-                        .foregroundStyle(theme.textSecondary.color)
-                    #if os(iOS)
-                        // Account context belongs to the same compact chrome as the subject.
-                        .dynamicTypeSize(denseChromeDynamicTypeRange)
-                        .lineLimit(1)
-                        .truncationMode(.middle)
-                    #endif
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, BrevSpacing.md)
-                        .padding(.bottom, BrevSpacing.sm)
-
-                    conversationControlsRow
+                    conversationMetadataRow
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
 
                     if let aiSummaryState {
@@ -740,36 +727,51 @@ public struct ThreadConversationView: View {
         return try await backend.body(for: messageID)
     }
 
-    // MARK: - Conversation controls row
+    // MARK: - Conversation metadata
 
-    @ViewBuilder
-    private var conversationControlsRow: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            // Participant summary
+    private var conversationMetadataRow: some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+
+            Text(verbatim: "·")
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textTertiary.color)
+                .accessibilityHidden(true)
+
             participantSummary
 
             Spacer(minLength: BrevSpacing.sm)
 
+            threadActionsMenu
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.bottom, BrevSpacing.sm)
+    }
+
+    private var threadActionsMenu: some View {
+        Menu {
             if shouldShowAISummaryMenu {
-                aiSummaryMenu
+                aiSummaryMenuItems
+                Divider()
             }
 
-            // Show unread only toggle
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     showUnreadOnly.toggle()
                 }
             } label: {
                 Label(
-                    showUnreadOnly ? "Show All" : "Unread Only",
+                    showUnreadOnly
+                        ? String(localized: "Show All", bundle: .module)
+                        : String(localized: "Unread Only", bundle: .module),
                     systemImage: showUnreadOnly ? "envelope.open" : "envelope.badge"
                 )
-                .brevFont(.footnote)
-                .foregroundStyle(showUnreadOnly ? theme.accent.color : theme.textSecondary.color)
             }
-            .buttonStyle(.plain)
 
-            // Expand / collapse all
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) {
                     if areAllExpanded {
@@ -780,46 +782,45 @@ public struct ThreadConversationView: View {
                 }
             } label: {
                 Label(
-                    areAllExpanded ? "Collapse All" : "Expand All",
+                    areAllExpanded
+                        ? String(localized: "Collapse All", bundle: .module)
+                        : String(localized: "Expand All", bundle: .module),
                     systemImage: areAllExpanded ? "chevron.up.2" : "chevron.down.2"
                 )
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
             }
-            .buttonStyle(.plain)
+            .disabled(visibleHeaders.isEmpty)
+        } label: {
+            Label(String(localized: "Conversation controls", bundle: .module), systemImage: "ellipsis.circle")
+                .labelStyle(.iconOnly)
+                .foregroundStyle(theme.textSecondary.color)
+            #if os(iOS)
+                .frame(width: 44, height: 44)
+            #endif
         }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-        .padding(.bottom, BrevSpacing.sm)
+        .menuStyle(.borderlessButton)
+        .accessibilityLabel(String(localized: "Conversation controls", bundle: .module))
     }
 
     @ViewBuilder
-    private var aiSummaryMenu: some View {
-        Menu {
-            if let reason = ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) {
-                if reason == .notEnabled || reason == .consentRequired {
-                    Button(String(localized: "Enable AI...", bundle: .module)) {
-                        showAISummaryConsent = true
-                    }
-                    Text(AIWriterDisclosure.defaultProvider.transparencyLabel)
-                } else {
-                    Label(reason.title, systemImage: "exclamationmark.triangle")
+    private var aiSummaryMenuItems: some View {
+        if let reason = ThreadAISummaryAvailability.disabledReason(in: aiSummaryAvailabilityState) {
+            if reason == .notEnabled || reason == .consentRequired {
+                Button(String(localized: "Enable AI...", bundle: .module)) {
+                    showAISummaryConsent = true
                 }
-            } else if let aiBackend {
-                Button {
-                    Task { await summarizeThread(with: aiBackend) }
-                } label: {
-                    Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
-                }
-                Text(aiBackend.transparencyLabel)
+                Text(AIWriterDisclosure.defaultProvider.transparencyLabel)
+            } else {
+                Label(reason.title, systemImage: "exclamationmark.triangle")
             }
-        } label: {
-            Label(String(localized: "Summarize", bundle: .module), systemImage: "wand.and.stars")
-                .brevFont(.footnote)
-                .foregroundStyle(aiSummaryState?.isLoading == true ? theme.accent.color : theme.textSecondary.color)
+        } else if let aiBackend {
+            Button {
+                Task { await summarizeThread(with: aiBackend) }
+            } label: {
+                Label(String(localized: "Summarize Thread", bundle: .module), systemImage: "wand.and.stars")
+            }
+            .disabled(aiSummaryMenuDisabled)
+            Text(aiBackend.transparencyLabel)
         }
-        .menuStyle(.borderlessButton)
-        .disabled(aiSummaryMenuDisabled)
     }
 
     private var aiSummaryMenuDisabled: Bool {

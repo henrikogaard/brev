@@ -101,6 +101,11 @@ The hard rule, enforced by SwiftLint custom rule (ADR-0005):
 `BrevSettings` — the packages where most view code lives — and the
 regex now also matches `Color(hex:`.)
 
+Built-in `textSecondary` and `textTertiary` values used for small metadata must
+maintain at least 4.5:1 contrast against both `bgPrimary` and `bgSecondary`.
+Palette calibration may adjust those role values without adding a token or
+changing the theme schema; focused tests cover every built-in palette.
+
 ### Shared component surfaces
 
 Recurring view recipes live in `BrevDesign` so call sites cannot drift
