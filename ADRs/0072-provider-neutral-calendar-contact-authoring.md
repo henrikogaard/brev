@@ -329,9 +329,32 @@ entry names the slice that introduced it; details live in the code.
   removal; sync opt-in is a separate explicit flag.
 - `PIMSourceStatusPresentation` / `PIMSourceStatusPresenter`: the shared
   status presentation model for settings and future browsing surfaces.
+### #5 slice 2 — settings source surface (2026-09-20, BrevSettings)
+
+- PIMSourceSettingsModel: the view-facing owner for the Settings source
+  list; every mutation flows through the coordinator and reloads.
+- PIMDAVConnectForm / PIMDAVConnectRequest: pure connect-form state with
+  field validation (discovery email, manual HTTPS endpoint with loopback
+  exception, app-password and bearer credential modes).
+- PIMSourcesSettingsView / PIMSourceConnectSheet /
+  PIMSourceRowPresentation: the Sources group — per-source status via the
+  shared presenter, sync opt-in toggle, disconnect, credential reconnect,
+  and removal with the two-step cache choice (unsent drafts always die,
+  provider data never touched). Google enablement is listed as
+  "Not available yet" until reauthorization ships.
+- CalendarContactsScopePresentation: direction summary replaced with
+  capability/status copy per this ADR — DAV connect joins "Available now";
+  Google enablement, browsing, unified search and event/contact authoring
+  are "Not available yet" (accepted scope, unshipped). The "keep full PIM
+  editing outside Brev" boundary is removed on acceptance.
+- Wiring: AppSession owns one PIMSourceCoordinator built by
+  AppSessionFactory (JSON store and per-source data directories under
+  Application Support/Brev, Keychain credential store); SettingsView hands
+  it to the section on both platforms.
 - Deliberately deferred to later slices: Google feature-triggered
-  reauthorization, home-set/collection discovery, sync scheduling, settings
-  UI wiring, and mail-account removal UX.
+  reauthorization, home-set/collection discovery, sync scheduling, and
+  mail-account removal UX (linkedSources is ready; nothing can link until
+  Google sources exist).
 
 ## References (checked 2026-09-20)
 

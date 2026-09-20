@@ -10,9 +10,14 @@ All notable changes to Brev are documented here.
   records, a serial lifecycle coordinator covering connect / reconnect /
   sync opt-in / removal, and CalDAV/CardDAV setup validation (manual
   endpoints and RFC 6764 discovery with HTTPS enforcement and
-  credential-safe redirect handling). No user-facing surface yet —
-  settings UI, Google reauthorization and sync scheduling land in later
-  slices.
+  credential-safe redirect handling). Google reauthorization and sync
+  scheduling land in later slices.
+- Settings Calendar & Contacts source management (ADR-0072): connect
+  CalDAV/CardDAV sources with discovery or manual endpoints, see each
+  source's shared status, opt into background sync per source, reconnect
+  credentials, and remove sources with an explicit keep-or-delete cache
+  choice. Unsent source drafts are always deleted on removal; provider
+  data is never touched.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

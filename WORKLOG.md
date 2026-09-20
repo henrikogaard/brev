@@ -3250,3 +3250,39 @@ buttons, and package-aware localization.
   the policy and outer split modifier instead, and passed the focused check and
   complete `scripts/test.sh --self-tests-only` set. No production code changed
   for this CI correction; hosted checks must rerun on the follow-up head.
+
+## 2026-09-20 — Codex — #5 slice 2 settings source surface
+
+- Built on feature/pim-source-lifecycle (PR #56, stacked on the ADR-0072
+  acceptance PR #55). Moved issue #5 to In progress on the board and posted
+  the slice plan as an issue comment.
+- Settings Sources UI (BrevSettings): PIMSourceSettingsModel view-model
+  wrapping PIMSourceCoordinator; PIMDAVConnectForm pure validation
+  (discovery email, manual HTTPS endpoint with loopback exception,
+  app-password + bearer modes); PIMSourcesSettingsView group with
+  per-source shared status, sync opt-in toggle, disconnect, credential
+  reconnect sheet, and removal confirmation offering keep-cache vs
+  delete-cache (unsent drafts always die, provider data never touched).
+  Google enablement listed as "Not available yet" until reauthorization.
+- CalendarContactsSection copy replaced per ADR-0072: direction summary
+  now describes optional Google/DAV sources; DAV connect joined
+  "Available now"; Google enablement, browsing, unified search and
+  event/contact authoring are "Not available yet" (accepted scope).
+  The ADR-0039 "full PIM editing outside Brev" boundary text removed.
+- Wiring: AppSession.pimSourceCoordinator built by AppSessionFactory
+  (JSON store + per-source data dirs under Application Support/Brev,
+  Keychain credentials); SettingsView passes it to the section; both app
+  targets updated.
+- Verification: 27 new/updated tests in 4 suites pass (form validation,
+  model lifecycle incl. reconnect failure preserving state, row
+  presentation action matrix, scope presentation contract). BrevMail
+  package builds clean. swiftformat + swiftlint --strict clean on all
+  touched files.
+- Skipped: pixel snapshot for the new group — local macOS 27 renderer
+  does not match the macOS-26-recorded baseline (32 pre-existing
+  mismatches in the suite confirm); behavior coverage added instead.
+  iOS/macOS app builds left to CI (tuist graph unchanged, one added
+  SettingsView argument).
+- Next: slice 3 Google feature-triggered reauthorization plus
+  mail-account-removal handling of linked sources (acceptance criteria);
+  live-provider smoke remains the maintainer gate.
