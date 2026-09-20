@@ -5,6 +5,11 @@
 - **Deciders:** Henrik
 - **Amends:** ADR-0007, ADR-0028
 
+## Relationship to proposed Calendar/Contacts expansion
+
+ADR-0072 proposes replacing the authoring boundary below. It remains Proposed;
+this decision stays in force until explicit maintainer acceptance.
+
 ## Context
 
 ADR-0007 kept Brev from becoming a full calendar client: it handled

@@ -2983,3 +2983,26 @@ buttons, and package-aware localization.
   ADR-0006, covering list, unified and reader paths, local pin scope, removing
   a pin, and best-effort availability. Documentation-only exception: no TDD or
   pixel update; privacy audit, lint, formatting and diff-check validate the edit.
+
+## 2026-09-20 — Codex — #4 and backlog sequencing
+
+- Expanded Proposed ADR-0072 against all ten #4 criteria: domain/service
+  contracts, source ownership, native consent constraints, caches, conditional
+  writes, field preservation, recurrence, offline drafts and delivery gates.
+- Reconciled README and ADR-0039/0009/0043 without claiming acceptance or
+  shipped PIM support. Settings replacement copy is specified for acceptance;
+  current UI remains unchanged while the old boundary still applies.
+- Verified official Google and DAV references. Google's installed-app OAuth
+  guidance excludes incremental authorization; #5 must prove feature-triggered
+  native reauthorization and credential preservation before implementation ships.
+- Board: #1/#4 In progress; #3/#5/#6/#7/#8/#11 P0 → P1 so #4 remains the
+  immediate P0 prerequisite. Added #9 as a dependency of #10's writable contact
+  actions. No issues closed or moved to Done.
+- Verification: relative ADR links, lint, format and diff-check pass.
+  Documentation-only TDD/build/snapshot exception; no code, scopes, network
+  traffic, release behavior or permissions changed. README/ADRs/WORKLOG updated;
+  PRIVACY, CHANGELOG, AGENTS and runtime settings need no change for a proposal.
+- #2 preflight: checked configuration contains macOS Google client settings,
+  but no disposable BREV_LIVE_* account values or iOS Google client settings.
+  Requested the secure test-account configuration location; no live mail sent.
+- Handoff: review and accept/narrow ADR-0072 before source/authoring work.
