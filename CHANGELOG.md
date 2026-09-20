@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS detached readers stay open when their mailbox cannot accept an action or present another dialog.
+
 - Offline detached readers resolve exact cached folder membership even when the folder catalog is unavailable.
 
 - Cancelling Block Sender preserves the current conversation; folder activation waits for confirmation.

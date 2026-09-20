@@ -44,6 +44,16 @@ enum DetachedMessageCommand: String, Sendable {
     case viewSource
     case openInNewWindow
 
+    /// Whether the owner must have room to present another sheet or compose window.
+    var requiresPresentationSlot: Bool {
+        switch self {
+        case .reply, .replyAll, .forward, .move, .copyToFolder, .copyToLocalFolder,
+             .moveToLocalFolder, .createTask, .createRule, .createMeeting,
+             .addNote, .followUp, .properties, .showHeaders, .viewSource: true
+        default: false
+        }
+    }
+
     /// These commands resolve destinations or roles from the loaded folder catalog.
     var requiresFolderList: Bool {
         switch self {

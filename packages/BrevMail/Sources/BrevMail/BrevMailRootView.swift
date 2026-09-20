@@ -4503,9 +4503,18 @@ public struct BrevMailRootView: View {
     /// and folder refresh all apply. Resolve the message's source context before
     /// dispatch so destinations cannot come from a previously selected account.
     private func handleDetachedMessageCommand(_ request: DetachedMessageCommandRequest) {
-        guard prepareDetachedCommandContext(request) else { return }
+        _ = acceptDetachedMessageCommand(request)
+    }
+
+    private func acceptDetachedMessageCommand(_ request: DetachedMessageCommandRequest) -> Bool {
+        guard !request.command.requiresPresentationSlot || navigation.presentedSheet == nil else { return false }
+        if [.reply, .replyAll, .forward].contains(request.command), !canPresentCompose() { return false }
+        if [.copyToLocalFolder, .moveToLocalFolder].contains(request.command), localBackend == nil { return false }
+        if request.command.activatesMutationFolder, !canStartCommandMutation() { return false }
+        guard prepareDetachedCommandContext(request) else { return false }
         performDetachedCommand(request.command, header: request.header,
                                sourceID: request.sourceID ?? navigation.selectedSourceID)
+        return true
     }
 
     private func prepareDetachedCommandContext(
@@ -4682,7 +4691,7 @@ public struct BrevMailRootView: View {
             allFolders: moveFolders(for: sourceID ?? navigation.selectedSourceID),
             canFileLocally: localBackend != nil,
             theme: theme,
-            onCommand: handleDetachedMessageCommand
+            onCommand: acceptDetachedMessageCommand
         )
         #else
         // iPad at regular width opens a detached reader scene; iPhone and

@@ -17,6 +17,17 @@ import Testing
 
 @Suite("MessageCommandPresentation")
 struct MessageCommandPresentationTests {
+    @Test("sheet-backed reader actions require an available owner presentation slot")
+    func readerPresentationAdmission() {
+        for command: DetachedMessageCommand in [.reply, .replyAll, .forward, .move, .copyToFolder,
+                                                .copyToLocalFolder, .moveToLocalFolder, .createTask,
+                                                .createRule, .createMeeting, .addNote, .followUp,
+                                                .properties, .showHeaders, .viewSource] {
+            #expect(command.requiresPresentationSlot)
+        }
+        #expect(!DetachedMessageCommand.downloadOffline.requiresPresentationSlot)
+    }
+
     @Test("read toggle title matches next action")
     func readToggleTitleMatchesNextAction() {
         #expect(MessageCommandPresentation.readToggleTitle(for: Self.makeHeader(isRead: false)) == "Mark as Read")

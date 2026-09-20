@@ -2891,3 +2891,13 @@ buttons, and package-aware localization.
 - Verification: all 14 detached resolver tests, baseline inventory, lint,
   formatting and diff-check pass. No view layout changed; existing rendered
   references remain valid. Release archive validation covers the iOS build.
+
+- macOS detached readers now wait for synchronous owner acceptance before
+  closing. Admission rejects occupied presentation slots, unavailable compose
+  or local-filing actions, and busy mutation lifecycles. Shared in-place dispatch
+  uses the same admission checks. The presentation-admission regression failed
+  all 15 sheet-backed commands before the fix. Native multi-window interaction
+  remains manual QA; no rendered geometry changed.
+- Verification: all 44 presentation/handoff/resolver tests pass; macOS sources
+  compile through the package test build. Lint, formatting and diff-check pass.
+  Release archive will verify the shared root on iOS; no snapshot refresh needed.

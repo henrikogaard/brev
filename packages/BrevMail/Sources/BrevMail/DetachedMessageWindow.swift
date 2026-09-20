@@ -53,7 +53,7 @@ enum DetachedMessageWindow {
         allFolders: [Folder],
         canFileLocally: Bool,
         theme: BrevTheme,
-        onCommand: @escaping (DetachedMessageCommandRequest) -> Void
+        onCommand: @escaping (DetachedMessageCommandRequest) -> Bool
     ) {
         // Capture the main window (the one the user double-clicked in) before
         // the new window becomes key, so the message window can open aligned to
@@ -85,15 +85,17 @@ enum DetachedMessageWindow {
             closeWindow: { [weak window] in window?.close() }
         )
         .environment(\.readerCommandAction) { [weak window] request in
-            // Return focus before the owning root presents an auxiliary sheet.
-            // Keeping the reference window alive also permits reopening it
-            // after the user closes it while leaving this reader open.
-            if request.command.dismissesWindow {
-                window?.close()
-                referenceWindow?.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
+            // State changes schedule presentation for the next view update.
+            // Obtain acceptance first so a busy or unavailable owner cannot
+            // discard an action after this reader has already closed.
+            DispatchQueue.main.async { [weak window] in
+                guard onCommand(request) else { return }
+                if request.command.dismissesWindow {
+                    window?.close()
+                    referenceWindow?.makeKeyAndOrderFront(nil)
+                    NSApp.activate(ignoringOtherApps: true)
+                }
             }
-            DispatchQueue.main.async { onCommand(request) }
         }
         .brevMailPaneSurface(.content)
         .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
