@@ -245,6 +245,8 @@ jobs:
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/composeViewRendersSignaturePicker()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/replyCompose()' \
+            '-only-testing:BrevMailTests/ComposeViewSnapshotTests/accessibilityTextComposeStaysWithinViewport()' \
+            '-only-testing:BrevMailTests/ComposeViewSnapshotTests/narrowPhoneAccessibilityTextComposeStaysWithinViewport()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)

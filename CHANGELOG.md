@@ -83,6 +83,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Keep iPhone compose inside the viewport at the largest accessibility text
+  sizes: the From-row signature picker stacks below the sender and truncates
+  instead of forcing the sheet wider, and an over-wide recipient chip now
+  truncates within the field instead of pushing the whole window past the
+  screen edge. Close, Send and the compose-actions menu stay visible and
+  reachable.
+
 - Keep the iPhone conversation account address secondary at accessibility text
   sizes and label the compact message-loading indicator.
 

@@ -1450,10 +1450,18 @@ public struct ComposeView: View {
     @ViewBuilder
     private var fromPickerField: some View {
         fieldRow(label: String(localized: "From", bundle: .module)) {
-            HStack(alignment: .center, spacing: BrevSpacing.sm) {
-                fromSenderControl
-                Spacer(minLength: BrevSpacing.sm)
-                fromRowSignaturePicker
+            if isAccessibilityFieldLayout {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    fromSenderControl
+                    fromRowSignaturePicker
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            } else {
+                HStack(alignment: .center, spacing: BrevSpacing.sm) {
+                    fromSenderControl
+                    Spacer(minLength: BrevSpacing.sm)
+                    fromRowSignaturePicker
+                }
             }
         }
     }
@@ -1495,6 +1503,7 @@ public struct ComposeView: View {
                 HStack(spacing: BrevSpacing.xxs) {
                     Text("Signature:", bundle: .module)
                         .foregroundStyle(theme.textTertiary.color)
+                        .lineLimit(1)
                     Text(verbatim: selectedSignature?.title ?? String(localized: "None", bundle: .module))
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
@@ -1505,7 +1514,6 @@ public struct ComposeView: View {
                 .frame(height: ComposeLayout.fieldAccessorySize)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
             .help(signatureMenuHelpText)
             .accessibilityLabel(String(localized: "Signature", bundle: .module))
             .accessibilityValue(selectedSignature?.title ?? String(localized: "None", bundle: .module))

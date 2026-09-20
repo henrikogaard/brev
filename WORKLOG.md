@@ -1,5 +1,42 @@
 # Worklog
 
+## 2026-09-20 — Codex — Issue #49 iOS compose accessibility width
+
+### Goal
+
+Keep the iPhone compose sheet inside the viewport at the largest Dynamic Type
+accessibility sizes (#49).
+
+### Changes
+
+- `FlowLayout` re-measures a child whose ideal width exceeds the container
+  inside the proposed width, so a single recipient chip truncates instead of
+  widening the layout — and the whole sheet — past the screen edge.
+- The From-row signature picker loses `.fixedSize()`, gains a line limit on
+  its label, and stacks under the sender control in the accessibility field
+  layout, so "Signature: <title>" truncates rather than forcing width.
+- Added two iOS snapshot regressions at `accessibilityExtraExtraExtraLarge`
+  (390 pt and 320 pt) that assert the laid-out compose never reports a width
+  beyond the viewport, plus pixel references; registered both in the CI
+  snapshot lane.
+
+### Verification
+
+- Red: pre-fix, the new test measured `fitted.width = 684` for a 390 pt
+  proposal on iPhone 18 Pro / iOS 27.0.
+- Green: post-fix both width assertions pass; baselines recorded.
+- `swiftformat --lint` and `swiftlint --strict` clean on touched files;
+  BrevMail is not an ADR-0005 protected path.
+- Pre-existing environment mismatch: `emptyCompose`/`replyCompose` pixel
+  baselines mismatch locally on this machine with and without the change
+  (recorded on a different toolchain); left untouched for CI.
+- Native runtime open/dismiss of compose on the simulator remains a manual
+  QA step for the issue's acceptance row.
+
+### Next
+
+- #51 reader stuck-loading diagnosis/fix; #5 PIM source foundation.
+
 ## 2026-09-19 — Codex — Public TestFlight beta without demo mail
 
 ### Goal

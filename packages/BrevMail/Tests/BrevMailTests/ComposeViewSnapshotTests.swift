@@ -159,6 +159,101 @@ struct ComposeViewSnapshotTests {
         #expect(markerCount == 1)
     }
 
+    @Test("Compose stays within the viewport at the largest accessibility text size")
+    func accessibilityTextComposeStaysWithinViewport() {
+        let theme = BrevTheme.brevPaper
+        let backend = MockBackend()
+        let compose = ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["ingrid.halvorsen@acme.example"],
+                subject: "Stavanger rollout notes"
+            ),
+            signatureContext: ComposeSignatureContext(
+                selectedSignatureID: "sig-work",
+                options: [
+                    ComposeSignatureOption(
+                        id: "sig-work",
+                        title: "Personal signature",
+                        body: "— Henrik"
+                    )
+                ]
+            )
+        )
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+        .environment(\.dynamicTypeSize, .accessibility5)
+
+        // Regression for the sheet rendering wider than the viewport at
+        // accessibility sizes: no child may force a width beyond the
+        // proposed 390 pt. Measured without a fixed frame so an
+        // over-wide child propagates its ideal width.
+        let measureHost = UIHostingController(rootView: compose)
+        let fitted = measureHost.sizeThatFits(in: CGSize(width: 390, height: 844))
+        #expect(fitted.width <= 390)
+
+        let host = UIHostingController(rootView: compose.frame(width: 390, height: 844))
+        host.view.backgroundColor = .clear
+        host.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        assertSnapshot(
+            of: host,
+            as: .image(
+                on: .iPhone13Pro,
+                traits: UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)
+            ),
+            named: "accessibility-text-compose"
+        )
+    }
+
+    @Test("Compose stays within a narrow phone viewport at the largest accessibility text size")
+    func narrowPhoneAccessibilityTextComposeStaysWithinViewport() {
+        let theme = BrevTheme.brevPaper
+        let backend = MockBackend()
+        let compose = ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["ingrid.halvorsen@acme.example"],
+                subject: "Stavanger rollout notes"
+            ),
+            signatureContext: ComposeSignatureContext(
+                selectedSignatureID: "sig-work",
+                options: [
+                    ComposeSignatureOption(
+                        id: "sig-work",
+                        title: "Personal signature",
+                        body: "— Henrik"
+                    )
+                ]
+            )
+        )
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+        .environment(\.dynamicTypeSize, .accessibility5)
+
+        let measureHost = UIHostingController(rootView: compose)
+        let fitted = measureHost.sizeThatFits(in: CGSize(width: 320, height: 568))
+        #expect(fitted.width <= 320)
+
+        let host = UIHostingController(rootView: compose.frame(width: 320, height: 568))
+        host.view.backgroundColor = .clear
+        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 568)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        assertSnapshot(
+            of: host,
+            as: .image(
+                traits: UITraitCollection(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)
+            ),
+            named: "narrow-phone-accessibility-text-compose"
+        )
+    }
+
     private func countMarkerViews(in view: UIView) -> Int {
         let ownCount = view.accessibilityIdentifier == "brev-compose-toolbar-marker" ? 1 : 0
         return ownCount + view.subviews.reduce(0) { count, subview in

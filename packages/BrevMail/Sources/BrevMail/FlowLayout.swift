@@ -16,6 +16,11 @@ import SwiftUI
 /// and wrap to a new row when they would exceed the container's
 /// width. Used by the message detail view to wrap recipient chips.
 ///
+/// A child whose ideal width exceeds the container is re-measured
+/// within the container width so it truncates or wraps instead of
+/// forcing the layout — and the whole window — wider than the
+/// proposed width (seen in compose at accessibility text sizes).
+///
 /// SwiftUI doesn't ship a built-in flow layout in iOS 17 / macOS 14,
 /// so this is a small `Layout` implementation sized exactly for that
 /// case (rows of single-line chips). It is intentionally not a
@@ -39,7 +44,7 @@ struct FlowLayout: Layout {
         var totalWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = fittingSize(of: subview, maxWidth: maxWidth)
             if rowWidth + size.width > maxWidth, rowWidth > 0 {
                 totalHeight += rowHeight + spacing
                 totalWidth = max(totalWidth, rowWidth - spacing)
@@ -51,7 +56,7 @@ struct FlowLayout: Layout {
         }
         totalHeight += rowHeight
         totalWidth = max(totalWidth, rowWidth - spacing)
-        return CGSize(width: totalWidth, height: totalHeight)
+        return CGSize(width: min(totalWidth, maxWidth), height: totalHeight)
     }
 
     func placeSubviews(
@@ -65,7 +70,7 @@ struct FlowLayout: Layout {
         var rowHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let size = fittingSize(of: subview, maxWidth: bounds.width)
             if x + size.width > bounds.maxX, x > bounds.minX {
                 x = bounds.minX
                 y += rowHeight + spacing
@@ -79,5 +84,14 @@ struct FlowLayout: Layout {
             x += size.width + spacing
             rowHeight = max(rowHeight, size.height)
         }
+    }
+
+    /// Ideal size for a child, capped at the container width so a
+    /// single oversized child cannot widen the layout beyond the
+    /// proposed bounds.
+    private func fittingSize(of subview: LayoutSubview, maxWidth: CGFloat) -> CGSize {
+        let ideal = subview.sizeThatFits(.unspecified)
+        guard ideal.width > maxWidth else { return ideal }
+        return subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
     }
 }
