@@ -55,7 +55,7 @@ enum DetachedMessageCommand: String, Sendable {
     /// Root mutation responses are scoped to the selected source and folder.
     var activatesMutationFolder: Bool {
         switch self {
-        case .archive, .delete, .setJunk, .toggleRead, .toggleFlag, .blockSender: true
+        case .archive, .delete, .setJunk, .toggleRead, .toggleFlag: true
         default: false
         }
     }
@@ -171,18 +171,21 @@ enum ReaderCommandSourceHandoff {
         _ request: DetachedMessageCommandRequest,
         navigation: MailNavigationState,
         sections: [MailSourceSection],
+        isBlockSenderConfirmed: Bool = false,
         applySection: (MailSourceSection) -> Void
     ) -> Bool {
         if let sourceID = request.sourceID ?? navigation.selectedSourceID {
             guard let section = sections.first(where: { $0.id == sourceID }) else { return false }
             if request.command.requiresFolderList, section.loadError != nil { return false }
-            let activatesFolder = request.command.activatesMutationFolder
+            let activatesMutation = request.command.activatesMutationFolder
+                || (request.command == .blockSender && isBlockSenderConfirmed)
+            let activatesFolder = activatesMutation
                 || (request.command.requiresFolderList && navigation.selectedSourceID != sourceID)
             if activatesFolder,
                navigation.selectedSourceID != sourceID || navigation.selectedFolderID != request.header.folderID {
                 navigation.selectFolder(request.header.folderID, in: sourceID)
             }
-            if request.command.requiresFolderList || request.command.activatesMutationFolder,
+            if request.command.requiresFolderList || activatesMutation,
                section.loadError == nil {
                 applySection(section)
             }

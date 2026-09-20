@@ -2873,3 +2873,12 @@ buttons, and package-aware localization.
 - Verification: 22 handoff/resolver/payload tests and app-hosted iOS tests pass;
   lint, formatting and diff-check pass. No visual baseline changed. Native
   multi-window and real-account acceptance remain internal TestFlight QA.
+
+- Block Sender now activates the target mutation folder only after confirmation;
+  opening/cancelling the prompt preserves navigation. Extended the presentation
+  regression (three red assertions) and verified confirmed activation separately
+  for loaded and failed folder catalogs. Shared context preparation revalidates
+  the source at confirmation time.
+- Verification: all three handoff tests (five parameterized cases total) and
+  app-hosted iOS tests pass; lint, formatting and diff-check pass. The change
+  affects confirmation routing only, so no pixel references were updated.

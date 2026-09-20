@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Cancelling Block Sender preserves the current conversation; folder activation waits for confirmation.
+
 - Reader presentation actions preserve the current conversation and remain available during transient folder-load errors.
 
 - Detached readers preserve their originating folder, including Gmail labels; cross-folder actions activate the correct mutation context.

@@ -4503,10 +4503,20 @@ public struct BrevMailRootView: View {
     /// and folder refresh all apply. Resolve the message's source context before
     /// dispatch so destinations cannot come from a previously selected account.
     private func handleDetachedMessageCommand(_ request: DetachedMessageCommandRequest) {
+        guard prepareDetachedCommandContext(request) else { return }
+        performDetachedCommand(request.command, header: request.header,
+                               sourceID: request.sourceID ?? navigation.selectedSourceID)
+    }
+
+    private func prepareDetachedCommandContext(
+        _ request: DetachedMessageCommandRequest,
+        isBlockSenderConfirmed: Bool = false
+    ) -> Bool {
         let sourceID = request.sourceID ?? navigation.selectedSourceID
         guard sourceID.map({ backendAccountIDs.contains($0.accountID) }) ?? true,
               ReaderCommandSourceHandoff.prepare(
                   request, navigation: navigation, sections: sourceSections,
+                  isBlockSenderConfirmed: isBlockSenderConfirmed,
                   applySection: { section in
                       handleSelectedSourceChange()
                       applySelectedSourceSection(section)
@@ -4516,9 +4526,9 @@ public struct BrevMailRootView: View {
                 localized: "Mailbox folders are not ready. Wait for the mailbox to load and try again.",
                 bundle: .module
             ))
-            return
+            return false
         }
-        performDetachedCommand(request.command, header: request.header, sourceID: sourceID)
+        return true
     }
 
     /// Performs a message action on behalf of a detached reader window or the
@@ -4797,7 +4807,10 @@ public struct BrevMailRootView: View {
     private func confirmReaderBlockSender() async {
         guard let target = pendingReaderBlockSenderTarget else { return }
         pendingReaderBlockSenderTarget = nil
-        guard canStartCommandMutation() else { return }
+        guard prepareDetachedCommandContext(
+            .init(command: .blockSender, header: target.header, sourceID: target.sourceID),
+            isBlockSenderConfirmed: true
+        ), canStartCommandMutation() else { return }
         let request = startCommandMutationRequest(sourceFolderID: target.header.folderID)
         defer { finishCommandMutation(request) }
         do {

@@ -68,7 +68,16 @@ struct ReaderCommandHandoffTests {
                                             message: "Unavailable",
                                             isNetworkError: true
                                         ) : nil)
-        for command: DetachedMessageCommand in [.reply, .replyAll, .forward, .addNote, .followUp, .properties, .downloadOffline] {
+        for command: DetachedMessageCommand in [
+            .reply,
+            .replyAll,
+            .forward,
+            .addNote,
+            .followUp,
+            .properties,
+            .downloadOffline,
+            .blockSender
+        ] {
             var applied = false
             #expect(ReaderCommandSourceHandoff.prepare(
                 .init(command: command, header: header, sourceID: source), navigation: navigation,
@@ -77,6 +86,11 @@ struct ReaderCommandHandoffTests {
             #expect(navigation.selectedFolderID == "inbox")
             #expect(!applied)
         }
+        #expect(ReaderCommandSourceHandoff.prepare(
+            .init(command: .blockSender, header: header, sourceID: source), navigation: navigation,
+            sections: [section], isBlockSenderConfirmed: true, applySection: { _ in }
+        ))
+        #expect(navigation.selectedFolderID == "sent")
     }
 
     @Test("two window handoffs keep their source and command separate and execute once")
