@@ -63,6 +63,8 @@ public struct MessageDetailView: View {
 
     @StateObject private var htmlWebViewStore = HTMLBodyWebViewStore()
 
+    // Refresh menu labels after an in-place retention toggle.
+    @State private var offlineRetentionRevision = 0
     @State private var messageBody: MessageBody?
     @State private var messageSecurityState: MessageSecurityState = .none
     @State private var renderedHTML: AttributedString?
@@ -618,7 +620,8 @@ public struct MessageDetailView: View {
     /// Capability-gated reader inventory shared by the iOS overflow menu and
     /// the reader-body context menu. Unsupported actions are omitted, not
     /// disabled — same honesty rule as the row context menu.
-    private func readerMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+    func readerMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+        _ = offlineRetentionRevision
         let workflowID = SourceMessageID(
             sourceID: readerWorkflowSourceID,
             messageID: header.id
@@ -659,7 +662,7 @@ public struct MessageDetailView: View {
             canFollowUp: canPresentSheets,
             hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
                 .reminder(for: header.id, sourceID: sourceID) != nil,
-            canReply: true,
+            canReply: canPresentSheets && !areActionsBlocked,
             canPrint: !isLoading && errorMessage == nil,
             canExportPDF: !isLoading && errorMessage == nil,
             canShowProperties: true,
@@ -743,9 +746,9 @@ public struct MessageDetailView: View {
         switch action {
         case .toggleRead, .toggleFlag, .toggleSnooze, .toggleDone, .archive,
              .move, .copyToFolder, .copyToLocalFolder, .moveToLocalFolder,
-             .setJunk, .blockSender, .delete, .downloadOffline:
+             .setJunk, .blockSender, .delete, .downloadOffline, .reply, .replyAll, .forward:
             return areActionsBlocked
-        case .openInNewWindow, .select, .pinToTop, .reply, .replyAll, .forward,
+        case .openInNewWindow, .select, .pinToTop,
              .print, .exportPDF, .saveAs, .createMeeting, .createTask,
              .createRule, .addNote, .followUp, .properties, .showHeaders,
              .viewSource:
@@ -760,6 +763,11 @@ public struct MessageDetailView: View {
         for header: MessageHeader
     ) {
         switch action {
+        case .downloadOffline:
+            _ = ReaderOfflineRetention.handle(
+                .init(command: .downloadOffline, header: header, sourceID: readerWorkflowSourceID), backend: backend
+            )
+            offlineRetentionRevision += 1
         case .print:
             printCurrentMessage()
         case .exportPDF:

@@ -81,3 +81,19 @@ struct MessageOfflineRetentionOverrideStore: Equatable {
         "\(messageID.sourceID.accountID)|\(messageID.sourceID.mailboxID)|\(messageID.messageID)"
     }
 }
+
+@MainActor
+enum ReaderOfflineRetention {
+    static func handle(_ request: DetachedMessageCommandRequest, backend: any MailBackend,
+                       store: MessageOfflineRetentionOverrideStore = .init()) -> Bool {
+        guard request.command == .downloadOffline else { return false }
+        let source = request.sourceID ?? MailSourceID(accountID: backend.account.id, mailboxID: backend.account.id)
+        let messageID = SourceMessageID(sourceID: source, messageID: request.header.id)
+        let nowKept = !store.isKeptOffline(messageID)
+        store.setKeptOffline(nowKept, for: messageID)
+        if nowKept {
+            Task { _ = try? await backend.body(for: request.header.id, sourceID: source) }
+        }
+        return true
+    }
+}

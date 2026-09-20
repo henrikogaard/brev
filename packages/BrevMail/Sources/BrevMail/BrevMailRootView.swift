@@ -1377,7 +1377,7 @@ public struct BrevMailRootView: View {
                         sourceID: navigation.selectedSourceID,
                         mailboxLabel: selectedSourceSection?.mailbox.email,
                         navigation: navigation,
-                        isWorkBlocked: isCommandMutationBlocked,
+                        isWorkBlocked: isCommandMutationBlocked || isComposePresentationBlocked,
                         allFolders: folders,
                         canFileLocally: localBackend != nil
                     )
@@ -1388,7 +1388,7 @@ public struct BrevMailRootView: View {
                         header: navigation.selectedHeader ?? fallbackHeader,
                         navigation: navigation,
                         allFolders: folders,
-                        isWorkBlocked: isMessageWorkBlocked,
+                        isWorkBlocked: isMessageWorkBlocked || isComposePresentationBlocked,
                         isMutationWorkBlocked: isCommandMutationBlocked,
                         canFileLocally: localBackend != nil
                     )
@@ -4828,17 +4828,10 @@ public struct BrevMailRootView: View {
     /// Pinning triggers a best-effort body fetch so the cached copy is more
     /// likely to exist before the retention sweep consults the pin.
     private func toggleReaderKeepOffline(header: MessageHeader, sourceID: MailSourceID?) {
-        let store = MessageOfflineRetentionOverrideStore()
-        let messageID = SourceMessageID(
-            sourceID: readerWorkflowSourceID(for: sourceID),
-            messageID: header.id
+        _ = ReaderOfflineRetention.handle(
+            .init(command: .downloadOffline, header: header, sourceID: readerWorkflowSourceID(for: sourceID)),
+            backend: backend(for: sourceID)
         )
-        let nowKept = !store.isKeptOffline(messageID)
-        store.setKeptOffline(nowKept, for: messageID)
-        if nowKept {
-            let backend = backend(for: sourceID)
-            Task { _ = try? await backend.body(for: header.id, sourceID: readerWorkflowSourceID(for: sourceID)) }
-        }
     }
 
     private func confirmReaderBlockSender() async {

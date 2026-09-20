@@ -379,7 +379,7 @@ public struct ThreadConversationView: View {
     /// (`MessageCommandPresentation.readerMenu`), so right-click/long-press on
     /// a thread card exposes identical actions — hidden when unsupported,
     /// disabled only when temporarily unavailable.
-    private func cardMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+    func cardMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
         let workflowSourceID = sourceID ?? MailSourceID(
             accountID: backend.account.id,
             mailboxID: backend.account.id
@@ -419,7 +419,7 @@ public struct ThreadConversationView: View {
             canFollowUp: canPresentSheets,
             hasFollowUp: FollowUpReminderIndex(settings: FollowUpSettings.load())
                 .reminder(for: header.id, sourceID: sourceID) != nil,
-            canReply: true,
+            canReply: canPresentSheets && !isWorkBlocked,
             canPrint: true,
             canExportPDF: true,
             canShowProperties: true,

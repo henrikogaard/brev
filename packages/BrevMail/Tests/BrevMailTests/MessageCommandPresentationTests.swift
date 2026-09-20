@@ -17,6 +17,23 @@ import Testing
 
 @Suite("MessageCommandPresentation")
 struct MessageCommandPresentationTests {
+    @MainActor
+    @Test("busy reader and thread-card menus disable composer actions")
+    func busyReaderComposeActions() {
+        let header = Self.makeHeader()
+        let backend = MockBackend()
+        let reader = MessageDetailView(backend: backend, header: header, isWorkBlocked: true)
+        let mutationReader = MessageDetailView(backend: backend, header: header, isMutationWorkBlocked: true)
+        let thread = ThreadConversationView(threadHeaders: [header], backend: backend,
+                                            navigation: MailNavigationState(), isWorkBlocked: true)
+        for menu in [reader.readerMenuPresentation(for: header), mutationReader.readerMenuPresentation(for: header),
+                     thread.cardMenuPresentation(for: header)] {
+            for action: MessageContextMenuAction in [.reply, .replyAll, .forward] {
+                #expect(menu.action(action)?.isEnabled == false)
+            }
+        }
+    }
+
     @Test("confirmation-backed commands reserve presentation and mutation availability")
     func readerConfirmationAdmission() {
         for command: DetachedMessageCommand in [.toggleSnooze, .delete, .blockSender] {

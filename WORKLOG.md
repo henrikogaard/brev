@@ -2952,3 +2952,15 @@ buttons, and package-aware localization.
 - Verification: all 46 presentation/handoff/resolver tests pass, including both
   permanent-delete cases; lint, formatting and diff-check pass. No rendered
   layout changed; native confirmation interactions remain device QA.
+
+- Keep Offline is handled directly in MessageDetailView using a shared retention
+  action also used by the root. It toggles the same account-scoped pin and keeps
+  the existing best-effort body prefetch, without a scene handoff. Menu labels
+  invalidate after the local toggle. Busy single-reader and thread-card menus
+  disable compose actions; roots include their exact compose-blocked state.
+- Two regressions failed 12 assertions before the fixes: reader/card compose
+  availability and local detached retention handling with source isolation.
+- Verification: all 33 menu/retention tests and seven phone snapshot cases pass
+  (xcodebuild exit 0); lint/format/diff-check pass. Existing snapshot references
+  remain unchanged. The same explicit Keep Offline operation performs the same
+  provider body prefetch, so no new network/privacy behavior was introduced.

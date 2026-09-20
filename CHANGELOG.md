@@ -83,6 +83,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Keep Offline runs in detached readers without opening extra mailbox windows; busy readers disable Reply and Forward.
+
 - Cancelling permanent Delete preserves the conversation; confirmed deletion retains its source and folder.
 
 - iPad shortcut help no longer advertises the macOS-only Settings shortcut.
