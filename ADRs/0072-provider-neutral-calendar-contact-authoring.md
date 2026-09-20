@@ -1,21 +1,23 @@
 # ADR-0072: Provider-neutral calendar and contact authoring
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-05
 - **Updated:** 2026-09-20
 - **Deciders:** Henrik
-- **Supersedes on acceptance:** ADR-0039's read-only authoring boundary
+- **Supersedes:** ADR-0039's read-only authoring boundary
 - **Tracking:** #3, #4 through #11; #12 through #15 are separate follow-ups
 
 ## Context and acceptance boundary
 
 Brev currently provides mail invitations, selected CalDAV invite writes,
 EventKit message-to-event creation and contact autocomplete. These are not a
-first-class calendar or contacts client. ADR-0039 remains authoritative until
-Henrik accepts this proposal. This ADR does not claim implementation or live
-provider acceptance, change shipping permissions, or authorize new requests.
+first-class calendar or contacts client. Henrik accepted this ADR on
+2026-09-20, superseding ADR-0039's authoring boundary; its read-only browsing
+boundary still governs until browsing ships. This ADR does not claim
+implementation or live provider acceptance, change shipping permissions, or
+authorize new requests beyond what each implementation PR verifies.
 
-The proposed committed phase is Calendar and Contacts on macOS and iOS, with
+The committed phase is Calendar and Contacts on macOS and iOS, with
 Google Calendar/People and generic CalDAV/CardDAV behind the same UI. Tasks,
 Meet creation, Drive picking and a Notes decision remain separate follow-ups.
 Chat, full Drive browsing, free/busy scheduling and directory administration
@@ -296,8 +298,6 @@ local drafts plus online submission is the proposed first-phase tradeoff.
 Native Google reauthorization and grant replacement require live proof; this is a
 #5 acceptance gate, not an assumed capability. Provider unknown-field fidelity,
 recurrence and unsupported conditional operations can narrow individual adapters.
-The remaining maintainer decision is whether to accept this committed phase and
-its online-only initial remote authoring boundary. Until then, status is Proposed.
 
 ## References (checked 2026-09-20)
 
