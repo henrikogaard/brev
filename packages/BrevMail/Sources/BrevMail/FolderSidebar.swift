@@ -440,11 +440,9 @@ public struct FolderSidebar: View {
             expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
         } label: {
             HStack(spacing: BrevSpacing.xs) {
+                #if os(macOS)
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .font(.system(size: 10, weight: .semibold))
-                #if os(iOS)
-                    .frame(width: sidebarMetrics.iconWidth)
-                #else
                     .frame(width: sidebarMetrics.disclosureHitSize)
                 #endif
                 Image(systemName: "tray")
@@ -460,12 +458,24 @@ public struct FolderSidebar: View {
                 } else if !isExpanded {
                     unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
+                #if os(iOS)
+                // Match folder rows: only nested folders add leading indentation.
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .frame(width: sidebarMetrics.disclosureHitSize)
+                    .accessibilityHidden(true)
+                #endif
             }
             .foregroundStyle(theme.textSecondary.color)
-            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
-            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
-            .contentShape(Rectangle())
+            #if os(iOS)
+                .padding(.leading, sidebarMetrics.folderRowBaseLeadingPadding)
+                .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            #else
+                .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
+            #endif
+                .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
+                .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .help(section.subtitle)

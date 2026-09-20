@@ -298,13 +298,17 @@ struct ThreadMessageCard: View {
     private var bodyContent: some View {
         switch ThreadMessageBodyPresentation.resolve(bodyPresentationContext) {
         case .loading:
-            HStack {
-                Spacer()
+            HStack(spacing: BrevSpacing.sm) {
                 ProgressView()
+                    .controlSize(.small)
                     .tint(theme.accent.color)
-                Spacer()
+                Text("Loading message…", bundle: .module)
+                    .font(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
             }
-            .padding(BrevSpacing.lg)
+            .dynamicTypeSize(denseChromeDynamicTypeRange)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, BrevSpacing.md)
 
         case .error(let errorMessage):
             Text(errorMessage)

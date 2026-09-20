@@ -67,6 +67,34 @@ struct PhoneMailboxSnapshotTests {
                                             traits: .init(displayScale: 2)), named: "narrow-compose")
     }
 
+    @Test("conversation metadata stays secondary at phone text sizes", arguments: [false, true])
+    func conversation(accessibility: Bool) throws {
+        let header = MessageHeader(
+            id: "message", threadID: "thread", folderID: "inbox",
+            from: Correspondent(name: "Marte Solheim", email: "marte@example.org"),
+            subject: "Stavanger rollout — terminal go-live window",
+            snippet: "The rollback plan is ready.", date: .distantPast
+        )
+        let defaults = try #require(UserDefaults(suiteName: "PhoneReader-" + UUID().uuidString))
+        let view = ThreadConversationView(
+            threadHeaders: [header], backend: MockBackend(),
+            mailboxLabel: "henrik@ogard.example",
+            navigation: MailNavigationState(selectedMessageID: header.id),
+            preloadedBodies: [header.id: RenderedBody(html: nil,
+                                                      plainText: "Hi team,\n\nThe rollback plan is ready. We can confirm Tuesday's launch window.\n\nThanks,\nMarte",
+                                                      attachments: [])],
+            showsAvatars: false, autoScrollsToExpandedMessage: false,
+            dateTextProvider: { _ in "10:38" }
+        )
+        .brevTheme(.brevMonoLight)
+        .htmlBodyRenderTarget(.staticSnapshot)
+        .defaultAppStorage(defaults)
+        .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+                       named: accessibility ? "accessibility" : "standard")
+    }
+
     @Test("phone folder hierarchy", arguments: [false, true])
     func mailboxes(dark: Bool) throws {
         let theme = dark ? BrevTheme.brevMonoDark : .brevMonoLight
