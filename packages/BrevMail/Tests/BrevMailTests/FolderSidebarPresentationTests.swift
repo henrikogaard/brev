@@ -160,6 +160,17 @@ struct FolderSidebarPresentationTests {
         #expect(macMetrics.folderRowDepthIndent < touchMetrics.folderRowDepthIndent)
     }
 
+    @Test("nested folders use one visual hierarchy indent")
+    func nestedFoldersUseOneVisualHierarchyIndent() {
+        for platform in [FolderSidebarPlatform.iPhone, .iPad, .macOS] {
+            let metrics = FolderSidebarPresentation.layoutMetrics(for: platform)
+
+            #expect(metrics.folderRowLeadingPadding(depth: 1) > metrics.folderRowLeadingPadding(depth: 0))
+            #expect(metrics.folderRowLeadingPadding(depth: 2) == metrics.folderRowLeadingPadding(depth: 1))
+            #expect(metrics.folderRowLeadingPadding(depth: 3) == metrics.folderRowLeadingPadding(depth: 1))
+        }
+    }
+
     @Test("macOS sidebar rows follow the shared density preference")
     func macOSSidebarRowsFollowSharedDensity() {
         let compact = FolderSidebarPresentation.layoutMetrics(
