@@ -157,15 +157,16 @@ struct ComposePresentationTests {
         #expect(chrome.fieldRows == [.recipients, .subject, .sender])
     }
 
-    @Test("accessibility compact toolbar keeps send direct and moves draft controls into actions")
-    func accessibilityCompactToolbarKeepsSendDirectAndMovesDraftControlsIntoActions() {
+    @Test("compact toolbar keeps attachment and send direct and moves infrequent controls into actions")
+    func compactToolbarKeepsAttachmentAndSendDirect() {
         let layout = ComposePresentation.toolbarActionLayout(for: .compactIOSAccessibility)
 
-        #expect(layout.directActions == [.close, .send, .moreActions])
+        #expect(layout.directActions == [.close, .attach, .send, .moreActions])
         #expect(layout.overflowActions == [
-            .attach,
             .templates,
             .signature,
+            .messageOptions,
+            .format,
             .security,
             .aiWriter,
             .saveDraft,
@@ -173,9 +174,10 @@ struct ComposePresentationTests {
         ])
         #expect(layout.moreActionsAccessibilityLabel == "Compose actions")
         #expect(layout.moreActionsAccessibilityValue == [
-            "Attach",
             "Templates",
             "Signature",
+            "Message Options",
+            "Format",
             "Message Security",
             "AI Writer",
             "Save Draft",
@@ -183,13 +185,39 @@ struct ComposePresentationTests {
         ].joined(separator: ", "))
     }
 
-    @Test("regular iPad keeps Send visible and moves secondary tools into overflow")
+    @Test("regular iPad keeps attachment and Send visible and moves secondary tools into overflow")
     func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
-        #expect(layout.directActions == [.close, .send, .moreActions])
+        #expect(layout.directActions == [.close, .attach, .send, .moreActions])
         #expect(layout.overflowActions.contains(.signature))
         #expect(layout.overflowActions.contains(.security))
-        #expect(layout.overflowActions.contains(.attach))
+        #expect(!layout.overflowActions.contains(.attach))
+    }
+
+    @Test("macOS keeps common editing tools and Send direct with one secondary menu")
+    func macOSToolbarKeepsOnlyCommonActionsDirect() {
+        let layout = ComposePresentation.toolbarActionLayout(for: .macOS)
+
+        #expect(layout.directActions == [.attach, .format, .send, .moreActions])
+        #expect(layout.overflowActions == [
+            .templates,
+            .signature,
+            .messageOptions,
+            .security,
+            .aiWriter,
+            .editorAppearance,
+            .preview,
+            .saveDraft,
+            .scheduleSend
+        ])
+    }
+
+    @Test("compose title describes new reply and forward modes")
+    func composeTitleDescribesMode() {
+        #expect(ComposePresentation.title(isReplying: false, isForwarding: false) == "New Message")
+        #expect(ComposePresentation.title(isReplying: true, isForwarding: false) == "Reply")
+        #expect(ComposePresentation.title(isReplying: false, isForwarding: true) == "Forward")
+        #expect(ComposePresentation.title(isReplying: true, isForwarding: true) == "Reply")
     }
 
     @Test("macOS toolbar controls use an accessible hit target around compact icons")
@@ -210,7 +238,7 @@ struct ComposePresentationTests {
 
         #expect(metrics.buttonSize == 26)
         #expect(metrics.hitTargetSize == 44)
-        #expect(metrics.height == 42)
+        #expect(metrics.height == 52)
         #expect(metrics.leadingInset == 0)
         #expect(metrics.topInset == 0)
         #expect(metrics.hitTargetSize >= 44)
@@ -220,6 +248,10 @@ struct ComposePresentationTests {
     @Test("compose toolbar actions expose readable accessibility labels")
     func composeToolbarActionsExposeReadableAccessibilityLabels() {
         #expect(ComposeToolbarAction.aiWriter.accessibilityLabel == "AI Writer")
+        #expect(ComposeToolbarAction.format.accessibilityLabel == "Format")
+        #expect(ComposeToolbarAction.messageOptions.accessibilityLabel == "Message Options")
+        #expect(ComposeToolbarAction.editorAppearance.accessibilityLabel == "Editor Appearance")
+        #expect(ComposeToolbarAction.preview.accessibilityLabel == "Preview")
         #expect(ComposeToolbarAction.moreActions.accessibilityLabel == "Compose actions")
         #expect(ComposeToolbarAction.scheduleSend.accessibilityLabel == "Schedule send")
     }

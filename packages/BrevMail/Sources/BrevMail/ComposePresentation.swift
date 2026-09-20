@@ -73,7 +73,7 @@ enum ComposeLayoutPolicy {
     static func toolbarMetrics(for platform: ComposeLayoutPlatform) -> ComposeToolbarMetrics {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
-            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 44, height: 42, leadingInset: 0, topInset: 0)
+            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 44, height: 52, leadingInset: 0, topInset: 0)
         case .macOS:
             ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 36, height: 42, leadingInset: 76, topInset: 0)
         }
@@ -83,10 +83,14 @@ enum ComposeLayoutPolicy {
 enum ComposeToolbarAction: Equatable, Sendable, Hashable {
     case close
     case attach
+    case format
     case signature
     case templates
+    case messageOptions
     case security
     case aiWriter
+    case editorAppearance
+    case preview
     case saveDraft
     case scheduleSend
     case send
@@ -98,14 +102,22 @@ enum ComposeToolbarAction: Equatable, Sendable, Hashable {
             return String(localized: "Close", bundle: .module)
         case .attach:
             return String(localized: "Attach", bundle: .module)
+        case .format:
+            return String(localized: "Format", bundle: .module)
         case .signature:
             return String(localized: "Signature", bundle: .module)
         case .templates:
             return String(localized: "Templates", bundle: .module)
+        case .messageOptions:
+            return String(localized: "Message Options", bundle: .module)
         case .security:
             return String(localized: "Message Security", bundle: .module)
         case .aiWriter:
             return String(localized: "AI Writer", bundle: .module)
+        case .editorAppearance:
+            return String(localized: "Editor Appearance", bundle: .module)
+        case .preview:
+            return String(localized: "Preview", bundle: .module)
         case .saveDraft:
             return String(localized: "Save Draft", bundle: .module)
         case .scheduleSend:
@@ -224,11 +236,12 @@ enum ComposePresentation {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
-                directActions: [.close, .send, .moreActions],
+                directActions: [.close, .attach, .send, .moreActions],
                 overflowActions: [
-                    .attach,
                     .templates,
                     .signature,
+                    .messageOptions,
+                    .format,
                     .security,
                     .aiWriter,
                     .saveDraft,
@@ -237,20 +250,30 @@ enum ComposePresentation {
             )
         case .macOS:
             ComposeToolbarActionLayout(
-                directActions: [
-                    .close,
-                    .attach,
-                    .signature,
+                directActions: [.attach, .format, .send, .moreActions],
+                overflowActions: [
                     .templates,
+                    .signature,
+                    .messageOptions,
                     .security,
                     .aiWriter,
+                    .editorAppearance,
+                    .preview,
                     .saveDraft,
-                    .scheduleSend,
-                    .send
+                    .scheduleSend
                 ],
-                overflowActions: []
             )
         }
+    }
+
+    static func title(isReplying: Bool, isForwarding: Bool) -> String {
+        if isReplying {
+            return String(localized: "Reply", bundle: .module)
+        }
+        if isForwarding {
+            return String(localized: "Forward", bundle: .module)
+        }
+        return String(localized: "New Message", bundle: .module)
     }
 
     static func errorStatus(_ message: String) -> ComposeErrorStatus {
