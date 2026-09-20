@@ -451,4 +451,83 @@ struct PIMSourceCoordinatorTests {
         #expect(linkedSources.map(\.id) == [linked.id])
         #expect(try await coordinator.linkedSources(accountID: "other").isEmpty)
     }
+
+    // MARK: - Google sources
+
+    @Test("connectGoogleSource registers a linked source without a credential")
+    func connectGoogleSourceRegistersLinkedSource() async throws {
+        let root = try makeTempDir()
+        let credentials = InMemoryCredentialStore()
+        let coordinator = makeCoordinator(
+            transport: Self.okTransport(),
+            credentials: credentials,
+            localDataRoot: root
+        )
+
+        let source = try await coordinator.connectGoogleSource(
+            kind: .calendar,
+            accountID: "gmail-api:subject-1",
+            displayName: "henrik@gmail.com"
+        )
+
+        #expect(source.provider == .google)
+        #expect(source.kind == .calendar)
+        #expect(source.linkedAccountID == "gmail-api:subject-1")
+        #expect(source.status == .ready)
+        #expect(source.syncEnabled == false)
+        // The shared Google grant lives in the account token store; the
+        // source must not hold its own credential reference.
+        #expect(source.credentialAccount == nil)
+        #expect(await credentials.credentials.isEmpty)
+    }
+
+    @Test("connectGoogleSource is idempotent per account and kind")
+    func connectGoogleSourceIsIdempotent() async throws {
+        let root = try makeTempDir()
+        let coordinator = makeCoordinator(
+            transport: Self.okTransport(),
+            localDataRoot: root
+        )
+
+        let first = try await coordinator.connectGoogleSource(
+            kind: .contacts,
+            accountID: "gmail-api:subject-1",
+            displayName: "henrik@gmail.com"
+        )
+        let second = try await coordinator.connectGoogleSource(
+            kind: .contacts,
+            accountID: "gmail-api:subject-1",
+            displayName: "henrik@gmail.com"
+        )
+        let other = try await coordinator.connectGoogleSource(
+            kind: .contacts,
+            accountID: "gmail-api:subject-2",
+            displayName: "other@gmail.com"
+        )
+
+        #expect(first.id == second.id)
+        #expect(other.id != first.id)
+        #expect(try await coordinator.allSources().count == 2)
+    }
+
+    @Test("removing a Google source never deletes a credential")
+    func removingGoogleSourceKeepsSharedGrant() async throws {
+        let root = try makeTempDir()
+        let credentials = InMemoryCredentialStore()
+        let coordinator = makeCoordinator(
+            transport: Self.okTransport(),
+            credentials: credentials,
+            localDataRoot: root
+        )
+        let source = try await coordinator.connectGoogleSource(
+            kind: .calendar,
+            accountID: "gmail-api:subject-1",
+            displayName: "henrik@gmail.com"
+        )
+
+        try await coordinator.removeSource(id: source.id, deleteCachedContent: true)
+
+        #expect(try await coordinator.allSources().isEmpty)
+        #expect(await credentials.credentials.isEmpty)
+    }
 }

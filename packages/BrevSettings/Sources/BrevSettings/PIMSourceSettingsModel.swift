@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 import Foundation
 import Observation
@@ -34,12 +35,32 @@ public final class PIMSourceSettingsModel {
     public private(set) var isConnecting = false
     /// Last actionable failure, surfaced inline by the section.
     public private(set) var lastError: String?
+    /// Google account running a feature authorization; drives that row's
+    /// spinner and disables its buttons.
+    public private(set) var pendingGoogleAccountID: BrevAccount.ID?
 
     private let coordinator: PIMSourceCoordinator
+    /// Session-provided Google enablement (fresh authorization + grant
+    /// swap + source registration). Nil in sessions without Google wiring —
+    /// the section then shows the feature as not available yet.
+    private let googleFeatureHandler:
+        ((BrevAccount.ID, PIMSourceKind) async throws -> Void)?
 
-    /// - Parameter coordinator: The serial lifecycle owner for all sources.
-    public init(coordinator: PIMSourceCoordinator) {
+    /// - Parameters:
+    ///   - coordinator: The serial lifecycle owner for all sources.
+    ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
+    ///     account through feature-triggered reauthorization.
+    public init(
+        coordinator: PIMSourceCoordinator,
+        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
+    ) {
         self.coordinator = coordinator
+        self.googleFeatureHandler = googleFeatureHandler
+    }
+
+    /// Whether Google feature enablement can run in this session.
+    public var canEnableGoogleFeatures: Bool {
+        googleFeatureHandler != nil
     }
 
     // MARK: - Loading
@@ -98,6 +119,28 @@ public final class PIMSourceSettingsModel {
                 sourceID: sourceID,
                 credential: credential
             )
+            await load()
+            return true
+        } catch {
+            lastError = Self.errorText(for: error)
+            return false
+        }
+    }
+
+    /// Enables a PIM feature on a Google mail account. Returns true when
+    /// the feature was enabled and the list reloaded; a declined or
+    /// partial authorization surfaces an inline error and changes nothing.
+    @discardableResult
+    public func enableGoogleFeature(
+        accountID: BrevAccount.ID,
+        kind: PIMSourceKind
+    ) async -> Bool {
+        guard let googleFeatureHandler else { return false }
+        pendingGoogleAccountID = accountID
+        lastError = nil
+        defer { pendingGoogleAccountID = nil }
+        do {
+            try await googleFeatureHandler(accountID, kind)
             await load()
             return true
         } catch {

@@ -115,6 +115,11 @@ public final class AppSession {
         @MainActor () async throws -> LoginResult
     public typealias IMAPAccountDiscoveryCoordinator =
         @MainActor (String) async throws -> MailAccountDiscoveryResult
+    /// Runs a fresh Google authorization extending the account's grant to
+    /// cover the enabled PIM feature, validates identity and granted scopes,
+    /// and swaps the credential — or throws, leaving mail sign-in untouched.
+    public typealias GooglePIMEnablementCoordinator =
+        @MainActor (BrevAccount.ID, PIMSourceKind) async throws -> Void
     public typealias RestoreCoordinator = @MainActor (BrevAccount) async throws -> LoginResult?
     public typealias DemoLoginCoordinator = @MainActor () async -> LoginResult
     public typealias CardDAVContactSyncStarter =
@@ -137,6 +142,7 @@ public final class AppSession {
     private let imapAccountDiscoveryCoordinator: IMAPAccountDiscoveryCoordinator?
     private let restoreCoordinator: RestoreCoordinator?
     private let demoLoginCoordinator: DemoLoginCoordinator?
+    private let googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator?
     private let cardDAVContactSyncStarter: CardDAVContactSyncStarter
     private let signOutCoordinator: SignOutCoordinator
     private let accountDataCleanup: AccountDataCleanup
@@ -256,6 +262,7 @@ public final class AppSession {
         signOutCoordinator: @escaping SignOutCoordinator = { _ in },
         accountDataCleanup: @escaping AccountDataCleanup = { _ in },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
+        googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
         },
@@ -263,6 +270,7 @@ public final class AppSession {
         pendingMutationCleanup: @escaping PendingMutationCleanup = { _ in }
     ) {
         self.pimSourceCoordinator = pimSourceCoordinator
+        self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
         signInError = initialSignInError
@@ -821,6 +829,47 @@ public final class AppSession {
 
     public func removeAccount(_ account: BrevAccount) async {
         await endAccountSession(account, shouldRunSignOutCoordinator: true)
+    }
+
+    /// Enables a PIM feature on a Google mail account (ADR-0072).
+    ///
+    /// Runs the injected fresh-authorization coordinator first — it asks for
+    /// the union of the account's grant and the feature's scopes, validates
+    /// identity and granted scopes, and only then swaps the credential. A
+    /// cancelled, mismatched, or partial authorization throws before any
+    /// source record exists and never touches the working mail credential.
+    /// Enablement is idempotent per account and kind.
+    @discardableResult
+    public func enableGooglePIMFeature(
+        accountID: BrevAccount.ID,
+        kind: PIMSourceKind
+    ) async throws -> PIMSource {
+        guard let pimSourceCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "PIM sources are unavailable in this session.", bundle: .module)
+            )
+        }
+        if let existing = try await pimSourceCoordinator.googleSource(
+            accountID: accountID,
+            kind: kind
+        ) {
+            return existing
+        }
+        guard let googlePIMEnablementCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "Google PIM authorization is unavailable in this session.", bundle: .module)
+            )
+        }
+        try await googlePIMEnablementCoordinator(accountID, kind)
+        let storedEmailAddress = await accountStore.accounts.first { $0.id == accountID }?.emailAddress
+        let displayName = backends[accountID]?.account.emailAddress
+            ?? storedEmailAddress
+            ?? accountID
+        return try await pimSourceCoordinator.connectGoogleSource(
+            kind: kind,
+            accountID: accountID,
+            displayName: displayName
+        )
     }
 
     /// Signals that the account needs to re-authenticate.

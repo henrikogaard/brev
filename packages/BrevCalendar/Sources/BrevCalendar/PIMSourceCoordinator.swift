@@ -62,6 +62,19 @@ public actor PIMSourceCoordinator {
         try await allSources().filter { $0.linkedAccountID == accountID }
     }
 
+    /// The Google source of a kind already enabled on a mail account, if
+    /// any. Enablement is idempotent per account and kind.
+    public func googleSource(
+        accountID: String,
+        kind: PIMSourceKind
+    ) async throws -> PIMSource? {
+        try await allSources().first {
+            $0.provider == .google
+                && $0.kind == kind
+                && $0.linkedAccountID == accountID
+        }
+    }
+
     // MARK: - Connect
 
     /// Connects a standards-based DAV source: validates the endpoint and
@@ -113,6 +126,45 @@ public actor PIMSourceCoordinator {
             try? await credentials.deleteCredential(for: credentialAccount)
             throw error
         }
+        sources?[source.id] = source
+        return source
+    }
+
+    // MARK: - Google sources
+
+    /// Registers a Google PIM source on a mail account whose shared grant
+    /// already covers the feature (ADR-0072).
+    ///
+    /// No credential is staged here: the source rides the account's OAuth
+    /// grant in the token store, so credentialAccount stays nil and removal
+    /// can never delete the credential mail still uses. Enablement is
+    /// idempotent — a second call for the same account and kind returns the
+    /// existing record. The caller authorizes first; this method only
+    /// records the enabled feature.
+    @discardableResult
+    public func connectGoogleSource(
+        kind: PIMSourceKind,
+        accountID: String,
+        displayName: String
+    ) async throws -> PIMSource {
+        if let existing = try await googleSource(accountID: accountID, kind: kind) {
+            return existing
+        }
+        let timestamp = now()
+        let source = PIMSource(
+            id: "pim-\(UUID().uuidString.lowercased())",
+            kind: kind,
+            provider: .google,
+            linkedAccountID: accountID,
+            displayName: displayName,
+            credentialAccount: nil,
+            enabledCapabilities: [.read],
+            syncEnabled: false,
+            status: .ready,
+            createdAt: timestamp,
+            updatedAt: timestamp
+        )
+        try await store.save(source)
         sources?[source.id] = source
         return source
     }

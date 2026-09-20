@@ -259,6 +259,14 @@ empty. The non-ephemeral session may reuse system browser cookies for SSO, but
 Brev cannot read those cookies. Cancelling stops the web session on both
 platforms; only macOS also stops the loopback listener.
 
+When you enable Calendar or Contacts on a Google account in
+Settings → Calendar & Contacts, Brev runs the same user-initiated Google
+authorization again, requesting the additional read-only scope for that
+feature. The newly granted token replaces the stored one only when it
+belongs to the same Google account and still covers mail access plus the
+requested feature scopes; a declined or partial grant changes nothing.
+No Google PIM data is synced yet — enablement only extends the grant.
+
 For a Gmail API account, Brev then contacts `gmail.googleapis.com` using the
 Google access token. Gmail returns stable account-wide message and thread IDs,
 label metadata, message content requested by the user or sync policy, and an

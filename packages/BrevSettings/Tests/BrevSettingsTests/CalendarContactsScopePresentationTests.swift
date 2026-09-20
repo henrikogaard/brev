@@ -22,7 +22,7 @@ struct CalendarContactsScopePresentationTests {
         #expect(summary.direction == .optionalConnectedSources)
     }
 
-    @Test("available capabilities cover shipping mail workflows and DAV connect")
+    @Test("available capabilities cover shipping workflows, DAV connect and Google enablement")
     func availableCapabilitiesCoverShippingWorkflows() {
         let summary = CalendarContactsScopePresentation.summary
 
@@ -30,7 +30,8 @@ struct CalendarContactsScopePresentationTests {
             .calendarInvites,
             .caldavInviteWrite,
             .carddavComposeAutocomplete,
-            .davSourceConnect
+            .davSourceConnect,
+            .googleSourceEnablement
         ])
         #expect(summary.currentCapabilities.allSatisfy { $0.status == .available })
     }
@@ -40,7 +41,6 @@ struct CalendarContactsScopePresentationTests {
         let summary = CalendarContactsScopePresentation.summary
 
         #expect(summary.unavailableCapabilities.map(\.kind) == [
-            .googleSourceEnablement,
             .readOnlyCalendarBrowsing,
             .readOnlyContactsBrowsing,
             .unifiedPIMSearch,

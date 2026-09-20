@@ -1,5 +1,54 @@
 # Worklog
 
+## 2026-09-20 — Codex — Issue #5 Google feature-triggered reauthorization
+
+### Goal
+
+Slice 3 for #5 (ADR-0072): let a Google mail account enable Calendar or
+Contacts through a fresh user-initiated authorization that extends the
+shared grant, then register the linked source. Read-only scopes only;
+sync scheduling and authoring land later.
+
+### Changes
+
+- Merged PR #55 (ADR-0072 acceptance) into main.
+- BrevBackend: `GoogleOAuthFlow` accepts `additionalScopes` on signIn and
+  authorization-URL building; mail baseline is always included.
+- BrevGmail: `GmailAccountConnector.enablePIMFeature` requests the union
+  of stored and requested scopes, validates account subject and granted
+  superset, and stage-then-swaps token+config with rollback.
+- BrevCalendar: `GooglePIMScopes` read-only scope mapping;
+  `PIMSourceCoordinator.connectGoogleSource` registers a linked source
+  with no credential of its own (idempotent per account+kind).
+- BrevMail: `AppSession.enableGooglePIMFeature` +
+  `GooglePIMEnablementCoordinator` hook; factory configuration wiring.
+- BrevSettings + both apps: per-Google-account enable rows in
+  Settings → Calendar & Contacts; placeholder only when the session
+  cannot authorize.
+- Docs: ADR-0072 contract log slice 3; ADR-0006 Google rows cover
+  feature-triggered reauthorization; PRIVACY.md documents the reauth
+  flow; CHANGELOG Unreleased updated.
+
+### Verification
+
+- swift test BrevGmail --filter GmailPIMEnablement: 7 pass (union
+  request, grant swap, identity mismatch, partial grant, lost mail
+  access, cancellation, missing config).
+- swift test BrevCalendar --filter PIMSourceCoordinator: 13 pass
+  (Google source registration, idempotency, credential-free removal).
+- swift test BrevBackend --filter GoogleOAuthFlow: 34 pass (additional
+  scopes in the authorization URL).
+- swift test BrevSettings --filter PIMSourceSettingsModel: 12 pass
+  (handler gating, forward+reload, declined grant).
+- swift build BrevMail clean; swiftformat + swiftlint clean on touched
+  files.
+
+### Next
+
+- Land the stack: #56 (lifecycle) and #57 (settings surface) merge to
+  main, then this slice's PR. Remaining #5 scope: mail-account removal
+  UX for linked sources; live-provider smoke stays a maintainer gate.
+
 ## 2026-09-20 — Codex — Issue #5 PIM source lifecycle foundation
 
 ### Goal

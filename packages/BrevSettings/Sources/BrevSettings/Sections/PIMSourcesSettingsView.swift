@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 import BrevDesign
 import BrevThemes
@@ -78,6 +79,9 @@ struct PIMSourcesSettingsView: View {
     @Environment(\.brevTheme) private var theme
 
     let model: PIMSourceSettingsModel
+    /// Google mail accounts eligible for feature enablement. Empty in
+    /// previews and sessions without a Google account.
+    let googleAccounts: [BrevAccount]
 
     @State private var isShowingConnectSheet = false
     @State private var reconnectSource: PIMSource?
@@ -131,7 +135,7 @@ struct PIMSourcesSettingsView: View {
                 }
                 .padding(.top, BrevSpacing.xxs)
 
-                googlePlaceholderRow
+                googleRows
             }
         }
         .sheet(isPresented: $isShowingConnectSheet) {
@@ -266,9 +270,85 @@ struct PIMSourcesSettingsView: View {
         .disabled(model.pendingSourceID == row.id)
     }
 
-    /// Google enablement arrives with feature-triggered reauthorization
-    /// (#5). Listed as unavailable rather than hidden so the surface never
-    /// implies the option does not exist.
+    /// Google enablement rows. When the session wires reauthorization,
+    /// each Google account offers a button per PIM kind not yet enabled;
+    /// otherwise the feature is listed as not available yet — never
+    /// labeled ready (ADR-0072).
+    @ViewBuilder
+    private var googleRows: some View {
+        if model.canEnableGoogleFeatures, !googleAccounts.isEmpty {
+            ForEach(googleAccounts) { account in
+                googleAccountRow(account)
+            }
+        } else {
+            googlePlaceholderRow
+        }
+    }
+
+    private func googleAccountRow(_ account: BrevAccount) -> some View {
+        let enabledKinds = Set(
+            model.sources
+                .filter { $0.provider == .google && $0.linkedAccountID == account.id }
+                .map(\.kind)
+        )
+        let missingKinds = PIMSourceKind.allCases.filter { !enabledKinds.contains($0) }
+        return Group {
+            if missingKinds.isEmpty {
+                EmptyView()
+            } else {
+                HStack(alignment: .top, spacing: BrevSpacing.sm) {
+                    Image(systemName: "g.circle")
+                        .symbolRenderingMode(.hierarchical)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .frame(width: 18)
+                    VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                        Text(account.emailAddress)
+                            .brevFont(.subheadline)
+                            .foregroundStyle(theme.textPrimary.color)
+                        Text(String(localized: "Google", bundle: .module))
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                        HStack(spacing: BrevSpacing.xs) {
+                            ForEach(missingKinds, id: \.self) { kind in
+                                Button {
+                                    Task {
+                                        await model.enableGoogleFeature(
+                                            accountID: account.id,
+                                            kind: kind
+                                        )
+                                    }
+                                } label: {
+                                    Text(googleKindButtonTitle(kind))
+                                }
+                                .buttonStyle(.bordered)
+                                .controlSize(.small)
+                                .disabled(model.pendingGoogleAccountID == account.id)
+                            }
+                            if model.pendingGoogleAccountID == account.id {
+                                ProgressView()
+                                    .controlSize(.small)
+                            }
+                        }
+                        .padding(.top, BrevSpacing.xxs)
+                    }
+                }
+                .padding(.vertical, BrevSpacing.xxs)
+            }
+        }
+    }
+
+    private func googleKindButtonTitle(_ kind: PIMSourceKind) -> String {
+        switch kind {
+        case .calendar:
+            return String(localized: "Enable Calendar", bundle: .module)
+        case .contacts:
+            return String(localized: "Enable Contacts", bundle: .module)
+        }
+    }
+
+    /// Shown when no Google reauthorization path exists in this session —
+    /// the feature is listed as unavailable rather than hidden so the
+    /// surface never implies the option does not exist.
     private var googlePlaceholderRow: some View {
         HStack(alignment: .top, spacing: BrevSpacing.sm) {
             Image(systemName: "g.circle")

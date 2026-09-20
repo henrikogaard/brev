@@ -76,6 +76,7 @@ public struct SettingsView: View {
         currentFolderSourceID: MailSourceID? = nil,
         backendProvider: @MainActor @escaping (BrevAccount.ID) -> (any MailBackend)? = { _ in nil },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
+        onEnableGooglePIMFeature: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         isAddAccountAvailable: Bool = true,
         onAddAccount: @escaping () async -> Void = {},
         onSetDefaultAccount: ((BrevAccount) async -> Void)? = nil,
@@ -112,7 +113,10 @@ public struct SettingsView: View {
         self.backendProvider = backendProvider
         _pimSourceModel = State(
             initialValue: pimSourceCoordinator.map {
-                PIMSourceSettingsModel(coordinator: $0)
+                PIMSourceSettingsModel(
+                    coordinator: $0,
+                    googleFeatureHandler: onEnableGooglePIMFeature
+                )
             }
         )
         self.isAddAccountAvailable = isAddAccountAvailable
@@ -564,7 +568,12 @@ public struct SettingsView: View {
             )
             .id(selectedSourceID?.accountID)
         case .calendarContacts:
-            CalendarContactsSection(model: pimSourceModel)
+            CalendarContactsSection(
+                model: pimSourceModel,
+                googleAccounts: accounts.filter {
+                    $0.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier
+                }
+            )
         case .importExport:
             ImportExportSection(
                 backendProvider: backendProvider,

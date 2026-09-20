@@ -46,6 +46,12 @@ public enum GmailAccountConnectorError: Error, Sendable, Equatable, LocalizedErr
     case pendingCleanupFailed
     /// Token or metadata restoration failed after provisioning could not connect.
     case provisioningRollbackFailed
+    /// A reauthorization returned a different Google subject than the stored
+    /// account; the working credential is left untouched.
+    case grantIdentityMismatch
+    /// A reauthorization did not grant every requested scope; the working
+    /// credential is left untouched.
+    case grantScopesMissing
 
     /// Safe user-facing description.
     public var errorDescription: String? {
@@ -71,6 +77,14 @@ public enum GmailAccountConnectorError: Error, Sendable, Equatable, LocalizedErr
             )
         case .provisioningRollbackFailed: return String(
                 localized: "Brev could not restore the previous Gmail sign-in state. Try connecting the account again.",
+                bundle: .module
+            )
+        case .grantIdentityMismatch: return String(
+                localized: "The Google account that signed in does not match this account. Your existing sign-in is unchanged.",
+                bundle: .module
+            )
+        case .grantScopesMissing: return String(
+                localized: "Google did not grant the requested access. Your existing sign-in is unchanged.",
                 bundle: .module
             )
         }
@@ -342,6 +356,87 @@ public struct GmailAccountConnector: Sendable {
             throw GmailAccountConnectorError.removalCleanupFailed
         }
         await configurationStore.clearConfiguration(for: accountID)
+    }
+
+    /// Scopes every Google grant must keep: identity plus the IMAP/SMTP
+    /// XOAUTH2 scope. A fresh authorization always re-requests them so a
+    /// feature grant can never strand mail access.
+    private static let baselineScopes: Set<String> = [
+        "openid",
+        "email",
+        GoogleOAuthFlow.gmailScope,
+    ]
+
+    /// Replaces the account's grant after a fresh feature-triggered
+    /// authorization (ADR-0072).
+    ///
+    /// The request asks for the union of the account's stored grant, the
+    /// baseline mail scopes, and the enabled feature's scopes — installed-app
+    /// incremental authorization is not assumed. The returned identity must
+    /// match the stored subject and the granted scopes must cover the mail
+    /// scope plus every requested feature scope before anything is swapped:
+    /// cancellation, a different account, or a partial grant leaves the
+    /// working credential untouched.
+    ///
+    /// - Parameters:
+    ///   - accountID: The Gmail API account to extend.
+    ///   - additionalScopes: The feature scopes being enabled.
+    ///   - authorize: Runs the interactive authorization for the requested
+    ///     scope set and returns the verified result.
+    /// - Returns: The updated persisted configuration.
+    @discardableResult
+    public func enablePIMFeature(
+        accountID: String,
+        additionalScopes: Set<String>,
+        authorize: @MainActor (Set<String>) async throws -> GoogleOAuthResult
+    ) async throws -> GoogleOAuthAccountConfiguration {
+        guard let configuration = await configurationStore.configuration(for: accountID),
+              configuration.providerMode == .gmailAPI,
+              configuration.accountID == accountID
+        else {
+            throw GmailAccountConnectorError.configurationMismatch
+        }
+
+        let requested = Self.baselineScopes
+            .union(configuration.grantedScopes)
+            .union(additionalScopes)
+        let result = try await authorize(requested)
+
+        guard result.subject == configuration.subject else {
+            throw GmailAccountConnectorError.grantIdentityMismatch
+        }
+        // The swap is only safe when mail keeps working and every enabled
+        // feature scope came back granted.
+        let required = additionalScopes.union([GoogleOAuthFlow.gmailScope])
+        guard required.isSubset(of: result.grantedScopes) else {
+            throw GmailAccountConnectorError.grantScopesMissing
+        }
+
+        let updated = GoogleOAuthAccountConfiguration(
+            subject: configuration.subject,
+            email: configuration.email,
+            hostedDomain: configuration.hostedDomain ?? result.hostedDomain,
+            grantedScopes: result.grantedScopes,
+            platform: configuration.platform,
+            providerMode: configuration.providerMode,
+            accessTokenExpiresAt: result.expiresAt,
+            refreshTokenExpiresAt: result.refreshTokenExpiresAt
+        )
+
+        let previousToken = await tokenStore.token(for: accountID)
+        do {
+            try await tokenStore.setToken(result.asToken(providerMode: .gmailAPI), for: accountID)
+            try await configurationStore.setConfiguration(updated)
+        } catch {
+            // Roll back to the previous pair so a half-written grant never
+            // leaves the account without its working credential.
+            if let previousToken {
+                try? await tokenStore.setToken(previousToken, for: accountID)
+            }
+            try? await configurationStore.setConfiguration(configuration)
+            throw error
+        }
+        return updated
     }
 
     private func connect(

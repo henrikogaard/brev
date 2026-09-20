@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 @testable import BrevSettings
 import Foundation
@@ -126,7 +127,8 @@ struct PIMSourceSettingsModelTests {
         store: InMemorySourceStore = InMemorySourceStore(),
         credentials: InMemoryCredentialStore = InMemoryCredentialStore(),
         localData: InMemoryLocalDataStore = InMemoryLocalDataStore(),
-        transport: StubTransport? = nil
+        transport: StubTransport? = nil,
+        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) -> PIMSourceSettingsModel {
         let client = PIMDAVClient(
             transport: transport ?? StubTransport { request in
@@ -139,7 +141,8 @@ struct PIMSourceSettingsModelTests {
                 credentials: credentials,
                 localData: localData,
                 davClient: client
-            )
+            ),
+            googleFeatureHandler: googleFeatureHandler
         )
     }
 
@@ -316,5 +319,54 @@ struct PIMSourceSettingsModelTests {
         #expect(!reconnected)
         #expect(model.sources.first?.status == .authenticationRequired)
         #expect(model.lastError != nil)
+    }
+
+    @Test("Google feature enablement is unavailable without a session handler")
+    @MainActor
+    func googleFeatureUnavailableWithoutHandler() async {
+        let model = makeModel()
+
+        #expect(!model.canEnableGoogleFeatures)
+        let enabled = await model.enableGoogleFeature(accountID: "acct-1", kind: .calendar)
+
+        #expect(!enabled)
+        #expect(model.pendingGoogleAccountID == nil)
+    }
+
+    @Test("a successful Google enablement forwards account and kind then reloads")
+    @MainActor
+    func googleEnablementForwardsAndReloads() async throws {
+        let store = InMemorySourceStore()
+        var calls: [(accountID: String, kind: PIMSourceKind)] = []
+        let model = makeModel(store: store) { accountID, kind in
+            calls.append((accountID, kind))
+            try await store.save(Self.source(id: "google-cal", status: .ready))
+        }
+
+        let enabled = await model.enableGoogleFeature(accountID: "acct-1", kind: .calendar)
+
+        #expect(enabled)
+        #expect(calls.count == 1)
+        #expect(calls.first?.accountID == "acct-1")
+        #expect(calls.first?.kind == .calendar)
+        #expect(model.sources.map(\.id) == ["google-cal"])
+        #expect(model.pendingGoogleAccountID == nil)
+    }
+
+    @Test("a declined Google authorization surfaces an inline error")
+    @MainActor
+    func googleEnablementFailureSurfacesError() async {
+        struct Declined: LocalizedError {
+            var errorDescription: String? { "Authorization was declined." }
+        }
+        let model = makeModel { _, _ in
+            throw Declined()
+        }
+
+        let enabled = await model.enableGoogleFeature(accountID: "acct-1", kind: .contacts)
+
+        #expect(!enabled)
+        #expect(model.lastError == "Authorization was declined.")
+        #expect(model.pendingGoogleAccountID == nil)
     }
 }

@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -99,18 +100,19 @@ enum CalendarContactsScopePresentation {
                 status: .available,
                 symbolName: "person.crop.rectangle.stack"
             )
-        ],
-        unavailableCapabilities: [
+            ,
             CalendarContactsCapabilityPresentation(
                 kind: .googleSourceEnablement,
                 title: String(localized: "Google Calendar and Contacts", bundle: .module),
                 detail: String(
-                    localized: "Enable PIM features on a connected Google account with feature-triggered authorization.",
+                    localized: "Enable Calendar or Contacts on a connected Google account from the Sources list; authorization adds the read-only scope for that feature.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
+                status: .available,
                 symbolName: "g.circle"
-            ),
+            )
+        ],
+        unavailableCapabilities: [
             CalendarContactsCapabilityPresentation(
                 kind: .readOnlyCalendarBrowsing,
                 title: String(localized: "Calendar browsing", bundle: .module),
@@ -171,11 +173,17 @@ struct CalendarContactsSection: View {
     /// Live source-list model; nil in previews and tests that only render
     /// the capability summary.
     let model: PIMSourceSettingsModel?
+    /// Google mail accounts eligible for PIM feature enablement.
+    let googleAccounts: [BrevAccount]
 
     private let summary = CalendarContactsScopePresentation.summary
 
-    init(model: PIMSourceSettingsModel? = nil) {
+    init(
+        model: PIMSourceSettingsModel? = nil,
+        googleAccounts: [BrevAccount] = []
+    ) {
         self.model = model
+        self.googleAccounts = googleAccounts
     }
 
     var body: some View {
@@ -197,7 +205,10 @@ struct CalendarContactsSection: View {
                 )
 
                 if let model {
-                    PIMSourcesSettingsView(model: model)
+                    PIMSourcesSettingsView(
+                        model: model,
+                        googleAccounts: googleAccounts
+                    )
                 }
 
                 capabilityGroup(

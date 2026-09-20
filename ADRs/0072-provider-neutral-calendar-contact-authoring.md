@@ -356,6 +356,44 @@ entry names the slice that introduced it; details live in the code.
   mail-account removal UX (linkedSources is ready; nothing can link until
   Google sources exist).
 
+### #5 slice 3 — Google feature-triggered reauthorization (2026-09-20, BrevBackend/BrevGmail/BrevCalendar/BrevMail/BrevSettings)
+
+- `GooglePIMScopes`: the Google scope vocabulary for PIM features —
+  `calendarReadOnly` and `contactsReadOnly` map each source kind to its
+  read-only Google scope. Authoring scopes are requested later, only when
+  the user first writes.
+- `GoogleOAuthFlow.signIn(presentationContext:additionalScopes:)` and
+  `buildAuthorizationURL(additionalScopes:)`: feature-triggered
+  reauthorization requests the mail baseline (openid, email, Gmail scope)
+  plus sorted extra scopes in one consent screen. Mail-only setup still
+  requests zero PIM scopes.
+- `GmailAccountConnector.enablePIMFeature(accountID:additionalScopes:authorize:)`:
+  the grant-swap gate. Requests the union of stored and requested scopes,
+  verifies the authorized account subject matches the stored identity
+  (`grantIdentityMismatch`), requires the granted scope set to cover the
+  request plus mail access (`grantScopesMissing`), then stages the new
+  token and configuration and swaps them in with rollback on failure. A
+  declined or partial grant leaves the working credential untouched.
+- `PIMSourceCoordinator.connectGoogleSource(kind:accountID:displayName:)`
+  and `googleSource(accountID:kind:)`: registers a Google-backed source
+  linked to the mail account with `credentialAccount: nil` — the shared
+  mail grant is the credential, so removing the source never deletes the
+  mail token. Idempotent per account and kind.
+- `AppSession.enableGooglePIMFeature(accountID:kind:)` with the
+  `GooglePIMEnablementCoordinator` session hook: idempotent fast-path,
+  then fresh authorization, then source registration. Wired by
+  `AppSessionFactory.Configuration.googlePIMEnablementCoordinator`; both
+  app targets compose the connector and `GoogleOAuthFlow` behind it.
+- `PIMSourceSettingsModel.enableGoogleFeature(accountID:kind:)`,
+  `canEnableGoogleFeatures`, `pendingGoogleAccountID`: the settings
+  surface — per-Google-account enable rows for each missing kind, inline
+  errors on declined or partial grants, and the "Not available yet"
+  placeholder only when the session cannot authorize.
+
+Deliberately still deferred: home-set/collection discovery, sync
+scheduling, event/contact authoring (read-only scopes only), and the
+mail-account removal UX for linked sources.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)
