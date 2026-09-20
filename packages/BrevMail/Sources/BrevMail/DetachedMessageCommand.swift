@@ -49,9 +49,16 @@ enum DetachedMessageCommand: String, Sendable {
         switch self {
         case .reply, .replyAll, .forward, .move, .copyToFolder, .copyToLocalFolder,
              .moveToLocalFolder, .createTask, .createRule, .createMeeting,
-             .addNote, .followUp, .properties, .showHeaders, .viewSource: true
+             .addNote, .followUp, .properties, .showHeaders, .viewSource,
+             .toggleSnooze, .delete, .blockSender: true
         default: false
         }
+    }
+
+    /// Checks the owner's presentation and mutation availability before handoff.
+    func canBeAccepted(hasPresentation: Bool, canStartMutation: Bool) -> Bool {
+        let requiresMutationAvailability = activatesMutationFolder || self == .blockSender
+        return (!requiresPresentationSlot || !hasPresentation) && (!requiresMutationAvailability || canStartMutation)
     }
 
     /// These commands resolve destinations or roles from the loaded folder catalog.

@@ -4507,10 +4507,14 @@ public struct BrevMailRootView: View {
     }
 
     private func acceptDetachedMessageCommand(_ request: DetachedMessageCommandRequest) -> Bool {
-        guard !request.command.requiresPresentationSlot || navigation.presentedSheet == nil else { return false }
+        let hasPresentation = navigation.presentedSheet != nil || pendingReaderSnoozeTarget != nil
+            || pendingReaderBlockSenderTarget != nil || pendingPermanentDeleteHeader != nil
+        guard request.command.canBeAccepted(
+            hasPresentation: hasPresentation,
+            canStartMutation: !hasPresentation && canStartCommandMutation()
+        ) else { return false }
         if [.reply, .replyAll, .forward].contains(request.command), !canPresentCompose() { return false }
         if [.copyToLocalFolder, .moveToLocalFolder].contains(request.command), localBackend == nil { return false }
-        if request.command.activatesMutationFolder, !canStartCommandMutation() { return false }
         guard prepareDetachedCommandContext(request) else { return false }
         performDetachedCommand(request.command, header: request.header,
                                sourceID: request.sourceID ?? navigation.selectedSourceID)
@@ -4815,6 +4819,13 @@ public struct BrevMailRootView: View {
 
     private func confirmReaderBlockSender() async {
         guard let target = pendingReaderBlockSenderTarget else { return }
+        guard canStartCommandMutation() else {
+            rootStatus = MailRootStatus(message: String(
+                localized: "Another mail action is still running. Wait for it to finish and try again.",
+                bundle: .module
+            ))
+            return
+        }
         pendingReaderBlockSenderTarget = nil
         guard prepareDetachedCommandContext(
             .init(command: .blockSender, header: target.header, sourceID: target.sourceID),

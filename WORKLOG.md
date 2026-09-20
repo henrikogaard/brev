@@ -2911,3 +2911,14 @@ buttons, and package-aware localization.
 - Verification: all 30 window-appearance tests pass, followed by three passing
   repetitions. Lint, formatting and diff-check pass. This test-only lifetime fix
   needs no changelog, ADR, privacy or snapshot update.
+
+- Detached admission now reserves presentation space for actions that may ask
+  for confirmation (Snooze, Delete, Block Sender), including existing reader
+  prompts outside navigation.presentedSheet. Block Sender checks mutation
+  availability without activating its folder before confirmation. If work
+  becomes busy before confirmation, it reports the conflict instead of silently
+  dropping the action. Four regression assertions failed before the fix.
+- Verification: 45 presentation/handoff/resolver tests pass, as do lint,
+  formatting and diff-check. Confirmation-capable actions conservatively
+  reserve a presentation slot even when their current state may avoid a prompt.
+  No pixel geometry changed; native confirmation QA remains pending.

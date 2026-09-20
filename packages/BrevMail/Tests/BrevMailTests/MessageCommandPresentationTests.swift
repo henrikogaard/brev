@@ -17,6 +17,16 @@ import Testing
 
 @Suite("MessageCommandPresentation")
 struct MessageCommandPresentationTests {
+    @Test("confirmation-backed commands reserve presentation and mutation availability")
+    func readerConfirmationAdmission() {
+        for command: DetachedMessageCommand in [.toggleSnooze, .delete, .blockSender] {
+            #expect(!command.canBeAccepted(hasPresentation: true, canStartMutation: true))
+            #expect(command.canBeAccepted(hasPresentation: false, canStartMutation: true))
+        }
+        #expect(!DetachedMessageCommand.blockSender.canBeAccepted(hasPresentation: false, canStartMutation: false))
+        #expect(!DetachedMessageCommand.blockSender.activatesMutationFolder)
+    }
+
     @Test("sheet-backed reader actions require an available owner presentation slot")
     func readerPresentationAdmission() {
         for command: DetachedMessageCommand in [.reply, .replyAll, .forward, .move, .copyToFolder,
