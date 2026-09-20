@@ -3006,3 +3006,13 @@ buttons, and package-aware localization.
   but no disposable BREV_LIVE_* account values or iOS Google client settings.
   Requested the secure test-account configuration location; no live mail sent.
 - Handoff: review and accept/narrow ADR-0072 before source/authoring work.
+
+## 2026-09-20 — Codex — PR #48 pre-merge review
+
+- Addressed the OAuth review finding: ADR-0072 now explicitly preserves the
+  required non-confidential macOS Desktop credential from accepted ADR-0067.
+  PKCE remains required; iOS uses its separate secretless native client.
+- Documentation-only correction; TDD/build exception. Checked against ADR-0067
+  and the existing token-exchange contract, with diff-check before commit.
+- Henrik authorized merging the open PRs. The architecture remains Proposed;
+  this correction does not introduce provider implementation or account changes.

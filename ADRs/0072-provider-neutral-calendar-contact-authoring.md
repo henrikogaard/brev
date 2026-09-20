@@ -105,7 +105,11 @@ No background or photo network request starts merely because a view exists.
   separately enabled, with a clear explanation of reading versus editing.
 - Google's installed-app OAuth guide explicitly says incremental authorization
   is unsupported. Do not rely on `include_granted_scopes` or a confidential
-  client secret in the native app. Feature enablement proposes a fresh native
+  client secret as a security boundary in the native app. Per ADR-0067, the
+  macOS Desktop flow must still reuse its configured, non-confidential Desktop
+  credential in token and refresh exchanges; PKCE does not replace that required
+  value. iOS uses its separate native client without a client secret. Feature
+  enablement proposes a fresh native
   PKCE authorization requesting the scopes for the user's enabled features
   plus the new selection. #5 must prove this flow on both platforms before it
   ships, including cancellation and partially granted scope sets.
