@@ -1314,7 +1314,7 @@ public struct BrevMailRootView: View {
         .brevMailPaneSurface(.sidebar)
         #if os(iOS)
             .navigationTitle(Text("Mailboxes", bundle: .module))
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         #endif
             .brevMailFallbackToolbar { toolbarSidebar }
             .brevMailPaneScrollEdgeBlur()
@@ -1646,7 +1646,6 @@ public struct BrevMailRootView: View {
                 )
             }
         }
-        .frame(minWidth: 320, idealWidth: 420)
         .brevMailPaneSurface(.content)
         // iOS gives search its own full-width band above the list (see
         // `MessageListSearchBand`, rendered by the list views), so the field
@@ -1658,7 +1657,7 @@ public struct BrevMailRootView: View {
         // its own whenever the AI Sidebar column appears.
         #if os(iOS)
             .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
-            .navigationBarTitleDisplayMode(.large)
+            .navigationBarTitleDisplayMode(.inline)
         #endif
             .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the
@@ -1691,6 +1690,9 @@ public struct BrevMailRootView: View {
                     isPerformingCommandMutation: activeCommandMutationRequest != nil,
                     isComposeBlocked: isComposePresentationBlocked,
                     isSettingsBlocked: !canPresentSettings(),
+                    canCreateTask: !isMessageWorkBlocked && navigation.presentedSheet == nil,
+                    canFollowUp: navigation.presentedSheet == nil,
+                    canMove: !folders.isEmpty && !isMessageWorkBlocked,
                     usesExternalSettingsWindow: onOpenSettings != nil,
                     isMailContextPresented: isMailContextColumnPresented
                 ),
@@ -1721,6 +1723,15 @@ public struct BrevMailRootView: View {
                     },
                     delete: { header in
                         await trash(header: header)
+                    },
+                    createTask: { header in
+                        presentCreateTask(for: header)
+                    },
+                    followUp: { header in
+                        presentFollowUp(for: header)
+                    },
+                    move: { header in
+                        presentMoveToFolder(for: header)
                     },
                     settings: {
                         presentSettings()
@@ -1817,12 +1828,22 @@ public struct BrevMailRootView: View {
         return selectedFolder?.name ?? String(localized: "Messages", bundle: .module)
     }
 
+    private var selectedMessageDestinationContext: String? {
+        guard navigation.selectedFolderID != nil,
+              let selectedSourceSection
+        else { return nil }
+        return MailRootMessageListTitlePolicy.accountContext(
+            mailboxDisplayName: selectedSourceSection.mailbox.displayName,
+            accountDisplayName: selectedSourceSection.account.displayName,
+            mailboxEmail: selectedSourceSection.mailbox.email
+        )
+    }
+
     @ToolbarContentBuilder
     private var toolbarList: some ToolbarContent {
         #if os(macOS)
-        // Get Mail and New Message live in the detail section on macOS — see
-        // `MailRootMailboxActionToolbarPolicy`. What is left here acts on the
-        // list's presentation, not on mail.
+        // Mail actions live in the detail section on macOS. What is left here
+        // controls the list's presentation.
         if MailboxFilterControlPolicy.usesToolbarControl(platform: toolbarPlatform),
            showsMailboxFilterControl {
             ToolbarItem(placement: .primaryAction) {
@@ -1835,6 +1856,20 @@ public struct BrevMailRootView: View {
             Spacer()
         }
         #else
+        ToolbarItem(placement: .principal) {
+            VStack(spacing: 1) {
+                Text(verbatim: selectedMessageDestinationTitle)
+                    .font(.headline)
+                    .lineLimit(1)
+                if let selectedMessageDestinationContext {
+                    Text(verbatim: selectedMessageDestinationContext)
+                        .font(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
         ToolbarItemGroup(placement: .primaryAction) {
             if showsMailboxFilterControl {
                 mailboxFilterToolbarControl
@@ -1863,7 +1898,7 @@ public struct BrevMailRootView: View {
         #endif
     }
 
-    /// Get Mail. Placed by `MailRootMailboxActionToolbarPolicy`.
+    /// Refreshes the visible mailbox.
     private var refreshToolbarButton: some View {
         Button {
             Task { await refreshVisibleMail() }
@@ -1983,24 +2018,23 @@ public struct BrevMailRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarDetail: some ToolbarContent {
-        // Mail leads the reader's cluster with New Message and Get Mail, and
-        // they stay available with nothing selected — unlike everything after
-        // them, which needs a message to act on.
+        // Compose leads the reader's cluster and stays available with nothing
+        // selected, unlike the primary message actions that follow it.
         if MailRootMailboxActionToolbarPolicy.showsMailboxActions(
             on: .detail,
             platform: toolbarPlatform
         ) {
-            // The first item of this section starts a little before the column
-            // boundary, and macOS 26's bordered container makes that overhang
-            // visible: the split-view divider ran straight through Get Mail's
-            // circle. This holds the cluster clear of it.
+            // The first item can start before the column boundary. Keep the
+            // macOS 26 bordered control clear of the split-view divider.
             #if os(macOS) && compiler(>=6.2)
             if #available(macOS 26.0, *) {
                 ToolbarSpacer(.fixed, placement: .primaryAction)
             }
             #endif
-            ToolbarItem(placement: .primaryAction) {
-                refreshToolbarButton
+            if toolbarPlatform != .macOS {
+                ToolbarItem(placement: .primaryAction) {
+                    refreshToolbarButton
+                }
             }
             // macOS 26 draws adjacent items inside one shared bordered
             // container, so without this the mailbox actions and the message
@@ -2068,21 +2102,6 @@ public struct BrevMailRootView: View {
                     .disabled(!canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Delete", bundle: .module))
 
-                    // macOS fallback toolbar lacked any read/unread control —
-                    // the only routes were the Message menu shortcut and the
-                    // row context menu. iOS gets the action inside the
-                    // reader's consolidated overflow menu instead.
-                    if toolbarPlatform == .macOS {
-                        Button {
-                            Task { await toggleRead(for: header) }
-                        } label: {
-                            Image(systemName: header.isRead ? "envelope.badge" : "envelope.open")
-                        }
-                        .disabled(!canStartCommandMutation())
-                        .accessibilityLabel(MessageCommandPresentation.readToggleTitle(for: header))
-                        .help(MessageCommandPresentation.readToggleTitle(for: header))
-                    }
-
                     if MailRootDetailToolbarPolicy.showsFlagButton(
                         platform: toolbarPlatform,
                         readerWidth: readerPaneWidth
@@ -2098,10 +2117,27 @@ public struct BrevMailRootView: View {
                     } else {
                         Menu {
                             #if os(macOS)
-                            // macOS only: on iOS these message actions live in
-                            // the reader's consolidated overflow menu inside
-                            // `MessageDetailView` (one shared inventory), so
-                            // this ellipsis keeps window/app-scope items.
+                            Button {
+                                Task { await refreshVisibleMail() }
+                            } label: {
+                                Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
+                            }
+                            .disabled(visibleRefreshTarget == nil || !canStartRefresh())
+
+                            Divider()
+
+                            Button {
+                                Task { await toggleRead(for: header) }
+                            } label: {
+                                Label(
+                                    MessageCommandPresentation.readToggleTitle(for: header),
+                                    systemImage: header.isRead ? "envelope.badge" : "envelope.open"
+                                )
+                            }
+                            .disabled(!canStartCommandMutation())
+
+                            // The compact iPhone reader supplies its own bottom
+                            // toolbar and consolidated overflow menu.
                             Button {
                                 Task { await toggleStar(for: header) }
                             } label: {
@@ -2116,9 +2152,8 @@ public struct BrevMailRootView: View {
                                 platform: toolbarPlatform,
                                 readerWidth: readerPaneWidth
                             ) {
-                                // Reply All has its own button on macOS until
-                                // the cluster condenses; iOS never shows it in
-                                // the toolbar, so the menu stays as it was.
+                                // Secondary response actions stay reachable
+                                // without widening the primary cluster.
                                 Button {
                                     presentReplyAll(to: header)
                                 } label: {
@@ -2136,14 +2171,27 @@ public struct BrevMailRootView: View {
                                 }
                                 .disabled(!canPresentCompose())
                             }
-                            #else
+                            #endif
+
                             // The macOS AI Sidebar column presents as a sheet
-                            // on iOS; same shared Mail Context surface.
+                            // on iOS; both stay secondary to core mail actions.
+                            #if os(iOS)
                             Button {
                                 isMailContextSheetPresented = true
                             } label: {
                                 Label(
                                     MailContextColumnVisibility.toolbarLabel,
+                                    systemImage: MailContextColumnVisibility.toolbarSymbolName
+                                )
+                            }
+                            #else
+                            Button {
+                                isMailContextColumnPresented.toggle()
+                            } label: {
+                                Label(
+                                    isMailContextColumnPresented
+                                        ? String(localized: "Hide AI Sidebar", bundle: .module)
+                                        : MailContextColumnVisibility.toolbarLabel,
                                     systemImage: MailContextColumnVisibility.toolbarSymbolName
                                 )
                             }
@@ -2154,9 +2202,8 @@ public struct BrevMailRootView: View {
                                    platform: toolbarPlatform,
                                    readerWidth: readerPaneWidth
                                ) {
-                                // Create Task and Move have their own buttons on
-                                // macOS until the cluster condenses; iOS keeps
-                                // them in the reader's tools menu.
+                                // Workflow actions stay secondary to the core
+                                // reader actions.
                                 Button {
                                     presentCreateTask(for: header)
                                 } label: {
@@ -2193,12 +2240,9 @@ public struct BrevMailRootView: View {
                                 .disabled(!canPresentSettings())
                             }
                         } label: {
-                            Image(systemName: toolbarPlatform == .iOS
-                                ? MailContextColumnVisibility.toolbarSymbolName : "ellipsis.circle")
+                            Image(systemName: "ellipsis.circle")
                         }
-                        .accessibilityLabel(toolbarPlatform == .iOS
-                            ? String(localized: "AI Sidebar", bundle: .module)
-                            : String(localized: "More message actions", bundle: .module))
+                        .accessibilityLabel(String(localized: "More message actions", bundle: .module))
                     }
                 }
             } else {
@@ -2245,11 +2289,8 @@ public struct BrevMailRootView: View {
                 }
             }
 
-            // Create Task and Move are root items so they condense with the
-            // cluster and sit before the AI Sidebar toggle. Contributed from
-            // `MessageDetailView`'s own `.toolbar`, they appended after
-            // everything here — to the right of the toggle, outside the
-            // width condensation, leaking across the divider when narrow.
+            // Retain the customizable direct workflow items when policy opts
+            // into them; the default policy keeps them in More.
             #if os(macOS)
             if MailRootDetailToolbarPolicy.showsMessageOrganizerActions(
                 platform: toolbarPlatform,
@@ -2296,6 +2337,35 @@ public struct BrevMailRootView: View {
             #endif
         }
 
+        #if os(macOS)
+        if navigation.selectedHeader == nil {
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Button {
+                        Task { await refreshVisibleMail() }
+                    } label: {
+                        Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
+                    }
+                    .disabled(visibleRefreshTarget == nil || !canStartRefresh())
+
+                    Button {
+                        isMailContextColumnPresented.toggle()
+                    } label: {
+                        Label(
+                            isMailContextColumnPresented
+                                ? String(localized: "Hide AI Sidebar", bundle: .module)
+                                : MailContextColumnVisibility.toolbarLabel,
+                            systemImage: MailContextColumnVisibility.toolbarSymbolName
+                        )
+                    }
+                } label: {
+                    Image(systemName: "ellipsis.circle")
+                }
+                .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+            }
+        }
+        #endif
+
         if MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .detail,
             platform: toolbarPlatform
@@ -2324,41 +2394,8 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .primaryAction) {
             Spacer()
         }
-        // The AI Sidebar toggle, as a toolbar item like every other control.
-        // It used to be an `NSTitlebarAccessoryViewController` pinned to the
-        // window's right edge, which is why it sat apart from the cluster with a
-        // gap in front of it and did not pick up the toolbar's own item styling.
-        // It is the one item that belongs at the window's trailing edge above
-        // the sidebar, since it is what opens and closes it.
-        #if compiler(>=6.2)
-        if #available(macOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
-        #endif
-        ToolbarItem(placement: .primaryAction) {
-            mailContextToolbarButton
-        }
-        // Nothing may follow the toggle: it is the item that owns the
-        // window's trailing edge, above the sidebar it opens. Create Task
-        // and Move moved up into this section (before search) for exactly
-        // that reason.
         #endif
     }
-
-    #if os(macOS)
-    /// AI Sidebar toggle.
-    private var mailContextToolbarButton: some View {
-        Button {
-            isMailContextColumnPresented.toggle()
-        } label: {
-            Image(systemName: MailContextColumnVisibility.toolbarSymbolName)
-        }
-        .accessibilityLabel(
-            isMailContextColumnPresented
-                ? "Hide AI Sidebar"
-                : MailContextColumnVisibility.toolbarLabel
-        )
-        .help(MailContextColumnVisibility.toolbarLabel)
-    }
-    #endif
 
     #if os(iOS)
     @ToolbarContentBuilder
@@ -2375,7 +2412,119 @@ public struct BrevMailRootView: View {
             .accessibilityLabel(String(localized: "Back to messages", bundle: .module))
         }
 
-        toolbarDetail
+        if let header = navigation.selectedHeader ?? compactReaderHeader {
+            ToolbarItemGroup(placement: .bottomBar) {
+                Button {
+                    presentReply(to: header)
+                } label: {
+                    Label(String(localized: "Reply", bundle: .module), systemImage: "arrowshape.turn.up.left")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(!canPresentCompose())
+                .accessibilityLabel(String(localized: "Reply", bundle: .module))
+
+                Button {
+                    Task { await archive(header: header) }
+                } label: {
+                    Label(String(localized: "Archive", bundle: .module), systemImage: "archivebox")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(folder(role: .archive) == nil || !canStartCommandMutation())
+                .accessibilityLabel(String(localized: "Archive", bundle: .module))
+
+                Button {
+                    Task { await trash(header: header) }
+                } label: {
+                    Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(!canStartCommandMutation())
+                .accessibilityLabel(String(localized: "Delete", bundle: .module))
+
+                Menu {
+                    Button {
+                        Task { await refreshVisibleMail() }
+                    } label: {
+                        Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
+                    }
+                    .disabled(visibleRefreshTarget == nil || !canStartRefresh())
+
+                    Divider()
+
+                    Button {
+                        presentReplyAll(to: header)
+                    } label: {
+                        Label(String(localized: "Reply All", bundle: .module), systemImage: "arrowshape.turn.up.left.2")
+                    }
+                    .disabled(!canPresentCompose())
+
+                    Button {
+                        presentForward(of: header)
+                    } label: {
+                        Label(String(localized: "Forward", bundle: .module), systemImage: "arrowshape.turn.up.right")
+                    }
+                    .disabled(!canPresentCompose())
+
+                    Button {
+                        Task { await toggleRead(for: header) }
+                    } label: {
+                        Label(
+                            MessageCommandPresentation.readToggleTitle(for: header),
+                            systemImage: header.isRead ? "envelope.badge" : "envelope.open"
+                        )
+                    }
+                    .disabled(!canStartCommandMutation())
+
+                    Button {
+                        Task { await toggleStar(for: header) }
+                    } label: {
+                        Label(
+                            MessageCommandPresentation.flagToggleTitle(for: header),
+                            systemImage: MessageCommandPresentation.flagToggleSymbolName(for: header)
+                        )
+                    }
+                    .disabled(!canStartCommandMutation())
+
+                    Divider()
+
+                    Button {
+                        presentCreateTask(for: header)
+                    } label: {
+                        Label(String(localized: "Create Task", bundle: .module), systemImage: "checklist")
+                    }
+                    .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
+
+                    Button {
+                        presentFollowUp(for: header)
+                    } label: {
+                        Label(String(localized: "Follow Up", bundle: .module), systemImage: "flag")
+                    }
+                    .disabled(navigation.presentedSheet != nil)
+
+                    if !folders.isEmpty {
+                        Button {
+                            presentMoveToFolder(for: header)
+                        } label: {
+                            Label(String(localized: "Move", bundle: .module), systemImage: "folder")
+                        }
+                        .disabled(isMessageWorkBlocked)
+                    }
+
+                    Button {
+                        isMailContextSheetPresented = true
+                    } label: {
+                        Label(
+                            MailContextColumnVisibility.toolbarLabel,
+                            systemImage: MailContextColumnVisibility.toolbarSymbolName
+                        )
+                    }
+                } label: {
+                    Label(String(localized: "More message actions", bundle: .module), systemImage: "ellipsis.circle")
+                        .labelStyle(.iconOnly)
+                }
+                .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+            }
+        }
     }
     #endif
 

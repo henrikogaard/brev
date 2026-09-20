@@ -94,12 +94,9 @@ enum MailPaneColumnWidthPolicy {
 
     /// Narrowest the macOS reader may become.
     ///
-    /// The reader's action cluster shares one trailing toolbar section with the
-    /// message list's controls, so a reader narrower than that cluster pushes
-    /// its own icons back over the list. Measured against the cluster with
-    /// search collapsed — Get Mail, New Message, the five message actions,
-    /// search, and the AI Sidebar toggle. Sits far enough under the 960pt
-    /// default window width that the window still resizes down.
+    /// The reader still needs enough room for message content and its primary
+    /// actions when search is expanded. This floor sits far enough under the
+    /// 960pt default window width that the window can still resize down.
     static func readerMinimumWidth(platform: MailPanePlatform) -> CGFloat? {
         switch platform {
         case .macOS:

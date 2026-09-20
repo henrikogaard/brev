@@ -273,9 +273,9 @@ struct MailRootSettingsToolbarPolicyTests {
         #expect(MailRootDetailToolbarPolicy.usesCondensedLayout(platform: .macOS))
     }
 
-    @Test("macOS exposes the complete primary response group")
-    func macOSExposesCompletePrimaryResponseGroup() {
-        #expect(MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .macOS))
+    @Test("secondary response actions stay in More on every platform")
+    func secondaryResponseActionsStayInMore() {
+        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .macOS))
         #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .iOS))
     }
 
@@ -331,73 +331,18 @@ struct MailboxFilterControlPolicyTests {
         #expect(!MailboxFilterControlPolicy.usesInPaneBar(platform: .iOS))
     }
 
-    @Test("macOS promotes Flag out of the overflow menu")
-    func macOSPromotesFlagOutOfOverflowMenu() {
-        #expect(MailRootDetailToolbarPolicy.showsFlagButton(platform: .macOS))
+    @Test("Flag stays in the overflow menu")
+    func flagStaysInOverflowMenu() {
+        #expect(!MailRootDetailToolbarPolicy.showsFlagButton(platform: .macOS))
         #expect(!MailRootDetailToolbarPolicy.showsFlagButton(platform: .iOS))
     }
 
-    /// Create Task and Move used to ride in from `MessageDetailView`'s own
-    /// `.toolbar`, which appends after the root's items — landing to the
-    /// right of the AI Sidebar toggle and never condensing with the
-    /// cluster, so at narrow reader widths they pushed the row across the
-    /// divider into the message list.
-    @Test("macOS hosts Create Task and Move in the root cluster, condensing with it")
-    func macOSHostsOrganizerActionsInRootCluster() {
-        #expect(MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .macOS))
+    @Test("organizer actions stay in More on every platform")
+    func organizerActionsStayInMore() {
+        #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .macOS))
         #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(platform: .iOS))
-
-        let narrow = MailRootDetailToolbarPolicy.condensedActionsReaderWidth - 1
-        #expect(!MailRootDetailToolbarPolicy.showsMessageOrganizerActions(
-            platform: .macOS, readerWidth: narrow
-        ))
-        #expect(MailRootDetailToolbarPolicy.showsMessageOrganizerActions(
-            platform: .macOS,
-            readerWidth: MailRootDetailToolbarPolicy.condensedActionsReaderWidth
-        ))
-    }
-
-    /// The condensation width has to cover the whole cluster it now gates —
-    /// including Create Task and Move, which the old 500pt measurement
-    /// predates.
-    @Test("the condensation width accounts for Create Task and Move")
-    func condensationWidthAccountsForOrganizerActions() {
-        #expect(MailRootDetailToolbarPolicy.condensedActionsReaderWidth >= 600)
-    }
-
-    /// Below the condensation width the full cluster no longer fits beside the
-    /// reader, and the excess buttons used to spill left across the divider
-    /// into the message list.
-    @Test("narrow readers condense the response cluster into the overflow menu")
-    func narrowReadersCondenseResponseCluster() {
-        let narrow = MailRootDetailToolbarPolicy.condensedActionsReaderWidth - 1
-        let wide = MailRootDetailToolbarPolicy.condensedActionsReaderWidth
-
         #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .macOS, readerWidth: narrow
-        ))
-        #expect(!MailRootDetailToolbarPolicy.showsFlagButton(
-            platform: .macOS, readerWidth: narrow
-        ))
-
-        #expect(MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .macOS, readerWidth: wide
-        ))
-        #expect(MailRootDetailToolbarPolicy.showsFlagButton(
-            platform: .macOS, readerWidth: wide
-        ))
-
-        // An unknown reader width keeps the uncondensed default.
-        #expect(MailRootDetailToolbarPolicy.showsExtendedResponseActions(
             platform: .macOS, readerWidth: nil
-        ))
-
-        // iOS never shows the extended cluster, wide or not.
-        #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .iOS, readerWidth: 1200
-        ))
-        #expect(!MailRootDetailToolbarPolicy.showsFlagButton(
-            platform: .iOS, readerWidth: 1200
         ))
     }
 
@@ -406,7 +351,7 @@ struct MailboxFilterControlPolicyTests {
         // Revealing the folder sidebar animates in bursts with stalls
         // between them — measured at 107ms and 123ms on a 60fps capture.
         // A settle shorter than those would fire inside a stall and hand
-        // the toolbar a width the animation had not finished moving.
+        // the expanded search field a width the animation had not finished moving.
         #expect(MailRootDetailToolbarPolicy.readerWidthSettleDuration >= .milliseconds(150))
 
         // It still has to be short enough that releasing a divider drag
@@ -414,20 +359,26 @@ struct MailboxFilterControlPolicyTests {
         #expect(MailRootDetailToolbarPolicy.readerWidthSettleDuration <= .milliseconds(300))
     }
 
-    @Test("a width excursion that returns is not a condensation change")
-    func widthExcursionThatReturnsIsNotACondensationChange() {
-        // The measured failure: showing the sidebar swept the reader from
-        // 620 down through 480 and back to 620. Both ends read the same,
-        // so settling on the last width leaves the toolbar untouched —
-        // only the excursion in the middle ever asked it to condense.
-        let settled = MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .macOS, readerWidth: 620
-        )
-        let excursion = MailRootDetailToolbarPolicy.showsExtendedResponseActions(
-            platform: .macOS, readerWidth: 480
-        )
+    @Test("message-list account context prefers a quiet display name")
+    func messageListAccountContextPrefersQuietDisplayName() {
+        #expect(MailRootMessageListTitlePolicy.accountContext(
+            mailboxDisplayName: "Personal",
+            accountDisplayName: "Henrik",
+            mailboxEmail: "henrik@example.org"
+        ) == "Personal")
+        #expect(MailRootMessageListTitlePolicy.accountContext(
+            mailboxDisplayName: "henrik@example.org",
+            accountDisplayName: "Henrik",
+            mailboxEmail: "henrik@example.org"
+        ) == "Henrik")
+    }
 
-        #expect(settled)
-        #expect(!excursion)
+    @Test("message-list account context omits raw email-only identities")
+    func messageListAccountContextOmitsRawEmailOnlyIdentities() {
+        #expect(MailRootMessageListTitlePolicy.accountContext(
+            mailboxDisplayName: "henrik@example.org",
+            accountDisplayName: "henrik@example.org",
+            mailboxEmail: "henrik@example.org"
+        ) == nil)
     }
 }

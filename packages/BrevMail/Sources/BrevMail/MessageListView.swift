@@ -280,10 +280,21 @@ public struct MessageListView: View {
                     )
                 }
             }
+            #if !os(iOS)
             if let footer = folderStatsFooterPresentation(presentation: presentation) {
                 MessageListFolderStatsFooter(presentation: footer)
             }
+            #endif
         }
+        #if os(iOS)
+        .toolbar {
+            if let footer = folderStatsFooterPresentation(presentation: presentation) {
+                ToolbarItem(placement: .bottomBar) {
+                    MessageListFolderStatsToolbarLabel(presentation: footer)
+                }
+            }
+        }
+        #endif
         .task(id: reloadKey) {
             navigation.bulkSelection.removeAll()
             searchScope = .all
@@ -697,6 +708,10 @@ public struct MessageListView: View {
             }
             .listStyle(.plain)
             .scrollContentBackground(.hidden)
+            // The section headers are intentionally smaller than message rows.
+            // Remove List's platform minimum so their own padding determines
+            // the gap between date groups.
+            .environment(\.defaultMinListRowHeight, 1)
             .refreshable { await reloadVisibleMessages() }
         }
     }
@@ -3338,6 +3353,7 @@ struct MessageListThreadTogglePreference: PreferenceKey {
 /// Shared type weight for sender identity throughout the message list.
 enum MessageListSenderPresentation {
     static let fontWeight: Font.Weight = .bold
+    static let preferredMinimumWidth: CGFloat = 144
 
     /// Floor for the sender column so the name stays identifiable at the 280-point
     /// minimum list width. Without it the widest ADR-0023 absolute arrival label
@@ -3551,55 +3567,7 @@ struct MessageListRow: View {
             }
             unreadDot
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                HStack(spacing: BrevSpacing.xs) {
-                    Text(header.from.displayName)
-                        .font(fontFamily.font(
-                            size: senderPointSize,
-                            weight: MessageListSenderPresentation.fontWeight
-                        ))
-                        .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                        .frame(
-                            minWidth: MessageListSenderPresentation.minimumWidth,
-                            maxWidth: .infinity,
-                            alignment: .leading
-                        )
-                    // Thread badge and timestamp sit on the trailing edge so they
-                    // never compete with the sender for width; the sender absorbs
-                    // truncation instead. See ADR-0023's narrow-layout risk note.
-                    if threadCount > 1 {
-                        Text(verbatim: "\(threadCount)")
-                            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                            .foregroundStyle(theme.textSecondary.color)
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 1)
-                            .background(
-                                Capsule().fill(theme.bgSecondary.color)
-                            )
-                        // Rendered as a plain glyph, not a Button: the row's
-                        // high-priority tap gesture wins over nested buttons,
-                        // so the tap is routed by hit frame instead.
-                        Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
-                            .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
-                            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                            .frame(width: 18, height: 18)
-                            .contentShape(Rectangle())
-                            .background {
-                                GeometryReader { proxy in
-                                    Color.clear.preference(
-                                        key: MessageListThreadTogglePreference.self,
-                                        value: proxy.frame(in: .named(Self.rowCoordinateSpace))
-                                    )
-                                }
-                            }
-                    }
-                    Text(dateLabel)
-                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                        .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
+                senderMetadataHeader
                 // Unread subjects carry the weight and primary colour so the row
                 // has a read/unread signal beyond the 8-point dot alone. The
                 // sender keeps the emphasis established in #366.
@@ -3799,6 +3767,89 @@ struct MessageListRow: View {
         )
     }
 
+    private var compactDateLabel: String {
+        MessageListDatePresentation.label(
+            for: header.date,
+            showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
+            relativeStyle: .compact,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        )
+    }
+
+    @ViewBuilder
+    private var senderMetadataHeader: some View {
+        if isCompactWidth {
+            senderMetadataRow(
+                dateLabel: compactDateLabel,
+                senderMinimumWidth: MessageListSenderPresentation.minimumWidth
+            )
+        } else {
+            ViewThatFits(in: .horizontal) {
+                senderMetadataRow(
+                    dateLabel: dateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.preferredMinimumWidth
+                )
+                senderMetadataRow(
+                    dateLabel: compactDateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.minimumWidth
+                )
+            }
+        }
+    }
+
+    private func senderMetadataRow(
+        dateLabel: String,
+        senderMinimumWidth: CGFloat
+    ) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Text(header.from.displayName)
+                .font(fontFamily.font(
+                    size: senderPointSize,
+                    weight: MessageListSenderPresentation.fontWeight
+                ))
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(
+                    minWidth: senderMinimumWidth,
+                    maxWidth: .infinity,
+                    alignment: .leading
+                )
+                .layoutPriority(1)
+            if threadCount > 1 {
+                Text(verbatim: "\(threadCount)")
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 1)
+                    .background(Capsule().fill(theme.bgSecondary.color))
+                // Rendered as a plain glyph, not a Button: the row's
+                // high-priority tap gesture wins over nested buttons, so the
+                // tap is routed by hit frame instead.
+                Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
+                    .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
+                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                    .frame(width: 18, height: 18)
+                    .contentShape(Rectangle())
+                    .background {
+                        GeometryReader { proxy in
+                            Color.clear.preference(
+                                key: MessageListThreadTogglePreference.self,
+                                value: proxy.frame(in: .named(Self.rowCoordinateSpace))
+                            )
+                        }
+                    }
+            }
+            Text(dateLabel)
+                .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+        }
+    }
+
     @ViewBuilder
     private var rowStatusIcons: some View {
         Group {
@@ -3886,7 +3937,7 @@ struct MessageListDateSectionHeader: View {
             }
             .textCase(nil)
             .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
+            .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(backgroundColor(for: presentation.style))
             .overlay(alignment: .leading) {
@@ -3933,6 +3984,14 @@ struct MessageListDateSectionHeader: View {
         for style: MessageListSectionHeaderPresentation.Style
     ) -> Color {
         style == .pinned ? theme.accentMuted.color.opacity(0.18) : Color.clear
+    }
+
+    private var verticalPadding: CGFloat {
+        #if os(iOS)
+        BrevSpacing.xxs
+        #else
+        BrevSpacing.xs
+        #endif
     }
 }
 
@@ -4015,6 +4074,28 @@ struct MessageListFolderStatsFooter: View {
         .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
+
+#if os(iOS)
+struct MessageListFolderStatsToolbarLabel: View {
+    @Environment(\.brevTheme) private var theme
+    let presentation: MessageListFolderStatsFooterPresentation
+
+    var body: some View {
+        Label {
+            Text(presentation.text)
+                .brevFont(.caption)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        } icon: {
+            Image(systemName: "chart.bar.doc.horizontal")
+                .font(.caption)
+        }
+        .foregroundStyle(theme.textTertiary.color)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(presentation.accessibilityLabel)
+    }
+}
+#endif
 
 extension View {
     @ViewBuilder

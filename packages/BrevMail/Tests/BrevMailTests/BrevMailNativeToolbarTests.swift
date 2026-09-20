@@ -249,8 +249,8 @@ struct BrevMailNativeToolbarTests {
         #expect(state.messageHeaderForInvocation(.delete) == header)
     }
 
-    @Test("native toolbar keeps the AI Sidebar item in its default controls")
-    func nativeToolbarKeepsMailContextItem() {
+    @Test("native toolbar defaults keep only primary actions and More")
+    func nativeToolbarDefaultsPrioritizePrimaryActions() {
         let coordinator = BrevMailNativeToolbarBridge.Coordinator(
             state: BrevMailNativeToolbarState(
                 selectedHeader: nil,
@@ -277,15 +277,11 @@ struct BrevMailNativeToolbarTests {
 
         #expect(identifiers == [
             "app.brev.mail.compose",
-            "app.brev.mail.refresh",
             "NSToolbarFlexibleSpaceItem",
             "app.brev.mail.reply",
-            "app.brev.mail.replyAll",
-            "app.brev.mail.forward",
             "app.brev.mail.archive",
             "app.brev.mail.delete",
-            "NSToolbarFlexibleSpaceItem",
-            "app.brev.mail.mailContext",
+            "app.brev.mail.more",
         ])
     }
 
@@ -374,8 +370,8 @@ struct BrevMailNativeToolbarTests {
         #expect(state.symbolName(for: .replyAll) == "arrowshape.turn.up.left.2")
     }
 
-    @Test("native toolbar defaults include all three response actions")
-    func nativeToolbarDefaultsIncludeAllResponseActions() {
+    @Test("native More menu keeps secondary actions reachable")
+    func nativeMoreMenuKeepsSecondaryActionsReachable() throws {
         let coordinator = BrevMailNativeToolbarBridge.Coordinator(
             state: BrevMailNativeToolbarState(
                 selectedHeader: Self.makeHeader(),
@@ -397,10 +393,24 @@ struct BrevMailNativeToolbarTests {
             )
         )
 
-        let identifiers = coordinator.toolbarDefaultItemIdentifiers(NSToolbar(identifier: "test"))
-        #expect(identifiers.contains(BrevMailNativeToolbarItem.reply.identifier))
-        #expect(identifiers.contains(BrevMailNativeToolbarItem.replyAll.identifier))
-        #expect(identifiers.contains(BrevMailNativeToolbarItem.forward.identifier))
+        let item = try #require(coordinator.toolbar(
+            NSToolbar(identifier: "test"),
+            itemForItemIdentifier: BrevMailNativeToolbarItem.more.identifier,
+            willBeInsertedIntoToolbar: true
+        ) as? NSMenuToolbarItem)
+        let representedItems = item.menu.items.compactMap { $0.representedObject as? BrevMailNativeToolbarItem }
+
+        #expect(representedItems == [
+            .refresh,
+            .replyAll,
+            .forward,
+            .read,
+            .flag,
+            .createTask,
+            .followUp,
+            .move,
+            .mailContext,
+        ])
     }
 
     @Test("read label and symbol reflect read state")

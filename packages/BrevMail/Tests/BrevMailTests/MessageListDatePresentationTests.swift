@@ -81,6 +81,45 @@ struct MessageListDatePresentationTests {
         #expect(absoluteLabel == "Unknown date")
     }
 
+    @Test("compact relative labels preserve sender space in narrow rows")
+    func compactRelativeLabelsPreserveSenderSpaceInNarrowRows() {
+        let referenceDate = Self.date(year: 2026, month: 6, day: 8, hour: 12, minute: 0)
+
+        #expect(MessageListDatePresentation.label(
+            for: Self.date(year: 2026, month: 6, day: 8, hour: 10, minute: 0),
+            showsAbsoluteArrivalTime: false,
+            relativeStyle: .compact,
+            referenceDate: referenceDate,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        ) == "2h")
+        #expect(MessageListDatePresentation.label(
+            for: Self.date(year: 2026, month: 6, day: 6, hour: 12, minute: 0),
+            showsAbsoluteArrivalTime: false,
+            relativeStyle: .compact,
+            referenceDate: referenceDate,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        ) == "2d")
+    }
+
+    @Test("compact style never shortens the absolute-time preference")
+    func compactStyleNeverShortensAbsoluteTimePreference() {
+        let label = MessageListDatePresentation.label(
+            for: Self.date(year: 2025, month: 12, day: 31, hour: 23, minute: 59),
+            showsAbsoluteArrivalTime: true,
+            relativeStyle: .compact,
+            referenceDate: Self.date(year: 2026, month: 6, day: 3, hour: 12, minute: 0),
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        )
+
+        #expect(label == "Dec 31, 2025, 11:59 PM")
+    }
+
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone

@@ -26,8 +26,12 @@ enum BrevMailNativeToolbarItem: CaseIterable, Hashable {
     case flag
     case archive
     case delete
+    case createTask
+    case followUp
+    case move
     case mailContext
     case settings
+    case more
 
     var identifier: NSToolbarItem.Identifier {
         switch self {
@@ -40,8 +44,12 @@ enum BrevMailNativeToolbarItem: CaseIterable, Hashable {
         case .flag: return .brevFlag
         case .archive: return .brevArchive
         case .delete: return .brevDelete
+        case .createTask: return .brevCreateTask
+        case .followUp: return .brevFollowUp
+        case .move: return .brevMove
         case .mailContext: return .brevMailContext
         case .settings: return .brevSettings
+        case .more: return .brevMore
         }
     }
 
@@ -56,10 +64,26 @@ enum BrevMailNativeToolbarItem: CaseIterable, Hashable {
         case .flag: return "Flag"
         case .archive: return "Archive"
         case .delete: return "Delete"
+        case .createTask: return "Create Task"
+        case .followUp: return "Follow Up"
+        case .move: return "Move"
         case .mailContext: return MailContextColumnVisibility.toolbarLabel
         case .settings: return "Settings"
+        case .more: return "More message actions"
         }
     }
+
+    static let moreMenuItems: [Self] = [
+        .refresh,
+        .replyAll,
+        .forward,
+        .read,
+        .flag,
+        .createTask,
+        .followUp,
+        .move,
+        .mailContext,
+    ]
 }
 
 struct BrevMailNativeToolbarState: Equatable {
@@ -72,6 +96,9 @@ struct BrevMailNativeToolbarState: Equatable {
     var isPerformingCommandMutation = false
     var isComposeBlocked = false
     var isSettingsBlocked = false
+    var canCreateTask = false
+    var canFollowUp = false
+    var canMove = false
     var usesExternalSettingsWindow = false
     var isMailContextPresented = false
 
@@ -84,6 +111,8 @@ struct BrevMailNativeToolbarState: Equatable {
                 && (usesExternalSettingsWindow || !hasPresentedSheet)
         case .mailContext:
             return true
+        case .more:
+            return BrevMailNativeToolbarItem.moreMenuItems.contains { isEnabled($0) }
         case .refresh:
             return hasSelectedFolder
                 && !hasPresentedSheet
@@ -105,6 +134,12 @@ struct BrevMailNativeToolbarState: Equatable {
                 && !isRefreshing
                 && !isSwitchingMailbox
                 && !isPerformingCommandMutation
+        case .createTask:
+            return selectedHeader != nil && canCreateTask
+        case .followUp:
+            return selectedHeader != nil && canFollowUp
+        case .move:
+            return selectedHeader != nil && canMove
         }
     }
 
@@ -114,10 +149,10 @@ struct BrevMailNativeToolbarState: Equatable {
 
     func messageHeaderForInvocation(_ item: BrevMailNativeToolbarItem) -> MessageHeader? {
         switch item {
-        case .reply, .replyAll, .forward, .read, .flag, .archive, .delete:
+        case .reply, .replyAll, .forward, .read, .flag, .archive, .delete, .createTask, .followUp, .move:
             guard canInvoke(item) else { return nil }
             return selectedHeader
-        case .compose, .refresh, .settings, .mailContext:
+        case .compose, .refresh, .settings, .mailContext, .more:
             return nil
         }
     }
@@ -132,7 +167,8 @@ struct BrevMailNativeToolbarState: Equatable {
             return MessageCommandPresentation.flagToggleTitle(for: selectedHeader)
         case .mailContext:
             return isMailContextPresented ? "Hide AI Sidebar" : MailContextColumnVisibility.toolbarLabel
-        case .compose, .refresh, .reply, .replyAll, .forward, .archive, .delete, .settings:
+        case .compose, .refresh, .reply, .replyAll, .forward, .archive, .delete,
+             .createTask, .followUp, .move, .settings, .more:
             return item.label
         }
     }
@@ -158,10 +194,18 @@ struct BrevMailNativeToolbarState: Equatable {
             return "archivebox"
         case .delete:
             return "trash"
+        case .createTask:
+            return "checklist"
+        case .followUp:
+            return "flag"
+        case .move:
+            return "folder"
         case .mailContext:
             return MailContextColumnVisibility.toolbarSymbolName
         case .settings:
             return "gearshape"
+        case .more:
+            return "ellipsis.circle"
         }
     }
 }
@@ -176,6 +220,9 @@ struct BrevMailNativeToolbarActions {
     var toggleStar: @MainActor (MessageHeader) async -> Void
     var archive: @MainActor (MessageHeader) async -> Void
     var delete: @MainActor (MessageHeader) async -> Void
+    var createTask: @MainActor (MessageHeader) -> Void = { _ in }
+    var followUp: @MainActor (MessageHeader) -> Void = { _ in }
+    var move: @MainActor (MessageHeader) -> Void = { _ in }
     var settings: @MainActor () -> Void
     var toggleMailContext: @MainActor () -> Void
 }
@@ -225,7 +272,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
         }
     }
 
-    final class Coordinator: NSObject, NSToolbarDelegate, NSToolbarItemValidation {
+    final class Coordinator: NSObject, NSToolbarDelegate, NSToolbarItemValidation, NSMenuItemValidation {
         private var state: BrevMailNativeToolbarState
         private var actions: BrevMailNativeToolbarActions
         private weak var window: NSWindow?
@@ -263,7 +310,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             if window.toolbar?.identifier != .brevMail {
                 let toolbar = NSToolbar(identifier: .brevMail)
                 toolbar.allowsUserCustomization = true
-                toolbar.autosavesConfiguration = false
+                toolbar.autosavesConfiguration = true
                 toolbar.delegate = self
                 toolbar.displayMode = .iconOnly
                 toolbar.sizeMode = .regular
@@ -299,23 +346,23 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 .brevFlag,
                 .brevArchive,
                 .brevDelete,
+                .brevCreateTask,
+                .brevFollowUp,
+                .brevMove,
                 .brevMailContext,
-                .brevSettings
+                .brevSettings,
+                .brevMore
             ]
         }
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
             [
                 .brevCompose,
-                .brevRefresh,
                 .flexibleSpace,
                 .brevReply,
-                .brevReplyAll,
-                .brevForward,
                 .brevArchive,
                 .brevDelete,
-                .flexibleSpace,
-                .brevMailContext,
+                .brevMore,
             ]
         }
 
@@ -328,9 +375,17 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 return nil
             }
 
-            let item = NSToolbarItem(itemIdentifier: identifier)
-            item.target = self
-            item.action = selector(for: toolbarItem)
+            let item: NSToolbarItem
+            if toolbarItem == .more {
+                let menuItem = NSMenuToolbarItem(itemIdentifier: identifier)
+                menuItem.menu = makeMoreMenu()
+                menuItem.showsIndicator = true
+                item = menuItem
+            } else {
+                item = NSToolbarItem(itemIdentifier: identifier)
+                item.target = self
+                item.action = selector(for: toolbarItem)
+            }
             // Without an explicit border the item renders as a bare image well
             // rather than a standard toolbar control, which is what drove the
             // SwiftUI-hosted workaround in #367.
@@ -341,6 +396,13 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
 
         func validateToolbarItem(_ item: NSToolbarItem) -> Bool {
             guard let toolbarItem = BrevMailNativeToolbarItem(identifier: item.itemIdentifier) else {
+                return true
+            }
+            return state.isEnabled(toolbarItem)
+        }
+
+        func validateMenuItem(_ menuItem: NSMenuItem) -> Bool {
+            guard let toolbarItem = menuItem.representedObject as? BrevMailNativeToolbarItem else {
                 return true
             }
             return state.isEnabled(toolbarItem)
@@ -415,6 +477,27 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             }
         }
 
+        @objc private func createTask() {
+            guard let header = state.messageHeaderForInvocation(.createTask) else { return }
+            Task { @MainActor in
+                actions.createTask(header)
+            }
+        }
+
+        @objc private func followUp() {
+            guard let header = state.messageHeaderForInvocation(.followUp) else { return }
+            Task { @MainActor in
+                actions.followUp(header)
+            }
+        }
+
+        @objc private func move() {
+            guard let header = state.messageHeaderForInvocation(.move) else { return }
+            Task { @MainActor in
+                actions.move(header)
+            }
+        }
+
         @objc private func settings() {
             guard state.canInvoke(.settings) else { return }
             Task { @MainActor in
@@ -448,10 +531,6 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             guard let currentIndex = toolbar.items.firstIndex(where: {
                 $0.itemIdentifier == BrevMailNativeToolbarItem.mailContext.identifier
             }) else {
-                toolbar.insertItem(
-                    withItemIdentifier: BrevMailNativeToolbarItem.mailContext.identifier,
-                    at: min(desiredIndex, toolbar.items.count)
-                )
                 return
             }
             guard currentIndex != desiredIndex else { return }
@@ -489,6 +568,31 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 systemSymbolName: state.symbolName(for: toolbarItem),
                 accessibilityDescription: label
             )?.withSymbolConfiguration(Self.symbolConfiguration)
+            if let menuItem = item as? NSMenuToolbarItem {
+                menuItem.menu = makeMoreMenu()
+            }
+        }
+
+        private func makeMoreMenu() -> NSMenu {
+            let menu = NSMenu(title: BrevMailNativeToolbarItem.more.label)
+            for toolbarItem in BrevMailNativeToolbarItem.moreMenuItems {
+                if toolbarItem == .replyAll || toolbarItem == .createTask || toolbarItem == .mailContext {
+                    menu.addItem(.separator())
+                }
+                let item = NSMenuItem(
+                    title: state.label(for: toolbarItem),
+                    action: selector(for: toolbarItem),
+                    keyEquivalent: ""
+                )
+                item.target = self
+                item.representedObject = toolbarItem
+                item.image = NSImage(
+                    systemSymbolName: state.symbolName(for: toolbarItem),
+                    accessibilityDescription: state.label(for: toolbarItem)
+                )
+                menu.addItem(item)
+            }
+            return menu
         }
 
         /// Shared optical size for toolbar glyphs, matching the system's default
@@ -518,10 +622,18 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 return #selector(archive)
             case .delete:
                 return #selector(delete)
+            case .createTask:
+                return #selector(createTask)
+            case .followUp:
+                return #selector(followUp)
+            case .move:
+                return #selector(move)
             case .mailContext:
                 return #selector(toggleMailContext)
             case .settings:
                 return #selector(settings)
+            case .more:
+                return #selector(compose)
             }
         }
     }
@@ -550,7 +662,11 @@ private extension NSToolbarItem.Identifier {
     static let brevFlag = NSToolbarItem.Identifier("app.brev.mail.flag")
     static let brevArchive = NSToolbarItem.Identifier("app.brev.mail.archive")
     static let brevDelete = NSToolbarItem.Identifier("app.brev.mail.delete")
+    static let brevCreateTask = NSToolbarItem.Identifier("app.brev.mail.createTask")
+    static let brevFollowUp = NSToolbarItem.Identifier("app.brev.mail.followUp")
+    static let brevMove = NSToolbarItem.Identifier("app.brev.mail.move")
     static let brevMailContext = NSToolbarItem.Identifier("app.brev.mail.mailContext")
     static let brevSettings = NSToolbarItem.Identifier("app.brev.mail.settings")
+    static let brevMore = NSToolbarItem.Identifier("app.brev.mail.more")
 }
 #endif
