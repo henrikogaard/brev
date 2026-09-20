@@ -75,6 +75,7 @@ use `en` / `en_US`, matching the required lane. Fixed fixture sizes include
 | macOS app | `script/build_and_run.sh --mock --verify` builds the dated test identity, launches and passes startup stability. |
 | iOS app | XcodeBuildMCP `build_sim` passes; installed and explicitly launched with `BREV_USE_MOCK=1`. |
 | Lint, format, baseline inventory, whitespace | `scripts/lint.sh`, `scripts/format.sh` (0 files changed), `scripts/check-ios-snapshot-baselines.sh`, `git diff --check` pass. |
+| Repository self-tests | `scripts/test.sh --self-tests-only` passes after updating the compact-layout source check to follow the native column policy. |
 
 The Mac snapshot selection covers FolderSidebar, MailRootStatusRail,
 MailUndoToast, ScheduledOutbox, MailSearchStatus, MessageListRow,
@@ -95,6 +96,13 @@ layout is consistent with a retained/rebalanced divider inside the same leading
 column budget, but its retention mechanism was not directly established.
 No preferences were cleared or divider positions overwritten. The temporary
 diagnostic test was removed after the probe; the production policy tests remain.
+
+The first hosted run of this audit head found a stale source-contract check
+still requiring a content-level 320/420 frame. It failed locally before the
+correction. The check now verifies the same 320 pt minimum / 420 pt ideal in
+`MailPaneColumnWidthPolicy` and its application at the outer split column. The
+focused check and complete repository self-test set then passed. Production
+layout code did not change for this CI correction.
 
 ## Native captures
 

@@ -181,9 +181,14 @@ require_multiline_pattern "static func folderSidebar\\(platform: MailPanePlatfor
 require_pattern "MailPaneColumnWidth\\(minimum: 200, ideal: 240" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected sidebar layout policy to keep a 200px compact minimum"
-require_pattern "\\.frame\\(minWidth: 320, idealWidth: 420\\)" \
-  "$MAIL_ROOT_FILE" \
+# Column sizing now belongs to the split-view policy. A second content frame
+# competes with AppKit's divider sizing, so check the policy and its application.
+require_pattern "MailPaneColumnWidth\\(minimum: 320, ideal: 420" \
+  "$MAIL_PANE_SURFACE_FILE" \
   "expected message list to keep a 320px compact minimum"
+require_pattern "\\.brevMailPaneColumnWidth\\(messageListColumnWidth\\)" \
+  "$MAIL_ROOT_FILE" \
+  "expected message list to apply its split-view column width policy"
 require_pattern "static func readerMinimumWidth" \
   "$MAIL_PANE_SURFACE_FILE" \
   "expected reading pane policy to define a compact minimum"

@@ -3200,3 +3200,11 @@ buttons, and package-aware localization.
 - QA scope, commands and limitations are tracked in
   docs/qa/native-audit-polish-2026-09-20.md. No live mail, daily-driver replacement,
   version change, merge or release operation was performed.
+- Published the integrated changes in existing PR #52 and moved #53 to
+  In review; #49/#51 remain open/In review. Resolved the obsolete compose-menu
+  review thread after checking the updated overflow policy, tests and native
+  accessibility menu role. Hosted CI then found a stale compact-layout source
+  check requiring the removed content frame. Reproduced that failure, checked
+  the policy and outer split modifier instead, and passed the focused check and
+  complete `scripts/test.sh --self-tests-only` set. No production code changed
+  for this CI correction; hosted checks must rerun on the follow-up head.
