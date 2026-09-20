@@ -3056,3 +3056,10 @@ buttons, and package-aware localization.
 - Updated CHANGELOG and QA evidence. No architecture, network, privacy, setup or
   workflow change: README/ADRs/PRIVACY/AGENTS need no update. No physical-device or
   spoken VoiceOver signoff. Continue existing PR #50; no merge or release.
+
+
+## 2026-09-20 — Codex — PR #48 review follow-up
+
+- Preserve ADR-0039’s live DAV/OAuth proof prerequisite before browsing; map legacy #121 evidence to #5, with #11 extending parity coverage.
+- Require a separate validated PIM-only grant before retaining sources during mail removal, and clear the removed mail credential.
+- Verification: checked the proposal against ADR-0039 and PRIVACY.md; documentation-only change, no runtime tests required. ADR-0072 remains Proposed.

@@ -134,9 +134,12 @@ No background or photo network request starts merely because a view exists.
   cache is clearly disconnected and read-only, retains no reusable credential,
   and has an explicit later delete action. Delete its cursors and disable writes.
 - Removing a mail account lists linked sources: remove them and their selected
-  local data, or retain them as independent PIM connections with explicitly
-  retained credentials. Never silently orphan a source. Remove secrets only
-  when no retained connection needs them. No provider records are deleted.
+  local data, or retain them as independent PIM connections. Before completing
+  retention, obtain and validate a separate PIM-only authorization, then clear
+  the removed mail account credential from Keychain. Never retain a combined
+  Gmail/PIM grant after mail removal; if PIM-only authorization fails or is
+  declined, offer removal of the linked sources or cancellation of account
+  removal. Never silently orphan a source. No provider records are deleted.
 
 ### Provider-owned round trips
 
@@ -224,9 +227,13 @@ the connected source.” During implementation, label each unavailable operation
 “keep full PIM editing outside Brev” only when this ADR is accepted. Localize and
 snapshot the copy change in the implementing PR; this document does not change UI.
 
-Delivery: #4 acceptance → #5 source lifecycle → #6 Calendar and #8 Contacts
-browse/sync → #7 event and #9 contact authoring → #10 mail integration → #11 live
-parity evidence. #10 needs both writable editors. Each implementation PR should
+Delivery: #4 acceptance → #5 source lifecycle and live-provider proof → #6
+Calendar and #8 Contacts browse/sync → #7 event and #9 contact authoring → #10
+mail integration → #11 full live parity evidence. ADR-0039’s #121 prerequisite
+remains binding: before browsing ships, #5 must record disposable live
+CalDAV/CardDAV sync and provider OAuth viability evidence and link the legacy
+#121 requirement to that evidence. #11 extends this early proof to authoring
+and platform parity; it does not defer or replace the browsing prerequisite. #10 needs both writable editors. Each implementation PR should
 produce a working vertical slice, with the parent left open until all criteria
 are verified. No placeholder providers or decorative screens count as delivery.
 
