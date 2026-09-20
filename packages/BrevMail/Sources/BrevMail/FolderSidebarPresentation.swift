@@ -127,7 +127,7 @@ struct FolderSidebarLayoutMetrics: Equatable, Sendable {
     let folderRowVerticalPadding: CGFloat
 
     func folderRowLeadingPadding(depth: Int) -> CGFloat {
-        folderRowBaseLeadingPadding + CGFloat(min(max(depth, 0), 1)) * folderRowDepthIndent
+        folderRowBaseLeadingPadding + CGFloat(depth) * folderRowDepthIndent
     }
 }
 

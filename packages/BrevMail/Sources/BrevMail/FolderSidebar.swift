@@ -386,6 +386,11 @@ public struct FolderSidebar: View {
         #endif
     }
 
+    private var profileHeaderTitle: String {
+        normalizedActiveProfileID == MailProfile.allMailboxesID
+            ? String(localized: "Mailboxes", bundle: .module) : activeProfileName
+    }
+
     private var profileSwitcher: some View {
         Menu {
             ForEach(profiles) { profile in
@@ -403,7 +408,7 @@ public struct FolderSidebar: View {
         } label: {
             #if os(iOS)
             HStack(spacing: BrevSpacing.xxs) {
-                Text("Mailboxes", bundle: .module)
+                Text(verbatim: profileHeaderTitle)
                     .brevFont(.headline)
                     .fontWeight(.semibold)
                     .foregroundStyle(theme.textPrimary.color)
@@ -417,7 +422,7 @@ public struct FolderSidebar: View {
             .contentShape(Rectangle())
             #else
             HStack(spacing: profileContentSpacing) {
-                Text("Mailboxes", bundle: .module)
+                Text(verbatim: profileHeaderTitle)
                     .brevFont(.body)
                     .fontWeight(.semibold)
                     .foregroundStyle(theme.textPrimary.color)
