@@ -116,13 +116,17 @@ enum MailRootMessageListTitlePolicy {
     ) -> String? {
         let email = mailboxEmail.trimmingCharacters(in: .whitespacesAndNewlines)
         let candidates = [mailboxDisplayName, accountDisplayName]
-        return candidates
+        let displayName = candidates
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { candidate in
+            .first(where: { candidate in
                 !candidate.isEmpty
                     && candidate.localizedCaseInsensitiveCompare(email) != .orderedSame
                     && !candidate.contains("@")
-            }
+            })
+        if let displayName {
+            return displayName
+        }
+        return email.isEmpty ? nil : email
     }
 }
 

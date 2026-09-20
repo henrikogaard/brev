@@ -1829,13 +1829,12 @@ public struct BrevMailRootView: View {
     }
 
     private var selectedMessageDestinationContext: String? {
-        guard navigation.selectedFolderID != nil,
-              let selectedSourceSection
-        else { return nil }
+        guard navigation.selectedFolderID != nil else { return nil }
+        let account = selectedSourceSection?.account ?? selectedBackend.account
         return MailRootMessageListTitlePolicy.accountContext(
-            mailboxDisplayName: selectedSourceSection.mailbox.displayName,
-            accountDisplayName: selectedSourceSection.account.displayName,
-            mailboxEmail: selectedSourceSection.mailbox.email
+            mailboxDisplayName: selectedSourceSection?.mailbox.displayName ?? "",
+            accountDisplayName: account.displayName,
+            mailboxEmail: selectedSourceSection?.mailbox.email ?? account.emailAddress
         )
     }
 

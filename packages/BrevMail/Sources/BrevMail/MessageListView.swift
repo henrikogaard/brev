@@ -4096,18 +4096,13 @@ struct MessageListFolderStatsToolbarLabel: View {
     let presentation: MessageListFolderStatsFooterPresentation
 
     var body: some View {
-        Label {
-            Text(presentation.text)
-                .brevFont(.caption)
-                .lineLimit(1)
-                .truncationMode(.middle)
-        } icon: {
-            Image(systemName: "chart.bar.doc.horizontal")
-                .font(.caption)
-        }
-        .foregroundStyle(theme.textTertiary.color)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(presentation.accessibilityLabel)
+        Text(presentation.text)
+            .brevFont(.caption)
+            .lineLimit(1)
+            .truncationMode(.middle)
+            .foregroundStyle(theme.textTertiary.color)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
 #endif

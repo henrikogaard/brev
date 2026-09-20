@@ -373,12 +373,12 @@ struct MailboxFilterControlPolicyTests {
         ) == "Henrik")
     }
 
-    @Test("message-list account context omits raw email-only identities")
-    func messageListAccountContextOmitsRawEmailOnlyIdentities() {
+    @Test("message-list account context falls back to a stable email identity")
+    func messageListAccountContextFallsBackToStableEmailIdentity() {
         #expect(MailRootMessageListTitlePolicy.accountContext(
             mailboxDisplayName: "henrik@example.org",
             accountDisplayName: "henrik@example.org",
             mailboxEmail: "henrik@example.org"
-        ) == nil)
+        ) == "henrik@example.org")
     }
 }
