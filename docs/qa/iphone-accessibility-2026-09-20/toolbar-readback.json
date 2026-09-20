@@ -1,0 +1,538 @@
+{
+  "date": "2026-09-20",
+  "source": "50d2e219 plus account-header alignment fix",
+  "simulator": "iPhone 18 Pro",
+  "os": "iOS 27.0",
+  "mode": "built-in synthetic sample mail",
+  "method": "XcodeBuildMCP runtime semantic snapshots; not spoken VoiceOver verification",
+  "observations": [
+    {
+      "size": "extra-small",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "small",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "medium",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-extra-extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-medium",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-extra-extra-large",
+      "screen": "Inbox",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Sort and filter, sorted newest first",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Mailboxes",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Refresh",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Compose",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-small",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "small",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "medium",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "extra-extra-extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-medium",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    },
+    {
+      "size": "accessibility-extra-extra-extra-large",
+      "screen": "Mailboxes",
+      "targets": [
+        {
+          "role": "button",
+          "label": "Show messages",
+          "action": "tap"
+        },
+        {
+          "role": "button",
+          "label": "Settings",
+          "action": "tap"
+        }
+      ],
+      "error": null
+    }
+  ]
+}

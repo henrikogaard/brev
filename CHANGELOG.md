@@ -83,6 +83,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Align iOS account headers with top-level mailbox folders; keep disclosure
+  arrows at the trailing edge and indentation only for nested folders.
+
 - iOS compose overflow retains registered plug-in contributions, and opening
   a unified-inbox message in another window preserves the original selection.
 
