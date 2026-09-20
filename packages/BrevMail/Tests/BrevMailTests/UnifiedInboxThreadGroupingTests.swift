@@ -86,6 +86,30 @@ struct UnifiedInboxThreadGroupingTests {
         #expect(children.map(\.header.id) == ["oldest", "middle"])
     }
 
+    @Test("opening an unselected unified item preserves the owning selection")
+    @MainActor
+    func openInNewWindowPreservesSelection() {
+        let navigation = MailNavigationState()
+        let selected = Self.item(id: "selected", threadID: "selected", sourceID: Self.source)
+        let target = Self.item(id: "target", threadID: "target", sourceID: Self.otherSource)
+        navigation.selectMessage(selected.header, in: selected.sourceID, headers: [selected.header])
+        var opened: UnifiedInboxItem?
+        var selectionCallbackCount = 0
+        let view = UnifiedInboxListView(
+            navigation: navigation, backends: [], sourceSections: [], isWorkBlocked: false,
+            composeActions: MailComposePresentationActions(
+                newMessage: {}, reply: { _ in }, replyAll: { _ in }, forward: { _ in }
+            ),
+            onSelectMessage: { _ in selectionCallbackCount += 1 },
+            onOpenInNewWindow: { opened = $0 }
+        )
+        view.openInNewWindow(target)
+        #expect(opened?.id == target.id)
+        #expect(navigation.selectedMessageID == selected.header.id)
+        #expect(navigation.selectedSourceID == selected.sourceID)
+        #expect(selectionCallbackCount == 0)
+    }
+
     private static func item(
         id: String,
         threadID: String,

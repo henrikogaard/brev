@@ -902,7 +902,7 @@ public struct ComposeView: View {
     }
 
     @ViewBuilder
-    private var compactComposeActionsMenuContent: some View {
+    var compactComposeActionsMenuContent: some View {
         Group {
             Button {
                 isPickingFile = true
@@ -947,6 +947,8 @@ public struct ComposeView: View {
                 aiWriterMenuContent
             }
             .disabled(aiWriterMenuDisabled)
+
+            pluginToolbarButtons
 
             Divider()
 

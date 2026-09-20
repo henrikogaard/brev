@@ -1411,8 +1411,7 @@ struct UnifiedInboxListView: View {
             .disabled(!presentation.isEnabled)
         case .openInNewWindow:
             Button {
-                selectMessage(item)
-                onOpenInNewWindow?(item)
+                openInNewWindow(item)
             } label: {
                 Label(presentation.title, systemImage: presentation.symbolName)
             }
@@ -1957,6 +1956,10 @@ struct UnifiedInboxListView: View {
             pinnedMessageIDs: UnifiedInboxPresentationSnapshot.pinnedMessageIDs(from: pinnedMessageIDsRaw),
             now: Date(), calendar: calendar, groupThreads: false
         ).items
+    }
+
+    func openInNewWindow(_ item: UnifiedInboxItem) {
+        onOpenInNewWindow?(item)
     }
 
     private func selectMessage(_ item: UnifiedInboxItem) {

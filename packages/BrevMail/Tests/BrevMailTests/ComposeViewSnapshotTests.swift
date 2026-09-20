@@ -37,7 +37,7 @@ private final class ComposeToolbarMarkerPlugin: BrevUIExtension {
     ]
 
     func view(for contributionID: String) -> AnyView {
-        isEnabled ? AnyView(ComposeToolbarMarkerView()) : AnyView(EmptyView())
+        isEnabled ? AnyView(ComposeToolbarMarkerView().frame(width: 44, height: 44)) : AnyView(EmptyView())
     }
 }
 
@@ -126,8 +126,8 @@ struct ComposeViewSnapshotTests {
         )
     }
 
-    @Test("default compose toolbar renders each plugin contribution once")
-    func defaultToolbarRendersPluginContributionOnce() {
+    @Test("compact compose overflow renders each plugin contribution once")
+    func compactOverflowRendersPluginContributionOnce() {
         let plugin = ComposeToolbarMarkerPlugin()
         BrevPluginRegistry.shared.register(plugin)
         // The production registry intentionally has no unregister API. Keep
@@ -137,21 +137,26 @@ struct ComposeViewSnapshotTests {
 
         let theme = BrevTheme.brevPaper
         let backend = MockBackend()
-        let view = ComposeView(
-            backend: backend,
-            from: backend.account
-        )
+        let view = VStack {
+            ComposeView(backend: backend, from: backend.account)
+                .compactComposeActionsMenuContent
+        }
         .frame(width: 960, height: 780)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
 
         let host = UIHostingController(rootView: view)
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 960, height: 780))
+        window.rootViewController = host
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
         host.loadViewIfNeeded()
         host.view.frame = CGRect(x: 0, y: 0, width: 960, height: 780)
         host.view.setNeedsLayout()
         host.view.layoutIfNeeded()
 
-        #expect(countMarkerViews(in: host.view) == 1)
+        let markerCount = countMarkerViews(in: host.view)
+        #expect(markerCount == 1)
     }
 
     private func countMarkerViews(in view: UIView) -> Int {

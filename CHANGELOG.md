@@ -83,6 +83,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iOS compose overflow retains registered plug-in contributions, and opening
+  a unified-inbox message in another window preserves the original selection.
+
 - Keep Offline runs in detached readers without opening extra mailbox windows; busy readers disable Reply and Forward.
 
 - Cancelling permanent Delete preserves the conversation; confirmed deletion retains its source and folder.

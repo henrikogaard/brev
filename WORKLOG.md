@@ -2970,3 +2970,11 @@ buttons, and package-aware localization.
   and conversation views. Clarified source/folder identity, one-use handoff and
   local-filing parameters. Documentation-only exception: no TDD or new snapshots
   needed; lint/format/diff-check validate the update.
+
+- Compact compose overflow retains registered plug-in views. The rendering test
+  mounts its host in a UIWindow and fails without the contribution before passing
+  with it. Unified/smart/saved-search Open in New Window no longer selects the
+  target in its owner; the regression caught source, selection and callback changes.
+- Verification: 12 focused tests pass, including all seven phone snapshot cases
+  with unchanged references; lint/format/diff-check pass. Updated Unreleased
+  behavior notes. No architecture, privacy or workflow contract changed.
