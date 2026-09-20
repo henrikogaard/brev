@@ -49,7 +49,7 @@ repository checks.
 | 36 | iOS S/MIME outbound limitation | Accepted |
 | 37 | Generic IMAP closed-app notification posture | Accepted |
 | 38 | Rich HTML compose MVP | Accepted |
-| 39 | Read-only calendar and contacts scope | Accepted |
+| 39 | Read-only calendar and contacts scope | Accepted (authoring boundary superseded by ADR-0072) |
 | 40 | Native Exchange and Microsoft 365 scope | Accepted |
 | 41 | Search folders and attachment search scope | Accepted |
 | 42 | Enterprise and admin policy scope | Accepted |
@@ -82,7 +82,7 @@ repository checks.
 | 69 | Monochrome default theme pair | Accepted |
 | 70 | Opt-in background mail on macOS | Superseded by ADR-0075 |
 | 71 | Native Microsoft Graph mail and shared mailboxes | Superseded by ADR-0079 |
-| 72 | Provider-neutral calendar and contact authoring | Proposed |
+| 72 | Provider-neutral calendar and contact authoring | Accepted |
 | 73 | Durable local mail archives and portable backups | Superseded by ADR-0076, ADR-0077 |
 | 74 | Complete source-owned conversations | Accepted |
 | 75 | macOS background mail presence and launch at login | Accepted |

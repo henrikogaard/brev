@@ -314,14 +314,15 @@ them. They are not committed.
 - Read-side AI features (summarize, triage) gated on local-LLM-only
   paths and separate consent.
 
-### Calendar and Contacts proposal
+### Calendar and Contacts roadmap
 
-Brev currently ships mail-related calendar and contact workflows. Read-only
-browsing is accepted future scope under ADR-0039; first-class Google/DAV browsing
-and authoring is proposed in [ADR-0072](ADRs/0072-provider-neutral-calendar-contact-authoring.md)
-and tracked by issues #3–#11. That proposal awaits maintainer acceptance and does
-not describe functionality already available. Tasks, Meet creation, Drive picking
-and Notes remain separate follow-ups.
+Brev currently ships mail-related calendar and contact workflows. First-class
+Google and DAV Calendar/Contacts browsing and authoring is accepted scope under
+[ADR-0072](ADRs/0072-provider-neutral-calendar-contact-authoring.md) (superseding
+ADR-0039's authoring boundary) and is tracked by issues #3–#11. It is roadmap,
+not shipped functionality — availability is claimed only as each slice is
+implemented and verified. Tasks, Meet creation, Drive picking and Notes remain
+separate follow-ups.
 
 ### Permanent non-goals
 

@@ -5,10 +5,14 @@
 - **Deciders:** Henrik
 - **Amends:** ADR-0007, ADR-0028
 
-## Relationship to proposed Calendar/Contacts expansion
+## Relationship to the Calendar/Contacts expansion
 
-ADR-0072 proposes replacing the authoring boundary below. It remains Proposed;
-this decision stays in force until explicit maintainer acceptance.
+ADR-0072 was accepted on 2026-09-20 and supersedes the authoring boundary
+below: provider-neutral Calendar and Contacts browsing and authoring are now
+committed scope, tracked by issues #3–#11. Until each slice ships, the
+read-only posture below still describes what users can do today, and the
+legacy live-provider evidence prerequisite (#121) remains binding on the
+browsing milestone.
 
 ## Context
 
