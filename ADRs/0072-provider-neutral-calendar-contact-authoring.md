@@ -88,8 +88,9 @@ flowchart LR
     M[Mail actions] -->|source-owned context| S
     S -->|credential reference| K[Keychain]
     S -->|plain models| C[Source cache and sync]
-    C -->|adapter requests| P[Google or configured DAV provider]
-    S -->|validated mutation| P
+    C -->|read and sync requests| A[Provider adapters]
+    S -->|validated mutation| A
+    A -->|authenticated protocol requests| P[Google or configured DAV provider]
 ```
 
 Provider responses are untrusted: bound parsing/pagination, reject unsafe photo
@@ -133,6 +134,16 @@ No background or photo network request starts merely because a view exists.
 - Removing a source stops its work and offers local-cache deletion. A retained
   cache is clearly disconnected and read-only, retains no reusable credential,
   and has an explicit later delete action. Delete its cursors and disable writes.
+  When removing a feature from a shared Google grant, stage and validate a
+  replacement authorization containing only the remaining enabled features.
+  Verify the removed scopes are absent before completing removal and deleting
+  the old local credential. If the provider cannot produce that narrower grant,
+  require explicit consent to revoke the shared grant and reconnect the retained
+  features, or cancel removal. Explain any interruption to retained connections;
+  never silently keep removed scopes or revoke another feature. DAV credentials
+  may have server-wide privileges that Brev cannot narrow: disclose that limit
+  and offer removing the shared credential/reconnecting retained sources rather
+  than claiming provider-side revocation of a single DAV source.
 - Removing a mail account lists linked sources: remove them and their selected
   local data, or retain them as independent PIM connections. Before completing
   retention, obtain and validate a separate PIM-only authorization, then clear
@@ -206,8 +217,9 @@ remain distinct capabilities rather than required writable fields.
   shared editor; a field-scoped update retains unsupported fields; no email-only
   match redirects the write to another contact/source (R2/R3/R4/R7).
 - **Remove linked mail account:** coordinator enumerates PIM sources and local
-  data, records retention/removal choices, stops work, then removes unreferenced
-  credentials without deleting remote data (R5/R8).
+  data, records retention/removal choices, obtains a validated PIM-only grant
+  for retained sources, then clears the removed mail credential and stops mail
+  work without deleting remote data (R5/R8).
 
 ### Scope reconciliation and delivery
 
@@ -233,7 +245,8 @@ mail integration → #11 full live parity evidence. ADR-0039’s #121 prerequisi
 remains binding: before browsing ships, #5 must record disposable live
 CalDAV/CardDAV sync and provider OAuth viability evidence and link the legacy
 #121 requirement to that evidence. #11 extends this early proof to authoring
-and platform parity; it does not defer or replace the browsing prerequisite. #10 needs both writable editors. Each implementation PR should
+and platform parity; it does not defer or replace the browsing prerequisite.
+#10 needs both writable editors. Each implementation PR should
 produce a working vertical slice, with the parent left open until all criteria
 are verified. No placeholder providers or decorative screens count as delivery.
 

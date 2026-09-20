@@ -3063,3 +3063,5 @@ buttons, and package-aware localization.
 - Preserve ADR-0039’s live DAV/OAuth proof prerequisite before browsing; map legacy #121 evidence to #5, with #11 extending parity coverage.
 - Require a separate validated PIM-only grant before retaining sources during mail removal, and clear the removed mail credential.
 - Verification: checked the proposal against ADR-0039 and PRIVACY.md; documentation-only change, no runtime tests required. ADR-0072 remains Proposed.
+
+- Additional PR #48 review: route reads/writes through explicit adapter boundary in the diagram; require validated narrower shared Google grants on PIM removal, with disclosed revoke/reconnect fallback. State DAV privilege-narrowing limits. Checked scenario consistency and diff whitespace; documentation-only.
