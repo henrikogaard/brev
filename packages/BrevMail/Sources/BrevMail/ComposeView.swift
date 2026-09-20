@@ -637,6 +637,10 @@ public struct ComposeView: View {
                 header
                 composeEditorContent
             }
+            #if os(iOS)
+            mobileUtilityToolbar
+                .disabled(isBusy)
+            #endif
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
@@ -797,7 +801,7 @@ public struct ComposeView: View {
     }
 
     private var mobileToolbar: some View {
-        HStack(spacing: BrevSpacing.xxs) {
+        HStack(spacing: BrevSpacing.sm) {
             toolbarButton(
                 label: ComposeToolbarAction.close.accessibilityLabel,
                 systemImage: "xmark",
@@ -806,6 +810,27 @@ public struct ComposeView: View {
             )
             .keyboardShortcut(.cancelAction)
 
+            Text(composeTitle)
+                .font(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+                .layoutPriority(1)
+                .accessibilityAddTraits(.isHeader)
+
+            Spacer(minLength: 0)
+
+            sendButton
+        }
+        .padding(.leading, BrevSpacing.sm)
+        .padding(.trailing, BrevSpacing.sm)
+        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.height, maxHeight: toolbarMetrics.height)
+        .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+
+    #if os(iOS)
+    private var mobileUtilityToolbar: some View {
+        HStack(spacing: BrevSpacing.xxs) {
             toolbarButton(
                 label: ComposeToolbarAction.attach.accessibilityLabel,
                 systemImage: "paperclip",
@@ -813,23 +838,21 @@ public struct ComposeView: View {
             ) {
                 isPickingFile = true
             }
-
-            Text(composeTitle)
-                .font(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
-                .minimumScaleFactor(0.75)
-                .frame(maxWidth: .infinity)
-                .accessibilityAddTraits(.isHeader)
-
-            sendButton
             composeActionsMenu
+            Spacer(minLength: 0)
         }
-        .padding(.leading, BrevSpacing.sm)
-        .padding(.trailing, BrevSpacing.sm)
-        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.height, maxHeight: toolbarMetrics.height)
+        .padding(.horizontal, BrevSpacing.sm)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: toolbarMetrics.utilityHeight,
+            maxHeight: toolbarMetrics.utilityHeight
+        )
+        .overlay(alignment: .top) {
+            BrevDivider()
+        }
         .dynamicTypeSize(denseChromeDynamicTypeRange)
     }
+    #endif
 
     private var composeTitle: String {
         ComposePresentation.title(
@@ -939,7 +962,13 @@ public struct ComposeView: View {
         } label: {
             toolbarControlIcon("ellipsis.circle")
         }
+        #if os(macOS)
+        .menuStyle(.button)
+        .buttonStyle(.plain)
+        .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+        #else
         .menuStyle(.borderlessButton)
+        #endif
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(layout.moreActionsAccessibilityLabel)
         .accessibilityValue(layout.moreActionsAccessibilityValue)
@@ -1090,6 +1119,7 @@ public struct ComposeView: View {
             }
         } label: {
             HStack(spacing: BrevSpacing.xxs) {
+                #if os(macOS)
                 if isSending {
                     ProgressView()
                         .controlSize(.small)
@@ -1098,9 +1128,12 @@ public struct ComposeView: View {
                     Image(systemName: pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage)
                         .symbolRenderingMode(.hierarchical)
                 }
+                #endif
                 Text(verbatim: pendingUndoSendTask != nil
                     ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
                     .font(.subheadline.weight(.semibold))
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
             .padding(.horizontal, BrevSpacing.xs)
             .frame(minHeight: toolbarMetrics.hitTargetSize)
@@ -1904,7 +1937,9 @@ public struct ComposeView: View {
             } label: {
                 toolbarControlIcon("textformat")
             }
-            .menuStyle(.borderlessButton)
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
             .disabled(isInteractionBlocked)
             .opacity(isInteractionBlocked ? 0.45 : 1)
             .accessibilityLabel(String(localized: "Format", bundle: .module))

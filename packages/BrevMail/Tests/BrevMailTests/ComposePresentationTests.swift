@@ -157,11 +157,12 @@ struct ComposePresentationTests {
         #expect(chrome.fieldRows == [.recipients, .subject, .sender])
     }
 
-    @Test("compact toolbar keeps attachment and send direct and moves infrequent controls into actions")
-    func compactToolbarKeepsAttachmentAndSendDirect() {
+    @Test("compact compose separates primary and utility actions")
+    func compactComposeSeparatesPrimaryAndUtilityActions() {
         let layout = ComposePresentation.toolbarActionLayout(for: .compactIOSAccessibility)
 
-        #expect(layout.directActions == [.close, .attach, .send, .moreActions])
+        #expect(layout.primaryActions == [.close, .send])
+        #expect(layout.utilityActions == [.attach, .moreActions])
         #expect(layout.overflowActions == [
             .templates,
             .signature,
@@ -185,10 +186,11 @@ struct ComposePresentationTests {
         ].joined(separator: ", "))
     }
 
-    @Test("regular iPad keeps attachment and Send visible and moves secondary tools into overflow")
+    @Test("regular iPad uses the same primary and utility action split")
     func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
-        #expect(layout.directActions == [.close, .attach, .send, .moreActions])
+        #expect(layout.primaryActions == [.close, .send])
+        #expect(layout.utilityActions == [.attach, .moreActions])
         #expect(layout.overflowActions.contains(.signature))
         #expect(layout.overflowActions.contains(.security))
         #expect(!layout.overflowActions.contains(.attach))
@@ -198,7 +200,8 @@ struct ComposePresentationTests {
     func macOSToolbarKeepsOnlyCommonActionsDirect() {
         let layout = ComposePresentation.toolbarActionLayout(for: .macOS)
 
-        #expect(layout.directActions == [.attach, .format, .send, .moreActions])
+        #expect(layout.primaryActions == [.attach, .format, .send, .moreActions])
+        #expect(layout.utilityActions.isEmpty)
         #expect(layout.overflowActions == [
             .templates,
             .signature,
@@ -227,6 +230,7 @@ struct ComposePresentationTests {
         #expect(metrics.buttonSize == 26)
         #expect(metrics.hitTargetSize == 36)
         #expect(metrics.height == 42)
+        #expect(metrics.utilityHeight == 0)
         #expect(metrics.leadingInset == 76)
         #expect(metrics.topInset == 0)
         #expect(metrics.hitTargetSize > metrics.buttonSize)
@@ -239,6 +243,7 @@ struct ComposePresentationTests {
         #expect(metrics.buttonSize == 26)
         #expect(metrics.hitTargetSize == 44)
         #expect(metrics.height == 52)
+        #expect(metrics.utilityHeight == 48)
         #expect(metrics.leadingInset == 0)
         #expect(metrics.topInset == 0)
         #expect(metrics.hitTargetSize >= 44)

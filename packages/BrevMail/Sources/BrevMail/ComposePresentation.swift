@@ -22,6 +22,7 @@ struct ComposeToolbarMetrics: Equatable, Sendable {
     let buttonSize: CGFloat
     let hitTargetSize: CGFloat
     let height: CGFloat
+    let utilityHeight: CGFloat
     let leadingInset: CGFloat
     let topInset: CGFloat
 }
@@ -73,9 +74,23 @@ enum ComposeLayoutPolicy {
     static func toolbarMetrics(for platform: ComposeLayoutPlatform) -> ComposeToolbarMetrics {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
-            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 44, height: 52, leadingInset: 0, topInset: 0)
+            ComposeToolbarMetrics(
+                buttonSize: 26,
+                hitTargetSize: 44,
+                height: 52,
+                utilityHeight: 48,
+                leadingInset: 0,
+                topInset: 0
+            )
         case .macOS:
-            ComposeToolbarMetrics(buttonSize: 26, hitTargetSize: 36, height: 42, leadingInset: 76, topInset: 0)
+            ComposeToolbarMetrics(
+                buttonSize: 26,
+                hitTargetSize: 36,
+                height: 42,
+                utilityHeight: 0,
+                leadingInset: 76,
+                topInset: 0
+            )
         }
     }
 }
@@ -131,7 +146,8 @@ enum ComposeToolbarAction: Equatable, Sendable, Hashable {
 }
 
 struct ComposeToolbarActionLayout: Equatable, Sendable {
-    let directActions: [ComposeToolbarAction]
+    let primaryActions: [ComposeToolbarAction]
+    let utilityActions: [ComposeToolbarAction]
     let overflowActions: [ComposeToolbarAction]
 
     var moreActionsAccessibilityLabel: String {
@@ -236,7 +252,8 @@ enum ComposePresentation {
         switch platform {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
-                directActions: [.close, .attach, .send, .moreActions],
+                primaryActions: [.close, .send],
+                utilityActions: [.attach, .moreActions],
                 overflowActions: [
                     .templates,
                     .signature,
@@ -250,7 +267,8 @@ enum ComposePresentation {
             )
         case .macOS:
             ComposeToolbarActionLayout(
-                directActions: [.attach, .format, .send, .moreActions],
+                primaryActions: [.attach, .format, .send, .moreActions],
+                utilityActions: [],
                 overflowActions: [
                     .templates,
                     .signature,
