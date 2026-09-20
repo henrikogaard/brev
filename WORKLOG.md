@@ -3138,3 +3138,22 @@ buttons, and package-aware localization.
 - Verification: macOS sidebar snapshots and unchanged phone snapshots rerun;
   dated test-app build, lint/format and diff check. No new provider, privacy,
   architecture or settings behavior; only CHANGELOG, QA and WORKLOG need updates.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar scope hierarchy
+
+- Continued clean feature/native-ui-polish / open PR #52 to main after approval
+  of the scope/destination proposal. Moved desktop scope selection into a fixed
+  Mailboxes header, preserving custom profile names and management access.
+  All Inboxes stays first; Smart Views consolidates create/manage in one menu.
+- Visual regression loop: 11 expected old-reference failures, inspected renders,
+  fixed safe-area header overlap using a separate stack header, then refreshed
+  references. Four desktop tests/11 cases and seven iOS tests/11 unchanged cases
+  pass. Native dated mock build passes; scope menu, Smart Views expansion,
+  management sheet and unified inbox checked. Lint/format/diff check pass.
+- No business-logic change; used rendered visual regression and native action
+  checks rather than a new unit test. Initial test command from workspace root
+  had no BrevMail scheme; reran successfully from packages/BrevMail.
+- Updated CHANGELOG and QA evidence. README, privacy, ADRs and AGENTS need no
+  change: no setup, architecture, network or workflow changes. Physical spoken
+  VoiceOver and live-provider QA not run. No merge/release/version change.

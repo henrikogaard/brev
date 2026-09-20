@@ -80,8 +80,17 @@ Rendered references:
 - [Dark account selection](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/compactProfileScopes-_.mailbox-dark.png)
 - [Light nested folders](../../../packages/BrevMail/Tests/BrevMailTests/__Snapshots__/FolderSidebarSnapshotTests/allInboxesGlobalAlignment.all-inboxes-global-alignment.png)
 
-Top alignment follow-up: profile, All Inboxes and Smart Views share icon/text
-columns. The profile remains a native Menu with a plain button label and trailing
-chevron; native inspection confirmed All Mailboxes and Manage Profiles open.
-Smart Views disclosure leads its label. Removed the extra profile bottom gap.
-Updated the same 11 desktop references; iOS presentation remains unchanged.
+Scope hierarchy follow-up: the desktop profile picker is now a fixed header
+above the scrolling destinations. The default label is Mailboxes; custom profiles
+show their own name. All Inboxes remains the first destination. Smart Views has
+a quiet section label and one menu containing New Smart View and Manage Smart
+Views. The existing toolbar owns the sidebar toggle.
+
+Reviewed 11 refreshed desktop snapshots, including light/dark, custom profile,
+collapsed accounts and expanded Smart Views. All four desktop snapshot tests
+and seven phone snapshot tests pass (11 cases each); phone references unchanged.
+Native dated Brev Test build verified the profile menu, expanded Smart Views,
+management sheet and All Inboxes loading both mock accounts. A safe-area header
+overlapped content in the standalone snapshot host; a separate stack header
+fixes that layout. Lint, format and diff check pass. Physical VoiceOver and live
+provider QA remain outside this visual pass.

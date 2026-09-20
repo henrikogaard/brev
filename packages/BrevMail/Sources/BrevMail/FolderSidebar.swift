@@ -188,21 +188,31 @@ public struct FolderSidebar: View {
     }
 
     public var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
-                if !sourceSections.isEmpty || !profiles.isEmpty {
-                    sourceTree
-                } else if mailboxes.count > 1 {
-                    mailboxHeader
-                        .padding(.bottom, BrevSpacing.xs)
-                    outboxButton
-                    folderList(folders: folders, sourceID: nil, loadError: loadError)
-                } else {
-                    outboxButton
-                    folderList(folders: folders, sourceID: nil, loadError: loadError)
-                }
+        VStack(spacing: 0) {
+            #if os(macOS)
+            if !profiles.isEmpty || onManageProfiles != nil {
+                profileSwitcher
+                    .padding(.horizontal, sidebarMetrics.sidebarPadding)
+                    .padding(.top, BrevSpacing.xs)
+                    .padding(.bottom, BrevSpacing.sm)
             }
-            .padding(sidebarMetrics.sidebarPadding)
+            #endif
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
+                    if !sourceSections.isEmpty || !profiles.isEmpty {
+                        sourceTree
+                    } else if mailboxes.count > 1 {
+                        mailboxHeader
+                            .padding(.bottom, BrevSpacing.xs)
+                        outboxButton
+                        folderList(folders: folders, sourceID: nil, loadError: loadError)
+                    } else {
+                        outboxButton
+                        folderList(folders: folders, sourceID: nil, loadError: loadError)
+                    }
+                }
+                .padding(sidebarMetrics.sidebarPadding)
+            }
         }
         .scrollContentBackground(.hidden)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -311,18 +321,23 @@ public struct FolderSidebar: View {
 
     @ViewBuilder
     private var sourceTree: some View {
+        #if os(iOS)
         if !profiles.isEmpty || onManageProfiles != nil {
             profileSwitcher
-            #if os(iOS)
-            .padding(.bottom, BrevSpacing.xs)
-            #endif
+                .padding(.bottom, BrevSpacing.xs)
         }
+        #endif
         VStack(alignment: .leading, spacing: 0) {
             if sourceSections.count > 1 {
                 unifiedInboxShortcut
             }
             if showsSmartViews, smartViewSettings.showInSidebar {
-                smartViewsSection
+                VStack(alignment: .leading, spacing: 0) {
+                    smartViewsSection
+                }
+                #if os(macOS)
+                .padding(.top, BrevSpacing.sm)
+                #endif
             }
             outboxButton
         }
@@ -370,6 +385,15 @@ public struct FolderSidebar: View {
         #endif
     }
 
+    private var profileHeaderTitle: String {
+        #if os(macOS)
+        normalizedActiveProfileID == MailProfile.allMailboxesID
+            ? String(localized: "Mailboxes", bundle: .module) : activeProfileName
+        #else
+        activeProfileName
+        #endif
+    }
+
     private var profileSwitcher: some View {
         Menu {
             ForEach(profiles) { profile in
@@ -386,20 +410,20 @@ public struct FolderSidebar: View {
             }
         } label: {
             HStack(spacing: profileContentSpacing) {
+                #if os(iOS)
                 Image(systemName: "person.crop.rectangle.stack")
                     .foregroundStyle(theme.textSecondary.color)
                     .frame(width: sidebarMetrics.iconWidth)
                     .accessibilityHidden(true)
-                Text(verbatim: activeProfileName)
-                    .brevFont(.body)
-                #if os(macOS)
-                    .fontWeight(.regular)
-                #else
-                    .fontWeight(.semibold)
                 #endif
+                Text(verbatim: profileHeaderTitle)
+                    .brevFont(.body)
+                    .fontWeight(.semibold)
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
+                #if os(iOS)
                 Spacer(minLength: 0)
+                #endif
                 Image(systemName: "chevron.down")
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
@@ -408,13 +432,7 @@ public struct FolderSidebar: View {
                 #endif
                     .accessibilityHidden(true)
             }
-            #if os(macOS)
-            .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0)
-                + sidebarMetrics.disclosureHitSize + BrevSpacing.xxs)
-            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-            #else
             .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            #endif
             .padding(.vertical, BrevSpacing.xs)
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.profilePickerMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
@@ -590,22 +608,14 @@ public struct FolderSidebar: View {
                 )
             } label: {
                 HStack(spacing: profileContentSpacing) {
-                    #if os(macOS)
-                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(theme.textTertiary.color)
-                        .frame(width: sidebarMetrics.iconWidth)
-                        .accessibilityHidden(true)
-                    #endif
                     Text("Smart Views", bundle: .module)
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
-                    #if os(iOS)
                     Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundStyle(theme.textTertiary.color)
-                    #endif
+                        .accessibilityHidden(true)
                 }
             }
             .buttonStyle(.plain)
@@ -624,6 +634,25 @@ public struct FolderSidebar: View {
 
             Spacer(minLength: BrevSpacing.sm)
 
+            #if os(macOS)
+            Menu {
+                Button(String(localized: "New Smart View", bundle: .module)) {
+                    savedSearchEditorTarget = .create
+                }
+                Button(String(localized: "Manage Smart Views", bundle: .module)) {
+                    showsSmartViewSettings = true
+                }
+            } label: {
+                Image(systemName: "ellipsis")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .folderSidebarSquareTouchTarget(size: sidebarMetrics.disclosureHitSize)
+            }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .menuIndicator(.hidden)
+            .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
+            .help(String(localized: "Smart View Actions", bundle: .module))
+            #else
             Button {
                 savedSearchEditorTarget = .create
             } label: {
@@ -637,10 +666,10 @@ public struct FolderSidebar: View {
             .help(String(localized: "New Smart View", bundle: .module))
 
             smartViewManagementButton
+            #endif
         }
         #if os(macOS)
-        .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0)
-            + sidebarMetrics.disclosureHitSize + BrevSpacing.xxs)
+        .padding(.leading, sidebarMetrics.sourceHeaderHorizontalPadding)
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
         .frame(minHeight: sidebarMetrics.folderRowMinimumHeight)
         #else
