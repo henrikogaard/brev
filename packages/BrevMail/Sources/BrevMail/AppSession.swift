@@ -198,6 +198,11 @@ public final class AppSession {
     /// has at least one folder.
     public let localBackend: LocalMailBackend?
 
+    /// Serial owner of PIM source lifecycle (ADR-0072). Settings reads and
+    /// mutates Calendar/Contacts sources through it; nil only in sessions
+    /// built without PIM support (tests, minimal fixtures).
+    public let pimSourceCoordinator: PIMSourceCoordinator?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -250,12 +255,14 @@ public final class AppSession {
         },
         signOutCoordinator: @escaping SignOutCoordinator = { _ in },
         accountDataCleanup: @escaping AccountDataCleanup = { _ in },
+        pimSourceCoordinator: PIMSourceCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
         },
         aiProviderBackendResolver: AIProviderBackendResolver = AIProviderBackendResolver(),
         pendingMutationCleanup: @escaping PendingMutationCleanup = { _ in }
     ) {
+        self.pimSourceCoordinator = pimSourceCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
         signInError = initialSignInError

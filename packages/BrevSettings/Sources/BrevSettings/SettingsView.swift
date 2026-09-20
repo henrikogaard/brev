@@ -37,6 +37,7 @@ public struct SettingsView: View {
     @State private var searchTarget: String?
     @State private var selectedSourceID: MailSourceID?
     @State private var folderExportController = MailFolderExportController()
+    @State private var pimSourceModel: PIMSourceSettingsModel?
     private let mailboxContext: SettingsMailboxContext
 
     private let accountStore: any AccountStore
@@ -74,6 +75,7 @@ public struct SettingsView: View {
         allFolders: [Folder] = [],
         currentFolderSourceID: MailSourceID? = nil,
         backendProvider: @MainActor @escaping (BrevAccount.ID) -> (any MailBackend)? = { _ in nil },
+        pimSourceCoordinator: PIMSourceCoordinator? = nil,
         isAddAccountAvailable: Bool = true,
         onAddAccount: @escaping () async -> Void = {},
         onSetDefaultAccount: ((BrevAccount) async -> Void)? = nil,
@@ -108,6 +110,11 @@ public struct SettingsView: View {
         self.allFolders = allFolders
         self.currentFolderSourceID = currentFolderSourceID
         self.backendProvider = backendProvider
+        _pimSourceModel = State(
+            initialValue: pimSourceCoordinator.map {
+                PIMSourceSettingsModel(coordinator: $0)
+            }
+        )
         self.isAddAccountAvailable = isAddAccountAvailable
         self.onAddAccount = onAddAccount
         self.onSetDefaultAccount = onSetDefaultAccount ?? { account in
@@ -557,7 +564,7 @@ public struct SettingsView: View {
             )
             .id(selectedSourceID?.accountID)
         case .calendarContacts:
-            CalendarContactsSection()
+            CalendarContactsSection(model: pimSourceModel)
         case .importExport:
             ImportExportSection(
                 backendProvider: backendProvider,

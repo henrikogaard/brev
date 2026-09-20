@@ -15,40 +15,49 @@ import Testing
 
 @Suite("CalendarContactsScopePresentation")
 struct CalendarContactsScopePresentationTests {
-    @Test("scope summary keeps Brev mail-first while accepting read-only PIM browsing")
-    func scopeSummaryKeepsMailFirstWhileAcceptingReadOnlyBrowsing() {
+    @Test("the direction reflects optional connected sources (ADR-0072)")
+    func directionReflectsOptionalConnectedSources() {
         let summary = CalendarContactsScopePresentation.summary
 
-        #expect(summary.direction == .readOnlyBrowsingAfterDAVIntegration)
+        #expect(summary.direction == .optionalConnectedSources)
+    }
+
+    @Test("available capabilities cover shipping mail workflows and DAV connect")
+    func availableCapabilitiesCoverShippingWorkflows() {
+        let summary = CalendarContactsScopePresentation.summary
+
         #expect(summary.currentCapabilities.map(\.kind) == [
             .calendarInvites,
             .caldavInviteWrite,
-            .carddavComposeAutocomplete
+            .carddavComposeAutocomplete,
+            .davSourceConnect
         ])
-        #expect(summary.plannedCapabilities.map(\.kind) == [
+        #expect(summary.currentCapabilities.allSatisfy { $0.status == .available })
+    }
+
+    @Test("unshipped capabilities are labeled not available yet, never ready")
+    func unshippedCapabilitiesAreNotAvailableYet() {
+        let summary = CalendarContactsScopePresentation.summary
+
+        #expect(summary.unavailableCapabilities.map(\.kind) == [
+            .googleSourceEnablement,
             .readOnlyCalendarBrowsing,
             .readOnlyContactsBrowsing,
-            .unifiedPIMSearch
+            .unifiedPIMSearch,
+            .eventAuthoring,
+            .contactAuthoring
         ])
-        #expect(summary.outOfScopeCapabilities.map(\.kind) == [
-            .fullCalendarEditing,
-            .fullContactManagement
-        ])
+        #expect(summary.unavailableCapabilities.allSatisfy { $0.status == .notAvailableYet })
     }
 
-    @Test("full editing states explain why they are out of scope")
-    func fullEditingStatesExplainWhyTheyAreOutOfScope() {
-        let outOfScope = CalendarContactsScopePresentation.summary.outOfScopeCapabilities
+    @Test("authoring is accepted scope, not permanently out of scope")
+    func authoringIsAcceptedScopeNotOutOfScope() {
+        let summary = CalendarContactsScopePresentation.summary
+        let all = summary.currentCapabilities + summary.unavailableCapabilities
 
-        #expect(outOfScope.allSatisfy { $0.status == .outOfScope })
-        #expect(outOfScope.allSatisfy { $0.detail.contains("Brev stays mail-first") })
-    }
-
-    @Test("planned read-only browsing is sequenced after live DAV integration")
-    func plannedReadOnlyBrowsingIsSequencedAfterLiveDAVIntegration() {
-        let planned = CalendarContactsScopePresentation.summary.plannedCapabilities
-
-        #expect(planned.allSatisfy { $0.status == .plannedAfterLiveDAV })
-        #expect(planned.allSatisfy { $0.detail.contains("#121") })
+        // ADR-0072 superseded ADR-0039's authoring boundary: event and
+        // contact authoring ship as #7/#9, so nothing here is out of scope.
+        #expect(all.allSatisfy { $0.status != .outOfScope })
+        #expect(!all.contains { $0.detail.contains("outside Brev") })
     }
 }

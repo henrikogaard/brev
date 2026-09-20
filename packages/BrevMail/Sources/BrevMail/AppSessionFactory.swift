@@ -24,6 +24,7 @@
 import AuthenticationServices
 import BrevAI
 import BrevBackend
+import BrevCalendar
 import BrevSettings
 import Foundation
 
@@ -117,6 +118,20 @@ public enum AppSessionFactory {
     /// Creates a session with persistent account, credential, cache, and sync wiring.
     @MainActor
     public static func makeDefault(configuration: Configuration) -> AppSession {
+        // ADR-0072: one serial owner for every PIM source. Records live in
+        // Application Support/Brev, credentials only as Keychain references.
+        let pimBrevDirectory = configuration.applicationSupportURL
+            .appendingPathComponent("Brev", isDirectory: true)
+        let pimSourceCoordinator = PIMSourceCoordinator(
+            store: JSONPIMSourceStore(
+                fileURL: pimBrevDirectory.appendingPathComponent("pim-sources.json")
+            ),
+            credentials: CalDAVKeychainCredentialStore(),
+            localData: FilePIMSourceLocalDataStore(
+                rootURL: pimBrevDirectory.appendingPathComponent("PIMSources", isDirectory: true)
+            )
+        )
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
@@ -128,6 +143,7 @@ public enum AppSessionFactory {
                 loginCoordinator: {
                     AppSession.LoginResult(backend: mock, account: mock.account)
                 },
+                pimSourceCoordinator: pimSourceCoordinator,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -245,6 +261,7 @@ public enum AppSessionFactory {
                 }
                 await connector.removeAccount(account.id)
             },
+            pimSourceCoordinator: pimSourceCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )
     }

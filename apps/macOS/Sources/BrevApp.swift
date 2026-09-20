@@ -232,6 +232,7 @@ struct BrevApp: App {
                     restartForDeveloperModeChange()
                 },
                 backendProvider: { accountID in session.backends[accountID] },
+                pimSourceCoordinator: session.pimSourceCoordinator,
                 onAddAccount: { isShowingAddAccountSheet = true },
                 onSignOut: { account in await session.signOut(account: account) },
                 onRemoveAccount: { account in await session.removeAccount(account) },
