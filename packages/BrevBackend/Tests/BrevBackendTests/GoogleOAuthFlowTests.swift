@@ -111,6 +111,31 @@ struct GoogleOAuthFlowTests {
         #expect(GoogleOAuthFlow.prefersEphemeralBrowserSession == false)
     }
 
+    @Test("additional scopes extend the request for feature-triggered reauthorization")
+    @MainActor
+    func authorizationURLIncludesAdditionalScopes() {
+        let flow = GoogleOAuthFlow(clientID: "cid", clientSecret: "csec")
+        let url = flow.buildAuthorizationURL(
+            state: "s",
+            additionalScopes: [
+                "https://www.googleapis.com/auth/calendar.readonly",
+                "https://www.googleapis.com/auth/contacts.readonly",
+            ]
+        )
+        let items = Dictionary(
+            uniqueKeysWithValues: (URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? [])
+                .map { ($0.name, $0.value ?? "") }
+        )
+        let scopes = Set(items["scope", default: ""].split(separator: " ").map(String.init))
+        #expect(scopes == [
+            "openid",
+            "email",
+            GoogleOAuthFlow.gmailScope,
+            "https://www.googleapis.com/auth/calendar.readonly",
+            "https://www.googleapis.com/auth/contacts.readonly",
+        ])
+    }
+
     @Test("authorization URL uses the Google authorization endpoint")
     @MainActor
     func authorizationURLUsesGoogleEndpoint() {

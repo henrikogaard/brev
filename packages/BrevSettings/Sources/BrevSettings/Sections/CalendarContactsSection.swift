@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -171,11 +172,17 @@ struct CalendarContactsSection: View {
     /// Live source-list model; nil in previews and tests that only render
     /// the capability summary.
     let model: PIMSourceSettingsModel?
+    /// Google mail accounts eligible for PIM feature enablement.
+    let googleAccounts: [BrevAccount]
 
     private let summary = CalendarContactsScopePresentation.summary
 
-    init(model: PIMSourceSettingsModel? = nil) {
+    init(
+        model: PIMSourceSettingsModel? = nil,
+        googleAccounts: [BrevAccount] = []
+    ) {
         self.model = model
+        self.googleAccounts = googleAccounts
     }
 
     var body: some View {
@@ -197,7 +204,10 @@ struct CalendarContactsSection: View {
                 )
 
                 if let model {
-                    PIMSourcesSettingsView(model: model)
+                    PIMSourcesSettingsView(
+                        model: model,
+                        googleAccounts: googleAccounts
+                    )
                 }
 
                 capabilityGroup(

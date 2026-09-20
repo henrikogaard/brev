@@ -130,3 +130,26 @@ public struct PIMSource: Sendable, Hashable, Codable, Identifiable {
         self.updatedAt = updatedAt
     }
 }
+
+/// Google API scopes requested when a PIM feature is enabled on a Google
+/// mail account (ADR-0072 feature-triggered authorization).
+///
+/// Enablement starts read-only: browsing slices (#6/#8) need only these
+/// grants. Authoring slices (#7/#9) re-ask with wider scopes when the user
+/// enables editing — consent always follows the feature, never ahead of it.
+public enum GooglePIMScopes {
+    /// Read-only Calendar scope for browsing connected calendars.
+    public static let calendarReadOnly =
+        "https://www.googleapis.com/auth/calendar.readonly"
+    /// Read-only Contacts scope for browsing connected contacts.
+    public static let contactsReadOnly =
+        "https://www.googleapis.com/auth/contacts.readonly"
+
+    /// The scopes a source kind needs for initial read-only enablement.
+    public static func scopes(for kind: PIMSourceKind) -> Set<String> {
+        switch kind {
+        case .calendar: return [calendarReadOnly]
+        case .contacts: return [contactsReadOnly]
+        }
+    }
+}

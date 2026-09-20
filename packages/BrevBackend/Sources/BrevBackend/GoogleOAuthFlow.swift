@@ -237,13 +237,19 @@ public final class GoogleOAuthFlow {
     /// Presents a system web sheet anchored on `presentationContext`, completes
     /// the code exchange, and returns the resulting tokens and email address.
     ///
-    /// - Parameter presentationContext: The window to anchor the web sheet on.
+    /// - Parameters:
+    ///   - presentationContext: The window to anchor the web sheet on.
+    ///   - additionalScopes: Extra scopes for feature-triggered
+    ///     reauthorization (ADR-0072). The request always carries the
+    ///     baseline openid/email/mail grant, so a fresh authorization keeps
+    ///     mail working while adding the enabled feature's scopes.
     /// - Returns: A `GoogleOAuthResult` containing the access token, refresh
     ///   token, email, and expiry.
     /// - Throws: `GoogleOAuthFlowError` on cancellation, server rejection, or
     ///   decode failure.
     public func signIn(
-        presentationContext: ASPresentationAnchor
+        presentationContext: ASPresentationAnchor,
+        additionalScopes: Set<String> = []
     ) async throws -> GoogleOAuthResult {
         guard !clientID.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw GoogleOAuthFlowError.missingClientID
@@ -283,7 +289,8 @@ public final class GoogleOAuthFlow {
             let authURL = buildAuthorizationURL(
                 state: state,
                 pkce: pkce,
-                redirectURI: effectiveRedirectURI
+                redirectURI: effectiveRedirectURI,
+                additionalScopes: additionalScopes
             )
             callbackURL = try await runLoopbackWebAuthSession(
                 authorizationURL: authURL,
@@ -292,7 +299,11 @@ public final class GoogleOAuthFlow {
             )
         } else {
             effectiveRedirectURI = redirectURI
-            let authURL = buildAuthorizationURL(state: state, pkce: pkce)
+            let authURL = buildAuthorizationURL(
+                state: state,
+                pkce: pkce,
+                additionalScopes: additionalScopes
+            )
             callbackURL = try await runWebAuthSession(
                 authorizationURL: authURL,
                 callbackURLScheme: callbackScheme,
@@ -322,7 +333,8 @@ public final class GoogleOAuthFlow {
     func buildAuthorizationURL(
         state: String,
         pkce: PKCECodePair = PKCECodePair(),
-        redirectURI: String? = nil
+        redirectURI: String? = nil,
+        additionalScopes: Set<String> = []
     ) -> URL {
         let effectiveRedirectURI = redirectURI ?? self.redirectURI
         var components = URLComponents(
@@ -335,7 +347,7 @@ public final class GoogleOAuthFlow {
             URLQueryItem(name: "redirect_uri", value: effectiveRedirectURI),
             // `openid` is required for Google's id_token, which carries the
             // account email used to provision the IMAP/SMTP account.
-            URLQueryItem(name: "scope", value: "openid email \(Self.gmailScope)"),
+            URLQueryItem(name: "scope", value: Self.scopeValue(additionalScopes: additionalScopes)),
             URLQueryItem(name: "state", value: state),
             // PKCE: bind the authorization code to this client (RFC 7636).
             URLQueryItem(name: "code_challenge", value: pkce.challenge),
@@ -346,6 +358,17 @@ public final class GoogleOAuthFlow {
             URLQueryItem(name: "access_type", value: "offline")
         ]
         return components.url!
+    }
+
+    /// The scope parameter: baseline identity + mail grant plus any
+    /// feature-triggered additions, sorted for deterministic tests.
+    private static func scopeValue(additionalScopes: Set<String>) -> String {
+        let baseline = ["openid", "email", gmailScope]
+        let extras = additionalScopes
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty && !baseline.contains($0) }
+            .sorted()
+        return (baseline + extras).joined(separator: " ")
     }
 
     // MARK: - ASWebAuthenticationSession

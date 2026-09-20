@@ -13,6 +13,7 @@
 import AuthenticationServices
 import BackgroundTasks
 import BrevBackend
+import BrevCalendar
 import BrevExamplePlugin
 import BrevGmail
 import BrevMail
@@ -75,6 +76,9 @@ struct BrevApp: App {
                         mailboxContext: settingsMailboxContext,
                         backendProvider: { accountID in session.backends[accountID] },
                         pimSourceCoordinator: session.pimSourceCoordinator,
+                        onEnableGooglePIMFeature: { accountID, kind in
+                            _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
+                        },
                         onAddAccount: { isShowingAddAccountSheet = true },
                         onSignOut: { account in await session.signOut(account: account) },
                         onRemoveAccount: { account in await session.removeAccount(account) },
@@ -518,6 +522,18 @@ extension AppSession {
                 },
                 googleOAuthRemovalCoordinator: { accountID in
                     try await gmailConnector.remove(accountID: accountID)
+                },
+                googlePIMEnablementCoordinator: { accountID, kind in
+                    try await gmailConnector.enablePIMFeature(
+                        accountID: accountID,
+                        additionalScopes: GooglePIMScopes.scopes(for: kind),
+                        authorize: { scopes in
+                            try await GoogleOAuthFlow().signIn(
+                                presentationContext: oauthPresentationAnchor(),
+                                additionalScopes: scopes
+                            )
+                        }
+                    )
                 }
             )
         )

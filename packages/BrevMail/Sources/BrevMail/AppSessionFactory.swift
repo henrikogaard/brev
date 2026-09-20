@@ -64,6 +64,11 @@ public enum AppSessionFactory {
         /// Clears native Google account state during sign-out/removal.
         public let googleOAuthRemovalCoordinator:
             (@MainActor (BrevAccount.ID) async throws -> Void)?
+        /// Enables a PIM feature on a Google account through fresh
+        /// authorization (ADR-0072). Absent, Google enablement is
+        /// unavailable and the settings row stays inert.
+        public let googlePIMEnablementCoordinator:
+            AppSession.GooglePIMEnablementCoordinator?
         /// Creates the durable local-mail backend (ADR-0077). Defaults to a
         /// Maildir store under `applicationSupportURL/LocalFolders`; tests can
         /// inject a temporary root.
@@ -82,6 +87,8 @@ public enum AppSessionFactory {
         ///     available.
         ///   - googleOAuthRestoreCoordinator: Restores stored Gmail API accounts.
         ///   - googleOAuthRemovalCoordinator: Removes stored Gmail API account state.
+        ///   - googlePIMEnablementCoordinator: Authorizes and installs a PIM
+        ///     feature grant on a Google account (ADR-0072).
         public init(
             applicationSupportURL: URL,
             oauthPresentationAnchor: @escaping @MainActor () throws -> ASPresentationAnchor,
@@ -100,6 +107,8 @@ public enum AppSessionFactory {
             (@MainActor (BrevAccount) async throws -> AppSession.LoginResult?)? = nil,
             googleOAuthRemovalCoordinator:
             (@MainActor (BrevAccount.ID) async throws -> Void)? = nil,
+            googlePIMEnablementCoordinator:
+            AppSession.GooglePIMEnablementCoordinator? = nil,
             localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL
@@ -111,6 +120,7 @@ public enum AppSessionFactory {
                 googleOAuthAccountProvisioningCoordinator
             self.googleOAuthRestoreCoordinator = googleOAuthRestoreCoordinator
             self.googleOAuthRemovalCoordinator = googleOAuthRemovalCoordinator
+            self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
             self.localBackendFactory = localBackendFactory
         }
     }
@@ -262,6 +272,7 @@ public enum AppSessionFactory {
                 await connector.removeAccount(account.id)
             },
             pimSourceCoordinator: pimSourceCoordinator,
+            googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )
     }
