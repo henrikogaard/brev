@@ -216,6 +216,133 @@ public struct MessageListView: View {
     @ViewBuilder
     private var workflowObservedContent: some View {
         let presentation = presentationSnapshot
+        mailboxContent(presentation: presentation)
+            .task(id: reloadKey) {
+                navigation.bulkSelection.removeAll()
+                searchScope = .all
+                searchAllFolders = false
+                isSearchOptionsExpanded = false
+                reconcileSearchExecutionWithBackendCapabilities()
+                refreshPinnedMessageIDSet()
+                followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+                await reloadVisibleMessages()
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
+                followUpReminderIndex = FollowUpReminderIndex(settings: .load())
+            }
+            .onChange(of: headers) {
+                refreshPinnedMessageIDSet()
+                scheduleDebouncedThreadCountsRebuild()
+            }
+            .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
+            .onDisappear { searchWork.cancel() }
+            .onChange(of: groupByThread) {
+                activeMutationRequest = nil
+                // Cancel any pending debounced rebuild so a stale capture cannot
+                // undo this structural clear/rebuild after the debounce window.
+                threadCountsRebuildTask?.cancel()
+                threadCountsRebuildTask = nil
+                rebuildThreadCounts()
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: groupByDate) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: pinnedMessageIDsRaw) {
+                refreshPinnedMessageIDSet()
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            // Switching category tabs (or toggling classification) re-filters the
+            // visible rows immediately, but the reader resolves its selection
+            // against `currentFolderHeaders`, which only rebuilds on reconcile.
+            // Without these, selecting a row that the previous category filtered
+            // out leaves the reader on "No message selected" despite the highlight.
+            .onChange(of: activeInboxCategory) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: inboxClassificationModeRaw) {
+                reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
+            }
+            .onChange(of: backend.capabilities) {
+                reconcileSearchExecutionWithBackendCapabilities()
+            }
+            .onChange(of: isWorkBlocked) { oldValue, newValue in
+                guard MessageListWorkResumePolicy.shouldReloadVisibleMessages(
+                    wasBlocked: oldValue,
+                    isBlocked: newValue,
+                    hasPendingReload: needsReloadAfterWorkUnblocks
+                ) else { return }
+                needsReloadAfterWorkUnblocks = false
+                Task { await reloadVisibleMessages() }
+            }
+            .onChange(of: folder?.id) { _, _ in
+                expandedThreadIDs.removeAll()
+            }
+            .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteMessageAlertPresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await confirmContextMenuDelete() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingDeleteHeaderID = nil
+                }
+            } message: {
+                if let header = pendingDeleteHeader {
+                    if isPermanentDelete(for: header) {
+                        Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
+                    } else {
+                        Text("Delete \"\(header.subject)\"?", bundle: .module)
+                    }
+                } else {
+                    Text("Delete this message?", bundle: .module)
+                }
+            }
+            .alert(String(localized: "Permanently Delete?", bundle: .module),
+                   isPresented: $isBulkPermanentDeletePresented) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    Task { await bulkDelete(confirmedPermanent: true) }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(MailUndoableDelete.permanentDeleteMessage(
+                    count: navigation.bulkSelection.count, folders: allFolders
+                ))
+            }
+            .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
+                Button(String(localized: "Block", bundle: .module), role: .destructive) {
+                    Task { await confirmBlockSender() }
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    pendingBlockSenderHeader = nil
+                }
+            } message: {
+                if let header = pendingBlockSenderHeader {
+                    Text(
+                        "Block \"\(header.from.email)\"? Future messages from this address will be marked as junk.",
+                        bundle: .module
+                    )
+                } else {
+                    Text("Block this sender?", bundle: .module)
+                }
+            }
+            .sheet(isPresented: isSnoozePickerPresented) {
+                if let header = pendingSnoozeHeaders.first {
+                    SnoozePickerView(
+                        header: header,
+                        sourceID: workflowSourceID,
+                        onConfirm: { wakeAt in
+                            snoozePendingHeaders(until: wakeAt)
+                        },
+                        onCancel: {
+                            pendingSnoozeHeaders = []
+                        }
+                    )
+                    .brevTheme(theme)
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func mailboxContent(presentation: MessageListPresentationSnapshot) -> some View {
         VStack(spacing: 0) {
             LegacyPinNotice()
             #if os(iOS)
@@ -288,133 +415,21 @@ public struct MessageListView: View {
         }
         #if os(iOS)
         .toolbar {
-            if let footer = folderStatsFooterPresentation(presentation: presentation) {
-                ToolbarItem(placement: .bottomBar) {
-                    MessageListFolderStatsToolbarLabel(presentation: footer)
-                }
-            }
+            mailboxToolbar(presentation: presentation)
         }
         #endif
-        .task(id: reloadKey) {
-            navigation.bulkSelection.removeAll()
-            searchScope = .all
-            searchAllFolders = false
-            isSearchOptionsExpanded = false
-            reconcileSearchExecutionWithBackendCapabilities()
-            refreshPinnedMessageIDSet()
-            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
-            await reloadVisibleMessages()
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
-            followUpReminderIndex = FollowUpReminderIndex(settings: .load())
-        }
-        .onChange(of: headers) {
-            refreshPinnedMessageIDSet()
-            scheduleDebouncedThreadCountsRebuild()
-        }
-        .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
-        .onDisappear { searchWork.cancel() }
-        .onChange(of: groupByThread) {
-            activeMutationRequest = nil
-            // Cancel any pending debounced rebuild so a stale capture cannot
-            // undo this structural clear/rebuild after the debounce window.
-            threadCountsRebuildTask?.cancel()
-            threadCountsRebuildTask = nil
-            rebuildThreadCounts()
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: groupByDate) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: pinnedMessageIDsRaw) {
-            refreshPinnedMessageIDSet()
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        // Switching category tabs (or toggling classification) re-filters the
-        // visible rows immediately, but the reader resolves its selection
-        // against `currentFolderHeaders`, which only rebuilds on reconcile.
-        // Without these, selecting a row that the previous category filtered
-        // out leaves the reader on "No message selected" despite the highlight.
-        .onChange(of: activeInboxCategory) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: inboxClassificationModeRaw) {
-            reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
-        }
-        .onChange(of: backend.capabilities) {
-            reconcileSearchExecutionWithBackendCapabilities()
-        }
-        .onChange(of: isWorkBlocked) { oldValue, newValue in
-            guard MessageListWorkResumePolicy.shouldReloadVisibleMessages(
-                wasBlocked: oldValue,
-                isBlocked: newValue,
-                hasPendingReload: needsReloadAfterWorkUnblocks
-            ) else { return }
-            needsReloadAfterWorkUnblocks = false
-            Task { await reloadVisibleMessages() }
-        }
-        .onChange(of: folder?.id) { _, _ in
-            expandedThreadIDs.removeAll()
-        }
-        .alert(String(localized: "Delete Message?", bundle: .module), isPresented: isDeleteMessageAlertPresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await confirmContextMenuDelete() }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingDeleteHeaderID = nil
-            }
-        } message: {
-            if let header = pendingDeleteHeader {
-                if isPermanentDelete(for: header) {
-                    Text(MailUndoableDelete.permanentDeleteMessage(count: 1, folders: allFolders))
-                } else {
-                    Text("Delete \"\(header.subject)\"?", bundle: .module)
-                }
-            } else {
-                Text("Delete this message?", bundle: .module)
-            }
-        }
-        .alert(String(localized: "Permanently Delete?", bundle: .module),
-               isPresented: $isBulkPermanentDeletePresented) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                Task { await bulkDelete(confirmedPermanent: true) }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
-        } message: {
-            Text(MailUndoableDelete.permanentDeleteMessage(
-                count: navigation.bulkSelection.count, folders: allFolders
-            ))
-        }
-        .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
-            Button(String(localized: "Block", bundle: .module), role: .destructive) {
-                Task { await confirmBlockSender() }
-            }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                pendingBlockSenderHeader = nil
-            }
-        } message: {
-            if let header = pendingBlockSenderHeader {
-                Text("Block \"\(header.from.email)\"? Future messages from this address will be marked as junk.", bundle: .module)
-            } else {
-                Text("Block this sender?", bundle: .module)
-            }
-        }
-        .sheet(isPresented: isSnoozePickerPresented) {
-            if let header = pendingSnoozeHeaders.first {
-                SnoozePickerView(
-                    header: header,
-                    sourceID: workflowSourceID,
-                    onConfirm: { wakeAt in
-                        snoozePendingHeaders(until: wakeAt)
-                    },
-                    onCancel: {
-                        pendingSnoozeHeaders = []
-                    }
-                )
-                .brevTheme(theme)
+    }
+
+    #if os(iOS)
+    @ToolbarContentBuilder
+    private func mailboxToolbar(presentation: MessageListPresentationSnapshot) -> some ToolbarContent {
+        if let footer = folderStatsFooterPresentation(presentation: presentation) {
+            ToolbarItem(placement: .bottomBar) {
+                MessageListFolderStatsToolbarLabel(presentation: footer)
             }
         }
     }
+    #endif
 
     private var isSnoozePickerPresented: Binding<Bool> {
         Binding(

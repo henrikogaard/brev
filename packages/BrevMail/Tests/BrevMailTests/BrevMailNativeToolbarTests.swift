@@ -318,6 +318,7 @@ struct BrevMailNativeToolbarTests {
         )
 
         #expect(identifiers.contains("app.brev.mail.mailContext"))
+        #expect(identifiers.contains("app.brev.mail.settings"))
         #expect(item?.view == nil)
     }
 
@@ -411,6 +412,48 @@ struct BrevMailNativeToolbarTests {
             .move,
             .mailContext,
         ])
+
+        let refresh = try #require(item.menu.items.first { $0.representedObject as? BrevMailNativeToolbarItem == .refresh })
+        let mailContext = try #require(item.menu.items
+            .first { $0.representedObject as? BrevMailNativeToolbarItem == .mailContext })
+        #expect(coordinator.validateMenuItem(refresh))
+        #expect(coordinator.validateMenuItem(mailContext))
+    }
+
+    @Test("native More menu applies the toolbar state gates")
+    func nativeMoreMenuAppliesToolbarStateGates() throws {
+        let coordinator = BrevMailNativeToolbarBridge.Coordinator(
+            state: BrevMailNativeToolbarState(
+                selectedHeader: Self.makeHeader(),
+                hasSelectedFolder: true,
+                canArchive: true,
+                hasPresentedSheet: true,
+                isComposeBlocked: true
+            ),
+            actions: BrevMailNativeToolbarActions(
+                compose: {},
+                refresh: {},
+                reply: { _ in },
+                replyAll: { _ in },
+                forward: { _ in },
+                toggleRead: { _ in },
+                toggleStar: { _ in },
+                archive: { _ in },
+                delete: { _ in },
+                settings: {},
+                toggleMailContext: {}
+            )
+        )
+        let item = try #require(coordinator.toolbar(
+            NSToolbar(identifier: "test"),
+            itemForItemIdentifier: BrevMailNativeToolbarItem.more.identifier,
+            willBeInsertedIntoToolbar: true
+        ) as? NSMenuToolbarItem)
+
+        for menuItem in item.menu.items where menuItem.representedObject != nil {
+            let representedItem = try #require(menuItem.representedObject as? BrevMailNativeToolbarItem)
+            #expect(coordinator.validateMenuItem(menuItem) == (representedItem == .mailContext))
+        }
     }
 
     @Test("read label and symbol reflect read state")

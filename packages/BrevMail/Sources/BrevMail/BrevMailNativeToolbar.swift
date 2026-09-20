@@ -55,21 +55,21 @@ enum BrevMailNativeToolbarItem: CaseIterable, Hashable {
 
     var label: String {
         switch self {
-        case .compose: return "Compose"
-        case .refresh: return "Refresh"
-        case .reply: return "Reply"
-        case .replyAll: return "Reply All"
-        case .forward: return "Forward"
-        case .read: return "Mark as Read"
-        case .flag: return "Flag"
-        case .archive: return "Archive"
-        case .delete: return "Delete"
-        case .createTask: return "Create Task"
-        case .followUp: return "Follow Up"
-        case .move: return "Move"
-        case .mailContext: return MailContextColumnVisibility.toolbarLabel
-        case .settings: return "Settings"
-        case .more: return "More message actions"
+        case .compose: return String(localized: "Compose", bundle: .module)
+        case .refresh: return String(localized: "Refresh", bundle: .module)
+        case .reply: return String(localized: "Reply", bundle: .module)
+        case .replyAll: return String(localized: "Reply All", bundle: .module)
+        case .forward: return String(localized: "Forward", bundle: .module)
+        case .read: return String(localized: "Mark as Read", bundle: .module)
+        case .flag: return String(localized: "Flag", bundle: .module)
+        case .archive: return String(localized: "Archive", bundle: .module)
+        case .delete: return String(localized: "Delete", bundle: .module)
+        case .createTask: return String(localized: "Create Task", bundle: .module)
+        case .followUp: return String(localized: "Follow Up", bundle: .module)
+        case .move: return String(localized: "Move", bundle: .module)
+        case .mailContext: return String(localized: "AI Sidebar", bundle: .module)
+        case .settings: return String(localized: "Settings", bundle: .module)
+        case .more: return String(localized: "More message actions", bundle: .module)
         }
     }
 
@@ -166,7 +166,9 @@ struct BrevMailNativeToolbarState: Equatable {
             guard let selectedHeader else { return item.label }
             return MessageCommandPresentation.flagToggleTitle(for: selectedHeader)
         case .mailContext:
-            return isMailContextPresented ? "Hide AI Sidebar" : MailContextColumnVisibility.toolbarLabel
+            return isMailContextPresented
+                ? String(localized: "Hide AI Sidebar", bundle: .module)
+                : item.label
         case .compose, .refresh, .reply, .replyAll, .forward, .archive, .delete,
              .createTask, .followUp, .move, .settings, .more:
             return item.label
