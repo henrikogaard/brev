@@ -3372,8 +3372,9 @@ enum MessageListSenderPresentation {
 
     /// Floor for the sender column so the name stays identifiable at the 280-point
     /// minimum list width. Without it the widest ADR-0023 absolute arrival label
-    /// starves the sender down to an ellipsis; past this floor the timestamp
-    /// truncates instead, because the sender is the primary scan target.
+    /// starves the sender down to an ellipsis. If the complete metadata row still
+    /// cannot fit, the timestamp moves to its own line instead of compressing the
+    /// avatar and unread indicator outside the row.
     static let minimumWidth: CGFloat = 96
 }
 
@@ -3796,10 +3797,13 @@ struct MessageListRow: View {
     @ViewBuilder
     private var senderMetadataHeader: some View {
         if isCompactWidth {
-            senderMetadataRow(
-                dateLabel: compactDateLabel,
-                senderMinimumWidth: MessageListSenderPresentation.minimumWidth
-            )
+            ViewThatFits(in: .horizontal) {
+                senderMetadataRow(
+                    dateLabel: compactDateLabel,
+                    senderMinimumWidth: MessageListSenderPresentation.minimumWidth
+                )
+                stackedSenderMetadata(dateLabel: compactDateLabel)
+            }
         } else {
             ViewThatFits(in: .horizontal) {
                 senderMetadataRow(
@@ -3810,6 +3814,7 @@ struct MessageListRow: View {
                     dateLabel: compactDateLabel,
                     senderMinimumWidth: MessageListSenderPresentation.minimumWidth
                 )
+                stackedSenderMetadata(dateLabel: compactDateLabel)
             }
         }
     }
@@ -3818,6 +3823,21 @@ struct MessageListRow: View {
         dateLabel: String,
         senderMinimumWidth: CGFloat
     ) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            senderIdentityRow(senderMinimumWidth: senderMinimumWidth)
+            metadataDateLabel(dateLabel)
+        }
+    }
+
+    private func stackedSenderMetadata(dateLabel: String) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
+            metadataDateLabel(dateLabel)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
+    }
+
+    private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
         HStack(spacing: BrevSpacing.xs) {
             Text(header.from.displayName)
                 .font(fontFamily.font(
@@ -3837,6 +3857,7 @@ struct MessageListRow: View {
                 Text(verbatim: "\(threadCount)")
                     .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
                     .foregroundStyle(theme.textSecondary.color)
+                    .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 6)
                     .padding(.vertical, 1)
                     .background(Capsule().fill(theme.bgSecondary.color))
@@ -3857,12 +3878,15 @@ struct MessageListRow: View {
                         }
                     }
             }
-            Text(dateLabel)
-                .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
-                .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
         }
+    }
+
+    private func metadataDateLabel(_ dateLabel: String) -> some View {
+        Text(dateLabel)
+            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+            .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
     }
 
     @ViewBuilder
