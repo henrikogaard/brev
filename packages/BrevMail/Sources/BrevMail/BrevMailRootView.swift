@@ -424,6 +424,10 @@ public struct BrevMailRootView: View {
 
     private let unreadCountReconciler = UnreadCountReconciler()
 
+    /// Creates a mailbox workspace for a single account backend.
+    /// - Parameters:
+    ///   - readerCommandHandoff: Opaque one-use token for an in-memory detached-reader command.
+    ///   - localBackend: Optional durable local-mail backend used for local-folder filing.
     public init(
         backend: any MailBackend,
         aiBackend: (any AIBackend)? = nil,
@@ -470,6 +474,10 @@ public struct BrevMailRootView: View {
         )
     }
 
+    /// Creates a mailbox workspace sharing navigation across multiple account backends.
+    /// - Parameters:
+    ///   - readerCommandHandoff: Opaque one-use token for an in-memory detached-reader command.
+    ///   - localBackend: Optional durable local-mail backend used for local-folder filing.
     public init(
         backends: [any MailBackend],
         aiBackend: (any AIBackend)? = nil,

@@ -84,6 +84,13 @@ public struct ThreadConversationView: View {
     @AppStorage(LocalMessageWorkflowStateStorage.storageKey)
     private var localWorkflowStateData = Data()
 
+    /// Creates a conversation reader with per-message actions owned by its mailbox.
+    /// - Parameters:
+    ///   - sourceID: Account/mailbox identity shared by the conversation members.
+    ///   - isWorkBlocked: Whether owner work prevents message actions or compose presentation.
+    ///   - allFolders: Source-owned folders used to determine available destinations and roles.
+    ///   - canFileLocally: Whether the owning workspace has a local-filing backend.
+    ///   - preloadedBodies: Optional rendered bodies used for deterministic presentation.
     public init(
         threadHeaders: [MessageHeader],
         backend: any MailBackend,

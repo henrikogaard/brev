@@ -125,6 +125,14 @@ public struct MessageDetailView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
 
+    /// Creates a source-owned message reader with capability-driven actions.
+    /// - Parameters:
+    ///   - sourceID: Account/mailbox identity used for actions and local workflow state.
+    ///   - navigation: Owning mailbox navigation, or nil for a standalone reader.
+    ///   - isWorkBlocked: Whether the owner currently blocks general message work.
+    ///   - isMutationWorkBlocked: Whether the owner currently blocks mutations.
+    ///   - canFileLocally: Whether local-folder filing is available in the owning workspace.
+    ///   - closeWindow: Standalone-window close action; enables the in-content action bar.
     public init(
         backend: any MailBackend,
         sourceID: MailSourceID? = nil,

@@ -2964,3 +2964,9 @@ buttons, and package-aware localization.
   (xcodebuild exit 0); lint/format/diff-check pass. Existing snapshot references
   remain unchanged. The same explicit Keep Offline operation performs the same
   provider body prefetch, so no new network/privacy behavior was introduced.
+
+- Documented all previously undocumented public initializer signatures changed
+  by this PR: both root constructors, detached reader payload/view, single-reader
+  and conversation views. Clarified source/folder identity, one-use handoff and
+  local-filing parameters. Documentation-only exception: no TDD or new snapshots
+  needed; lint/format/diff-check validate the update.

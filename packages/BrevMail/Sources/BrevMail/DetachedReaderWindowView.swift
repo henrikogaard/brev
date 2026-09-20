@@ -38,6 +38,11 @@ public struct DetachedReaderWindowView: View {
     @State private var resolvedFolders: [Folder] = []
     @State private var isResolving = true
 
+    /// Creates a detached reader that resolves its source-owned header from cache.
+    /// - Parameters:
+    ///   - payload: Restorable source, message and originating-folder identity.
+    ///   - backends: Available accounts captured when the scene is opened.
+    ///   - canFileLocally: Whether the owning workspace has a local-filing backend.
     public init(payload: DetachedReaderWindowPayload, backends: [any MailBackend], canFileLocally: Bool = false) {
         self.payload = payload
         self.backends = backends
