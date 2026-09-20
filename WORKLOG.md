@@ -3016,3 +3016,43 @@ buttons, and package-aware localization.
   and the existing token-exchange contract, with diff-check before commit.
 - Henrik authorized merging the open PRs. The architecture remains Proposed;
   this correction does not introduce provider implementation or account changes.
+
+## 2026-09-20 — Codex — #1 and iPhone account alignment
+
+- Reproduced account-header indentation from Henrik's screenshot. Moved the
+  iOS disclosure arrow trailing and matched folder-row padding; macOS unchanged.
+- Inspected failing light/dark mailbox renders, updated only their references,
+  and passed all seven phone snapshot cases. This is a visual regression check;
+  no new logic test or test-only layout API was needed.
+- Runtime semantic readback confirms inbox Refresh/Compose/Filter and mailbox
+  Settings/Show messages at all twelve Dynamic Type categories. Settings and
+  Compose open at the largest category. Restored the original large size.
+- Reader AX snapshots did not settle; spoken VoiceOver and the reader back
+  control remain unverified. #1 stays open with explicit partial QA evidence.
+- Filed #49, Ready/P1, for reproduced compose horizontal overflow and missing
+  Close/More at the largest accessibility category. Stored synthetic screenshot
+  and filtered labels only in docs/qa/iphone-accessibility-2026-09-20.
+- #2 preflight reported missing disposable credentials; no live connection or
+  message transmission. The secure configuration location was requested.
+- Verification: simulator build, seven phone snapshot cases, baseline inventory,
+  lint, formatting and diff-check. CHANGELOG, QA and WORKLOG updated; README,
+  ADRs, privacy and workflow contracts are unchanged by this layout correction.
+- Handoff: review the alignment change, verify spoken VoiceOver/reader control,
+  then address #49 before calling the compose accessibility flow accepted.
+
+## 2026-09-20 — Codex — #1 / PR #50 reader hierarchy follow-up
+
+- Reproduced Henrik's oversized account-address screenshot at accessibility5.
+  Applied the existing iOS reader chrome range and middle truncation to account
+  metadata; body text is unchanged. Labelled and reduced the loading indicator.
+- Added standard/accessibility phone conversation snapshots. Inspected the old
+  oversized rendering, observed the expected changed-reference failure, recorded
+  corrected references, and passed nine phone cases across six tests.
+- Simulator build/run, native loading screenshot, lint, zero-change final format,
+  baseline inventory and diff-check pass. Stored synthetic screenshot in QA docs.
+- The sample reader still stalls. A process sample shows repeated main-thread
+  SwiftUI layout work; root cause is not established. Filed #51 Ready/P1 rather
+  than claiming the UI styling fixes delivery. Raw diagnostics remain local.
+- Updated CHANGELOG and QA evidence. No architecture, network, privacy, setup or
+  workflow change: README/ADRs/PRIVACY/AGENTS need no update. No physical-device or
+  spoken VoiceOver signoff. Continue existing PR #50; no merge or release.
