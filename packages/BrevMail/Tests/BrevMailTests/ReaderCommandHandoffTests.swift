@@ -53,6 +53,32 @@ struct ReaderCommandHandoffTests {
         #expect(ownerFolders == section.folders)
     }
 
+    @Test("presentation commands preserve the thread even when folder loading fails", arguments: [false, true])
+    func presentationPreservesNavigation(loadFailed: Bool) {
+        let navigation = MailNavigationState()
+        let source = MailSourceID(accountID: "a", mailboxID: "a")
+        navigation.selectFolder("inbox", in: source)
+        let header = MessageHeader(id: "sent-message", threadID: "thread", folderID: "sent",
+                                   from: Correspondent(email: "fixture@example.org"),
+                                   subject: "Subject", snippet: "Preview", date: .distantPast)
+        let section = MailSourceSection(id: source,
+                                        account: BrevAccount(id: "a", displayName: "A", emailAddress: "a@example.org"),
+                                        mailbox: Mailbox(id: "a", email: "a@example.org", displayName: "A", isPrimary: true),
+                                        folders: [], loadError: loadFailed ? FolderLoadError(
+                                            message: "Unavailable",
+                                            isNetworkError: true
+                                        ) : nil)
+        for command: DetachedMessageCommand in [.reply, .replyAll, .forward, .addNote, .followUp, .properties, .downloadOffline] {
+            var applied = false
+            #expect(ReaderCommandSourceHandoff.prepare(
+                .init(command: command, header: header, sourceID: source), navigation: navigation,
+                sections: [section], applySection: { _ in applied = true }
+            ))
+            #expect(navigation.selectedFolderID == "inbox")
+            #expect(!applied)
+        }
+    }
+
     @Test("two window handoffs keep their source and command separate and execute once")
     func independentWindows() throws {
         let header = MessageHeader(id: "same-id", threadID: "thread", folderID: "inbox",

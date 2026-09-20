@@ -2828,43 +2828,43 @@ public struct BrevMailRootView: View {
         )
     }
 
-    private func presentReply(to header: MessageHeader) {
+    private func presentReply(to header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .reply(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentReply(to: header)
+        navigation.presentReply(to: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
-    private func presentReplyAll(to header: MessageHeader) {
+    private func presentReplyAll(to header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .replyAll(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .replyAll(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentReplyAll(to: header)
+        navigation.presentReplyAll(to: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
-    private func presentForward(of header: MessageHeader) {
+    private func presentForward(of header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .forward(messageID: header.id, sourceID: navigation.selectedSourceID)
+                kind: .forward(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
             ))
             return
         }
         #endif
-        navigation.presentForward(of: header)
+        navigation.presentForward(of: header, sourceID: sourceID ?? navigation.selectedSourceID)
     }
 
     #if os(iOS)
@@ -4532,11 +4532,11 @@ public struct BrevMailRootView: View {
     ) {
         switch command {
         case .reply:
-            presentReply(to: header)
+            presentReply(to: header, sourceID: sourceID)
         case .replyAll:
-            presentReplyAll(to: header)
+            presentReplyAll(to: header, sourceID: sourceID)
         case .forward:
-            presentForward(of: header)
+            presentForward(of: header, sourceID: sourceID)
         case .toggleRead:
             performDetachedMutation(sourceID: sourceID) { await toggleRead(for: header) }
         case .toggleFlag:

@@ -44,6 +44,22 @@ enum DetachedMessageCommand: String, Sendable {
     case viewSource
     case openInNewWindow
 
+    /// These commands resolve destinations or roles from the loaded folder catalog.
+    var requiresFolderList: Bool {
+        switch self {
+        case .archive, .delete, .setJunk, .move, .copyToFolder: true
+        default: false
+        }
+    }
+
+    /// Root mutation responses are scoped to the selected source and folder.
+    var activatesMutationFolder: Bool {
+        switch self {
+        case .archive, .delete, .setJunk, .toggleRead, .toggleFlag, .blockSender: true
+        default: false
+        }
+    }
+
     /// Return mutations and presentations to the owning mailbox window.
     /// Detached readers capture an immutable header, so stateful toggles must
     /// leave that snapshot instead of allowing a second stale-header action.
@@ -158,13 +174,18 @@ enum ReaderCommandSourceHandoff {
         applySection: (MailSourceSection) -> Void
     ) -> Bool {
         if let sourceID = request.sourceID ?? navigation.selectedSourceID {
-            guard let section = sections.first(where: { $0.id == sourceID }),
-                  section.loadError == nil else { return false }
-            if navigation.selectedSourceID != sourceID || navigation.selectedFolderID != request.header.folderID {
+            guard let section = sections.first(where: { $0.id == sourceID }) else { return false }
+            if request.command.requiresFolderList, section.loadError != nil { return false }
+            let activatesFolder = request.command.activatesMutationFolder
+                || (request.command.requiresFolderList && navigation.selectedSourceID != sourceID)
+            if activatesFolder,
+               navigation.selectedSourceID != sourceID || navigation.selectedFolderID != request.header.folderID {
                 navigation.selectFolder(request.header.folderID, in: sourceID)
             }
-            navigation.composeSourceID = sourceID
-            applySection(section)
+            if request.command.requiresFolderList || request.command.activatesMutationFolder,
+               section.loadError == nil {
+                applySection(section)
+            }
         }
         return true
     }

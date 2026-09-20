@@ -2863,3 +2863,13 @@ buttons, and package-aware localization.
   including both same-source and cross-source cases. App-hosted iOS tests pass
   with xcodebuild exit 0; lint/format/diff-check pass. No pixel changes required
   baseline updates; native multi-window QA remains pending.
+
+- Reader presentation actions no longer apply mailbox folders or change the
+  visible conversation. Folder catalogs are required only for destination/role
+  commands; mutation commands still activate their response context. Reply,
+  Reply All and Forward now pass their explicit source through both in-place
+  and detached compose paths. The loaded/failed-folder presentation regression
+  failed 21 assertions before the fix.
+- Verification: 22 handoff/resolver/payload tests and app-hosted iOS tests pass;
+  lint, formatting and diff-check pass. No visual baseline changed. Native
+  multi-window and real-account acceptance remain internal TestFlight QA.
