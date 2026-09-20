@@ -83,6 +83,13 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Stop the iPhone conversation reader from repeatedly invalidating its command
+  environment and remaining stuck at Loading message.
+- Keep compose recipient fields within the available width and allow the form
+  to scroll at accessibility text sizes while Close, Send and More stay visible.
+- Simplify the desktop compose toolbar by grouping duplicate secondary actions
+  in its menu and giving Send a visible label.
+
 - Keep the iPhone conversation account address secondary at accessibility text
   sizes and label the compact message-loading indicator.
 

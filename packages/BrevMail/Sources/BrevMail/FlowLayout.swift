@@ -39,7 +39,10 @@ struct FlowLayout: Layout {
         var totalWidth: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let ideal = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(
+                width: min(ideal.width, maxWidth), height: nil
+            ))
             if rowWidth + size.width > maxWidth, rowWidth > 0 {
                 totalHeight += rowHeight + spacing
                 totalWidth = max(totalWidth, rowWidth - spacing)
@@ -65,7 +68,10 @@ struct FlowLayout: Layout {
         var rowHeight: CGFloat = 0
 
         for subview in subviews {
-            let size = subview.sizeThatFits(.unspecified)
+            let ideal = subview.sizeThatFits(.unspecified)
+            let size = subview.sizeThatFits(ProposedViewSize(
+                width: min(ideal.width, bounds.width), height: nil
+            ))
             if x + size.width > bounds.maxX, x > bounds.minX {
                 x = bounds.minX
                 y += rowHeight + spacing

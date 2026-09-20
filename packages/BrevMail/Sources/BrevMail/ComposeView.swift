@@ -624,13 +624,31 @@ public struct ComposeView: View {
     @ViewBuilder
     private var composeContent: some View {
         VStack(spacing: 0) {
-            header
+            if isAccessibilityFieldLayout {
+                toolbar
+                ScrollView {
+                    VStack(spacing: 0) {
+                        fieldPanel.disabled(isBusy)
+                        composeEditorContent
+                    }
+                }
+            } else {
+                header
+                composeEditorContent
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+    }
+
+    private var composeEditorContent: some View {
+        VStack(spacing: 0) {
             draftRecoveryBanner
             undoSendBanner
             VStack(spacing: 0) {
                 VStack(spacing: 0) {
                     attachmentsList
                     bodyField
+                        .frame(minHeight: isAccessibilityFieldLayout ? 240 : nil)
                 }
                 .disabled(isBusy)
                 aiPreviewPanel
@@ -638,7 +656,6 @@ public struct ComposeView: View {
             scheduledSendBanner
             errorBanner
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
     /// Subtle accent outline shown while files are dragged over the window.
@@ -753,11 +770,7 @@ public struct ComposeView: View {
                     .accessibilityHidden(true)
             }
 
-            // No title text — the toolbar floats like Apple Mail's compose
-            // toolbar. Controls sit borderless on the shared surface; Send is
-            // isolated at the trailing edge.
-            Spacer(minLength: BrevSpacing.sm)
-
+            // Editing tools lead; delivery controls stay at the trailing edge.
             toolbarCluster {
                 toolbarButton(
                     label: ComposeToolbarAction.attach.accessibilityLabel,
@@ -769,6 +782,7 @@ public struct ComposeView: View {
                 formatMenu
                 signatureMenu
                 receiptOptionsMenu
+                #if os(iOS)
                 toolbarButton(
                     label: ComposeToolbarAction.templates.accessibilityLabel,
                     systemImage: "doc.on.doc",
@@ -781,8 +795,11 @@ public struct ComposeView: View {
                 }
                 securityMenu
                 aiWriterMenu
+                #endif
                 pluginToolbarButtons
             }
+
+            Spacer(minLength: BrevSpacing.sm)
 
             toolbarCluster {
                 toolbarButton(
@@ -1100,21 +1117,34 @@ public struct ComposeView: View {
                 }
             }
         } label: {
-            ZStack {
-                toolbarControlIcon(
-                    pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage,
-                    isPrimary: pendingUndoSendTask == nil && (!isDisabled || isSending)
-                )
-                if isSending {
-                    ProgressView()
-                        .controlSize(.small)
-                        .scaleEffect(0.55)
-                        .tint(theme.accent.color)
-                        .accessibilityHidden(true)
+            HStack(spacing: BrevSpacing.xxs) {
+                ZStack {
+                    toolbarControlIcon(
+                        pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage,
+                        isPrimary: pendingUndoSendTask == nil && (!isDisabled || isSending)
+                    )
+                    if isSending {
+                        ProgressView()
+                            .controlSize(.small)
+                            .scaleEffect(0.55)
+                            .tint(theme.accent.color)
+                            .accessibilityHidden(true)
+                    }
                 }
+                #if os(macOS)
+                Text(verbatim: pendingUndoSendTask != nil
+                    ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
+                    .font(.subheadline.weight(.semibold))
+                    .padding(.trailing, BrevSpacing.sm)
+                #endif
             }
         }
+        #if os(macOS)
+        .buttonStyle(.bordered)
+        .tint(theme.accent.color)
+        #else
         .buttonStyle(.plain)
+        #endif
         .disabled(isDisabled)
         .opacity(isDisabled && !isSending ? 0.45 : 1)
         // Cmd+Return sends, matching Apple Mail's compose accelerator.

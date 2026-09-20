@@ -95,6 +95,20 @@ struct PhoneMailboxSnapshotTests {
                        named: accessibility ? "accessibility" : "standard")
     }
 
+    @Test("phone compose stays inside the viewport", arguments: [false, true])
+    func phoneCompose(accessibility: Bool) {
+        let backend = MockBackend()
+        let view = ComposeView(backend: backend, from: backend.account)
+            .environment(\.horizontalSizeClass, .compact)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility5 : .large)
+            .brevTheme(.brevMonoLight)
+            .htmlBodyRenderTarget(.staticSnapshot)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 320, height: 720),
+                                            traits: .init(displayScale: 2)),
+                       named: accessibility ? "accessibility" : "standard")
+    }
+
     @Test("phone folder hierarchy", arguments: [false, true])
     func mailboxes(dark: Bool) throws {
         let theme = dark ? BrevTheme.brevMonoDark : .brevMonoLight

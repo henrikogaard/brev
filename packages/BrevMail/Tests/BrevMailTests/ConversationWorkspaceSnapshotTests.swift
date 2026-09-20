@@ -22,6 +22,19 @@ import Testing
 @Suite("Conversation workspace snapshots")
 @MainActor
 struct ConversationWorkspaceSnapshotTests {
+    @Test("desktop compose separates primary send from secondary tools")
+    func composeToolbar() {
+        let backend = MockBackend()
+        let view = ComposeView(backend: backend, from: backend.account)
+            .frame(width: 680, height: 560)
+            .brevTheme(.brevMonoLight)
+            .htmlBodyRenderTarget(.staticSnapshot)
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 680, height: 560)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 680, height: 560)),
+                       named: "desktop-compose")
+    }
+
     @Test("profile actions stay in the auxiliary window content")
     func profileManager() {
         let account = BrevAccount.preview

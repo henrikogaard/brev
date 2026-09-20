@@ -3023,3 +3023,26 @@ buttons, and package-aware localization.
 - Updated CHANGELOG and QA evidence. No architecture, network, privacy, setup or
   workflow change: README/ADRs/PRIVACY/AGENTS need no update. No physical-device or
   spoken VoiceOver signoff. Continue existing PR #50; no merge or release.
+
+
+## 2026-09-20 — Codex — #49 / #51 native UI polish
+
+- Followed the requested merge and polish pass. PR #50 merged; PR #48 review
+  follow-ups preserve live DAV proof and safe removal of combined Google grants.
+- Diagnosed the sample reader freeze as repeated command environment closure
+  invalidation. Added stable routing identity with latest-owner dispatch and a
+  hosting-controller regression; verified rendered body and Reply on simulator.
+- Proved compose flow overflow with a failing width test, bounded measurement
+  and placement, added accessibility form scrolling and standard/AX5 snapshots.
+- Reduced duplicate desktop compose tools and labelled Send; inspected native
+  test-app compose, mailbox and settings. No message sent or daily app replaced.
+- Verification: iOS 9 tests/3 suites; macOS 6 tests/3 suites; native builds,
+  lint, zero-change format, baseline inventory and diff check. All 12 simulator
+  text sizes expose Close/Send/More. QA evidence and limits are in
+  docs/qa/native-polish-2026-09-20/README.md.
+- Initial broad macOS run had an unrelated profile-manager snapshot mismatch;
+  no unrelated baseline changed. Physical VoiceOver, another runtime/device and
+  live-provider coverage remain pending. No new release or version change.
+- Documentation sweep: updated CHANGELOG, QA evidence and WORKLOG. No public
+  architecture, provider, privacy, setup or workflow change; README, PRIVACY,
+  ADRs and AGENTS need no change for this implementation. Hand off in review.

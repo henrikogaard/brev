@@ -934,7 +934,7 @@ public struct BrevMailRootView: View {
                 canUndo: { undoQueue.canUndo && !isCommandMutationBlocked && activeCommandMutationRequest == nil },
                 onUndo: { performUndo() }
             ))
-            .environment(\.readerCommandAction, handleDetachedMessageCommand)
+            .readerCommandHandler(handleDetachedMessageCommand)
             .overlay(alignment: .bottom) { undoToastOverlay }
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if folderExportController.state != .idle {
@@ -1405,7 +1405,7 @@ public struct BrevMailRootView: View {
         }
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
-        .environment(\.readerCommandAction, handleDetachedMessageCommand)
+        .readerCommandHandler(handleDetachedMessageCommand)
         .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
             relatedConversation.updateAnchor(
                 header: navigation.selectedHeader ?? fallbackHeader,
