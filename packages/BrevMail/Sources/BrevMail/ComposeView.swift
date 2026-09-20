@@ -869,7 +869,6 @@ public struct ComposeView: View {
             toolbarControlIcon("ellipsis.circle")
         }
         .menuStyle(.borderlessButton)
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(layout.moreActionsAccessibilityLabel)
         .accessibilityValue(layout.moreActionsAccessibilityValue)
         .accessibilityHint(String(localized: "Contains secondary compose actions.", bundle: .module))
@@ -969,7 +968,6 @@ public struct ComposeView: View {
         #else
         .menuStyle(.borderlessButton)
         #endif
-        .accessibilityElement(children: .ignore)
         .accessibilityLabel(layout.moreActionsAccessibilityLabel)
         .accessibilityValue(layout.moreActionsAccessibilityValue)
         .accessibilityHint(String(localized: "Contains secondary compose actions.", bundle: .module))
