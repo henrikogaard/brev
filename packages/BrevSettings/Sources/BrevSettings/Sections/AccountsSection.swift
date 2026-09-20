@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevCalendar
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -120,6 +121,23 @@ enum AccountsSectionPresentation {
             isDisabled: isAddingAccount || !signingOutAccountIDs.isEmpty
         )
     }
+
+    /// Removal-dialog copy. Lists linked PIM sources so the user sees what
+    /// is removed with the account; the empty case keeps the historical
+    /// single-line message (ADR-0072).
+    static func removalMessage(linkedSources: [PIMSource]) -> String {
+        guard !linkedSources.isEmpty else {
+            return String(
+                localized: "Brev removes this account from the local app. Server mail is not deleted.",
+                bundle: .module
+            )
+        }
+        let names = linkedSources.map(\.displayName).joined(separator: ", ")
+        return String(
+            localized: "Brev removes this account from the local app. Server mail is not deleted. Linked sources: \(names). They and their unsent drafts are removed too; provider data is never deleted.",
+            bundle: .module
+        )
+    }
 }
 
 enum AccountMailboxSelectionPresentation {
@@ -161,7 +179,12 @@ struct AccountsSection: View {
     let onAddAccount: () async -> Void
     let onSetDefault: (BrevAccount) async -> Void
     let onSignOut: (BrevAccount) async -> Void
-    let onRemoveAccount: (BrevAccount) async -> Void
+    /// Removes the account and its linked PIM sources; the second argument
+    /// carries the user's explicit cache choice for those sources.
+    let onRemoveAccount: (BrevAccount, Bool) async -> Void
+    /// Lists PIM sources linked to an account so the removal dialog can
+    /// name them instead of silently orphaning them (ADR-0072).
+    let linkedSourcesProvider: @MainActor (BrevAccount.ID) async -> [PIMSource]
     /// Invoked when the user chooses Sign in on a restored account row; the
     /// app wires this to the add-account flow prefilled with the entry's
     /// email/server settings where a prefill seam exists.
@@ -178,6 +201,9 @@ struct AccountsSection: View {
     @State private var isAddingAccount = false
     @State private var signingOutAccountIDs: Set<BrevAccount.ID> = []
     @State private var accountPendingRemoval: BrevAccount?
+    /// Sources linked to `accountPendingRemoval`, loaded before the
+    /// removal dialog opens so the dialog can name them.
+    @State private var linkedSourcesForRemoval: [PIMSource] = []
     /// Per-account undismissed replay conflicts. Keyed by `BrevAccount.ID`.
     @State private var conflictsByAccountID: [BrevAccount.ID: [ReplayConflict]] = [:]
     /// The account whose conflict review sheet is currently open.
@@ -192,7 +218,8 @@ struct AccountsSection: View {
         onAddAccount: @escaping () async -> Void,
         onSetDefault: @escaping (BrevAccount) async -> Void,
         onSignOut: @escaping (BrevAccount) async -> Void,
-        onRemoveAccount: @escaping (BrevAccount) async -> Void,
+        onRemoveAccount: @escaping (BrevAccount, Bool) async -> Void,
+        linkedSourcesProvider: @MainActor @escaping (BrevAccount.ID) async -> [PIMSource] = { _ in [] },
         pendingRestoredStore: PendingRestoredAccountsStore = .init(),
         onSignInRestoredAccount: @escaping (AccountBackupEntry) -> Void = { _ in }
     ) {
@@ -205,6 +232,7 @@ struct AccountsSection: View {
         self.onSetDefault = onSetDefault
         self.onSignOut = onSignOut
         self.onRemoveAccount = onRemoveAccount
+        self.linkedSourcesProvider = linkedSourcesProvider
         self.pendingRestoredStore = pendingRestoredStore
         self.onSignInRestoredAccount = onSignInRestoredAccount
         _fetchSettings = State(initialValue: settingsStore.fetchScheduleSettings())
@@ -224,12 +252,21 @@ struct AccountsSection: View {
             isPresented: removeConfirmationBinding,
             presenting: accountPendingRemoval
         ) { account in
-            Button(String(localized: "Remove \(account.emailAddress)", bundle: .module), role: .destructive) {
-                startRemove(account)
+            if linkedSourcesForRemoval.isEmpty {
+                Button(String(localized: "Remove \(account.emailAddress)", bundle: .module), role: .destructive) {
+                    startRemove(account, deleteLinkedSourceCache: false)
+                }
+            } else {
+                Button(String(localized: "Remove, keep cached copies", bundle: .module)) {
+                    startRemove(account, deleteLinkedSourceCache: false)
+                }
+                Button(String(localized: "Remove and delete cached data", bundle: .module), role: .destructive) {
+                    startRemove(account, deleteLinkedSourceCache: true)
+                }
             }
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
         } message: { account in
-            Text("Brev removes this account from the local app. Server mail is not deleted.", bundle: .module)
+            Text(AccountsSectionPresentation.removalMessage(linkedSources: linkedSourcesForRemoval))
                 .accessibilityLabel(String(localized: "Remove account \(account.emailAddress) from Brev", bundle: .module))
         }
         .sheet(item: conflictReviewBinding) { account in
@@ -292,7 +329,7 @@ struct AccountsSection: View {
                                 removePresentation: removePresentation,
                                 onSetDefault: { startSetDefault(account) },
                                 onSignOut: { startSignOut(account) },
-                                onRemove: { accountPendingRemoval = account },
+                                onRemove: { prepareRemoval(account) },
                                 onReviewConflicts: { conflictReviewAccountID = account.id },
                                 onToggleMailbox: { mailbox, isEnabled in
                                     setMailbox(mailbox, for: account, isEnabled: isEnabled)
@@ -442,7 +479,10 @@ struct AccountsSection: View {
         Binding(
             get: { accountPendingRemoval != nil },
             set: { isPresented in
-                if !isPresented { accountPendingRemoval = nil }
+                if !isPresented {
+                    accountPendingRemoval = nil
+                    linkedSourcesForRemoval = []
+                }
             }
         )
     }
@@ -486,13 +526,22 @@ struct AccountsSection: View {
         }
     }
 
-    private func startRemove(_ account: BrevAccount) {
+    /// Loads the account's linked PIM sources, then opens the removal
+    /// dialog so it can name them and offer the cache choice (ADR-0072).
+    private func prepareRemoval(_ account: BrevAccount) {
+        Task { @MainActor in
+            linkedSourcesForRemoval = await linkedSourcesProvider(account.id)
+            accountPendingRemoval = account
+        }
+    }
+
+    private func startRemove(_ account: BrevAccount, deleteLinkedSourceCache: Bool) {
         let presentation = removePresentation
         guard !presentation.isDisabled else { return }
         signingOutAccountIDs.insert(account.id)
         Task { @MainActor in
             defer { signingOutAccountIDs.remove(account.id) }
-            await onRemoveAccount(account)
+            await onRemoveAccount(account, deleteLinkedSourceCache)
         }
     }
 

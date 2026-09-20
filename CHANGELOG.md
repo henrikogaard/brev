@@ -24,6 +24,10 @@ All notable changes to Brev are documented here.
   new grant is installed only when it covers mail plus the requested scopes
   for the same account; declining changes nothing. Sync itself is not
   scheduled yet.
+- Linked sources on account removal (ADR-0072): removing a mail account
+  now lists its linked Calendar/Contacts sources and removes them with an
+  explicit keep-or-delete cache choice, so no source is silently orphaned.
+  Unsent source drafts are always deleted; provider data is never touched.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

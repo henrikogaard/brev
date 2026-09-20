@@ -81,7 +81,15 @@ struct BrevApp: App {
                         },
                         onAddAccount: { isShowingAddAccountSheet = true },
                         onSignOut: { account in await session.signOut(account: account) },
-                        onRemoveAccount: { account in await session.removeAccount(account) },
+                        onRemoveAccount: { account, deleteLinkedSourceCache in
+                            await session.removeAccount(
+                                account,
+                                deleteLinkedSourceCache: deleteLinkedSourceCache
+                            )
+                        },
+                        linkedSourcesProvider: { accountID in
+                            await session.linkedPIMSources(for: accountID)
+                        },
                         onAIProviderConfigurationChanged: {
                             await session.reloadConfiguredAIBackends()
                         },

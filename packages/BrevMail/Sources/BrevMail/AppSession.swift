@@ -824,11 +824,37 @@ public final class AppSession {
     }
 
     public func signOut(account: BrevAccount) async {
-        await endAccountSession(account, shouldRunSignOutCoordinator: true)
+        await endAccountSession(
+            account,
+            shouldRunSignOutCoordinator: true,
+            deleteLinkedSourceCache: false
+        )
     }
 
-    public func removeAccount(_ account: BrevAccount) async {
-        await endAccountSession(account, shouldRunSignOutCoordinator: true)
+    /// Removes the account and every PIM source linked to it (ADR-0072).
+    ///
+    /// Linked sources are never silently orphaned: they are removed with
+    /// the account. `deleteLinkedSourceCache` carries the user's explicit
+    /// cache choice from the removal dialog — kept caches stay readable
+    /// but disconnected, deleted caches are wiped. Unsent source drafts
+    /// always die with the source; provider data is never touched.
+    public func removeAccount(
+        _ account: BrevAccount,
+        deleteLinkedSourceCache: Bool = false
+    ) async {
+        await endAccountSession(
+            account,
+            shouldRunSignOutCoordinator: true,
+            deleteLinkedSourceCache: deleteLinkedSourceCache
+        )
+    }
+
+    /// PIM sources linked to a mail account (ADR-0072). The account-removal
+    /// dialog lists these so they are removed with an explicit cache choice
+    /// instead of silently orphaned.
+    public func linkedPIMSources(for accountID: BrevAccount.ID) async -> [PIMSource] {
+        guard let pimSourceCoordinator else { return [] }
+        return await (try? pimSourceCoordinator.linkedSources(accountID: accountID)) ?? []
     }
 
     /// Enables a PIM feature on a Google mail account (ADR-0072).
@@ -880,9 +906,29 @@ public final class AppSession {
         authFailedIMAPAccountEmail = account.emailAddress
     }
 
+    /// Removes every PIM source linked to a removed mail account. Removal is
+    /// local-only and best-effort: a source that fails stays listed in
+    /// Settings → Calendar & Contacts for explicit removal. Linked Google
+    /// sources carry no credential of their own, so the shared mail grant is
+    /// never touched here — the account token teardown above handles it.
+    private func removeLinkedPIMSources(
+        for accountID: BrevAccount.ID,
+        deleteCachedContent: Bool
+    ) async {
+        guard let pimSourceCoordinator else { return }
+        let linked = await (try? pimSourceCoordinator.linkedSources(accountID: accountID)) ?? []
+        for source in linked {
+            try? await pimSourceCoordinator.removeSource(
+                id: source.id,
+                deleteCachedContent: deleteCachedContent
+            )
+        }
+    }
+
     private func endAccountSession(
         _ account: BrevAccount,
-        shouldRunSignOutCoordinator: Bool
+        shouldRunSignOutCoordinator: Bool,
+        deleteLinkedSourceCache: Bool
     ) async {
         guard signingOutAccountIDs.insert(account.id).inserted else { return }
         defer { signingOutAccountIDs.remove(account.id) }
@@ -927,6 +973,10 @@ public final class AppSession {
         SettingsPersistenceStore.standard.removeAccountScopedState(accountID: account.id)
         await pendingMutationCleanup(account.id)
         await aiProviderAssignmentCleanup(account.id)
+        await removeLinkedPIMSources(
+            for: account.id,
+            deleteCachedContent: deleteLinkedSourceCache
+        )
         if shouldRestoreNextAccount {
             if let next = visibleBackends.first {
                 backend = next

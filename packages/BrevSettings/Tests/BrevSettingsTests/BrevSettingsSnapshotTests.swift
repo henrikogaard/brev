@@ -212,7 +212,7 @@ private struct AccountsSectionContainer: View {
             onAddAccount: {},
             onSetDefault: { _ in },
             onSignOut: { _ in },
-            onRemoveAccount: { _ in }
+            onRemoveAccount: { _, _ in }
         )
     }
 }
@@ -281,7 +281,7 @@ struct AIWriterSectionMacSnapshotTests {
             AccountsSection(accounts: [BrevAccount(id: "account", displayName: "Personal", emailAddress: "personal@example.org")],
                             currentAccountID: "account", settingsStore: SettingsPersistenceStore(defaults: defaults),
                             onAddAccount: {}, onSetDefault: { _ in },
-                            onSignOut: { _ in }, onRemoveAccount: { _ in }),
+                            onSignOut: { _ in }, onRemoveAccount: { _, _ in }),
             theme: theme,
             name: "accounts-" + mode,
             size: CGSize(width: 700, height: 540)
