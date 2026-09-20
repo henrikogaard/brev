@@ -2901,3 +2901,13 @@ buttons, and package-aware localization.
 - Verification: all 44 presentation/handoff/resolver tests pass; macOS sources
   compile through the package test build. Lint, formatting and diff-check pass.
   Release archive will verify the shared root on iOS; no snapshot refresh needed.
+
+- Two hosted BrevDesign runs crashed with signal 11 around the unchanged native
+  WindowAppearancePreferences test, including one after its assertions passed.
+  The test now disables AppKit release-on-close because Swift owns its NSWindow
+  until scope exit, avoiding competing lifetime ownership. Production window
+  behavior is unchanged. Hosted crash is the red reproduction; local focused
+  verification follows, with final-head CI still required.
+- Verification: all 30 window-appearance tests pass, followed by three passing
+  repetitions. Lint, formatting and diff-check pass. This test-only lifetime fix
+  needs no changelog, ADR, privacy or snapshot update.

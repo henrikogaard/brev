@@ -264,6 +264,9 @@ struct WindowAppearancePreferencesTests {
             backing: .buffered,
             defer: false
         )
+        // Swift owns this test window until scope exit; close must not also
+        // release it through AppKit's manual window lifetime policy.
+        window.isReleasedWhenClosed = false
         window.contentMaxSize = NSSize(width: 640, height: 480)
         window.collectionBehavior.insert(.fullScreenNone)
 
