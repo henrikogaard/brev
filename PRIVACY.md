@@ -517,6 +517,19 @@ that provider and written locally; moving mail additionally deletes it from the
 server through the same undoable path as a server-side move. Local folders are
 indexed by the same on-device search index as cached mail.
 
+## Keep Offline
+
+Choosing **Keep Offline** in a message list, Unified Inbox, reader or conversation
+menu records a device-local pin scoped to the message's account and mailbox. The
+same action asks the configured mail backend for the message body; if it needs to
+fetch that body, it uses the account's existing IMAP connection or Gmail API with
+the account credentials/token and message identifiers. The request goes to your
+mail provider. It does not enable remote HTML images or send content to an AI
+provider. This fetch is initiated only when you turn Keep Offline on; removing
+the pin does not initiate a body fetch or immediately delete cached content.
+The prefetch is best-effort, so the pin alone does not prove the body is available
+while disconnected.
+
 ## Brev backups
 
 Settings › Import / Export can write a `.brevbackup` package — a folder

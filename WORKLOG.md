@@ -2978,3 +2978,8 @@ buttons, and package-aware localization.
 - Verification: 12 focused tests pass, including all seven phone snapshot cases
   with unchanged references; lint/format/diff-check pass. Updated Unreleased
   behavior notes. No architecture, privacy or workflow contract changed.
+
+- Documented Keep Offline's explicit provider body prefetch in PRIVACY.md and
+  ADR-0006, covering list, unified and reader paths, local pin scope, removing
+  a pin, and best-effort availability. Documentation-only exception: no TDD or
+  pixel update; privacy audit, lint, formatting and diff-check validate the edit.
