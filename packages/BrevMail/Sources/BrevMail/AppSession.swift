@@ -119,7 +119,7 @@ public final class AppSession {
     /// cover the enabled PIM feature, validates identity and granted scopes,
     /// and swaps the credential — or throws, leaving mail sign-in untouched.
     public typealias GooglePIMEnablementCoordinator =
-        @MainActor (BrevAccount.ID, PIMSourceKind) async throws -> Void
+        @MainActor (BrevAccount.ID, PIMSourceKind, _ write: Bool) async throws -> Void
     public typealias RestoreCoordinator = @MainActor (BrevAccount) async throws -> LoginResult?
     public typealias DemoLoginCoordinator = @MainActor () async -> LoginResult
     public typealias CardDAVContactSyncStarter =
@@ -221,6 +221,10 @@ public final class AppSession {
     /// (ADR-0072). Nil in sessions built without PIM support.
     public let pimContactSyncService: PIMContactSyncService?
 
+    /// Owns event create/update/delete against writable calendar sources
+    /// (ADR-0072 #7). Nil in sessions built without PIM write support.
+    public let pimEventWriteService: PIMEventWriteService?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -277,6 +281,7 @@ public final class AppSession {
         pimCollectionService: PIMCollectionService? = nil,
         pimEventSyncService: PIMEventSyncService? = nil,
         pimContactSyncService: PIMContactSyncService? = nil,
+        pimEventWriteService: PIMEventWriteService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -288,6 +293,7 @@ public final class AppSession {
         self.pimCollectionService = pimCollectionService
         self.pimEventSyncService = pimEventSyncService
         self.pimContactSyncService = pimContactSyncService
+        self.pimEventWriteService = pimEventWriteService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
@@ -904,7 +910,7 @@ public final class AppSession {
                 message: String(localized: "Google PIM authorization is unavailable in this session.", bundle: .module)
             )
         }
-        try await googlePIMEnablementCoordinator(accountID, kind)
+        try await googlePIMEnablementCoordinator(accountID, kind, false)
         let storedEmailAddress = await accountStore.accounts.first { $0.id == accountID }?.emailAddress
         let displayName = backends[accountID]?.account.emailAddress
             ?? storedEmailAddress
@@ -913,6 +919,43 @@ public final class AppSession {
             kind: kind,
             accountID: accountID,
             displayName: displayName
+        )
+    }
+
+    /// Grants editing on an already-connected Google PIM source (#7).
+    ///
+    /// Re-authorizes the account with the write scopes for the feature
+    /// added to the union the connector already holds, then flips the
+    /// source capability to include .write. A declined, mismatched, or
+    /// partial authorization throws before the capability changes — the
+    /// source stays read-only and the mail grant is untouched.
+    @discardableResult
+    public func enableGooglePIMWriteFeature(
+        accountID: BrevAccount.ID,
+        kind: PIMSourceKind
+    ) async throws -> PIMSource {
+        guard let pimSourceCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "PIM sources are unavailable in this session.", bundle: .module)
+            )
+        }
+        guard let source = try await pimSourceCoordinator.googleSource(
+            accountID: accountID,
+            kind: kind
+        ) else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "Connect the source before enabling editing.", bundle: .module)
+            )
+        }
+        guard let googlePIMEnablementCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "Google PIM authorization is unavailable in this session.", bundle: .module)
+            )
+        }
+        try await googlePIMEnablementCoordinator(accountID, kind, true)
+        return try await pimSourceCoordinator.setWriteEnabled(
+            true,
+            for: source.id
         )
     }
 

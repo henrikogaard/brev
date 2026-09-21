@@ -656,6 +656,46 @@ grant.
   segmented picker plus prev/today/next controls sit in the toolbar.
 - Deferred by design: drag-to-create/resize, a positioned multi-day
   event bar lane, authoring (#7), and scheduled background sync.
+### #7 slice 1 — event write pipeline and editing opt-in (2026-09-21, BrevCalendar/BrevMail/BrevSettings/apps)
+
+- `PIMEventICSWriter`: serializes a `PIMEvent` into an RFC 5545
+  VCALENDAR — UID/DTSTAMP, DTSTART/DTEND (VALUE=DATE for all-day, TZID
+  for timed-with-zone, else UTC), SUMMARY/LOCATION/DESCRIPTION with
+  TEXT escaping, STATUS, RRULE, RECURRENCE-ID, ORGANIZER/ATTENDEE with
+  PARTSTAT, VALARM reminders, and URL for the conference link. Output
+  is CRLF-joined and folded at 75 octets without splitting multi-byte
+  UTF-8 sequences.
+- `GoogleCalendarEventWriter` and `PIMDAVEventWriter`: provider write
+  adapters behind injected transports. Google maps the shared model to
+  the `events` REST resource (insert/patch/delete, iCalUID,
+  responseStatus, reminder overrides); CalDAV PUTs the serialized ICS
+  to `{collection}/{sanitized-uid}.ics` and DELETEs it. Updates and
+  deletes carry the cached providerVersion as `If-Match`; creates
+  carry `If-None-Match: *`. 401/403 map to authenticationRequired,
+  409/412 to conflict, and a remote 404 on delete counts as done.
+- `PIMEventWriteService`: the provider-neutral write entry point.
+  `canWrite` requires the write capability on the source *and* a
+  non-read-only collection; create/update/delete dispatch on provider,
+  then patch the single cached record in place — the next sync still
+  owns full-generation reconciliation. create generates the UID
+  (`UUID@brev`) and re-anchors the record identity onto the
+  provider-assigned item key.
+- Editing opt-in: `PIMSourceCoordinator.setWriteEnabled` toggles the
+  `.write` capability. Google sources route through
+  `AppSession.enableGooglePIMWriteFeature`, which re-authorizes the
+  account with the write scope unioned into the existing grant *before*
+  the capability flips — a declined or partial sheet leaves the source
+  read-only. CalDAV credentials already carry full access, so the
+  toggle is a local opt-in. Disabling is always local: the grant stays,
+  Brev stops writing. The settings source row shows an Editing switch
+  for connected Google/CalDAV calendar sources.
+- `GooglePIMScopes` gained `calendarEvents` and `contacts` write
+  scopes plus a `scopes(for:write:)` overload; the session
+  enablement coordinator takes a write flag so one re-auth path serves
+  read enablement and write upgrade.
+- Deferred by design: the event editor UI (form, occurrence/series
+  prompts, attendee notifications), iMIP RSVP unification onto this
+  path, offline write queueing, and contact authoring (#9).
 
 ## References (checked 2026-09-20)
 

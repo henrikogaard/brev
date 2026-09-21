@@ -238,6 +238,19 @@ struct PIMSourcesSettingsView: View {
                 ))
                 .disabled(model.pendingSourceID == row.id)
             }
+            if model.canToggleWrite(sourceID: row.id) {
+                Toggle(
+                    String(localized: "Editing", bundle: .module),
+                    isOn: writeBinding(for: row.id)
+                )
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityLabel(String(
+                    localized: "Editing for \(row.displayName)",
+                    bundle: .module
+                ))
+                .disabled(model.pendingSourceID == row.id)
+            }
             sourceMenu(row)
         }
         .padding(.vertical, BrevSpacing.xxs)
@@ -527,6 +540,15 @@ struct PIMSourcesSettingsView: View {
             get: { enabled },
             set: { newValue in
                 Task { await model.setSyncEnabled(newValue, for: sourceID) }
+            }
+        )
+    }
+
+    private func writeBinding(for sourceID: PIMSource.ID) -> Binding<Bool> {
+        Binding(
+            get: { model.isWriteEnabled(sourceID: sourceID) },
+            set: { newValue in
+                Task { await model.setWriteEnabled(newValue, for: sourceID) }
             }
         )
     }

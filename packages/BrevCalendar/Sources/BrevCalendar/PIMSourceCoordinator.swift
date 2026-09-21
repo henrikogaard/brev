@@ -220,6 +220,31 @@ public actor PIMSourceCoordinator {
         return source
     }
 
+    /// Explicit editing opt-in or lock (#7). The `.write` capability
+    /// gates every mutation path; disabling is local-only and never
+    /// touches the provider grant — a granted Google scope stays granted
+    /// but unused, a DAV credential keeps its server-side privileges.
+    /// Enabling is also local-only here: Google sources re-authorize
+    /// for the write scope *before* calling this (the session owns that
+    /// ordering), so the capability never claims a grant the account
+    /// does not hold.
+    @discardableResult
+    public func setWriteEnabled(
+        _ enabled: Bool,
+        for sourceID: PIMSource.ID
+    ) async throws -> PIMSource {
+        var source = try await requireSource(sourceID)
+        if enabled {
+            source.enabledCapabilities.insert(.write)
+        } else {
+            source.enabledCapabilities.remove(.write)
+        }
+        source.updatedAt = now()
+        try await store.save(source)
+        sources?[source.id] = source
+        return source
+    }
+
     /// Disconnects a source while keeping its credential and cache. Cached
     /// content remains readable with freshness warnings until removal.
     @discardableResult

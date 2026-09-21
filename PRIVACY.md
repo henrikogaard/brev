@@ -267,6 +267,16 @@ belongs to the same Google account and still covers mail access plus the
 requested feature scopes; a declined or partial grant changes nothing.
 No Google PIM data is synced yet — enablement only extends the grant.
 
+Enabling Editing on a calendar source in Settings → Calendar & Contacts
+lets Brev write events to that source: `PUT`/`DELETE` to the collection
+URL for CalDAV, `events.insert`/`patch`/`delete` for Google Calendar.
+Google sources re-run the authorization first so the `calendar.events`
+scope is granted explicitly; a declined sheet leaves the source
+read-only. Every mutation carries the stored ETag as an `If-Match`
+precondition, so Brev never silently overwrites a newer server-side
+change — a conflict asks you to sync first. Turning Editing off is
+local-only: the provider grant remains but Brev stops issuing writes.
+
 For a Gmail API account, Brev then contacts `gmail.googleapis.com` using the
 Google access token. Gmail returns stable account-wide message and thread IDs,
 label metadata, message content requested by the user or sync policy, and an
