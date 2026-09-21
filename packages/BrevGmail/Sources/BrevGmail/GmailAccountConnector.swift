@@ -388,7 +388,7 @@ public struct GmailAccountConnector: Sendable {
     public func enablePIMFeature(
         accountID: String,
         additionalScopes: Set<String>,
-        authorize: @MainActor (Set<String>) async throws -> GoogleOAuthResult
+        authorize: @MainActor @Sendable (Set<String>) async throws -> GoogleOAuthResult
     ) async throws -> GoogleOAuthAccountConfiguration {
         guard let configuration = await configurationStore.configuration(for: accountID),
               configuration.providerMode == .gmailAPI,
