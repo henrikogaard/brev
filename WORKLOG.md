@@ -43,6 +43,56 @@ CalDAV round-trips.
 
 - Rendered verification — pending; maintainer QA on #13.
 
+## 2026-09-22 — Agent — Issue #12 slice 1 (task read sync)
+
+### Goal
+
+First slice of #12: a Tasks source kind with read-only sync for Google
+Tasks and CalDAV VTODO collections.
+
+### Changes
+
+- BrevCalendar: `PIMSourceKind.tasks`, `PIMTask`/`PIMTaskStore`/
+  `JSONPIMTaskStore`, `GoogleTaskSync` (`tasks.list` paged reads,
+  `updatedMin` cursor, tombstones), `PIMDAVTaskSync`
+  (`sync-collection` + VTODO-filtered `calendar-query` fallback,
+  ETag diff, `calendar-multiget`), `PIMTaskSyncService`
+  (per-collection isolation, cursor-after-save, one full-resync retry),
+  `ICSParser.parseTasks` for VTODO, task-list discovery for Google
+  (`tasklists.list`) and DAV (`supported-calendar-component-set`
+  must advertise VTODO).
+- BrevMail: `AppSession`/`AppSessionFactory` construct and expose
+  `PIMTaskSyncService`.
+- BrevSettings: Tasks source kind in the connect form, picker, source
+  list, and Sync Now plumbing; Editing toggle stays unavailable for
+  tasks sources (no write pipeline yet).
+- apps: pass `pimTaskSyncService` into Settings on both platforms.
+- Docs: ADR-0072 #12 slice 1 contract entry, ADR-0006 network table
+  rows for CalDAV/Google task sync, PRIVACY.md task sync section,
+  CHANGELOG entry.
+
+### Verification
+
+- swift test --package-path packages/BrevCalendar — 192/192 green
+  (14 new PIMTaskSync tests)
+- swift build --package-path packages/BrevMail — clean
+- swift test --package-path packages/BrevSettings — logic green; 34
+  pre-existing pixel-snapshot failures on this host (all on the CI
+  macOS<26 skip list; unrelated surfaces)
+- scripts/lint.sh — clean (SwiftFormat + SwiftLint + adr-required)
+
+### Skipped
+
+- App-level xcodebuild verification — SettingsView signature change is
+  additive with a default; both call sites updated and compile-checked
+  via package builds. CI runs the full app builds.
+- Rendered verification — pending; #12 acceptance.
+
+### Next
+
+- #12 slices 2+: task write pipeline, task browsing UI, Create Task
+  from Message target.
+
 ## 2026-09-21 — Agent — Issue #10 slice 5 (per-recipient contact actions)
 
 ### Goal

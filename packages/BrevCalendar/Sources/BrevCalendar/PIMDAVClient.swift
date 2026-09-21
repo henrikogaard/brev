@@ -371,9 +371,9 @@ public struct PIMDAVClient: Sendable {
         var components = URLComponents()
         components.scheme = "https"
         components.host = domain
-        components.path = kind == .calendar
-            ? "/.well-known/caldav"
-            : "/.well-known/carddav"
+        components.path = kind == .contacts
+            ? "/.well-known/carddav"
+            : "/.well-known/caldav"
         return components.url
     }
 

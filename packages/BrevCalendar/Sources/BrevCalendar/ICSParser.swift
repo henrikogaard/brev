@@ -303,6 +303,175 @@ public enum ICSParser {
         parseRRule(raw)
     }
 
+    /// A parsed VTODO component (ADR-0072 task contract, #12).
+    ///
+    /// Carries the fields the shared task model owns; provider-specific
+    /// extras stay in the raw payload.
+    public struct ParsedTask: Sendable, Hashable {
+        public var uid: String?
+        public var summary: String?
+        public var description: String?
+        /// DUE value; all-day when VALUE=DATE.
+        public var due: Date?
+        /// DTSTART when present.
+        public var start: Date?
+        /// COMPLETED timestamp.
+        public var completed: Date?
+        /// Raw STATUS token (NEEDS-ACTION / IN-PROCESS / COMPLETED /
+        /// CANCELLED).
+        public var status: String?
+        /// COMPLETED percentage (PERCENT-COMPLETE), 0-100.
+        public var percentComplete: Int?
+        /// Ordering hint: X-APPLE-SORT-ORDER or vendor equivalent.
+        public var sortOrder: String?
+        /// RELATED-TO;RELTYPE=PARENT value — the parent task UID.
+        public var parentUID: String?
+        /// URL and ATTACH values.
+        public var links: [String]
+        public var lastModified: Date?
+        /// TRIGGER minutes-before values from VALARM blocks.
+        public var reminderMinutes: [Int]
+        /// RRULE for repeating tasks.
+        public var recurrenceRule: RecurrenceRule?
+        /// RECURRENCE-ID marker for exception components.
+        public var recurrenceID: Date?
+        /// Named time zone on DUE/DTSTART.
+        public var timeZoneIdentifier: String?
+
+        public init(
+            uid: String? = nil,
+            summary: String? = nil,
+            description: String? = nil,
+            due: Date? = nil,
+            start: Date? = nil,
+            completed: Date? = nil,
+            status: String? = nil,
+            percentComplete: Int? = nil,
+            sortOrder: String? = nil,
+            parentUID: String? = nil,
+            links: [String] = [],
+            lastModified: Date? = nil,
+            reminderMinutes: [Int] = [],
+            recurrenceRule: RecurrenceRule? = nil,
+            recurrenceID: Date? = nil,
+            timeZoneIdentifier: String? = nil
+        ) {
+            self.uid = uid
+            self.summary = summary
+            self.description = description
+            self.due = due
+            self.start = start
+            self.completed = completed
+            self.status = status
+            self.percentComplete = percentComplete
+            self.sortOrder = sortOrder
+            self.parentUID = parentUID
+            self.links = links
+            self.lastModified = lastModified
+            self.reminderMinutes = reminderMinutes
+            self.recurrenceRule = recurrenceRule
+            self.recurrenceID = recurrenceID
+            self.timeZoneIdentifier = timeZoneIdentifier
+        }
+    }
+
+    /// Parse every `VTODO` in the payload, in file order (#12).
+    public static func parseTasks(from raw: String) -> [ParsedTask] {
+        let unfolded = unfold(raw)
+        let lines = unfolded.components(separatedBy: .newlines).filter { !$0.isEmpty }
+        let tzOffsets = parseTimezoneOffsets(from: lines)
+
+        var blocks: [[Property]] = []
+        var inTask = false
+        var props: [Property] = []
+        for line in lines {
+            if line == "BEGIN:VTODO" {
+                inTask = true
+                props.removeAll()
+                continue
+            }
+            if line == "END:VTODO" {
+                if inTask, !props.isEmpty {
+                    blocks.append(props)
+                }
+                inTask = false
+                continue
+            }
+            if inTask, let parsed = parseProperty(line) {
+                props.append(parsed)
+            }
+        }
+        return blocks.map { makeTask(from: $0, tzOffsets: tzOffsets) }
+    }
+
+    /// Builds one `ParsedTask` from a single VTODO's property list.
+    private static func makeTask(
+        from props: [Property],
+        tzOffsets: [String: Int]
+    ) -> ParsedTask {
+        func first(_ name: String) -> Property? {
+            props.first { $0.name == name }
+        }
+        func date(_ name: String) -> Date? {
+            first(name).flatMap {
+                parseDate(
+                    $0.value,
+                    isAllDay: $0.params["VALUE"]?.uppercased() == "DATE",
+                    tzid: $0.params["TZID"],
+                    tzOffsets: tzOffsets
+                )
+            }
+        }
+
+        let due = first("DUE")
+        let parent = props.first {
+            $0.name == "RELATED-TO"
+                && $0.params["RELTYPE"]?.uppercased() == "PARENT"
+        }?.value
+        let links = props
+            .filter { $0.name == "URL" || $0.name == "ATTACH" }
+            .map(\.value)
+            .filter { !$0.isEmpty }
+
+        return ParsedTask(
+            uid: first("UID")?.value,
+            summary: first("SUMMARY")?.value.icsUnescaped,
+            description: first("DESCRIPTION")?.value.icsUnescaped,
+            due: due.flatMap {
+                parseDate(
+                    $0.value,
+                    isAllDay: $0.params["VALUE"]?.uppercased() == "DATE",
+                    tzid: $0.params["TZID"],
+                    tzOffsets: tzOffsets
+                )
+            },
+            start: date("DTSTART"),
+            completed: date("COMPLETED"),
+            status: first("STATUS")?.value.uppercased(),
+            percentComplete: first("PERCENT-COMPLETE")
+                .flatMap { Int($0.value) },
+            sortOrder: first("X-APPLE-SORT-ORDER")?.value
+                ?? first("X-SORT-ORDER")?.value,
+            parentUID: parent,
+            links: links,
+            lastModified: date("LAST-MODIFIED"),
+            reminderMinutes: props
+                .filter { $0.name == "TRIGGER" }
+                .compactMap { parseTriggerMinutes($0.value) },
+            recurrenceRule: first("RRULE").flatMap { parseRRule($0.value) },
+            recurrenceID: first("RECURRENCE-ID").flatMap {
+                parseDate(
+                    $0.value,
+                    isAllDay: $0.params["VALUE"]?.uppercased() == "DATE",
+                    tzid: $0.params["TZID"],
+                    tzOffsets: tzOffsets
+                )
+            },
+            timeZoneIdentifier: due?.params["TZID"]
+                ?? first("DTSTART")?.params["TZID"]
+        )
+    }
+
     // MARK: - Private helpers
 
     private struct Property {

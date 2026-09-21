@@ -80,6 +80,7 @@ public struct SettingsView: View {
         pimCollectionService: PIMCollectionService? = nil,
         pimEventSyncService: PIMEventSyncService? = nil,
         pimContactSyncService: PIMContactSyncService? = nil,
+        pimTaskSyncService: PIMTaskSyncService? = nil,
         onEnableGooglePIMFeature: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         onEnableGooglePIMWrite: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         isAddAccountAvailable: Bool = true,
@@ -124,6 +125,7 @@ public struct SettingsView: View {
                     collectionService: pimCollectionService,
                     eventSyncService: pimEventSyncService,
                     contactSyncService: pimContactSyncService,
+                    taskSyncService: pimTaskSyncService,
                     googleFeatureHandler: onEnableGooglePIMFeature,
                     googleWriteFeatureHandler: onEnableGooglePIMWrite
                 )

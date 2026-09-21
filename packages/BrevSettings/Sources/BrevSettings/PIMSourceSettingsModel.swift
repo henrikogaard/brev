@@ -54,6 +54,8 @@ public final class PIMSourceSettingsModel {
     public private(set) var contactCountsBySource: [PIMSource.ID: Int] = [:]
     /// Contact sync service; nil in sessions without PIM sync wiring.
     private let contactSyncService: PIMContactSyncService?
+    /// Syncs and caches tasks per tasks source (#12).
+    private let taskSyncService: PIMTaskSyncService?
     /// Session-provided Google enablement (fresh authorization + grant
     /// swap + source registration). Nil in sessions without Google wiring —
     /// the section then shows the feature as not available yet.
@@ -80,6 +82,7 @@ public final class PIMSourceSettingsModel {
         collectionService: PIMCollectionService? = nil,
         eventSyncService: PIMEventSyncService? = nil,
         contactSyncService: PIMContactSyncService? = nil,
+        taskSyncService: PIMTaskSyncService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
@@ -87,6 +90,7 @@ public final class PIMSourceSettingsModel {
         self.collectionService = collectionService
         self.eventSyncService = eventSyncService
         self.contactSyncService = contactSyncService
+        self.taskSyncService = taskSyncService
         self.googleFeatureHandler = googleFeatureHandler
         self.googleWriteFeatureHandler = googleWriteFeatureHandler
     }
@@ -119,6 +123,7 @@ public final class PIMSourceSettingsModel {
         switch kind {
         case .calendar: return eventSyncService != nil
         case .contacts: return contactSyncService != nil
+        case .tasks: return taskSyncService != nil
         }
     }
 
@@ -212,6 +217,11 @@ public final class PIMSourceSettingsModel {
             case .contacts:
                 guard let contactSyncService else { return }
                 firstFailure = try await contactSyncService.syncNow(
+                    sourceID: sourceID
+                ).failures.first?.message
+            case .tasks:
+                guard let taskSyncService else { return }
+                firstFailure = try await taskSyncService.syncNow(
                     sourceID: sourceID
                 ).failures.first?.message
             }
@@ -427,6 +437,10 @@ public final class PIMSourceSettingsModel {
         case .contacts:
             return source.provider == .google
                 || source.provider == .cardDAV
+        case .tasks:
+            // Task writes land in a later #12 slice — no editing
+            // toggle until the write pipeline exists.
+            return false
         }
     }
 

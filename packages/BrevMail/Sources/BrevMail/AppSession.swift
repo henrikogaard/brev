@@ -221,6 +221,10 @@ public final class AppSession {
     /// (ADR-0072). Nil in sessions built without PIM support.
     public let pimContactSyncService: PIMContactSyncService?
 
+    /// Owns task sync and the cached task set per tasks source
+    /// (ADR-0072 #12). Nil in sessions built without PIM support.
+    public let pimTaskSyncService: PIMTaskSyncService?
+
     /// Owns event create/update/delete against writable calendar sources
     /// (ADR-0072 #7). Nil in sessions built without PIM write support.
     public let pimEventWriteService: PIMEventWriteService?
@@ -286,6 +290,7 @@ public final class AppSession {
         pimCollectionService: PIMCollectionService? = nil,
         pimEventSyncService: PIMEventSyncService? = nil,
         pimContactSyncService: PIMContactSyncService? = nil,
+        pimTaskSyncService: PIMTaskSyncService? = nil,
         pimEventWriteService: PIMEventWriteService? = nil,
         pimContactWriteService: PIMContactWriteService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
@@ -299,6 +304,7 @@ public final class AppSession {
         self.pimCollectionService = pimCollectionService
         self.pimEventSyncService = pimEventSyncService
         self.pimContactSyncService = pimContactSyncService
+        self.pimTaskSyncService = pimTaskSyncService
         self.pimEventWriteService = pimEventWriteService
         self.pimContactWriteService = pimContactWriteService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator

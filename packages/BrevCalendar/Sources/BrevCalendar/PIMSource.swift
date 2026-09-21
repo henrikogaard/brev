@@ -16,6 +16,7 @@ import Foundation
 public enum PIMSourceKind: String, Sendable, Hashable, Codable, CaseIterable {
     case calendar
     case contacts
+    case tasks
 }
 
 /// The protocol family that owns a source. A Google account can own both a
@@ -153,11 +154,22 @@ public enum GooglePIMScopes {
     public static let contacts =
         "https://www.googleapis.com/auth/contacts"
 
+    /// Read-only Tasks scope for browsing synced tasklists (#12).
+    /// Requested only when the user enables Tasks on a Google account.
+    public static let tasksReadOnly =
+        "https://www.googleapis.com/auth/tasks.readonly"
+
+    /// Read/write Tasks scope for task authoring (#12). Requested only
+    /// when the user enables editing on a Google tasks source.
+    public static let tasks =
+        "https://www.googleapis.com/auth/tasks"
+
     /// The scopes a source kind needs for initial read-only enablement.
     public static func scopes(for kind: PIMSourceKind) -> Set<String> {
         switch kind {
         case .calendar: return [calendarReadOnly]
         case .contacts: return [contactsReadOnly]
+        case .tasks: return [tasksReadOnly]
         }
     }
 
@@ -173,6 +185,7 @@ public enum GooglePIMScopes {
             switch kind {
             case .calendar: scopes.insert(calendarEvents)
             case .contacts: scopes.insert(contacts)
+            case .tasks: scopes.insert(tasks)
             }
         }
         return scopes
