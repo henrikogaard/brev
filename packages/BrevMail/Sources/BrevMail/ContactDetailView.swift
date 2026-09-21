@@ -243,7 +243,7 @@ public struct ContactDetailView: View {
                 Text(verbatim: " · ")
                 Text(String(
                     localized:
-                        "Updated \(providerUpdatedAt.formatted(.dateTime.month().day().hour().minute()))",
+                    "Updated \(providerUpdatedAt.formatted(.dateTime.month().day().hour().minute()))",
                     bundle: .module
                 ))
             }

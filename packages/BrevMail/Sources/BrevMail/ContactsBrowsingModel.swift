@@ -242,9 +242,9 @@ public final class ContactsBrowsingModel {
         for source in sources {
             // A store read failure must not blank the source — its rows
             // render without group metadata instead.
-            map[source.id] =
-                (try? await collectionService.collections(for: source.id))
-                ?? []
+            await map[source.id] =
+                (try? collectionService.collections(for: source.id))
+                    ?? []
         }
         collectionsBySource = map
     }
@@ -258,8 +258,8 @@ public final class ContactsBrowsingModel {
         var failedSources: [String] = []
         for source in sources {
             do {
-                all.append(
-                    contentsOf: try await contactSyncService.contacts(
+                try await all.append(
+                    contentsOf: contactSyncService.contacts(
                         for: source.id
                     )
                 )
@@ -277,7 +277,7 @@ public final class ContactsBrowsingModel {
         } else {
             lastError = String(
                 localized:
-                    "Couldn't read the cache for \(failedSources.formatted(.list(type: .and))).",
+                "Couldn't read the cache for \(failedSources.formatted(.list(type: .and))).",
                 bundle: .module
             )
         }

@@ -315,8 +315,7 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var sidebarFooter: some View {
         if onOpenSettings != nil || onOpenCalendar != nil
-            || onOpenContacts != nil
-        {
+            || onOpenContacts != nil {
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                 if let onOpenCalendar {
                     footerButton(

@@ -98,7 +98,7 @@ public struct ContactsRootView: View {
                 ),
                 message: String(
                     localized:
-                        "Connect a contacts source in Settings → Calendar & Contacts to see people here.",
+                    "Connect a contacts source in Settings → Calendar & Contacts to see people here.",
                     bundle: .module
                 )
             )
@@ -112,7 +112,7 @@ public struct ContactsRootView: View {
                 message: model.searchText.isEmpty
                     ? String(
                         localized:
-                            "Synced contacts will appear here. Use Sync Now to refresh the cache.",
+                        "Synced contacts will appear here. Use Sync Now to refresh the cache.",
                         bundle: .module
                     )
                     : String(
@@ -179,7 +179,7 @@ public struct ContactsRootView: View {
                 if let lastSyncAt = model.lastSyncAt {
                     Text(String(
                         localized:
-                            "Last updated \(lastSyncAt.formatted(.relative(presentation: .named)))",
+                        "Last updated \(lastSyncAt.formatted(.relative(presentation: .named)))",
                         bundle: .module
                     ))
                     .brevFont(.caption)
