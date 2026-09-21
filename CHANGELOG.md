@@ -58,6 +58,14 @@ All notable changes to Brev are documented here.
   failed source keeps its cached events with a staleness banner, and
   browsing never contacts a provider. Day/week/month grid views land in
   a later slice.
+- Contacts browsing (ADR-0072): a Contacts surface on macOS (Window
+  menu) and iOS (sidebar footer) shows synced contacts in an
+  alphabetically sectioned list with monogram avatars, a group filter,
+  and a read-only detail covering labeled emails (mailto: links),
+  phones, addresses, notes, and group memberships. Search runs against
+  the local cache only; hidden address books and groups stay hidden, a
+  failed source keeps its cached contacts with a staleness banner, and
+  browsing never contacts a provider. Contact editing lands with #9.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
