@@ -1,5 +1,40 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 2 (participant contact actions)
+
+### Goal
+
+Second slice of #10 (ADR-0072): shared contact card + Add to Contacts
+from the sender panel, and compose autocomplete over the shared PIM
+contact cache.
+
+### Changes
+
+- BrevCalendar: PIMContactSyncService.contact(matchingEmail:for:) —
+  cache-only exact-email lookup.
+- BrevBackend: ContactLookupResult.sourceLabel (optional provenance).
+- BrevMail: PIMContactLookupAdapter (shared cache → ContactLookupProviding,
+  legacy CardDAV adapter kept as fallback); MailSenderContactActions
+  (resolve/open/add/canEdit); SenderContactDetailSheet; SenderContextPanel
+  contact actions; ContactEditorView draft init; AppSession injects the
+  PIM adapter on every backend; both app entry points wire the model.
+
+### Verification
+
+- swift test --filter PIMContactLookupAdapter|MailSenderContactActions — 9/9 green
+- swift build --package-path packages/BrevMail — clean
+- scripts/lint.sh — clean (ADR-0072 updated)
+- xcodebuild BrevMacOS + BrevIOS — both build
+
+### Skipped
+
+- Rendered interaction verification stays with maintainer QA.
+
+### Next
+
+- Later #10 slices: RSVP reconciliation, per-recipient actions,
+  deep links.
+
 ## 2026-09-21 — Agent — Issue #10 slice 1 (create event from message)
 
 ### Goal

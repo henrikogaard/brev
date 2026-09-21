@@ -102,6 +102,16 @@ struct BrevApp: App {
                             writeService: session.pimEventWriteService,
                             coordinator: session.pimSourceCoordinator,
                             collectionService: session.pimCollectionService
+                        ),
+                        senderContactActions: MailSenderContactActions(
+                            coordinator: session.pimSourceCoordinator,
+                            contactSyncService: session.pimContactSyncService,
+                            collectionService: session.pimCollectionService,
+                            editing: ContactsEditingModel(
+                                writeService: session.pimContactWriteService,
+                                coordinator: session.pimSourceCoordinator,
+                                collectionService: session.pimCollectionService
+                            )
                         )
                     )
                     .frame(minWidth: 960, minHeight: 600)

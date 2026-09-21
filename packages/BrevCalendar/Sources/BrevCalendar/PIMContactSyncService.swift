@@ -166,6 +166,25 @@ public actor PIMContactSyncService {
             .map { $0 }
     }
 
+    /// The cached contact that carries this exact email address on a
+    /// source, or nil. Case-insensitive, trimmed; reads the local cache
+    /// only — never contacts the provider (#10).
+    public func contact(
+        matchingEmail email: String,
+        for sourceID: PIMSource.ID
+    ) async throws -> PIMContact? {
+        let needle = email.trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !needle.isEmpty else { return nil }
+        return try await contacts(for: sourceID)
+            .first { contact in
+                contact.emails.contains {
+                    $0.value.trimmingCharacters(in: .whitespacesAndNewlines)
+                        .lowercased() == needle
+                }
+            }
+    }
+
     // MARK: - Sync
 
     /// Syncs a contacts source: the account-wide connections feed for

@@ -830,6 +830,31 @@ grant.
   mail, contact-aware autocomplete labels, and event/contact deep
   links.
 
+### #10 slice 2 — participant contact actions and shared autocomplete (2026-09-21, BrevBackend/BrevCalendar/BrevMail/apps)
+
+- `PIMContactSyncService.contact(matchingEmail:for:)` is a
+  cache-only exact-email lookup used by mail surfaces; it never
+  contacts a provider.
+- `PIMContactLookupAdapter` bridges the shared contact cache to
+  `ContactLookupProviding`: compose autocomplete now queries every
+  synced contacts source (Google and CardDAV alike), each result
+  carries its source's display name via the new optional
+  `ContactLookupResult.sourceLabel`, and the legacy CardDAV
+  REPORT lookup stays as the fallback for unsynced sessions.
+- `MailSenderContactActions` resolves a participant's email
+  against the cache and exposes Open Contact (shared
+  `ContactDetailView` with provenance, group names, and
+  Edit/Delete gated on canEdit) or Add to Contacts (shared
+  `ContactEditorView` on a pre-filled draft) on the macOS sender
+  panel. Resolution scans sources in order and the first exact match
+  wins; the card shows the match's own source so no action silently
+  switches providers.
+- `ContactEditorView` gains a draft-taking initializer mirroring
+  the calendar editor's.
+- Deferred to later slices: RSVP reconciliation, per-recipient
+  actions, event/contact deep links, and rendered-verification
+  coverage.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

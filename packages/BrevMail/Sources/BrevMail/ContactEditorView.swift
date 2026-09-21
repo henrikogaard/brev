@@ -63,6 +63,23 @@ public struct ContactEditorView: View {
         _draft = State(initialValue: ContactDraft(contact: contact))
     }
 
+    /// Opens the editor on a caller-built draft — for example an
+    /// Add to Contacts pre-fill seeded from a message participant
+    /// (#10). The draft must be a create draft (no provider identity);
+    /// editing an existing contact still goes through the contact
+    /// initializer.
+    public init(
+        editing: ContactsEditingModel,
+        draft: ContactDraft,
+        source: PIMSource?,
+        onSaved: @escaping () async -> Void = {}
+    ) {
+        self.editing = editing
+        self.source = source
+        self.onSaved = onSaved
+        _draft = State(initialValue: draft)
+    }
+
     public var body: some View {
         NavigationStack {
             ScrollView {

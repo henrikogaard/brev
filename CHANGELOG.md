@@ -110,6 +110,11 @@ All notable changes to Brev are documented here.
   timestamp, and a Brev deep link pre-filled — with the writable
   calendar picker when the session has an editable calendar source.
   Sessions without one keep the previous Apple Calendar sheet.
+- Contact actions from mail (ADR-0072, #10): the sender panel can open
+  the shared contact card for a known sender — with Edit and Delete on
+  writable sources — or add an unknown sender through the shared
+  contact editor. Compose autocomplete now searches every synced
+  contacts source and labels each suggestion with its source.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

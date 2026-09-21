@@ -1109,13 +1109,31 @@ public final class AppSession {
     }
 
     private func injectCardDAVContactSync(_ backend: any MailBackend) {
-        guard let syncable = backend as? (any CardDAVContactSyncSupporting) else { return }
-        let discovery = CalDAVDiscovery.discover(for: syncable.emailAddressForCardDAV)
-        guard let carddavConfig = discovery.carddav else { return }
-        guard let token = syncable.bearerTokenForCardDAV else { return }
-        let coordinator = ContactsSyncCoordinator()
-        syncable.setContactLookupProvider(CardDAVContactLookupAdapter(coordinator: coordinator))
-        cardDAVContactSyncStarter(coordinator, carddavConfig, token)
+        // #10: the shared PIM contact cache is the primary autocomplete
+        // source for every backend; the legacy CardDAV REPORT lookup
+        // stays as the fallback for sessions whose PIM sources are not
+        // synced yet.
+        var fallback: (any ContactLookupProviding)?
+        if let syncable = backend as? (any CardDAVContactSyncSupporting),
+           let carddavConfig = CalDAVDiscovery
+           .discover(for: syncable.emailAddressForCardDAV).carddav,
+           let token = syncable.bearerTokenForCardDAV {
+            let coordinator = ContactsSyncCoordinator()
+            fallback = CardDAVContactLookupAdapter(coordinator: coordinator)
+            cardDAVContactSyncStarter(coordinator, carddavConfig, token)
+        }
+        if let pimCoordinator = pimSourceCoordinator,
+           let pimContacts = pimContactSyncService {
+            backend.setContactLookupProvider(
+                PIMContactLookupAdapter(
+                    coordinator: pimCoordinator,
+                    syncService: pimContacts,
+                    fallback: fallback
+                )
+            )
+        } else if let fallback {
+            backend.setContactLookupProvider(fallback)
+        }
     }
 
     private func storedAccountIDs() async -> Set<BrevAccount.ID> {

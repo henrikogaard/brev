@@ -19,8 +19,11 @@ struct RecipientAutocompleteSuggestion: Identifiable, Equatable {
     let subtitle: String
     let email: String
     let source: RecipientAutocompleteSource
+    /// Provider/source display name when the lookup carried one
+    /// (#10); falls back to the generic source label.
+    let resultSourceLabel: String?
 
-    var sourceLabel: String { source.label }
+    var sourceLabel: String { resultSourceLabel ?? source.label }
 }
 
 enum RecipientAutocompleteSource: Equatable {
@@ -91,7 +94,8 @@ enum ComposeRecipientAutocomplete {
                     title: name,
                     subtitle: email,
                     email: email,
-                    source: candidate.source
+                    source: candidate.source,
+                    resultSourceLabel: result.sourceLabel
                 )
             }
             return RecipientAutocompleteSuggestion(
@@ -99,7 +103,8 @@ enum ComposeRecipientAutocomplete {
                 title: email,
                 subtitle: "Contact",
                 email: email,
-                source: candidate.source
+                source: candidate.source,
+                resultSourceLabel: result.sourceLabel
             )
         }
         return Array(mapped.prefix(max(0, limit)))

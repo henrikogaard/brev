@@ -433,6 +433,10 @@ public struct BrevMailRootView: View {
     /// keeps the local EventKit sheet.
     private let calendarEditing: CalendarEditingModel?
 
+    /// Shared contact-cache actions for the sender panel (#10); nil
+    /// hides the contact affordances.
+    private let senderContactActions: MailSenderContactActions?
+
     private let unreadCountReconciler = UnreadCountReconciler()
 
     /// Creates a mailbox workspace for a single account backend.
@@ -462,7 +466,8 @@ public struct BrevMailRootView: View {
         backgroundMail: BackgroundMailCoordinator? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
-        calendarEditing: CalendarEditingModel? = nil
+        calendarEditing: CalendarEditingModel? = nil,
+        senderContactActions: MailSenderContactActions? = nil
     ) {
         self.init(
             backends: [backend],
@@ -487,7 +492,8 @@ public struct BrevMailRootView: View {
             backgroundMail: backgroundMail,
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
-            calendarEditing: calendarEditing
+            calendarEditing: calendarEditing,
+            senderContactActions: senderContactActions
         )
     }
 
@@ -519,7 +525,8 @@ public struct BrevMailRootView: View {
         backgroundMail: BackgroundMailCoordinator? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
-        calendarEditing: CalendarEditingModel? = nil
+        calendarEditing: CalendarEditingModel? = nil,
+        senderContactActions: MailSenderContactActions? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -559,6 +566,7 @@ public struct BrevMailRootView: View {
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
         self.calendarEditing = calendarEditing
+        self.senderContactActions = senderContactActions
     }
 
     public var body: some View {
@@ -1033,7 +1041,8 @@ public struct BrevMailRootView: View {
                 composeActions: composePresentationActions,
                 onOpenMessage: openMailContextMessage,
                 onShowAllFromSender: showAllMailFromSender,
-                onOpenSettings: onOpenSettings
+                onOpenSettings: onOpenSettings,
+                contactActions: senderContactActions
             ))
         #else
         mailSplitView

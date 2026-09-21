@@ -42,6 +42,8 @@ struct MailContextColumn: View {
     var onOpenMessage: (SenderContextRecentItem) -> Void = { _ in }
     var onShowAllFromSender: (String) -> Void = { _ in }
     var onOpenSettings: (() -> Void)?
+    /// Shared contact-cache actions for the sender panel (#10).
+    var contactActions: MailSenderContactActions?
 
     @State private var senderPanelState: SenderContextPanelState = .idle
     @State private var senderLoadGeneration = 0
@@ -77,7 +79,8 @@ struct MailContextColumn: View {
                         sourceID: sourceID,
                         composeActions: composeActions,
                         onOpenMessage: onOpenMessage,
-                        onShowAllFromSender: onShowAllFromSender
+                        onShowAllFromSender: onShowAllFromSender,
+                        contactActions: contactActions
                     )
                     .frame(height: effectiveSenderPanelHeight)
 
@@ -423,6 +426,7 @@ struct MailContextInspectorModifier: ViewModifier {
     let onOpenMessage: (SenderContextRecentItem) -> Void
     let onShowAllFromSender: (String) -> Void
     var onOpenSettings: (() -> Void)?
+    var contactActions: MailSenderContactActions?
 
     // Scene-scoped so each mail window keeps its own AI Sidebar width.
     @SceneStorage("mail.context.columnWidth")
@@ -493,7 +497,8 @@ struct MailContextInspectorModifier: ViewModifier {
                             composeActions: composeActions,
                             onOpenMessage: onOpenMessage,
                             onShowAllFromSender: onShowAllFromSender,
-                            onOpenSettings: onOpenSettings
+                            onOpenSettings: onOpenSettings,
+                            contactActions: contactActions
                         )
                         .frame(width: columnWidth)
                     }
