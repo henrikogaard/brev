@@ -439,6 +439,22 @@ public struct GmailAccountConnector: Sendable {
         return updated
     }
 
+    /// Returns a current Google access token for the account's shared
+    /// grant, refreshing it when expired.
+    ///
+    /// PIM feature adapters (calendar/contacts) call through this so they
+    /// ride the mail credential without owning it — removing a PIM source
+    /// can never delete the token mail still uses (ADR-0072).
+    /// - Parameter accountID: The Gmail API account whose grant covers
+    ///   the PIM feature scopes.
+    public func accessToken(for accountID: String) async throws -> String {
+        try await GmailOAuthAccessTokenProvider(
+            accountID: accountID,
+            tokenStore: tokenStore,
+            refresher: refresher
+        ).accessToken()
+    }
+
     private func connect(
         accountID: String,
         emailAddress: String,

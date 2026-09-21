@@ -391,6 +391,16 @@ reference, never the secret. Setup traffic happens only during explicit
 connect or reconnect — there is no background sync until you enable it
 for the source.
 
+When you connect a source or choose "Refresh Collections" on it, Brev
+lists the calendars or address books the source exposes: for DAV
+sources, the credential plus `PROPFIND` requests for the principal
+home-set and a collection listing (names, colors, permissions, sync
+hints); for Google sources you enabled on a mail account, the account's
+OAuth token plus read-only `calendarList` or `contactGroups`
+requests to Google. The results are cached on-device so the list stays
+readable offline; hiding a collection is a local choice and never
+contacts the provider.
+
 **How to disable:** Don't connect a calendar or contacts source.
 Removing a source deletes its credential, sync cursors and unsent
 drafts, and optionally its cached content; it never deletes data on the

@@ -77,6 +77,7 @@ public struct SettingsView: View {
         currentFolderSourceID: MailSourceID? = nil,
         backendProvider: @MainActor @escaping (BrevAccount.ID) -> (any MailBackend)? = { _ in nil },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
+        pimCollectionService: PIMCollectionService? = nil,
         onEnableGooglePIMFeature: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         isAddAccountAvailable: Bool = true,
         onAddAccount: @escaping () async -> Void = {},
@@ -117,6 +118,7 @@ public struct SettingsView: View {
             initialValue: pimSourceCoordinator.map {
                 PIMSourceSettingsModel(
                     coordinator: $0,
+                    collectionService: pimCollectionService,
                     googleFeatureHandler: onEnableGooglePIMFeature
                 )
             }

@@ -79,6 +79,25 @@ struct PIMSourceSettingsModelTests {
         }
     }
 
+    private actor InMemoryCollectionStore: PIMCollectionStore {
+        var records: [PIMSource.ID: [PIMCollection]] = [:]
+
+        func collections(for sourceID: PIMSource.ID) async throws -> [PIMCollection] {
+            records[sourceID] ?? []
+        }
+
+        func saveCollections(
+            _ collections: [PIMCollection],
+            for sourceID: PIMSource.ID
+        ) async throws {
+            records[sourceID] = collections
+        }
+
+        func deleteCollections(for sourceID: PIMSource.ID) async throws {
+            records[sourceID] = nil
+        }
+    }
+
     private struct StubTransport: PIMDAVTransport {
         let handler: @Sendable (URLRequest) throws -> (Data, HTTPURLResponse)
 
@@ -128,6 +147,8 @@ struct PIMSourceSettingsModelTests {
         credentials: InMemoryCredentialStore = InMemoryCredentialStore(),
         localData: InMemoryLocalDataStore = InMemoryLocalDataStore(),
         transport: StubTransport? = nil,
+        collectionStore: InMemoryCollectionStore? = nil,
+        collectionTransport: StubTransport? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) -> PIMSourceSettingsModel {
         let client = PIMDAVClient(
@@ -135,13 +156,31 @@ struct PIMSourceSettingsModelTests {
                 Self.response(207, url: request.url!, body: Self.multistatus)
             }
         )
+        let coordinator = PIMSourceCoordinator(
+            store: store,
+            credentials: credentials,
+            localData: localData,
+            davClient: client
+        )
+        // A collection service is wired when the test provides either a
+        // store to inspect or a transport to script; otherwise the model
+        // exercises the no-collections path.
+        let collectionService: PIMCollectionService? =
+            (collectionStore != nil || collectionTransport != nil)
+                ? PIMCollectionService(
+                    coordinator: coordinator,
+                    store: collectionStore ?? InMemoryCollectionStore(),
+                    credentials: credentials,
+                    davDiscovery: PIMDAVCollectionDiscovery(
+                        transport: collectionTransport ?? StubTransport { request in
+                            Self.response(207, url: request.url!, body: "")
+                        }
+                    )
+                )
+                : nil
         return PIMSourceSettingsModel(
-            coordinator: PIMSourceCoordinator(
-                store: store,
-                credentials: credentials,
-                localData: localData,
-                davClient: client
-            ),
+            coordinator: coordinator,
+            collectionService: collectionService,
             googleFeatureHandler: googleFeatureHandler
         )
     }
@@ -368,5 +407,176 @@ struct PIMSourceSettingsModelTests {
         #expect(!enabled)
         #expect(model.lastError == "Authorization was declined.")
         #expect(model.pendingGoogleAccountID == nil)
+    }
+
+    // MARK: - Collections
+
+    private static let homeSetResponse = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+      <d:response>
+        <d:href>/principals/user/henrik/</d:href>
+        <d:propstat>
+          <d:prop>
+            <cal:calendar-home-set><d:href>/calendars/henrik/</d:href></cal:calendar-home-set>
+          </d:prop>
+          <d:status>HTTP/1.1 200 OK</d:status>
+        </d:propstat>
+      </d:response>
+    </d:multistatus>
+    """
+
+    private static let collectionListingResponse = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <d:multistatus xmlns:d="DAV:" xmlns:cal="urn:ietf:params:xml:ns:caldav">
+      <d:response>
+        <d:href>/calendars/henrik/personal/</d:href>
+        <d:propstat>
+          <d:prop>
+            <d:resourcetype><d:collection/><cal:calendar/></d:resourcetype>
+            <d:displayname>Personal</d:displayname>
+          </d:prop>
+          <d:status>HTTP/1.1 200 OK</d:status>
+        </d:propstat>
+      </d:response>
+    </d:multistatus>
+    """
+
+    /// Two-step scripted transport: home-set answer, then the Depth:1
+    /// listing.
+    private static func collectionDiscoveryTransport() -> StubTransport {
+        var responses = [Self.homeSetResponse, Self.collectionListingResponse]
+        return StubTransport { request in
+            let body = responses.isEmpty ? "" : responses.removeFirst()
+            return Self.response(207, url: request.url!, body: body)
+        }
+    }
+
+    @Test("load lists cached collections under their source")
+    @MainActor
+    func loadListsCollections() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "a"))
+        let collectionStore = InMemoryCollectionStore()
+        try await collectionStore.saveCollections(
+            [
+                PIMCollection(
+                    id: "a|/cal/a/",
+                    sourceID: "a",
+                    kind: .calendar,
+                    displayName: "Personal",
+                    providerKey: "/cal/a/"
+                )
+            ],
+            for: "a"
+        )
+        let model = makeModel(
+            store: store,
+            collectionStore: collectionStore
+        )
+
+        await model.load()
+
+        #expect(model.canManageCollections)
+        #expect(model.collectionsBySource["a"]?.count == 1)
+        #expect(
+            model.collectionsBySource["a"]?.first?.displayName == "Personal"
+        )
+    }
+
+    @Test("connectDAV discovers collections right after connecting")
+    @MainActor
+    func connectDiscoversCollections() async {
+        let collectionStore = InMemoryCollectionStore()
+        let model = makeModel(
+            collectionStore: collectionStore,
+            collectionTransport: Self.collectionDiscoveryTransport()
+        )
+        var form = PIMDAVConnectForm()
+        form.endpointMode = .manual
+        form.address = "https://dav.example.com/"
+        form.credentialMode = .bearerToken
+        form.bearerToken = "token"
+
+        let connected = await model.connectDAV(form)
+
+        #expect(connected)
+        let sourceID = model.sources.first?.id
+        #expect(sourceID != nil)
+        #expect(model.collectionsBySource[sourceID ?? ""]?.count == 1)
+        #expect(
+            model.collectionsBySource[sourceID ?? ""]?.first?.displayName
+                == "Personal"
+        )
+    }
+
+    @Test("a failed collection refresh keeps the cached list and surfaces an error")
+    @MainActor
+    func refreshFailureKeepsCollections() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "a"))
+        let collectionStore = InMemoryCollectionStore()
+        try await collectionStore.saveCollections(
+            [
+                PIMCollection(
+                    id: "a|/cal/a/",
+                    sourceID: "a",
+                    kind: .calendar,
+                    displayName: "Personal",
+                    providerKey: "/cal/a/"
+                )
+            ],
+            for: "a"
+        )
+        let model = makeModel(
+            store: store,
+            collectionStore: collectionStore,
+            collectionTransport: StubTransport { request in
+                Self.response(401, url: request.url!)
+            }
+        )
+        await model.load()
+
+        await model.refreshCollections(sourceID: "a")
+
+        #expect(model.lastError != nil)
+        #expect(model.collectionsBySource["a"]?.count == 1)
+    }
+
+    @Test("toggling collection visibility persists through the service")
+    @MainActor
+    func toggleCollectionVisibility() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "a"))
+        let collectionStore = InMemoryCollectionStore()
+        try await collectionStore.saveCollections(
+            [
+                PIMCollection(
+                    id: "a|/cal/a/",
+                    sourceID: "a",
+                    kind: .calendar,
+                    displayName: "Personal",
+                    providerKey: "/cal/a/"
+                )
+            ],
+            for: "a"
+        )
+        let model = makeModel(
+            store: store,
+            collectionStore: collectionStore
+        )
+        await model.load()
+
+        await model.setCollectionVisible(
+            false,
+            collectionID: "a|/cal/a/",
+            sourceID: "a"
+        )
+
+        #expect(
+            model.collectionsBySource["a"]?.first?.isVisible == false
+        )
+        let stored = await collectionStore.records["a"]
+        #expect(stored?.first?.isVisible == false)
     }
 }

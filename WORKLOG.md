@@ -1,5 +1,60 @@
 # Worklog
 
+## 2026-09-21 — Codex — Issue #6 collection discovery (slice 1)
+
+### Goal
+
+First slice of #6 (ADR-0072): discover and persist the calendars /
+address books a connected PIM source exposes, list them in Settings with
+per-collection visibility, and keep the cached list intact on refresh
+failure. Item sync and browsing views land in later slices.
+
+### Changes
+
+- BrevCalendar: PIMCollection + PIMDiscoveredCollection models,
+  PIMCollectionStore/JSONPIMCollectionStore (per-source file inside the
+  source cache directory so the removal contract applies unchanged),
+  PIMDAVCollectionDiscovery (principal → home-set → Depth:1 listing,
+  resourcetype filtering, privilege-derived read-only, CTag/ETag/sync
+  hints, credential-safe redirects), GooglePIMCollectionDiscovery
+  (calendarList + contactGroups with pagination, injected access token),
+  PIMCollectionService (serial refresh preserving visibility, failure
+  marks source failed without blanking the cache).
+- BrevGmail: GmailAccountConnector.accessToken(for:) exposes the shared
+  grant to PIM adapters.
+- BrevMail: AppSession.pimCollectionService + factory wiring via
+  Configuration.googlePIMAccessTokenProvider.
+- BrevSettings: source rows list collections with visibility toggles and
+  a Refresh Collections action; connect/Google enablement run one
+  best-effort discovery inside the same user gesture.
+- Apps: macOS + iOS wire the token provider and pass the service to
+  SettingsView.
+- Docs: ADR-0072 contract log slice entry; ADR-0006 network table rows
+  for DAV collection PROPFIND and Google collection listing; PRIVACY.md
+  collection-discovery paragraph; CHANGELOG Unreleased.
+
+### Verification
+
+- swift test (BrevCalendar): 111 tests pass, incl. new
+  PIMDAVCollectionDiscovery (7), GooglePIMCollectionDiscovery (4),
+  PIMCollectionService (6), JSONPIMCollectionStore (4) suites.
+- swift test --filter PIMSourceSettingsModel (BrevSettings): 16 pass,
+  incl. 4 new collection tests.
+- swift build clean for BrevCalendar, BrevSettings, BrevMail, BrevGmail.
+
+### Skipped
+
+- Full tuist app builds and pixel snapshots — left to CI; 34 pre-existing
+  BrevSettings snapshot mismatches on this host are environmental
+  (macOS 27 renderer vs macOS-26 baselines).
+- Live-provider smoke against real Google/CalDAV accounts — maintainer
+  acceptance gate for #6.
+
+### Next
+
+- #6 slice 2: event sync engine + local cache (sync-collection /
+  syncToken incremental paths per ADR-0072 sync rules).
+
 ## 2026-09-20 — Codex — Issue #5 Google reauthorization + removal UX
 
 ### Goal

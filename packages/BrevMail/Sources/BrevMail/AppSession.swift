@@ -209,6 +209,10 @@ public final class AppSession {
     /// built without PIM support (tests, minimal fixtures).
     public let pimSourceCoordinator: PIMSourceCoordinator?
 
+    /// Owns collection discovery and the cached collection list per PIM
+    /// source (ADR-0072). Nil in sessions built without PIM support.
+    public let pimCollectionService: PIMCollectionService?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -262,6 +266,7 @@ public final class AppSession {
         signOutCoordinator: @escaping SignOutCoordinator = { _ in },
         accountDataCleanup: @escaping AccountDataCleanup = { _ in },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
+        pimCollectionService: PIMCollectionService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -270,6 +275,7 @@ public final class AppSession {
         pendingMutationCleanup: @escaping PendingMutationCleanup = { _ in }
     ) {
         self.pimSourceCoordinator = pimSourceCoordinator
+        self.pimCollectionService = pimCollectionService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)

@@ -69,6 +69,11 @@ public enum AppSessionFactory {
         /// unavailable and the settings row stays inert.
         public let googlePIMEnablementCoordinator:
             AppSession.GooglePIMEnablementCoordinator?
+        /// Resolves a Google access token for a linked account so PIM
+        /// collection discovery can ride the shared grant (ADR-0072).
+        /// Absent, Google collection refresh reports unavailable.
+        public let googlePIMAccessTokenProvider:
+            (@Sendable (BrevAccount.ID) async throws -> String)?
         /// Creates the durable local-mail backend (ADR-0077). Defaults to a
         /// Maildir store under `applicationSupportURL/LocalFolders`; tests can
         /// inject a temporary root.
@@ -89,6 +94,8 @@ public enum AppSessionFactory {
         ///   - googleOAuthRemovalCoordinator: Removes stored Gmail API account state.
         ///   - googlePIMEnablementCoordinator: Authorizes and installs a PIM
         ///     feature grant on a Google account (ADR-0072).
+        ///   - googlePIMAccessTokenProvider: Resolves the account's Google
+        ///     access token for PIM collection discovery.
         public init(
             applicationSupportURL: URL,
             oauthPresentationAnchor: @escaping @MainActor () throws -> ASPresentationAnchor,
@@ -109,6 +116,8 @@ public enum AppSessionFactory {
             (@MainActor (BrevAccount.ID) async throws -> Void)? = nil,
             googlePIMEnablementCoordinator:
             AppSession.GooglePIMEnablementCoordinator? = nil,
+            googlePIMAccessTokenProvider:
+            (@Sendable (BrevAccount.ID) async throws -> String)? = nil,
             localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL
@@ -121,6 +130,7 @@ public enum AppSessionFactory {
             self.googleOAuthRestoreCoordinator = googleOAuthRestoreCoordinator
             self.googleOAuthRemovalCoordinator = googleOAuthRemovalCoordinator
             self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
+            self.googlePIMAccessTokenProvider = googlePIMAccessTokenProvider
             self.localBackendFactory = localBackendFactory
         }
     }
@@ -132,14 +142,24 @@ public enum AppSessionFactory {
         // Application Support/Brev, credentials only as Keychain references.
         let pimBrevDirectory = configuration.applicationSupportURL
             .appendingPathComponent("Brev", isDirectory: true)
+        let pimLocalDataStore = FilePIMSourceLocalDataStore(
+            rootURL: pimBrevDirectory.appendingPathComponent("PIMSources", isDirectory: true)
+        )
         let pimSourceCoordinator = PIMSourceCoordinator(
             store: JSONPIMSourceStore(
                 fileURL: pimBrevDirectory.appendingPathComponent("pim-sources.json")
             ),
             credentials: CalDAVKeychainCredentialStore(),
-            localData: FilePIMSourceLocalDataStore(
-                rootURL: pimBrevDirectory.appendingPathComponent("PIMSources", isDirectory: true)
-            )
+            localData: pimLocalDataStore
+        )
+        // ADR-0072 #6: collection discovery rides the same credential
+        // paths — DAV sources via their Keychain reference, Google sources
+        // via the linked account's shared grant.
+        let pimCollectionService = PIMCollectionService(
+            coordinator: pimSourceCoordinator,
+            store: JSONPIMCollectionStore(localDataStore: pimLocalDataStore),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
         #if DEBUG
@@ -154,6 +174,7 @@ public enum AppSessionFactory {
                     AppSession.LoginResult(backend: mock, account: mock.account)
                 },
                 pimSourceCoordinator: pimSourceCoordinator,
+                pimCollectionService: pimCollectionService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -272,6 +293,7 @@ public enum AppSessionFactory {
                 await connector.removeAccount(account.id)
             },
             pimSourceCoordinator: pimSourceCoordinator,
+            pimCollectionService: pimCollectionService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )
