@@ -1,0 +1,349 @@
+/*
+ Brev - Mail Client for macOS and iOS
+ Copyright (c) 2026 Brev contributors
+
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the conditions in the LICENSE file.
+ */
+
+import BrevCalendar
+import BrevDesign
+import BrevThemes
+import SwiftUI
+
+/// Read-only detail pane for one cached calendar event (ADR-0072).
+///
+/// Shows every field the shared model carries: title, status, time range
+/// with the provider's time zone, recurrence, location, conference join
+/// link, organizer, attendees with RSVP state, reminders, and the
+/// provider's description. Source and collection provenance close the
+/// pane so ownership stays visible. Editing arrives with issue #7.
+public struct CalendarEventDetailView: View {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.calendar) private var calendar
+    @Environment(\.openURL) private var openURL
+
+    let event: PIMEvent
+    let collection: PIMCollection?
+    let source: PIMSource?
+
+    public init(
+        event: PIMEvent,
+        collection: PIMCollection? = nil,
+        source: PIMSource? = nil
+    ) {
+        self.event = event
+        self.collection = collection
+        self.source = source
+    }
+
+    public var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                header
+                if let conferenceURL = event.conferenceURL,
+                   let url = URL(string: conferenceURL) {
+                    joinButton(url)
+                }
+                if !event.attendees.isEmpty || event.organizer != nil {
+                    peopleSection
+                }
+                if !event.reminders.isEmpty {
+                    remindersSection
+                }
+                if let description = event.eventDescription,
+                   !description.isEmpty {
+                    descriptionSection(description)
+                }
+                provenanceFooter
+            }
+            .padding(BrevSpacing.xl)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .background(theme.bgPrimary.color)
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(
+            String(localized: "Event details", bundle: .module)
+        )
+    }
+
+    // MARK: - Header
+
+    private var header: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            HStack(spacing: BrevSpacing.sm) {
+                RoundedRectangle(cornerRadius: BrevRadius.sm)
+                    .fill(collectionColor)
+                    .frame(width: 4, height: 28)
+                    .accessibilityHidden(true)
+                Text(event.summary
+                    ?? CalendarEventPresentation.untitledTitle())
+                    .brevFont(.title)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .strikethrough(event.status == .cancelled)
+                if let statusText = CalendarEventPresentation.statusText(
+                    for: event.status
+                ) {
+                    Text(statusText)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.warning.color)
+                        .padding(.horizontal, BrevSpacing.xs)
+                        .padding(.vertical, BrevSpacing.xxs)
+                        .background(
+                            Capsule().fill(theme.bgSecondary.color)
+                        )
+                }
+            }
+
+            detailRow(
+                symbol: "clock",
+                label: String(localized: "When", bundle: .module)
+            ) {
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(CalendarEventPresentation.detailRangeText(
+                        for: event
+                    ))
+                    if let timeZoneIdentifier = event.timeZoneIdentifier,
+                       !event.isAllDay {
+                        Text(timeZoneIdentifier)
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textTertiary.color)
+                    }
+                }
+            }
+
+            if let rule = event.recurrenceRule {
+                detailRow(
+                    symbol: "repeat",
+                    label: String(localized: "Repeats", bundle: .module)
+                ) {
+                    Text(CalendarEventPresentation.recurrenceSummary(
+                        for: rule,
+                        calendar: calendar
+                    ))
+                }
+            }
+
+            if let location = event.location, !location.isEmpty {
+                detailRow(
+                    symbol: "mappin",
+                    label: String(localized: "Location", bundle: .module)
+                ) {
+                    Text(location)
+                }
+            }
+        }
+    }
+
+    // MARK: - Join link
+
+    private func joinButton(_ url: URL) -> some View {
+        Button {
+            openURL(url)
+        } label: {
+            Label(
+                String(localized: "Join meeting", bundle: .module),
+                systemImage: "video"
+            )
+            .brevFont(.headline)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, BrevSpacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .fill(theme.accent.color)
+            )
+            .foregroundStyle(theme.bgPrimary.color)
+        }
+        .buttonStyle(.plain)
+        .accessibilityHint(
+            String(
+                localized: "Opens the conference link",
+                bundle: .module
+            )
+        )
+    }
+
+    // MARK: - People
+
+    private var peopleSection: some View {
+        detailSection(
+            title: String(localized: "People", bundle: .module),
+            symbol: "person.2"
+        ) {
+            if let organizer = event.organizer {
+                personRow(
+                    name: organizer.name,
+                    email: organizer.email,
+                    role: String(localized: "Organizer", bundle: .module),
+                    rsvp: nil
+                )
+            }
+            ForEach(event.attendees, id: \.email) { attendee in
+                personRow(
+                    name: attendee.name,
+                    email: attendee.email,
+                    role: nil,
+                    rsvp: attendee.rsvp
+                )
+            }
+        }
+    }
+
+    private func personRow(
+        name: String?,
+        email: String,
+        role: String?,
+        rsvp: PIMEventPerson.RSVP?
+    ) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(name ?? email)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                if name != nil || role != nil {
+                    Text(
+                        [name != nil ? email : nil, role]
+                            .compactMap { $0 }
+                            .joined(separator: " · ")
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                }
+            }
+            Spacer(minLength: BrevSpacing.sm)
+            if let rsvp {
+                Text(CalendarEventPresentation.rsvpText(for: rsvp))
+                    .brevFont(.caption)
+                    .foregroundStyle(rsvpColor(for: rsvp))
+                    .padding(.horizontal, BrevSpacing.xs)
+                    .padding(.vertical, BrevSpacing.xxs)
+                    .background(
+                        Capsule().fill(theme.bgSecondary.color)
+                    )
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func rsvpColor(for rsvp: PIMEventPerson.RSVP) -> Color {
+        switch rsvp {
+        case .accepted: return theme.success.color
+        case .declined: return theme.danger.color
+        case .tentative: return theme.warning.color
+        case .needsAction, .delegated, .unknown:
+            return theme.textSecondary.color
+        }
+    }
+
+    // MARK: - Reminders
+
+    private var remindersSection: some View {
+        detailSection(
+            title: String(localized: "Reminders", bundle: .module),
+            symbol: "bell"
+        ) {
+            ForEach(Array(event.reminders.enumerated()), id: \.offset) { _, reminder in
+                Text(CalendarEventPresentation.reminderText(
+                    for: reminder
+                ))
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            }
+        }
+    }
+
+    // MARK: - Description
+
+    private func descriptionSection(_ description: String) -> some View {
+        detailSection(
+            title: String(localized: "Notes", bundle: .module),
+            symbol: "text.alignleft"
+        ) {
+            Text(description)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .textSelection(.enabled)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: - Provenance
+
+    private var provenanceFooter: some View {
+        HStack(spacing: BrevSpacing.xs) {
+            if let collection {
+                Circle()
+                    .fill(collectionColor)
+                    .frame(width: 7, height: 7)
+                    .accessibilityHidden(true)
+                Text(collection.displayName)
+            }
+            if let source {
+                Text(verbatim: "·")
+                Text(source.displayName)
+            }
+            if let providerUpdatedAt = event.providerUpdatedAt {
+                Text(verbatim: "·")
+                Text(String(
+                    localized:
+                    "Updated \(providerUpdatedAt.formatted(.dateTime.month().day().hour().minute()))",
+                    bundle: .module
+                ))
+            }
+        }
+        .brevFont(.caption)
+        .foregroundStyle(theme.textTertiary.color)
+    }
+
+    // MARK: - Building blocks
+
+    private func detailRow<Content: View>(
+        symbol: String,
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: BrevSpacing.sm) {
+            Image(systemName: symbol)
+                .brevFont(.body)
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(width: 20, alignment: .center)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(label)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                content()
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func detailSection<Content: View>(
+        title: String,
+        symbol: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Label(title, systemImage: symbol)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textSecondary.color)
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                content()
+            }
+            .padding(.leading, BrevSpacing.xs)
+        }
+    }
+
+    private var collectionColor: Color {
+        guard let hex = collection?.colorHex else {
+            return theme.accent.color
+        }
+        return BrevColor(hex).color
+    }
+}

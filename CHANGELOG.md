@@ -41,6 +41,15 @@ All notable changes to Brev are documented here.
   are skipped, a failed collection keeps its last snapshot, and each
   event keeps the provider's original payload for round-trip fidelity.
   Browsing views land in a later slice.
+- Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
+  menu) and iOS (sidebar footer) shows synced events in a day-grouped
+  agenda with per-calendar colors, cancelled-event strikethrough, and a
+  read-only detail covering time zone, recurrence, location, join link,
+  organizer, attendees with RSVP state, reminders, and notes. Search
+  runs against the local cache only; hidden calendars stay hidden, a
+  failed source keeps its cached events with a staleness banner, and
+  browsing never contacts a provider. Day/week/month grid views land in
+  a later slice.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

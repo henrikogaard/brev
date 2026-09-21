@@ -511,6 +511,38 @@ Deliberately still deferred: browsing views (agenda/day/week/month,
 event detail, search), contacts sync (#8), sync scheduling/background
 refresh, authoring (#7/#9), and the linked-source retention grant.
 
+### #6 slice 3 — calendar browsing: agenda, detail, search (2026-09-21, BrevMail/apps)
+
+- `CalendarBrowsingModel`: the @Observable owner behind the Calendar
+  surface. Reads the synced cache only — `load()` never issues provider
+  requests, so an offline launch renders the last complete snapshot.
+  Hidden collections stay out of the agenda; an event whose collection
+  lost its discovery record still shows (it was synced while visible).
+  One unreadable source cache reports inline and never blanks the
+  others. `staleSources` flags failed / authentication-required /
+  disconnected sources so the surface can banner kept-cache data.
+- `CalendarEventPresentation`: pure formatting for rows and detail —
+  agenda time text, day-section titles (Today/Tomorrow/localized),
+  recurrence summaries from `ICSParser.RecurrenceRule`, RSVP and
+  reminder labels, and the local-only search corpus (title, location,
+  notes, organizer and attendee fields — provider payloads are never
+  searched).
+- `CalendarAgendaView` / `CalendarEventRowView` /
+  `CalendarEventDetailView` / `CalendarRootView`: a two-column split —
+  day-grouped agenda with collection colors and cancelled-event
+  strikethrough, and a read-only detail covering title, status, range
+  with the provider's time zone, recurrence, location, join link,
+  organizer, attendees with RSVP badges, reminders, notes, and
+  source/collection provenance. iOS collapses the split into push
+  navigation; macOS keeps the two columns.
+- Entry points: macOS gains a `Window("Calendar")` scene plus a Window
+  menu command; iOS gains a Calendar button in the sidebar footer that
+  presents the surface full-screen with a Done affordance. No mail
+  chrome was disturbed — the surface is additive.
+- Deferred by design: day/week/month grid views, authoring (#7),
+  photo/attachment fetching, and scheduled background sync. Search is
+  cache-local; nothing reaches a provider because a view exists.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)
