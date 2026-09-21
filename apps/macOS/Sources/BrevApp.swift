@@ -215,8 +215,29 @@ struct BrevApp: App {
                 }
                 .disabled(!updateController.settingsActions.isManualCheckAvailable)
             }
+            CommandGroup(after: .windowList) {
+                Button(String(localized: "Calendar")) {
+                    openWindow(id: BrevWindowID.calendar)
+                }
+            }
             BrevMailCommands()
         }
+
+        Window("Calendar", id: BrevWindowID.calendar) {
+            CalendarRootView(
+                model: CalendarBrowsingModel(
+                    coordinator: session.pimSourceCoordinator,
+                    collectionService: session.pimCollectionService,
+                    eventSyncService: session.pimEventSyncService
+                )
+            )
+            .brevTheme(session.theme)
+            .brevWindowTranslucency(windowRole: .settings)
+            .brevTransparentWindowToolbarBackground()
+            .brevHiddenWindowTitle()
+            .environment(\.openURL, browserOpenURLAction)
+        }
+        .windowResizability(.contentMinSize)
 
         Window("Brev Settings", id: BrevWindowID.settings) {
             SettingsView(
@@ -418,6 +439,7 @@ struct BrevApp: App {
 enum BrevWindowID {
     static let main = "brev-main"
     static let settings = "brev-settings"
+    static let calendar = "brev-calendar"
     static let keyboardShortcuts = "brev-keyboard-shortcuts"
 }
 

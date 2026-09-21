@@ -110,6 +110,9 @@ public struct FolderSidebar: View {
     private let outboxPendingCount: Int
     private let onOpenOutbox: (() -> Void)?
     private let onOpenSettings: (() -> Void)?
+    /// Opens the Calendar browsing surface (ADR-0072). Nil hides the
+    /// footer entry — sessions without PIM wiring never show it.
+    private let onOpenCalendar: (() -> Void)?
     private let onOpenMessages: (() -> Void)?
     /// "New Local Folder…" (ADR-0077) — always offered while a local backend
     /// exists, even when the local account is hidden for having no folders.
@@ -148,6 +151,7 @@ public struct FolderSidebar: View {
         outboxPendingCount: Int = 0,
         onOpenOutbox: (() -> Void)? = nil,
         onOpenSettings: (() -> Void)? = nil,
+        onOpenCalendar: (() -> Void)? = nil,
         onOpenMessages: (() -> Void)? = nil,
         onNewLocalFolder: (() -> Void)? = nil
     ) {
@@ -183,6 +187,7 @@ public struct FolderSidebar: View {
         self.outboxPendingCount = outboxPendingCount
         self.onOpenOutbox = onOpenOutbox
         self.onOpenSettings = onOpenSettings
+        self.onOpenCalendar = onOpenCalendar
         self.onOpenMessages = onOpenMessages
         self.onNewLocalFolder = onNewLocalFolder
     }
@@ -297,32 +302,57 @@ public struct FolderSidebar: View {
         }
     }
 
-    /// iOS only. macOS reaches Settings from the app menu; iPhone has no menu
-    /// bar, and the navigation bar's gear is easy to miss, so the sidebar keeps
-    /// a persistent entry at its foot — where Spark keeps it.
+    /// iOS only. macOS reaches Settings and Calendar from the app/Window
+    /// menus; iPhone has no menu bar, and the navigation bar's gear is easy
+    /// to miss, so the sidebar keeps persistent entries at its foot — where
+    /// Spark keeps it.
     #if os(iOS)
     @ViewBuilder
     private var sidebarFooter: some View {
-        if let onOpenSettings {
-            Button(action: onOpenSettings) {
-                Label(String(localized: "Settings", bundle: .module), systemImage: "gearshape")
-                    .brevFont(.footnote)
-                    .padding(.horizontal, BrevSpacing.md)
-                    .frame(minHeight: 44)
-                    .contentShape(Rectangle())
-                    .background(Capsule().fill(theme.bgSecondary.color))
-                    .foregroundStyle(theme.textPrimary.color)
+        if onOpenSettings != nil || onOpenCalendar != nil {
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                if let onOpenCalendar {
+                    footerButton(
+                        title: String(localized: "Calendar", bundle: .module),
+                        systemImage: "calendar",
+                        action: onOpenCalendar
+                    )
+                }
+                if let onOpenSettings {
+                    footerButton(
+                        title: String(localized: "Settings", bundle: .module),
+                        systemImage: "gearshape",
+                        action: onOpenSettings
+                    )
+                }
             }
-            .buttonStyle(.plain)
-            .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.sm)
             .frame(maxWidth: .infinity, alignment: .leading)
             // The footer sits above a scrolling tree. Keep it opaque so account
-            // and folder labels do not show through behind the Settings action.
+            // and folder labels do not show through behind the footer actions.
             .background(theme.bgPrimary.color)
-            .accessibilityLabel(String(localized: "Settings", bundle: .module))
         }
+    }
+
+    private func footerButton(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .brevFont(.footnote)
+                .padding(.horizontal, BrevSpacing.md)
+                .frame(minHeight: 44)
+                .contentShape(Rectangle())
+                .background(Capsule().fill(theme.bgSecondary.color))
+                .foregroundStyle(theme.textPrimary.color)
+        }
+        .buttonStyle(.plain)
+        .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityLabel(title)
     }
     #endif
 
