@@ -1442,7 +1442,8 @@ public struct BrevMailRootView: View {
                         isWorkBlocked: isMessageWorkBlocked || isComposePresentationBlocked,
                         isMutationWorkBlocked: isCommandMutationBlocked,
                         canFileLocally: localBackend != nil,
-                        inviteReconciler: inviteReconciler
+                        inviteReconciler: inviteReconciler,
+                        contactActions: senderContactActions
                     )
                 }
             }

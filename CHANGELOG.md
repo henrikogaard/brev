@@ -126,6 +126,11 @@ All notable changes to Brev are documented here.
   Open in Calendar on synced invites, Open in Contacts on the sender
   contact card. A link whose record left the cache fails safe with an
   inline notice instead of landing on an unrelated item.
+- Participant contact actions (ADR-0072, #10): recipient chips in the
+  message reader open the shared contact card — or the shared editor
+  pre-filled when the participant is not in any synced contacts
+  source — with the same provenance and capability gating as the
+  sender panel.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

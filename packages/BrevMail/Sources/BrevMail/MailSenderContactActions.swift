@@ -107,6 +107,35 @@ public final class MailSenderContactActions {
         }
     }
 
+    /// Stateless variant of resolve(email:) for surfaces that query
+    /// several participants — the recipient chips in the message
+    /// reader (#10). Never touches state/resolvedEmail, so a lookup
+    /// cannot clobber the sender panel's resolution. Returns nil when
+    /// no contacts sources exist or no source caches the address.
+    public func lookup(email: String) async -> SenderContactActionState {
+        let needle = email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !needle.isEmpty,
+              let coordinator, let contactSyncService else {
+            return .unavailable
+        }
+        await editing?.load()
+        do {
+            let sources = try await coordinator.allSources()
+                .filter { $0.kind == .contacts }
+            for source in sources {
+                if let match = try await contactSyncService.contact(
+                    matchingEmail: needle,
+                    for: source.id
+                ) {
+                    return .existing(match)
+                }
+            }
+            return .missing
+        } catch {
+            return .missing
+        }
+    }
+
     /// The source record for a resolved contact, for the detail view's
     /// provenance row.
     public func source(for contact: PIMContact) async -> PIMSource? {

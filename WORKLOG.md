@@ -1,5 +1,31 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 5 (per-recipient contact actions)
+
+### Goal
+
+Close the remaining functional gap of #10: every message participant —
+not only the sender — opens the shared contact card or editor.
+
+### Changes
+
+- BrevMail: MailSenderContactActions.lookup(email:) — stateless
+  cache-only resolution that cannot clobber the sender panel's state.
+- BrevMail: MessageDetailView recipient chips become buttons when
+  contacts infrastructure exists; they present the shared
+  SenderContactDetailSheet (with Open in Contacts deep link) or the
+  shared ContactEditorView pre-filled from the participant.
+- BrevMailRootView wires senderContactActions into MessageDetailView.
+
+### Verification
+
+- swift test --filter MailSenderContactActions — 8/8 green
+- swift build --package-path packages/BrevMail — clean
+
+### Skipped
+
+- Rendered verification — pending; acceptance criterion on #10.
+
 ## 2026-09-21 — Agent — Issue #10 slice 4 (event/contact deep links)
 
 ### Goal

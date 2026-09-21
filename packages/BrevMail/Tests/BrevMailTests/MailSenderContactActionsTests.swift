@@ -313,4 +313,53 @@ struct MailSenderContactActionsTests {
         #expect(draft.familyName == "Lovelace")
         #expect(draft.isEditing == false)
     }
+
+    // MARK: - Stateless participant lookup
+
+    @Test("lookup returns the cached contact without touching panel state")
+    func lookupIsStateless() async throws {
+        let actions = try await makeActions(
+            sources: [source(id: "g1")],
+            contacts: [
+                "g1": [
+                    contact(
+                        sourceID: "g1",
+                        key: "people/c1",
+                        name: "Ada Lovelace",
+                        emails: ["ada@example.org"]
+                    )
+                ]
+            ]
+        )
+        // A sender resolution is in flight state; the participant
+        // lookup must not overwrite it.
+        await actions.resolve(email: "sender@example.org")
+
+        let result = await actions.lookup(email: "ada@example.org")
+
+        guard case .existing(let contact) = result else {
+            Issue.record("expected .existing, got \(result)")
+            return
+        }
+        #expect(contact.displayName == "Ada Lovelace")
+        #expect(actions.resolvedEmail == "sender@example.org")
+        #expect(actions.state == .missing)
+    }
+
+    @Test("lookup reports missing and unavailable distinctly")
+    func lookupMissAndUnavailable() async throws {
+        let actions = try await makeActions(
+            sources: [source(id: "g1")],
+            contacts: [:]
+        )
+        #expect(
+            await actions.lookup(email: "nobody@example.org") == .missing
+        )
+        #expect(await actions.lookup(email: "  ") == .unavailable)
+
+        let empty = MailSenderContactActions()
+        #expect(
+            await empty.lookup(email: "ada@example.org") == .unavailable
+        )
+    }
 }

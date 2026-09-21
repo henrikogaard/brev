@@ -897,8 +897,20 @@ grant.
   reveal runs on the shared model; iOS presents the full-screen cover
   the same way. The iOS in-app openURL handler now routes `brev://`
   links internally instead of handing them to the browser.
-- Deferred: per-recipient contact actions and rendered-verification
-  coverage.
+
+### #10 slice 5 — per-recipient contact actions (2026-09-21, BrevMail)
+
+- `MailSenderContactActions.lookup(email:)` is the stateless variant
+  of the sender resolution: it scans the contacts sources in the same
+  order and returns the state without touching the panel's
+  resolvedEmail/state, so concurrent participant lookups cannot
+  clobber the sender card.
+- Recipient chips in the message reader become buttons when the
+  contacts infrastructure exists: a cached match opens the shared
+  `SenderContactDetailSheet` (with Open in Contacts), a miss with a
+  writable target opens the shared editor pre-filled, and a miss with
+  nothing writable is a no-op rather than an empty sheet.
+- Deferred: rendered-verification coverage (macOS + iOS QA).
 
 ## References (checked 2026-09-20)
 
