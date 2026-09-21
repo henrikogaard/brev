@@ -591,4 +591,78 @@ struct ContactsBrowsingModelTests {
 
         #expect(model.selectedContactID == nil)
     }
+
+    // MARK: - Deep links
+
+    @Test("revealContact selects the record and clears the filters")
+    func revealContactSelects() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [
+                    Self.collection(id: "c1", sourceID: "s1"),
+                    Self.collection(id: "c2", sourceID: "s1"),
+                ],
+            ],
+            contacts: [
+                "s1": [
+                    Self.contact(
+                        id: "ct1", sourceID: "s1", collectionID: "c2",
+                        displayName: "Ada"
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+        model.searchText = "unrelated"
+        model.selectedCollectionID = "c1"
+
+        await model.revealContact(id: "ct1")
+
+        #expect(model.selectedContactID == "ct1")
+        #expect(model.searchText == "")
+        #expect(model.selectedCollectionID == nil)
+        #expect(model.deepLinkNotice == nil)
+    }
+
+    @Test("revealContact on a missing record clears the selection and reports")
+    func revealContactMiss() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            contacts: [
+                "s1": [
+                    Self.contact(
+                        id: "ct1", sourceID: "s1", displayName: "Ada"
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+        model.selectedContactID = "ct1"
+
+        await model.revealContact(id: "gone")
+
+        #expect(model.selectedContactID == nil)
+        #expect(model.deepLinkNotice != nil)
+    }
+
+    @Test("revealContact loads the cache when the window is cold")
+    func revealContactColdLoad() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            contacts: [
+                "s1": [
+                    Self.contact(
+                        id: "ct1", sourceID: "s1", displayName: "Ada"
+                    ),
+                ],
+            ]
+        )
+        // No explicit load() — the reveal must load before it judges
+        // a hit or a miss.
+        await model.revealContact(id: "ct1")
+
+        #expect(model.selectedContactID == "ct1")
+        #expect(model.deepLinkNotice == nil)
+    }
 }

@@ -110,6 +110,9 @@ public struct ContactsRootView: View {
             if let lastError = editing?.lastError {
                 errorBanner(lastError)
             }
+            if let deepLinkNotice = model.deepLinkNotice {
+                errorBanner(deepLinkNotice)
+            }
             content
         }
         .toolbar { toolbarContent }

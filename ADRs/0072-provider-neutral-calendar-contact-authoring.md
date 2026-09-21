@@ -830,6 +830,88 @@ grant.
   mail, contact-aware autocomplete labels, and event/contact deep
   links.
 
+### #10 slice 2 — participant contact actions and shared autocomplete (2026-09-21, BrevBackend/BrevCalendar/BrevMail/apps)
+
+- `PIMContactSyncService.contact(matchingEmail:for:)` is a
+  cache-only exact-email lookup used by mail surfaces; it never
+  contacts a provider.
+- `PIMContactLookupAdapter` bridges the shared contact cache to
+  `ContactLookupProviding`: compose autocomplete now queries every
+  synced contacts source (Google and CardDAV alike), each result
+  carries its source's display name via the new optional
+  `ContactLookupResult.sourceLabel`, and the legacy CardDAV
+  REPORT lookup stays as the fallback for unsynced sessions.
+- `MailSenderContactActions` resolves a participant's email
+  against the cache and exposes Open Contact (shared
+  `ContactDetailView` with provenance, group names, and
+  Edit/Delete gated on canEdit) or Add to Contacts (shared
+  `ContactEditorView` on a pre-filled draft) on the macOS sender
+  panel. Resolution scans sources in order and the first exact match
+  wins; the card shows the match's own source so no action silently
+  switches providers.
+- `ContactEditorView` gains a draft-taking initializer mirroring
+  the calendar editor's.
+- Deferred to later slices: RSVP reconciliation, per-recipient
+  actions, event/contact deep links, and rendered-verification
+  coverage.
+
+### #10 slice 3 — RSVP reconciliation with the synced event (2026-09-21, BrevMail/apps)
+
+- `CalendarInviteReconciler` runs after the invite reply is
+  sent: it finds the cached PIMEvent by the invite's UID across every
+  calendar source, resolves the responder's attendee entry (account
+  address first, then the invite's To/Cc list for aliases), and writes
+  the RSVP through the shared write service so the provider sees the
+  same answer the email carried.
+- Outcomes are explicit: updated (names the source), notSynced (event
+  not in the cache — reply only), notWritable (read-only calendar),
+  noMatchingAttendee, and failed (provider error is quoted). The
+  confirmation always states the mail result first, then the calendar
+  result, so a partial failure never reads as a full success.
+- Both invite surfaces reconcile: `ThreadMessageCard` and
+  `MessageDetailView` take an optional reconciler; the root
+  view and both app entry points wire it from the session services.
+  Detached reader windows keep the mail-only confirmation.
+
+### #10 slice 4 — event/contact deep links (2026-09-21, BrevMail/apps)
+
+- `PIMDeepLinkPolicy` builds and parses `brev://event?id=…` and
+  `brev://contact?id=…` URLs carrying the stable cached-record ID.
+  The parser fails closed on foreign schemes, unknown hosts, and
+  missing or blank IDs.
+- `CalendarBrowsingModel.revealEvent` and
+  `ContactsBrowsingModel.revealContact` ensure the cache has loaded
+  (cold windows cannot miss on unread data), clear filters, select the
+  record, and anchor the day grids. A record that left the cache —
+  removed source or a stale link — clears the selection and shows an
+  inline notice instead of landing on an unrelated item. Records whose
+  source was removed but whose cache was kept still resolve, per the
+  kept-cache contract.
+- Emission: the event and contact detail panes gain "Copy Link"; the
+  invite card gains "Open in Calendar" when the reconciler finds the
+  synced event by UID; the sender contact sheet gains "Open in
+  Contacts" which dismisses before opening so the iOS cover
+  presentation is never dropped.
+- Both app entry points hoist the browsing models onto the session and
+  route `brev://` links — the macOS window opens first, then the
+  reveal runs on the shared model; iOS presents the full-screen cover
+  the same way. The iOS in-app openURL handler now routes `brev://`
+  links internally instead of handing them to the browser.
+
+### #10 slice 5 — per-recipient contact actions (2026-09-21, BrevMail)
+
+- `MailSenderContactActions.lookup(email:)` is the stateless variant
+  of the sender resolution: it scans the contacts sources in the same
+  order and returns the state without touching the panel's
+  resolvedEmail/state, so concurrent participant lookups cannot
+  clobber the sender card.
+- Recipient chips in the message reader become buttons when the
+  contacts infrastructure exists: a cached match opens the shared
+  `SenderContactDetailSheet` (with Open in Contacts), a miss with a
+  writable target opens the shared editor pre-filled, and a miss with
+  nothing writable is a no-op rather than an empty sheet.
+- Deferred: rendered-verification coverage (macOS + iOS QA).
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

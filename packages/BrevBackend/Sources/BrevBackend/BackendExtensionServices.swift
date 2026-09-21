@@ -83,17 +83,22 @@ public struct ContactLookupResult: Sendable, Hashable, Codable, Identifiable {
     public let displayName: String?
     public let email: String
     public let sourceID: MailSourceID
+    /// Human-readable origin of the match (the PIM source's display
+    /// name, "Contacts", ...). Nil keeps the caller's generic label.
+    public let sourceLabel: String?
 
     public init(
         id: String,
         displayName: String? = nil,
         email: String,
-        sourceID: MailSourceID
+        sourceID: MailSourceID,
+        sourceLabel: String? = nil
     ) {
         self.id = id
         self.displayName = displayName
         self.email = email
         self.sourceID = sourceID
+        self.sourceLabel = sourceLabel
     }
 }
 

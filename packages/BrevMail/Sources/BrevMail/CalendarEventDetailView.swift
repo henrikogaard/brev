@@ -64,7 +64,7 @@ public struct CalendarEventDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                 header
-                if onEdit != nil || onDelete != nil {
+                if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
                 }
                 if let conferenceURL = event.conferenceURL,
@@ -160,8 +160,32 @@ public struct CalendarEventDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if let deepLinkURL {
+                Button {
+                    PIMDeepLinkCopy.copy(deepLinkURL)
+                } label: {
+                    Label(
+                        String(localized: "Copy Link", bundle: .module),
+                        systemImage: "link"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(
+                    String(
+                        localized: "Copies a link that reopens this event in Brev",
+                        bundle: .module
+                    )
+                )
+            }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    /// The brev:// link that reopens this cached event (#10).
+    private var deepLinkURL: URL? {
+        PIMDeepLinkPolicy.url(forEventID: event.id)
     }
 
     // MARK: - Header

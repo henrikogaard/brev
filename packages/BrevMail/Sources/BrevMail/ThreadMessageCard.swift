@@ -49,6 +49,12 @@ struct ThreadMessageCard: View {
     @State private var failedInviteResponse: AttendeeState?
     @State private var activeInviteResponseRequest: CalendarInviteResponseRequest?
     @State private var isRespondingToInvite = false
+    /// brev://event link to the synced copy of the parsed invite (#10);
+    /// nil while unresolved or when no calendar source cached it.
+    @State private var inviteEventDeepLink: URL?
+    /// The message the deep-link lookup ran for — stale results for a
+    /// recycled cell are dropped.
+    @State private var inviteDeepLinkMessageID: MessageHeader.ID?
     @State private var showRemoteContent = false
     @State private var htmlRenderingModeOverride: HTMLBodyRenderingMode?
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
@@ -67,6 +73,9 @@ struct ThreadMessageCard: View {
 
     private let bodyRenderer = BodyRenderer()
     private static let bodyLoadTimeoutNanoseconds: UInt64 = 15_000_000_000
+    /// Shared-calendar RSVP reconciliation (#10); nil leaves the
+    /// mail-only confirmation unchanged.
+    private let inviteReconciler: CalendarInviteReconciler?
 
     private var denseChromeDynamicTypeRange: PartialRangeThrough<DynamicTypeSize> {
         MailDenseChromeDynamicType.compactRange
@@ -83,6 +92,7 @@ struct ThreadMessageCard: View {
         dateTextOverride: String? = nil,
         initialRenderedBody: RenderedBody? = nil,
         renderPool: ThreadConversationRenderPool? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil,
         onToggle: @escaping () -> Void
     ) {
         self.header = header
@@ -94,6 +104,7 @@ struct ThreadMessageCard: View {
         self.isWorkBlocked = isWorkBlocked
         self.dateTextOverride = dateTextOverride
         self.onToggle = onToggle
+        self.inviteReconciler = inviteReconciler
         let renderPool = renderPool ?? ThreadConversationRenderPool()
         self.renderPool = renderPool
         _renderedBody = State(initialValue: initialRenderedBody)
@@ -404,6 +415,7 @@ struct ThreadMessageCard: View {
             if let calendarInviteEvent {
                 ThreadCalendarInviteCard(
                     event: calendarInviteEvent,
+                    eventLink: inviteEventDeepLink,
                     presentation: presentation,
                     confirmation: inviteResponseConfirmation,
                     errorMessage: inviteResponseErrorMessage,
@@ -584,6 +596,7 @@ struct ThreadMessageCard: View {
             parsedInvite = parsed
             calendarInviteEvent = displayEvent
             inviteLoadErrorMessage = nil
+            await resolveInviteDeepLink(parsed, messageID: header.id)
         } catch is CancellationError {
             // Task cancelled — normal during scroll off-screen.
         } catch {
@@ -591,6 +604,24 @@ struct ThreadMessageCard: View {
             parsedInvite = nil
             calendarInviteEvent = nil
         }
+    }
+
+    /// Looks up the synced event behind the invite and builds its
+    /// brev://event link (#10). Cache-only; a miss just hides the
+    /// "Open in Calendar" action.
+    private func resolveInviteDeepLink(
+        _ invite: ICSParser.ParsedEvent,
+        messageID: MessageHeader.ID
+    ) async {
+        inviteDeepLinkMessageID = messageID
+        inviteEventDeepLink = nil
+        guard let reconciler = inviteReconciler,
+              let uid = invite.uid,
+              let event = await reconciler.cachedEvent(forUID: uid),
+              inviteDeepLinkMessageID == messageID else {
+            return
+        }
+        inviteEventDeepLink = PIMDeepLinkPolicy.url(forEventID: event.id)
     }
 
     private func respondToInvite(_ response: AttendeeState) async {
@@ -614,10 +645,25 @@ struct ThreadMessageCard: View {
             let sendResult = try await sendInviteResponse(messageID: header.id, response: response)
             guard canApplyInviteResponse(request) else { return }
             calendarResponse = CalendarInviteLocalResponse(messageID: header.id, response: response)
-            inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
-                for: response,
-                sendResult: sendResult
-            )
+            if let reconciler = inviteReconciler, let parsedInvite {
+                let reconciliation = await reconciler.reconcile(
+                    invite: parsedInvite,
+                    response: response,
+                    accountEmail: backend.account.emailAddress,
+                    recipientEmails: (header.to + header.cc).map(\.email)
+                )
+                inviteResponseConfirmation = CalendarInviteResponsePresentation
+                    .confirmationStatus(
+                        for: response,
+                        sendResult: sendResult,
+                        reconciliation: reconciliation
+                    )
+            } else {
+                inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
+                    for: response,
+                    sendResult: sendResult
+                )
+            }
             finishInviteResponse(request)
         } catch is CancellationError {
             guard canApplyInviteResponse(request) else { return }
@@ -726,8 +772,12 @@ private struct ThreadMessageBodyLoadTimeoutError: LocalizedError {
 
 private struct ThreadCalendarInviteCard: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.openURL) private var openURL
 
     let event: CalendarEvent
+    /// brev://event link to the synced copy of this invite (#10); nil
+    /// hides the Open in Calendar action.
+    let eventLink: URL?
     let presentation: ThreadCalendarInvitePresentation
     let confirmation: MailRootStatus?
     let errorMessage: String?
@@ -778,6 +828,29 @@ private struct ThreadCalendarInviteCard: View {
                 inviteDetailRow(
                     symbolName: "person",
                     text: "Organizer: \(organizer.name ?? organizer.email)"
+                )
+            }
+
+            if let eventLink {
+                Button {
+                    openURL(eventLink)
+                } label: {
+                    Label(
+                        String(
+                            localized: "Open in Calendar",
+                            bundle: .module
+                        ),
+                        systemImage: "calendar"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(
+                    String(
+                        localized: "Shows the synced event in Brev Calendar",
+                        bundle: .module
+                    )
                 )
             }
 

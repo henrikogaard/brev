@@ -1109,13 +1109,41 @@ public final class AppSession {
     }
 
     private func injectCardDAVContactSync(_ backend: any MailBackend) {
-        guard let syncable = backend as? (any CardDAVContactSyncSupporting) else { return }
-        let discovery = CalDAVDiscovery.discover(for: syncable.emailAddressForCardDAV)
-        guard let carddavConfig = discovery.carddav else { return }
-        guard let token = syncable.bearerTokenForCardDAV else { return }
-        let coordinator = ContactsSyncCoordinator()
-        syncable.setContactLookupProvider(CardDAVContactLookupAdapter(coordinator: coordinator))
-        cardDAVContactSyncStarter(coordinator, carddavConfig, token)
+        // #10: the shared PIM contact cache is the primary autocomplete
+        // source for every backend; the legacy CardDAV REPORT lookup
+        // stays as the fallback for sessions whose PIM sources are not
+        // synced yet.
+        let syncable = backend as? (any CardDAVContactSyncSupporting)
+        var fallback: (any ContactLookupProviding)?
+        if let syncable,
+           let carddavConfig = CalDAVDiscovery
+           .discover(for: syncable.emailAddressForCardDAV).carddav,
+           let token = syncable.bearerTokenForCardDAV {
+            let coordinator = ContactsSyncCoordinator()
+            fallback = CardDAVContactLookupAdapter(coordinator: coordinator)
+            cardDAVContactSyncStarter(coordinator, carddavConfig, token)
+        }
+        let provider: (any ContactLookupProviding)?
+        if let pimCoordinator = pimSourceCoordinator,
+           let pimContacts = pimContactSyncService {
+            provider = PIMContactLookupAdapter(
+                coordinator: pimCoordinator,
+                syncService: pimContacts,
+                fallback: fallback
+            )
+        } else {
+            provider = fallback
+        }
+        guard let provider else { return }
+        // CardDAV-capable backends document the setter on that
+        // protocol; calling through it keeps the witness on the
+        // concrete backend when MailBackend conformance is inherited
+        // without an override.
+        if let syncable {
+            syncable.setContactLookupProvider(provider)
+        } else {
+            backend.setContactLookupProvider(provider)
+        }
     }
 
     private func storedAccountIDs() async -> Set<BrevAccount.ID> {

@@ -60,11 +60,18 @@ public final class ContactsBrowsingModel {
     public var selectedCollectionID: PIMCollection.ID?
     /// Selection shared between the list and the detail pane.
     public var selectedContactID: PIMContact.ID?
+    /// One-line notice when a brev://contact deep link names a record
+    /// that is no longer in the cache (#10).
+    public private(set) var deepLinkNotice: String?
 
     private let coordinator: PIMSourceCoordinator?
     private let collectionService: PIMCollectionService?
     private let contactSyncService: PIMContactSyncService?
     private let now: () -> Date
+    /// Whether load() finished at least once — deep links ensure the
+    /// cache is loaded before they reveal so a cold window cannot
+    /// report a miss on data it never read.
+    private var didLoad = false
 
     /// - Parameters:
     ///   - coordinator: Source registry; nil in sessions without PIM.
@@ -220,7 +227,10 @@ public final class ContactsBrowsingModel {
     /// never contacts a provider.
     public func load() async {
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            didLoad = true
+        }
         do {
             sources = try await coordinator?.allSources()
                 .filter { $0.kind == .contacts } ?? []
@@ -231,6 +241,33 @@ public final class ContactsBrowsingModel {
         await loadCollections()
         await loadContacts()
         reconcileSelection()
+    }
+
+    // MARK: - Deep links
+
+    /// Reveals the contact a brev://contact link names (#10).
+    ///
+    /// Ensures the cache has loaded at least once, then clears the
+    /// search/group filters so the record is visible and selects it.
+    /// A record that left the cache — the source was disconnected with
+    /// its cache cleared, or the link is stale — fails safe: the
+    /// selection clears and an inline notice explains the miss instead
+    /// of silently landing on an unrelated contact.
+    public func revealContact(id: PIMContact.ID) async {
+        if !didLoad { await load() }
+        guard let contact = contacts.first(where: { $0.id == id }) else {
+            selectedContactID = nil
+            deepLinkNotice = String(
+                localized:
+                "That contact is no longer synced. It may have been deleted or its contacts source removed.",
+                bundle: .module
+            )
+            return
+        }
+        deepLinkNotice = nil
+        searchText = ""
+        selectedCollectionID = nil
+        selectedContactID = contact.id
     }
 
     private func loadCollections() async {

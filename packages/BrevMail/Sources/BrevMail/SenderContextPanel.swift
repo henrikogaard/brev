@@ -12,6 +12,7 @@
 
 import BrevAvatars
 import BrevBackend
+import BrevCalendar
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -39,14 +40,32 @@ enum SenderContextPanelState: Equatable, Sendable {
 struct SenderContextPanel: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.locale) private var locale
+    @Environment(\.openURL) private var openURL
 
     let state: SenderContextPanelState
     let sourceID: MailSourceID?
     let composeActions: MailComposePresentationActions
     let onOpenMessage: (SenderContextRecentItem) -> Void
     let onShowAllFromSender: (String) -> Void
+    /// Shared contact-cache actions for the sender (#10); nil hides
+    /// the contact section.
+    var contactActions: MailSenderContactActions?
 
     @State private var hoveredRecentItemID: SenderContextRecentItem.ID?
+    @State private var contactSheet: ContactSheet?
+
+    /// The sheet the contact actions present.
+    private enum ContactSheet: Identifiable {
+        case detail(PIMContact)
+        case create(ContactDraft)
+
+        var id: String {
+            switch self {
+            case .detail(let contact): return "detail-" + contact.id
+            case .create: return "create"
+            }
+        }
+    }
 
     var body: some View {
         ScrollView {
@@ -92,6 +111,70 @@ struct SenderContextPanel: View {
             .padding(BrevSpacing.lg)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .sheet(item: $contactSheet) { sheet in
+            contactSheetContent(sheet)
+        }
+        .task(id: state.header?.id) {
+            guard let header = state.header else { return }
+            await contactActions?.resolve(email: header.from.email)
+        }
+    }
+
+    /// The contact card or editor the contact actions present (#10).
+    /// Resolution helpers stay cache-only; the sheet closes itself on
+    /// dismiss and reloads the sender resolution after a save.
+    @ViewBuilder
+    private func contactSheetContent(_ sheet: ContactSheet) -> some View {
+        switch sheet {
+        case .detail(let contact):
+            if let actions = contactActions {
+                SenderContactDetailSheet(
+                    contact: contact,
+                    actions: actions,
+                    onClose: { contactSheet = nil },
+                    onChanged: {
+                        contactSheet = nil
+                        if let header = state.header {
+                            Task {
+                                await actions.resolve(email: header.from.email)
+                            }
+                        }
+                    },
+                    onOpenInContacts: {
+                        guard let url = PIMDeepLinkPolicy.url(
+                            forContactID: contact.id
+                        ) else { return }
+                        contactSheet = nil
+                        // The sheet must finish dismissing before the
+                        // deep link presents the Contacts surface —
+                        // on iOS a cover requested during the sheet's
+                        // dismissal is dropped.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(350))
+                            openURL(url)
+                        }
+                    }
+                )
+            }
+        case .create(let draft):
+            if let editing = contactActions?.editing {
+                ContactEditorView(
+                    editing: editing,
+                    draft: draft,
+                    source: nil,
+                    onSaved: {
+                        contactSheet = nil
+                        if let header = state.header {
+                            Task {
+                                await contactActions?.resolve(
+                                    email: header.from.email
+                                )
+                            }
+                        }
+                    }
+                )
+            }
+        }
     }
 
     private var idleState: some View {
@@ -291,6 +374,8 @@ struct SenderContextPanel: View {
             Button(String(localized: "Show all from sender", bundle: .module)) {
                 onShowAllFromSender(header.from.email)
             }
+
+            contactActionRow(for: header)
         }
         // Small controls, the size macOS inspectors use. At the default size
         // four bordered buttons in a two-by-two block read as a form pasted
@@ -298,6 +383,33 @@ struct SenderContextPanel: View {
         .buttonStyle(.bordered)
         .controlSize(.small)
         .tint(theme.accent.color)
+    }
+
+    /// Open Contact / Add to Contacts for the sender (#10). Hidden
+    /// while resolving or when the session has no contacts sources.
+    @ViewBuilder
+    private func contactActionRow(for header: MessageHeader) -> some View {
+        if let actions = contactActions, actions.isAvailable {
+            switch actions.state {
+            case .existing(let contact):
+                Button(String(localized: "Open Contact", bundle: .module)) {
+                    contactSheet = .detail(contact)
+                }
+            case .missing where actions.canAdd:
+                Button(
+                    String(localized: "Add to Contacts", bundle: .module)
+                ) {
+                    contactSheet = .create(
+                        actions.draftForNewContact(
+                            email: header.from.email,
+                            displayName: header.from.name
+                        )
+                    )
+                }
+            case .resolving, .missing, .unavailable:
+                EmptyView()
+            }
+        }
     }
 
     private func relationshipRows(for snapshot: SenderContextSnapshot) -> [RelationshipRow] {

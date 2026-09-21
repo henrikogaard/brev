@@ -675,4 +675,91 @@ struct CalendarBrowsingModelTests {
         model.searchText = "nothing-matches"
         #expect(model.events(onDay: Self.fixedNow).isEmpty)
     }
+
+    // MARK: - Deep links
+
+    @Test("revealEvent selects the record and anchors the day")
+    func revealEventSelects() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+            ],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "e1", sourceID: "s1", collectionID: "c1",
+                        summary: "Target",
+                        start: Self.fixedNow
+                    ),
+                    Self.event(
+                        id: "e2", sourceID: "s1", collectionID: "c1",
+                        summary: "Other",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+        model.searchText = "unrelated"
+
+        await model.revealEvent(id: "e1")
+
+        #expect(model.selectedEventID == "e1")
+        #expect(model.searchText == "")
+        #expect(model.deepLinkNotice == nil)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        #expect(
+            model.selectedDay == utc.startOfDay(for: Self.fixedNow)
+        )
+    }
+
+    @Test("revealEvent on a missing record clears the selection and reports")
+    func revealEventMiss() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+            ],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "e1", sourceID: "s1", collectionID: "c1",
+                        summary: "Target",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+        model.selectedEventID = "e1"
+
+        await model.revealEvent(id: "gone")
+
+        #expect(model.selectedEventID == nil)
+        #expect(model.deepLinkNotice != nil)
+    }
+
+    @Test("revealEvent loads the cache when the window is cold")
+    func revealEventColdLoad() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "e1", sourceID: "s1", collectionID: "c1",
+                        summary: "Target",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        // No explicit load() — the reveal must load before it judges
+        // a hit or a miss.
+        await model.revealEvent(id: "e1")
+
+        #expect(model.selectedEventID == "e1")
+        #expect(model.deepLinkNotice == nil)
+    }
 }

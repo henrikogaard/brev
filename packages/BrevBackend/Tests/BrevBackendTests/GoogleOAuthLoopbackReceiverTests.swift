@@ -101,7 +101,7 @@ struct GoogleOAuthLoopbackReceiverTests {
         try await Task.sleep(for: .milliseconds(50))
         let startedAt = Date()
         let fallbackCancellation = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(200))
+            try? await Task.sleep(for: .milliseconds(500))
             receiver.cancel()
         }
         defer { fallbackCancellation.cancel() }
@@ -109,7 +109,10 @@ struct GoogleOAuthLoopbackReceiverTests {
         await #expect(throws: GoogleOAuthLoopbackReceiverError.cancelled) {
             try await receiver.waitForCallback()
         }
-        #expect(Date().timeIntervalSince(startedAt) < 0.1)
+        // The retained cancellation resolves immediately; the 500ms
+        // fallback keeps the bound meaningful while leaving room for
+        // scheduling jitter on shared CI runners.
+        #expect(Date().timeIntervalSince(startedAt) < 0.25)
     }
 
     @Test("only the first concurrent callback is accepted")

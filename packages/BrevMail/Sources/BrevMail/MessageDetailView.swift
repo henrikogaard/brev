@@ -43,6 +43,7 @@ public struct MessageDetailView: View {
 
     @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
+    @Environment(\.openURL) private var openURL
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
     private let header: MessageHeader?
@@ -58,6 +59,12 @@ public struct MessageDetailView: View {
     /// When present, the view is shown in a standalone window and renders an
     /// in-content action bar; destructive actions invoke this to close the window.
     private let closeWindow: (() -> Void)?
+    /// Shared-calendar RSVP reconciliation (#10); nil keeps the
+    /// mail-only confirmation.
+    private let inviteReconciler: CalendarInviteReconciler?
+    /// Shared contact-cache actions for message participants (#10);
+    /// nil leaves the recipient chips read-only.
+    private let contactActions: MailSenderContactActions?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
 
@@ -106,9 +113,26 @@ public struct MessageDetailView: View {
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
     @State private var messageOpenInterval: MailUIPerformanceDiagnostics.Interval?
     @State private var messageOpenMessageID: MessageHeader.ID?
+    /// The participant contact sheet: the shared card for a cached
+    /// contact, or the shared editor for a new one (#10).
+    @State private var participantContactSheet: ParticipantContactSheet?
     #if os(iOS)
     @State private var pdfShareURL: URL?
     #endif
+
+    /// Identifiable sheet payload for participant contact actions.
+    private enum ParticipantContactSheet: Identifiable {
+        case detail(PIMContact)
+        case create(ContactDraft)
+
+        var id: String {
+            switch self {
+            case .detail(let contact): "detail-\(contact.id)"
+            case .create(let draft):
+                "create-\(draft.emails.first?.value ?? "new")"
+            }
+        }
+    }
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
@@ -143,7 +167,9 @@ public struct MessageDetailView: View {
         isWorkBlocked: Bool = false,
         isMutationWorkBlocked: Bool = false,
         canFileLocally: Bool = false,
-        closeWindow: (() -> Void)? = nil
+        closeWindow: (() -> Void)? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        contactActions: MailSenderContactActions? = nil
     ) {
         self.backend = backend
         self.sourceID = sourceID
@@ -154,6 +180,8 @@ public struct MessageDetailView: View {
         self.isMutationWorkBlocked = isMutationWorkBlocked
         self.canFileLocally = canFileLocally
         self.closeWindow = closeWindow
+        self.inviteReconciler = inviteReconciler
+        self.contactActions = contactActions
     }
 
     public var body: some View {
@@ -218,15 +246,18 @@ public struct MessageDetailView: View {
             resetHTMLRenderingModeOverride()
         }
         .quickLookPreview($quickLookURL)
+        .sheet(item: $participantContactSheet) { sheet in
+            participantContactSheetContent(sheet)
+        }
         #if os(iOS)
-            .sheet(isPresented: Binding(
-                get: { pdfShareURL != nil },
-                set: { if !$0 { pdfShareURL = nil } }
-            )) {
-                if let url = pdfShareURL {
-                    MailShareSheet(activityItems: [url])
-                }
+        .sheet(isPresented: Binding(
+            get: { pdfShareURL != nil },
+            set: { if !$0 { pdfShareURL = nil } }
+        )) {
+            if let url = pdfShareURL {
+                MailShareSheet(activityItems: [url])
             }
+        }
         #endif
     }
 
@@ -1065,7 +1096,7 @@ public struct MessageDetailView: View {
 
     @ViewBuilder
     private func recipientChip(_ recipient: Correspondent) -> some View {
-        HStack(spacing: 4) {
+        let chip = HStack(spacing: 4) {
             Text(recipient.displayName)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textPrimary.color)
@@ -1081,6 +1112,88 @@ public struct MessageDetailView: View {
             RoundedRectangle(cornerRadius: 4)
                 .fill(theme.bgSecondary.color)
         )
+        // Chips become buttons only when the shared contacts
+        // infrastructure exists; without it they stay static (#10).
+        if let contactActions, contactActions.isAvailable {
+            Button {
+                Task { await openParticipantContact(recipient) }
+            } label: {
+                chip
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(
+                String(
+                    localized: "Opens the contact card",
+                    bundle: .module
+                )
+            )
+        } else {
+            chip
+        }
+    }
+
+    /// Resolves the tapped participant against the shared contact
+    /// cache and presents the matching card or a pre-filled editor
+    /// (#10). A miss with nothing writable is a no-op — the chip
+    /// simply does nothing rather than opening an empty sheet.
+    private func openParticipantContact(_ recipient: Correspondent) async {
+        guard let contactActions else { return }
+        switch await contactActions.lookup(email: recipient.email) {
+        case .existing(let contact):
+            participantContactSheet = .detail(contact)
+        case .missing where contactActions.canAdd:
+            participantContactSheet = .create(
+                contactActions.draftForNewContact(
+                    email: recipient.email,
+                    displayName: recipient.name
+                )
+            )
+        case .resolving, .missing, .unavailable:
+            break
+        }
+    }
+
+    /// The contact card or editor the participant chip presents (#10).
+    /// Same shared surfaces the sender panel uses, so provenance,
+    /// capability gating, and conflict handling match.
+    @ViewBuilder
+    private func participantContactSheetContent(
+        _ sheet: ParticipantContactSheet
+    ) -> some View {
+        switch sheet {
+        case .detail(let contact):
+            if let contactActions {
+                SenderContactDetailSheet(
+                    contact: contact,
+                    actions: contactActions,
+                    onClose: { participantContactSheet = nil },
+                    onChanged: { participantContactSheet = nil },
+                    onOpenInContacts: {
+                        guard let url = PIMDeepLinkPolicy.url(
+                            forContactID: contact.id
+                        ) else { return }
+                        participantContactSheet = nil
+                        // The sheet must finish dismissing before the
+                        // deep link presents the Contacts surface —
+                        // on iOS a cover requested during the sheet's
+                        // dismissal is dropped.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(350))
+                            openURL(url)
+                        }
+                    }
+                )
+            }
+        case .create(let draft):
+            if let editing = contactActions?.editing {
+                ContactEditorView(
+                    editing: editing,
+                    draft: draft,
+                    source: nil,
+                    onSaved: { participantContactSheet = nil }
+                )
+            }
+        }
     }
 
     private func visibleReadReceiptRequest(for header: MessageHeader) -> ReadReceiptRequest? {
@@ -1396,10 +1509,25 @@ public struct MessageDetailView: View {
             let sendResult = try await sendInviteResponse(messageID: header.id, response: response)
             guard canApplyInviteResponse(request) else { return }
             calendarResponse = CalendarInviteLocalResponse(messageID: header.id, response: response)
-            inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
-                for: response,
-                sendResult: sendResult
-            )
+            if let inviteReconciler, let parsedInvite {
+                let reconciliation = await inviteReconciler.reconcile(
+                    invite: parsedInvite,
+                    response: response,
+                    accountEmail: backend.account.emailAddress,
+                    recipientEmails: (header.to + header.cc).map(\.email)
+                )
+                inviteResponseConfirmation = CalendarInviteResponsePresentation
+                    .confirmationStatus(
+                        for: response,
+                        sendResult: sendResult,
+                        reconciliation: reconciliation
+                    )
+            } else {
+                inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
+                    for: response,
+                    sendResult: sendResult
+                )
+            }
             finishInviteResponse(request)
         } catch is CancellationError {
             guard canApplyInviteResponse(request) else { return }

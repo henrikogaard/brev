@@ -110,6 +110,27 @@ All notable changes to Brev are documented here.
   timestamp, and a Brev deep link pre-filled — with the writable
   calendar picker when the session has an editable calendar source.
   Sessions without one keep the previous Apple Calendar sheet.
+- Contact actions from mail (ADR-0072, #10): the sender panel can open
+  the shared contact card for a known sender — with Edit and Delete on
+  writable sources — or add an unknown sender through the shared
+  contact editor. Compose autocomplete now searches every synced
+  contacts source and labels each suggestion with its source.
+- Invite RSVP reconciliation (ADR-0072, #10): answering a calendar
+  invite now also updates the matching synced event's attendee state
+  on writable calendars. The confirmation states the mail result and
+  the calendar result separately — reply-only, read-only, unmatched,
+  and failed updates are each called out.
+- Event and contact deep links (ADR-0072, #10): brev://event and
+  brev://contact links reopen the synced item in the Calendar or
+  Contacts surface on macOS and iOS — Copy Link on each detail pane,
+  Open in Calendar on synced invites, Open in Contacts on the sender
+  contact card. A link whose record left the cache fails safe with an
+  inline notice instead of landing on an unrelated item.
+- Participant contact actions (ADR-0072, #10): recipient chips in the
+  message reader open the shared contact card — or the shared editor
+  pre-filled when the participant is not in any synced contacts
+  source — with the same provenance and capability gating as the
+  sender panel.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

@@ -1,5 +1,141 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 5 (per-recipient contact actions)
+
+### Goal
+
+Close the remaining functional gap of #10: every message participant —
+not only the sender — opens the shared contact card or editor.
+
+### Changes
+
+- BrevMail: MailSenderContactActions.lookup(email:) — stateless
+  cache-only resolution that cannot clobber the sender panel's state.
+- BrevMail: MessageDetailView recipient chips become buttons when
+  contacts infrastructure exists; they present the shared
+  SenderContactDetailSheet (with Open in Contacts deep link) or the
+  shared ContactEditorView pre-filled from the participant.
+- BrevMailRootView wires senderContactActions into MessageDetailView.
+
+### Verification
+
+- swift test --filter MailSenderContactActions — 8/8 green
+- swift build --package-path packages/BrevMail — clean
+
+### Skipped
+
+- Rendered verification — pending; acceptance criterion on #10.
+
+## 2026-09-21 — Agent — Issue #10 slice 4 (event/contact deep links)
+
+### Goal
+
+Fourth slice of #10 (ADR-0072): event and contact deep links reopen
+the correct Brev item and fail safely after source removal.
+
+### Changes
+
+- BrevMail: PIMDeepLinkPolicy (brev://event?id= / brev://contact?id=
+  build + strict parse), PIMDeepLinkCopy pasteboard helper.
+- BrevMail: CalendarBrowsingModel.revealEvent and
+  ContactsBrowsingModel.revealContact — ensure-loaded reveal, filter
+  clearing, selection, day anchoring, and an inline deepLinkNotice on
+  a cache miss; both root views render the notice.
+- BrevMail: Copy Link on CalendarEventDetailView and
+  ContactDetailView; Open in Calendar on the invite card (reconciler
+  cachedEvent(forUID:) lookup); Open in Contacts on the sender contact
+  sheet (dismisses before opening for the iOS cover handoff).
+- Apps: both entry points hoist the browsing models onto the session
+  and route brev:// links to the shared instances; iOS openURL now
+  routes brev:// internally.
+- Fix: injectCardDAVContactSync installs the lookup provider through
+  the CardDAVContactSyncSupporting existential when available — the
+  MailBackend requirement's extension default no-ops when conformance
+  is inherited without an override (caught by AppSessionTests on CI).
+
+### Verification
+
+- swift test --filter PIMDeepLinkPolicyTests/CalendarBrowsingModel/
+  ContactsBrowsingModel/CalendarInviteReconciler — 44 green
+- swift test --filter AppSession — 76 green (incl. the CardDAV
+  provider-injection case)
+- swift build --package-path packages/BrevMail — clean
+
+### Skipped
+
+- Rendered verification (macOS window + iOS cover reveal) — pending;
+  acceptance criterion tracked on #10.
+- Per-recipient contact actions — deferred to a later slice.
+
+## 2026-09-21 — Agent — Issue #10 slice 3 (RSVP reconciliation)
+
+### Goal
+
+Third slice of #10 (ADR-0072): after the invite reply is sent,
+reconcile the response with the synced calendar event and explain
+partial outcomes.
+
+### Changes
+
+- BrevMail: CalendarInviteReconciler (UID match across sources,
+  account-then-recipients attendee identity, write via the shared
+  service, explicit updated/notSynced/notWritable/noMatchingAttendee/
+  failed outcomes); CalendarInviteResponsePresentation gains a
+  reconciliation-aware confirmation; ThreadMessageCard and
+  MessageDetailView reconcile after a successful send; the root view
+  and both app entry points wire the reconciler.
+
+### Verification
+
+- swift test --filter CalendarInviteReconciler — 6/6 green
+- swift build --package-path packages/BrevMail — clean
+- scripts/lint.sh — clean (ADR-0072 updated)
+- xcodebuild BrevMacOS + BrevIOS — both build
+
+### Skipped
+
+- Detached reader windows keep the mail-only confirmation (no session
+  services there); rendered verification stays with maintainer QA.
+
+### Next
+
+- Later #10 slices: event/contact deep links, per-recipient actions.
+
+## 2026-09-21 — Agent — Issue #10 slice 2 (participant contact actions)
+
+### Goal
+
+Second slice of #10 (ADR-0072): shared contact card + Add to Contacts
+from the sender panel, and compose autocomplete over the shared PIM
+contact cache.
+
+### Changes
+
+- BrevCalendar: PIMContactSyncService.contact(matchingEmail:for:) —
+  cache-only exact-email lookup.
+- BrevBackend: ContactLookupResult.sourceLabel (optional provenance).
+- BrevMail: PIMContactLookupAdapter (shared cache → ContactLookupProviding,
+  legacy CardDAV adapter kept as fallback); MailSenderContactActions
+  (resolve/open/add/canEdit); SenderContactDetailSheet; SenderContextPanel
+  contact actions; ContactEditorView draft init; AppSession injects the
+  PIM adapter on every backend; both app entry points wire the model.
+
+### Verification
+
+- swift test --filter PIMContactLookupAdapter|MailSenderContactActions — 9/9 green
+- swift build --package-path packages/BrevMail — clean
+- scripts/lint.sh — clean (ADR-0072 updated)
+- xcodebuild BrevMacOS + BrevIOS — both build
+
+### Skipped
+
+- Rendered interaction verification stays with maintainer QA.
+
+### Next
+
+- Later #10 slices: RSVP reconciliation, per-recipient actions,
+  deep links.
+
 ## 2026-09-21 — Agent — Issue #10 slice 1 (create event from message)
 
 ### Goal
