@@ -41,6 +41,14 @@ All notable changes to Brev are documented here.
   are skipped, a failed collection keeps its last snapshot, and each
   event keeps the provider's original payload for round-trip fidelity.
   Browsing views land in a later slice.
+- Contact sync (ADR-0072): "Sync Now" on a contacts source (or enabling
+  its sync) reads contacts into a local cache — Google via paged
+  `people.connections.list` with sync-token incremental passes and
+  full-resync recovery, CardDAV via RFC 6578 `sync-collection` or an
+  ETag-diff fallback. Hidden address books are skipped, a failed
+  collection keeps its last snapshot, photo URLs stay unfetched
+  references, and each contact keeps the provider's original payload for
+  round-trip fidelity. Browsing views land in a later slice.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
