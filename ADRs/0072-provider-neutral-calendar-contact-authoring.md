@@ -458,6 +458,59 @@ discovery, sync scheduling, and event/contact authoring.
 Deliberately still deferred: event/contact item sync and browsing views,
 sync scheduling, authoring, and the linked-source retention grant.
 
+### #8 slice 1 — contact sync engine and cache (2026-09-21, BrevCalendar/BrevMail/BrevSettings/apps)
+
+- `PIMContact`, `PIMContactField`, `PIMContactAddress`: the
+  provider-neutral cached contact record — source-scoped ID, provider
+  item key and version, display/given/family/nickname names,
+  organization and title, note, labeled emails/phones/addresses, group
+  membership keys, an unfetched HTTPS-only photo reference, provider
+  modification time, and the adapter-owned `rawPayload` (verbatim
+  vCard or People JSON) for round-trip preservation (R4).
+- `PIMContactStore` / `JSONPIMContactStore`: per-source contact
+  snapshots inside the source's cache directory — the removal contract
+  applies unchanged.
+- `PIMContactSyncCursor` / `PIMContactSyncCursorStore` /
+  `JSONPIMContactSyncCursorStore`: opaque checkpoints per sync scope —
+  a collection ID for CardDAV address books, the source ID for Google's
+  account-wide connections feed — under the wiped-on-removal cursor
+  directory.
+- `PIMContactSyncResult` / `PIMContactSyncError` /
+  `PIMContactSyncSummary`: the adapter/service contract mirroring the
+  calendar sync shapes.
+- `GooglePeopleContactSync`: paged `people.connections.list` with a
+  bounded personFields set; incremental passes send only the sync
+  token, `metadata.deleted` entries become tombstones, expired tokens
+  (410, or 400 naming the sync token) surface as `cursorExpired` so the
+  service retries once as a full generation (R6 rule 2).
+- `PIMDAVContactSync`: RFC 6578 `sync-collection` over CardDAV
+  collections (inline address-data or a follow-up
+  `addressbook-multiget`, 404 members become tombstones, invalid
+  tokens map to `cursorExpired`); otherwise an `addressbook-query`
+  listing diffs href→ETag against the cached set and fetches only
+  changed items (R6 rule 3).
+- `PIMVCardParser`: bounded vCard 3.0/4.0 reader for the sync path —
+  FN/N/NICKNAME/EMAIL/TEL/ADR/ORG/TITLE/NOTE/CATEGORIES/REV/UID plus
+  HTTPS-only PHOTO URI references; inline photo payloads are never
+  decoded. Malformed cards are skipped without failing the collection.
+- `PIMContactSyncService`: serial owner of sync per contacts source.
+  User-initiated only; hidden collections keep their cache but skip the
+  provider; each scope commits its generation before its cursor;
+  auth rejection marks the source authentication-required and stops the
+  pass. Local `searchContacts` covers names, nicknames,
+  organizations, emails and phones over the cache only.
+- Settings: contacts source rows gain a Sync Now action and a cached
+  contact count; enabling a source's sync runs one immediate pass
+  inside the same user gesture.
+- Wiring: `AppSession.pimContactSyncService` built by
+  `AppSessionFactory` over the same per-source data directories,
+  Keychain credential store and Google token hook on both app targets.
+
+Deliberately still deferred: contacts browsing UI (list, detail,
+group filtering), photo fetching, compose-autocomplete migration onto
+the cache, contact authoring (#9), and the linked-source retention
+grant.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

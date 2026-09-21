@@ -161,6 +161,23 @@ public enum AppSessionFactory {
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
+        // ADR-0072 #8: contacts sync rides the same credential paths and
+        // per-source data directories; cursors live under the wiped-on-
+        // removal cursor directory.
+        let pimContactSyncService = PIMContactSyncService(
+            coordinator: pimSourceCoordinator,
+            collectionStore: JSONPIMCollectionStore(
+                localDataStore: pimLocalDataStore
+            ),
+            contactStore: JSONPIMContactStore(
+                localDataStore: pimLocalDataStore
+            ),
+            cursorStore: JSONPIMContactSyncCursorStore(
+                localDataStore: pimLocalDataStore
+            ),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
+        )
 
         #if DEBUG
         if configuration.isDemoModeRequested() {
@@ -175,6 +192,7 @@ public enum AppSessionFactory {
                 },
                 pimSourceCoordinator: pimSourceCoordinator,
                 pimCollectionService: pimCollectionService,
+                pimContactSyncService: pimContactSyncService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -294,6 +312,7 @@ public enum AppSessionFactory {
             },
             pimSourceCoordinator: pimSourceCoordinator,
             pimCollectionService: pimCollectionService,
+            pimContactSyncService: pimContactSyncService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )

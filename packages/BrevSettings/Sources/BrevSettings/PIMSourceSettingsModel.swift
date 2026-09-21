@@ -45,6 +45,11 @@ public final class PIMSourceSettingsModel {
         [PIMSource.ID: [PIMCollection]] = [:]
     /// Collection discovery service; nil in sessions without PIM wiring.
     private let collectionService: PIMCollectionService?
+    /// Cached contact counts per contacts source, for the row's status
+    /// text.
+    public private(set) var contactCountsBySource: [PIMSource.ID: Int] = [:]
+    /// Contact sync service; nil in sessions without PIM sync wiring.
+    private let contactSyncService: PIMContactSyncService?
     /// Session-provided Google enablement (fresh authorization + grant
     /// swap + source registration). Nil in sessions without Google wiring —
     /// the section then shows the feature as not available yet.
@@ -54,15 +59,19 @@ public final class PIMSourceSettingsModel {
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
     ///   - collectionService: Discovers and caches collections per source.
+    ///   - contactSyncService: Syncs and caches contacts per contacts
+    ///     source.
     ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
     ///     account through feature-triggered reauthorization.
     public init(
         coordinator: PIMSourceCoordinator,
         collectionService: PIMCollectionService? = nil,
+        contactSyncService: PIMContactSyncService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
         self.collectionService = collectionService
+        self.contactSyncService = contactSyncService
         self.googleFeatureHandler = googleFeatureHandler
     }
 
@@ -76,6 +85,11 @@ public final class PIMSourceSettingsModel {
         collectionService != nil
     }
 
+    /// Whether contacts sync can run in this session.
+    public var canSyncContacts: Bool {
+        contactSyncService != nil
+    }
+
     // MARK: - Loading
 
     /// Refreshes the source snapshot from the coordinator.
@@ -85,6 +99,7 @@ public final class PIMSourceSettingsModel {
         do {
             sources = try await coordinator.allSources()
             await loadCollections()
+            await loadContactCounts()
         } catch {
             lastError = Self.errorText(for: error)
         }
@@ -103,6 +118,48 @@ public final class PIMSourceSettingsModel {
                 (try? collectionService.collections(for: source.id)) ?? []
         }
         collectionsBySource = map
+    }
+
+    private func loadContactCounts() async {
+        guard let contactSyncService else {
+            contactCountsBySource = [:]
+            return
+        }
+        var map: [PIMSource.ID: Int] = [:]
+        for source in sources where source.kind == .contacts {
+            // A store read failure must not blank the row — the count
+            // simply stays absent.
+            if let contacts = try? await contactSyncService.contacts(
+                for: source.id
+            ) {
+                map[source.id] = contacts.count
+            }
+        }
+        contactCountsBySource = map
+    }
+
+    // MARK: - Contact sync
+
+    /// Syncs a contacts source now — the account-wide connections feed
+    /// for Google, each visible address book for CardDAV. Explicitly
+    /// user-initiated; failures surface inline and keep prior snapshots.
+    public func syncNow(sourceID: PIMSource.ID) async {
+        guard let contactSyncService else { return }
+        pendingSourceID = sourceID
+        lastError = nil
+        defer { pendingSourceID = nil }
+        do {
+            let summary = try await contactSyncService.syncNow(
+                sourceID: sourceID
+            )
+            if let first = summary.failures.first {
+                lastError = first.message
+            }
+            await load()
+        } catch {
+            lastError = Self.errorText(for: error)
+            await load()
+        }
     }
 
     // MARK: - Collections
@@ -242,6 +299,11 @@ public final class PIMSourceSettingsModel {
     public func setSyncEnabled(_ enabled: Bool, for sourceID: PIMSource.ID) async {
         await perform(sourceID) {
             try await $0.setSyncEnabled(enabled, for: sourceID)
+        }
+        if enabled {
+            // Enabling sync is the user's gesture — kick one immediate
+            // pass so the cache fills without waiting for scheduling.
+            await syncNow(sourceID: sourceID)
         }
     }
 

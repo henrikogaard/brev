@@ -401,6 +401,21 @@ requests to Google. The results are cached on-device so the list stays
 readable offline; hiding a collection is a local choice and never
 contacts the provider.
 
+When you choose "Sync Now" on a contacts source or enable its sync,
+Brev reads contacts from the visible address books only: for CardDAV
+sources, the credential plus `REPORT` requests (`sync-collection`,
+or an `addressbook-query` listing plus `addressbook-multiget`
+fetches on servers without sync tokens); for Google sources, the
+account's OAuth token plus a paged `people.connections.list` read.
+Contacts are cached on-device under the source's data directory so
+they stay readable offline; the cache stores each contact's fields
+plus the provider's original payload so provider-specific data
+survives refreshes. Photo URLs are stored as references only — Brev
+never downloads contact photos during sync. Sync cursors live
+separately and are always deleted when the source is removed. A failed
+address book keeps its last snapshot — one unhealthy collection never
+empties the others.
+
 **How to disable:** Don't connect a calendar or contacts source.
 Removing a source deletes its credential, sync cursors and unsent
 drafts, and optionally its cached content; it never deletes data on the

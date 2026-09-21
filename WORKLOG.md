@@ -3401,3 +3401,34 @@ buttons, and package-aware localization.
 - Next: slice 3 Google feature-triggered reauthorization plus
   mail-account-removal handling of linked sources (acceptance criteria);
   live-provider smoke remains the maintainer gate.
+
+## 2026-09-21 — Agent — Issue #8 slice 1 (contact sync engine + cache)
+
+- Goal: give connected contacts sources a real sync pass per ADR-0072 —
+  initial + incremental sync, per-scope failure isolation, durable
+  cache, cursors wiped on removal.
+- Changes: PIMContact/PIMContactField/PIMContactAddress model with
+  adapter-owned rawPayload; JSONPIMContactStore (per-source file under
+  the cache dir) and JSONPIMContactSyncCursorStore (under the wiped
+  cursor dir, scope = collection for CardDAV / source for Google);
+  GooglePeopleContactSync (connections.list paging, syncToken-only
+  incremental, 410/400-expired → full resync); PIMDAVContactSync
+  (sync-collection with multiget fill-in, addressbook-query + ETag-diff
+  fallback); PIMVCardParser covering FN/N/NICKNAME/EMAIL/TEL/ADR/ORG/
+  TITLE/NOTE/CATEGORIES/REV/UID and HTTPS-only PHOTO URIs;
+  PIMContactSyncService (serial, user-initiated, per-scope failure
+  isolation, local-only searchContacts).
+- Settings: Sync Now menu item + cached contact count on contacts
+  source rows; enabling sync runs one immediate pass in the gesture.
+- Wiring: AppSession.pimContactSyncService via AppSessionFactory; both
+  app targets pass it to SettingsView.
+- Verification: 16 new tests pass (CardDAV incremental/multiget/
+  fallback, Google full/incremental/410, hidden-skip, failure
+  isolation, auth stop, kind guard, local search, vCard edge cases).
+  BrevCalendar, BrevSettings, BrevMail packages build clean.
+- Skipped: app builds left to CI (no local signing cert); pixel
+  snapshots unchanged. Local BrevSettings snapshot mismatches are
+  pre-existing macOS-27 renderer drift.
+- Next: #8 slice 2 browsing UI (list/detail/group filter) and
+  compose-autocomplete migration; live-provider evidence stays the
+  maintainer gate.
