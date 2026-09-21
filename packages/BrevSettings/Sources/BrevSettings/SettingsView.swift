@@ -79,6 +79,7 @@ public struct SettingsView: View {
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
         pimCollectionService: PIMCollectionService? = nil,
         pimEventSyncService: PIMEventSyncService? = nil,
+        pimContactSyncService: PIMContactSyncService? = nil,
         onEnableGooglePIMFeature: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         isAddAccountAvailable: Bool = true,
         onAddAccount: @escaping () async -> Void = {},
@@ -121,6 +122,7 @@ public struct SettingsView: View {
                     coordinator: $0,
                     collectionService: pimCollectionService,
                     eventSyncService: pimEventSyncService,
+                    contactSyncService: pimContactSyncService,
                     googleFeatureHandler: onEnableGooglePIMFeature
                 )
             }

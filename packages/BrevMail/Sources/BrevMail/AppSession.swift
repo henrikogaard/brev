@@ -217,6 +217,10 @@ public final class AppSession {
     /// (ADR-0072). Nil in sessions built without PIM support.
     public let pimEventSyncService: PIMEventSyncService?
 
+    /// Owns contact sync and the cached contact set per contacts source
+    /// (ADR-0072). Nil in sessions built without PIM support.
+    public let pimContactSyncService: PIMContactSyncService?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -272,6 +276,7 @@ public final class AppSession {
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
         pimCollectionService: PIMCollectionService? = nil,
         pimEventSyncService: PIMEventSyncService? = nil,
+        pimContactSyncService: PIMContactSyncService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -282,6 +287,7 @@ public final class AppSession {
         self.pimSourceCoordinator = pimSourceCoordinator
         self.pimCollectionService = pimCollectionService
         self.pimEventSyncService = pimEventSyncService
+        self.pimContactSyncService = pimContactSyncService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)

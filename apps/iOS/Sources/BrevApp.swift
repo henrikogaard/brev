@@ -79,6 +79,7 @@ struct BrevApp: App {
                         pimSourceCoordinator: session.pimSourceCoordinator,
                         pimCollectionService: session.pimCollectionService,
                         pimEventSyncService: session.pimEventSyncService,
+                        pimContactSyncService: session.pimContactSyncService,
                         onEnableGooglePIMFeature: { accountID, kind in
                             _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
                         },

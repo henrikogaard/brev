@@ -41,6 +41,14 @@ All notable changes to Brev are documented here.
   are skipped, a failed collection keeps its last snapshot, and each
   event keeps the provider's original payload for round-trip fidelity.
   Browsing views land in a later slice.
+- Contact sync (ADR-0072): "Sync Now" on a contacts source (or enabling
+  its sync) reads contacts into a local cache — Google via paged
+  `people.connections.list` with sync-token incremental passes and
+  full-resync recovery, CardDAV via RFC 6578 `sync-collection` or an
+  ETag-diff fallback. Hidden address books are skipped, a failed
+  collection keeps its last snapshot, photo URLs stay unfetched
+  references, and each contact keeps the provider's original payload for
+  round-trip fidelity. Browsing views land in a later slice.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a
