@@ -1,5 +1,53 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #9 slice 2 (contact editor UI)
+
+### Goal
+
+Second slice of #9 (ADR-0072): the contact editor surface on top of
+the slice-1 write pipeline — create/edit/delete on writable Google and
+CardDAV contacts sources.
+
+### Changes
+
+- BrevMail: ContactDraft (form state with provider-identity
+  carry-through and display-name resolution), ContactsEditingModel
+  (writable targets — per-book for CardDAV, account-wide for Google —
+  create/update/delete/move dispatch behind a ContactWriting seam),
+  ContactEditorView (the sheet), Edit/Delete actions on the detail
+  pane with a provider-impact delete confirmation, a New Contact
+  toolbar item on the root view.
+- Group membership: Google contact groups edit as toggles over
+  discovered collections (memberships field); CardDAV categories edit
+  as comma-separated text.
+- Fixed: ContactsRootView.groupNames matched collection.id against
+  providerKey groupKeys — never resolved; now matches providerKey.
+- Apps: both BrevApp shells construct ContactsEditingModel over the
+  session's PIM services.
+- Docs: ADR-0072 #9 slice-2 entry, CHANGELOG bullet.
+
+### Verification
+
+- swift build --package-path packages/BrevMail: clean.
+- swift test --package-path packages/BrevMail --filter
+  ContactsEditingModelTests|ContactDraftTests: 14/14 green.
+- scripts/lint.sh: clean (ADR-0072 updated in the same commit).
+- xcodebuild BrevMacOS (macOS, arm64) and BrevIOS (iPhone 17
+  simulator): both BUILD SUCCEEDED.
+
+### Skipped
+
+- Rendered verification of the sheet: no live writable source in this
+  environment; snapshot coverage deferred with the rest of the
+  contacts surface.
+
+### Handoff
+
+- Next: PR targets main. Open acceptance criteria on #9 that remain:
+  photo upload, date/URL fields (shared-model extension), duplicate
+  suggestions, and redacted live evidence against Google Workspace and
+  a writable CardDAV server.
+
 ## 2026-09-21 — Agent — Issue #9 slice 1 (contact write pipeline + editing opt-in)
 
 ### Goal

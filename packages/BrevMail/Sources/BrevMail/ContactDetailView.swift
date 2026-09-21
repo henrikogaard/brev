@@ -21,7 +21,10 @@ import SwiftUI
 /// job title and organization, labeled emails/phones/addresses, note,
 /// and group memberships. Source and collection provenance close the
 /// pane so ownership stays visible. Photo references stay unfetched —
-/// the avatar is always the monogram. Editing arrives with issue #9.
+/// the avatar is always the monogram. When the parent supplies edit or
+/// delete actions (writable source, issue #9) an action row appears
+/// under the header; the delete confirmation names the provider impact
+/// so remote deletion is never mistaken for a local cache clear.
 public struct ContactDetailView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
@@ -32,23 +35,37 @@ public struct ContactDetailView: View {
     /// Group display names the contact belongs to (resolved by the
     /// caller from the source's collections).
     let groupNames: [String]
+    /// Opens the editor for this contact; nil hides the Edit action.
+    let onEdit: (() -> Void)?
+    /// Deletes the contact remotely and from the cache; nil hides the
+    /// Delete action.
+    let onDelete: (() -> Void)?
+
+    @State private var showsDeleteConfirmation = false
 
     public init(
         contact: PIMContact,
         collection: PIMCollection? = nil,
         source: PIMSource? = nil,
-        groupNames: [String] = []
+        groupNames: [String] = [],
+        onEdit: (() -> Void)? = nil,
+        onDelete: (() -> Void)? = nil
     ) {
         self.contact = contact
         self.collection = collection
         self.source = source
         self.groupNames = groupNames
+        self.onEdit = onEdit
+        self.onDelete = onDelete
     }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                 header
+                if onEdit != nil || onDelete != nil {
+                    actionRow
+                }
                 if !contact.emails.isEmpty {
                     detailSection(
                         title: String(localized: "Email", bundle: .module),
@@ -149,6 +166,64 @@ public struct ContactDetailView: View {
         .accessibilityLabel(
             String(localized: "Contact details", bundle: .module)
         )
+        .confirmationDialog(
+            String(localized: "Delete this contact?", bundle: .module),
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            Button(
+                String(localized: "Delete Contact", bundle: .module),
+                role: .destructive
+            ) {
+                onDelete?()
+            }
+            Button(
+                String(localized: "Cancel", bundle: .module),
+                role: .cancel
+            ) {}
+        } message: {
+            Text(String(
+                localized:
+                "This permanently deletes the contact from \(source?.displayName ?? String(localized: "the provider", bundle: .module)) and removes it from the local cache.",
+                bundle: .module
+            ))
+        }
+    }
+
+    // MARK: - Actions
+
+    /// Edit/Delete affordances for writable sources — plain buttons so
+    /// the row reads as inline text actions, not chrome.
+    private var actionRow: some View {
+        HStack(spacing: BrevSpacing.lg) {
+            if let onEdit {
+                Button {
+                    onEdit()
+                } label: {
+                    Label(
+                        String(localized: "Edit", bundle: .module),
+                        systemImage: "pencil"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+            }
+            if onDelete != nil {
+                Button(role: .destructive) {
+                    showsDeleteConfirmation = true
+                } label: {
+                    Label(
+                        String(localized: "Delete", bundle: .module),
+                        systemImage: "trash"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.danger.color)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Header

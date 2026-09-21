@@ -735,6 +735,36 @@ grant.
   URL fields (the shared model does not carry them yet), duplicate
   review suggestions, and offline write queueing.
 
+### #9 slice 2 — contact editor UI (2026-09-21, BrevMail/apps)
+
+- `ContactDraft`: editable form state over the shared contact
+  model. Provider identity (uid, providerItemKey, providerVersion,
+  rawPayload) rides through untouched; the display name resolves from
+  the split names, then nickname, then first email, then the
+  provider's original display name so a record never loses identity.
+- `ContactsEditingModel`: the @MainActor owner behind the
+  editor. CardDAV targets are per-address-book; Google gets one
+  account-wide target and edits membership through groupKeys — the
+  contactGroups collections surface as toggles in the editor. A
+  CardDAV move between books is create-in-target then delete-original.
+  A `ContactWriting` protocol seam keeps the provider out of
+  the model.
+- `ContactEditorView` is the sheet: names, nickname,
+  organization/title, the address-book picker (explicit selection for
+  creates and moves), labeled emails/phones/addresses rows, group
+  membership (Google toggles, CardDAV comma-separated categories), and
+  notes. The detail pane gains Edit/Delete actions gated on canEdit —
+  the delete confirmation names the provider impact — and the root
+  view gains a New Contact toolbar item gated on a writable target.
+- Group-name resolution on the detail pane now matches providerKey
+  (Google resourceNames / CardDAV categories) instead of the composite
+  collection id — the old lookup never resolved and always rendered
+  empty.
+- Deferred by design: photo upload (rawPayload keeps the reference
+  only), date and URL fields (shared-model extension needed),
+  provider-side group creation, duplicate review suggestions, and
+  offline write queueing.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)
