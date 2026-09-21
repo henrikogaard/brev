@@ -312,6 +312,7 @@ public struct PIMDAVEventSync: Sendable {
                     PIMEventReminder(minutesBefore: $0, method: .alert)
                 },
                 conferenceURL: parsed.conferenceURL,
+                conference: Self.mapConference(parsed),
                 recurrenceRule: parsed.recurrenceRule,
                 recurrenceID: parsed.recurrenceID,
                 rawPayload: calendarData,
@@ -327,6 +328,26 @@ public struct PIMDAVEventSync: Sendable {
             name: person.name,
             email: person.email,
             rsvp: PIMEventPerson.RSVP(rawValue: person.participation)
+        )
+    }
+
+    /// The CONFERENCE property as a shared record (#13): the LABEL
+    /// parameter becomes the name, X-GOOGLE-CONFERENCE marks the link
+    /// as Meet, and unknown providers stay readable as .other.
+    private static func mapConference(
+        _ parsed: ICSParser.ParsedEvent
+    ) -> PIMConference? {
+        guard let url = parsed.conferenceURL, !url.isEmpty else {
+            return nil
+        }
+        let isMeet = parsed.conferenceIsGoogleMeet
+            || url.localizedCaseInsensitiveContains("meet.google.com")
+        return PIMConference(
+            kind: isMeet ? .meet : .other,
+            providerKey: isMeet ? "hangoutsMeet" : nil,
+            name: parsed.conferenceLabel
+                ?? (isMeet ? "Google Meet" : nil),
+            joinURL: url
         )
     }
 

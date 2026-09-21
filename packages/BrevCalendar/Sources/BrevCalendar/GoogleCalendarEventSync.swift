@@ -208,6 +208,7 @@ public struct GoogleCalendarEventSync: Sendable {
                 as? String
         )
 
+        let conference = GoogleConferenceMapping.conference(from: item)
         result.events.append(
             PIMEvent(
                 id: PIMEvent.makeID(
@@ -238,7 +239,8 @@ public struct GoogleCalendarEventSync: Sendable {
                 reminders: Self.mapReminders(
                     item["reminders"] as? [String: Any]
                 ),
-                conferenceURL: Self.mapConferenceURL(item),
+                conferenceURL: conference?.joinURL,
+                conference: conference,
                 recurrenceRule: Self.mapRecurrence(
                     item["recurrence"] as? [String]
                 ),
@@ -285,21 +287,6 @@ public struct GoogleCalendarEventSync: Sendable {
             return [PIMEventReminder(minutesBefore: nil, method: .alert)]
         }
         return []
-    }
-
-    /// Prefers the video entry point from conferenceData, then the
-    /// legacy hangoutLink.
-    private static func mapConferenceURL(_ item: [String: Any]) -> String? {
-        if let conference = item["conferenceData"] as? [String: Any],
-           let entryPoints = conference["entryPoints"] as? [[String: Any]] {
-            let video = entryPoints.first {
-                ($0["entryPointType"] as? String) == "video"
-            }
-            if let uri = (video ?? entryPoints.first)?["uri"] as? String {
-                return uri
-            }
-        }
-        return item["hangoutLink"] as? String
     }
 
     private static func mapRecurrence(

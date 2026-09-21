@@ -912,6 +912,49 @@ grant.
   nothing writable is a no-op rather than an empty sheet.
 - Deferred: rendered-verification coverage (macOS + iOS QA).
 
+### #13 slice 1 — Google Meet conferences (2026-09-21, BrevCalendar/BrevMail)
+
+- `PIMConference` is the provider-neutral conference record on
+  `PIMEvent`: kind (Meet vs other), provider key, display name, join
+  URL, dial-in entries (URI, label, PIN), and the provider-reported
+  lifecycle status (pending/success/failure). `conferenceURL` stays
+  populated as the cheap join link; `isCreationRequest` marks the
+  local intent to ask the provider for a new conference and is never
+  set on synced records.
+- Google read mapping is shared between sync and the write service so
+  a create response renders identically to a synced record:
+  `conferenceData` entry points map video to the join URL and phone
+  to dial-ins (PIN or access code); a bare `hangoutLink` still
+  produces a Meet record for legacy events; a pending create has no
+  `conferenceSolution`, so the kind falls back to the
+  `createRequest` solution key and then to a meet.google.com join
+  URL. Unknown conference solutions keep their provider key and stay
+  joinable through whatever entry points exist.
+- Google writes: when an event carries a Meet create intent, insert
+  and patch send `conferenceData.createRequest` with a fresh
+  `requestId` per call and add `conferenceDataVersion=1` to the
+  request URL; the response's `conferenceData` is mapped back onto
+  the stored record, so a pending conference survives until the next
+  sync fills in the entry points. Writes without the intent omit
+  `conferenceData` entirely, so edits never disturb a synced
+  conference.
+- CalDAV: a synced conference serializes as
+  `CONFERENCE;VALUE=URI;LABEL=<name>` (the `URL` line is skipped
+  when it duplicates the join URL) and parses back through
+  `ICSParser`; the `X-GOOGLE-CONFERENCE` property and
+  meet.google.com URLs mark the kind as Meet. A Meet create intent on
+  a CalDAV target is dropped — CalDAV cannot mint Google rooms — while
+  an already-synced conference travels with the ICS.
+- Editing: the draft preserves a synced conference as read-only; a
+  Google target shows an "Add Google Meet video call" toggle that sets
+  the create intent. Moving an event to a Google calendar re-requests
+  the conference instead of losing it; moving to CalDAV keeps the
+  synced record through ICS. The detail pane renders the conference
+  name, pending/failure notes, the join button, and tappable tel:
+  dial-in rows.
+- Out of scope: Meet artifacts (transcripts, recordings, attendance)
+  and non-Meet conference creation.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

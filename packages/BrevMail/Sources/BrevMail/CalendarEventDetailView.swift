@@ -67,8 +67,10 @@ public struct CalendarEventDetailView: View {
                 if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
                 }
-                if let conferenceURL = event.conferenceURL,
-                   let url = URL(string: conferenceURL) {
+                if let conference = event.conference {
+                    conferenceSection(conference)
+                } else if let conferenceURL = event.conferenceURL,
+                          let url = URL(string: conferenceURL) {
                     joinButton(url)
                 }
                 if !event.attendees.isEmpty || event.organizer != nil {
@@ -257,6 +259,80 @@ public struct CalendarEventDetailView: View {
     }
 
     // MARK: - Join link
+
+    /// The conference block (#13): provider name and status, the join
+    /// button when a link exists, and phone entry points as tappable
+    /// tel: rows. Unknown providers render the same chrome — no
+    /// provider-specific controls appear here.
+    private func conferenceSection(_ conference: PIMConference) -> some View {
+        detailSection(
+            title: conference.name
+                ?? String(localized: "Video call", bundle: .module),
+            symbol: "video"
+        ) {
+            if conference.status == .pending {
+                Text(
+                    String(
+                        localized:
+                        "The video call is being created and appears after the next sync.",
+                        bundle: .module
+                    )
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.warning.color)
+            } else if conference.status == .failure {
+                Text(
+                    String(
+                        localized:
+                        "The provider could not create the video call. The event itself is saved.",
+                        bundle: .module
+                    )
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.danger.color)
+            }
+            if let joinURL = conference.joinURL,
+               let url = URL(string: joinURL) {
+                joinButton(url)
+            }
+            ForEach(Array(conference.dialIns.enumerated()), id: \.offset) { _, dialIn in
+                dialInRow(dialIn)
+            }
+        }
+    }
+
+    private func dialInRow(_ dialIn: PIMConference.DialIn) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            Image(systemName: "phone")
+                .foregroundStyle(theme.textTertiary.color)
+                .accessibilityHidden(true)
+            if let url = URL(string: dialIn.uri) {
+                Button {
+                    openURL(url)
+                } label: {
+                    Text(dialIn.label ?? dialIn.uri)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+            } else {
+                Text(dialIn.label ?? dialIn.uri)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+            }
+            if let pin = dialIn.pin, !pin.isEmpty {
+                Text(
+                    String(
+                        localized: "PIN \(pin)",
+                        bundle: .module
+                    )
+                )
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
 
     private func joinButton(_ url: URL) -> some View {
         Button {

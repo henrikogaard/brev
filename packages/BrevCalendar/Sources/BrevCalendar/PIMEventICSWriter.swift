@@ -85,7 +85,23 @@ public enum PIMEventICSWriter {
         for reminder in event.reminders {
             lines.append(contentsOf: alarmLines(reminder))
         }
-        if let conferenceURL = event.conferenceURL, !conferenceURL.isEmpty {
+        // #13: the conference rides as CONFERENCE;VALUE=URI (RFC 7986)
+        // — the property the parser reads back — with the LABEL
+        // parameter preserved; URL stays for clients that only know
+        // the flat link.
+        if let conference = event.conference,
+           let joinURL = conference.joinURL, !joinURL.isEmpty {
+            var line = "CONFERENCE;VALUE=URI"
+            if let name = conference.name, !name.isEmpty {
+                line += ";LABEL=" + name
+                    .replacingOccurrences(of: ";", with: "-")
+                    .replacingOccurrences(of: ":", with: "-")
+                    .replacingOccurrences(of: "\n", with: " ")
+            }
+            lines.append(line + ":" + joinURL)
+        }
+        if let conferenceURL = event.conferenceURL, !conferenceURL.isEmpty,
+           conferenceURL != event.conference?.joinURL {
             lines.append("URL:" + conferenceURL)
         }
         lines.append("END:VEVENT")

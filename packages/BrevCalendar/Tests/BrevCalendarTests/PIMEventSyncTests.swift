@@ -644,7 +644,7 @@ struct PIMEventSyncTests {
               extra: """
               ,"attendees":[{"email":"ada@example.com","displayName":"Ada","responseStatus":"accepted"}]
               ,"reminders":{"overrides":[{"method":"popup","minutes":10}]}
-              ,"conferenceData":{"entryPoints":[{"entryPointType":"video","uri":"https://meet.google.com/abc"}]}
+              ,"conferenceData":{"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet"},"status":{"statusCode":"success"},"entryPoints":[{"entryPointType":"video","uri":"https://meet.google.com/abc","label":"meet.google.com/abc"},{"entryPointType":"phone","uri":"tel:+1-555-0100","label":"+1 555-0100","pin":"1234"}]}
               ,"recurrence":["RRULE:FREQ=WEEKLY;BYDAY=MO"]
               ,"updated":"2026-09-20T09:00:00Z"
               ,"providerOnlyField":{"nested":true}
@@ -683,6 +683,19 @@ struct PIMEventSyncTests {
         #expect(standup?.attendees.first?.rsvp == .accepted)
         #expect(standup?.reminders.first?.minutesBefore == 10)
         #expect(standup?.conferenceURL == "https://meet.google.com/abc")
+        // #13: the full conference record carries kind, name, status,
+        // and dial-ins alongside the flat join link.
+        #expect(standup?.conference?.kind == .meet)
+        #expect(standup?.conference?.name == "Google Meet")
+        #expect(standup?.conference?.status == .success)
+        #expect(
+            standup?.conference?.dialIns
+                == [PIMConference.DialIn(
+                    uri: "tel:+1-555-0100",
+                    label: "+1 555-0100",
+                    pin: "1234"
+                )]
+        )
         #expect(standup?.recurrenceRule?.frequency == .weekly)
         #expect(standup?.timeZoneIdentifier == "Europe/Oslo")
         // Unknown provider fields survive in the raw payload (R4).
@@ -924,6 +937,130 @@ struct PIMEventSyncTests {
         await #expect(throws: PIMEventSyncServiceError.self) {
             _ = try await service.syncNow(sourceID: "pim-test")
         }
+    }
+
+    @Test("a pending Meet create and a bare hangoutLink both map")
+    func googleConferenceEdgeCases() async throws {
+        let collection = Self.collection(providerKey: "primary")
+        let page = """
+        {"items":[
+          \(Self.googleEventJSON(
+              id: "g-pending",
+              summary: "Pending",
+              extra: """
+              ,"conferenceData":{"createRequest":{"requestId":"r1","conferenceSolutionKey":{"type":"hangoutsMeet"}},"status":{"statusCode":"pending"}}
+              """
+          )),
+          \(Self.googleEventJSON(
+              id: "g-legacy",
+              summary: "Legacy",
+              extra: """
+              ,"hangoutLink":"https://meet.google.com/legacy"
+              """
+          )),
+          \(Self.googleEventJSON(
+              id: "g-addon",
+              summary: "Addon",
+              extra: """
+              ,"conferenceData":{"conferenceSolution":{"key":{"type":"addOn"},"name":"Zoom"},"entryPoints":[{"entryPointType":"video","uri":"https://zoom.us/j/9"}]}
+              """
+          ))
+        ],"nextSyncToken":"tok-1"}
+        """
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: page)
+        ])
+        let (service, _, eventStore, _) = try await makeService(
+            source: Self.source(provider: .google),
+            collections: [collection],
+            davTransport: ScriptedTransport(steps: []),
+            googleTransport: transport,
+            googleAccessToken: { _ in "google-token" }
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let events = try await eventStore.events(
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        let pending = events.first { $0.providerItemKey == "g-pending" }
+        #expect(pending?.conference?.status == .pending)
+        #expect(pending?.conference?.kind == PIMConference.Kind.meet)
+        #expect(pending?.conference?.joinURL == nil)
+        #expect(pending?.conferenceURL == nil)
+
+        let legacy = events.first { $0.providerItemKey == "g-legacy" }
+        #expect(legacy?.conference?.kind == PIMConference.Kind.meet)
+        #expect(
+            legacy?.conference?.joinURL
+                == "https://meet.google.com/legacy"
+        )
+
+        let addon = events.first { $0.providerItemKey == "g-addon" }
+        #expect(addon?.conference?.kind == PIMConference.Kind.other)
+        #expect(addon?.conference?.name == "Zoom")
+        #expect(addon?.conference?.joinURL == "https://zoom.us/j/9")
+    }
+
+    @Test("DAV conference label and Meet marker map to the record")
+    func davConferenceMapping() async throws {
+        let collection = Self.collection()
+        let vevent = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        BEGIN:VEVENT
+        UID:conf-1@example.com
+        SUMMARY:Labeled call
+        DTSTART:20260922T140000Z
+        DTEND:20260922T150000Z
+        CONFERENCE;VALUE=URI;LABEL=Zoom room:https://zoom.us/j/42
+        END:VEVENT
+        BEGIN:VEVENT
+        UID:conf-2@example.com
+        SUMMARY:Meet call
+        DTSTART:20260923T140000Z
+        DTEND:20260923T150000Z
+        X-GOOGLE-CONFERENCE:https://meet.google.com/xyz
+        END:VEVENT
+        END:VCALENDAR
+        """
+        let transport = ScriptedTransport(steps: [
+            .response(
+                207,
+                body: Self.davSyncBody(
+                    members: [
+                        (
+                            "/calendars/henrik/work/conf.ics",
+                            "etag-1",
+                            vevent
+                        )
+                    ],
+                    syncToken: "sync-1"
+                )
+            )
+        ])
+        let (service, _, eventStore, _) = try await makeService(
+            source: Self.source(),
+            collections: [collection],
+            davTransport: transport
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let events = try await eventStore.events(
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        let labeled = events.first { $0.summary == "Labeled call" }
+        #expect(labeled?.conference?.kind == PIMConference.Kind.other)
+        #expect(labeled?.conference?.name == "Zoom room")
+        #expect(
+            labeled?.conference?.joinURL == "https://zoom.us/j/42"
+        )
+        let meet = events.first { $0.summary == "Meet call" }
+        #expect(meet?.conference?.kind == PIMConference.Kind.meet)
+        #expect(meet?.conference?.name == "Google Meet")
     }
 }
 

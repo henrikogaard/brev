@@ -99,6 +99,12 @@ public struct CalendarEventDraft: Sendable, Hashable {
     var organizer: PIMEventPerson?
     var attendeesWithRSVP: [PIMEventPerson] = []
     var conferenceURL: String?
+    /// The event's synced conference, preserved across edits (#13).
+    var conference: PIMConference?
+    /// Editor intent: create a provider conference on save. Only
+    /// meaningful for providers that can create conferences (Google);
+    /// the write service drops it elsewhere.
+    public var requestsConference = false
     var providerUpdatedAt: Date?
     /// The collection the edited event came from; equal to
     /// targetCollectionID unless the user moves the event.
@@ -152,6 +158,7 @@ public struct CalendarEventDraft: Sendable, Hashable {
         organizer = event.organizer
         attendeesWithRSVP = event.attendees
         conferenceURL = event.conferenceURL
+        conference = event.conference
         providerUpdatedAt = event.providerUpdatedAt
     }
 
@@ -246,6 +253,14 @@ public struct CalendarEventDraft: Sendable, Hashable {
                 PIMEventReminder(minutesBefore: $0, method: .alert)
             },
             conferenceURL: conferenceURL,
+            conference: conference
+                ?? (requestsConference
+                    ? PIMConference(
+                        kind: .meet,
+                        status: .pending,
+                        isCreationRequest: true
+                    )
+                    : nil),
             recurrenceRule: recurrenceRule,
             recurrenceID: recurrenceID,
             rawPayload: rawPayload,

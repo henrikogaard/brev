@@ -403,6 +403,74 @@ struct CalendarEditingModelTests {
         #expect(deleted.providerItemKey == "e1")
     }
 
+    @Test("a move to Google re-requests the conference instead of losing it")
+    func moveToGoogleReRequestsConference() async throws {
+        let (model, writer) = try await makeModel(
+            sources: [
+                Self.source(id: "s1", provider: .calDAV),
+                Self.source(id: "g1", provider: .google),
+            ],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+                "g1": [Self.collection(id: "gc1", sourceID: "g1")],
+            ]
+        )
+        await model.load()
+        var event = Self.event(collectionID: "c1")
+        event.conference = PIMConference(
+            kind: .meet,
+            providerKey: "hangoutsMeet",
+            joinURL: "https://meet.google.com/old",
+            status: .success
+        )
+        var draft = CalendarEventDraft(event: event)
+        draft.targetCollectionID = "gc1"
+
+        _ = try await model.save(draft)
+
+        guard case .create(let created, _) = writer.calls.first else {
+            Issue.record("expected a create into the Google target")
+            return
+        }
+        // The old Meet link cannot ride along on a Google create —
+        // the record asks for a fresh conference instead.
+        #expect(created.conference?.isCreationRequest == true)
+        #expect(created.conference?.status == .pending)
+        #expect(created.conference?.joinURL == nil)
+    }
+
+    @Test("a move between CalDAV calendars keeps the synced conference")
+    func moveToDAVKeepsConference() async throws {
+        let (model, writer) = try await makeModel(
+            sources: [Self.source(id: "s1", provider: .calDAV)],
+            collections: [
+                "s1": [
+                    Self.collection(id: "c1", sourceID: "s1"),
+                    Self.collection(id: "c2", sourceID: "s1"),
+                ],
+            ]
+        )
+        await model.load()
+        var event = Self.event(collectionID: "c1")
+        event.conference = PIMConference(
+            kind: .other,
+            name: "Zoom",
+            joinURL: "https://zoom.us/j/9",
+            status: .success
+        )
+        var draft = CalendarEventDraft(event: event)
+        draft.targetCollectionID = "c2"
+
+        _ = try await model.save(draft)
+
+        guard case .create(let created, _) = writer.calls.first else {
+            Issue.record("expected a create into the DAV target")
+            return
+        }
+        #expect(created.conference?.joinURL == "https://zoom.us/j/9")
+        #expect(created.conference?.isCreationRequest == false)
+    }
+
     @Test("future scope truncates the master and creates a new series")
     func saveFutureScope() async throws {
         let (model, writer) = try await makeModel(

@@ -1,5 +1,48 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #13 slice 1 (Google Meet conferences)
+
+### Goal
+
+Implement #13: read and render Google Meet (and generic) conferences
+on synced events, and let the editor request a new Meet conference on
+Google targets — without losing conference data on edits, moves, or
+CalDAV round-trips.
+
+### Changes
+
+- BrevCalendar: PIMConference record on PIMEvent (kind, provider key,
+  name, join URL, dial-ins, lifecycle status, isCreationRequest
+  intent flag).
+- BrevCalendar: GoogleConferenceMapping shared by sync and the write
+  service — conferenceData entry points, hangoutLink fallback,
+  pending-create kind via the createRequest solution key, unknown
+  solutions stay joinable.
+- BrevCalendar: Google writer sends conferenceData.createRequest with
+  a fresh requestId plus conferenceDataVersion=1, and maps the
+  response conference back into the stored record; writes without the
+  intent omit conferenceData so synced conferences survive edits.
+- BrevCalendar: ICS writer emits CONFERENCE;VALUE=URI;LABEL and the
+  parser reads it back; X-GOOGLE-CONFERENCE / meet.google.com mark the
+  kind as Meet; CalDAV create drops an unfulfillable Meet intent but
+  keeps synced conferences.
+- BrevMail: event draft preserves synced conferences, exposes a Meet
+  toggle only for Google targets; moving to Google re-requests the
+  conference, moving to CalDAV keeps it via ICS; detail pane renders
+  name/status/join/dial-ins.
+
+### Verification
+
+- swift test --filter PIMEventSyncTests — 18/18 green
+- swift test --filter PIMEventWriteTests — 25/25 green
+- swift test --filter CalendarEventDraftTests|CalendarEditingModelTests
+  — 21/21 green
+- scripts/lint.sh — clean
+
+### Skipped
+
+- Rendered verification — pending; maintainer QA on #13.
+
 ## 2026-09-21 — Agent — Issue #10 slice 5 (per-recipient contact actions)
 
 ### Goal

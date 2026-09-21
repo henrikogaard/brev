@@ -55,6 +55,10 @@ public enum ICSParser {
         public let reminderMinutes: [Int]
         /// First `CONFERENCE;VALUE=URI` or `X-GOOGLE-CONFERENCE` URI found.
         public let conferenceURL: String?
+        /// The CONFERENCE property's LABEL parameter, when present (#13).
+        public let conferenceLabel: String?
+        /// True when the link came from X-GOOGLE-CONFERENCE (#13).
+        public let conferenceIsGoogleMeet: Bool
 
         /// Memberwise initialiser with a `nil` default for `recurrenceRule`
         /// so call-sites that construct `ParsedEvent` directly (e.g. in tests)
@@ -75,7 +79,9 @@ public enum ICSParser {
             timeZoneIdentifier: String? = nil,
             lastModified: Date? = nil,
             reminderMinutes: [Int] = [],
-            conferenceURL: String? = nil
+            conferenceURL: String? = nil,
+            conferenceLabel: String? = nil,
+            conferenceIsGoogleMeet: Bool = false
         ) {
             self.uid = uid
             self.summary = summary
@@ -93,6 +99,8 @@ public enum ICSParser {
             self.lastModified = lastModified
             self.reminderMinutes = reminderMinutes
             self.conferenceURL = conferenceURL
+            self.conferenceLabel = conferenceLabel
+            self.conferenceIsGoogleMeet = conferenceIsGoogleMeet
         }
     }
 
@@ -255,12 +263,15 @@ public enum ICSParser {
         let reminderMinutes = props
             .filter { $0.name == "TRIGGER" }
             .compactMap { parseTriggerMinutes($0.value) }
-        let conferenceURL = props
+        let conferenceProp = props
             .first {
                 ($0.name == "CONFERENCE" && $0.params["VALUE"]?.uppercased() == "URI")
                     || $0.name == "X-GOOGLE-CONFERENCE"
-            }?
+            }
+        let conferenceURL = conferenceProp?
             .value
+            .trimmingCharacters(in: .whitespaces)
+        let conferenceLabel = conferenceProp?.params["LABEL"]?
             .trimmingCharacters(in: .whitespaces)
 
         return ParsedEvent(
@@ -279,7 +290,9 @@ public enum ICSParser {
             timeZoneIdentifier: dtstart?.params["TZID"],
             lastModified: lastModified,
             reminderMinutes: reminderMinutes,
-            conferenceURL: conferenceURL
+            conferenceURL: conferenceURL,
+            conferenceLabel: conferenceLabel,
+            conferenceIsGoogleMeet: conferenceProp?.name == "X-GOOGLE-CONFERENCE"
         )
     }
 

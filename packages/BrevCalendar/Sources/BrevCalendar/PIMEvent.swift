@@ -98,6 +98,88 @@ public struct PIMEventReminder: Sendable, Hashable, Codable {
     }
 }
 
+/// A video/phone conference attached to an event (#13).
+///
+/// Synced records carry whatever the provider published — join URL,
+/// dial-ins, display name, lifecycle status. `isCreationRequest` is
+/// the local intent flag the Google writer turns into
+/// `conferenceData.createRequest`; it is never set on synced records.
+public struct PIMConference: Sendable, Hashable, Codable {
+    /// The conference system behind the link.
+    public enum Kind: String, Sendable, Hashable, Codable {
+        /// Google Meet.
+        case meet
+        /// Any other conference provider — readable and joinable, but
+        /// Brev cannot create it.
+        case other
+    }
+
+    /// Lifecycle of the conference data itself.
+    public enum Status: String, Sendable, Hashable, Codable {
+        /// Google is still creating the conference — entry points may
+        /// arrive on the next sync.
+        case pending
+        /// The conference is ready.
+        case success
+        /// The provider failed to create the conference; the event
+        /// itself is saved.
+        case failure
+    }
+
+    /// A phone dial-in entry point.
+    public struct DialIn: Sendable, Hashable, Codable {
+        /// tel: URI for the dial-in.
+        public var uri: String
+        /// Provider display label (number, region).
+        public var label: String?
+        /// PIN / access code when the provider published one.
+        public var pin: String?
+
+        public init(uri: String, label: String? = nil, pin: String? = nil) {
+            self.uri = uri
+            self.label = label
+            self.pin = pin
+        }
+    }
+
+    /// The conference system kind, derived from the provider's
+    /// conference solution key or link host.
+    public var kind: Kind
+    /// The provider's conference solution key (e.g. "hangoutsMeet");
+    /// kept so unknown solutions stay identifiable.
+    public var providerKey: String?
+    /// Provider display name for the conference.
+    public var name: String?
+    /// Video join URL.
+    public var joinURL: String?
+    /// Phone entry points.
+    public var dialIns: [DialIn]
+    /// Provider-reported conference status; nil when the provider did
+    /// not report one.
+    public var status: Status?
+    /// Local intent flag: the Google writer turns this into
+    /// `conferenceData.createRequest`. Never set on synced records.
+    public var isCreationRequest: Bool
+
+    public init(
+        kind: Kind,
+        providerKey: String? = nil,
+        name: String? = nil,
+        joinURL: String? = nil,
+        dialIns: [DialIn] = [],
+        status: Status? = nil,
+        isCreationRequest: Bool = false
+    ) {
+        self.kind = kind
+        self.providerKey = providerKey
+        self.name = name
+        self.joinURL = joinURL
+        self.dialIns = dialIns
+        self.status = status
+        self.isCreationRequest = isCreationRequest
+    }
+}
+
 /// A provider-neutral cached calendar event (ADR-0072).
 ///
 /// One record per provider item component: a CalDAV resource holding a
@@ -136,6 +218,10 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
     /// Conference join link (Google conferenceData / iCalendar
     /// CONFERENCE;VALUE=URI), when the provider published one.
     public var conferenceURL: String?
+    /// The full conference record (#13): kind, name, join URL,
+    /// dial-ins, and provider status. `conferenceURL` stays populated
+    /// as the cheap join link.
+    public var conference: PIMConference?
     /// Series recurrence pattern on the master component.
     public var recurrenceRule: ICSParser.RecurrenceRule?
     /// Exception marker: the original start this component overrides.
@@ -167,6 +253,7 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         attendees: [PIMEventPerson] = [],
         reminders: [PIMEventReminder] = [],
         conferenceURL: String? = nil,
+        conference: PIMConference? = nil,
         recurrenceRule: ICSParser.RecurrenceRule? = nil,
         recurrenceID: Date? = nil,
         rawPayload: String? = nil,
@@ -191,6 +278,7 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         self.attendees = attendees
         self.reminders = reminders
         self.conferenceURL = conferenceURL
+        self.conference = conference
         self.recurrenceRule = recurrenceRule
         self.recurrenceID = recurrenceID
         self.rawPayload = rawPayload

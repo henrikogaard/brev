@@ -349,6 +349,20 @@ public final class CalendarEditingModel {
         moved.providerItemKey = nil
         moved.providerVersion = nil
         moved.rawPayload = nil
+        // A synced conference cannot be carried into a Google create —
+        // conferenceData is provider-assigned — so a moved event with
+        // one asks the target for a fresh conference instead of
+        // silently losing the video call (#13). CalDAV targets keep
+        // the conference: it round-trips through the ICS payload.
+        if moved.conference != nil,
+           moved.conference?.isCreationRequest == false,
+           target.source.provider == .google {
+            moved.conference = PIMConference(
+                kind: .meet,
+                status: .pending,
+                isCreationRequest: true
+            )
+        }
         let created = try await writeService.create(
             moved.makeEvent(
                 sourceID: target.source.id,
