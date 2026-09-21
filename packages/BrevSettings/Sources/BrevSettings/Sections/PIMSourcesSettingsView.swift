@@ -37,6 +37,9 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
     /// Whether the source can refresh its collection list — connected or
     /// retryable after a failure.
     let canRefreshCollections: Bool
+    /// Whether the source can run an event sync now — calendar sources
+    /// that finished connecting, plus retryable failures.
+    let canSyncNow: Bool
 
     init(source: PIMSource) {
         let status = PIMSourceStatusPresenter.presentation(for: source.status)
@@ -55,6 +58,8 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         canRemove = source.status != .connecting
         canRefreshCollections = connected.contains(source.status)
             || source.status == .failed
+        canSyncNow = source.kind == .calendar
+            && (connected.contains(source.status) || source.status == .failed)
     }
 
     private static func subtitle(provider: PIMSourceProvider, kind: PIMSourceKind) -> String {
@@ -251,6 +256,14 @@ struct PIMSourcesSettingsView: View {
                 ForEach(collections) { collection in
                     collectionRow(collection, sourceID: row.id)
                 }
+                if let count = model.eventCountsBySource[row.id] {
+                    Text(String(
+                        localized: "\(count) events cached",
+                        bundle: .module
+                    ))
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                }
             }
             .padding(.top, BrevSpacing.xxs)
         } else if row.canRefreshCollections, model.canManageCollections {
@@ -336,6 +349,16 @@ struct PIMSourcesSettingsView: View {
 
     private func sourceMenu(_ row: PIMSourceRowPresentation) -> some View {
         Menu {
+            if row.canSyncNow, model.canSyncEvents {
+                Button {
+                    Task { await model.syncNow(sourceID: row.id) }
+                } label: {
+                    Label(
+                        String(localized: "Sync Now", bundle: .module),
+                        systemImage: "arrow.triangle.2.circlepath"
+                    )
+                }
+            }
             if row.canRefreshCollections, model.canManageCollections {
                 Button {
                     Task { await model.refreshCollections(sourceID: row.id) }

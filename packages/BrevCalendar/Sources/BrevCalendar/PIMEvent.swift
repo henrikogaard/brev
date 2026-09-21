@@ -498,4 +498,3 @@ private extension JSONDecoder {
         return decoder
     }()
 }
-

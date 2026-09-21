@@ -374,4 +374,3 @@ public struct GoogleCalendarEventSync: Sendable {
         return formatter
     }()
 }
-

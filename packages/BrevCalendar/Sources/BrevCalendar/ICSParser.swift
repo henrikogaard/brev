@@ -217,7 +217,6 @@ public enum ICSParser {
         from props: [Property],
         tzOffsets: [String: Int]
     ) -> ParsedEvent {
-
         func first(_ name: String) -> Property? {
             props.first { $0.name == name }
         }

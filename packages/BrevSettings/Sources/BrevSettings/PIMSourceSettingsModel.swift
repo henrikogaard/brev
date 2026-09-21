@@ -45,6 +45,10 @@ public final class PIMSourceSettingsModel {
         [PIMSource.ID: [PIMCollection]] = [:]
     /// Collection discovery service; nil in sessions without PIM wiring.
     private let collectionService: PIMCollectionService?
+    /// Cached event counts per calendar source, for the row's status text.
+    public private(set) var eventCountsBySource: [PIMSource.ID: Int] = [:]
+    /// Event sync service; nil in sessions without PIM sync wiring.
+    private let eventSyncService: PIMEventSyncService?
     /// Session-provided Google enablement (fresh authorization + grant
     /// swap + source registration). Nil in sessions without Google wiring —
     /// the section then shows the feature as not available yet.
@@ -54,15 +58,18 @@ public final class PIMSourceSettingsModel {
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
     ///   - collectionService: Discovers and caches collections per source.
+    ///   - eventSyncService: Syncs and caches events per calendar source.
     ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
     ///     account through feature-triggered reauthorization.
     public init(
         coordinator: PIMSourceCoordinator,
         collectionService: PIMCollectionService? = nil,
+        eventSyncService: PIMEventSyncService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
         self.collectionService = collectionService
+        self.eventSyncService = eventSyncService
         self.googleFeatureHandler = googleFeatureHandler
     }
 
@@ -76,6 +83,11 @@ public final class PIMSourceSettingsModel {
         collectionService != nil
     }
 
+    /// Whether calendar event sync can run in this session.
+    public var canSyncEvents: Bool {
+        eventSyncService != nil
+    }
+
     // MARK: - Loading
 
     /// Refreshes the source snapshot from the coordinator.
@@ -85,6 +97,7 @@ public final class PIMSourceSettingsModel {
         do {
             sources = try await coordinator.allSources()
             await loadCollections()
+            await loadEventCounts()
         } catch {
             lastError = Self.errorText(for: error)
         }
@@ -103,6 +116,47 @@ public final class PIMSourceSettingsModel {
                 (try? collectionService.collections(for: source.id)) ?? []
         }
         collectionsBySource = map
+    }
+
+    private func loadEventCounts() async {
+        guard let eventSyncService else {
+            eventCountsBySource = [:]
+            return
+        }
+        var map: [PIMSource.ID: Int] = [:]
+        for source in sources where source.kind == .calendar {
+            // A store read failure must not blank the row — the count
+            // simply stays absent.
+            if let events = try? await eventSyncService.events(
+                for: source.id
+            ) {
+                map[source.id] = events.count
+            }
+        }
+        eventCountsBySource = map
+    }
+
+    // MARK: - Event sync
+
+    /// Syncs a calendar source's visible collections now. Explicitly
+    /// user-initiated; failures surface inline and keep prior snapshots.
+    public func syncNow(sourceID: PIMSource.ID) async {
+        guard let eventSyncService else { return }
+        pendingSourceID = sourceID
+        lastError = nil
+        defer { pendingSourceID = nil }
+        do {
+            let summary = try await eventSyncService.syncNow(
+                sourceID: sourceID
+            )
+            if let first = summary.failures.first {
+                lastError = first.message
+            }
+            await load()
+        } catch {
+            lastError = Self.errorText(for: error)
+            await load()
+        }
     }
 
     // MARK: - Collections
@@ -242,6 +296,11 @@ public final class PIMSourceSettingsModel {
     public func setSyncEnabled(_ enabled: Bool, for sourceID: PIMSource.ID) async {
         await perform(sourceID) {
             try await $0.setSyncEnabled(enabled, for: sourceID)
+        }
+        if enabled {
+            // Enabling sync is the user's gesture — kick one immediate
+            // pass so the cache fills without waiting for scheduling.
+            await syncNow(sourceID: sourceID)
         }
     }
 

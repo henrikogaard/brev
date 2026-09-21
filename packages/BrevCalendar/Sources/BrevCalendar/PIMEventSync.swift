@@ -118,11 +118,11 @@ public struct PIMEventSyncSummary: Sendable, Hashable {
     }
 
     /// Collections whose new generation committed.
-    public var syncedCollections: Int = 0
+    public var syncedCollections = 0
     /// Records inserted or replaced across all collections.
-    public var upsertedEvents: Int = 0
+    public var upsertedEvents = 0
     /// Cached records removed by provider tombstones.
-    public var removedEvents: Int = 0
+    public var removedEvents = 0
     /// Per-collection failures. A failure never blanks that collection's
     /// prior snapshot.
     public var failures: [CollectionFailure] = []
