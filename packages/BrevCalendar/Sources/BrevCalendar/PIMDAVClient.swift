@@ -345,7 +345,9 @@ public struct PIMDAVClient: Sendable {
         return request
     }
 
-    private static func authorizationHeader(for credential: CalDAVCredential) -> String {
+    /// Shared with collection discovery so both paths build credentials
+    /// identically.
+    static func authorizationHeader(for credential: CalDAVCredential) -> String {
         switch credential {
         case .bearer(let token):
             return "Bearer \(token)"
@@ -378,7 +380,9 @@ public struct PIMDAVClient: Sendable {
     /// HTTPS is mandatory for credential-bearing DAV setup. The only
     /// exception is a loopback host so local dev servers stay usable — the
     /// same allowance the CalDAV write-target path makes.
-    private static func requireHTTPS(_ url: URL) throws {
+    /// Shared with collection discovery so both paths build credentials
+    /// identically.
+    static func requireHTTPS(_ url: URL) throws {
         if url.scheme?.lowercased() == "https" { return }
         if url.scheme?.lowercased() == "http",
            let host = url.host(),
@@ -396,13 +400,13 @@ public struct PIMDAVClient: Sendable {
             || lower.hasSuffix(".localhost")
     }
 
-    private static func isSameOrigin(_ a: URL, _ b: URL) -> Bool {
+    static func isSameOrigin(_ a: URL, _ b: URL) -> Bool {
         a.scheme?.lowercased() == b.scheme?.lowercased()
             && a.host()?.lowercased() == b.host()?.lowercased()
             && a.port == b.port
     }
 
-    private static func mapTransportError(_ error: URLError) -> PIMDAVConnectError {
+    static func mapTransportError(_ error: URLError) -> PIMDAVConnectError {
         switch error.code {
         case .serverCertificateHasBadDate,
              .serverCertificateUntrusted,

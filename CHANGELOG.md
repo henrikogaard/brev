@@ -28,6 +28,11 @@ All notable changes to Brev are documented here.
   now lists its linked Calendar/Contacts sources and removes them with an
   explicit keep-or-delete cache choice, so no source is silently orphaned.
   Unsent source drafts are always deleted; provider data is never touched.
+- Calendar/Contacts collection discovery (ADR-0072): connected sources now
+  list their calendars or address books/contact groups in Settings —
+  CalDAV/CardDAV via home-set PROPFIND, Google via the account's shared
+  grant. Each collection can be shown or hidden; the choice survives
+  refreshes, and a failed refresh never blanks the cached list.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

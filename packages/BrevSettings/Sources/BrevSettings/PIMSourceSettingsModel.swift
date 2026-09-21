@@ -40,6 +40,11 @@ public final class PIMSourceSettingsModel {
     public private(set) var pendingGoogleAccountID: BrevAccount.ID?
 
     private let coordinator: PIMSourceCoordinator
+    /// Discovered collections per source, loaded alongside the snapshot.
+    public private(set) var collectionsBySource:
+        [PIMSource.ID: [PIMCollection]] = [:]
+    /// Collection discovery service; nil in sessions without PIM wiring.
+    private let collectionService: PIMCollectionService?
     /// Session-provided Google enablement (fresh authorization + grant
     /// swap + source registration). Nil in sessions without Google wiring —
     /// the section then shows the feature as not available yet.
@@ -48,19 +53,27 @@ public final class PIMSourceSettingsModel {
 
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
+    ///   - collectionService: Discovers and caches collections per source.
     ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
     ///     account through feature-triggered reauthorization.
     public init(
         coordinator: PIMSourceCoordinator,
+        collectionService: PIMCollectionService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
+        self.collectionService = collectionService
         self.googleFeatureHandler = googleFeatureHandler
     }
 
     /// Whether Google feature enablement can run in this session.
     public var canEnableGoogleFeatures: Bool {
         googleFeatureHandler != nil
+    }
+
+    /// Whether collection discovery can run in this session.
+    public var canManageCollections: Bool {
+        collectionService != nil
     }
 
     // MARK: - Loading
@@ -71,6 +84,73 @@ public final class PIMSourceSettingsModel {
         defer { isLoading = false }
         do {
             sources = try await coordinator.allSources()
+            await loadCollections()
+        } catch {
+            lastError = Self.errorText(for: error)
+        }
+    }
+
+    private func loadCollections() async {
+        guard let collectionService else {
+            collectionsBySource = [:]
+            return
+        }
+        var map: [PIMSource.ID: [PIMCollection]] = [:]
+        for source in sources {
+            // A store read failure must not blank the source list — the
+            // source row still renders, its collections just stay empty.
+            await map[source.id] =
+                (try? collectionService.collections(for: source.id)) ?? []
+        }
+        collectionsBySource = map
+    }
+
+    // MARK: - Collections
+
+    /// Re-discovers a source's collections from the provider. Explicitly
+    /// user-initiated; failures surface inline and keep the cached list.
+    public func refreshCollections(sourceID: PIMSource.ID) async {
+        guard let collectionService else { return }
+        pendingSourceID = sourceID
+        lastError = nil
+        defer { pendingSourceID = nil }
+        do {
+            _ = try await collectionService.refreshCollections(for: sourceID)
+            await load()
+        } catch {
+            lastError = Self.errorText(for: error)
+            await load()
+        }
+    }
+
+    /// Toggles whether a collection participates in sync and browsing.
+    /// Local-only; never contacts the provider.
+    public func setCollectionVisible(
+        _ isVisible: Bool,
+        collectionID: PIMCollection.ID,
+        sourceID: PIMSource.ID
+    ) async {
+        guard let collectionService else { return }
+        do {
+            try await collectionService.setVisible(
+                isVisible,
+                collectionID: collectionID,
+                sourceID: sourceID
+            )
+            collectionsBySource[sourceID] =
+                try await collectionService.collections(for: sourceID)
+        } catch {
+            lastError = Self.errorText(for: error)
+        }
+    }
+
+    /// Best-effort discovery right after a connect or feature enablement —
+    /// the user's action already opted in, so this adds no new consent
+    /// boundary. Failures surface inline without failing the connect.
+    private func discoverAfterConnect(sourceID: PIMSource.ID) async {
+        guard let collectionService else { return }
+        do {
+            _ = try await collectionService.refreshCollections(for: sourceID)
         } catch {
             lastError = Self.errorText(for: error)
         }
@@ -88,12 +168,13 @@ public final class PIMSourceSettingsModel {
         lastError = nil
         defer { isConnecting = false }
         do {
-            _ = try await coordinator.connectDAVSource(
+            let source = try await coordinator.connectDAVSource(
                 kind: request.kind,
                 endpoint: request.endpoint,
                 displayName: request.displayName,
                 credential: request.credential
             )
+            await discoverAfterConnect(sourceID: source.id)
             await load()
             return true
         } catch {
@@ -141,6 +222,12 @@ public final class PIMSourceSettingsModel {
         defer { pendingGoogleAccountID = nil }
         do {
             try await googleFeatureHandler(accountID, kind)
+            if let source = try await coordinator.googleSource(
+                accountID: accountID,
+                kind: kind
+            ) {
+                await discoverAfterConnect(sourceID: source.id)
+            }
             await load()
             return true
         } catch {

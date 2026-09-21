@@ -34,6 +34,9 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
     let canDisconnect: Bool
     let canReconnect: Bool
     let canRemove: Bool
+    /// Whether the source can refresh its collection list — connected or
+    /// retryable after a failure.
+    let canRefreshCollections: Bool
 
     init(source: PIMSource) {
         let status = PIMSourceStatusPresenter.presentation(for: source.status)
@@ -50,6 +53,8 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         canDisconnect = connected.contains(source.status)
         canReconnect = [.disconnected, .authenticationRequired, .failed].contains(source.status)
         canRemove = source.status != .connecting
+        canRefreshCollections = connected.contains(source.status)
+            || source.status == .failed
     }
 
     private static func subtitle(provider: PIMSourceProvider, kind: PIMSourceKind) -> String {
@@ -208,6 +213,7 @@ struct PIMSourcesSettingsView: View {
                         .foregroundStyle(theme.warning.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                collectionList(for: row)
             }
             Spacer(minLength: BrevSpacing.sm)
             if model.pendingSourceID == row.id {
@@ -232,8 +238,114 @@ struct PIMSourcesSettingsView: View {
         .padding(.vertical, BrevSpacing.xxs)
     }
 
+    /// The discovered collections under a source row. Each toggles
+    /// whether it participates in sync and browsing; provider colors show
+    /// as the leading dot via the theme hex parser.
+    @ViewBuilder
+    private func collectionList(
+        for row: PIMSourceRowPresentation
+    ) -> some View {
+        let collections = model.collectionsBySource[row.id] ?? []
+        if !collections.isEmpty {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                ForEach(collections) { collection in
+                    collectionRow(collection, sourceID: row.id)
+                }
+            }
+            .padding(.top, BrevSpacing.xxs)
+        } else if row.canRefreshCollections, model.canManageCollections {
+            Text(String(
+                localized: "No collections discovered yet.",
+                bundle: .module
+            ))
+            .brevFont(.caption)
+            .foregroundStyle(theme.textSecondary.color)
+            .padding(.top, BrevSpacing.xxs)
+        }
+    }
+
+    private func collectionRow(
+        _ collection: PIMCollection,
+        sourceID: PIMSource.ID
+    ) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Circle()
+                .fill(collectionColor(for: collection))
+                .frame(width: 7, height: 7)
+                .accessibilityHidden(true)
+            Text(collection.displayName)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textPrimary.color)
+            if collection.isPrimary {
+                Text(String(localized: "Primary", bundle: .module))
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            if collection.isReadOnly {
+                Image(systemName: "lock")
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityLabel(String(
+                        localized: "Read-only",
+                        bundle: .module
+                    ))
+            }
+            Spacer(minLength: BrevSpacing.xs)
+            Toggle(
+                String(localized: "Visible", bundle: .module),
+                isOn: collectionVisibilityBinding(
+                    for: collection,
+                    sourceID: sourceID
+                )
+            )
+            .toggleStyle(.switch)
+            .labelsHidden()
+            .controlSize(.mini)
+            .accessibilityLabel(String(
+                localized: "Show \\(collection.displayName)",
+                bundle: .module
+            ))
+            .disabled(model.pendingSourceID == sourceID)
+        }
+    }
+
+    private func collectionColor(for collection: PIMCollection) -> Color {
+        guard let hex = collection.colorHex else {
+            return theme.textSecondary.color
+        }
+        return BrevColor(hex).color
+    }
+
+    private func collectionVisibilityBinding(
+        for collection: PIMCollection,
+        sourceID: PIMSource.ID
+    ) -> Binding<Bool> {
+        Binding(
+            get: { collection.isVisible },
+            set: { isVisible in
+                Task {
+                    await model.setCollectionVisible(
+                        isVisible,
+                        collectionID: collection.id,
+                        sourceID: sourceID
+                    )
+                }
+            }
+        )
+    }
+
     private func sourceMenu(_ row: PIMSourceRowPresentation) -> some View {
         Menu {
+            if row.canRefreshCollections, model.canManageCollections {
+                Button {
+                    Task { await model.refreshCollections(sourceID: row.id) }
+                } label: {
+                    Label(
+                        String(localized: "Refresh Collections", bundle: .module),
+                        systemImage: "arrow.clockwise"
+                    )
+                }
+            }
             if row.canReconnect {
                 Button {
                     if let source = model.sources.first(where: { $0.id == row.id }) {

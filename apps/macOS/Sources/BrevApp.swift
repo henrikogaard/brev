@@ -234,6 +234,7 @@ struct BrevApp: App {
                 },
                 backendProvider: { accountID in session.backends[accountID] },
                 pimSourceCoordinator: session.pimSourceCoordinator,
+                pimCollectionService: session.pimCollectionService,
                 onEnableGooglePIMFeature: { accountID, kind in
                     _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
                 },
@@ -725,6 +726,9 @@ extension AppSession {
                             )
                         }
                     )
+                },
+                googlePIMAccessTokenProvider: { accountID in
+                    try await gmailConnector.accessToken(for: accountID)
                 }
             )
         )

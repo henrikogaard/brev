@@ -419,6 +419,45 @@ connections via a validated PIM-only grant (the ADR's retention path —
 today the dialog offers remove-or-cancel), home-set/collection
 discovery, sync scheduling, and event/contact authoring.
 
+### #6 slice 1 — collection discovery (2026-09-21, BrevCalendar/BrevGmail/BrevMail/BrevSettings/apps)
+
+- PIMCollection / PIMDiscoveredCollection: the provider-neutral
+  collection record — source-scoped ID, display name, provider color,
+  read-only and primary flags, sync-token support, provider version hint
+  (CTag/ETag), and the user's visibility choice. Collections are
+  calendars for CalDAV/Google Calendar sources and address books or
+  contact groups for CardDAV/Google contacts sources.
+- PIMCollectionStore / JSONPIMCollectionStore: per-source collection
+  persistence inside the source's cache directory, so the ADR-0072
+  removal contract applies unchanged — a kept cache keeps its collection
+  list (marked disconnected), a deleted cache loses it.
+- PIMDAVCollectionDiscovery: PROPFIND principal → calendar-home-set /
+  addressbook-home-set → Depth:1 collection listing with resourcetype
+  filtering, privilege-derived read-only flags, CTag/ETag/sync-token
+  hints, and the same credential-safe redirect policy as source setup.
+- GooglePIMCollectionDiscovery: Calendar API calendarList and People API
+  contactGroups listing with page-token pagination; Google access tokens
+  are injected per call so the adapter never touches the token store.
+  Provider-hidden/unselected calendars start hidden; deleted entries are
+  skipped.
+- PIMCollectionService: serial owner of refresh and visibility. Refresh
+  is always user-initiated (post-connect or the explicit Settings
+  action); it merges by provider key so visibility choices survive, marks
+  the source failed on error, and never blanks the cached list.
+- GmailAccountConnector.accessToken(for:): exposes the account's shared
+  grant to PIM adapters without handing them the token store.
+- Settings: each source row lists its collections with per-collection
+  visibility toggles and a Refresh Collections action; connect and
+  Google enablement run one best-effort discovery as part of the same
+  user gesture.
+- Wiring: AppSessionFactory builds PIMCollectionService over the same
+  per-source data directories and Keychain credential store; Google
+  token resolution arrives via the new
+  Configuration.googlePIMAccessTokenProvider hook on both app targets.
+
+Deliberately still deferred: event/contact item sync and browsing views,
+sync scheduling, authoring, and the linked-source retention grant.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)
