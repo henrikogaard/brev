@@ -161,6 +161,22 @@ public enum AppSessionFactory {
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
+        // ADR-0072 #6: event sync rides the same credential paths and
+        // per-source data directories; cursors live under the wiped-on-
+        // removal cursor directory.
+        let pimEventSyncService = PIMEventSyncService(
+            coordinator: pimSourceCoordinator,
+            collectionStore: JSONPIMCollectionStore(
+                localDataStore: pimLocalDataStore
+            ),
+            eventStore: JSONPIMEventStore(localDataStore: pimLocalDataStore),
+            cursorStore: JSONPIMSyncCursorStore(
+                localDataStore: pimLocalDataStore
+            ),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
+        )
+
         // ADR-0072 #8: contacts sync rides the same credential paths and
         // per-source data directories; cursors live under the wiped-on-
         // removal cursor directory.
@@ -192,6 +208,7 @@ public enum AppSessionFactory {
                 },
                 pimSourceCoordinator: pimSourceCoordinator,
                 pimCollectionService: pimCollectionService,
+                pimEventSyncService: pimEventSyncService,
                 pimContactSyncService: pimContactSyncService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
@@ -312,6 +329,7 @@ public enum AppSessionFactory {
             },
             pimSourceCoordinator: pimSourceCoordinator,
             pimCollectionService: pimCollectionService,
+            pimEventSyncService: pimEventSyncService,
             pimContactSyncService: pimContactSyncService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment

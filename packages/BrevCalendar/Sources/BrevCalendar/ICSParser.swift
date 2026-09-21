@@ -16,7 +16,9 @@ import Foundation
 /// invite metadata in the message viewer.
 ///
 /// This is intentionally a narrow subset:
-/// - The first `VEVENT` of the first `VCALENDAR` is parsed.
+/// - `parseFirstEvent` reads the first `VEVENT`; `parseEvents` reads every
+///   `VEVENT` so CalDAV resources carrying a master plus recurrence
+///   exceptions map to one record per component.
 /// - `VTIMEZONE` blocks are parsed to build a TZID→UTC-offset map;
 ///   DTSTART/DTEND with a matching TZID parameter are converted to UTC.
 /// - `VALUE=DATE` on DTSTART/DTEND marks the event as all-day.
@@ -39,6 +41,20 @@ public enum ICSParser {
         /// Parsed recurrence rule, if the event contains an `RRULE` property.
         /// Recurrences are not expanded; use this to describe the pattern in UI.
         public let recurrenceRule: RecurrenceRule?
+        /// Raw `STATUS` value (CONFIRMED / TENTATIVE / CANCELLED), when set.
+        public let status: String?
+        /// `RECURRENCE-ID` timestamp marking this component as an exception
+        /// instance of the series identified by `uid`.
+        public let recurrenceID: Date?
+        /// `TZID` parameter on DTSTART, when the event carries a named zone.
+        public let timeZoneIdentifier: String?
+        /// `LAST-MODIFIED` timestamp, when present.
+        public let lastModified: Date?
+        /// Minutes-before-start values parsed from VALARM `TRIGGER`
+        /// properties. Only relative trigger offsets are captured.
+        public let reminderMinutes: [Int]
+        /// First `CONFERENCE;VALUE=URI` or `X-GOOGLE-CONFERENCE` URI found.
+        public let conferenceURL: String?
 
         /// Memberwise initialiser with a `nil` default for `recurrenceRule`
         /// so call-sites that construct `ParsedEvent` directly (e.g. in tests)
@@ -53,7 +69,13 @@ public enum ICSParser {
             isAllDay: Bool,
             organizer: ParsedPerson?,
             attendees: [ParsedPerson],
-            recurrenceRule: RecurrenceRule? = nil
+            recurrenceRule: RecurrenceRule? = nil,
+            status: String? = nil,
+            recurrenceID: Date? = nil,
+            timeZoneIdentifier: String? = nil,
+            lastModified: Date? = nil,
+            reminderMinutes: [Int] = [],
+            conferenceURL: String? = nil
         ) {
             self.uid = uid
             self.summary = summary
@@ -65,23 +87,37 @@ public enum ICSParser {
             self.organizer = organizer
             self.attendees = attendees
             self.recurrenceRule = recurrenceRule
+            self.status = status
+            self.recurrenceID = recurrenceID
+            self.timeZoneIdentifier = timeZoneIdentifier
+            self.lastModified = lastModified
+            self.reminderMinutes = reminderMinutes
+            self.conferenceURL = conferenceURL
         }
     }
 
     public struct ParsedPerson: Sendable, Hashable {
         public let name: String?
         public let email: String
+        /// Raw `PARTSTAT` parameter (NEEDS-ACTION / ACCEPTED / DECLINED /
+        /// TENTATIVE / DELEGATED), when the property carried one.
+        public let participation: String?
 
-        public init(name: String? = nil, email: String) {
+        public init(
+            name: String? = nil,
+            email: String,
+            participation: String? = nil
+        ) {
             self.name = name
             self.email = email
+            self.participation = participation
         }
     }
 
     // MARK: - RecurrenceRule support types
 
     /// Recurrence frequency values, directly mapping RFC 5545 FREQ tokens.
-    public enum Frequency: String, Sendable, Hashable {
+    public enum Frequency: String, Sendable, Hashable, Codable {
         case daily = "DAILY"
         case weekly = "WEEKLY"
         case monthly = "MONTHLY"
@@ -89,7 +125,7 @@ public enum ICSParser {
     }
 
     /// Days of the week, directly mapping RFC 5545 two-letter BYDAY codes.
-    public enum Weekday: String, Sendable, Hashable, CaseIterable {
+    public enum Weekday: String, Sendable, Hashable, Codable, CaseIterable {
         case monday = "MO"
         case tuesday = "TU"
         case wednesday = "WE"
@@ -106,7 +142,7 @@ public enum ICSParser {
     /// Only the parts relevant to displaying a human-readable repeat
     /// description are captured here.  Full iCalendar expansion (e.g.
     /// generating all occurrence dates) is out of scope for this parser.
-    public struct RecurrenceRule: Sendable, Hashable {
+    public struct RecurrenceRule: Sendable, Hashable, Codable {
         /// How often the event repeats.
         public let frequency: Frequency
         /// Interval between recurrences (default 1).
@@ -138,13 +174,21 @@ public enum ICSParser {
     /// Parse the supplied ICS payload. Returns `nil` if no
     /// `VEVENT` block is found or required fields are missing.
     public static func parseFirstEvent(from raw: String) -> ParsedEvent? {
+        parseEvents(from: raw).first
+    }
+
+    /// Parse every `VEVENT` in the payload, in file order. CalDAV resources
+    /// commonly carry a master component followed by `RECURRENCE-ID`
+    /// exceptions; each becomes its own `ParsedEvent`.
+    public static func parseEvents(from raw: String) -> [ParsedEvent] {
         let unfolded = unfold(raw)
         let lines = unfolded.components(separatedBy: .newlines).filter { !$0.isEmpty }
 
         // ── Step 1: build TZID → UTC-offset map from VTIMEZONE blocks ────────
         let tzOffsets = parseTimezoneOffsets(from: lines)
 
-        // ── Step 2: extract the first VEVENT block ────────────────────────────
+        // ── Step 2: collect each VEVENT block's properties ───────────────────
+        var blocks: [[Property]] = []
         var inEvent = false
         var props: [Property] = []
         for line in lines {
@@ -154,14 +198,25 @@ public enum ICSParser {
                 continue
             }
             if line == "END:VEVENT" {
-                break
+                if inEvent, !props.isEmpty {
+                    blocks.append(props)
+                }
+                inEvent = false
+                continue
             }
             if inEvent, let parsed = parseProperty(line) {
                 props.append(parsed)
             }
         }
-        guard !props.isEmpty else { return nil }
 
+        return blocks.map { makeEvent(from: $0, tzOffsets: tzOffsets) }
+    }
+
+    /// Builds one `ParsedEvent` from a single VEVENT's property list.
+    private static func makeEvent(
+        from props: [Property],
+        tzOffsets: [String: Int]
+    ) -> ParsedEvent {
         func first(_ name: String) -> Property? {
             props.first { $0.name == name }
         }
@@ -184,6 +239,30 @@ public enum ICSParser {
 
         let recurrenceRule = first("RRULE").flatMap { parseRRule($0.value) }
 
+        let status = first("STATUS")?.value.uppercased()
+        let recurrenceIDProperty = first("RECURRENCE-ID")
+        let recurrenceID = recurrenceIDProperty.flatMap {
+            parseDate(
+                $0.value,
+                isAllDay: $0.params["VALUE"]?.uppercased() == "DATE",
+                tzid: $0.params["TZID"],
+                tzOffsets: tzOffsets
+            )
+        }
+        let lastModified = first("LAST-MODIFIED").flatMap {
+            parseDate($0.value, isAllDay: false, tzid: $0.params["TZID"], tzOffsets: tzOffsets)
+        }
+        let reminderMinutes = props
+            .filter { $0.name == "TRIGGER" }
+            .compactMap { parseTriggerMinutes($0.value) }
+        let conferenceURL = props
+            .first {
+                ($0.name == "CONFERENCE" && $0.params["VALUE"]?.uppercased() == "URI")
+                    || $0.name == "X-GOOGLE-CONFERENCE"
+            }?
+            .value
+            .trimmingCharacters(in: .whitespaces)
+
         return ParsedEvent(
             uid: uid,
             summary: summary,
@@ -194,8 +273,21 @@ public enum ICSParser {
             isAllDay: isAllDay,
             organizer: organizer,
             attendees: attendees,
-            recurrenceRule: recurrenceRule
+            recurrenceRule: recurrenceRule,
+            status: status,
+            recurrenceID: recurrenceID,
+            timeZoneIdentifier: dtstart?.params["TZID"],
+            lastModified: lastModified,
+            reminderMinutes: reminderMinutes,
+            conferenceURL: conferenceURL
         )
+    }
+
+    /// Parse an RFC 5545 `RRULE` value (without the `RRULE:` prefix) into a
+    /// `RecurrenceRule`. Exposed for adapters whose providers ship bare rule
+    /// strings, e.g. Google Calendar's `recurrence` array entries.
+    public static func parseRecurrenceRule(_ raw: String) -> RecurrenceRule? {
+        parseRRule(raw)
     }
 
     // MARK: - Private helpers
@@ -246,7 +338,56 @@ public enum ICSParser {
         }
         let email = String(trimmed[scheme.upperBound...])
         let cn = params["CN"]?.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
-        return ParsedPerson(name: cn?.isEmpty == false ? cn : nil, email: email)
+        return ParsedPerson(
+            name: cn?.isEmpty == false ? cn : nil,
+            email: email,
+            participation: params["PARTSTAT"]?.uppercased()
+        )
+    }
+
+    /// Parses an RFC 5545 duration trigger such as `-PT15M` or `-P1D` into
+    /// minutes before the event. Returns `nil` for absolute-time triggers
+    /// and unparseable values; positive (after-start) triggers keep their
+    /// sign by returning a negative minute count.
+    private static func parseTriggerMinutes(_ raw: String) -> Int? {
+        var value = raw.trimmingCharacters(in: .whitespaces)
+        var sign = 1
+        if value.hasPrefix("-") {
+            value.removeFirst()
+        } else if value.hasPrefix("+") {
+            value.removeFirst()
+            sign = -1
+        } else {
+            // TRIGGER without a leading sign is a positive offset or an
+            // absolute DATE-TIME — only relative before-start triggers map.
+            guard value.hasPrefix("P") else { return nil }
+            sign = -1
+        }
+        guard value.hasPrefix("P") else { return nil }
+        value.removeFirst()
+
+        var weeks = 0, days = 0, hours = 0, minutes = 0
+        var inTime = false
+        var number = ""
+        for char in value {
+            if char == "T" { inTime = true; continue }
+            if char.isNumber {
+                number.append(char)
+                continue
+            }
+            guard let n = Int(number) else { return nil }
+            number = ""
+            switch char {
+            case "W": weeks = n
+            case "D": days = n
+            case "H" where inTime: hours = n
+            case "M" where inTime: minutes = n
+            default: return nil
+            }
+        }
+        guard number.isEmpty else { return nil }
+        let total = weeks * 7 * 24 * 60 + days * 24 * 60 + hours * 60 + minutes
+        return total * sign
     }
 
     // MARK: - VTIMEZONE parsing

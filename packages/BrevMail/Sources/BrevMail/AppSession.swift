@@ -213,6 +213,10 @@ public final class AppSession {
     /// source (ADR-0072). Nil in sessions built without PIM support.
     public let pimCollectionService: PIMCollectionService?
 
+    /// Owns event sync and the cached event set per calendar source
+    /// (ADR-0072). Nil in sessions built without PIM support.
+    public let pimEventSyncService: PIMEventSyncService?
+
     /// Owns contact sync and the cached contact set per contacts source
     /// (ADR-0072). Nil in sessions built without PIM support.
     public let pimContactSyncService: PIMContactSyncService?
@@ -271,6 +275,7 @@ public final class AppSession {
         accountDataCleanup: @escaping AccountDataCleanup = { _ in },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
         pimCollectionService: PIMCollectionService? = nil,
+        pimEventSyncService: PIMEventSyncService? = nil,
         pimContactSyncService: PIMContactSyncService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
@@ -281,6 +286,7 @@ public final class AppSession {
     ) {
         self.pimSourceCoordinator = pimSourceCoordinator
         self.pimCollectionService = pimCollectionService
+        self.pimEventSyncService = pimEventSyncService
         self.pimContactSyncService = pimContactSyncService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults

@@ -45,6 +45,10 @@ public final class PIMSourceSettingsModel {
         [PIMSource.ID: [PIMCollection]] = [:]
     /// Collection discovery service; nil in sessions without PIM wiring.
     private let collectionService: PIMCollectionService?
+    /// Cached event counts per calendar source, for the row's status text.
+    public private(set) var eventCountsBySource: [PIMSource.ID: Int] = [:]
+    /// Event sync service; nil in sessions without PIM sync wiring.
+    private let eventSyncService: PIMEventSyncService?
     /// Cached contact counts per contacts source, for the row's status
     /// text.
     public private(set) var contactCountsBySource: [PIMSource.ID: Int] = [:]
@@ -59,6 +63,7 @@ public final class PIMSourceSettingsModel {
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
     ///   - collectionService: Discovers and caches collections per source.
+    ///   - eventSyncService: Syncs and caches events per calendar source.
     ///   - contactSyncService: Syncs and caches contacts per contacts
     ///     source.
     ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
@@ -66,11 +71,13 @@ public final class PIMSourceSettingsModel {
     public init(
         coordinator: PIMSourceCoordinator,
         collectionService: PIMCollectionService? = nil,
+        eventSyncService: PIMEventSyncService? = nil,
         contactSyncService: PIMContactSyncService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
         self.collectionService = collectionService
+        self.eventSyncService = eventSyncService
         self.contactSyncService = contactSyncService
         self.googleFeatureHandler = googleFeatureHandler
     }
@@ -85,9 +92,25 @@ public final class PIMSourceSettingsModel {
         collectionService != nil
     }
 
+    /// Whether calendar event sync can run in this session.
+    public var canSyncEvents: Bool {
+        eventSyncService != nil
+    }
+
     /// Whether contacts sync can run in this session.
     public var canSyncContacts: Bool {
         contactSyncService != nil
+    }
+
+    /// Whether a sync service exists for this source's kind in this
+    /// session.
+    public func canSyncNow(sourceID: PIMSource.ID) -> Bool {
+        guard let kind = sources.first(where: { $0.id == sourceID })?.kind
+        else { return false }
+        switch kind {
+        case .calendar: return eventSyncService != nil
+        case .contacts: return contactSyncService != nil
+        }
     }
 
     // MARK: - Loading
@@ -99,6 +122,7 @@ public final class PIMSourceSettingsModel {
         do {
             sources = try await coordinator.allSources()
             await loadCollections()
+            await loadEventCounts()
             await loadContactCounts()
         } catch {
             lastError = Self.errorText(for: error)
@@ -120,6 +144,24 @@ public final class PIMSourceSettingsModel {
         collectionsBySource = map
     }
 
+    private func loadEventCounts() async {
+        guard let eventSyncService else {
+            eventCountsBySource = [:]
+            return
+        }
+        var map: [PIMSource.ID: Int] = [:]
+        for source in sources where source.kind == .calendar {
+            // A store read failure must not blank the row — the count
+            // simply stays absent.
+            if let events = try? await eventSyncService.events(
+                for: source.id
+            ) {
+                map[source.id] = events.count
+            }
+        }
+        eventCountsBySource = map
+    }
+
     private func loadContactCounts() async {
         guard let contactSyncService else {
             contactCountsBySource = [:]
@@ -138,22 +180,34 @@ public final class PIMSourceSettingsModel {
         contactCountsBySource = map
     }
 
-    // MARK: - Contact sync
+    // MARK: - Item sync
 
-    /// Syncs a contacts source now — the account-wide connections feed
-    /// for Google, each visible address book for CardDAV. Explicitly
+    /// Syncs a source's items now — events for calendar sources, contacts
+    /// for contacts sources; the account-wide connections feed for Google
+    /// contacts, each visible collection otherwise. Explicitly
     /// user-initiated; failures surface inline and keep prior snapshots.
     public func syncNow(sourceID: PIMSource.ID) async {
-        guard let contactSyncService else { return }
+        guard let kind = sources.first(where: { $0.id == sourceID })?.kind
+        else { return }
         pendingSourceID = sourceID
         lastError = nil
         defer { pendingSourceID = nil }
         do {
-            let summary = try await contactSyncService.syncNow(
-                sourceID: sourceID
-            )
-            if let first = summary.failures.first {
-                lastError = first.message
+            let firstFailure: String?
+            switch kind {
+            case .calendar:
+                guard let eventSyncService else { return }
+                firstFailure = try await eventSyncService.syncNow(
+                    sourceID: sourceID
+                ).failures.first?.message
+            case .contacts:
+                guard let contactSyncService else { return }
+                firstFailure = try await contactSyncService.syncNow(
+                    sourceID: sourceID
+                ).failures.first?.message
+            }
+            if let firstFailure {
+                lastError = firstFailure
             }
             await load()
         } catch {

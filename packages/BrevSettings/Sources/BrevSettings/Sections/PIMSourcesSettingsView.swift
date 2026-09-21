@@ -37,8 +37,8 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
     /// Whether the source can refresh its collection list — connected or
     /// retryable after a failure.
     let canRefreshCollections: Bool
-    /// Whether the source can run a contacts sync now — contacts
-    /// sources that finished connecting, plus retryable failures.
+    /// Whether the source can run an item sync now — sources that
+    /// finished connecting, plus retryable failures.
     let canSyncNow: Bool
 
     init(source: PIMSource) {
@@ -58,8 +58,8 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         canRemove = source.status != .connecting
         canRefreshCollections = connected.contains(source.status)
             || source.status == .failed
-        canSyncNow = source.kind == .contacts
-            && (connected.contains(source.status) || source.status == .failed)
+        canSyncNow = connected.contains(source.status)
+            || source.status == .failed
     }
 
     private static func subtitle(provider: PIMSourceProvider, kind: PIMSourceKind) -> String {
@@ -256,6 +256,14 @@ struct PIMSourcesSettingsView: View {
                 ForEach(collections) { collection in
                     collectionRow(collection, sourceID: row.id)
                 }
+                if let count = model.eventCountsBySource[row.id] {
+                    Text(String(
+                        localized: "\(count) events cached",
+                        bundle: .module
+                    ))
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                }
                 if let count = model.contactCountsBySource[row.id] {
                     Text(String(
                         localized: "\(count) contacts cached",
@@ -349,7 +357,7 @@ struct PIMSourcesSettingsView: View {
 
     private func sourceMenu(_ row: PIMSourceRowPresentation) -> some View {
         Menu {
-            if row.canSyncNow, model.canSyncContacts {
+            if row.canSyncNow, model.canSyncNow(sourceID: row.id) {
                 Button {
                     Task { await model.syncNow(sourceID: row.id) }
                 } label: {

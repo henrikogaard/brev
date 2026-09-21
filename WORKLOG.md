@@ -3431,4 +3431,34 @@ buttons, and package-aware localization.
   pre-existing macOS-27 renderer drift.
 - Next: #8 slice 2 browsing UI (list/detail/group filter) and
   compose-autocomplete migration; live-provider evidence stays the
+## 2026-09-21 — Agent — Issue #6 slice 2 (event sync engine + cache)
+
+- Goal: give connected calendar sources a real sync pass per ADR-0072 —
+  initial + incremental sync, per-collection failure isolation, durable
+  cache, cursors wiped on removal.
+- Changes: PIMEvent/PIMEventStatus/PIMEventPerson/PIMEventReminder model
+  with adapter-owned rawPayload; JSONPIMEventStore (per-collection files
+  under the source cache dir) and JSONPIMSyncCursorStore (under the
+  wiped-on-removal cursor dir); GoogleCalendarEventSync (events.list
+  paging, syncToken-only incremental, 410 → full resync); PIMDAVEventSync
+  (RFC 6578 sync-collection with multiget fill-in, bounded
+  calendar-query + ETag-diff fallback); PIMEventSyncService (serial,
+  user-initiated, per-collection failure isolation, cursor committed
+  after the generation). ICSParser gained parseEvents (all VEVENTs),
+  STATUS/PARTSTAT/VALARM/CONFERENCE/LAST-MODIFIED/TZID capture, Codable
+  RecurrenceRule and public parseRecurrenceRule.
+- Settings: Sync Now menu item + cached event count on calendar source
+  rows; enabling sync runs one immediate pass in the same gesture.
+- Wiring: AppSession.pimEventSyncService via AppSessionFactory; both app
+  targets pass it to SettingsView.
+- Verification: 23 new tests pass (DAV incremental/multiget/fallback/501
+  degrade, Google full/incremental/410, hidden-skip, failure isolation,
+  auth stop, kind/status guards, ICS field parsing). BrevCalendar,
+  BrevSettings, BrevMail packages build clean.
+- Skipped: app builds left to CI (no local signing cert); pixel snapshots
+  unchanged — the new row content rides existing snapshot coverage.
+  Local BrevSettings snapshot mismatches are pre-existing macOS-27
+  renderer drift (identical failures on clean main).
+- Next: #6 slice 3 browsing UI (agenda/day/week/month + detail), then
+  search/offline-stale states; live-provider evidence stays the
   maintainer gate.
