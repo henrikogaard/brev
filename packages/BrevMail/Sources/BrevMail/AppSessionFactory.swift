@@ -209,6 +209,19 @@ public enum AppSessionFactory {
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
+        // ADR-0072 #9: contact writes ride the same credential paths —
+        // Google via the linked account grant (contacts scope), CardDAV
+        // via the Keychain reference. The service only acts on sources
+        // whose .write capability the user explicitly enabled.
+        let pimContactWriteService = PIMContactWriteService(
+            coordinator: pimSourceCoordinator,
+            contactStore: JSONPIMContactStore(
+                localDataStore: pimLocalDataStore
+            ),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
+        )
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
@@ -225,6 +238,7 @@ public enum AppSessionFactory {
                 pimEventSyncService: pimEventSyncService,
                 pimContactSyncService: pimContactSyncService,
                 pimEventWriteService: pimEventWriteService,
+                pimContactWriteService: pimContactWriteService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -347,6 +361,7 @@ public enum AppSessionFactory {
             pimEventSyncService: pimEventSyncService,
             pimContactSyncService: pimContactSyncService,
             pimEventWriteService: pimEventWriteService,
+            pimContactWriteService: pimContactWriteService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )

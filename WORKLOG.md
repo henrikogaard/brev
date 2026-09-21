@@ -49,6 +49,104 @@ repeating events on writable Google/CalDAV sources.
 - Next: PR targets main, then issue #9 (contact authoring) reuses the
   same slice shape for CardDAV/Google People.
 
+## 2026-09-21 — Agent — Issue #9 slice 2 (contact editor UI)
+
+### Goal
+
+Second slice of #9 (ADR-0072): the contact editor surface on top of
+the slice-1 write pipeline — create/edit/delete on writable Google and
+CardDAV contacts sources.
+
+### Changes
+
+- BrevMail: ContactDraft (form state with provider-identity
+  carry-through and display-name resolution), ContactsEditingModel
+  (writable targets — per-book for CardDAV, account-wide for Google —
+  create/update/delete/move dispatch behind a ContactWriting seam),
+  ContactEditorView (the sheet), Edit/Delete actions on the detail
+  pane with a provider-impact delete confirmation, a New Contact
+  toolbar item on the root view.
+- Group membership: Google contact groups edit as toggles over
+  discovered collections (memberships field); CardDAV categories edit
+  as comma-separated text.
+- Fixed: ContactsRootView.groupNames matched collection.id against
+  providerKey groupKeys — never resolved; now matches providerKey.
+- Apps: both BrevApp shells construct ContactsEditingModel over the
+  session's PIM services.
+- Docs: ADR-0072 #9 slice-2 entry, CHANGELOG bullet.
+
+### Verification
+
+- swift build --package-path packages/BrevMail: clean.
+- swift test --package-path packages/BrevMail --filter
+  ContactsEditingModelTests|ContactDraftTests: 14/14 green.
+- scripts/lint.sh: clean (ADR-0072 updated in the same commit).
+- xcodebuild BrevMacOS (macOS, arm64) and BrevIOS (iPhone 17
+  simulator): both BUILD SUCCEEDED.
+
+### Skipped
+
+- Rendered verification of the sheet: no live writable source in this
+  environment; snapshot coverage deferred with the rest of the
+  contacts surface.
+
+### Handoff
+
+- Next: PR targets main. Open acceptance criteria on #9 that remain:
+  photo upload, date/URL fields (shared-model extension), duplicate
+  suggestions, and redacted live evidence against Google Workspace and
+  a writable CardDAV server.
+
+## 2026-09-21 — Agent — Issue #9 slice 1 (contact write pipeline + editing opt-in)
+
+### Goal
+
+First slice of #9 (ADR-0072): the provider-neutral contact write path —
+vCard serialization with unknown-field merge, Google People and CardDAV
+write adapters, a capability-gated write service — plus the Editing
+opt-in extended to contacts sources.
+
+### Changes
+
+- BrevCalendar: PIMVCardWriter (vCard 3.0 create, raw-payload merge on
+  update preserving unknown properties and VERSION, TEXT escaping,
+  75-octet UTF-8-safe folding), GooglePeopleContactWriter
+  (createContact / updateContact with updatePersonFields mask /
+  deleteContact, etag precondition, 400 FAILED_PRECONDITION mapped to
+  conflict, myContacts membership never sent), PIMDAVContactWriter
+  (PUT to {collection}/{uid}.vcf on create, to the stored href on
+  update; DELETE on the href; If-None-Match / If-Match preconditions),
+  PIMContactWriteService (canWrite gate, provider dispatch, Google
+  group-as-membership on create, single-record cache patching).
+- BrevSettings: canToggleWrite now covers connected Google and CardDAV
+  contacts sources; the Google write re-auth path is unchanged.
+- BrevMail: AppSession carries pimContactWriteService; the factory
+  wires it over the shared coordinator, contact store, credentials,
+  and the Google token provider.
+- Docs: ADR-0072 #9 slice-1 entry, CHANGELOG bullet, PRIVACY.md
+  contacts-editing paragraph.
+
+### Verification
+
+- swift build --package-path packages/BrevCalendar + BrevMail: clean.
+- swift test --package-path packages/BrevCalendar --filter
+  PIMContactWrite: 16/16 green.
+- swift test --package-path packages/BrevSettings --filter
+  PIMSourceSettingsModel: 21/21 green.
+
+### Skipped
+
+- xcodebuild app builds: no app-target surface touched (session wiring
+  compiles under the BrevMail package build).
+- Live provider evidence: deferred to the maintainer QA pass per
+  issue #9 acceptance criteria.
+
+### Handoff
+
+- Next: PR targets main; slice 2 is the contact editor UI (form,
+  group picker, photo handling, delete confirmation). Dates/URLs need
+  a shared-model extension — tracked in the ADR deferral list.
+
 ## 2026-09-21 — Agent — Issue #7 slice 1 (event write pipeline + editing opt-in)
 
 ### Goal

@@ -410,18 +410,24 @@ public final class PIMSourceSettingsModel {
     }
 
     /// Whether the source offers an editing toggle — connected Google
-    /// or CalDAV calendar sources only; contacts authoring arrives with
-    /// #9, and disconnected or auth-failed rows stay inert.
+    /// or DAV sources only (CalDAV calendars, CardDAV address books);
+    /// disconnected or auth-failed rows stay inert.
     public func canToggleWrite(sourceID: PIMSource.ID) -> Bool {
         guard let source = sources.first(where: { $0.id == sourceID })
         else { return false }
         let connected: Set<PIMSourceStatus> = [
             .ready, .syncing, .permissionLimited,
         ]
-        guard source.kind == .calendar,
-              connected.contains(source.status)
+        guard connected.contains(source.status)
         else { return false }
-        return source.provider == .google || source.provider == .calDAV
+        switch source.kind {
+        case .calendar:
+            return source.provider == .google
+                || source.provider == .calDAV
+        case .contacts:
+            return source.provider == .google
+                || source.provider == .cardDAV
+        }
     }
 
     /// Whether editing is currently enabled on a source.

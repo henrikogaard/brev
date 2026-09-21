@@ -219,6 +219,11 @@ struct BrevApp: App {
                             coordinator: session.pimSourceCoordinator,
                             collectionService: session.pimCollectionService,
                             contactSyncService: session.pimContactSyncService
+                        ),
+                        editing: ContactsEditingModel(
+                            writeService: session.pimContactWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
                         )
                     )
                     .toolbar {

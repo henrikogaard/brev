@@ -21,22 +21,47 @@ import SwiftUI
 /// (searchable, group-filterable) on the leading side and the read-only
 /// contact detail on the trailing side. On iOS the split collapses into
 /// push navigation. All content comes from the local sync cache — the
-/// view never issues provider requests; the only network-adjacent
-/// action is the explicit Sync Now toolbar item.
+/// view never issues provider requests on its own; the only
+/// provider-adjacent actions are the explicit Sync Now toolbar item
+/// and, when an editing model is wired (issue #9), the New Contact /
+/// Edit / Delete affordances that run through ContactsEditingModel.
 public struct ContactsRootView: View {
     @Environment(\.brevTheme) private var theme
 
     @State private var model: ContactsBrowsingModel
+    /// Contact authoring; nil keeps the surface read-only.
+    private let editing: ContactsEditingModel?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
     @State private var preferredCompactColumn = NavigationSplitViewColumn
         .sidebar
+    /// The sheet request: a new contact, or an edit of the cached one.
+    @State private var editorRequest: EditorRequest?
+
+    /// Identifiable sheet payload for the contact editor.
+    private enum EditorRequest: Identifiable {
+        case create
+        case edit(PIMContact)
+
+        var id: String {
+            switch self {
+            case .create: "create"
+            case .edit(let contact): "edit-\(contact.id)"
+            }
+        }
+    }
 
     /// - Parameter model: The browsing model; the app shell builds it
     ///   over the session's PIM services.
-    public init(model: ContactsBrowsingModel) {
+    /// - Parameter editing: The authoring model; pass nil (default) for
+    ///   a read-only contacts list.
+    public init(
+        model: ContactsBrowsingModel,
+        editing: ContactsEditingModel? = nil
+    ) {
         _model = State(initialValue: model)
+        self.editing = editing
     }
 
     public var body: some View {
@@ -59,9 +84,15 @@ public struct ContactsRootView: View {
             )
         )
         .task { await model.load() }
+        .task { await editing?.load() }
         .onChange(of: model.selectedContactID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
+            }
+        }
+        .sheet(item: $editorRequest) { request in
+            if let editing {
+                editorSheet(for: request, editing: editing)
             }
         }
     }
@@ -74,6 +105,9 @@ public struct ContactsRootView: View {
                 staleBanner
             }
             if let lastError = model.lastError {
+                errorBanner(lastError)
+            }
+            if let lastError = editing?.lastError {
                 errorBanner(lastError)
             }
             content
@@ -137,7 +171,9 @@ public struct ContactsRootView: View {
                 contact: contact,
                 collection: model.collection(for: contact),
                 source: model.source(for: contact),
-                groupNames: groupNames(for: contact)
+                groupNames: groupNames(for: contact),
+                onEdit: editAction(for: contact),
+                onDelete: deleteAction(for: contact)
             )
         } else {
             ContentUnavailableView(
@@ -153,11 +189,78 @@ public struct ContactsRootView: View {
     }
 
     /// Resolves a contact's group keys to display names from the
-    /// source's discovered collections; unknown keys are dropped.
+    /// source's discovered collections; unknown keys are dropped. Keys
+    /// are provider keys (Google resourceNames, CardDAV CATEGORIES), so
+    /// the match is on providerKey, not the composite collection id.
     private func groupNames(for contact: PIMContact) -> [String] {
         let collections = model.collectionsBySource[contact.sourceID] ?? []
         return contact.groupKeys.compactMap { key in
-            collections.first { $0.id == key }?.displayName
+            collections.first { $0.providerKey == key }?.displayName
+        }
+    }
+
+    /// The Edit action for the detail pane — present only while the
+    /// contact's source is writable.
+    private func editAction(for contact: PIMContact) -> (() -> Void)? {
+        guard let editing, editing.canEdit(contact) else { return nil }
+        return {
+            Task { await presentEditor(for: contact) }
+        }
+    }
+
+    /// The Delete action for the detail pane — same writability gate.
+    private func deleteAction(for contact: PIMContact) -> (() -> Void)? {
+        guard let editing, editing.canEdit(contact) else { return nil }
+        return {
+            Task { await delete(contact) }
+        }
+    }
+
+    /// Refreshes writable targets before presenting so the picker never
+    /// offers a stale (or misses a newly enabled) address book.
+    private func presentEditor(for contact: PIMContact) async {
+        await editing?.load()
+        editorRequest = .edit(contact)
+    }
+
+    private func presentNewContact() async {
+        await editing?.load()
+        editorRequest = .create
+    }
+
+    private func delete(_ contact: PIMContact) async {
+        do {
+            try await editing?.delete(contact)
+            model.selectedContactID = nil
+            await model.load()
+        } catch {
+            // The editing model carries the displayable error.
+        }
+    }
+
+    @ViewBuilder
+    private func editorSheet(
+        for request: EditorRequest,
+        editing: ContactsEditingModel
+    ) -> some View {
+        let onSaved: () async -> Void = {
+            await editing.load()
+            await model.load()
+        }
+        switch request {
+        case .create:
+            ContactEditorView(
+                editing: editing,
+                source: editing.defaultTarget?.source,
+                onSaved: onSaved
+            )
+        case .edit(let contact):
+            ContactEditorView(
+                editing: editing,
+                contact: contact,
+                source: model.source(for: contact),
+                onSaved: onSaved
+            )
         }
     }
 
@@ -273,6 +376,25 @@ public struct ContactsRootView: View {
                         localized: "Filter by group",
                         bundle: .module
                     )
+                )
+            }
+        }
+        if let editing,
+           editing.canAuthor, editing.defaultTarget != nil {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await presentNewContact() }
+                } label: {
+                    Label(
+                        String(
+                            localized: "New Contact",
+                            bundle: .module
+                        ),
+                        systemImage: "plus"
+                    )
+                }
+                .accessibilityLabel(
+                    String(localized: "New contact", bundle: .module)
                 )
             }
         }
