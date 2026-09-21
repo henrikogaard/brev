@@ -183,9 +183,11 @@ struct ContactPresentationTests {
         #expect(!ContactPresentation.matches(contact, query: "nobody"))
     }
 
-    @Test("diacritics fold so ø matches o")
+    @Test("combining diacritics fold so é matches e")
     func diacriticFolding() {
-        let contact = Self.contact(displayName: "Søren")
-        #expect(ContactPresentation.matches(contact, query: "soren"))
+        // ø/æ are distinct letters, not o/a with a diacritic — the fold
+        // covers combining marks like é → e.
+        let contact = Self.contact(displayName: "André")
+        #expect(ContactPresentation.matches(contact, query: "andre"))
     }
 }
