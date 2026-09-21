@@ -24,6 +24,7 @@ let project = Project(
     organizationName: "Brev",
     packages: [
         .package(path: "../../packages/BrevBackend"),
+        .package(path: "../../packages/BrevCalendar"),
         .package(path: "../../packages/BrevGmail"),
         .package(path: "../../packages/BrevDesign"),
         .package(path: "../../packages/BrevMail"),
@@ -78,6 +79,7 @@ let project = Project(
             entitlements: .file(path: "Resources/BrevIOS.entitlements"),
             dependencies: [
                 .package(product: "BrevBackend", type: .runtime),
+                .package(product: "BrevCalendar", type: .runtime),
                 .package(product: "BrevGmail", type: .runtime),
                 .package(product: "BrevDesign", type: .runtime),
                 .package(product: "BrevExamplePlugin", type: .runtime),
