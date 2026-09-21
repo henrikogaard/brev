@@ -437,6 +437,10 @@ public struct BrevMailRootView: View {
     /// hides the contact affordances.
     private let senderContactActions: MailSenderContactActions?
 
+    /// Shared-calendar RSVP reconciliation for invite cards (#10);
+    /// nil keeps the mail-only confirmation.
+    private let inviteReconciler: CalendarInviteReconciler?
+
     private let unreadCountReconciler = UnreadCountReconciler()
 
     /// Creates a mailbox workspace for a single account backend.
@@ -467,7 +471,8 @@ public struct BrevMailRootView: View {
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
-        senderContactActions: MailSenderContactActions? = nil
+        senderContactActions: MailSenderContactActions? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil
     ) {
         self.init(
             backends: [backend],
@@ -493,7 +498,8 @@ public struct BrevMailRootView: View {
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
             calendarEditing: calendarEditing,
-            senderContactActions: senderContactActions
+            senderContactActions: senderContactActions,
+            inviteReconciler: inviteReconciler
         )
     }
 
@@ -526,7 +532,8 @@ public struct BrevMailRootView: View {
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
-        senderContactActions: MailSenderContactActions? = nil
+        senderContactActions: MailSenderContactActions? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -567,6 +574,7 @@ public struct BrevMailRootView: View {
         self.onLocalFoldersChanged = onLocalFoldersChanged
         self.calendarEditing = calendarEditing
         self.senderContactActions = senderContactActions
+        self.inviteReconciler = inviteReconciler
     }
 
     public var body: some View {
@@ -1421,7 +1429,8 @@ public struct BrevMailRootView: View {
                         navigation: navigation,
                         isWorkBlocked: isCommandMutationBlocked || isComposePresentationBlocked,
                         allFolders: folders,
-                        canFileLocally: localBackend != nil
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler
                     )
                 } else {
                     MessageDetailView(
@@ -1432,7 +1441,8 @@ public struct BrevMailRootView: View {
                         allFolders: folders,
                         isWorkBlocked: isMessageWorkBlocked || isComposePresentationBlocked,
                         isMutationWorkBlocked: isCommandMutationBlocked,
-                        canFileLocally: localBackend != nil
+                        canFileLocally: localBackend != nil,
+                        inviteReconciler: inviteReconciler
                     )
                 }
             }

@@ -58,6 +58,9 @@ public struct MessageDetailView: View {
     /// When present, the view is shown in a standalone window and renders an
     /// in-content action bar; destructive actions invoke this to close the window.
     private let closeWindow: (() -> Void)?
+    /// Shared-calendar RSVP reconciliation (#10); nil keeps the
+    /// mail-only confirmation.
+    private let inviteReconciler: CalendarInviteReconciler?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
 
@@ -143,7 +146,8 @@ public struct MessageDetailView: View {
         isWorkBlocked: Bool = false,
         isMutationWorkBlocked: Bool = false,
         canFileLocally: Bool = false,
-        closeWindow: (() -> Void)? = nil
+        closeWindow: (() -> Void)? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil
     ) {
         self.backend = backend
         self.sourceID = sourceID
@@ -154,6 +158,7 @@ public struct MessageDetailView: View {
         self.isMutationWorkBlocked = isMutationWorkBlocked
         self.canFileLocally = canFileLocally
         self.closeWindow = closeWindow
+        self.inviteReconciler = inviteReconciler
     }
 
     public var body: some View {
@@ -1396,10 +1401,25 @@ public struct MessageDetailView: View {
             let sendResult = try await sendInviteResponse(messageID: header.id, response: response)
             guard canApplyInviteResponse(request) else { return }
             calendarResponse = CalendarInviteLocalResponse(messageID: header.id, response: response)
-            inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
-                for: response,
-                sendResult: sendResult
-            )
+            if let inviteReconciler, let parsedInvite {
+                let reconciliation = await inviteReconciler.reconcile(
+                    invite: parsedInvite,
+                    response: response,
+                    accountEmail: backend.account.emailAddress,
+                    recipientEmails: (header.to + header.cc).map(\.email)
+                )
+                inviteResponseConfirmation = CalendarInviteResponsePresentation
+                    .confirmationStatus(
+                        for: response,
+                        sendResult: sendResult,
+                        reconciliation: reconciliation
+                    )
+            } else {
+                inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
+                    for: response,
+                    sendResult: sendResult
+                )
+            }
             finishInviteResponse(request)
         } catch is CancellationError {
             guard canApplyInviteResponse(request) else { return }

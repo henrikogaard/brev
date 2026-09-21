@@ -112,6 +112,12 @@ struct BrevApp: App {
                                 coordinator: session.pimSourceCoordinator,
                                 collectionService: session.pimCollectionService
                             )
+                        ),
+                        inviteReconciler: CalendarInviteReconciler(
+                            coordinator: session.pimSourceCoordinator,
+                            eventSyncService: session.pimEventSyncService,
+                            collectionService: session.pimCollectionService,
+                            writeService: session.pimEventWriteService
                         )
                     )
                     .frame(minWidth: 960, minHeight: 600)

@@ -160,6 +160,12 @@ struct BrevApp: App {
                                 coordinator: session.pimSourceCoordinator,
                                 collectionService: session.pimCollectionService
                             )
+                        ),
+                        inviteReconciler: CalendarInviteReconciler(
+                            coordinator: session.pimSourceCoordinator,
+                            eventSyncService: session.pimEventSyncService,
+                            collectionService: session.pimCollectionService,
+                            writeService: session.pimEventWriteService
                         )
                     )
                     .environment(\.openURL, browserOpenURLAction)

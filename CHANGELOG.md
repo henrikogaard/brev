@@ -115,6 +115,11 @@ All notable changes to Brev are documented here.
   writable sources — or add an unknown sender through the shared
   contact editor. Compose autocomplete now searches every synced
   contacts source and labels each suggestion with its source.
+- Invite RSVP reconciliation (ADR-0072, #10): answering a calendar
+  invite now also updates the matching synced event's attendee state
+  on writable calendars. The confirmation states the mail result and
+  the calendar result separately — reply-only, read-only, unmatched,
+  and failed updates are each called out.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

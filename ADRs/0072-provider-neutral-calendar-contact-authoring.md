@@ -855,6 +855,26 @@ grant.
   actions, event/contact deep links, and rendered-verification
   coverage.
 
+### #10 slice 3 — RSVP reconciliation with the synced event (2026-09-21, BrevMail/apps)
+
+- `CalendarInviteReconciler` runs after the invite reply is
+  sent: it finds the cached PIMEvent by the invite's UID across every
+  calendar source, resolves the responder's attendee entry (account
+  address first, then the invite's To/Cc list for aliases), and writes
+  the RSVP through the shared write service so the provider sees the
+  same answer the email carried.
+- Outcomes are explicit: updated (names the source), notSynced (event
+  not in the cache — reply only), notWritable (read-only calendar),
+  noMatchingAttendee, and failed (provider error is quoted). The
+  confirmation always states the mail result first, then the calendar
+  result, so a partial failure never reads as a full success.
+- Both invite surfaces reconcile: `ThreadMessageCard` and
+  `MessageDetailView` take an optional reconciler; the root
+  view and both app entry points wire it from the session services.
+  Detached reader windows keep the mail-only confirmation.
+- Deferred: event/contact deep links, per-recipient contact actions,
+  and rendered-verification coverage.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

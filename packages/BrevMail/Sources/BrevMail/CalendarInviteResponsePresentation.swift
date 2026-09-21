@@ -103,6 +103,53 @@ struct CalendarInviteResponsePresentation: Equatable {
         )
     }
 
+    /// The confirmation shown after the mail reply succeeded and the
+    /// shared-calendar reconciliation ran (#10). The mail outcome is
+    /// always stated first; the calendar outcome follows so a partial
+    /// failure never reads as a full success.
+    static func confirmationStatus(
+        for response: AttendeeState,
+        sendResult: SendResult? = nil,
+        reconciliation: CalendarInviteReconciliation
+    ) -> MailRootStatus {
+        let base = confirmationStatus(
+            for: response,
+            sendResult: sendResult
+        )
+        switch reconciliation {
+        case .updated(let sourceName):
+            return MailRootStatus(
+                message: base.message
+                    + " Calendar updated on \(sourceName).",
+                tone: .success
+            )
+        case .notSynced:
+            return MailRootStatus(
+                message: base.message
+                    + " The event is not synced to a Brev calendar, so only the reply was sent.",
+                tone: .info
+            )
+        case .notWritable(let sourceName):
+            return MailRootStatus(
+                message: base.message
+                    + " The \(sourceName) calendar is read-only, so the event's attendee list was not updated.",
+                tone: .warning
+            )
+        case .noMatchingAttendee:
+            return MailRootStatus(
+                message: base.message
+                    + " Brev could not match you to an attendee on the synced event, so only the reply was sent.",
+                tone: .info
+            )
+        case .failed(let sourceName, let message):
+            return MailRootStatus(
+                message: base.message
+                    + " Updating the \(sourceName) calendar failed: \(message)",
+                tone: .warning
+            )
+        }
+    }
+
     private static func confirmationMessagePrefix(for response: AttendeeState) -> String {
         switch response {
         case .accepted:

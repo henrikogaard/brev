@@ -1,5 +1,39 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 3 (RSVP reconciliation)
+
+### Goal
+
+Third slice of #10 (ADR-0072): after the invite reply is sent,
+reconcile the response with the synced calendar event and explain
+partial outcomes.
+
+### Changes
+
+- BrevMail: CalendarInviteReconciler (UID match across sources,
+  account-then-recipients attendee identity, write via the shared
+  service, explicit updated/notSynced/notWritable/noMatchingAttendee/
+  failed outcomes); CalendarInviteResponsePresentation gains a
+  reconciliation-aware confirmation; ThreadMessageCard and
+  MessageDetailView reconcile after a successful send; the root view
+  and both app entry points wire the reconciler.
+
+### Verification
+
+- swift test --filter CalendarInviteReconciler — 6/6 green
+- swift build --package-path packages/BrevMail — clean
+- scripts/lint.sh — clean (ADR-0072 updated)
+- xcodebuild BrevMacOS + BrevIOS — both build
+
+### Skipped
+
+- Detached reader windows keep the mail-only confirmation (no session
+  services there); rendered verification stays with maintainer QA.
+
+### Next
+
+- Later #10 slices: event/contact deep links, per-recipient actions.
+
 ## 2026-09-21 — Agent — Issue #10 slice 2 (participant contact actions)
 
 ### Goal

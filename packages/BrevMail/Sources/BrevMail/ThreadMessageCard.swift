@@ -67,6 +67,9 @@ struct ThreadMessageCard: View {
 
     private let bodyRenderer = BodyRenderer()
     private static let bodyLoadTimeoutNanoseconds: UInt64 = 15_000_000_000
+    /// Shared-calendar RSVP reconciliation (#10); nil leaves the
+    /// mail-only confirmation unchanged.
+    private let inviteReconciler: CalendarInviteReconciler?
 
     private var denseChromeDynamicTypeRange: PartialRangeThrough<DynamicTypeSize> {
         MailDenseChromeDynamicType.compactRange
@@ -83,6 +86,7 @@ struct ThreadMessageCard: View {
         dateTextOverride: String? = nil,
         initialRenderedBody: RenderedBody? = nil,
         renderPool: ThreadConversationRenderPool? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil,
         onToggle: @escaping () -> Void
     ) {
         self.header = header
@@ -94,6 +98,7 @@ struct ThreadMessageCard: View {
         self.isWorkBlocked = isWorkBlocked
         self.dateTextOverride = dateTextOverride
         self.onToggle = onToggle
+        self.inviteReconciler = inviteReconciler
         let renderPool = renderPool ?? ThreadConversationRenderPool()
         self.renderPool = renderPool
         _renderedBody = State(initialValue: initialRenderedBody)
@@ -614,10 +619,25 @@ struct ThreadMessageCard: View {
             let sendResult = try await sendInviteResponse(messageID: header.id, response: response)
             guard canApplyInviteResponse(request) else { return }
             calendarResponse = CalendarInviteLocalResponse(messageID: header.id, response: response)
-            inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
-                for: response,
-                sendResult: sendResult
-            )
+            if let reconciler = inviteReconciler, let parsedInvite {
+                let reconciliation = await reconciler.reconcile(
+                    invite: parsedInvite,
+                    response: response,
+                    accountEmail: backend.account.emailAddress,
+                    recipientEmails: (header.to + header.cc).map(\.email)
+                )
+                inviteResponseConfirmation = CalendarInviteResponsePresentation
+                    .confirmationStatus(
+                        for: response,
+                        sendResult: sendResult,
+                        reconciliation: reconciliation
+                    )
+            } else {
+                inviteResponseConfirmation = CalendarInviteResponsePresentation.confirmationStatus(
+                    for: response,
+                    sendResult: sendResult
+                )
+            }
             finishInviteResponse(request)
         } catch is CancellationError {
             guard canApplyInviteResponse(request) else { return }

@@ -62,6 +62,9 @@ public struct ThreadConversationView: View {
     let autoScrollsToExpandedMessage: Bool
     let dateTextProvider: ((MessageHeader) -> String)?
     private let aiBackend: (any AIBackend)?
+    /// Shared-calendar RSVP reconciliation (#10); nil leaves the
+    /// mail-only confirmation unchanged.
+    let inviteReconciler: CalendarInviteReconciler?
     private let bodyRenderer = BodyRenderer()
 
     @State private var expandedMessageIDs: Set<MessageHeader.ID> = []
@@ -104,7 +107,8 @@ public struct ThreadConversationView: View {
         preloadedBodies: [MessageHeader.ID: RenderedBody] = [:],
         showsAvatars: Bool = true,
         autoScrollsToExpandedMessage: Bool = true,
-        dateTextProvider: ((MessageHeader) -> String)? = nil
+        dateTextProvider: ((MessageHeader) -> String)? = nil,
+        inviteReconciler: CalendarInviteReconciler? = nil
     ) {
         self.threadHeaders = threadHeaders
         self.backend = backend
@@ -119,6 +123,7 @@ public struct ThreadConversationView: View {
         self.showsAvatars = showsAvatars
         self.autoScrollsToExpandedMessage = autoScrollsToExpandedMessage
         self.dateTextProvider = dateTextProvider
+        self.inviteReconciler = inviteReconciler
     }
 
     // MARK: - Derived state
@@ -207,7 +212,8 @@ public struct ThreadConversationView: View {
                                 isWorkBlocked: isWorkBlocked,
                                 dateTextOverride: dateTextProvider?(header),
                                 initialRenderedBody: preloadedBodies[header.id],
-                                renderPool: renderPool
+                                renderPool: renderPool,
+                                inviteReconciler: inviteReconciler
                             ) {
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     if expandedMessageIDs.contains(header.id) {
