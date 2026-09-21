@@ -1,5 +1,49 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #6 slice 4 (day/week/month grids)
+
+### Goal
+
+Fourth slice of #6 (ADR-0072): day, week, and month grid layouts for
+the Calendar surface sharing selection and date navigation with the
+agenda — closing the "agenda, day, week, and month views share
+selection and date navigation" acceptance criterion.
+
+### Changes
+
+- BrevMail: CalendarGridLayout (pure grid math — day coverage with
+  all-day exclusive ends and multi-day spans, first-weekday-aware
+  weeks, complete-week month cells, sweep-line overlap lanes, range
+  titles), CalendarBrowsingModel gains viewMode/selectedDay/
+  navigation/per-day accessors, CalendarDayView + shared
+  CalendarDayColumn (hour lanes, all-day strip, lane-split blocks),
+  CalendarWeekView (7 columns + shared ruler + per-column all-day
+  strip), CalendarMonthView (weekday header + day cells with 3 chips +
+  overflow), CalendarRootView toolbar gains a segmented layout picker
+  and prev/today/next with a range title.
+- CI: CalendarGridSnapshotTests registered in the macOS<26 skip list
+  and the snapshot-macos only-testing list.
+
+### Verification
+
+- 16 new grid-layout tests + 3 model navigation tests + 4 snapshot
+  renders pass; full filtered run 33 tests green.
+- scripts/lint.sh clean (SwiftFormat + SwiftLint --strict +
+  adr-required).
+- xcodebuild build BrevMacOS and BrevIOS (CODE_SIGNING_ALLOWED=NO) —
+  both succeed.
+
+### Skipped
+
+- Pixel baselines recorded on macOS 27 — this host's renderer; the
+  repo's earlier baselines were recorded on macOS 26 and already drift
+  locally. Re-record on a macOS 26 host if the snapshot job flags them.
+- Live-provider evidence stays the maintainer's QA gate.
+
+### Next
+
+- #7 event authoring; #8 slice 2 (contacts browsing) is PR #64.
+
 ## 2026-09-21 — Agent — Issue #6 slice 3 (calendar browsing: agenda + detail + search)
 
 ### Goal

@@ -58,6 +58,13 @@ All notable changes to Brev are documented here.
   failed source keeps its cached events with a staleness banner, and
   browsing never contacts a provider. Day/week/month grid views land in
   a later slice.
+- Calendar day/week/month grids (ADR-0072): the Calendar surface gains a
+  layout picker — agenda, day, week, and month — sharing one selection
+  and date anchor with previous/today/next navigation. Day and week
+  render hour lanes with overlapping events split side by side and an
+  all-day strip on top; the month grid shows up to three chips per day
+  with a "+N more" overflow, and tapping a day opens it in the day
+  layout. Multi-day and all-day events cover every day they span.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
