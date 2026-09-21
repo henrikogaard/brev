@@ -37,6 +37,29 @@ public final class CalendarBrowsingModel {
         }
     }
 
+    /// The leading column's layout: the agenda list or one of the
+    /// date-anchored grids (ADR-0072 #6).
+    public enum ViewMode: String, CaseIterable, Sendable {
+        case agenda
+        case day
+        case week
+        case month
+
+        /// The picker label for the mode.
+        public var title: String {
+            switch self {
+            case .agenda:
+                String(localized: "Agenda", bundle: .module)
+            case .day:
+                String(localized: "Day", bundle: .module)
+            case .week:
+                String(localized: "Week", bundle: .module)
+            case .month:
+                String(localized: "Month", bundle: .module)
+            }
+        }
+    }
+
     // MARK: - State
 
     /// Calendar sources known to the coordinator, in coordinator order.
@@ -56,6 +79,11 @@ public final class CalendarBrowsingModel {
     public var searchText = ""
     /// Selection shared between the agenda and the detail pane.
     public var selectedEventID: PIMEvent.ID?
+    /// The active layout for the leading column.
+    public var viewMode: ViewMode = .agenda
+    /// The anchor date the day/week/month grids navigate around.
+    /// Always a start-of-day in the display zone.
+    public private(set) var selectedDay: Date
 
     private let coordinator: PIMSourceCoordinator?
     private let collectionService: PIMCollectionService?
@@ -81,6 +109,7 @@ public final class CalendarBrowsingModel {
         self.eventSyncService = eventSyncService
         self.now = now
         self.calendar = calendar
+        selectedDay = calendar.startOfDay(for: now())
     }
 
     // MARK: - Derived state
@@ -130,6 +159,125 @@ public final class CalendarBrowsingModel {
             )
         }
         return sections
+    }
+
+    // MARK: - Grid navigation
+
+    /// The events covering one day — hidden collections and the search
+    /// query applied, all-day first then chronological.
+    public func events(onDay day: Date) -> [PIMEvent] {
+        CalendarGridLayout.events(
+            visibleEvents,
+            onDay: day,
+            calendar: calendar
+        )
+    }
+
+    /// The all-day events covering one day — the grid views pin these
+    /// above the hour lanes.
+    public func allDayEvents(onDay day: Date) -> [PIMEvent] {
+        CalendarGridLayout.allDayEvents(
+            visibleEvents,
+            onDay: day,
+            calendar: calendar
+        )
+    }
+
+    /// Lane-placed timed events for one day — overlapping events split
+    /// the column into lanes.
+    public func timedLanes(
+        onDay day: Date
+    ) -> [CalendarGridLayout.LanePlacement] {
+        CalendarGridLayout.timedLanes(
+            visibleEvents,
+            onDay: day,
+            calendar: calendar
+        )
+    }
+
+    /// The seven days of the selected day\u2019s week.
+    public var selectedWeekDays: [Date] {
+        CalendarGridLayout.weekDays(
+            containing: selectedDay,
+            calendar: calendar
+        )
+    }
+
+    /// The selected day\u2019s month grid, shaped as weeks of seven.
+    public var selectedMonthWeeks: [[CalendarGridLayout.MonthDay]] {
+        CalendarGridLayout.monthWeeks(
+            containing: selectedDay,
+            calendar: calendar
+        )
+    }
+
+    /// The toolbar title for the active grid mode.
+    public var rangeTitle: String {
+        switch viewMode {
+        case .agenda:
+            String(localized: "Agenda", bundle: .module)
+        case .day:
+            CalendarGridLayout.dayTitle(
+                for: selectedDay,
+                calendar: calendar
+            )
+        case .week:
+            CalendarGridLayout.weekTitle(
+                containing: selectedDay,
+                calendar: calendar
+            )
+        case .month:
+            CalendarGridLayout.monthTitle(
+                containing: selectedDay,
+                calendar: calendar
+            )
+        }
+    }
+
+    /// Whether the previous/next/today controls apply to the active
+    /// mode — the agenda has no date anchor, so they hide there.
+    public var showsDateNavigation: Bool {
+        viewMode != .agenda
+    }
+
+    /// Steps the anchor one day, week, or month back per the active mode.
+    public func goToPrevious() {
+        move(by: -1)
+    }
+
+    /// Steps the anchor one day, week, or month forward per the mode.
+    public func goToNext() {
+        move(by: 1)
+    }
+
+    /// Returns the anchor to today in the display zone.
+    public func goToToday() {
+        selectedDay = calendar.startOfDay(for: now())
+    }
+
+    /// Moves the anchor to a specific day — a month-cell tap lands here
+    /// before the view switches to the day layout.
+    public func selectDay(_ day: Date) {
+        selectedDay = calendar.startOfDay(for: day)
+    }
+
+    private func move(by direction: Int) {
+        let component: Calendar.Component
+        switch viewMode {
+        case .agenda, .day:
+            component = .day
+        case .week:
+            component = .weekOfYear
+        case .month:
+            component = .month
+        }
+        if let next = calendar.date(
+            byAdding: component,
+            value: direction,
+            to: selectedDay
+        ) {
+            selectedDay = calendar.startOfDay(for: next)
+        }
     }
 
     /// The most recent cache write across loaded events — the "Updated"

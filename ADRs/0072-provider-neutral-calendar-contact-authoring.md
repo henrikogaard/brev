@@ -631,6 +631,32 @@ grant.
   background sync. Search is cache-local; nothing reaches a provider
   because a view exists.
 
+### #6 slice 4 — day/week/month grids (2026-09-21, BrevMail)
+
+- `CalendarGridLayout`: pure grid math — day coverage (all-day events
+  cover their UTC `[start, end)` days; timed events cover every local
+  day their interval intersects, so midnight-ending events do not bleed
+  and multi-day events repeat across columns), first-weekday-aware week
+  rows, complete-week month cells with adjacent-month padding, and a
+  sweep-line lane assignment that splits overlapping timed blocks.
+- `CalendarBrowsingModel` gains `viewMode` (agenda/day/week/month),
+  a `selectedDay` anchor, previous/today/next navigation stepping per
+  mode, and per-day event accessors that keep the hidden-collection and
+  search filters applied. Agenda needs no anchor; the navigation
+  controls hide there.
+- `CalendarDayView` / `CalendarWeekView` / `CalendarMonthView`:
+  hour-lane grids for day and week (all-day strip above the lanes,
+  overlap lanes splitting the column, today highlighted in the week
+  header) and a month grid of day cells with up to three chips plus a
+  "+N more" overflow. Tapping a week header or a month cell selects the
+  day and switches to the day layout — selection and the date anchor
+  stay shared across all four modes.
+- The leading column swaps content per mode inside the existing split;
+  the detail pane, search, banners, and Sync Now are unchanged. A
+  segmented picker plus prev/today/next controls sit in the toolbar.
+- Deferred by design: drag-to-create/resize, a positioned multi-day
+  event bar lane, authoring (#7), and scheduled background sync.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

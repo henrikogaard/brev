@@ -575,4 +575,104 @@ struct CalendarBrowsingModelTests {
 
         #expect(model.selectedEventID == nil)
     }
+
+    // MARK: - Grid navigation
+
+    @Test("the anchor starts on today and moves per the active mode")
+    func dateNavigation() async throws {
+        let model = try await makeModel(sources: [])
+        // The model's injected calendar is UTC; fixedNow lands mid-day.
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+        let todayStart = utc.startOfDay(for: Self.fixedNow)
+
+        #expect(model.selectedDay == todayStart)
+        #expect(!model.showsDateNavigation)
+
+        model.viewMode = .day
+        #expect(model.showsDateNavigation)
+        model.goToNext()
+        #expect(
+            model.selectedDay == todayStart.addingTimeInterval(86400)
+        )
+
+        model.viewMode = .week
+        model.goToToday()
+        model.goToNext()
+        #expect(
+            model.selectedDay == todayStart.addingTimeInterval(
+                7 * 86400
+            )
+        )
+
+        model.viewMode = .month
+        model.goToToday()
+        model.goToPrevious()
+        let month = utc.component(
+            .month,
+            from: model.selectedDay
+        )
+        let nowMonth = utc.component(
+            .month,
+            from: Self.fixedNow
+        )
+        #expect(month == nowMonth - 1 || (nowMonth == 1 && month == 12))
+    }
+
+    @Test("selectDay lands on the day's start in the display zone")
+    func selectDay() async throws {
+        let model = try await makeModel(sources: [])
+        let afternoon = Self.fixedNow.addingTimeInterval(5 * 3600)
+        var utc = Calendar(identifier: .gregorian)
+        utc.timeZone = TimeZone(identifier: "UTC")!
+
+        model.selectDay(afternoon)
+
+        #expect(model.selectedDay == utc.startOfDay(for: afternoon))
+    }
+
+    @Test("events(onDay:) applies the hidden-collection and search filters")
+    func eventsOnDayFilters() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [
+                    Self.collection(id: "c1", sourceID: "s1"),
+                    Self.collection(
+                        id: "c2",
+                        sourceID: "s1",
+                        isVisible: false
+                    ),
+                ],
+            ],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "shown", sourceID: "s1", collectionID: "c1",
+                        summary: "Shown",
+                        start: Self.fixedNow
+                    ),
+                ],
+                "s1|c2": [
+                    Self.event(
+                        id: "hidden", sourceID: "s1", collectionID: "c2",
+                        summary: "Hidden",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+
+        #expect(
+            model.events(onDay: Self.fixedNow).map(\.id) == ["shown"]
+        )
+
+        model.searchText = "shown"
+        #expect(
+            model.events(onDay: Self.fixedNow).map(\.id) == ["shown"]
+        )
+        model.searchText = "nothing-matches"
+        #expect(model.events(onDay: Self.fixedNow).isEmpty)
+    }
 }

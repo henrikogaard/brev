@@ -17,14 +17,13 @@ import SwiftUI
 
 /// The Calendar browsing surface (ADR-0072, issue #6).
 ///
-/// A two-column split: the agenda list (searchable, day-grouped) on the
-/// leading side and the read-only event detail on the trailing side. On
-/// iOS the split collapses into a push navigation. All content comes from
-/// the local sync cache — the view never issues provider requests; the
-/// only network-adjacent action is the explicit Sync Now toolbar item.
-///
-/// Day/week/month grid views land in a later slice; the agenda plus this
-/// detail pane cover browsing, search, and offline-cache reading.
+/// A two-column split: the leading column switches between the agenda
+/// list and the day/week/month grids (all sharing selection and the
+/// date anchor), and the read-only event detail sits on the trailing
+/// side. On iOS the split collapses into a push navigation. All content
+/// comes from the local sync cache — the view never issues provider
+/// requests; the only network-adjacent action is the explicit Sync Now
+/// toolbar item.
 public struct CalendarRootView: View {
     @Environment(\.brevTheme) private var theme
 
@@ -46,7 +45,7 @@ public struct CalendarRootView: View {
             columnVisibility: $columnVisibility,
             preferredCompactColumn: $preferredCompactColumn
         ) {
-            agendaColumn
+            leadingColumn
                 .navigationTitle(
                     String(localized: "Calendar", bundle: .module)
                 )
@@ -68,9 +67,9 @@ public struct CalendarRootView: View {
         }
     }
 
-    // MARK: - Agenda column
+    // MARK: - Leading column
 
-    private var agendaColumn: some View {
+    private var leadingColumn: some View {
         VStack(spacing: 0) {
             if !model.staleSources.isEmpty {
                 staleBanner
@@ -104,7 +103,7 @@ public struct CalendarRootView: View {
                     bundle: .module
                 )
             )
-        } else if model.days.isEmpty {
+        } else if model.days.isEmpty, model.viewMode == .agenda {
             emptyState(
                 symbol: "calendar",
                 title: String(
@@ -123,11 +122,47 @@ public struct CalendarRootView: View {
                     )
             )
         } else {
-            CalendarAgendaView(
-                days: model.days,
-                collectionFor: { model.collection(for: $0) },
-                selectedEventID: Bindable(model).selectedEventID
-            )
+            switch model.viewMode {
+            case .agenda:
+                CalendarAgendaView(
+                    days: model.days,
+                    collectionFor: { model.collection(for: $0) },
+                    selectedEventID: Bindable(model).selectedEventID
+                )
+            case .day:
+                CalendarDayView(
+                    day: model.selectedDay,
+                    allDayEvents: model.allDayEvents(
+                        onDay: model.selectedDay
+                    ),
+                    placements: model.timedLanes(onDay: model.selectedDay),
+                    collectionFor: { model.collection(for: $0) },
+                    selectedEventID: Bindable(model).selectedEventID
+                )
+            case .week:
+                CalendarWeekView(
+                    days: model.selectedWeekDays,
+                    allDayFor: { model.allDayEvents(onDay: $0) },
+                    lanesFor: { model.timedLanes(onDay: $0) },
+                    collectionFor: { model.collection(for: $0) },
+                    selectedEventID: Bindable(model).selectedEventID,
+                    onSelectDay: { day in
+                        model.selectDay(day)
+                        model.viewMode = .day
+                    }
+                )
+            case .month:
+                CalendarMonthView(
+                    weeks: model.selectedMonthWeeks,
+                    eventsFor: { model.events(onDay: $0) },
+                    collectionFor: { model.collection(for: $0) },
+                    selectedEventID: Bindable(model).selectedEventID,
+                    onSelectDay: { day in
+                        model.selectDay(day)
+                        model.viewMode = .day
+                    }
+                )
+            }
         }
     }
 
@@ -220,6 +255,63 @@ public struct CalendarRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        ToolbarItem(placement: .principal) {
+            HStack(spacing: BrevSpacing.sm) {
+                Picker(
+                    String(localized: "Layout", bundle: .module),
+                    selection: Bindable(model).viewMode
+                ) {
+                    ForEach(
+                        CalendarBrowsingModel.ViewMode.allCases,
+                        id: \.self
+                    ) { mode in
+                        Text(mode.title).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .frame(maxWidth: 320)
+                .accessibilityLabel(
+                    String(localized: "Calendar layout", bundle: .module)
+                )
+                if model.showsDateNavigation {
+                    HStack(spacing: BrevSpacing.xxs) {
+                        Button {
+                            model.goToPrevious()
+                        } label: {
+                            Image(systemName: "chevron.left")
+                        }
+                        .accessibilityLabel(
+                            String(
+                                localized: "Previous",
+                                bundle: .module
+                            )
+                        )
+                        Button {
+                            model.goToToday()
+                        } label: {
+                            Text(
+                                String(
+                                    localized: "Today",
+                                    bundle: .module
+                                )
+                            )
+                        }
+                        Button {
+                            model.goToNext()
+                        } label: {
+                            Image(systemName: "chevron.right")
+                        }
+                        .accessibilityLabel(
+                            String(localized: "Next", bundle: .module)
+                        )
+                    }
+                    Text(model.rangeTitle)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                }
+            }
+        }
         ToolbarItem(placement: .primaryAction) {
             Button {
                 Task { await model.syncAll() }
