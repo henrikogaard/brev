@@ -87,6 +87,32 @@ enum MessageEventDraftBuilder {
         )
     }
 
+    /// Builds a shared-editor draft from a message (#10). Same pre-fill
+    /// contract as the EventKit path: subject as title, sender +
+    /// recipients as attendees, received timestamp and Brev deep link
+    /// in the notes, and a defaultDuration-long event anchored at
+    /// referenceDate. The user picks the writable calendar target in
+    /// the editor itself.
+    static func calendarDraft(
+        for header: MessageHeader,
+        accountID: String,
+        referenceDate: Date,
+        defaultDuration: TimeInterval = 3600
+    ) -> CalendarEventDraft? {
+        guard let deepLink = MessageTaskDeepLinkBuilder.url(for: header, accountID: accountID) else {
+            return nil
+        }
+        let attendees = attendees(for: header)
+        var draft = CalendarEventDraft(
+            start: referenceDate,
+            duration: defaultDuration
+        )
+        draft.summary = title(for: header)
+        draft.notes = notes(for: header, attendees: attendees, deepLink: deepLink)
+        draft.attendeeEmails = attendees
+        return draft
+    }
+
     static func title(for header: MessageHeader) -> String {
         let subject = header.subject.trimmingCharacters(in: .whitespacesAndNewlines)
         return subject.isEmpty ? "Meeting about email from \(header.from.displayName)" : subject

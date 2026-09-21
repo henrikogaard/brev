@@ -804,6 +804,32 @@ grant.
   provider-side group creation, duplicate review suggestions, and
   offline write queueing.
 
+### #10 slice 1 — create event from message via the shared editor (2026-09-21, BrevMail/apps)
+
+- `MessageCreateEventSheet` routes the existing Create Meeting
+  command to `CalendarEventEditorView` when the session resolves
+  at least one writable calendar target, and keeps the EventKit sheet
+  when event authoring is unwired or no calendar is writable. The
+  routing decision lives in `MessageCreateEventRouting` so it is
+  unit testable without rendering.
+- `MessageEventDraftBuilder.calendarDraft` builds a
+  `CalendarEventDraft` with the same pre-fill contract as the
+  EventKit path: subject as title, sender + recipients as attendees,
+  received timestamp plus the Brev message deep link in notes, and a
+  one-hour event anchored at the reference date. The calendar target
+  picker inside the editor is the source chooser — no action silently
+  picks an account.
+- `CalendarEventEditorView` gains a draft-taking initializer so
+  message-derived creates reuse the same capability checks, conflict
+  handling, and recurring-scope prompts as first-class creates.
+- `BrevMailRootView` takes an optional `CalendarEditingModel`;
+  both app entry points construct it from the session write service
+  and coordinator, matching the Calendar/Contacts window pattern.
+- Deferred to later slices: RSVP reconciliation against the cached
+  event, participant-to-contact-card actions, Add/Update Contact from
+  mail, contact-aware autocomplete labels, and event/contact deep
+  links.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

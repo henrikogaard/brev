@@ -1,5 +1,42 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 1 (create event from message)
+
+### Goal
+
+First slice of #10 (ADR-0072): route Create Event from Message through
+the shared calendar editor and writable PIM sources instead of only
+the local EventKit handoff.
+
+### Changes
+
+- BrevMail: MessageEventDraftBuilder.calendarDraft builds a
+  CalendarEventDraft (subject, attendees, received timestamp, Brev
+  deep link). CalendarEventEditorView gains a draft-taking
+  initializer. MessageCreateEventSheet resolves writable targets and
+  picks the shared editor or the EventKit fallback; the decision is
+  unit-tested via MessageCreateEventRouting.
+- BrevMailRootView takes an optional CalendarEditingModel; both app
+  entry points construct it from the session write service and
+  coordinator.
+
+### Verification
+
+- swift build --package-path packages/BrevMail — clean
+- swift test --filter MessageEventDraftBuilder|MessageCreateEventRouting|CalendarEditingModel — 21/21 green
+- swiftformat on touched files — no changes
+- scripts/lint.sh — clean (ADR-0072 updated)
+- xcodebuild BrevMacOS + BrevIOS — both build
+
+### Skipped
+
+- Rendered interaction verification stays with maintainer QA.
+
+### Next
+
+- Later #10 slices: RSVP reconciliation, participant contact cards,
+  Add/Update Contact, autocomplete labels, deep links.
+
 ## 2026-09-21 — Agent — Issue #7 slice 2 (event editor UI)
 
 ### Goal

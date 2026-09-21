@@ -145,7 +145,12 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         localBackend: session.localBackend,
-                        onLocalFoldersChanged: { session.refreshLocalFolders() }
+                        onLocalFoldersChanged: { session.refreshLocalFolders() },
+                        calendarEditing: CalendarEditingModel(
+                            writeService: session.pimEventWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
                     )
                     .environment(\.openURL, browserOpenURLAction)
                     .networkMonitor(networkMonitor)
