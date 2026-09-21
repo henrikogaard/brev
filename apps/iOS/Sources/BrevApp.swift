@@ -37,6 +37,7 @@ struct BrevApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var session = AppSession.makeDefault()
     @State private var showSettings = false
+    @State private var showContacts = false
     @State private var appIconVariant = AppIconPreferences.load()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var pendingComposePrefill: ComposePrefill?
@@ -115,6 +116,9 @@ struct BrevApp: App {
                             readerCommandHandoff = nil
                             showSettings = true
                         },
+                        onOpenContacts: {
+                            showContacts = true
+                        },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
@@ -175,6 +179,26 @@ struct BrevApp: App {
                     isShowingAddAccountSheet = false
                 }
                 .brevTheme(session.theme)
+            }
+            .fullScreenCover(isPresented: $showContacts) {
+                NavigationStack {
+                    ContactsRootView(
+                        model: ContactsBrowsingModel(
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService,
+                            contactSyncService: session.pimContactSyncService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showContacts = false
+                            }
+                        }
+                    }
+                }
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
             }
             .task {
                 await RetiredSecurityMaterialMigration.run()

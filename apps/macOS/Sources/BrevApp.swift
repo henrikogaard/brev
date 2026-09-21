@@ -215,8 +215,29 @@ struct BrevApp: App {
                 }
                 .disabled(!updateController.settingsActions.isManualCheckAvailable)
             }
+            CommandGroup(after: .windowList) {
+                Button(String(localized: "Contacts")) {
+                    openWindow(id: BrevWindowID.contacts)
+                }
+            }
             BrevMailCommands()
         }
+
+        Window("Contacts", id: BrevWindowID.contacts) {
+            ContactsRootView(
+                model: ContactsBrowsingModel(
+                    coordinator: session.pimSourceCoordinator,
+                    collectionService: session.pimCollectionService,
+                    contactSyncService: session.pimContactSyncService
+                )
+            )
+            .brevTheme(session.theme)
+            .brevWindowTranslucency(windowRole: .settings)
+            .brevTransparentWindowToolbarBackground()
+            .brevHiddenWindowTitle()
+            .environment(\.openURL, browserOpenURLAction)
+        }
+        .windowResizability(.contentMinSize)
 
         Window("Brev Settings", id: BrevWindowID.settings) {
             SettingsView(
@@ -418,6 +439,7 @@ struct BrevApp: App {
 enum BrevWindowID {
     static let main = "brev-main"
     static let settings = "brev-settings"
+    static let contacts = "brev-contacts"
     static let keyboardShortcuts = "brev-keyboard-shortcuts"
 }
 
