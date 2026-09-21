@@ -37,6 +37,7 @@ struct BrevApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var session = AppSession.makeDefault()
     @State private var showSettings = false
+    @State private var showCalendar = false
     @State private var showContacts = false
     @State private var appIconVariant = AppIconPreferences.load()
     @State private var networkMonitor = NetworkReachabilityMonitor()
@@ -116,6 +117,9 @@ struct BrevApp: App {
                             readerCommandHandoff = nil
                             showSettings = true
                         },
+                        onOpenCalendar: {
+                            showCalendar = true
+                        },
                         onOpenContacts: {
                             showContacts = true
                         },
@@ -179,6 +183,26 @@ struct BrevApp: App {
                     isShowingAddAccountSheet = false
                 }
                 .brevTheme(session.theme)
+            }
+            .fullScreenCover(isPresented: $showCalendar) {
+                NavigationStack {
+                    CalendarRootView(
+                        model: CalendarBrowsingModel(
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService,
+                            eventSyncService: session.pimEventSyncService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showCalendar = false
+                            }
+                        }
+                    }
+                }
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showContacts) {
                 NavigationStack {

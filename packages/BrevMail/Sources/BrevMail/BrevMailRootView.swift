@@ -400,6 +400,9 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    /// Opens the Calendar browsing surface (ADR-0072). Nil hides the
+    /// iOS sidebar entry; macOS reaches the surface via the Window menu.
+    private let onOpenCalendar: (() -> Void)?
     /// Opens the Contacts browsing surface (ADR-0072). Nil hides the
     /// iOS sidebar entry; macOS reaches the surface via the Window menu.
     private let onOpenContacts: (() -> Void)?
@@ -438,6 +441,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
@@ -461,6 +465,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
             onSettingsMailboxContextChange: onSettingsMailboxContextChange,
             signatureContextProvider: signatureContextProvider,
@@ -491,6 +496,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
@@ -520,6 +526,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
         self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
         self.signatureContextProvider = signatureContextProvider
@@ -1310,6 +1317,7 @@ public struct BrevMailRootView: View {
                 navigation.presentedSheet = .outbox
             },
             onOpenSettings: nil,
+            onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
             onOpenMessages: {
                 openSelectedMessagesOnCompact()

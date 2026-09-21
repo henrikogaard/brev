@@ -1,5 +1,54 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #6 slice 3 (calendar browsing: agenda + detail + search)
+
+### Goal
+
+Third slice of #6 (ADR-0072): a first-class Calendar surface that browses
+the synced event cache — agenda list, event detail, local search — on
+macOS and iOS, without issuing provider requests.
+
+### Changes
+
+- BrevMail: CalendarBrowsingModel (cache-only load across calendar
+  sources, hidden-collection filtering, local search, day bucketing,
+  stale-source detection, per-source cache-failure isolation, Sync Now
+  passthrough), CalendarEventPresentation (pure formatting: agenda
+  times, day titles, recurrence summaries, RSVP/reminder labels, search
+  corpus), CalendarAgendaView + CalendarEventRowView (day sections,
+  collection color bars, cancelled strikethrough, join-link icon),
+  CalendarEventDetailView (all model fields incl. attendees/RSVP,
+  reminders, notes, provenance), CalendarRootView (split view, search,
+  Sync Now, stale/error banners, empty states).
+- macOS: Window("Calendar") scene + Window menu command.
+- iOS: sidebar-footer Calendar button (FolderSidebar onOpenCalendar)
+  presenting the surface as a full-screen cover with Done.
+- CI: CalendarBrowsingSnapshotTests registered in the macOS<26 skip
+  list and the snapshot-macos only-testing list.
+
+### Verification
+
+- 19 new behavior tests + 4 snapshot renders pass
+  (CalendarBrowsingModel, CalendarEventPresentation,
+  CalendarBrowsingSnapshot). Full BrevMail package: 45 calendar-related
+  tests green.
+- scripts/lint.sh clean (SwiftFormat + SwiftLint --strict +
+  adr-required).
+- xcodebuild build BrevMacOS and BrevIOS (CODE_SIGNING_ALLOWED=NO) both
+  succeed — app targets compile in Swift 6 mode.
+
+### Skipped
+
+- Pixel baselines recorded on macOS 27 — this host's renderer; the
+  repo's earlier baselines were recorded on macOS 26 and already drift
+  locally. Re-record on a macOS 26 host if the snapshot job flags them.
+- Live-provider evidence stays the maintainer's QA gate.
+
+### Next
+
+- #6 slice 4: day/week/month grid views sharing selection/navigation.
+- #8 slice 2: contacts browsing UI on the same pattern.
+
 ## 2026-09-21 — Codex — Issue #6 collection discovery (slice 1)
 
 ### Goal
