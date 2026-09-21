@@ -105,6 +105,11 @@ All notable changes to Brev are documented here.
   address book (moving a CardDAV contact between books is supported),
   and notes. Delete asks for confirmation and names the provider
   impact; unknown provider fields are preserved on every edit.
+- Create Event from Message (ADR-0072, #10): the message action now
+  opens the shared calendar editor — subject, attendees, received
+  timestamp, and a Brev deep link pre-filled — with the writable
+  calendar picker when the session has an editable calendar source.
+  Sessions without one keep the previous Apple Calendar sheet.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

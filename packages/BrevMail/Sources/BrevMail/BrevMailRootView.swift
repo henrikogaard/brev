@@ -428,6 +428,11 @@ public struct BrevMailRootView: View {
     /// the session can refresh `visibleBackends` visibility.
     private let onLocalFoldersChanged: (() -> Void)?
 
+    /// Writable-calendar owner for Create Event from Message (#10).
+    /// When nil or when it resolves no writable calendar, the command
+    /// keeps the local EventKit sheet.
+    private let calendarEditing: CalendarEditingModel?
+
     private let unreadCountReconciler = UnreadCountReconciler()
 
     /// Creates a mailbox workspace for a single account backend.
@@ -456,7 +461,8 @@ public struct BrevMailRootView: View {
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
         localBackend: LocalMailBackend? = nil,
-        onLocalFoldersChanged: (() -> Void)? = nil
+        onLocalFoldersChanged: (() -> Void)? = nil,
+        calendarEditing: CalendarEditingModel? = nil
     ) {
         self.init(
             backends: [backend],
@@ -480,7 +486,8 @@ public struct BrevMailRootView: View {
             onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
             backgroundMail: backgroundMail,
             localBackend: localBackend,
-            onLocalFoldersChanged: onLocalFoldersChanged
+            onLocalFoldersChanged: onLocalFoldersChanged,
+            calendarEditing: calendarEditing
         )
     }
 
@@ -511,7 +518,8 @@ public struct BrevMailRootView: View {
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
         localBackend: LocalMailBackend? = nil,
-        onLocalFoldersChanged: (() -> Void)? = nil
+        onLocalFoldersChanged: (() -> Void)? = nil,
+        calendarEditing: CalendarEditingModel? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -550,6 +558,7 @@ public struct BrevMailRootView: View {
         self.backgroundMail = backgroundMail
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
+        self.calendarEditing = calendarEditing
     }
 
     public var body: some View {
@@ -3740,24 +3749,16 @@ public struct BrevMailRootView: View {
             )
             .brevTheme(theme)
         case .createMeeting(let header, let sourceID):
-            // One-off local calendar event via EventKit (ADR-0007): write-only on
-            // explicit action, no calendar sync/browse.
+            // #10: prefer the shared calendar editor when the session has a
+            // writable PIM calendar; the EventKit sheet stays the fallback.
             let accountID = sourceID?.accountID ?? selectedBackend.account.id
-            if let draft = MessageEventDraftBuilder.draft(
-                for: header,
+            MessageCreateEventSheet(
+                editing: calendarEditing,
+                header: header,
                 accountID: accountID,
-                referenceDate: Date()
-            ) {
-                MessageEventSheet(
-                    draft: draft,
-                    create: { try await AppleCalendarEventCreator().createEvent(from: $0) },
-                    onClose: { onClose?() }
-                )
-                .brevTheme(theme)
-            } else {
-                MessageEventUnavailableSheet(onClose: { onClose?() })
-                    .brevTheme(theme)
-            }
+                onClose: { onClose?() }
+            )
+            .brevTheme(theme)
         case .messageNote(let header, let payloadSourceID):
             if let messageID = sourceMessageID(for: header, payloadSourceID: payloadSourceID) {
                 let state = localMessageWorkflowStateBinding.wrappedValue

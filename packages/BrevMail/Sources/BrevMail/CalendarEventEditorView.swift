@@ -67,6 +67,21 @@ public struct CalendarEventEditorView: View {
         editedEvent = event
     }
 
+    /// Opens the editor on a caller-built draft — for example a
+    /// "Create Event from Message" pre-fill (#10). The draft must be a
+    /// create draft (no provider identity); editing an existing event
+    /// still goes through the event initializer.
+    public init(
+        editing: CalendarEditingModel,
+        draft: CalendarEventDraft,
+        onSaved: @escaping () async -> Void = {}
+    ) {
+        self.editing = editing
+        self.onSaved = onSaved
+        _draft = State(initialValue: draft)
+        editedEvent = nil
+    }
+
     public var body: some View {
         NavigationStack {
             ScrollView {

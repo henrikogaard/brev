@@ -76,4 +76,38 @@ struct MessageEventDraftBuilderTests {
         #expect(draft.notes.contains("Attendees: bob@example.org, team@example.org"))
         #expect(draft.notes.contains("brev://message?accountID=acct-1"))
     }
+
+    @Test("calendar draft pre-fills the shared editor fields (#10)")
+    func calendarDraftPreFillsSharedEditor() throws {
+        let ref = Date(timeIntervalSince1970: 2_000_000)
+        let draft = try #require(
+            MessageEventDraftBuilder.calendarDraft(
+                for: header(),
+                accountID: "acct-1",
+                referenceDate: ref
+            )
+        )
+        #expect(draft.summary == "Project sync")
+        #expect(draft.start == ref)
+        #expect(draft.end == ref.addingTimeInterval(3600))
+        #expect(draft.attendeeEmails == ["bob@example.org", "team@example.org"])
+        #expect(draft.notes.contains("brev://message?accountID=acct-1"))
+        #expect(draft.isEditing == false)
+        #expect(draft.isValid)
+        #expect(draft.targetCollectionID == nil)
+    }
+
+    @Test("calendar draft honors a custom duration")
+    func calendarDraftHonorsCustomDuration() throws {
+        let ref = Date(timeIntervalSince1970: 2_000_000)
+        let draft = try #require(
+            MessageEventDraftBuilder.calendarDraft(
+                for: header(),
+                accountID: "a",
+                referenceDate: ref,
+                defaultDuration: 1800
+            )
+        )
+        #expect(draft.end == ref.addingTimeInterval(1800))
+    }
 }

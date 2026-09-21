@@ -97,7 +97,12 @@ struct BrevApp: App {
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         backgroundMail: session.backgroundMail,
                         localBackend: session.localBackend,
-                        onLocalFoldersChanged: { session.refreshLocalFolders() }
+                        onLocalFoldersChanged: { session.refreshLocalFolders() },
+                        calendarEditing: CalendarEditingModel(
+                            writeService: session.pimEventWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
                     )
                     .frame(minWidth: 960, minHeight: 600)
                     .environment(\.openURL, browserOpenURLAction)

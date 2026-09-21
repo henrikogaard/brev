@@ -317,8 +317,8 @@ public enum MessageCommandPresentation {
             title: "Create Meeting from Message",
             enabledCondition: "no other sheet is presented",
             wiring: .visible(
-                handler: "MessageEventSheet",
-                dependency: "MessageEventDraftBuilder + EventKit calendar",
+                handler: "MessageCreateEventSheet",
+                dependency: "CalendarEventEditorView (writable PIM calendar) or MessageEventSheet + EventKit fallback",
                 platforms: "macOS, iOS"
             )
         ),
