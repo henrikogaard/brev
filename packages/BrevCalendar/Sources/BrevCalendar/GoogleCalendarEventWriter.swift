@@ -19,7 +19,9 @@ import Foundation
 /// `GoogleCalendarEventSync`. Every call needs the
 /// `calendar.events` scope the write-enablement flow grants
 /// (`GooglePIMScopes.calendarEvents`); a missing grant surfaces as
-/// `authenticationRequired` rather than a silent failure.
+/// `authenticationRequired` rather than a silent failure. All
+/// three mutations send `sendUpdates=all` so guests are
+/// notified — the parameter is a no-op on events without attendees.
 public struct GoogleCalendarEventWriter: Sendable {
     /// Errors surfaced by the Google write path.
     public enum WriteError: Error, Sendable, Hashable, LocalizedError {
@@ -106,7 +108,10 @@ public struct GoogleCalendarEventWriter: Sendable {
         into collection: PIMCollection,
         accessToken: String
     ) async throws -> WriteResult {
-        let url = try eventsURL(collection: collection)
+        let url = try eventsURL(
+            collection: collection,
+            notifyGuests: true
+        )
         var request = try jsonRequest(url: url, method: "POST", accessToken: accessToken)
         request.httpBody = try body(for: event)
         let (data, response) = try await send(request)
@@ -125,7 +130,8 @@ public struct GoogleCalendarEventWriter: Sendable {
     ) async throws -> WriteResult {
         let url = try eventURL(
             collection: collection,
-            eventID: event.providerItemKey
+            eventID: event.providerItemKey,
+            notifyGuests: true
         )
         var request = try jsonRequest(url: url, method: "PATCH", accessToken: accessToken)
         if let etag = event.providerVersion {
@@ -146,7 +152,8 @@ public struct GoogleCalendarEventWriter: Sendable {
     ) async throws {
         let url = try eventURL(
             collection: collection,
-            eventID: event.providerItemKey
+            eventID: event.providerItemKey,
+            notifyGuests: true
         )
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
@@ -228,11 +235,16 @@ public struct GoogleCalendarEventWriter: Sendable {
 
     // MARK: - Helpers
 
-    private func eventsURL(collection: PIMCollection) throws -> URL {
+    private func eventsURL(
+        collection: PIMCollection,
+        notifyGuests: Bool
+    ) throws -> URL {
         guard let encoded = collection.providerKey.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
         ), let url = URL(
-            string: "\(Self.baseURL)/\(encoded)/events"
+            string:
+            "\(Self.baseURL)/\(encoded)/events"
+                + (notifyGuests ? "?sendUpdates=all" : "")
         ) else {
             throw WriteError.invalidResponse
         }
@@ -241,7 +253,8 @@ public struct GoogleCalendarEventWriter: Sendable {
 
     private func eventURL(
         collection: PIMCollection,
-        eventID: String
+        eventID: String,
+        notifyGuests: Bool
     ) throws -> URL {
         guard let encodedCollection = collection.providerKey
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -251,6 +264,7 @@ public struct GoogleCalendarEventWriter: Sendable {
             let url = URL(
                 string:
                 "\(Self.baseURL)/\(encodedCollection)/events/\(encodedEvent)"
+                    + (notifyGuests ? "?sendUpdates=all" : "")
             )
         else {
             throw WriteError.invalidResponse

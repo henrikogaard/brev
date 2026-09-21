@@ -276,6 +276,9 @@ read-only. Every mutation carries the stored ETag as an `If-Match`
 precondition, so Brev never silently overwrites a newer server-side
 change — a conflict asks you to sync first. Turning Editing off is
 local-only: the provider grant remains but Brev stops issuing writes.
+When an event has attendees, Google mutations send
+`sendUpdates=all` so Google notifies invitees; CalDAV servers notify
+per their own scheduling support. Brev itself never emails attendees.
 
 For a Gmail API account, Brev then contacts `gmail.googleapis.com` using the
 Google access token. Gmail returns stable account-wide message and thread IDs,
