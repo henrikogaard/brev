@@ -1,5 +1,55 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #9 slice 1 (contact write pipeline + editing opt-in)
+
+### Goal
+
+First slice of #9 (ADR-0072): the provider-neutral contact write path —
+vCard serialization with unknown-field merge, Google People and CardDAV
+write adapters, a capability-gated write service — plus the Editing
+opt-in extended to contacts sources.
+
+### Changes
+
+- BrevCalendar: PIMVCardWriter (vCard 3.0 create, raw-payload merge on
+  update preserving unknown properties and VERSION, TEXT escaping,
+  75-octet UTF-8-safe folding), GooglePeopleContactWriter
+  (createContact / updateContact with updatePersonFields mask /
+  deleteContact, etag precondition, 400 FAILED_PRECONDITION mapped to
+  conflict, myContacts membership never sent), PIMDAVContactWriter
+  (PUT to {collection}/{uid}.vcf on create, to the stored href on
+  update; DELETE on the href; If-None-Match / If-Match preconditions),
+  PIMContactWriteService (canWrite gate, provider dispatch, Google
+  group-as-membership on create, single-record cache patching).
+- BrevSettings: canToggleWrite now covers connected Google and CardDAV
+  contacts sources; the Google write re-auth path is unchanged.
+- BrevMail: AppSession carries pimContactWriteService; the factory
+  wires it over the shared coordinator, contact store, credentials,
+  and the Google token provider.
+- Docs: ADR-0072 #9 slice-1 entry, CHANGELOG bullet, PRIVACY.md
+  contacts-editing paragraph.
+
+### Verification
+
+- swift build --package-path packages/BrevCalendar + BrevMail: clean.
+- swift test --package-path packages/BrevCalendar --filter
+  PIMContactWrite: 16/16 green.
+- swift test --package-path packages/BrevSettings --filter
+  PIMSourceSettingsModel: 21/21 green.
+
+### Skipped
+
+- xcodebuild app builds: no app-target surface touched (session wiring
+  compiles under the BrevMail package build).
+- Live provider evidence: deferred to the maintainer QA pass per
+  issue #9 acceptance criteria.
+
+### Handoff
+
+- Next: PR targets main; slice 2 is the contact editor UI (form,
+  group picker, photo handling, delete confirmation). Dates/URLs need
+  a shared-model extension — tracked in the ADR deferral list.
+
 ## 2026-09-21 — Agent — Issue #7 slice 1 (event write pipeline + editing opt-in)
 
 ### Goal

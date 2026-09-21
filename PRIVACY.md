@@ -277,6 +277,16 @@ precondition, so Brev never silently overwrites a newer server-side
 change — a conflict asks you to sync first. Turning Editing off is
 local-only: the provider grant remains but Brev stops issuing writes.
 
+Enabling Editing on a contacts source works the same way: CardDAV
+sources write vCards with `PUT`/`DELETE` to the contact's
+address URL, Google sources call the People API's
+`people:createContact`/`updateContact`/`deleteContact`
+after re-authorizing with the `contacts` scope. Updates carry the
+stored etag precondition, CardDAV edits merge into the stored vCard so
+fields Brev does not read are preserved, and Google edits are masked to
+the fields Brev owns. Brev never modifies provider-side contact groups
+or photos.
+
 For a Gmail API account, Brev then contacts `gmail.googleapis.com` using the
 Google access token. Gmail returns stable account-wide message and thread IDs,
 label metadata, message content requested by the user or sync policy, and an

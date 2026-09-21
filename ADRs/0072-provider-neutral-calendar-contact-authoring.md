@@ -697,6 +697,44 @@ grant.
   prompts, attendee notifications), iMIP RSVP unification onto this
   path, offline write queueing, and contact authoring (#9).
 
+### #9 slice 1 — contact write pipeline and editing opt-in (2026-09-21, BrevCalendar/BrevMail/BrevSettings)
+
+- `PIMVCardWriter`: serializes a PIMContact into a vCard blob.
+  Creates emit a fresh vCard 3.0 document; updates merge the model's
+  managed properties (FN, N, NICKNAME, EMAIL, TEL, ADR, ORG, TITLE,
+  NOTE, PHOTO, CATEGORIES, REV, UID) into the stored raw payload so
+  unknown fields — X-*, BDAY, IMPP, social profiles — survive the
+  round trip, and the payload's VERSION stays authoritative. Output is
+  CRLF-joined and folded at 75 octets without splitting multi-byte
+  UTF-8 sequences.
+- `GooglePeopleContactWriter` and `PIMDAVContactWriter`:
+  provider write adapters behind injected transports. Google maps the
+  shared model to the People resource (createContact, updateContact
+  with an updatePersonFields mask limited to the fields Brev owns,
+  deleteContact); CardDAV PUTs the vCard to
+  `{collection}/{sanitized-uid}.vcf` on create and to the stored
+  href on update, DELETEs on the href. Updates carry the cached
+  providerVersion as the precondition (Google etag in the body, CardDAV
+  If-Match); creates carry If-None-Match: *. 401/403 map to
+  authenticationRequired; 409/412 — and Google's 400
+  FAILED_PRECONDITION — map to conflict; a remote 404 on delete counts
+  as done.
+- `PIMContactWriteService`: the provider-neutral write entry
+  point. canWrite requires the write capability on a contacts source
+  and a non-read-only target collection when one is given; Google
+  contacts are account-wide so updates and deletes pass no collection.
+  A Google create lands the chosen contact-group collection as a
+  membership (the implicit myContacts group is never sent). The local
+  cache patches the single record in place after a successful write.
+- Editing opt-in: the settings Editing toggle now covers connected
+  Google and CardDAV contacts sources, reusing the slice-1 enablement
+  path — Google re-authorizes with the contacts scope before the
+  capability flips.
+- Deferred by design: the contact editor UI (form, photo handling,
+  group picker, delete confirmation naming provider impact), date and
+  URL fields (the shared model does not carry them yet), duplicate
+  review suggestions, and offline write queueing.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

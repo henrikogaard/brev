@@ -81,6 +81,14 @@ All notable changes to Brev are documented here.
   through Google Calendar or CalDAV with ETag/If-Match conflict
   preconditions, and the local cache updates in place. The editor UI
   lands in the next slice.
+- Contact editing opt-in and write pipeline (ADR-0072): contacts
+  sources gain the same Editing toggle — Google re-authorizes with the
+  contacts scope, CardDAV opts in locally. Behind it, a
+  provider-neutral write service creates, updates, and deletes
+  contacts through Google People or CardDAV with etag/If-Match
+  conflict preconditions; CardDAV updates merge into the stored vCard
+  so unknown fields survive, and Google updates are masked to the
+  fields Brev owns. The contact editor UI lands in the next slice.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
