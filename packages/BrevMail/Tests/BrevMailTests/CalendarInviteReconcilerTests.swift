@@ -471,4 +471,70 @@ struct CalendarInviteReconcilerTests {
             outcome == .failed(sourceName: "cal-1", message: "etag mismatch")
         )
     }
+
+    // MARK: - Deep-link lookup
+
+    @Test("cachedEvent finds the event behind an invite UID")
+    func cachedEventFindsMatch() async throws {
+        let reconciler = try await makeReconciler(
+            sources: [source()],
+            events: [
+                "cal-1": [
+                    event(
+                        attendees: [
+                            PIMEventPerson(email: "me@example.com")
+                        ]
+                    )
+                ]
+            ],
+            collections: ["cal-1": [collection()]],
+            writer: RecordingWriter()
+        )
+
+        let match = await reconciler.cachedEvent(
+            forUID: "invite-1@example.org"
+        )
+
+        #expect(match?.uid == "invite-1@example.org")
+        #expect(
+            match?.id == PIMEvent.makeID(
+                collectionID: "c1",
+                providerItemKey: "e1",
+                recurrenceID: nil
+            )
+        )
+    }
+
+    @Test("cachedEvent misses report nil instead of guessing")
+    func cachedEventMisses() async throws {
+        let reconciler = try await makeReconciler(
+            sources: [source()],
+            events: [
+                "cal-1": [
+                    event(
+                        attendees: [
+                            PIMEventPerson(email: "me@example.com")
+                        ]
+                    )
+                ]
+            ],
+            collections: ["cal-1": [collection()]],
+            writer: RecordingWriter()
+        )
+
+        #expect(
+            await reconciler.cachedEvent(forUID: "other-uid") == nil
+        )
+        #expect(await reconciler.cachedEvent(forUID: "   ") == nil)
+    }
+
+    @Test("cachedEvent without services reports nil")
+    func cachedEventWithoutServices() async {
+        let reconciler = CalendarInviteReconciler()
+
+        #expect(
+            await reconciler.cachedEvent(forUID: "invite-1@example.org")
+                == nil
+        )
+    }
 }

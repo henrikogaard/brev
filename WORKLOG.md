@@ -1,5 +1,46 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #10 slice 4 (event/contact deep links)
+
+### Goal
+
+Fourth slice of #10 (ADR-0072): event and contact deep links reopen
+the correct Brev item and fail safely after source removal.
+
+### Changes
+
+- BrevMail: PIMDeepLinkPolicy (brev://event?id= / brev://contact?id=
+  build + strict parse), PIMDeepLinkCopy pasteboard helper.
+- BrevMail: CalendarBrowsingModel.revealEvent and
+  ContactsBrowsingModel.revealContact — ensure-loaded reveal, filter
+  clearing, selection, day anchoring, and an inline deepLinkNotice on
+  a cache miss; both root views render the notice.
+- BrevMail: Copy Link on CalendarEventDetailView and
+  ContactDetailView; Open in Calendar on the invite card (reconciler
+  cachedEvent(forUID:) lookup); Open in Contacts on the sender contact
+  sheet (dismisses before opening for the iOS cover handoff).
+- Apps: both entry points hoist the browsing models onto the session
+  and route brev:// links to the shared instances; iOS openURL now
+  routes brev:// internally.
+- Fix: injectCardDAVContactSync installs the lookup provider through
+  the CardDAVContactSyncSupporting existential when available — the
+  MailBackend requirement's extension default no-ops when conformance
+  is inherited without an override (caught by AppSessionTests on CI).
+
+### Verification
+
+- swift test --filter PIMDeepLinkPolicyTests/CalendarBrowsingModel/
+  ContactsBrowsingModel/CalendarInviteReconciler — 44 green
+- swift test --filter AppSession — 76 green (incl. the CardDAV
+  provider-injection case)
+- swift build --package-path packages/BrevMail — clean
+
+### Skipped
+
+- Rendered verification (macOS window + iOS cover reveal) — pending;
+  acceptance criterion tracked on #10.
+- Per-recipient contact actions — deferred to a later slice.
+
 ## 2026-09-21 — Agent — Issue #10 slice 3 (RSVP reconciliation)
 
 ### Goal

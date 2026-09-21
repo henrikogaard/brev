@@ -63,7 +63,7 @@ public struct ContactDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                 header
-                if onEdit != nil || onDelete != nil {
+                if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
                 }
                 if !contact.emails.isEmpty {
@@ -222,8 +222,32 @@ public struct ContactDetailView: View {
                 }
                 .buttonStyle(.plain)
             }
+            if let deepLinkURL {
+                Button {
+                    PIMDeepLinkCopy.copy(deepLinkURL)
+                } label: {
+                    Label(
+                        String(localized: "Copy Link", bundle: .module),
+                        systemImage: "link"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(
+                    String(
+                        localized: "Copies a link that reopens this contact in Brev",
+                        bundle: .module
+                    )
+                )
+            }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    /// The brev:// link that reopens this cached contact (#10).
+    private var deepLinkURL: URL? {
+        PIMDeepLinkPolicy.url(forContactID: contact.id)
     }
 
     // MARK: - Header

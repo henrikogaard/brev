@@ -69,6 +69,34 @@ public final class CalendarInviteReconciler {
             && collectionService != nil && writeService != nil
     }
 
+    /// The cached event matching an invite UID, if one is synced (#10).
+    ///
+    /// Cache-only lookup in the same source order reconcile() uses, so
+    /// an "Open in Calendar" deep link targets the exact record an RSVP
+    /// would update. One unreadable source cache never fails the
+    /// lookup — the remaining sources still answer.
+    public func cachedEvent(forUID uid: String) async -> PIMEvent? {
+        let trimmedUID = uid.trimmingCharacters(in: .whitespaces)
+        guard !trimmedUID.isEmpty,
+              let coordinator,
+              let eventSyncService else {
+            return nil
+        }
+        guard let sources = try? await coordinator.allSources()
+            .filter({ $0.kind == .calendar }) else {
+            return nil
+        }
+        for source in sources {
+            guard let events = try? await eventSyncService.events(
+                for: source.id
+            ) else { continue }
+            if let event = events.first(where: { $0.uid == trimmedUID }) {
+                return event
+            }
+        }
+        return nil
+    }
+
     /// Applies the RSVP to the cached event matching the invite.
     /// - Parameters:
     ///   - invite: The parsed invite; its UID selects the event.

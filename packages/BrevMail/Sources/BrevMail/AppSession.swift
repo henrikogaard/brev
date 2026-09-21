@@ -1113,8 +1113,9 @@ public final class AppSession {
         // source for every backend; the legacy CardDAV REPORT lookup
         // stays as the fallback for sessions whose PIM sources are not
         // synced yet.
+        let syncable = backend as? (any CardDAVContactSyncSupporting)
         var fallback: (any ContactLookupProviding)?
-        if let syncable = backend as? (any CardDAVContactSyncSupporting),
+        if let syncable,
            let carddavConfig = CalDAVDiscovery
            .discover(for: syncable.emailAddressForCardDAV).carddav,
            let token = syncable.bearerTokenForCardDAV {
@@ -1122,17 +1123,26 @@ public final class AppSession {
             fallback = CardDAVContactLookupAdapter(coordinator: coordinator)
             cardDAVContactSyncStarter(coordinator, carddavConfig, token)
         }
+        let provider: (any ContactLookupProviding)?
         if let pimCoordinator = pimSourceCoordinator,
            let pimContacts = pimContactSyncService {
-            backend.setContactLookupProvider(
-                PIMContactLookupAdapter(
-                    coordinator: pimCoordinator,
-                    syncService: pimContacts,
-                    fallback: fallback
-                )
+            provider = PIMContactLookupAdapter(
+                coordinator: pimCoordinator,
+                syncService: pimContacts,
+                fallback: fallback
             )
-        } else if let fallback {
-            backend.setContactLookupProvider(fallback)
+        } else {
+            provider = fallback
+        }
+        guard let provider else { return }
+        // CardDAV-capable backends document the setter on that
+        // protocol; calling through it keeps the witness on the
+        // concrete backend when MailBackend conformance is inherited
+        // without an override.
+        if let syncable {
+            syncable.setContactLookupProvider(provider)
+        } else {
+            backend.setContactLookupProvider(provider)
         }
     }
 

@@ -40,6 +40,7 @@ enum SenderContextPanelState: Equatable, Sendable {
 struct SenderContextPanel: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.locale) private var locale
+    @Environment(\.openURL) private var openURL
 
     let state: SenderContextPanelState
     let sourceID: MailSourceID?
@@ -137,6 +138,20 @@ struct SenderContextPanel: View {
                             Task {
                                 await actions.resolve(email: header.from.email)
                             }
+                        }
+                    },
+                    onOpenInContacts: {
+                        guard let url = PIMDeepLinkPolicy.url(
+                            forContactID: contact.id
+                        ) else { return }
+                        contactSheet = nil
+                        // The sheet must finish dismissing before the
+                        // deep link presents the Contacts surface —
+                        // on iOS a cover requested during the sheet's
+                        // dismissal is dropped.
+                        Task { @MainActor in
+                            try? await Task.sleep(for: .milliseconds(350))
+                            openURL(url)
                         }
                     }
                 )

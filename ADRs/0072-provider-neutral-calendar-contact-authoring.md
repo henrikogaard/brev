@@ -872,8 +872,33 @@ grant.
   `MessageDetailView` take an optional reconciler; the root
   view and both app entry points wire it from the session services.
   Detached reader windows keep the mail-only confirmation.
-- Deferred: event/contact deep links, per-recipient contact actions,
-  and rendered-verification coverage.
+
+### #10 slice 4 — event/contact deep links (2026-09-21, BrevMail/apps)
+
+- `PIMDeepLinkPolicy` builds and parses `brev://event?id=…` and
+  `brev://contact?id=…` URLs carrying the stable cached-record ID.
+  The parser fails closed on foreign schemes, unknown hosts, and
+  missing or blank IDs.
+- `CalendarBrowsingModel.revealEvent` and
+  `ContactsBrowsingModel.revealContact` ensure the cache has loaded
+  (cold windows cannot miss on unread data), clear filters, select the
+  record, and anchor the day grids. A record that left the cache —
+  removed source or a stale link — clears the selection and shows an
+  inline notice instead of landing on an unrelated item. Records whose
+  source was removed but whose cache was kept still resolve, per the
+  kept-cache contract.
+- Emission: the event and contact detail panes gain "Copy Link"; the
+  invite card gains "Open in Calendar" when the reconciler finds the
+  synced event by UID; the sender contact sheet gains "Open in
+  Contacts" which dismisses before opening so the iOS cover
+  presentation is never dropped.
+- Both app entry points hoist the browsing models onto the session and
+  route `brev://` links — the macOS window opens first, then the
+  reveal runs on the shared model; iOS presents the full-screen cover
+  the same way. The iOS in-app openURL handler now routes `brev://`
+  links internally instead of handing them to the browser.
+- Deferred: per-recipient contact actions and rendered-verification
+  coverage.
 
 ## References (checked 2026-09-20)
 

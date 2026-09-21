@@ -84,12 +84,19 @@ public final class CalendarBrowsingModel {
     /// The anchor date the day/week/month grids navigate around.
     /// Always a start-of-day in the display zone.
     public private(set) var selectedDay: Date
+    /// One-line notice when a brev://event deep link names a record
+    /// that is no longer in the cache (#10).
+    public private(set) var deepLinkNotice: String?
 
     private let coordinator: PIMSourceCoordinator?
     private let collectionService: PIMCollectionService?
     private let eventSyncService: PIMEventSyncService?
     private let now: () -> Date
     private let calendar: Calendar
+    /// Whether load() finished at least once — deep links ensure the
+    /// cache is loaded before they reveal so a cold window cannot
+    /// report a miss on data it never read.
+    private var didLoad = false
 
     /// - Parameters:
     ///   - coordinator: Source registry; nil in sessions without PIM.
@@ -340,7 +347,10 @@ public final class CalendarBrowsingModel {
     /// never contacts a provider.
     public func load() async {
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            didLoad = true
+        }
         do {
             sources = try await coordinator?.allSources()
                 .filter { $0.kind == .calendar } ?? []
@@ -351,6 +361,38 @@ public final class CalendarBrowsingModel {
         await loadCollections()
         await loadEvents()
         reconcileSelection()
+    }
+
+    // MARK: - Deep links
+
+    /// Reveals the event a brev://event link names (#10).
+    ///
+    /// Ensures the cache has loaded at least once, then selects the
+    /// record and anchors the day grids on it. A record that left the
+    /// cache — the source was disconnected with its cache cleared, or
+    /// the link is stale — fails safe: the selection clears and an
+    /// inline notice explains the miss instead of silently landing on
+    /// an unrelated event.
+    public func revealEvent(id: PIMEvent.ID) async {
+        if !didLoad { await load() }
+        guard let event = events.first(where: { $0.id == id }) else {
+            selectedEventID = nil
+            deepLinkNotice = String(
+                localized:
+                "That event is no longer synced. It may have been deleted or its calendar source removed.",
+                bundle: .module
+            )
+            return
+        }
+        deepLinkNotice = nil
+        searchText = ""
+        selectedEventID = event.id
+        if let day = CalendarEventPresentation.dayStart(
+            for: event,
+            calendar: calendar
+        ) {
+            selectedDay = day
+        }
     }
 
     private func loadCollections() async {

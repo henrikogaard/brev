@@ -34,7 +34,7 @@ import UserNotifications
 struct BrevApp: App {
     @NSApplicationDelegateAdaptor(BrevMacOSAppDelegate.self) private var appDelegate
     @Environment(\.openWindow) private var openWindow
-    @State private var session = AppSession.makeDefault()
+    @State private var session: AppSession
     @State private var appIconVariant = AppIconPreferences.load()
     @State private var updateController = MacUpdateController()
     @State private var networkMonitor = NetworkReachabilityMonitor()
@@ -52,6 +52,12 @@ struct BrevApp: App {
     /// Menu-bar presence mirrors the per-device setting (ADR-0075); reconciled
     /// on launch and whenever defaults change.
     @State private var backgroundMailInserted = NotificationSettings.load().backgroundMailEnabled
+    /// Hoisted so brev://event deep links can reveal a record in the
+    /// shared instance (#10); the Calendar window renders this model.
+    @State private var calendarBrowsingModel: CalendarBrowsingModel
+    /// Hoisted so brev://contact deep links can reveal a record in the
+    /// shared instance (#10); the Contacts window renders this model.
+    @State private var contactsBrowsingModel: ContactsBrowsingModel
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -59,6 +65,22 @@ struct BrevApp: App {
         // Opt-in iCloud preference sync (ADR-0056); a no-op until the
         // user enables it in Settings → Privacy.
         PreferenceSyncController.standard.activate()
+        let session = AppSession.makeDefault()
+        _session = State(initialValue: session)
+        _calendarBrowsingModel = State(
+            initialValue: CalendarBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                eventSyncService: session.pimEventSyncService
+            )
+        )
+        _contactsBrowsingModel = State(
+            initialValue: ContactsBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                contactSyncService: session.pimContactSyncService
+            )
+        )
     }
 
     var body: some Scene {
@@ -249,11 +271,7 @@ struct BrevApp: App {
 
         Window("Calendar", id: BrevWindowID.calendar) {
             CalendarRootView(
-                model: CalendarBrowsingModel(
-                    coordinator: session.pimSourceCoordinator,
-                    collectionService: session.pimCollectionService,
-                    eventSyncService: session.pimEventSyncService
-                ),
+                model: calendarBrowsingModel,
                 editing: CalendarEditingModel(
                     writeService: session.pimEventWriteService,
                     coordinator: session.pimSourceCoordinator,
@@ -270,11 +288,7 @@ struct BrevApp: App {
 
         Window("Contacts", id: BrevWindowID.contacts) {
             ContactsRootView(
-                model: ContactsBrowsingModel(
-                    coordinator: session.pimSourceCoordinator,
-                    collectionService: session.pimCollectionService,
-                    contactSyncService: session.pimContactSyncService
-                ),
+                model: contactsBrowsingModel,
                 editing: ContactsEditingModel(
                     writeService: session.pimContactWriteService,
                     coordinator: session.pimSourceCoordinator,
@@ -437,6 +451,21 @@ struct BrevApp: App {
         }
         if let route = NotificationRoutingPolicy.route(from: url) {
             pendingNotificationRoute = route
+            return true
+        }
+        if let link = PIMDeepLinkPolicy.link(from: url) {
+            // The window opens first so the reveal lands on a live
+            // surface; the models are shared, so a link delivered while
+            // the window is closed still selects the record for when
+            // it opens.
+            switch link {
+            case .event(let id):
+                openWindow(id: BrevWindowID.calendar)
+                Task { await calendarBrowsingModel.revealEvent(id: id) }
+            case .contact(let id):
+                openWindow(id: BrevWindowID.contacts)
+                Task { await contactsBrowsingModel.revealContact(id: id) }
+            }
             return true
         }
         return false

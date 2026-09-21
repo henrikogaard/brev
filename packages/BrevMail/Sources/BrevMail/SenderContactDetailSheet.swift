@@ -29,6 +29,9 @@ struct SenderContactDetailSheet: View {
     let onClose: () -> Void
     /// Called after a mutation (edit or delete) so the caller reloads.
     let onChanged: () -> Void
+    /// Opens the contact in the full Contacts surface via its
+    /// brev://contact deep link (#10); nil hides the action.
+    let onOpenInContacts: (() -> Void)?
 
     @State private var source: PIMSource?
     @State private var collection: PIMCollection?
@@ -58,6 +61,18 @@ struct SenderContactDetailSheet: View {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(String(localized: "Done", bundle: .module)) {
                         onClose()
+                    }
+                }
+                if let onOpenInContacts {
+                    ToolbarItem(placement: .primaryAction) {
+                        Button(
+                            String(
+                                localized: "Open in Contacts",
+                                bundle: .module
+                            )
+                        ) {
+                            onOpenInContacts()
+                        }
                     }
                 }
             }

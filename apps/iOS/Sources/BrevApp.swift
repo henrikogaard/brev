@@ -35,7 +35,7 @@ import UserNotifications
 struct BrevApp: App {
     @UIApplicationDelegateAdaptor(BrevIOSAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
-    @State private var session = AppSession.makeDefault()
+    @State private var session: AppSession
     @State private var showSettings = false
     @State private var showCalendar = false
     @State private var showContacts = false
@@ -47,6 +47,12 @@ struct BrevApp: App {
     @State private var settingsMailboxContext = SettingsMailboxContext()
     @State private var isShowingAddAccountSheet = false
     @State private var showRestoreErrorAlert = false
+    /// Hoisted so brev://event deep links can reveal a record in the
+    /// shared instance (#10); the Calendar cover renders this model.
+    @State private var calendarBrowsingModel: CalendarBrowsingModel
+    /// Hoisted so brev://contact deep links can reveal a record in the
+    /// shared instance (#10); the Contacts cover renders this model.
+    @State private var contactsBrowsingModel: ContactsBrowsingModel
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -54,6 +60,22 @@ struct BrevApp: App {
         // Opt-in iCloud preference sync (ADR-0056); a no-op until the
         // user enables it in Settings → Privacy.
         PreferenceSyncController.standard.activate()
+        let session = AppSession.makeDefault()
+        _session = State(initialValue: session)
+        _calendarBrowsingModel = State(
+            initialValue: CalendarBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                eventSyncService: session.pimEventSyncService
+            )
+        )
+        _contactsBrowsingModel = State(
+            initialValue: ContactsBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                contactSyncService: session.pimContactSyncService
+            )
+        )
     }
 
     var body: some Scene {
@@ -211,11 +233,7 @@ struct BrevApp: App {
             .fullScreenCover(isPresented: $showCalendar) {
                 NavigationStack {
                     CalendarRootView(
-                        model: CalendarBrowsingModel(
-                            coordinator: session.pimSourceCoordinator,
-                            collectionService: session.pimCollectionService,
-                            eventSyncService: session.pimEventSyncService
-                        ),
+                        model: calendarBrowsingModel,
                         editing: CalendarEditingModel(
                             writeService: session.pimEventWriteService,
                             coordinator: session.pimSourceCoordinator,
@@ -236,11 +254,7 @@ struct BrevApp: App {
             .fullScreenCover(isPresented: $showContacts) {
                 NavigationStack {
                     ContactsRootView(
-                        model: ContactsBrowsingModel(
-                            coordinator: session.pimSourceCoordinator,
-                            collectionService: session.pimCollectionService,
-                            contactSyncService: session.pimContactSyncService
-                        ),
+                        model: contactsBrowsingModel,
                         editing: ContactsEditingModel(
                             writeService: session.pimContactWriteService,
                             coordinator: session.pimSourceCoordinator,
@@ -361,6 +375,10 @@ struct BrevApp: App {
 
     private var browserOpenURLAction: OpenURLAction {
         OpenURLAction { url in
+            if url.scheme?.lowercased() == "brev" {
+                handleIncomingURL(url)
+                return .handled
+            }
             if url.scheme?.lowercased() == "mailto",
                let prefill = ComposePrefill(mailtoURL: url) {
                 pendingComposePrefill = prefill
@@ -382,6 +400,20 @@ struct BrevApp: App {
         }
         if let route = NotificationRoutingPolicy.route(from: url) {
             pendingNotificationRoute = route
+        }
+        if let link = PIMDeepLinkPolicy.link(from: url) {
+            // The cover presents first so the reveal lands on a live
+            // surface; the models are shared, so a link delivered while
+            // the cover is closed still selects the record for when it
+            // opens.
+            switch link {
+            case .event(let id):
+                showCalendar = true
+                Task { await calendarBrowsingModel.revealEvent(id: id) }
+            case .contact(let id):
+                showContacts = true
+                Task { await contactsBrowsingModel.revealContact(id: id) }
+            }
         }
     }
 

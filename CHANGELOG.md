@@ -120,6 +120,12 @@ All notable changes to Brev are documented here.
   on writable calendars. The confirmation states the mail result and
   the calendar result separately — reply-only, read-only, unmatched,
   and failed updates are each called out.
+- Event and contact deep links (ADR-0072, #10): brev://event and
+  brev://contact links reopen the synced item in the Calendar or
+  Contacts surface on macOS and iOS — Copy Link on each detail pane,
+  Open in Calendar on synced invites, Open in Contacts on the sender
+  contact card. A link whose record left the cache fails safe with an
+  inline notice instead of landing on an unrelated item.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

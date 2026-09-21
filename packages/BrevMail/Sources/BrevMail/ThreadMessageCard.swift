@@ -49,6 +49,12 @@ struct ThreadMessageCard: View {
     @State private var failedInviteResponse: AttendeeState?
     @State private var activeInviteResponseRequest: CalendarInviteResponseRequest?
     @State private var isRespondingToInvite = false
+    /// brev://event link to the synced copy of the parsed invite (#10);
+    /// nil while unresolved or when no calendar source cached it.
+    @State private var inviteEventDeepLink: URL?
+    /// The message the deep-link lookup ran for — stale results for a
+    /// recycled cell are dropped.
+    @State private var inviteDeepLinkMessageID: MessageHeader.ID?
     @State private var showRemoteContent = false
     @State private var htmlRenderingModeOverride: HTMLBodyRenderingMode?
     @State private var htmlRenderingModeOverrideMessageID: MessageHeader.ID?
@@ -409,6 +415,7 @@ struct ThreadMessageCard: View {
             if let calendarInviteEvent {
                 ThreadCalendarInviteCard(
                     event: calendarInviteEvent,
+                    eventLink: inviteEventDeepLink,
                     presentation: presentation,
                     confirmation: inviteResponseConfirmation,
                     errorMessage: inviteResponseErrorMessage,
@@ -589,6 +596,7 @@ struct ThreadMessageCard: View {
             parsedInvite = parsed
             calendarInviteEvent = displayEvent
             inviteLoadErrorMessage = nil
+            await resolveInviteDeepLink(parsed, messageID: header.id)
         } catch is CancellationError {
             // Task cancelled — normal during scroll off-screen.
         } catch {
@@ -596,6 +604,24 @@ struct ThreadMessageCard: View {
             parsedInvite = nil
             calendarInviteEvent = nil
         }
+    }
+
+    /// Looks up the synced event behind the invite and builds its
+    /// brev://event link (#10). Cache-only; a miss just hides the
+    /// "Open in Calendar" action.
+    private func resolveInviteDeepLink(
+        _ invite: ICSParser.ParsedEvent,
+        messageID: MessageHeader.ID
+    ) async {
+        inviteDeepLinkMessageID = messageID
+        inviteEventDeepLink = nil
+        guard let reconciler = inviteReconciler,
+              let uid = invite.uid,
+              let event = await reconciler.cachedEvent(forUID: uid),
+              inviteDeepLinkMessageID == messageID else {
+            return
+        }
+        inviteEventDeepLink = PIMDeepLinkPolicy.url(forEventID: event.id)
     }
 
     private func respondToInvite(_ response: AttendeeState) async {
@@ -746,8 +772,12 @@ private struct ThreadMessageBodyLoadTimeoutError: LocalizedError {
 
 private struct ThreadCalendarInviteCard: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.openURL) private var openURL
 
     let event: CalendarEvent
+    /// brev://event link to the synced copy of this invite (#10); nil
+    /// hides the Open in Calendar action.
+    let eventLink: URL?
     let presentation: ThreadCalendarInvitePresentation
     let confirmation: MailRootStatus?
     let errorMessage: String?
@@ -798,6 +828,29 @@ private struct ThreadCalendarInviteCard: View {
                 inviteDetailRow(
                     symbolName: "person",
                     text: "Organizer: \(organizer.name ?? organizer.email)"
+                )
+            }
+
+            if let eventLink {
+                Button {
+                    openURL(eventLink)
+                } label: {
+                    Label(
+                        String(
+                            localized: "Open in Calendar",
+                            bundle: .module
+                        ),
+                        systemImage: "calendar"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(
+                    String(
+                        localized: "Shows the synced event in Brev Calendar",
+                        bundle: .module
+                    )
                 )
             }
 
