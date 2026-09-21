@@ -33,6 +33,14 @@ All notable changes to Brev are documented here.
   CalDAV/CardDAV via home-set PROPFIND, Google via the account's shared
   grant. Each collection can be shown or hidden; the choice survives
   refreshes, and a failed refresh never blanks the cached list.
+- Calendar event sync (ADR-0072): "Sync Now" on a calendar source (or
+  enabling its sync) reads events from the visible calendars into a local
+  cache — Google via paged `events.list` with sync-token incremental
+  passes and full-resync recovery, CalDAV via RFC 6578
+  `sync-collection` or a bounded ETag-diff fallback. Hidden calendars
+  are skipped, a failed collection keeps its last snapshot, and each
+  event keeps the provider's original payload for round-trip fidelity.
+  Browsing views land in a later slice.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

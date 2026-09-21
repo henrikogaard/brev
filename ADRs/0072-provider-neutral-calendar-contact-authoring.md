@@ -458,6 +458,59 @@ discovery, sync scheduling, and event/contact authoring.
 Deliberately still deferred: event/contact item sync and browsing views,
 sync scheduling, authoring, and the linked-source retention grant.
 
+### #6 slice 2 — event sync engine and cache (2026-09-21, BrevCalendar/BrevMail/BrevSettings/apps)
+
+- `PIMEvent`, `PIMEventStatus`, `PIMEventPerson`, `PIMEventReminder`:
+  the provider-neutral cached event record — source/collection-scoped ID,
+  provider item key and version (ETag/etag), iCalendar UID, time-zone-aware
+  or date-only all-day ranges, status, organizer and attendees with RSVP
+  state, reminders, conference join link, recurrence rule and
+  recurrence-ID exception marker, provider modification time, and the
+  adapter-owned `rawPayload` (verbatim ICS or Google JSON) so fields the
+  shared model does not read still survive refreshes and edits (R4).
+- `PIMEventStore` / `JSONPIMEventStore`: per-collection event snapshots
+  inside the source's cache directory — the removal contract applies
+  unchanged (kept cache keeps events read-only, deleted cache loses them).
+- `PIMSyncCursor` / `PIMSyncCursorStore` / `JSONPIMSyncCursorStore`:
+  per-collection opaque checkpoints in the source's cursor directory,
+  always wiped on removal so a kept cache can never resume syncing.
+- `PIMEventSyncResult` / `PIMEventSyncError` / `PIMEventSyncSummary`:
+  the adapter/service contract — upserts, tombstones, kept-item lists for
+  full snapshots, and per-collection failure reporting.
+- `GoogleCalendarEventSync`: `events.list` paging with
+  `singleEvents=false`; incremental passes send only the sync token,
+  cancelled items become tombstones, and 410 surfaces as
+  `cursorExpired` so the service retries once as a full generation
+  while the prior snapshot stays readable (R6 rule 2).
+- `PIMDAVEventSync`: RFC 6578 `sync-collection` when the collection
+  advertises sync tokens (inline calendar-data or a follow-up
+  `calendar-multiget`, 404 members become tombstones, invalid tokens map
+  to `cursorExpired`); otherwise a bounded `calendar-query` listing
+  diffs href→ETag against the cached set, fetches only changed items by
+  `calendar-multiget`, and treats hrefs missing from the complete
+  listing as deletions (R6 rule 3).
+- `PIMEventSyncService`: serial owner of sync per source. User-initiated
+  only (Sync Now or the enable gesture — no background traffic); hidden
+  collections keep their cache but skip the provider; each collection
+  commits its generation before its cursor; a failed collection records a
+  per-collection error and keeps its prior snapshot; an auth rejection
+  marks the source authentication-required and stops the pass.
+- `ICSParser`: `parseEvents` reads every VEVENT (master plus
+  RECURRENCE-ID exceptions); STATUS, PARTSTAT, VALARM TRIGGER offsets,
+  CONFERENCE/X-GOOGLE-CONFERENCE URIs, LAST-MODIFIED and DTSTART TZID are
+  captured; `RecurrenceRule` is Codable and `parseRecurrenceRule`
+  exposed for Google's bare RRULE strings.
+- Settings: calendar source rows gain a Sync Now action and a cached
+  event count; enabling a source's sync runs one immediate pass inside
+  the same user gesture.
+- Wiring: `AppSession.pimEventSyncService` built by
+  `AppSessionFactory` over the same per-source data directories,
+  Keychain credential store and Google token hook on both app targets.
+
+Deliberately still deferred: browsing views (agenda/day/week/month,
+event detail, search), contacts sync (#8), sync scheduling/background
+refresh, authoring (#7/#9), and the linked-source retention grant.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

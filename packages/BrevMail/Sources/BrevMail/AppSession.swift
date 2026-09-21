@@ -213,6 +213,10 @@ public final class AppSession {
     /// source (ADR-0072). Nil in sessions built without PIM support.
     public let pimCollectionService: PIMCollectionService?
 
+    /// Owns event sync and the cached event set per calendar source
+    /// (ADR-0072). Nil in sessions built without PIM support.
+    public let pimEventSyncService: PIMEventSyncService?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -267,6 +271,7 @@ public final class AppSession {
         accountDataCleanup: @escaping AccountDataCleanup = { _ in },
         pimSourceCoordinator: PIMSourceCoordinator? = nil,
         pimCollectionService: PIMCollectionService? = nil,
+        pimEventSyncService: PIMEventSyncService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -276,6 +281,7 @@ public final class AppSession {
     ) {
         self.pimSourceCoordinator = pimSourceCoordinator
         self.pimCollectionService = pimCollectionService
+        self.pimEventSyncService = pimEventSyncService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
