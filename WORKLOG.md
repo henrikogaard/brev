@@ -42,7 +42,56 @@ selection and date navigation" acceptance criterion.
 
 ### Next
 
-- #7 event authoring; #8 slice 2 (contacts browsing) is PR #64.
+- #7 event authoring.
+
+## 2026-09-21 — Agent — Issue #8 slice 2 (contacts browsing: list + detail + groups + search)
+
+### Goal
+
+Second slice of #8 (ADR-0072): a first-class Contacts surface that
+browses the synced contact cache — alphabetical list, contact detail,
+group filter, local search — on macOS and iOS, without issuing provider
+requests.
+
+### Changes
+
+- BrevMail: ContactsBrowsingModel (cache-only load across contacts
+  sources, hidden-collection filtering covering CardDAV collectionID
+  and Google groupKeys paths, local search, letter bucketing,
+  stale-source detection, per-source cache-failure isolation, Sync Now
+  passthrough), ContactPresentation (pure formatting: monograms,
+  subtitles, label normalization, addresses, letter keys, search
+  corpus), ContactsListView + ContactRowView (letter sections,
+  monogram avatars, subtitle rows), ContactDetailView (all model
+  fields incl. labeled emails/phones/addresses, notes, groups,
+  provenance), ContactsRootView (split view, search, group filter,
+  Sync Now, stale/error banners, empty states).
+- macOS: Window("Contacts") scene + Window menu command.
+- iOS: sidebar-footer Contacts button (FolderSidebar onOpenContacts)
+  presenting the surface as a full-screen cover with Done.
+- CI: ContactsBrowsingSnapshotTests registered in the macOS<26 skip
+  list and the snapshot-macos only-testing list.
+
+### Verification
+
+- 22 new behavior tests + 4 snapshot renders pass
+  (ContactsBrowsingModel, ContactPresentation,
+  ContactsBrowsingSnapshot).
+- scripts/lint.sh clean (SwiftFormat + SwiftLint --strict +
+  adr-required).
+- xcodebuild build BrevMacOS and BrevIOS (CODE_SIGNING_ALLOWED=NO) both
+  succeed — app targets compile in Swift 6 mode.
+
+### Skipped
+
+- Pixel baselines recorded on macOS 27 — this host's renderer; the
+  repo's earlier baselines were recorded on macOS 26 and already drift
+  locally. Re-record on a macOS 26 host if the snapshot job flags them.
+- Live-provider evidence stays the maintainer's QA gate.
+
+### Next
+
+- #9: contact authoring on the same cache.
 
 ## 2026-09-21 — Agent — Issue #6 slice 3 (calendar browsing: agenda + detail + search)
 

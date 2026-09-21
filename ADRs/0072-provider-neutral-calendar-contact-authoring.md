@@ -596,6 +596,41 @@ grant.
   photo/attachment fetching, and scheduled background sync. Search is
   cache-local; nothing reaches a provider because a view exists.
 
+### #8 slice 2 — contacts browsing: list, detail, groups, search (2026-09-21, BrevMail/apps)
+
+- `ContactsBrowsingModel`: the @Observable owner behind the Contacts
+  surface. Reads the synced cache only — `load()` never issues provider
+  requests, so an offline launch renders the last complete snapshot.
+  Hidden collections stay out of the list: a CardDAV record hides with
+  its address book, while a Google record (account-wide, memberships in
+  `groupKeys`) hides only when every group it belongs to is hidden. One
+  unreadable source cache reports inline and never blanks the others.
+  `staleSources` flags failed / authentication-required / disconnected
+  sources so the surface can banner kept-cache data.
+- `ContactPresentation`: pure formatting for rows and detail —
+  monograms, subtitles (title · organization, else first email/phone),
+  provider-label normalization (WORK → Work), one-line addresses,
+  letter-bucket keys, and the local-only search corpus (names, nickname,
+  organization, title, emails, phones — provider payloads are never
+  searched).
+- `ContactsListView` / `ContactRowView` / `ContactDetailView` /
+  `ContactsRootView`: a two-column split — alphabetically sectioned
+  list with monogram avatars, and a read-only detail covering name,
+  nickname, title and organization, labeled emails (mailto: links),
+  phones, addresses, notes, group memberships, and source/collection
+  provenance. A group filter narrows the list to one address book or
+  contact group. Photo references stay unfetched — the avatar is always
+  the monogram. iOS collapses the split into push navigation; macOS
+  keeps the two columns.
+- Entry points: macOS gains a `Window("Contacts")` scene plus a Window
+  menu command; iOS gains a Contacts button in the sidebar footer that
+  presents the surface full-screen with a Done affordance. No mail
+  chrome was disturbed — the surface is additive.
+- Deferred by design: contact authoring (#9), photo fetching,
+  compose-autocomplete migration onto the cache, and scheduled
+  background sync. Search is cache-local; nothing reaches a provider
+  because a view exists.
+
 ### #6 slice 4 — day/week/month grids (2026-09-21, BrevMail)
 
 - `CalendarGridLayout`: pure grid math — day coverage (all-day events

@@ -403,6 +403,9 @@ public struct BrevMailRootView: View {
     /// Opens the Calendar browsing surface (ADR-0072). Nil hides the
     /// iOS sidebar entry; macOS reaches the surface via the Window menu.
     private let onOpenCalendar: (() -> Void)?
+    /// Opens the Contacts browsing surface (ADR-0072). Nil hides the
+    /// iOS sidebar entry; macOS reaches the surface via the Window menu.
+    private let onOpenContacts: (() -> Void)?
     private let onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)?
     private let signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)?
     private let composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)?
@@ -439,6 +442,7 @@ public struct BrevMailRootView: View {
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
+        onOpenContacts: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
@@ -462,6 +466,7 @@ public struct BrevMailRootView: View {
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
             onOpenCalendar: onOpenCalendar,
+            onOpenContacts: onOpenContacts,
             onSettingsMailboxContextChange: onSettingsMailboxContextChange,
             signatureContextProvider: signatureContextProvider,
             composeSecurityDefaultsProvider: composeSecurityDefaultsProvider,
@@ -492,6 +497,7 @@ public struct BrevMailRootView: View {
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
+        onOpenContacts: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
@@ -521,6 +527,7 @@ public struct BrevMailRootView: View {
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
         self.onOpenCalendar = onOpenCalendar
+        self.onOpenContacts = onOpenContacts
         self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
@@ -1311,6 +1318,7 @@ public struct BrevMailRootView: View {
             },
             onOpenSettings: nil,
             onOpenCalendar: onOpenCalendar,
+            onOpenContacts: onOpenContacts,
             onOpenMessages: {
                 openSelectedMessagesOnCompact()
             },

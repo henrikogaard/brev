@@ -113,6 +113,9 @@ public struct FolderSidebar: View {
     /// Opens the Calendar browsing surface (ADR-0072). Nil hides the
     /// footer entry — sessions without PIM wiring never show it.
     private let onOpenCalendar: (() -> Void)?
+    /// Opens the Contacts browsing surface (ADR-0072). Nil hides the
+    /// footer entry — sessions without PIM wiring never show it.
+    private let onOpenContacts: (() -> Void)?
     private let onOpenMessages: (() -> Void)?
     /// "New Local Folder…" (ADR-0077) — always offered while a local backend
     /// exists, even when the local account is hidden for having no folders.
@@ -152,6 +155,7 @@ public struct FolderSidebar: View {
         onOpenOutbox: (() -> Void)? = nil,
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
+        onOpenContacts: (() -> Void)? = nil,
         onOpenMessages: (() -> Void)? = nil,
         onNewLocalFolder: (() -> Void)? = nil
     ) {
@@ -188,6 +192,7 @@ public struct FolderSidebar: View {
         self.onOpenOutbox = onOpenOutbox
         self.onOpenSettings = onOpenSettings
         self.onOpenCalendar = onOpenCalendar
+        self.onOpenContacts = onOpenContacts
         self.onOpenMessages = onOpenMessages
         self.onNewLocalFolder = onNewLocalFolder
     }
@@ -302,20 +307,28 @@ public struct FolderSidebar: View {
         }
     }
 
-    /// iOS only. macOS reaches Settings and Calendar from the app/Window
-    /// menus; iPhone has no menu bar, and the navigation bar's gear is easy
-    /// to miss, so the sidebar keeps persistent entries at its foot — where
-    /// Spark keeps it.
+    /// iOS only. macOS reaches Settings, Calendar, and Contacts from the
+    /// app/Window menus; iPhone has no menu bar, and the navigation bar's
+    /// gear is easy to miss, so the sidebar keeps persistent entries at its
+    /// foot — where Spark keeps it.
     #if os(iOS)
     @ViewBuilder
     private var sidebarFooter: some View {
-        if onOpenSettings != nil || onOpenCalendar != nil {
+        if onOpenSettings != nil || onOpenCalendar != nil
+            || onOpenContacts != nil {
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                 if let onOpenCalendar {
                     footerButton(
                         title: String(localized: "Calendar", bundle: .module),
                         systemImage: "calendar",
                         action: onOpenCalendar
+                    )
+                }
+                if let onOpenContacts {
+                    footerButton(
+                        title: String(localized: "Contacts", bundle: .module),
+                        systemImage: "person.crop.circle",
+                        action: onOpenContacts
                     )
                 }
                 if let onOpenSettings {
