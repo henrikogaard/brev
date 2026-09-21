@@ -68,6 +68,9 @@ public struct GooglePIMCollectionDiscovery: Sendable {
     private static let contactGroupsURL = URL(
         string: "https://people.googleapis.com/v1/contactGroups"
     )!
+    private static let taskListsURL = URL(
+        string: "https://tasks.googleapis.com/tasks/v1/users/@me/lists"
+    )!
 
     public init(transport: any PIMDAVTransport = URLSessionPIMDAVTransport()) {
         self.transport = transport
@@ -83,6 +86,8 @@ public struct GooglePIMCollectionDiscovery: Sendable {
             return try await discoverCalendars(accessToken: accessToken)
         case .contacts:
             return try await discoverContactGroups(accessToken: accessToken)
+        case .tasks:
+            return try await discoverTaskLists(accessToken: accessToken)
         }
     }
 
@@ -206,6 +211,59 @@ public struct GooglePIMCollectionDiscovery: Sendable {
         return collections
     }
 
+    // MARK: - Task lists
+
+    /// Lists every Google tasklist (#12). The Tasks API reports no
+    /// access role or primary flag — the first list is the default —
+    /// and no sync token; incremental task sync uses updatedMin.
+    private func discoverTaskLists(
+        accessToken: String
+    ) async throws -> [PIMDiscoveredCollection] {
+        var collections: [PIMDiscoveredCollection] = []
+        var pageToken: String?
+        var isFirst = true
+        for _ in 0 ..< Self.maxPages {
+            var components = URLComponents(
+                url: Self.taskListsURL,
+                resolvingAgainstBaseURL: false
+            )
+            var query = [URLQueryItem(name: "maxResults", value: "100")]
+            if let pageToken {
+                query.append(URLQueryItem(name: "pageToken", value: pageToken))
+            }
+            components?.queryItems = query
+            guard let url = components?.url else {
+                throw PIMCollectionDiscoveryError.invalidResponse
+            }
+            let data = try await get(url, accessToken: accessToken)
+            let page = try decode(TaskListsPage.self, from: data)
+            for item in page.items ?? [] {
+                guard let id = item.id, !id.isEmpty else { continue }
+                collections.append(
+                    PIMDiscoveredCollection(
+                        providerKey: id,
+                        displayName: item.title ?? id,
+                        colorHex: nil,
+                        isReadOnly: false,
+                        // The API returns the user's default list first.
+                        isPrimary: isFirst,
+                        // Tasks has no sync token; updatedMin cursors
+                        // only, so the flag stays off.
+                        supportsSyncToken: false,
+                        providerVersion: item.etag,
+                        initiallyHidden: false
+                    )
+                )
+                isFirst = false
+            }
+            guard let next = page.nextPageToken, !next.isEmpty else {
+                return collections
+            }
+            pageToken = next
+        }
+        return collections
+    }
+
     // MARK: - Transport
 
     private func get(_ url: URL, accessToken: String) async throws -> Data {
@@ -269,5 +327,17 @@ public struct GooglePIMCollectionDiscovery: Sendable {
         let formattedName: String?
         let groupType: String?
         let etag: String?
+    }
+
+    private struct TaskListsPage: Decodable {
+        let items: [TaskListItem]?
+        let nextPageToken: String?
+    }
+
+    private struct TaskListItem: Decodable {
+        let id: String?
+        let title: String?
+        let etag: String?
+        let updated: String?
     }
 }

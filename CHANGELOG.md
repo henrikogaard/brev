@@ -49,6 +49,14 @@ All notable changes to Brev are documented here.
   collection keeps its last snapshot, photo URLs stay unfetched
   references, and each contact keeps the provider's original payload for
   round-trip fidelity. Browsing views land in a later slice.
+- Task sync (ADR-0072): a Tasks source kind joins Calendar & Contacts —
+  Google accounts can enable Tasks with the `tasks.readonly` scope, and
+  CalDAV sources can be connected as task sources where only
+  VTODO-capable collections are listed. "Sync Now" reads tasks into a
+  local cache — Google via paged `tasks.list` with `updatedMin`
+  incremental passes and full-resync recovery, CalDAV via RFC 6578
+  `sync-collection` or a VTODO-filtered ETag-diff fallback. Task sync
+  is read-only in this slice; browsing and editing land later.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a

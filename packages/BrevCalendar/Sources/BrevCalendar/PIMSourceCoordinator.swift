@@ -90,7 +90,9 @@ public actor PIMSourceCoordinator {
         credential: CalDAVCredential,
         linkedAccountID: String? = nil
     ) async throws -> PIMSource {
-        let provider: PIMSourceProvider = kind == .calendar ? .calDAV : .cardDAV
+        // Tasks ride the CalDAV family: a .tasks source connects through
+        // the calendar home set and VTODO-capable collections (#12).
+        let provider: PIMSourceProvider = kind == .contacts ? .cardDAV : .calDAV
         let validation = try await davClient.validate(
             endpoint: endpoint,
             kind: kind,

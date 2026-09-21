@@ -259,13 +259,14 @@ empty. The non-ephemeral session may reuse system browser cookies for SSO, but
 Brev cannot read those cookies. Cancelling stops the web session on both
 platforms; only macOS also stops the loopback listener.
 
-When you enable Calendar or Contacts on a Google account in
+When you enable Calendar, Contacts, or Tasks on a Google account in
 Settings → Calendar & Contacts, Brev runs the same user-initiated Google
 authorization again, requesting the additional read-only scope for that
 feature. The newly granted token replaces the stored one only when it
 belongs to the same Google account and still covers mail access plus the
 requested feature scopes; a declined or partial grant changes nothing.
-No Google PIM data is synced yet — enablement only extends the grant.
+Enablement only extends the grant; data syncs only when you choose
+"Sync Now" or enable sync on the source.
 
 Enabling Editing on a calendar source in Settings → Calendar & Contacts
 lets Brev write events to that source: `PUT`/`DELETE` to the collection
@@ -399,9 +400,9 @@ configured target and an explicit invite action.
 **How to disable:** Don't configure a CalDAV target. Without one,
 accepting an invite stays local. Defaults to off.
 
-### Calendar and contacts sources (CalDAV/CardDAV setup)
+### Calendar, contacts, and tasks sources (CalDAV/CardDAV setup)
 
-If enabled: when you connect a calendar or contacts source in Settings,
+If enabled: when you connect a calendar, contacts, or tasks source in Settings,
 Brev first tries standards discovery — an unauthenticated HTTPS
 `GET` to your address domain's `/.well-known/caldav` or
 `/.well-known/carddav` — then validates the credential you entered by
@@ -415,11 +416,12 @@ connect or reconnect — there is no background sync until you enable it
 for the source.
 
 When you connect a source or choose "Refresh Collections" on it, Brev
-lists the calendars or address books the source exposes: for DAV
+lists the calendars, address books, or task lists the source exposes: for DAV
 sources, the credential plus `PROPFIND` requests for the principal
 home-set and a collection listing (names, colors, permissions, sync
-hints); for Google sources you enabled on a mail account, the account's
-OAuth token plus read-only `calendarList` or `contactGroups`
+hints, and only VTODO-capable collections for task sources); for Google
+sources you enabled on a mail account, the account's OAuth token plus
+read-only `calendarList`, `contactGroups`, or `tasklists`
 requests to Google. The results are cached on-device so the list stays
 readable offline; hiding a collection is a local choice and never
 contacts the provider.
@@ -452,7 +454,23 @@ separately and are always deleted when the source is removed. A failed
 address book keeps its last snapshot — one unhealthy collection never
 empties the others.
 
-**How to disable:** Don't connect a calendar or contacts source.
+When you choose "Sync Now" on a tasks source or enable its sync,
+Brev reads tasks from the visible task lists only: for CalDAV task
+sources, the credential plus `REPORT` requests (`sync-collection`,
+or a `calendar-query` listing filtered to VTODO components plus
+`calendar-multiget` fetches on servers without sync tokens) to the
+collection URLs; for Google sources, the account's OAuth token plus
+paged `tasks.list` reads (with `updatedMin` incremental passes) to
+the Google Tasks API. Tasks are cached on-device under the source's
+data directory so they stay readable offline; the cache stores each
+task's fields plus the provider's original payload so provider-specific
+data survives refreshes. Sync cursors live separately and are always
+deleted when the source is removed. A failed task list keeps its last
+snapshot — one unhealthy collection never empties the others. Task
+sync is read-only: Brev never creates, edits, completes, or deletes
+provider tasks.
+
+**How to disable:** Don't connect a calendar, contacts, or tasks source.
 Removing a source deletes its credential, sync cursors and unsent
 drafts, and optionally its cached content; it never deletes data on the
 provider. Defaults to off.

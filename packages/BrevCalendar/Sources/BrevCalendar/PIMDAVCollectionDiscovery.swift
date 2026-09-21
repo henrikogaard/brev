@@ -114,7 +114,11 @@ public struct PIMDAVCollectionDiscovery: Sendable {
             credential: credential
         )
         let parsed = PIMDAVHomeSetParser.parse(data, relativeTo: url)
-        let href = kind == .calendar ? parsed.calendarHomeSet : parsed.addressbookHomeSet
+        // Tasks live in the calendar home set: a .tasks source lists
+        // VTODO-capable CalDAV collections (#12).
+        let href = kind == .contacts
+            ? parsed.addressbookHomeSet
+            : parsed.calendarHomeSet
         let homeSet = href.flatMap {
             URL(string: $0, relativeTo: url)?.absoluteURL
         }
@@ -134,7 +138,9 @@ public struct PIMDAVCollectionDiscovery: Sendable {
             credential: credential
         )
         let responses = PIMDAVCollectionListParser.parse(data)
-        let kindMarker = kind == .calendar ? "calendar" : "addressbook"
+        // Tasks share the calendar resourcetype; the component set
+        // decides which collections can hold VTODOs (#12).
+        let kindMarker = kind == .contacts ? "addressbook" : "calendar"
         let homeSetPath = Self.normalizedPath(homeSet)
         var collections: [PIMDiscoveredCollection] = []
         for response in responses {
@@ -149,6 +155,13 @@ public struct PIMDAVCollectionDiscovery: Sendable {
             // The home set itself can answer with a collection
             // resourcetype; it is a container, not a browsable collection.
             if Self.normalizedPath(collectionURL) == homeSetPath { continue }
+            // VTODO support must be advertised, not assumed (#12): a
+            // calendar without a component set, or one that omits VTODO,
+            // never surfaces as a task list.
+            if kind == .tasks,
+               !response.supportedComponents.contains("vtodo") {
+                continue
+            }
             collections.append(
                 PIMDiscoveredCollection(
                     providerKey: collectionURL.absoluteString,
@@ -270,6 +283,7 @@ public struct PIMDAVCollectionDiscovery: Sendable {
                 <d:getetag/>
                 <d:supported-report-set/>
                 <d:current-user-privilege-set/>
+                <cal:supported-calendar-component-set/>
                 <cs:getctag/>
                 <ical:calendar-color/>
                 <card:addressbook-color/>
@@ -411,6 +425,10 @@ enum PIMDAVCollectionListParser {
         var syncToken: String?
         var etag: String?
         var color: String?
+        /// CalDAV supported-calendar-component-set values, lowercased
+        /// (e.g. "vevent", "vtodo"). Empty when the server did not
+        /// advertise one — callers treat that as "not proven".
+        var supportedComponents: Set<String> = []
 
         /// Read-only is only asserted when the server reported a
         /// privilege set without any write privilege; absent privilege
@@ -449,6 +467,7 @@ enum PIMDAVCollectionListParser {
         private var inResourceType = false
         private var inPrivilege = false
         private var inReport = false
+        private var inSupportedComponents = false
         private var textTarget: TextTarget?
         private var buffer = ""
 
@@ -488,6 +507,15 @@ enum PIMDAVCollectionListParser {
                 scratch.reports.insert(local)
                 return
             }
+            if inSupportedComponents {
+                // <comp name="VTODO"/> carries the component name as an
+                // attribute, not as text.
+                if local == "comp",
+                   let name = attributeDict["name"], !name.isEmpty {
+                    scratch.supportedComponents.insert(name.lowercased())
+                }
+                return
+            }
             if current != nil, !inPropstat, local == "href" {
                 textTarget = .href
                 buffer = ""
@@ -509,6 +537,8 @@ enum PIMDAVCollectionListParser {
                 inPrivilege = true
             case "report" where inPropstat:
                 inReport = true
+            case "supported-calendar-component-set" where inPropstat:
+                inSupportedComponents = true
             case "displayname" where inPropstat:
                 textTarget = .displayName
                 buffer = ""
@@ -573,6 +603,8 @@ enum PIMDAVCollectionListParser {
                 inPrivilege = false
             case "report":
                 inReport = false
+            case "supported-calendar-component-set":
+                inSupportedComponents = false
             case "propstat":
                 if inPropstat, propstatOK, current != nil {
                     mergeScratch()
@@ -597,6 +629,7 @@ enum PIMDAVCollectionListParser {
             merged.syncToken = merged.syncToken ?? scratch.syncToken
             merged.etag = merged.etag ?? scratch.etag
             merged.color = merged.color ?? scratch.color
+            merged.supportedComponents.formUnion(scratch.supportedComponents)
             current = merged
         }
     }

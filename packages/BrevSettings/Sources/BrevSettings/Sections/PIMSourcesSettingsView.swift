@@ -71,6 +71,7 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         let kindTitle = switch kind {
         case .calendar: String(localized: "Calendar", bundle: .module)
         case .contacts: String(localized: "Contacts", bundle: .module)
+        case .tasks: String(localized: "Tasks", bundle: .module)
         }
         return providerTitle + " · " + kindTitle
     }
@@ -499,6 +500,8 @@ struct PIMSourcesSettingsView: View {
             return String(localized: "Enable Calendar", bundle: .module)
         case .contacts:
             return String(localized: "Enable Contacts", bundle: .module)
+        case .tasks:
+            return String(localized: "Enable Tasks", bundle: .module)
         }
     }
 
@@ -643,6 +646,8 @@ struct PIMSourceConnectSheet: View {
                     .tag(PIMDAVConnectForm.SourceKind.calendar)
                 Text(String(localized: "Contacts (CardDAV)", bundle: .module))
                     .tag(PIMDAVConnectForm.SourceKind.contacts)
+                Text(String(localized: "Tasks (CalDAV)", bundle: .module))
+                    .tag(PIMDAVConnectForm.SourceKind.tasks)
             }
             .pickerStyle(.segmented)
             .labelsHidden()

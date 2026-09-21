@@ -954,6 +954,36 @@ grant.
   dial-in rows.
 - Out of scope: Meet artifacts (transcripts, recordings, attendance)
   and non-Meet conference creation.
+### #12 slice 1 — task read sync (2026-09-22, BrevCalendar/BrevMail/BrevSettings/apps)
+
+- `PIMSourceKind.tasks` is a first-class source kind. Google tasks
+  sources ride the same account enablement flow with the
+  `tasks.readonly` scope; CalDAV task sources reuse the CalDAV
+  connect form and credential path.
+- Collection discovery treats tasks as a separate surface: Google
+  lists task lists via `tasklists.list`; DAV discovery parses
+  `supported-calendar-component-set` and only surfaces collections
+  that advertise VTODO, so a calendar collection never appears as a
+  task list.
+- `PIMTask`, `PIMTaskStore`, and `JSONPIMTaskStore` mirror the
+  event/contact record shape: provider item key, provider version
+  (etag), provider-updated timestamp, raw payload, and a sync cursor
+  per collection. Tasks carry status, due/completed dates, position,
+  parent key, and links.
+- `GoogleTaskSync` pages `tasks.list` (showDeleted + showHidden on,
+  `updatedMin` incremental cursor, deleted items become removals);
+  `PIMDAVTaskSync` uses `sync-collection` with an ETag-diff
+  `calendar-query` fallback filtered to VTODO components. A 410 or
+  invalid sync token retries once as a full sync.
+- `PIMTaskSyncService` mirrors the event engine: per-collection
+  isolation, auth failure marks the source and stops the pass, cursor
+  commits only after the batch save, hidden collections keep their
+  cache and skip the provider.
+- Task sync is strictly read-only in this slice — no write pipeline,
+  no Editing toggle, no browsing UI. `canToggleWrite` returns false
+  for tasks sources.
+- Deferred: task write pipeline, task browsing UI, Create Task from
+  Message target integration, rendered verification.
 
 ## References (checked 2026-09-20)
 

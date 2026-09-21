@@ -43,12 +43,14 @@ public struct PIMDAVConnectForm: Sendable, Equatable {
     public enum SourceKind: String, Sendable, Hashable, CaseIterable {
         case calendar
         case contacts
+        case tasks
 
         /// The matching PIM source kind.
         public var sourceKind: PIMSourceKind {
             switch self {
             case .calendar: return .calendar
             case .contacts: return .contacts
+            case .tasks: return .tasks
             }
         }
     }
