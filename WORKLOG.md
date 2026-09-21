@@ -1,5 +1,58 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #7 slice 1 (event write pipeline + editing opt-in)
+
+### Goal
+
+First slice of #7 (ADR-0072): the provider-neutral event write path —
+ICS serialization, Google/CalDAV write adapters, a capability-gated
+write service — plus the per-source Editing opt-in that authorizes it.
+The editor UI is the next slice.
+
+### Changes
+
+- BrevCalendar: PIMEventICSWriter (RFC 5545 VCALENDAR with TEXT
+  escaping, TZID/VALUE=DATE forms, RRULE/RECURRENCE-ID, ATTENDEE
+  PARTSTAT, VALARM, 75-octet UTF-8-safe folding),
+  GoogleCalendarEventWriter (events.insert/patch/delete, If-Match etag,
+  body mapping), PIMDAVEventWriter (PUT/DELETE on collection URL,
+  If-None-Match create / If-Match update+delete),
+  PIMEventWriteService (canWrite gate, provider dispatch, single-record
+  cache patch), PIMSourceCoordinator.setWriteEnabled,
+  GooglePIMScopes.scopes(for:write:) with calendarEvents/contacts.
+- BrevMail: AppSession.pimEventWriteService +
+  enableGooglePIMWriteFeature (re-auth with write scopes, then flips
+  the capability); GooglePIMEnablementCoordinator gained a write flag;
+  AppSessionFactory constructs the write service on the shared stores.
+- BrevSettings: PIMSourceSettingsModel.setWriteEnabled (Google routes
+  through re-auth, DAV is local-only, disable is always local),
+  canToggleWrite/isWriteEnabled; source rows show an Editing switch
+  for connected Google/CalDAV calendar sources.
+- apps: both BrevApp closures pass the write flag through; SettingsView
+  gained onEnableGooglePIMWrite.
+- Privacy: PRIVACY.md editing paragraph + ADR-0006 rows for CalDAV and
+  Google Calendar event writes (off by default, Editing-gated).
+
+### Verification
+
+- 19 new BrevCalendar write-path tests pass (ICS writer, both provider
+  writers incl. precondition/conflict mapping, service gating,
+  create/update/delete cache behavior, coordinator capability).
+- 5 new BrevSettings tests pass (DAV toggle, Google handler routing,
+  missing-handler error, local-only disable, canToggleWrite gating);
+  full PIMSourceSettingsModel suite 21/21.
+- swift build clean for BrevCalendar, BrevSettings, BrevMail.
+- scripts/lint.sh clean (SwiftFormat + SwiftLint --strict +
+  adr-required); xcodebuild BrevMacOS and BrevIOS both succeed.
+
+### Skipped
+
+- Live-provider evidence stays the maintainer QA gate.
+
+### Next
+
+- #7 slice 2: the event editor UI on this write path.
+
 ## 2026-09-21 — Agent — Issue #6 slice 3 (calendar browsing: agenda + detail + search)
 
 ### Goal

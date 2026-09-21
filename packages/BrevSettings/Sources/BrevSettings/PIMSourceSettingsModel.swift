@@ -59,6 +59,11 @@ public final class PIMSourceSettingsModel {
     /// the section then shows the feature as not available yet.
     private let googleFeatureHandler:
         ((BrevAccount.ID, PIMSourceKind) async throws -> Void)?
+    /// Session-provided Google write enablement: re-authorizes the
+    /// account with the write scope added, then flips the source
+    /// capability. Nil in sessions without Google wiring.
+    private let googleWriteFeatureHandler:
+        ((BrevAccount.ID, PIMSourceKind) async throws -> Void)?
 
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
@@ -68,18 +73,22 @@ public final class PIMSourceSettingsModel {
     ///     source.
     ///   - googleFeatureHandler: Enables a PIM feature on a Google mail
     ///     account through feature-triggered reauthorization.
+    ///   - googleWriteFeatureHandler: Grants editing on a connected
+    ///     Google source through write-scope reauthorization (#7).
     public init(
         coordinator: PIMSourceCoordinator,
         collectionService: PIMCollectionService? = nil,
         eventSyncService: PIMEventSyncService? = nil,
         contactSyncService: PIMContactSyncService? = nil,
-        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
+        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
+        googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
         self.collectionService = collectionService
         self.eventSyncService = eventSyncService
         self.contactSyncService = contactSyncService
         self.googleFeatureHandler = googleFeatureHandler
+        self.googleWriteFeatureHandler = googleWriteFeatureHandler
     }
 
     /// Whether Google feature enablement can run in this session.
@@ -359,6 +368,66 @@ public final class PIMSourceSettingsModel {
             // pass so the cache fills without waiting for scheduling.
             await syncNow(sourceID: sourceID)
         }
+    }
+
+    /// Explicit editing opt-in or lock for a source (#7).
+    ///
+    /// Google sources re-authorize first — the write scope must be
+    /// granted before the capability flips, so a declined sheet leaves
+    /// the source read-only. DAV credentials already carry full access,
+    /// so their toggle is a local opt-in only. Disabling is always
+    /// local: the provider grant stays but Brev stops issuing writes.
+    public func setWriteEnabled(_ enabled: Bool, for sourceID: PIMSource.ID) async {
+        guard let source = sources.first(where: { $0.id == sourceID })
+        else { return }
+        if enabled, source.provider == .google {
+            guard let accountID = source.linkedAccountID,
+                  let googleWriteFeatureHandler
+            else {
+                lastError = String(
+                    localized:
+                    "Editing is unavailable in this session.",
+                    bundle: .module
+                )
+                return
+            }
+            pendingSourceID = sourceID
+            lastError = nil
+            defer { pendingSourceID = nil }
+            do {
+                // The handler re-authorizes and flips the capability
+                // atomically — a thrown error means nothing changed.
+                try await googleWriteFeatureHandler(accountID, source.kind)
+                await load()
+            } catch {
+                lastError = Self.errorText(for: error)
+            }
+            return
+        }
+        await perform(sourceID) {
+            try await $0.setWriteEnabled(enabled, for: sourceID)
+        }
+    }
+
+    /// Whether the source offers an editing toggle — connected Google
+    /// or CalDAV calendar sources only; contacts authoring arrives with
+    /// #9, and disconnected or auth-failed rows stay inert.
+    public func canToggleWrite(sourceID: PIMSource.ID) -> Bool {
+        guard let source = sources.first(where: { $0.id == sourceID })
+        else { return false }
+        let connected: Set<PIMSourceStatus> = [
+            .ready, .syncing, .permissionLimited,
+        ]
+        guard source.kind == .calendar,
+              connected.contains(source.status)
+        else { return false }
+        return source.provider == .google || source.provider == .calDAV
+    }
+
+    /// Whether editing is currently enabled on a source.
+    public func isWriteEnabled(sourceID: PIMSource.ID) -> Bool {
+        sources.first(where: { $0.id == sourceID })?
+            .enabledCapabilities.contains(.write) ?? false
     }
 
     /// Disconnects a source; cached content stays readable with warnings.

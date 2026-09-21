@@ -83,6 +83,9 @@ struct BrevApp: App {
                         onEnableGooglePIMFeature: { accountID, kind in
                             _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
                         },
+                        onEnableGooglePIMWrite: { accountID, kind in
+                            _ = try await session.enableGooglePIMWriteFeature(accountID: accountID, kind: kind)
+                        },
                         onAddAccount: { isShowingAddAccountSheet = true },
                         onSignOut: { account in await session.signOut(account: account) },
                         onRemoveAccount: { account, deleteLinkedSourceCache in
@@ -558,10 +561,10 @@ extension AppSession {
                 googleOAuthRemovalCoordinator: { accountID in
                     try await gmailConnector.remove(accountID: accountID)
                 },
-                googlePIMEnablementCoordinator: { accountID, kind in
+                googlePIMEnablementCoordinator: { accountID, kind, write in
                     try await gmailConnector.enablePIMFeature(
                         accountID: accountID,
-                        additionalScopes: GooglePIMScopes.scopes(for: kind),
+                        additionalScopes: GooglePIMScopes.scopes(for: kind, write: write),
                         authorize: { scopes in
                             try await GoogleOAuthFlow().signIn(
                                 presentationContext: oauthPresentationAnchor(),

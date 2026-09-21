@@ -149,6 +149,8 @@ struct PIMSourceSettingsModelTests {
         transport: StubTransport? = nil,
         collectionStore: InMemoryCollectionStore? = nil,
         collectionTransport: StubTransport? = nil,
+        coordinator: PIMSourceCoordinator? = nil,
+        googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) -> PIMSourceSettingsModel {
         let client = PIMDAVClient(
@@ -156,7 +158,7 @@ struct PIMSourceSettingsModelTests {
                 Self.response(207, url: request.url!, body: Self.multistatus)
             }
         )
-        let coordinator = PIMSourceCoordinator(
+        let coordinator = coordinator ?? PIMSourceCoordinator(
             store: store,
             credentials: credentials,
             localData: localData,
@@ -181,19 +183,22 @@ struct PIMSourceSettingsModelTests {
         return PIMSourceSettingsModel(
             coordinator: coordinator,
             collectionService: collectionService,
-            googleFeatureHandler: googleFeatureHandler
+            googleFeatureHandler: googleFeatureHandler,
+            googleWriteFeatureHandler: googleWriteFeatureHandler
         )
     }
 
     private static func source(
         id: String,
         status: PIMSourceStatus = .ready,
-        syncEnabled: Bool = false
+        syncEnabled: Bool = false,
+        provider: PIMSourceProvider = .calDAV
     ) -> PIMSource {
         PIMSource(
             id: id,
             kind: .calendar,
-            provider: .calDAV,
+            provider: provider,
+            linkedAccountID: provider == .google ? "acct-1" : nil,
             displayName: "Source (id)",
             endpointURL: URL(string: "https://dav.example.com/")!,
             credentialAccount: "pim-source-(id)",
@@ -229,6 +234,126 @@ struct PIMSourceSettingsModelTests {
         await model.setSyncEnabled(true, for: "a")
 
         #expect(model.sources.first?.syncEnabled == true)
+    }
+
+    @Test("setWriteEnabled flips the capability on a DAV source locally")
+    @MainActor
+    func setWriteEnabledDAV() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "a"))
+        let model = makeModel(store: store)
+        await model.load()
+
+        await model.setWriteEnabled(true, for: "a")
+
+        #expect(
+            model.sources.first?.enabledCapabilities.contains(.write)
+                == true
+        )
+        #expect(model.isWriteEnabled(sourceID: "a"))
+
+        await model.setWriteEnabled(false, for: "a")
+
+        #expect(!model.isWriteEnabled(sourceID: "a"))
+        #expect(
+            model.sources.first?.enabledCapabilities.contains(.read)
+                == true
+        )
+    }
+
+    @Test("enabling write on a Google source routes through the write handler")
+    @MainActor
+    func setWriteEnabledGoogleUsesHandler() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(
+            Self.source(id: "g", provider: .google)
+        )
+        let coordinator = PIMSourceCoordinator(
+            store: store,
+            credentials: InMemoryCredentialStore(),
+            localData: InMemoryLocalDataStore()
+        )
+        var calls: [(accountID: String, kind: PIMSourceKind)] = []
+        let model = makeModel(
+            store: store,
+            coordinator: coordinator,
+            googleWriteFeatureHandler: { accountID, kind in
+                calls.append((accountID, kind))
+                // The session handler re-authorizes then flips the
+                // capability through the coordinator — the double does
+                // the same so the coordinator's cache stays authoritative.
+                try await coordinator.setWriteEnabled(true, for: "g")
+            }
+        )
+        await model.load()
+
+        await model.setWriteEnabled(true, for: "g")
+
+        #expect(calls.count == 1)
+        #expect(calls.first?.accountID == "acct-1")
+        #expect(calls.first?.kind == .calendar)
+        #expect(model.isWriteEnabled(sourceID: "g"))
+    }
+
+    @Test("enabling write on Google without a handler surfaces an error")
+    @MainActor
+    func setWriteEnabledGoogleWithoutHandler() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(
+            Self.source(id: "g", provider: .google)
+        )
+        let model = makeModel(store: store)
+        await model.load()
+
+        await model.setWriteEnabled(true, for: "g")
+
+        #expect(model.lastError != nil)
+        #expect(!model.isWriteEnabled(sourceID: "g"))
+    }
+
+    @Test("disabling write on Google stays local and skips the handler")
+    @MainActor
+    func setWriteDisabledGoogleSkipsHandler() async throws {
+        let store = InMemorySourceStore()
+        var google = Self.source(id: "g", provider: .google)
+        google.enabledCapabilities = [.read, .write]
+        try await store.save(google)
+        let model = makeModel(
+            store: store,
+            googleWriteFeatureHandler: { _, _ in
+                Issue.record("write handler must not run on disable")
+            }
+        )
+        await model.load()
+
+        await model.setWriteEnabled(false, for: "g")
+
+        #expect(!model.isWriteEnabled(sourceID: "g"))
+        #expect(model.lastError == nil)
+    }
+
+    @Test("canToggleWrite gates on kind, provider, and status")
+    @MainActor
+    func canToggleWriteGating() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "cal"))
+        try await store.save(
+            Self.source(id: "g", provider: .google)
+        )
+        var contacts = Self.source(id: "card")
+        contacts.kind = .contacts
+        contacts.provider = .cardDAV
+        try await store.save(contacts)
+        try await store.save(
+            Self.source(id: "off", status: .disconnected)
+        )
+        let model = makeModel(store: store)
+        await model.load()
+
+        #expect(model.canToggleWrite(sourceID: "cal"))
+        #expect(model.canToggleWrite(sourceID: "g"))
+        #expect(!model.canToggleWrite(sourceID: "card"))
+        #expect(!model.canToggleWrite(sourceID: "off"))
     }
 
     @Test("disconnect keeps the source but marks it disconnected")

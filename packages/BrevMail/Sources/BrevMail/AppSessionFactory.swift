@@ -195,6 +195,20 @@ public enum AppSessionFactory {
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
+        // ADR-0072 #7: event writes ride the same credential paths —
+        // Google via the linked account grant (calendar.events scope),
+        // CalDAV via the Keychain reference. The service only acts on
+        // sources whose .write capability the user explicitly enabled.
+        let pimEventWriteService = PIMEventWriteService(
+            coordinator: pimSourceCoordinator,
+            collectionStore: JSONPIMCollectionStore(
+                localDataStore: pimLocalDataStore
+            ),
+            eventStore: JSONPIMEventStore(localDataStore: pimLocalDataStore),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
+        )
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
@@ -210,6 +224,7 @@ public enum AppSessionFactory {
                 pimCollectionService: pimCollectionService,
                 pimEventSyncService: pimEventSyncService,
                 pimContactSyncService: pimContactSyncService,
+                pimEventWriteService: pimEventWriteService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -331,6 +346,7 @@ public enum AppSessionFactory {
             pimCollectionService: pimCollectionService,
             pimEventSyncService: pimEventSyncService,
             pimContactSyncService: pimContactSyncService,
+            pimEventWriteService: pimEventWriteService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )

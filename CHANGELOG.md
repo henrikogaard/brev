@@ -58,6 +58,14 @@ All notable changes to Brev are documented here.
   failed source keeps its cached events with a staleness banner, and
   browsing never contacts a provider. Day/week/month grid views land in
   a later slice.
+- Calendar editing opt-in and write pipeline (ADR-0072): calendar
+  sources gain an Editing toggle in Settings → Calendar & Contacts.
+  Google sources re-authorize with the calendar.events scope before the
+  capability flips; CalDAV sources opt in locally. Behind it, a
+  provider-neutral write service creates, updates, and deletes events
+  through Google Calendar or CalDAV with ETag/If-Match conflict
+  preconditions, and the local cache updates in place. The editor UI
+  lands in the next slice.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

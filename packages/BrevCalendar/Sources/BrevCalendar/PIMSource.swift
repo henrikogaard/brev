@@ -144,6 +144,14 @@ public enum GooglePIMScopes {
     /// Read-only Contacts scope for browsing connected contacts.
     public static let contactsReadOnly =
         "https://www.googleapis.com/auth/contacts.readonly"
+    /// Read/write Calendar scope for event authoring (#7). Requested
+    /// only when the user enables editing on a Google calendar source.
+    public static let calendarEvents =
+        "https://www.googleapis.com/auth/calendar.events"
+    /// Read/write Contacts scope for contact authoring (#9). Requested
+    /// only when the user enables editing on a Google contacts source.
+    public static let contacts =
+        "https://www.googleapis.com/auth/contacts"
 
     /// The scopes a source kind needs for initial read-only enablement.
     public static func scopes(for kind: PIMSourceKind) -> Set<String> {
@@ -151,5 +159,22 @@ public enum GooglePIMScopes {
         case .calendar: return [calendarReadOnly]
         case .contacts: return [contactsReadOnly]
         }
+    }
+
+    /// The scopes a source kind needs when editing is enabled — the
+    /// read scope plus the write scope, so a re-ask never narrows the
+    /// grant the browsing path already depends on.
+    public static func scopes(
+        for kind: PIMSourceKind,
+        write: Bool
+    ) -> Set<String> {
+        var scopes = scopes(for: kind)
+        if write {
+            switch kind {
+            case .calendar: scopes.insert(calendarEvents)
+            case .contacts: scopes.insert(contacts)
+            }
+        }
+        return scopes
     }
 }
