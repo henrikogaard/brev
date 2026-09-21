@@ -58,6 +58,21 @@ All notable changes to Brev are documented here.
   failed source keeps its cached events with a staleness banner, and
   browsing never contacts a provider. Day/week/month grid views land in
   a later slice.
+ - Contacts browsing (ADR-0072): a Contacts surface on macOS (Window
+   menu) and iOS (sidebar footer) shows synced contacts in an
+   alphabetically sectioned list with monogram avatars, a group filter,
+   and a read-only detail covering labeled emails (mailto: links),
+   phones, addresses, notes, and group memberships. Search runs against
+   the local cache only; hidden address books and groups stay hidden, a
+   failed source keeps its cached contacts with a staleness banner, and
+   browsing never contacts a provider. Contact editing lands with #9.
+ - Calendar day/week/month grids (ADR-0072): the Calendar surface gains a
+   layout picker — agenda, day, week, and month — sharing one selection
+   and date anchor with previous/today/next navigation. Day and week
+   render hour lanes with overlapping events split side by side and an
+   all-day strip on top; the month grid shows up to three chips per day
+   with a "+N more" overflow, and tapping a day opens it in the day
+  layout. Multi-day and all-day events cover every day they span.
 - Calendar editing opt-in and write pipeline (ADR-0072): calendar
   sources gain an Editing toggle in Settings → Calendar & Contacts.
   Google sources re-authorize with the calendar.events scope before the

@@ -38,6 +38,7 @@ struct BrevApp: App {
     @State private var session = AppSession.makeDefault()
     @State private var showSettings = false
     @State private var showCalendar = false
+    @State private var showContacts = false
     @State private var appIconVariant = AppIconPreferences.load()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var pendingComposePrefill: ComposePrefill?
@@ -122,6 +123,9 @@ struct BrevApp: App {
                         onOpenCalendar: {
                             showCalendar = true
                         },
+                        onOpenContacts: {
+                            showContacts = true
+                        },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
@@ -196,6 +200,26 @@ struct BrevApp: App {
                         ToolbarItem(placement: .cancellationAction) {
                             Button(String(localized: "Done")) {
                                 showCalendar = false
+                            }
+                        }
+                    }
+                }
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
+            }
+            .fullScreenCover(isPresented: $showContacts) {
+                NavigationStack {
+                    ContactsRootView(
+                        model: ContactsBrowsingModel(
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService,
+                            contactSyncService: session.pimContactSyncService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showContacts = false
                             }
                         }
                     }

@@ -15,19 +15,18 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
-/// The Calendar browsing surface (ADR-0072, issue #6).
+/// The Contacts browsing surface (ADR-0072, issue #8).
 ///
-/// A two-column split: the leading column switches between the agenda
-/// list and the day/week/month grids (all sharing selection and the
-/// date anchor), and the read-only event detail sits on the trailing
-/// side. On iOS the split collapses into a push navigation. All content
-/// comes from the local sync cache — the view never issues provider
-/// requests; the only network-adjacent action is the explicit Sync Now
-/// toolbar item.
-public struct CalendarRootView: View {
+/// A two-column split: the alphabetically-sectioned contact list
+/// (searchable, group-filterable) on the leading side and the read-only
+/// contact detail on the trailing side. On iOS the split collapses into
+/// push navigation. All content comes from the local sync cache — the
+/// view never issues provider requests; the only network-adjacent
+/// action is the explicit Sync Now toolbar item.
+public struct ContactsRootView: View {
     @Environment(\.brevTheme) private var theme
 
-    @State private var model: CalendarBrowsingModel
+    @State private var model: ContactsBrowsingModel
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
@@ -36,7 +35,7 @@ public struct CalendarRootView: View {
 
     /// - Parameter model: The browsing model; the app shell builds it
     ///   over the session's PIM services.
-    public init(model: CalendarBrowsingModel) {
+    public init(model: ContactsBrowsingModel) {
         _model = State(initialValue: model)
     }
 
@@ -45,9 +44,9 @@ public struct CalendarRootView: View {
             columnVisibility: $columnVisibility,
             preferredCompactColumn: $preferredCompactColumn
         ) {
-            leadingColumn
+            listColumn
                 .navigationTitle(
-                    String(localized: "Calendar", bundle: .module)
+                    String(localized: "Contacts", bundle: .module)
                 )
         } detail: {
             detailColumn
@@ -55,21 +54,21 @@ public struct CalendarRootView: View {
         .searchable(
             text: Bindable(model).searchText,
             prompt: String(
-                localized: "Search events",
+                localized: "Search contacts",
                 bundle: .module
             )
         )
         .task { await model.load() }
-        .onChange(of: model.selectedEventID) { _, newValue in
+        .onChange(of: model.selectedContactID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
             }
         }
     }
 
-    // MARK: - Leading column
+    // MARK: - List column
 
-    private var leadingColumn: some View {
+    private var listColumn: some View {
         VStack(spacing: 0) {
             if !model.staleSources.isEmpty {
                 staleBanner
@@ -84,85 +83,48 @@ public struct CalendarRootView: View {
 
     @ViewBuilder
     private var content: some View {
-        if model.isLoading, model.events.isEmpty {
+        if model.isLoading, model.contacts.isEmpty {
             ProgressView()
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .accessibilityLabel(
-                    String(localized: "Loading events", bundle: .module)
+                    String(localized: "Loading contacts", bundle: .module)
                 )
         } else if !model.hasSources {
             emptyState(
-                symbol: "calendar.badge.plus",
+                symbol: "person.crop.circle.badge.plus",
                 title: String(
-                    localized: "No calendars connected",
+                    localized: "No contacts sources connected",
                     bundle: .module
                 ),
                 message: String(
                     localized:
-                    "Connect a calendar in Settings → Calendar & Contacts to see events here.",
+                    "Connect a contacts source in Settings → Calendar & Contacts to see people here.",
                     bundle: .module
                 )
             )
-        } else if model.days.isEmpty, model.viewMode == .agenda {
+        } else if model.sections.isEmpty {
             emptyState(
-                symbol: "calendar",
+                symbol: "person.crop.circle",
                 title: String(
-                    localized: "No events",
+                    localized: "No contacts",
                     bundle: .module
                 ),
                 message: model.searchText.isEmpty
                     ? String(
                         localized:
-                        "Synced events will appear here. Use Sync Now to refresh the cache.",
+                        "Synced contacts will appear here. Use Sync Now to refresh the cache.",
                         bundle: .module
                     )
                     : String(
-                        localized: "No events match your search.",
+                        localized: "No contacts match your search.",
                         bundle: .module
                     )
             )
         } else {
-            switch model.viewMode {
-            case .agenda:
-                CalendarAgendaView(
-                    days: model.days,
-                    collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID
-                )
-            case .day:
-                CalendarDayView(
-                    day: model.selectedDay,
-                    allDayEvents: model.allDayEvents(
-                        onDay: model.selectedDay
-                    ),
-                    placements: model.timedLanes(onDay: model.selectedDay),
-                    collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID
-                )
-            case .week:
-                CalendarWeekView(
-                    days: model.selectedWeekDays,
-                    allDayFor: { model.allDayEvents(onDay: $0) },
-                    lanesFor: { model.timedLanes(onDay: $0) },
-                    collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID,
-                    onSelectDay: { day in
-                        model.selectDay(day)
-                        model.viewMode = .day
-                    }
-                )
-            case .month:
-                CalendarMonthView(
-                    weeks: model.selectedMonthWeeks,
-                    eventsFor: { model.events(onDay: $0) },
-                    collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID,
-                    onSelectDay: { day in
-                        model.selectDay(day)
-                        model.viewMode = .day
-                    }
-                )
-            }
+            ContactsListView(
+                sections: model.sections,
+                selectedContactID: Bindable(model).selectedContactID
+            )
         }
     }
 
@@ -170,22 +132,32 @@ public struct CalendarRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let event = model.event(id: model.selectedEventID) {
-            CalendarEventDetailView(
-                event: event,
-                collection: model.collection(for: event),
-                source: model.source(for: event)
+        if let contact = model.contact(id: model.selectedContactID) {
+            ContactDetailView(
+                contact: contact,
+                collection: model.collection(for: contact),
+                source: model.source(for: contact),
+                groupNames: groupNames(for: contact)
             )
         } else {
             ContentUnavailableView(
-                String(localized: "No event selected", bundle: .module),
-                systemImage: "calendar",
+                String(localized: "No contact selected", bundle: .module),
+                systemImage: "person.crop.circle",
                 description: Text(String(
-                    localized: "Pick an event from the agenda.",
+                    localized: "Pick a contact from the list.",
                     bundle: .module
                 ))
             )
             .foregroundStyle(theme.textSecondary.color)
+        }
+    }
+
+    /// Resolves a contact's group keys to display names from the
+    /// source's discovered collections; unknown keys are dropped.
+    private func groupNames(for contact: PIMContact) -> [String] {
+        let collections = model.collectionsBySource[contact.sourceID] ?? []
+        return contact.groupKeys.compactMap { key in
+            collections.first { $0.id == key }?.displayName
         }
     }
 
@@ -255,61 +227,53 @@ public struct CalendarRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        ToolbarItem(placement: .principal) {
-            HStack(spacing: BrevSpacing.sm) {
-                Picker(
-                    String(localized: "Layout", bundle: .module),
-                    selection: Bindable(model).viewMode
-                ) {
-                    ForEach(
-                        CalendarBrowsingModel.ViewMode.allCases,
-                        id: \.self
-                    ) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .accessibilityLabel(
-                    String(localized: "Calendar layout", bundle: .module)
-                )
-                if model.showsDateNavigation {
-                    HStack(spacing: BrevSpacing.xxs) {
-                        Button {
-                            model.goToPrevious()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                        }
-                        .accessibilityLabel(
-                            String(
-                                localized: "Previous",
-                                bundle: .module
-                            )
-                        )
-                        Button {
-                            model.goToToday()
-                        } label: {
-                            Text(
+        if !model.allCollections.isEmpty {
+            ToolbarItem(placement: .secondaryAction) {
+                Menu {
+                    Button {
+                        model.selectedCollectionID = nil
+                    } label: {
+                        if model.selectedCollectionID == nil {
+                            Label(
                                 String(
-                                    localized: "Today",
+                                    localized: "All contacts",
                                     bundle: .module
-                                )
+                                ),
+                                systemImage: "checkmark"
                             )
+                        } else {
+                            Text(String(
+                                localized: "All contacts",
+                                bundle: .module
+                            ))
                         }
-                        Button {
-                            model.goToNext()
-                        } label: {
-                            Image(systemName: "chevron.right")
-                        }
-                        .accessibilityLabel(
-                            String(localized: "Next", bundle: .module)
-                        )
                     }
-                    Text(model.rangeTitle)
-                        .brevFont(.subheadline)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
+                    ForEach(model.allCollections) { collection in
+                        Button {
+                            model.selectedCollectionID = collection.id
+                        } label: {
+                            if model.selectedCollectionID == collection.id {
+                                Label(
+                                    collection.displayName,
+                                    systemImage: "checkmark"
+                                )
+                            } else {
+                                Text(collection.displayName)
+                            }
+                        }
+                    }
+                } label: {
+                    Label(
+                        String(localized: "Filter", bundle: .module),
+                        systemImage: "line.3.horizontal.decrease.circle"
+                    )
                 }
+                .accessibilityLabel(
+                    String(
+                        localized: "Filter by group",
+                        bundle: .module
+                    )
+                )
             }
         }
         ToolbarItem(placement: .primaryAction) {
@@ -328,7 +292,7 @@ public struct CalendarRootView: View {
             }
             .disabled(!model.canSyncAny)
             .accessibilityLabel(
-                String(localized: "Sync calendars now", bundle: .module)
+                String(localized: "Sync contacts now", bundle: .module)
             )
         }
     }
