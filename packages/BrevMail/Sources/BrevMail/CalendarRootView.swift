@@ -22,22 +22,50 @@ import SwiftUI
 /// date anchor), and the read-only event detail sits on the trailing
 /// side. On iOS the split collapses into a push navigation. All content
 /// comes from the local sync cache — the view never issues provider
-/// requests; the only network-adjacent action is the explicit Sync Now
-/// toolbar item.
+/// requests on its own; the only provider-adjacent actions are the
+/// explicit Sync Now toolbar item and, when an editing model is wired
+/// (issue #7), the New Event / Edit / Delete affordances that run
+/// through CalendarEditingModel.
 public struct CalendarRootView: View {
     @Environment(\.brevTheme) private var theme
 
     @State private var model: CalendarBrowsingModel
+    /// Event authoring; nil keeps the surface read-only.
+    private let editing: CalendarEditingModel?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
     @State private var preferredCompactColumn = NavigationSplitViewColumn
         .sidebar
+    /// The sheet request: a new event anchored at a date, or an edit
+    /// of the cached event.
+    @State private var editorRequest: EditorRequest?
+
+    /// Identifiable sheet payload for the event editor.
+    private enum EditorRequest: Identifiable {
+        case create(start: Date)
+        case edit(PIMEvent)
+
+        var id: String {
+            switch self {
+            case .create(let start):
+                "create-\(start.timeIntervalSince1970)"
+            case .edit(let event):
+                "edit-\(event.id)"
+            }
+        }
+    }
 
     /// - Parameter model: The browsing model; the app shell builds it
     ///   over the session's PIM services.
-    public init(model: CalendarBrowsingModel) {
+    /// - Parameter editing: The authoring model; pass nil (default) for
+    ///   a read-only calendar.
+    public init(
+        model: CalendarBrowsingModel,
+        editing: CalendarEditingModel? = nil
+    ) {
         _model = State(initialValue: model)
+        self.editing = editing
     }
 
     public var body: some View {
@@ -60,9 +88,15 @@ public struct CalendarRootView: View {
             )
         )
         .task { await model.load() }
+        .task { await editing?.load() }
         .onChange(of: model.selectedEventID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
+            }
+        }
+        .sheet(item: $editorRequest) { request in
+            if let editing {
+                editorSheet(for: request, editing: editing)
             }
         }
     }
@@ -75,6 +109,9 @@ public struct CalendarRootView: View {
                 staleBanner
             }
             if let lastError = model.lastError {
+                errorBanner(lastError)
+            }
+            if let lastError = editing?.lastError {
                 errorBanner(lastError)
             }
             content
@@ -174,7 +211,11 @@ public struct CalendarRootView: View {
             CalendarEventDetailView(
                 event: event,
                 collection: model.collection(for: event),
-                source: model.source(for: event)
+                source: model.source(for: event),
+                onEdit: editAction(for: event),
+                onDelete: deleteAction(for: event),
+                isRecurring: editing?.needsScopeChoice(for: event)
+                    ?? false
             )
         } else {
             ContentUnavailableView(
@@ -253,6 +294,83 @@ public struct CalendarRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    /// The Edit action for the detail pane — present only while the
+    /// event's collection is writable.
+    private func editAction(for event: PIMEvent) -> (() -> Void)? {
+        guard let editing, editing.canEdit(event) else { return nil }
+        return {
+            Task { await presentEditor(for: event) }
+        }
+    }
+
+    /// The Delete action for the detail pane — same writability gate.
+    private func deleteAction(
+        for event: PIMEvent
+    ) -> ((CalendarRecurringEditScope?) -> Void)? {
+        guard let editing, editing.canEdit(event) else { return nil }
+        return { scope in
+            Task { await delete(event, scope: scope) }
+        }
+    }
+
+    /// Refreshes writable targets before presenting so the picker never
+    /// offers a stale (or misses a newly enabled) calendar.
+    private func presentEditor(for event: PIMEvent) async {
+        await editing?.load()
+        editorRequest = .edit(event)
+    }
+
+    private func presentNewEvent() async {
+        await editing?.load()
+        // New events anchor at 9:00 on the selected day — a sane
+        // default the date pickers adjust from.
+        let anchor = Calendar.current.date(
+            bySettingHour: 9,
+            minute: 0,
+            second: 0,
+            of: model.selectedDay
+        ) ?? model.selectedDay
+        editorRequest = .create(start: anchor)
+    }
+
+    private func delete(
+        _ event: PIMEvent,
+        scope: CalendarRecurringEditScope?
+    ) async {
+        do {
+            try await editing?.delete(event, scope: scope)
+            model.selectedEventID = nil
+            await model.load()
+        } catch {
+            // The editing model carries the displayable error.
+        }
+    }
+
+    @ViewBuilder
+    private func editorSheet(
+        for request: EditorRequest,
+        editing: CalendarEditingModel
+    ) -> some View {
+        let onSaved: () async -> Void = {
+            await editing.load()
+            await model.load()
+        }
+        switch request {
+        case .create(let start):
+            CalendarEventEditorView(
+                editing: editing,
+                start: start,
+                onSaved: onSaved
+            )
+        case .edit(let event):
+            CalendarEventEditorView(
+                editing: editing,
+                event: event,
+                onSaved: onSaved
+            )
+        }
+    }
+
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .principal) {
@@ -310,6 +428,25 @@ public struct CalendarRootView: View {
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 }
+            }
+        }
+        if let editing,
+           editing.canAuthor, editing.defaultTarget != nil {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    Task { await presentNewEvent() }
+                } label: {
+                    Label(
+                        String(
+                            localized: "New Event",
+                            bundle: .module
+                        ),
+                        systemImage: "plus"
+                    )
+                }
+                .accessibilityLabel(
+                    String(localized: "New event", bundle: .module)
+                )
             }
         }
         ToolbarItem(placement: .primaryAction) {

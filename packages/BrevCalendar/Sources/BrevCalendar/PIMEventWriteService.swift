@@ -129,8 +129,9 @@ public actor PIMEventWriteService {
     /// Whether a write may run: the source carries the `.write`
     /// capability and the collection is not read-only. Provider
     /// support is checked separately — CardDAV sources never reach
-    /// the event write path.
-    public func canWrite(
+    /// the event write path. nonisolated: a pure function of the two
+    /// records, so UI code can gate affordances without an await.
+    public nonisolated func canWrite(
         source: PIMSource,
         collection: PIMCollection
     ) -> Bool {

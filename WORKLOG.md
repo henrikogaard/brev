@@ -1,5 +1,54 @@
 # Worklog
 
+## 2026-09-21 — Agent — Issue #7 slice 2 (event editor UI)
+
+### Goal
+
+Second slice of #7 (ADR-0072): the event editor surface on top of the
+slice-1 write pipeline — create/edit/delete for timed, all-day, and
+repeating events on writable Google/CalDAV sources.
+
+### Changes
+
+- BrevMail: CalendarEventDraft (form state with provider-identity
+  carry-through and RRULE mapping), CalendarEditingModel (writable
+  targets, create/update/delete/move/future-scope dispatch behind a
+  CalendarEventWriting seam), CalendarEventEditorView (the sheet),
+  Edit/Delete actions on the detail pane, a New Event toolbar item on
+  the root view.
+- BrevCalendar: GoogleCalendarEventWriter sends sendUpdates=all on
+  insert/patch/delete so invitees are notified; canWrite on
+  PIMEventWriteService is nonisolated for synchronous UI gating.
+- Recurring scope: All Events patches the master; This and Future
+  Events truncates the master RRULE and creates a new series.
+  Single-occurrence exceptions deferred (multi-VEVENT / recurringEventId).
+- Apps: both BrevApp shells construct CalendarEditingModel over the
+  session's PIM services.
+- Docs: ADR-0072 slice-2 entry, CHANGELOG bullet, PRIVACY.md attendee
+  notification note.
+
+### Verification
+
+- swift build --package-path packages/BrevMail: clean.
+- swift test --package-path packages/BrevMail --filter
+  CalendarEditingModelTests|CalendarEventDraftTests: 17/17 green.
+- swift test --package-path packages/BrevCalendar --filter
+  PIMEventWriteTests: 19/19 green.
+- scripts/lint.sh: clean (ADR-0072 updated in the same commit).
+- xcodebuild BrevMacOS (macOS, arm64) and BrevIOS (iPhone 17
+  simulator): both BUILD SUCCEEDED.
+
+### Skipped
+
+- Rendered verification of the sheet: no live writable source in this
+  environment; ViewInspector/snapshot coverage deferred with the rest
+  of the calendar surface.
+
+### Handoff
+
+- Next: PR targets main, then issue #9 (contact authoring) reuses the
+  same slice shape for CardDAV/Google People.
+
 ## 2026-09-21 — Agent — Issue #7 slice 1 (event write pipeline + editing opt-in)
 
 ### Goal

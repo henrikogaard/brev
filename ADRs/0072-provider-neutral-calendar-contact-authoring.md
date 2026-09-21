@@ -697,6 +697,46 @@ grant.
   prompts, attendee notifications), iMIP RSVP unification onto this
   path, offline write queueing, and contact authoring (#9).
 
+### #7 slice 2 — event editor UI (2026-09-21, BrevCalendar/BrevMail/apps)
+
+- `CalendarEventDraft`: editable form state over the shared
+  event model. Provider identity (uid, providerItemKey,
+  providerVersion, recurrenceID, rawPayload, organizer, conferenceURL)
+  rides through untouched; attendee edits preserve the RSVP of emails
+  already on the event and start new ones at needsAction. The draft
+  owns the repeat form (frequency, interval, weekly weekdays, end by
+  date or count) and converts to an RRULE.
+- `CalendarEditingModel`: the @MainActor owner behind the
+  editor. Writable targets are collections where the write service's
+  canWrite holds, resolved cache-only from the coordinator and
+  collection service. save dispatches create / update / move /
+  future-scope; delete dispatches delete or series truncation. A
+  `CalendarEventWriting` protocol seam keeps the provider
+  out of the model — the actor's canWrite became nonisolated so the
+  seam stays synchronous for UI gating.
+- Recurring edits ask for a scope: All Events patches the master;
+  This and Future Events truncates the master's RRULE UNTIL to the
+  day before the edited occurrence and creates a new series with a
+  fresh UID. Single-occurrence exceptions stay deferred — they need
+  multi-component VEVENT resources on CalDAV and recurringEventId on
+  Google.
+- A move between calendars is create-in-target then delete-original:
+  providers share no move primitive and an update addressed to the
+  old provider key inside the new collection would miss. The UID
+  survives so the event keeps its identity.
+- `CalendarEventEditorView` is the sheet: title, all-day,
+  start/end, time zone, repeat, target calendar, location, attendees,
+  reminders, notes. The detail pane gains Edit/Delete actions gated
+  on canEdit; the root view gains a New Event toolbar item gated on
+  canAuthor plus a writable default target. Every mutation reloads
+  the browsing model afterward.
+- Google writes now send sendUpdates=all on insert, patch, and delete
+  so invitees are notified; the parameter is a no-op without
+  attendees. CalDAV servers notify per their own scheduling support —
+  the editor discloses notification as provider-dependent.
+- Deferred by design: single-occurrence exceptions, attendee RSVP
+  editing from the attendee side, offline write queueing, and undo.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

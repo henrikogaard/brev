@@ -81,6 +81,14 @@ All notable changes to Brev are documented here.
   through Google Calendar or CalDAV with ETag/If-Match conflict
   preconditions, and the local cache updates in place. The editor UI
   lands in the next slice.
+- Calendar event editor (ADR-0072): on sources with Editing enabled,
+  the Calendar surface gains a New Event button and per-event Edit and
+  Delete actions. The editor covers title, all-day, times and time
+  zone, repeating rules, the target calendar (moving an event between
+  calendars is supported), location, attendees, reminders, and notes.
+  Changes to repeating events can apply to the whole series or start a
+  new series from that date; Google notifies invitees on save or
+  delete.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading
