@@ -425,7 +425,7 @@ struct PIMEventWriteTests {
         #expect(request.httpMethod == "POST")
         #expect(
             request.url?.absoluteString
-                == "https://www.googleapis.com/calendar/v3/calendars/primary/events"
+                == "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all"
         )
         #expect(request.value(forHTTPHeaderField: "Authorization") == "Bearer token")
         let body = try #require(request.httpBody)
@@ -498,6 +498,11 @@ struct PIMEventWriteTests {
             event,
             in: collection,
             accessToken: "token"
+        )
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://www.googleapis.com/calendar/v3/calendars/primary/events/g-1?sendUpdates=all"
         )
         await #expect(throws: GoogleCalendarEventWriter.WriteError.conflict) {
             try await writer.delete(

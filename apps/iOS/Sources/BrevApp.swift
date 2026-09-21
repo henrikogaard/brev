@@ -194,6 +194,11 @@ struct BrevApp: App {
                             coordinator: session.pimSourceCoordinator,
                             collectionService: session.pimCollectionService,
                             eventSyncService: session.pimEventSyncService
+                        ),
+                        editing: CalendarEditingModel(
+                            writeService: session.pimEventWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
                         )
                     )
                     .toolbar {

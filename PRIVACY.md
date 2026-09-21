@@ -276,6 +276,9 @@ read-only. Every mutation carries the stored ETag as an `If-Match`
 precondition, so Brev never silently overwrites a newer server-side
 change — a conflict asks you to sync first. Turning Editing off is
 local-only: the provider grant remains but Brev stops issuing writes.
+When an event has attendees, Google mutations send
+`sendUpdates=all` so Google notifies invitees; CalDAV servers notify
+per their own scheduling support. Brev itself never emails attendees.
 
 Enabling Editing on a contacts source works the same way: CardDAV
 sources write vCards with `PUT`/`DELETE` to the contact's

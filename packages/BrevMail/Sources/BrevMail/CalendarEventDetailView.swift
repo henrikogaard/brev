@@ -21,7 +21,10 @@ import SwiftUI
 /// with the provider's time zone, recurrence, location, conference join
 /// link, organizer, attendees with RSVP state, reminders, and the
 /// provider's description. Source and collection provenance close the
-/// pane so ownership stays visible. Editing arrives with issue #7.
+/// pane so ownership stays visible. When the parent supplies edit or
+/// delete actions (writable source, issue #7) an action row appears
+/// under the header; repeating deletes ask for the scope here so the
+/// editor sheet stays create/save only.
 public struct CalendarEventDetailView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.calendar) private var calendar
@@ -30,21 +33,40 @@ public struct CalendarEventDetailView: View {
     let event: PIMEvent
     let collection: PIMCollection?
     let source: PIMSource?
+    /// Opens the editor for this event; nil hides the Edit action.
+    let onEdit: (() -> Void)?
+    /// Deletes the event under the chosen recurring scope; nil hides
+    /// the Delete action. nil scope means a non-recurring delete.
+    let onDelete: ((CalendarRecurringEditScope?) -> Void)?
+    /// Whether the event belongs to a repeating series — the delete
+    /// confirmation asks for a scope only then.
+    let isRecurring: Bool
+
+    @State private var showsDeleteConfirmation = false
 
     public init(
         event: PIMEvent,
         collection: PIMCollection? = nil,
-        source: PIMSource? = nil
+        source: PIMSource? = nil,
+        onEdit: (() -> Void)? = nil,
+        onDelete: ((CalendarRecurringEditScope?) -> Void)? = nil,
+        isRecurring: Bool = false
     ) {
         self.event = event
         self.collection = collection
         self.source = source
+        self.onEdit = onEdit
+        self.onDelete = onDelete
+        self.isRecurring = isRecurring
     }
 
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.lg) {
                 header
+                if onEdit != nil || onDelete != nil {
+                    actionRow
+                }
                 if let conferenceURL = event.conferenceURL,
                    let url = URL(string: conferenceURL) {
                     joinButton(url)
@@ -69,6 +91,77 @@ public struct CalendarEventDetailView: View {
         .accessibilityLabel(
             String(localized: "Event details", bundle: .module)
         )
+        .confirmationDialog(
+            String(localized: "Delete this event?", bundle: .module),
+            isPresented: $showsDeleteConfirmation,
+            titleVisibility: .visible
+        ) {
+            if isRecurring {
+                ForEach(
+                    CalendarRecurringEditScope.allCases,
+                    id: \.self
+                ) { scope in
+                    Button(scope.title, role: .destructive) {
+                        onDelete?(scope)
+                    }
+                }
+            } else {
+                Button(
+                    String(localized: "Delete Event", bundle: .module),
+                    role: .destructive
+                ) {
+                    onDelete?(nil)
+                }
+            }
+            Button(
+                String(localized: "Cancel", bundle: .module),
+                role: .cancel
+            ) {}
+        } message: {
+            if isRecurring {
+                Text(String(
+                    localized:
+                    "This is a repeating event. You can delete the whole series or end it before this date.",
+                    bundle: .module
+                ))
+            }
+        }
+    }
+
+    // MARK: - Actions
+
+    /// Edit/Delete affordances for writable sources. Both stay plain
+    /// buttons so the row reads as inline text actions, not chrome.
+    private var actionRow: some View {
+        HStack(spacing: BrevSpacing.lg) {
+            if let onEdit {
+                Button {
+                    onEdit()
+                } label: {
+                    Label(
+                        String(localized: "Edit", bundle: .module),
+                        systemImage: "pencil"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+            }
+            if onDelete != nil {
+                Button(role: .destructive) {
+                    showsDeleteConfirmation = true
+                } label: {
+                    Label(
+                        String(localized: "Delete", bundle: .module),
+                        systemImage: "trash"
+                    )
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.danger.color)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Header
