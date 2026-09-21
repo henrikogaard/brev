@@ -382,6 +382,36 @@ struct PIMEventWriteTests {
         #expect(parsed?.start != nil)
     }
 
+    @Test("A synced conference emits CONFERENCE;VALUE=URI with its label")
+    func icsWriterConference() {
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-conf@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.conference = PIMConference(
+            kind: .other,
+            name: "Zoom room",
+            joinURL: "https://zoom.us/j/42"
+        )
+        event.conferenceURL = "https://zoom.us/j/42"
+        let ics = PIMEventICSWriter.vcalendar(
+            for: event,
+            dtstamp: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        #expect(
+            ics.contains(
+                "CONFERENCE;VALUE=URI;LABEL=Zoom room:https://zoom.us/j/42"
+            )
+        )
+        // The flat URL line is skipped when it duplicates the
+        // conference join link.
+        #expect(!ics.contains("URL:https://zoom.us/j/42"))
+        let parsed = ICSParser.parseFirstEvent(from: ics)
+        #expect(parsed?.conferenceURL == "https://zoom.us/j/42")
+        #expect(parsed?.conferenceLabel == "Zoom room")
+    }
+
     // MARK: - Google writer
 
     @Test("Google insert POSTs the mapped body to the collection events URL")
@@ -471,6 +501,157 @@ struct PIMEventWriteTests {
         let request = try #require(transport.requests.first)
         #expect(request.httpMethod == "PATCH")
         #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v1\"")
+    }
+
+    @Test("Google insert with a Meet request sends conferenceDataVersion and a fresh requestId")
+    func googleInsertConferenceRequest() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(
+                200,
+                body: #"{"id":"g-1","etag":"\"v1\"","conferenceData":{"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet"},"status":{"statusCode":"pending"}}}"#
+            ),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Work",
+            providerKey: "primary"
+        )
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-g@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.conference = PIMConference(
+            kind: .meet,
+            status: .pending,
+            isCreationRequest: true
+        )
+
+        let result = try await writer.insert(
+            event,
+            into: collection,
+            accessToken: "token"
+        )
+
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all&conferenceDataVersion=1"
+        )
+        let body = try #require(request.httpBody)
+        let json = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        let conferenceData = try #require(
+            json["conferenceData"] as? [String: Any]
+        )
+        let createRequest = try #require(
+            conferenceData["createRequest"] as? [String: Any]
+        )
+        // A fresh requestId per call — Meet codes are never reused.
+        let requestId = try #require(createRequest["requestId"] as? String)
+        #expect(UUID(uuidString: requestId) != nil)
+        let key = try #require(
+            createRequest["conferenceSolutionKey"] as? [String: Any]
+        )
+        #expect(key["type"] as? String == "hangoutsMeet")
+        // The provider's pending conference lands on the result.
+        #expect(result.conference?.status == .pending)
+        #expect(result.conference?.kind == .meet)
+        #expect(result.conference?.name == "Google Meet")
+    }
+
+    @Test("Google patch with a Meet request adds the conference to an existing event")
+    func googlePatchConferenceRequest() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(
+                200,
+                body: #"{"id":"g-1","etag":"\"v2\"","conferenceData":{"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet"},"status":{"statusCode":"success"},"entryPoints":[{"entryPointType":"video","uri":"https://meet.google.com/new"}]}}"#
+            ),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Work",
+            providerKey: "primary"
+        )
+        var event = Self.event(
+            collectionID: "c1",
+            providerItemKey: "g-1",
+            etag: "\"v1\""
+        )
+        event.conference = PIMConference(
+            kind: .meet,
+            status: .pending,
+            isCreationRequest: true
+        )
+
+        let result = try await writer.patch(
+            event,
+            in: collection,
+            accessToken: "token"
+        )
+
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://www.googleapis.com/calendar/v3/calendars/primary/events/g-1?sendUpdates=all&conferenceDataVersion=1"
+        )
+        let body = try #require(request.httpBody)
+        let json = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        #expect(json["conferenceData"] != nil)
+        // The ready conference replaces the pending intent.
+        #expect(result.conference?.status == .success)
+        #expect(
+            result.conference?.joinURL == "https://meet.google.com/new"
+        )
+    }
+
+    @Test("Google writes without a conference intent omit conferenceData")
+    func googleWriteWithoutConference() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"id":"g-1","etag":"\"v1\""}"#),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Work",
+            providerKey: "primary"
+        )
+        let event = Self.event(
+            collectionID: "c1",
+            uid: "uid-g@brev"
+        )
+        _ = try await writer.insert(
+            event,
+            into: collection,
+            accessToken: "token"
+        )
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://www.googleapis.com/calendar/v3/calendars/primary/events?sendUpdates=all"
+        )
+        let body = try #require(request.httpBody)
+        let json = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        #expect(json["conferenceData"] == nil)
     }
 
     @Test("Google delete accepts 404 and maps 412 to conflict")
@@ -738,6 +919,113 @@ struct PIMEventWriteTests {
         #expect(tokenAccount == "acct-1")
         #expect(created.providerItemKey == "g-new")
         #expect(created.providerVersion == "\"e1\"")
+    }
+
+    @Test("create on Google stores the provider's pending conference")
+    func createOnGoogleWithConference() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let googleTransport = ScriptedTransport(steps: [
+            .response(
+                200,
+                body: #"{"id":"g-new","etag":"\"e1\"","conferenceData":{"conferenceSolution":{"key":{"type":"hangoutsMeet"},"name":"Google Meet"},"status":{"statusCode":"pending"}}}"#
+            ),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: googleTransport,
+            davTransport: ScriptedTransport(steps: []),
+            googleAccessToken: { _ in "google-token" }
+        )
+        let source = Self.source(provider: .google, write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection(providerKey: "primary")
+        try await collectionStore.saveCollections([collection], for: source.id)
+        var draft = Self.event(
+            collectionID: collection.id,
+            providerItemKey: "draft",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        draft.conference = PIMConference(
+            kind: .meet,
+            status: .pending,
+            isCreationRequest: true
+        )
+
+        let created = try await service.create(
+            draft,
+            in: collection,
+            source: source
+        )
+
+        // The pending conference is stored — the next sync resolves it
+        // to success with entry points.
+        #expect(created.conference?.status == .pending)
+        #expect(created.conference?.isCreationRequest == false)
+        #expect(created.conference?.name == "Google Meet")
+        let request = try #require(googleTransport.requests.first)
+        #expect(
+            request.url?.query?.contains("conferenceDataVersion=1")
+                == true
+        )
+    }
+
+    @Test("create on CalDAV drops a Meet create intent and keeps a synced link")
+    func createOnDAVDropsConferenceIntent() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(201, headers: ["ETag": "\"new-etag\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections([collection], for: source.id)
+        try await credentials.setCredential(
+            .basic(username: "u", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        var draft = Self.event(
+            collectionID: collection.id,
+            providerItemKey: "draft",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        draft.conference = PIMConference(
+            kind: .meet,
+            status: .pending,
+            isCreationRequest: true
+        )
+
+        let created = try await service.create(
+            draft,
+            in: collection,
+            source: source
+        )
+
+        // CalDAV cannot create conferences — the intent is dropped
+        // rather than stored as a phantom pending record.
+        #expect(created.conference == nil)
+        let request = try #require(davTransport.requests.first)
+        let ics = try String(
+            data: #require(request.httpBody),
+            encoding: .utf8
+        ) ?? ""
+        #expect(!ics.contains("CONFERENCE"))
     }
 
     @Test("update on CalDAV sends the stored etag and records the new one")

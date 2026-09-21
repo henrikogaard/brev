@@ -65,14 +65,23 @@ public struct GoogleCalendarEventWriter: Sendable {
         }
     }
 
-    /// Outcome of a successful write — the provider's event ID and ETag.
+    /// Outcome of a successful write — the provider's event ID, ETag,
+    /// and the conference record when the response carried one (#13).
     public struct WriteResult: Sendable, Hashable {
         public let eventID: String
         public let etag: String?
+        /// conferenceData mapped through the shared sync mapper, so a
+        /// create response renders identically to a synced record.
+        public let conference: PIMConference?
 
-        public init(eventID: String, etag: String?) {
+        public init(
+            eventID: String,
+            etag: String?,
+            conference: PIMConference? = nil
+        ) {
             self.eventID = eventID
             self.etag = etag
+            self.conference = conference
         }
     }
 
@@ -110,7 +119,8 @@ public struct GoogleCalendarEventWriter: Sendable {
     ) async throws -> WriteResult {
         let url = try eventsURL(
             collection: collection,
-            notifyGuests: true
+            notifyGuests: true,
+            requestConference: event.conference?.isCreationRequest == true
         )
         var request = try jsonRequest(url: url, method: "POST", accessToken: accessToken)
         request.httpBody = try body(for: event)
@@ -131,7 +141,8 @@ public struct GoogleCalendarEventWriter: Sendable {
         let url = try eventURL(
             collection: collection,
             eventID: event.providerItemKey,
-            notifyGuests: true
+            notifyGuests: true,
+            requestConference: event.conference?.isCreationRequest == true
         )
         var request = try jsonRequest(url: url, method: "PATCH", accessToken: accessToken)
         if let etag = event.providerVersion {
@@ -226,6 +237,16 @@ public struct GoogleCalendarEventWriter: Sendable {
         if let uid = event.uid {
             dict["iCalUID"] = uid
         }
+        // Meet creation (#13): each request carries a fresh requestId
+        // so retried writes can never reuse a code across events.
+        if event.conference?.isCreationRequest == true {
+            dict["conferenceData"] = [
+                "createRequest": [
+                    "requestId": UUID().uuidString,
+                    "conferenceSolutionKey": ["type": "hangoutsMeet"],
+                ],
+            ]
+        }
         do {
             return try JSONSerialization.data(withJSONObject: dict)
         } catch {
@@ -237,14 +258,18 @@ public struct GoogleCalendarEventWriter: Sendable {
 
     private func eventsURL(
         collection: PIMCollection,
-        notifyGuests: Bool
+        notifyGuests: Bool,
+        requestConference: Bool = false
     ) throws -> URL {
         guard let encoded = collection.providerKey.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
         ), let url = URL(
             string:
             "\(Self.baseURL)/\(encoded)/events"
-                + (notifyGuests ? "?sendUpdates=all" : "")
+                + Self.query(
+                    notifyGuests: notifyGuests,
+                    requestConference: requestConference
+                )
         ) else {
             throw WriteError.invalidResponse
         }
@@ -254,7 +279,8 @@ public struct GoogleCalendarEventWriter: Sendable {
     private func eventURL(
         collection: PIMCollection,
         eventID: String,
-        notifyGuests: Bool
+        notifyGuests: Bool,
+        requestConference: Bool = false
     ) throws -> URL {
         guard let encodedCollection = collection.providerKey
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -264,12 +290,28 @@ public struct GoogleCalendarEventWriter: Sendable {
             let url = URL(
                 string:
                 "\(Self.baseURL)/\(encodedCollection)/events/\(encodedEvent)"
-                    + (notifyGuests ? "?sendUpdates=all" : "")
+                    + Self.query(
+                        notifyGuests: notifyGuests,
+                        requestConference: requestConference
+                    )
             )
         else {
             throw WriteError.invalidResponse
         }
         return url
+    }
+
+    /// Query parameters for a mutation URL. `conferenceDataVersion=1`
+    /// is required for conferenceData.createRequest to be honored —
+    /// without it Google silently ignores the request.
+    private static func query(
+        notifyGuests: Bool,
+        requestConference: Bool
+    ) -> String {
+        var params: [String] = []
+        if notifyGuests { params.append("sendUpdates=all") }
+        if requestConference { params.append("conferenceDataVersion=1") }
+        return params.isEmpty ? "" : "?" + params.joined(separator: "&")
     }
 
     private func jsonRequest(
@@ -326,7 +368,8 @@ public struct GoogleCalendarEventWriter: Sendable {
         }
         return WriteResult(
             eventID: id,
-            etag: dict["etag"] as? String
+            etag: dict["etag"] as? String,
+            conference: GoogleConferenceMapping.conference(from: dict)
         )
     }
 

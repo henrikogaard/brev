@@ -94,6 +94,7 @@ public struct CalendarEventEditorView: View {
                     repeatSection
                     targetSection
                     locationField
+                    conferenceSection
                     attendeesSection
                     remindersSection
                     notesSection
@@ -360,6 +361,77 @@ public struct CalendarEventEditorView: View {
             )
             .multilineTextAlignment(.trailing)
         }
+    }
+
+    /// Conference controls (#13): a synced conference renders
+    /// read-only — provider-assigned data the editor never mutates —
+    /// while a Google target without one offers Meet creation. Other
+    /// providers get no control: CalDAV cannot create conferences.
+    @ViewBuilder
+    private var conferenceSection: some View {
+        if let conference = draft.conference,
+           !conference.isCreationRequest {
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                Label(
+                    conference.name
+                        ?? String(
+                            localized: "Video call",
+                            bundle: .module
+                        ),
+                    systemImage: "video"
+                )
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textSecondary.color)
+                if conference.status == .pending {
+                    Text(
+                        String(
+                            localized:
+                            "The video call is being created and appears after the next sync.",
+                            bundle: .module
+                        )
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textTertiary.color)
+                } else if conference.status == .failure {
+                    Text(
+                        String(
+                            localized:
+                            "The provider could not create the video call. The event itself is saved.",
+                            bundle: .module
+                        )
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.danger.color)
+                }
+            }
+        } else if editing.target(for: draft.targetCollectionID)?
+            .source.provider == .google {
+            Toggle(
+                String(
+                    localized: "Add Google Meet video call",
+                    bundle: .module
+                ),
+                isOn: conferenceToggle
+            )
+            .toggleStyle(.switch)
+        }
+    }
+
+    /// Two-way binding onto the create intent; switching off drops a
+    /// pending request so a failed creation can be retried (#13).
+    private var conferenceToggle: Binding<Bool> {
+        Binding(
+            get: {
+                draft.requestsConference
+                    || draft.conference?.isCreationRequest == true
+            },
+            set: { on in
+                draft.requestsConference = on
+                if !on, draft.conference?.isCreationRequest == true {
+                    draft.conference = nil
+                }
+            }
+        )
     }
 
     private var attendeesSection: some View {

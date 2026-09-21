@@ -99,6 +99,44 @@ struct CalendarEventDraftTests {
         )
     }
 
+    @Test("makeEvent maps a Meet create intent to a pending conference")
+    func makeEventConferenceIntent() {
+        var draft = CalendarEventDraft(
+            start: Self.fixedNow,
+            duration: 3600
+        )
+        draft.requestsConference = true
+
+        let event = draft.makeEvent(sourceID: "s1", collectionID: "c1")
+
+        #expect(event.conference?.kind == .meet)
+        #expect(event.conference?.status == .pending)
+        #expect(event.conference?.isCreationRequest == true)
+    }
+
+    @Test("init(event:) preserves the synced conference over the intent flag")
+    func editPreservesConference() {
+        var event = Self.event()
+        event.conference = PIMConference(
+            kind: .other,
+            name: "Zoom",
+            joinURL: "https://zoom.us/j/9",
+            status: .success
+        )
+        var draft = CalendarEventDraft(event: event)
+        draft.requestsConference = true
+
+        let rebuilt = draft.makeEvent(
+            sourceID: "s1",
+            collectionID: "c1"
+        )
+
+        // The synced conference survives the edit — the intent flag
+        // only applies when no conference exists.
+        #expect(rebuilt.conference?.joinURL == "https://zoom.us/j/9")
+        #expect(rebuilt.conference?.isCreationRequest == false)
+    }
+
     @Test("a create draft produces a record without provider identity")
     func createDraft() {
         var draft = CalendarEventDraft(start: Self.fixedNow)

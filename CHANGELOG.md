@@ -131,6 +131,13 @@ All notable changes to Brev are documented here.
   pre-filled when the participant is not in any synced contacts
   source — with the same provenance and capability gating as the
   sender panel.
+- Google Meet conferences (ADR-0072, #13): synced conferences render
+  in the event detail with name, status, a join button, and tappable
+  dial-in numbers. On a Google target the editor offers "Add Google
+  Meet video call," which requests a new conference on save and keeps
+  the pending state until Google fills in the entry points; edits and
+  moves never lose an existing conference, and CalDAV events carry
+  synced conferences through CONFERENCE properties.
 - Conversation metadata foundation: source-owned members, explicit cached coverage,
   conservative RFC reply-link resolution and indexed Gmail cached-thread lookup.
   This prepares cross-folder reading; reader integration and related-mail loading

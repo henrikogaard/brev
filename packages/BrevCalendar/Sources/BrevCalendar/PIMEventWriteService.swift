@@ -183,7 +183,22 @@ public actor PIMEventWriteService {
             }
             draft.providerItemKey = result.eventID
             draft.providerVersion = result.etag
+            // The provider's conference (pending until entry points
+            // arrive) replaces the local create intent (#13).
+            if let conference = result.conference {
+                draft.conference = conference
+                draft.conferenceURL = conference.joinURL
+            } else if draft.conference?.isCreationRequest == true {
+                // The request was sent; the intent flag is local-only.
+                draft.conference?.isCreationRequest = false
+            }
         case .calDAV:
+            // CalDAV cannot mint conferences: drop a create intent so
+            // it is neither written nor stored as a phantom pending
+            // record. A synced conference travels with the ICS (#13).
+            if draft.conference?.isCreationRequest == true {
+                draft.conference = nil
+            }
             let credential = try await davCredential(for: source)
             let ics = PIMEventICSWriter.vcalendar(
                 for: draft,
@@ -228,6 +243,7 @@ public actor PIMEventWriteService {
             attendees: draft.attendees,
             reminders: draft.reminders,
             conferenceURL: draft.conferenceURL,
+            conference: draft.conference,
             recurrenceRule: draft.recurrenceRule,
             recurrenceID: draft.recurrenceID,
             rawPayload: draft.rawPayload,
@@ -263,6 +279,12 @@ public actor PIMEventWriteService {
                 )
             }
             updated.providerVersion = result.etag
+            // Patch responses carry the full resource — refresh the
+            // conference so a pending create resolves in place (#13).
+            if let conference = result.conference {
+                updated.conference = conference
+                updated.conferenceURL = conference.joinURL
+            }
         case .calDAV:
             let credential = try await davCredential(for: source)
             let ics = PIMEventICSWriter.vcalendar(
