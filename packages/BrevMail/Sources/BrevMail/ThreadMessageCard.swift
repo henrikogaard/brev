@@ -513,14 +513,22 @@ struct ThreadMessageCard: View {
     private func bodyWithReaderTimeout(for messageID: String) async throws -> MessageBody {
         // Expansion fetches share the conversation's permit budget so
         // "Expand All" cannot fan out into N parallel backend reads.
-        try await renderPool.withBodyLoadPermit {
-            try await MessageBodyLoadTimeoutRace.load(
-                messageID: messageID,
-                sourceID: sourceID,
-                backend: backend,
-                timeoutNanoseconds: Self.bodyLoadTimeoutNanoseconds,
-                timeoutError: { ThreadMessageBodyLoadTimeoutError() }
-            )
+        // The timeout wraps the permit wait too: a queued waiter whose
+        // permits are held by stalled loads must still fail over instead of
+        // pinning the card at "Loading message…" forever (#51).
+        try await MessageBodyLoadTimeoutRace.race(
+            timeoutNanoseconds: Self.bodyLoadTimeoutNanoseconds,
+            timeoutError: { ThreadMessageBodyLoadTimeoutError() }
+        ) {
+            try await renderPool.withBodyLoadPermit {
+                try await MessageBodyLoadTimeoutRace.load(
+                    messageID: messageID,
+                    sourceID: sourceID,
+                    backend: backend,
+                    timeoutNanoseconds: Self.bodyLoadTimeoutNanoseconds,
+                    timeoutError: { ThreadMessageBodyLoadTimeoutError() }
+                )
+            }
         }
     }
 
