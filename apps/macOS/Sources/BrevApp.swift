@@ -890,7 +890,7 @@ extension AppSession {
                     )
                 },
                 googleDriveConfigurationProvider: { accountID in
-                    gmailConfigurationStore.configuration(for: accountID)
+                    await gmailConfigurationStore.configuration(for: accountID)
                 },
                 googleDrivePickerDeveloperKey:
                 Bundle.main.object(
