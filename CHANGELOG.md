@@ -82,6 +82,11 @@ All notable changes to Brev are documented here.
   Drive file to a calendar event as a link — providers store the URL,
   never the bytes — and event attachments round-trip through CalDAV
   (`ATTACH;VALUE=URI`) and Google Calendar (`attachments[]`).
+- iOS/macOS parity (#79): the iOS reader and thread cards can now Save
+  As a message to an .eml file through the share sheet, matching the
+  macOS overflow-menu action, and iPad hardware-keyboard users get a
+  Help → Keyboard Shortcuts command that opens the same reference the
+  macOS window shows.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a

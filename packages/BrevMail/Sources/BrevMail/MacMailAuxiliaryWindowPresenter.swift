@@ -207,6 +207,21 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
                 toolbarStyle: .automatic,
                 isMovableByWindowBackground: false
             )
+        case .keyboardShortcuts:
+            // Presented as a sheet only on iPadOS (#79); macOS uses the
+            // dedicated Keyboard Shortcuts window scene. This config exists
+            // for exhaustiveness.
+            return Self(
+                title: String(localized: "Keyboard Shortcuts", bundle: .module),
+                defaultSize: CGSize(width: 440, height: 520),
+                minimumSize: CGSize(width: 380, height: 400),
+                frameAutosaveName: "BrevKeyboardShortcutsWindow",
+                styleMask: standardStyleMask,
+                titleVisibility: .visible,
+                titlebarAppearsTransparent: false,
+                toolbarStyle: .automatic,
+                isMovableByWindowBackground: false
+            )
         }
     }
 

@@ -122,7 +122,9 @@ public struct MessageDetailView: View {
     /// contact, or the shared editor for a new one (#10).
     @State private var participantContactSheet: ParticipantContactSheet?
     #if os(iOS)
-    @State private var pdfShareURL: URL?
+    /// iOS share-sheet target for exported files — PDF export and .eml
+    /// Save As both land here (#79).
+    @State private var exportShareURL: URL?
     #endif
 
     /// Identifiable sheet payload for participant contact actions.
@@ -274,10 +276,10 @@ public struct MessageDetailView: View {
         }
         #if os(iOS)
         .sheet(isPresented: Binding(
-            get: { pdfShareURL != nil },
-            set: { if !$0 { pdfShareURL = nil } }
+            get: { exportShareURL != nil },
+            set: { if !$0 { exportShareURL = nil } }
         )) {
-            if let url = pdfShareURL {
+            if let url = exportShareURL {
                 MailShareSheet(activityItems: [url])
             }
         }
@@ -417,7 +419,7 @@ public struct MessageDetailView: View {
                 messages: [(header, messageBody)],
                 fileName: pdfBaseName(for: header)
             )
-            pdfShareURL = url
+            exportShareURL = url
         } catch {
             attachmentError = MessageDetailInlineStatus(
                 message: "PDF export failed: \(error.localizedDescription)",
@@ -428,6 +430,37 @@ public struct MessageDetailView: View {
         }
         #endif
     }
+
+    /// iOS Save As: fetch the raw message bytes, write them to a temp .eml,
+    /// and hand the file to the share sheet (#79).
+    #if os(iOS)
+    private func exportCurrentMessageEML(_ header: MessageHeader) {
+        Task {
+            do {
+                let rawMessageData: Data
+                if let sourceID {
+                    rawMessageData = try await backend.rawMessageData(
+                        for: header.id,
+                        sourceID: sourceID
+                    )
+                } else {
+                    rawMessageData = try await backend.rawMessageData(for: header.id)
+                }
+                exportShareURL = try MessageEMLExport.writeToTemporaryFile(
+                    header: header,
+                    rawMessageData: rawMessageData
+                )
+            } catch {
+                attachmentError = MessageDetailInlineStatus(
+                    message: "EML export failed: \(error.localizedDescription)",
+                    tone: .danger,
+                    isDismissible: true,
+                    lineLimit: nil
+                )
+            }
+        }
+    }
+    #endif
 
     private func pdfFilename(for header: MessageHeader) -> String {
         pdfBaseName(for: header) + ".pdf"
@@ -745,7 +778,7 @@ public struct MessageDetailView: View {
             canExportPDF: !isLoading && errorMessage == nil,
             canShowProperties: true,
             extendedCapabilities: backend.extendedCapabilities,
-            canExportEML: supportsReaderEMLExport
+            canExportEML: true
         )
     }
 
@@ -761,14 +794,6 @@ public struct MessageDetailView: View {
         )
         #else
         return navigation != nil
-        #endif
-    }
-
-    private var supportsReaderEMLExport: Bool {
-        #if os(macOS)
-        true
-        #else
-        false
         #endif
     }
 
@@ -850,6 +875,16 @@ public struct MessageDetailView: View {
             printCurrentMessage()
         case .exportPDF:
             exportCurrentMessagePDF()
+        case .saveAs:
+            // #79: iOS exports the .eml locally through the share sheet;
+            // macOS keeps routing to the root save panel.
+            #if os(iOS)
+            exportCurrentMessageEML(header)
+            #else
+            if let command = DetachedMessageCommand(menuAction: action) {
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
+            }
+            #endif
         case .openInNewWindow:
             #if os(iOS)
             openWindow(value: DetachedReaderWindowPayload(

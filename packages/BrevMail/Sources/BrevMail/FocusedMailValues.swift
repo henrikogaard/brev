@@ -455,6 +455,27 @@ struct FocusedMailContextColumnActionKey: FocusedValueKey {
     typealias Value = MailContextColumnAction
 }
 
+/// Help actions published by the mailbox root so command menus can open
+/// help surfaces — macOS uses a dedicated window, iPadOS a sheet (#79).
+public struct MailHelpActions {
+    private let keyboardShortcutsAction: @MainActor () -> Void
+
+    public init(keyboardShortcuts: @escaping @MainActor () -> Void) {
+        keyboardShortcutsAction = keyboardShortcuts
+    }
+
+    /// Opens the Keyboard Shortcuts reference surface.
+    @MainActor
+    public func keyboardShortcuts() {
+        keyboardShortcutsAction()
+    }
+}
+
+/// Key that publishes help actions for command menus.
+public struct FocusedMailHelpActionsKey: FocusedValueKey {
+    public typealias Value = MailHelpActions
+}
+
 public extension FocusedValues {
     var mailNavigation: MailNavigationState? {
         get { self[FocusedNavigationKey.self] }
@@ -515,5 +536,11 @@ public extension FocusedValues {
     internal var mailContextColumnAction: MailContextColumnAction? {
         get { self[FocusedMailContextColumnActionKey.self] }
         set { self[FocusedMailContextColumnActionKey.self] = newValue }
+    }
+
+    /// Help actions for the focused mailbox workspace.
+    var mailHelpActions: MailHelpActions? {
+        get { self[FocusedMailHelpActionsKey.self] }
+        set { self[FocusedMailHelpActionsKey.self] = newValue }
     }
 }
