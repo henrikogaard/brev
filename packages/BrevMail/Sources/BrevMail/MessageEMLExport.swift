@@ -29,6 +29,21 @@ enum MessageEMLExport {
         try rawMessageData.write(to: url, options: [.atomic])
     }
 
+    /// Writes the raw message to a named file in the temporary directory so
+    /// iOS can hand it to the share sheet (`MailShareSheet`). The file name
+    /// matches the macOS save-panel default; repeat exports of the same
+    /// message overwrite the previous temp copy.
+    @discardableResult
+    static func writeToTemporaryFile(
+        header: MessageHeader,
+        rawMessageData: Data
+    ) throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(fileName(for: header))
+        try write(rawMessageData, to: url)
+        return url
+    }
+
     private static func safeFileBaseName(_ value: String) -> String {
         let illegal = CharacterSet(charactersIn: "/\\:?%*|\"<>")
             .union(.newlines)

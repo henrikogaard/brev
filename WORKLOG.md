@@ -1,5 +1,40 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #79 (iOS/macOS parity gaps)
+
+### Goal
+
+Close the two real parity gaps from the 2026-09-22 audit: .eml export
+on iOS and a Keyboard Shortcuts surface for iPad hardware keyboards.
+
+### Changes
+
+- `MessageEMLExport.writeToTemporaryFile`: cross-platform temp-file
+  writer for the iOS share-sheet path (subject-named .eml, overwrite
+  semantics).
+- Reader + thread card .saveAs on iOS now export locally through
+  `MailShareSheet` instead of routing to the macOS save panel; the
+  `canExportEML` menu gate is lifted on reader surfaces (row menus
+  stay macOS-only by design).
+- New `MailHelpActions` focused value + `MailNavigationState.Sheet
+  .keyboardShortcuts`; iPadOS gets a Help → Keyboard Shortcuts
+  command menu presenting the shared reference view as a sheet.
+  `MacMailAuxiliaryWindowPresenter` gained the exhaustiveness case.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail`: green.
+- `swift test --filter 'EMLExport|HelpActions'`: 6 new tests pass
+  (temp-file naming/sanitizing/overwrite, help action forwarding).
+- `tuist build BrevIOS`: green — iOS code paths compile.
+- `scripts/lint.sh`, `scripts/format.sh`: clean.
+- Skipped: rendered share-sheet/Help-menu verification on device —
+  deferred to maintainer QA.
+
+### Next
+
+- PR targets main; board → In review on merge.
+
 ## 2026-09-22 — Agent — Issue #14 slice 2 (event Drive attachments + upload progress)
 
 ### Goal

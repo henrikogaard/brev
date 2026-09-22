@@ -75,7 +75,9 @@ public struct ThreadConversationView: View {
     @State private var showUnreadOnly = false
     @State private var printExportErrorMessage: String?
     #if os(iOS)
-    @State private var pdfShareURL: URL?
+    /// iOS share-sheet target for exported files — PDF export and .eml
+    /// Save As both land here (#79).
+    @State private var exportShareURL: URL?
     #endif
     @State private var showAISummaryConsent = false
     @State private var activeAISummaryRequest: ThreadAISummaryRequest?
@@ -298,10 +300,10 @@ public struct ThreadConversationView: View {
             }
             #if os(iOS)
             .sheet(isPresented: Binding(
-                get: { pdfShareURL != nil },
-                set: { if !$0 { pdfShareURL = nil } }
+                get: { exportShareURL != nil },
+                set: { if !$0 { exportShareURL = nil } }
             )) {
-                if let url = pdfShareURL {
+                if let url = exportShareURL {
                     MailShareSheet(activityItems: [url])
                 }
             }
@@ -377,7 +379,7 @@ public struct ThreadConversationView: View {
             canExportPDF: true,
             canShowProperties: true,
             extendedCapabilities: backend.extendedCapabilities,
-            canExportEML: supportsCardEMLExport
+            canExportEML: true
         )
     }
 
@@ -392,14 +394,6 @@ public struct ThreadConversationView: View {
         )
         #else
         return true
-        #endif
-    }
-
-    private var supportsCardEMLExport: Bool {
-        #if os(macOS)
-        true
-        #else
-        false
         #endif
     }
 
@@ -464,6 +458,16 @@ public struct ThreadConversationView: View {
             printCardMessage(header)
         case .exportPDF:
             exportCardPDF(header)
+        case .saveAs:
+            // #79: iOS exports the .eml locally through the share sheet;
+            // macOS keeps routing to the root save panel.
+            #if os(iOS)
+            exportCardEML(header)
+            #else
+            if let command = DetachedMessageCommand(menuAction: action) {
+                readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
+            }
+            #endif
         default:
             if let command = DetachedMessageCommand(menuAction: action) {
                 readerCommandAction?(.init(command: command, header: header, sourceID: sourceID))
@@ -512,13 +516,39 @@ public struct ThreadConversationView: View {
                     messages: [(header, messageBody)],
                     fileName: cardPDFBaseName(for: header)
                 )
-                pdfShareURL = url
+                exportShareURL = url
             } catch {
                 printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }
         }
         #endif
     }
+
+    /// iOS Save As on a card: fetch the raw bytes, write a temp .eml, and
+    /// hand it to the share sheet (#79).
+    #if os(iOS)
+    private func exportCardEML(_ header: MessageHeader) {
+        Task { @MainActor in
+            do {
+                let rawMessageData: Data
+                if let sourceID {
+                    rawMessageData = try await backend.rawMessageData(
+                        for: header.id,
+                        sourceID: sourceID
+                    )
+                } else {
+                    rawMessageData = try await backend.rawMessageData(for: header.id)
+                }
+                exportShareURL = try MessageEMLExport.writeToTemporaryFile(
+                    header: header,
+                    rawMessageData: rawMessageData
+                )
+            } catch {
+                printExportErrorMessage = String(localized: "EML export failed: \(error.localizedDescription)", bundle: .module)
+            }
+        }
+    }
+    #endif
 
     private func cardPDFBaseName(for header: MessageHeader) -> String {
         let fallback = header.subject.isEmpty ? String(localized: "message", bundle: .module) : header.subject
@@ -568,7 +598,7 @@ public struct ThreadConversationView: View {
             do {
                 let messages = await printableThreadMessages()
                 let url = try MailPrintController.exportPDF(messages: messages, fileName: pdfBaseName)
-                pdfShareURL = url
+                exportShareURL = url
             } catch {
                 printExportErrorMessage = String(localized: "PDF export failed: \(error.localizedDescription)", bundle: .module)
             }

@@ -66,6 +66,9 @@ public final class MailNavigationState {
         case viewSource(header: MessageHeader, sourceID: MailSourceID?)
         /// Read-only header block viewer for a single message.
         case showHeaders(header: MessageHeader, sourceID: MailSourceID?)
+        /// Keyboard-shortcut reference, presented on iPadOS from the Help
+        /// command menu (#79); macOS uses a dedicated window instead.
+        case keyboardShortcuts
     }
 
     /// The currently selected account/mailbox source. Folder and

@@ -990,6 +990,13 @@ public struct BrevMailRootView: View {
             .focusedSceneValue(\.mailImportAction, mailImportAction)
             .focusedSceneValue(\.mailFolderExportAction, mailFolderExportAction)
             .focusedSceneValue(\.mailContextColumnAction, mailContextCommandAction)
+            // iPadOS Help menu opens the shortcuts reference as a sheet (#79).
+            .focusedSceneValue(\.mailHelpActions, MailHelpActions(
+                keyboardShortcuts: {
+                    guard navigation.presentedSheet == nil else { return }
+                    navigation.presentedSheet = .keyboardShortcuts
+                }
+            ))
             .environment(\.undoQueue, undoQueue)
             // Published on iOS too: `MailUndoCommands` registers ⌘Z for iPad
             // hardware keyboards from the same focused value.
@@ -3753,6 +3760,20 @@ public struct BrevMailRootView: View {
             )
             .brevTheme(theme)
             .task { await refreshOutboxCount() }
+        case .keyboardShortcuts:
+            // iPadOS Help menu surface (#79); the view has no dismiss
+            // affordance of its own, so the sheet wraps it in a stack.
+            NavigationStack {
+                KeyboardShortcutsHelpView()
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done", bundle: .module)) {
+                                onClose?()
+                            }
+                        }
+                    }
+            }
+            .brevTheme(theme)
         case .mailboxAssistant:
             MailboxActionAgentSheet(
                 resolve: { request in

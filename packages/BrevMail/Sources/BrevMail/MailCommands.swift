@@ -28,6 +28,7 @@ public struct MailCommands: Commands {
     @FocusedValue(\.mailComposePresentationActions) private var composeActions
     @FocusedValue(\.mailPrintExportActions) private var printExportActions
     @FocusedValue(\.mailContextColumnAction) private var mailContextColumnAction
+    @FocusedValue(\.mailHelpActions) private var helpActions
 
     /// Creates the cross-platform command set.
     public init() {}
@@ -284,6 +285,10 @@ public struct MailCommands: Commands {
             .disabled(mailContextColumnAction?.isAvailable != true)
             #endif
         }
+
+        #if os(iOS)
+        iOSHelpCommands
+        #endif
     }
 
     // MARK: - Supporting computed properties
@@ -327,4 +332,22 @@ public struct MailCommands: Commands {
     private var isComposePresentationAvailable: Bool {
         composeActions?.isAvailable == true
     }
+
+    // MARK: - iPadOS Help menu
+
+    /// iPadOS exposes the same Keyboard Shortcuts reference the macOS Help
+    /// menu opens — presented as a sheet by the focused scene (#79).
+    /// Command menus only surface with a hardware keyboard, so no iPhone
+    /// gate is needed.
+    #if os(iOS)
+    @CommandsBuilder
+    private var iOSHelpCommands: some Commands {
+        CommandMenu(String(localized: "Help", bundle: .module)) {
+            Button(String(localized: "Keyboard Shortcuts…", bundle: .module)) {
+                helpActions?.keyboardShortcuts()
+            }
+            .disabled(helpActions == nil)
+        }
+    }
+    #endif
 }
