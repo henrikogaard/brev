@@ -4202,3 +4202,27 @@ buttons, and package-aware localization.
 - Next: #6 slice 3 browsing UI (agenda/day/week/month + detail), then
   search/offline-stale states; live-provider evidence stays the
   maintainer gate.
+
+## 2026-09-22 — Agent — Issue #12 slice 3 (tasks browsing UI + Create Task)
+
+- Goal: ship the Tasks surface and wire Create Task from Message into
+  provider task lists per ADR-0072 — closing the loop on the slice-1/2
+  sync and write pipelines.
+- Changes: TasksBrowsingModel (cache-only load, collection-grouped
+  sections, hidden/search/list filters, completed toggle, staleness,
+  brev://task deep links); TasksEditingModel + TaskDraft over the
+  TaskWriting seam (PIMTaskWriteService); TasksRootView/TasksListView/
+  TaskDetailView/TaskEditorView mirroring the contacts surface;
+  MessageTaskTarget replacing the Reminders-or-share enum with provider
+  task lists via PIMTaskMessageCreator; macOS Tasks window (Window menu
+  + sidebar footer) and iOS full-screen cover; PIMDeepLink .task case.
+- Fixes during verification: TasksEditingModel guard failures now set
+  lastError (contacts-editor parity) instead of throwing silently.
+- Verification: 24 new Swift Testing cases green
+  (TasksBrowsingModelTests, TasksEditingModelTests) plus the updated
+  MessageTaskPayloadTests; lint.sh and format.sh clean.
+- Skipped: rendered verification of the Tasks window (no signing cert
+  locally); pixel snapshots unchanged — the surface rides existing
+  coverage. Live-provider write smoke tests remain the maintainer gate.
+- Next: #12 stays In progress pending maintainer QA; remaining issue
+  scope is rendered/live verification, not code.

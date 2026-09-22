@@ -1016,8 +1016,30 @@ grant.
   (Google and CalDAV). Google sources route through the existing
   `enableGooglePIMWriteFeature` path, which re-authorizes with the
   `tasks` scope unioned into the grant before the capability flips.
-- Deferred: task browsing UI, Create Task from Message target
-  integration, rendered verification.
+
+### #12 slice 3 — task browsing UI and Create Task integration (2026-09-22, BrevMail/apps)
+
+- `TasksBrowsingModel`: cache-only load, collection-grouped
+  sections, hidden-collection/search/list filtering, a completed
+  toggle, staleness, and `brev://task/<id>` deep links — the same
+  surface contract as ContactsBrowsingModel.
+- `TasksEditingModel` + `TaskDraft`: the editor's write seam
+  (`TaskWriting`, conformed by `PIMTaskWriteService`), writable
+  target resolution, and create/update/delete/toggleCompleted.
+  A list change routes through the write service's cross-collection
+  move; guard failures surface as `lastError` like the contacts
+  editor.
+- `TasksRootView` (NavigationSplitView), `TasksListView`,
+  `TaskDetailView`, `TaskEditorView` mirror the contacts
+  surface; macOS gets a Tasks window (Window menu + sidebar footer),
+  iOS a full-screen cover from the same sidebar affordance.
+- `MessageTaskTarget` replaces the Create Task sheet's
+  Apple-Reminders-or-share enum: provider task lists are offered
+  alongside Reminders, and choosing one writes the draft through
+  `PIMTaskMessageCreator` into the synced list with a
+  `brev://task/<id>` link recorded on the task.
+- Deferred: rendered verification of the Tasks window on device,
+  live-provider write smoke tests.
 
 ## References (checked 2026-09-20)
 

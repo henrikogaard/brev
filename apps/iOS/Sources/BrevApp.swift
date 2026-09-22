@@ -39,6 +39,7 @@ struct BrevApp: App {
     @State private var showSettings = false
     @State private var showCalendar = false
     @State private var showContacts = false
+    @State private var showTasks = false
     @State private var appIconVariant = AppIconPreferences.load()
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var pendingComposePrefill: ComposePrefill?
@@ -53,6 +54,9 @@ struct BrevApp: App {
     /// Hoisted so brev://contact deep links can reveal a record in the
     /// shared instance (#10); the Contacts cover renders this model.
     @State private var contactsBrowsingModel: ContactsBrowsingModel
+    /// Hoisted so brev://task deep links can reveal a record in the
+    /// shared instance (#12); the Tasks cover renders this model.
+    @State private var tasksBrowsingModel: TasksBrowsingModel
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -74,6 +78,13 @@ struct BrevApp: App {
                 coordinator: session.pimSourceCoordinator,
                 collectionService: session.pimCollectionService,
                 contactSyncService: session.pimContactSyncService
+            )
+        )
+        _tasksBrowsingModel = State(
+            initialValue: TasksBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                taskSyncService: session.pimTaskSyncService
             )
         )
     }
@@ -149,6 +160,9 @@ struct BrevApp: App {
                         onOpenContacts: {
                             showContacts = true
                         },
+                        onOpenTasks: {
+                            showTasks = true
+                        },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)
@@ -171,6 +185,11 @@ struct BrevApp: App {
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
                         calendarEditing: CalendarEditingModel(
                             writeService: session.pimEventWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        ),
+                        taskEditing: TasksEditingModel(
+                            writeService: session.pimTaskWriteService,
                             coordinator: session.pimSourceCoordinator,
                             collectionService: session.pimCollectionService
                         ),
@@ -266,6 +285,27 @@ struct BrevApp: App {
                         ToolbarItem(placement: .cancellationAction) {
                             Button(String(localized: "Done")) {
                                 showContacts = false
+                            }
+                        }
+                    }
+                }
+                .brevTheme(session.theme)
+                .environment(\.openURL, browserOpenURLAction)
+            }
+            .fullScreenCover(isPresented: $showTasks) {
+                NavigationStack {
+                    TasksRootView(
+                        model: tasksBrowsingModel,
+                        editing: TasksEditingModel(
+                            writeService: session.pimTaskWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showTasks = false
                             }
                         }
                     }
@@ -414,6 +454,9 @@ struct BrevApp: App {
             case .contact(let id):
                 showContacts = true
                 Task { await contactsBrowsingModel.revealContact(id: id) }
+            case .task(let id):
+                showTasks = true
+                Task { await tasksBrowsingModel.revealTask(id: id) }
             }
         }
     }

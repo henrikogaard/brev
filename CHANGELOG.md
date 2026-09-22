@@ -63,6 +63,13 @@ All notable changes to Brev are documented here.
   re-authorizing the `tasks` scope, CalDAV via VTODO `PUT`/`DELETE`
   with ETag preconditions. Cross-list moves are a delete+create on both
   providers.
+- Tasks browsing and authoring (ADR-0072 #12): a Tasks surface on macOS
+  (Window menu) and iOS (sidebar footer) lists synced tasks grouped by
+  list with a completed toggle, local search, staleness banners, and a
+  detail pane with Copy Link. On writable sources the surface offers
+  New/Edit/Delete plus per-row completion; Create Task from a message
+  can now write straight into a provider task list instead of only
+  Apple Reminders or the share sheet.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a

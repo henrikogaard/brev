@@ -29,6 +29,8 @@ public enum PIMDeepLink: Equatable, Sendable {
     case event(id: PIMEvent.ID)
     /// `brev://contact?id=<PIMContact.ID>` — reveals the contact in Contacts.
     case contact(id: PIMContact.ID)
+    /// `brev://task?id=<PIMTask.ID>` — reveals the task in Tasks (#12).
+    case task(id: PIMTask.ID)
 }
 
 /// Builds and parses `brev://event` / `brev://contact` URLs (#10).
@@ -45,6 +47,11 @@ public enum PIMDeepLinkPolicy {
     /// The deep link that reopens one cached contact.
     public static func url(forContactID id: PIMContact.ID) -> URL? {
         url(host: "contact", id: id)
+    }
+
+    /// The deep link that reopens one cached task (#12).
+    public static func url(forTaskID id: PIMTask.ID) -> URL? {
+        url(host: "task", id: id)
     }
 
     /// Parses a `brev://` URL into a PIM deep link; nil for any other
@@ -68,6 +75,8 @@ public enum PIMDeepLinkPolicy {
             return .event(id: id)
         case "contact":
             return .contact(id: id)
+        case "task":
+            return .task(id: id)
         default:
             return nil
         }

@@ -406,6 +406,9 @@ public struct BrevMailRootView: View {
     /// Opens the Contacts browsing surface (ADR-0072). Nil hides the
     /// iOS sidebar entry; macOS reaches the surface via the Window menu.
     private let onOpenContacts: (() -> Void)?
+    /// Opens the Tasks browsing surface (ADR-0072 #12). Nil hides the
+    /// iOS sidebar entry; macOS reaches the surface via the Window menu.
+    private let onOpenTasks: (() -> Void)?
     private let onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)?
     private let signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)?
     private let composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)?
@@ -433,6 +436,11 @@ public struct BrevMailRootView: View {
     /// keeps the local EventKit sheet.
     private let calendarEditing: CalendarEditingModel?
 
+    /// Writable-tasks owner for Create Task from Message (#12). When
+    /// nil or when no writable task list resolves, the sheet offers
+    /// only Reminders and Share.
+    private let taskEditing: TasksEditingModel?
+
     /// Shared contact-cache actions for the sender panel (#10); nil
     /// hides the contact affordances.
     private let senderContactActions: MailSenderContactActions?
@@ -456,6 +464,7 @@ public struct BrevMailRootView: View {
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
+        onOpenTasks: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
@@ -471,6 +480,7 @@ public struct BrevMailRootView: View {
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
+        taskEditing: TasksEditingModel? = nil,
         senderContactActions: MailSenderContactActions? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil
     ) {
@@ -483,6 +493,7 @@ public struct BrevMailRootView: View {
             onOpenSettings: onOpenSettings,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
+            onOpenTasks: onOpenTasks,
             onSettingsMailboxContextChange: onSettingsMailboxContextChange,
             signatureContextProvider: signatureContextProvider,
             composeSecurityDefaultsProvider: composeSecurityDefaultsProvider,
@@ -498,6 +509,7 @@ public struct BrevMailRootView: View {
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
             calendarEditing: calendarEditing,
+            taskEditing: taskEditing,
             senderContactActions: senderContactActions,
             inviteReconciler: inviteReconciler
         )
@@ -517,6 +529,7 @@ public struct BrevMailRootView: View {
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
+        onOpenTasks: (() -> Void)? = nil,
         onSettingsMailboxContextChange: ((SettingsMailboxContext) -> Void)? = nil,
         signatureContextProvider: ((BrevAccount) -> ComposeSignatureContext)? = nil,
         composeSecurityDefaultsProvider: ((BrevAccount) -> ComposeSecurityDefaultState)? = nil,
@@ -532,6 +545,7 @@ public struct BrevMailRootView: View {
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
+        taskEditing: TasksEditingModel? = nil,
         senderContactActions: MailSenderContactActions? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil
     ) {
@@ -550,6 +564,7 @@ public struct BrevMailRootView: View {
         self.onOpenSettings = onOpenSettings
         self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
+        self.onOpenTasks = onOpenTasks
         self.onSettingsMailboxContextChange = onSettingsMailboxContextChange
         self.signatureContextProvider = signatureContextProvider
         self.composeSecurityDefaultsProvider = composeSecurityDefaultsProvider
@@ -573,6 +588,7 @@ public struct BrevMailRootView: View {
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
         self.calendarEditing = calendarEditing
+        self.taskEditing = taskEditing
         self.senderContactActions = senderContactActions
         self.inviteReconciler = inviteReconciler
     }
@@ -1345,6 +1361,7 @@ public struct BrevMailRootView: View {
             onOpenSettings: nil,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
+            onOpenTasks: onOpenTasks,
             onOpenMessages: {
                 openSelectedMessagesOnCompact()
             },
@@ -3742,10 +3759,29 @@ public struct BrevMailRootView: View {
             if let draft = MessageTaskDraftBuilder.draft(for: header, accountID: accountID) {
                 MessageTaskSheet(
                     draft: draft,
-                    create: { try await AppleReminderTaskCreator().createTask(from: $0) },
+                    editing: taskEditing,
+                    create: { draft in
+                        switch draft.target.kind {
+                        case .appleReminders:
+                            return try await AppleReminderTaskCreator()
+                                .createTask(from: draft)
+                        case .providerTaskList:
+                            guard let taskEditing else {
+                                throw MessageTaskCreationError
+                                    .unsupportedTarget
+                            }
+                            return try await PIMTaskMessageCreator(
+                                editing: taskEditing
+                            ).createTask(from: draft)
+                        case .systemShare:
+                            throw MessageTaskCreationError
+                                .unsupportedTarget
+                        }
+                    },
                     onClose: { onClose?() }
                 )
                 .brevTheme(theme)
+                .task { await taskEditing?.load() }
             } else {
                 MessageTaskUnavailableSheet(onClose: { onClose?() })
                     .brevTheme(theme)
