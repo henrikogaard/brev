@@ -4,6 +4,15 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Performance
+
+- Mail root view no longer re-decodes the VIP sender list and custom
+  mail profiles from persisted JSON on every SwiftUI update pass; both
+  are decoded once and refreshed when the stored values change.
+- Gmail sync, ICS parsing, meeting-time suggestions, and CalDAV
+  freebusy requests now reuse cached date formatters instead of
+  constructing one per record.
+
 ### Added
 
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source

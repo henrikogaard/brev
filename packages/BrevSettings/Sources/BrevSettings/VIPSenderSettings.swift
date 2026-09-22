@@ -56,6 +56,12 @@ public struct VIPSenderSettings: Codable, Equatable, Sendable {
         return settings
     }
 
+    /// Decodes a persisted `Key.senders` payload. Returns nil when the
+    /// data is missing or malformed so callers can fall back to `.defaults`.
+    public static func decode(_ data: Data) -> VIPSenderSettings? {
+        try? JSONDecoder().decode(VIPSenderSettings.self, from: data)
+    }
+
     public func save(to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Key.senders)

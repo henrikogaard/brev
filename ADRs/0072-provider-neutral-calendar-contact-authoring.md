@@ -1103,6 +1103,17 @@ grant.
   account; Drive attachments on tasks/contacts are not a provider
   concept and stay out.
 
+### #81 — ICS parse/write formatter caching (2026-09-22, BrevCalendar)
+
+- `ICSParser` now caches TZID-qualified `DateFormatter`s in a
+  lock-guarded dictionary keyed by `TimeZone.identifier` instead of
+  constructing one per DTSTART/DTEND/RRULE value, and
+  `PIMDAVEventSync.icalTimestamp` uses a shared UTC formatter.
+  Parsing is unchanged; the cache only removes repeated formatter
+  construction during calendar sync, matching the existing
+  `SenderContextPanel`/`MessageListDatePresentation` pattern.
+  No public API, provider behavior, or stored data changed.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

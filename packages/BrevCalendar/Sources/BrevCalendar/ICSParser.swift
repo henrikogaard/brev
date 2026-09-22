@@ -732,12 +732,23 @@ public enum ICSParser {
     /// A `yyyyMMdd'T'HHmmss` formatter that interprets the value in `zone`,
     /// applying the zone's own DST rules for the parsed date.
     private static func makeZoneFormatter(_ zone: TimeZone) -> DateFormatter {
+        zoneFormatterLock.lock()
+        defer { zoneFormatterLock.unlock() }
+        if let cached = zoneFormatterCache[zone.identifier] {
+            return cached
+        }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyyMMdd'T'HHmmss"
         formatter.timeZone = zone
+        zoneFormatterCache[zone.identifier] = formatter
         return formatter
     }
+
+    /// ICS feeds reuse a small set of TZIDs; caching keeps per-event parsing
+    /// from rebuilding a `DateFormatter` for every DTSTART/DTEND/RRULE.
+    private static let zoneFormatterLock = NSLock()
+    private nonisolated(unsafe) static var zoneFormatterCache: [String: DateFormatter] = [:]
 
     private static let utcFormatter: DateFormatter = {
         let formatter = DateFormatter()

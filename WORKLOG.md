@@ -1,5 +1,47 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #81 (performance/stability pass)
+
+### Goal
+
+Audit-driven performance and stability pass across iOS and macOS,
+fixing only confirmed hot-path allocations and per-render decodes.
+
+### Changes
+
+- `BrevMailRootView`: `cachedVIPSenderEmails` and
+  `cachedCustomProfiles` @State caches replace per-body-eval
+  `VIPSenderSettings.load()` (UserDefaults + JSON decode) and
+  `MailProfileStorage.decode` calls; refreshed via onChange on
+  the backing `AppStorage` values, matching the existing
+  `cachedMailboxSourcePreferences` contract.
+- New seams: `VIPSenderSettings.decode(_:)` and
+  `MailProfileStorage.load()/storageKey`.
+- `GmailAPIBackend`: shared RFC 2822 formatter for per-message
+  Date-header parsing and a shared yyyy/MM/dd formatter for search
+  query date ranges.
+- `ICSParser`: TZID-keyed lock-guarded DateFormatter cache for
+  zoned date parsing; `PIMDAVEventSync.icalTimestamp` and
+  `MeetingTimeSuggestionFormatter` use shared/cached
+  formatters. ADR-0072 note added (protected path).
+- Audited, no change needed: snippet regex/preview caches in
+  `MessageListPresentation`, `MessageListDatePresentation`,
+  `SenderContextPanel`, `ThreadConversationRenderPool`
+  permit protocol, iOS BGTask scheduling, Gmail Retry-After parsing.
+
+### Verification
+
+- `swift build`: BrevSettings, BrevCalendar, BrevGmail,
+  BrevMail all green.
+- `swift test`: VIPSender (27), ICS (12), Gmail suites (160),
+  MeetingTime/MailProfile/SmartView/VIP (23) — all pass.
+- `scripts/lint.sh`, `scripts/format.sh`: clean.
+- Skipped: rendered verification — no user-visible behavior change.
+
+### Next
+
+- PR targets main; board → In review on merge.
+
 ## 2026-09-22 — Agent — Issue #79 (iOS/macOS parity gaps)
 
 ### Goal

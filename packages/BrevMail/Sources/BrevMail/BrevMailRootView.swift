@@ -361,7 +361,7 @@ public struct BrevMailRootView: View {
     @State private var badgeUpdater = UnreadBadgeUpdater()
     @State private var notificationDelegate = BrevNotificationDelegate()
     @State private var isInitialMailboxSelectionPresented = false
-    @AppStorage("mail.profiles.custom.v1") private var customProfileStorage = ""
+    @AppStorage(MailProfileStorage.storageKey) private var customProfileStorage = ""
     @AppStorage("mail.profiles.activeID.v1") private var activeProfileID = MailProfile.allMailboxesID
     @AppStorage(MailboxSourcePreferencesStorage.storageKey) private var mailboxSourcePreferencesData = Data()
     @AppStorage(FolderVisibilityPreferencesStorage.storageKey) private var folderVisibilityPreferencesData = Data()
@@ -376,6 +376,11 @@ public struct BrevMailRootView: View {
     @State private var cachedFolderVisibilityPreferences = FolderVisibilityPreferencesStorage.load()
     @State private var cachedFolderAliasPreferences = FolderAliasPreferencesStorage.load()
     @State private var cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.load()
+    /// Same decode-once contract as the caches above: the VIP email set feeds
+    /// smart-view resolution and the custom profile list feeds sidebar/profile
+    /// derivation, so both must not hit UserDefaults/JSONDecoder per body pass.
+    @State private var cachedVIPSenderEmails = Set(VIPSenderSettings.load().senders.map(\.email))
+    @State private var cachedCustomProfiles = MailProfileStorage.load()
     @AppStorage(MailboxViewPreferenceKey.readingPanePlacement)
     private var readingPanePlacementRaw = MailboxReadingPanePlacement.side.rawValue
     // Same key the list views read, so the toolbar's Sort By section and the
@@ -712,6 +717,14 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: localMessageWorkflowStateData) { _, data in
                 cachedLocalMessageWorkflowState = LocalMessageWorkflowStateStorage.decode(data) ?? .defaults
+            }
+            .onChange(of: customProfileStorage) { _, rawValue in
+                cachedCustomProfiles = MailProfileStorage.decode(rawValue)
+            }
+            .onChange(of: vipSenderData) { _, data in
+                cachedVIPSenderEmails = Set(
+                    (VIPSenderSettings.decode(data) ?? .defaults).senders.map(\.email)
+                )
             }
     }
 
@@ -2684,10 +2697,8 @@ public struct BrevMailRootView: View {
     }
 
     private var selectedSmartView: MailboxSmartView? {
-        _ = vipSenderData
         guard let view = MailboxSmartView.selected(for: navigation) else { return nil }
-        let vipEmails = Set(VIPSenderSettings.load().senders.map(\.email))
-        return view.resolvingVIPEmails(vipEmails)
+        return view.resolvingVIPEmails(cachedVIPSenderEmails)
     }
 
     private var localMessageWorkflowStateBinding: Binding<LocalMessageWorkflowState> {
@@ -2701,7 +2712,7 @@ public struct BrevMailRootView: View {
     }
 
     private var customProfiles: [MailProfile] {
-        MailProfileStorage.decode(customProfileStorage)
+        cachedCustomProfiles
     }
 
     private var profiles: [MailProfile] {

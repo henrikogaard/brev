@@ -492,12 +492,16 @@ public struct PIMDAVEventSync: Sendable {
     }
 
     private static func icalTimestamp(_ date: Date) -> String {
+        icalTimestampFormatter.string(from: date)
+    }
+
+    private static let icalTimestampFormatter: DateFormatter = {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.timeZone = TimeZone(identifier: "UTC")
         formatter.dateFormat = "yyyyMMdd'T'HHmmss'Z'"
-        return formatter.string(from: date)
-    }
+        return formatter
+    }()
 }
 
 private extension PIMDAVConnectError {
