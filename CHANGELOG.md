@@ -56,7 +56,13 @@ All notable changes to Brev are documented here.
   local cache — Google via paged `tasks.list` with `updatedMin`
   incremental passes and full-resync recovery, CalDAV via RFC 6578
   `sync-collection` or a VTODO-filtered ETag-diff fallback. Task sync
-  is read-only in this slice; browsing and editing land later.
+  is read-only; browsing lands in a later slice.
+- Task writes (ADR-0072 #12): the Editing opt-in on tasks sources
+  unlocks create, edit, complete, reorder/reparent, move, and delete —
+  Google via `tasks.insert`/`patch`/`delete`/`move` after
+  re-authorizing the `tasks` scope, CalDAV via VTODO `PUT`/`DELETE`
+  with ETag preconditions. Cross-list moves are a delete+create on both
+  providers.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a

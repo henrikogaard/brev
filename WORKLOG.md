@@ -1,5 +1,51 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #12 slice 2 (task write pipeline)
+
+### Goal
+
+Add the provider-neutral task write path on top of slice 1's read-only
+sync: create, edit, complete, reorder/reparent, move, and delete for
+Google Tasks and CalDAV VTODO sources behind the Editing opt-in.
+
+### Changes
+
+- New `GoogleTaskWriter` (tasks.insert/patch/delete/move REST calls,
+  etag If-Match preconditions, cleared fields as JSON null) and
+  `PIMDAVTaskWriter` (VTODO PUT/DELETE on the collection URL, stored
+  href for updates/deletes, If-None-Match create).
+- New `PIMTaskICSWriter` — canonical VTODO serialization mirroring
+  `PIMEventICSWriter` (escaping, 75-octet folding, STATUS mapping,
+  X-APPLE-SORT-ORDER / RELATED-TO;RELTYPE=PARENT / URL).
+- New `PIMTaskWriteService` — capability-gated entry point
+  (`.write` capability + non-read-only collection). Google in-list
+  reorder/reparent routes through `tasks.move`; cross-collection
+  moves are delete+create on both providers (Google Tasks has no
+  cross-list move); a post-create delete failure surfaces as conflict.
+- `PIMSourceSettingsModel.canToggleWrite` now allows tasks sources
+  (Google and CalDAV); Google enablement reuses the existing
+  `enableGooglePIMWriteFeature` re-auth path with the `tasks` scope.
+- Wired `pimTaskWriteService` into `AppSession`/`AppSessionFactory`.
+- Docs: ADR-0072 slice-2 section, ADR-0006 network table (CalDAV task
+  write + Google Tasks write rows), PRIVACY.md task-write opt-in
+  wording, CHANGELOG.
+
+### Verification
+
+- `swift test --filter PIMTaskWriteTests`: 20/20 pass (ICS writer,
+  Google writer, DAV writer, service gating, cross-collection move).
+- Full `swift test` on BrevCalendar: 220/220 pass.
+- `swift test --filter PIMSourceSettingsModelTests` on BrevSettings:
+  21/21 pass.
+- Skipped: rendered verification (no task browsing UI yet — a later
+  slice), live Google/DAV writes (no test accounts in this session).
+
+### Next
+
+- #12 slice 3: task browsing UI + Create Task from Message target
+  integration (`MessageTaskPayload`/`MessageTaskCreationTarget`
+  already exist in BrevMail).
+
 ## 2026-09-22 — Agent — Issue #49 (compose viewport overflow at accessibility sizes)
 
 ### Goal

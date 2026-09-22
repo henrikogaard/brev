@@ -980,10 +980,44 @@ grant.
   commits only after the batch save, hidden collections keep their
   cache and skip the provider.
 - Task sync is strictly read-only in this slice — no write pipeline,
-  no Editing toggle, no browsing UI. `canToggleWrite` returns false
-  for tasks sources.
+  no Editing toggle, no browsing UI.
 - Deferred: task write pipeline, task browsing UI, Create Task from
   Message target integration, rendered verification.
+
+### #12 slice 2 — task write pipeline and editing opt-in (2026-09-22, BrevCalendar/BrevMail/BrevSettings)
+
+- `PIMTaskICSWriter`: serializes a `PIMTask` into an RFC 5545
+  VCALENDAR/VTODO — UID/DTSTAMP, SUMMARY/DESCRIPTION with TEXT
+  escaping, DUE and COMPLETED as UTC timestamps, STATUS
+  (NEEDS-ACTION/IN-PROCESS/COMPLETED/CANCELLED), PERCENT-COMPLETE:100
+  on completed tasks, X-APPLE-SORT-ORDER, RELATED-TO;RELTYPE=PARENT,
+  URL links, and LAST-MODIFIED. Output is CRLF-joined and folded at
+  75 octets.
+- `GoogleTaskWriter` and `PIMDAVTaskWriter`: provider write
+  adapters behind injected transports. Google maps the shared model
+  to the `tasks` REST resource (insert/patch/delete/move) — cleared
+  fields ride as JSON null, and in-process/cancelled degrade to
+  `needsAction` since Google carries no such status. CalDAV PUTs
+  the serialized ICS to `{collection}/{sanitized-uid}.ics` and
+  DELETEs the stored href. Updates and deletes carry the cached
+  providerVersion as `If-Match`; creates carry `If-None-Match: *`.
+  A remote 404 on delete counts as done.
+- `PIMTaskWriteService`: the provider-neutral write entry point,
+  mirroring the event/contact services. `canWrite` requires the
+  write capability *and* a non-read-only collection. Ordering and
+  parenting are capability fields: Google mutates them through
+  `tasks.move` with provider task IDs; CalDAV writes
+  `X-APPLE-SORT-ORDER`/`RELATED-TO` through a normal conditional
+  replace. Cross-collection moves are a delete+create on both
+  providers — Google Tasks cannot move between lists — and a delete
+  failure after a successful create surfaces as `conflict` so the
+  caller re-syncs rather than keeping a silent duplicate.
+- Editing opt-in: `canToggleWrite` now covers tasks sources
+  (Google and CalDAV). Google sources route through the existing
+  `enableGooglePIMWriteFeature` path, which re-authorizes with the
+  `tasks` scope unioned into the grant before the capability flips.
+- Deferred: task browsing UI, Create Task from Message target
+  integration, rendered verification.
 
 ## References (checked 2026-09-20)
 

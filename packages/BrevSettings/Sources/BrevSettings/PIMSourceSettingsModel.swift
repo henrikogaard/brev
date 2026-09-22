@@ -438,9 +438,8 @@ public final class PIMSourceSettingsModel {
             return source.provider == .google
                 || source.provider == .cardDAV
         case .tasks:
-            // Task writes land in a later #12 slice — no editing
-            // toggle until the write pipeline exists.
-            return false
+            return source.provider == .google
+                || source.provider == .calDAV
         }
     }
 

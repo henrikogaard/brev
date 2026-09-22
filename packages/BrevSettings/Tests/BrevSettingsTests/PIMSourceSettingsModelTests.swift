@@ -347,6 +347,12 @@ struct PIMSourceSettingsModelTests {
         var googleContacts = Self.source(id: "gcard", provider: .google)
         googleContacts.kind = .contacts
         try await store.save(googleContacts)
+        var tasks = Self.source(id: "davtasks")
+        tasks.kind = .tasks
+        try await store.save(tasks)
+        var googleTasks = Self.source(id: "gtasks", provider: .google)
+        googleTasks.kind = .tasks
+        try await store.save(googleTasks)
         var calendarOnCardDAV = Self.source(id: "wrongpair")
         calendarOnCardDAV.provider = .cardDAV
         try await store.save(calendarOnCardDAV)
@@ -362,6 +368,9 @@ struct PIMSourceSettingsModelTests {
         // contacts sources offer the toggle too.
         #expect(model.canToggleWrite(sourceID: "card"))
         #expect(model.canToggleWrite(sourceID: "gcard"))
+        // Task authoring (#12): CalDAV VTODO and Google Tasks sources.
+        #expect(model.canToggleWrite(sourceID: "davtasks"))
+        #expect(model.canToggleWrite(sourceID: "gtasks"))
         // A calendar kind on a CardDAV provider is not a valid pair.
         #expect(!model.canToggleWrite(sourceID: "wrongpair"))
         #expect(!model.canToggleWrite(sourceID: "off"))

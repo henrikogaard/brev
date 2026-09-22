@@ -467,8 +467,13 @@ task's fields plus the provider's original payload so provider-specific
 data survives refreshes. Sync cursors live separately and are always
 deleted when the source is removed. A failed task list keeps its last
 snapshot — one unhealthy collection never empties the others. Task
-sync is read-only: Brev never creates, edits, completes, or deletes
-provider tasks.
+writes are a separate opt-in: enabling **Editing** on a tasks source
+lets Brev create, edit, complete, move, and delete provider tasks —
+for CalDAV via PUT/DELETE on the collection URLs, for Google via
+tasks.insert/patch/delete/move after re-authorizing the `tasks`
+scope. Every mutation carries a version precondition so a stale edit
+never silently overwrites a newer server change; a task that changed
+remotely surfaces as a conflict instead.
 
 **How to disable:** Don't connect a calendar, contacts, or tasks source.
 Removing a source deletes its credential, sync cursors and unsent

@@ -234,6 +234,11 @@ public final class AppSession {
     /// support.
     public let pimContactWriteService: PIMContactWriteService?
 
+    /// Owns task create/update/delete/move against writable tasks
+    /// sources (ADR-0072 #12). Nil in sessions built without PIM write
+    /// support.
+    public let pimTaskWriteService: PIMTaskWriteService?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -293,6 +298,7 @@ public final class AppSession {
         pimTaskSyncService: PIMTaskSyncService? = nil,
         pimEventWriteService: PIMEventWriteService? = nil,
         pimContactWriteService: PIMContactWriteService? = nil,
+        pimTaskWriteService: PIMTaskWriteService? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -307,6 +313,7 @@ public final class AppSession {
         self.pimTaskSyncService = pimTaskSyncService
         self.pimEventWriteService = pimEventWriteService
         self.pimContactWriteService = pimContactWriteService
+        self.pimTaskWriteService = pimTaskWriteService
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
