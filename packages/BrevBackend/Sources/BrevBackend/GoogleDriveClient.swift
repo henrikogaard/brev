@@ -120,6 +120,66 @@ public struct GoogleDriveClient: Sendable {
     public typealias Transport =
         @Sendable (URLRequest) async throws -> (Data, HTTPURLResponse)
 
+    /// Upload transport with byte-progress reporting (#14). Receives
+    /// the request plus a progress callback (sent bytes, total bytes);
+    /// tests inject a stub, production uses a delegate URLSession.
+    public typealias UploadTransport =
+        @Sendable (
+            URLRequest,
+            @escaping @Sendable (Int64, Int64) -> Void
+        ) async throws -> (Data, HTTPURLResponse)
+
+    /// Builds the production upload transport: a delegate URLSession
+    /// that reports upload bytes and honours task cancellation.
+    public static func makeUploadTransport() -> UploadTransport {
+        let delegate = UploadProgressDelegate()
+        let session = URLSession(
+            configuration: .ephemeral,
+            delegate: delegate,
+            delegateQueue: nil
+        )
+        return { request, onProgress in
+            delegate.onProgress = onProgress
+            let body = request.httpBody
+            var uploadRequest = request
+            uploadRequest.httpBody = nil
+            return try await withTaskCancellationHandler {
+                do {
+                    let (data, response) = try await session.upload(
+                        for: uploadRequest,
+                        from: body ?? Data()
+                    )
+                    guard let http = response as? HTTPURLResponse else {
+                        throw DriveError.invalidResponse
+                    }
+                    return (data, http)
+                } catch let error as URLError
+                    where error.code == .cancelled {
+                    throw CancellationError()
+                }
+            } onCancel: {
+                session.invalidateAndCancel()
+            }
+        }
+    }
+
+    /// URLSession delegate that forwards upload progress to the
+    /// current callback. One upload runs at a time per client call.
+    private final class UploadProgressDelegate: NSObject,
+        URLSessionTaskDelegate, @unchecked Sendable {
+        var onProgress: (@Sendable (Int64, Int64) -> Void)?
+
+        func urlSession(
+            _ session: URLSession,
+            task: URLSessionTask,
+            didSendBodyData bytesSent: Int64,
+            totalBytesSent: Int64,
+            totalBytesExpectedToSend: Int64
+        ) {
+            onProgress?(totalBytesSent, totalBytesExpectedToSend)
+        }
+    }
+
     private static let apiBase = "https://www.googleapis.com/drive/v3"
     private static let uploadBase =
         "https://www.googleapis.com/upload/drive/v3"
@@ -128,6 +188,7 @@ public struct GoogleDriveClient: Sendable {
         "id,name,mimeType,size,webViewLink"
 
     private let transport: Transport
+    private let uploadTransport: UploadTransport?
 
     public init(
         transport: @escaping Transport = { request in
@@ -138,9 +199,11 @@ public struct GoogleDriveClient: Sendable {
                 throw DriveError.invalidResponse
             }
             return (data, http)
-        }
+        },
+        uploadTransport: UploadTransport? = nil
     ) {
         self.transport = transport
+        self.uploadTransport = uploadTransport
     }
 
     // MARK: - Reads
@@ -228,13 +291,16 @@ public struct GoogleDriveClient: Sendable {
     /// Multipart upload keeps metadata and bytes in one request; the
     /// response carries the created file's metadata. `drive.file`
     /// covers files Brev creates, so no extra scope is needed.
+    /// Pass `onProgress` for byte-level progress; cancelling the
+    /// calling task aborts the upload.
     @discardableResult
     public func create(
         name: String,
         mimeType: String,
         data: Data,
         parentFolderID: String?,
-        accessToken: String
+        accessToken: String,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> File {
         var metadata: [String: Any] = ["name": name]
         if let parentFolderID {
@@ -277,7 +343,9 @@ public struct GoogleDriveClient: Sendable {
             forHTTPHeaderField: "Content-Type"
         )
         request.httpBody = body
-        let (responseData, response) = try await send(request)
+        let (responseData, response) = try await send(
+            request, onProgress: onProgress
+        )
         return try decode(File.self, data: responseData, response: response)
     }
 
@@ -330,7 +398,8 @@ public struct GoogleDriveClient: Sendable {
         fileID: String,
         mimeType: String,
         data: Data,
-        accessToken: String
+        accessToken: String,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> File {
         let boundary = "brev-" + UUID().uuidString
         var body = Data()
@@ -369,17 +438,25 @@ public struct GoogleDriveClient: Sendable {
             forHTTPHeaderField: "Content-Type"
         )
         request.httpBody = body
-        let (responseData, response) = try await send(request)
+        let (responseData, response) = try await send(
+            request, onProgress: onProgress
+        )
         return try decode(File.self, data: responseData, response: response)
     }
 
     // MARK: - Internals
 
     private func send(
-        _ request: URLRequest
+        _ request: URLRequest,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         do {
+            if let onProgress, let uploadTransport {
+                return try await uploadTransport(request, onProgress)
+            }
             return try await transport(request)
+        } catch is CancellationError {
+            throw CancellationError()
         } catch let error as DriveError {
             throw error
         } catch {

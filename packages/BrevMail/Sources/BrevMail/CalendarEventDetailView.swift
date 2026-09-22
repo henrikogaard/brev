@@ -79,6 +79,9 @@ public struct CalendarEventDetailView: View {
                 if !event.reminders.isEmpty {
                     remindersSection
                 }
+                if !event.attachments.isEmpty {
+                    attachmentsSection
+                }
                 if let description = event.eventDescription,
                    !description.isEmpty {
                     descriptionSection(description)
@@ -450,6 +453,39 @@ public struct CalendarEventDetailView: View {
     }
 
     // MARK: - Description
+
+    /// Drive link attachments (#14) — tappable rows that open the URL.
+    private var attachmentsSection: some View {
+        detailSection(
+            title: String(localized: "Attachments", bundle: .module),
+            symbol: "paperclip"
+        ) {
+            ForEach(
+                Array(event.attachments.enumerated()),
+                id: \.offset
+            ) { _, attachment in
+                if let url = URL(string: attachment.url) {
+                    Button {
+                        openURL(url)
+                    } label: {
+                        HStack(spacing: BrevSpacing.sm) {
+                            Image(systemName: "link")
+                                .foregroundStyle(theme.accent.color)
+                            Text(attachment.title ?? attachment.url)
+                                .brevFont(.body)
+                                .foregroundStyle(theme.textPrimary.color)
+                                .lineLimit(1)
+                                .truncationMode(.middle)
+                            Spacer()
+                            Image(systemName: "arrow.up.right")
+                                .foregroundStyle(theme.textTertiary.color)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
 
     private func descriptionSection(_ description: String) -> some View {
         detailSection(

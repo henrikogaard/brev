@@ -287,7 +287,13 @@ public enum AppSessionFactory {
                     enablement: configuration.googleDriveEnablementCoordinator,
                     accessToken: configuration.googlePIMAccessTokenProvider,
                     files: configuration.googlePIMAccessTokenProvider.map {
-                        GoogleDriveFileService(accessToken: $0)
+                        GoogleDriveFileService(
+                            client: GoogleDriveClient(
+                                uploadTransport:
+                                GoogleDriveClient.makeUploadTransport()
+                            ),
+                            accessToken: $0
+                        )
                     },
                     pickerDeveloperKey: configuration.googleDrivePickerDeveloperKey,
                     pickerAppID: configuration.googleDrivePickerAppID

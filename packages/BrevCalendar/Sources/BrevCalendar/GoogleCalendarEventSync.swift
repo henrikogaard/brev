@@ -241,6 +241,9 @@ public struct GoogleCalendarEventSync: Sendable {
                 ),
                 conferenceURL: conference?.joinURL,
                 conference: conference,
+                attachments: Self.mapAttachments(
+                    item["attachments"] as? [[String: Any]]
+                ),
                 recurrenceRule: Self.mapRecurrence(
                     item["recurrence"] as? [String]
                 ),
@@ -266,6 +269,25 @@ public struct GoogleCalendarEventSync: Sendable {
                 rawValue: dict["responseStatus"] as? String
             )
         )
+    }
+
+    /// Google `attachments[]` entries → link attachments (#14).
+    /// Entries without a `fileUrl` are dropped — a linkless
+    /// attachment cannot be opened.
+    private static func mapAttachments(
+        _ entries: [[String: Any]]?
+    ) -> [PIMEventAttachment] {
+        (entries ?? []).compactMap { entry in
+            guard let url = entry["fileUrl"] as? String,
+                  !url.isEmpty
+            else { return nil }
+            return PIMEventAttachment(
+                url: url,
+                title: entry["title"] as? String,
+                mimeType: entry["mimeType"] as? String,
+                iconURL: entry["iconLink"] as? String
+            )
+        }
     }
 
     private static func mapReminders(

@@ -1199,6 +1199,154 @@ struct PIMEventWriteTests {
 
     // MARK: - Coordinator capability
 
+    // MARK: - Event attachments (#14)
+
+    @Test("ICS writer emits ATTACH;VALUE=URI with FMTTYPE and X-FILENAME")
+    func icsWriterAttachments() {
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-att@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.attachments = [
+            PIMEventAttachment(
+                url: "https://drive.google.com/file/d/abc123/view",
+                title: "Deck, v2",
+                mimeType: "application/pdf"
+            )
+        ]
+        let ics = PIMEventICSWriter.vcalendar(for: event)
+        // Long ATTACH lines fold at 75 octets — unfold before matching.
+        let unfolded = ics.replacingOccurrences(of: "\r\n ", with: "")
+        #expect(
+            unfolded.contains(
+                "ATTACH;VALUE=URI;FMTTYPE=application/pdf;X-FILENAME=Deck\\, v2:"
+                    + "https://drive.google.com/file/d/abc123/view"
+            )
+        )
+    }
+
+    @Test("ICS writer and parser round-trip link attachments")
+    func icsAttachmentRoundTrip() {
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-att2@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.attachments = [
+            PIMEventAttachment(
+                url: "https://drive.google.com/file/d/xyz/view",
+                title: "Notes",
+                mimeType: "text/plain"
+            )
+        ]
+        let ics = PIMEventICSWriter.vcalendar(for: event)
+        let parsed = ICSParser.parseEvents(from: ics)
+        #expect(parsed.count == 1)
+        #expect(parsed.first?.attachments.count == 1)
+        #expect(
+            parsed.first?.attachments.first?.url
+                == "https://drive.google.com/file/d/xyz/view"
+        )
+        #expect(parsed.first?.attachments.first?.title == "Notes")
+        #expect(parsed.first?.attachments.first?.mimeType == "text/plain")
+    }
+
+    @Test("Google insert sends attachments with supportsAttachments=true")
+    func googleInsertAttachments() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"id":"g-9","etag":"v1"}"#),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Work",
+            providerKey: "primary"
+        )
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-attg@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.attachments = [
+            PIMEventAttachment(
+                url: "https://drive.google.com/file/d/abc123/view",
+                title: "Deck",
+                mimeType: "application/pdf",
+                iconURL: "https://drive.google.com/icon.png"
+            )
+        ]
+        // Isolate: the body alone must serialize.
+        let bodyData = try writer.body(for: event)
+        let bodyObj = try JSONSerialization.jsonObject(with: bodyData)
+            as? [String: Any]
+        #expect((bodyObj?["attachments"] as? [[String: Any]])?.count == 1)
+        _ = try await writer.insert(
+            event,
+            into: collection,
+            accessToken: "token"
+        )
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString.contains(
+                "supportsAttachments=true"
+            ) == true
+        )
+        let body = try JSONSerialization.jsonObject(
+            with: request.httpBody ?? Data()
+        ) as? [String: Any]
+        let attachments = body?["attachments"] as? [[String: Any]]
+        #expect(attachments?.count == 1)
+        #expect(
+            attachments?.first?["fileUrl"] as? String
+                == "https://drive.google.com/file/d/abc123/view"
+        )
+        #expect(attachments?.first?["title"] as? String == "Deck")
+        #expect(
+            attachments?.first?["mimeType"] as? String == "application/pdf"
+        )
+        #expect(
+            attachments?.first?["iconLink"] as? String
+                == "https://drive.google.com/icon.png"
+        )
+    }
+
+    @Test("Google insert without attachments omits supportsAttachments")
+    func googleInsertNoAttachments() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"id":"g-10"}"#),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Work",
+            providerKey: "primary"
+        )
+        let event = Self.event(
+            collectionID: "c1",
+            uid: "uid-noatt@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        _ = try await writer.insert(
+            event,
+            into: collection,
+            accessToken: "token"
+        )
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString.contains("supportsAttachments")
+                == false
+        )
+    }
+
     @Test("setWriteEnabled toggles the write capability")
     func setWriteEnabled() async throws {
         let sourceStore = InMemorySourceStore()

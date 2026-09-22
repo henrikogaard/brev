@@ -104,6 +104,18 @@ public enum PIMEventICSWriter {
            conferenceURL != event.conference?.joinURL {
             lines.append("URL:" + conferenceURL)
         }
+        // #14: link attachments ride as ATTACH;VALUE=URI with FMTTYPE
+        // and X-FILENAME display metadata — the parser reads both back.
+        for attachment in event.attachments where !attachment.url.isEmpty {
+            var line = "ATTACH;VALUE=URI"
+            if let mimeType = attachment.mimeType, !mimeType.isEmpty {
+                line += ";FMTTYPE=" + escapeParam(mimeType)
+            }
+            if let title = attachment.title, !title.isEmpty {
+                line += ";X-FILENAME=" + escapeParam(title)
+            }
+            lines.append(line + ":" + attachment.url)
+        }
         lines.append("END:VEVENT")
         lines.append("END:VCALENDAR")
         return lines.map(fold).joined(separator: "\r\n") + "\r\n"

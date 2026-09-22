@@ -106,6 +106,9 @@ public struct CalendarEventDraft: Sendable, Hashable {
     /// the write service drops it elsewhere.
     public var requestsConference = false
     var providerUpdatedAt: Date?
+    /// Drive link attachments (#14): URLs plus display metadata; the
+    /// writers emit Google `attachments[]` or ICS `ATTACH`.
+    public var attachments: [PIMEventAttachment] = []
     /// The collection the edited event came from; equal to
     /// targetCollectionID unless the user moves the event.
     var originalCollectionID: PIMCollection.ID?
@@ -159,6 +162,7 @@ public struct CalendarEventDraft: Sendable, Hashable {
         attendeesWithRSVP = event.attendees
         conferenceURL = event.conferenceURL
         conference = event.conference
+        attachments = event.attachments
         providerUpdatedAt = event.providerUpdatedAt
     }
 
@@ -261,6 +265,7 @@ public struct CalendarEventDraft: Sendable, Hashable {
                         isCreationRequest: true
                     )
                     : nil),
+            attachments: attachments,
             recurrenceRule: recurrenceRule,
             recurrenceID: recurrenceID,
             rawPayload: rawPayload,

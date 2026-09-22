@@ -186,7 +186,8 @@ struct BrevApp: App {
                         calendarEditing: CalendarEditingModel(
                             writeService: session.pimEventWriteService,
                             coordinator: session.pimSourceCoordinator,
-                            collectionService: session.pimCollectionService
+                            collectionService: session.pimCollectionService,
+                            driveFeature: session.googleDriveFeature
                         ),
                         taskEditing: TasksEditingModel(
                             writeService: session.pimTaskWriteService,
@@ -258,7 +259,8 @@ struct BrevApp: App {
                         editing: CalendarEditingModel(
                             writeService: session.pimEventWriteService,
                             coordinator: session.pimSourceCoordinator,
-                            collectionService: session.pimCollectionService
+                            collectionService: session.pimCollectionService,
+                            driveFeature: session.googleDriveFeature
                         )
                     )
                     .toolbar {
