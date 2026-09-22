@@ -1,5 +1,52 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #14 slice 2 (event Drive attachments + upload progress)
+
+### Goal
+
+Close the remaining codeable scope of #14: attach a Drive file to a
+calendar event as a link, and give Drive uploads determinate progress
+with a working cancel.
+
+### Changes
+
+- `PIMEventAttachment` on `PIMEvent`; ICS `ATTACH;VALUE=URI`
+  parse/emit (`FMTTYPE`, `X-FILENAME`); Google `attachments[]`
+  body entries + `supportsAttachments=true` on event insert/patch;
+  attachment mapping in both event sync services.
+- `GoogleDriveClient` upload progress: optional
+  `onProgress` on create/update, ephemeral-session
+  `UploadTransport` with delegate progress and task-cancellation
+  propagation (`URLError.cancelled` → `CancellationError`).
+- Event editor Attachments section (list/remove + Attach from Google
+  Drive gated on Gmail-linked sources via
+  `CalendarEditingModel.driveAttachAccountID`), new
+  `GoogleDriveEventAttachSheet` (opt-in → picker → link
+  attachment), detail view renders tappable links.
+- `GoogleDriveSaveSheet`: determinate `ProgressView` + cancel.
+- Docs: ADR-0072 slice note, ADR-0006 picker/Drive rows, PRIVACY.md,
+  CHANGELOG.
+
+### Verification
+
+- `swift test --package-path packages/BrevBackend --filter GoogleDrive`:
+  10 tests pass (new: progress reporting, cancellation propagation).
+- `swift test --package-path packages/BrevCalendar`: 226 tests
+  pass (new: ICS attach emit/round-trip, Google insert attachments,
+  sync mapping).
+- `swift test --package-path packages/BrevMail --filter GoogleDrive`:
+  16 tests pass (new: pick→attachment mapping, draft round-trip,
+  Drive eligibility on linked sources).
+- `scripts/lint.sh` + `scripts/format.sh`: clean.
+- Skipped: rendered verification (needs a real Google account and
+  build-time picker credentials) — deferred to maintainer QA.
+
+### Next
+
+- PR targets main; board → In review on merge.
+- #14 remains open for maintainer QA acceptance plus the deferred R8
+  "Drive as source kind" decision.
+
 ## 2026-09-22 — Agent — Issue #14 slice 1 (Google Drive attachments)
 
 ### Goal

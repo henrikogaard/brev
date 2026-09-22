@@ -59,6 +59,10 @@ public enum ICSParser {
         public let conferenceLabel: String?
         /// True when the link came from X-GOOGLE-CONFERENCE (#13).
         public let conferenceIsGoogleMeet: Bool
+        /// `ATTACH;VALUE=URI` attachments on the event (#14):
+        /// the URI plus `FMTTYPE` and `X-FILENAME`/`FILENAME`
+        /// display metadata.
+        public let attachments: [ParsedAttachment]
 
         /// Memberwise initialiser with a `nil` default for `recurrenceRule`
         /// so call-sites that construct `ParsedEvent` directly (e.g. in tests)
@@ -81,7 +85,8 @@ public enum ICSParser {
             reminderMinutes: [Int] = [],
             conferenceURL: String? = nil,
             conferenceLabel: String? = nil,
-            conferenceIsGoogleMeet: Bool = false
+            conferenceIsGoogleMeet: Bool = false,
+            attachments: [ParsedAttachment] = []
         ) {
             self.uid = uid
             self.summary = summary
@@ -101,6 +106,23 @@ public enum ICSParser {
             self.conferenceURL = conferenceURL
             self.conferenceLabel = conferenceLabel
             self.conferenceIsGoogleMeet = conferenceIsGoogleMeet
+            self.attachments = attachments
+        }
+    }
+
+    /// A URI attachment parsed from an `ATTACH` property (#14).
+    public struct ParsedAttachment: Sendable, Hashable {
+        /// The URI value itself.
+        public let url: String
+        /// `X-FILENAME` or `FILENAME` display name, when present.
+        public let title: String?
+        /// `FMTTYPE` media type, when present.
+        public let mimeType: String?
+
+        public init(url: String, title: String? = nil, mimeType: String? = nil) {
+            self.url = url
+            self.title = title
+            self.mimeType = mimeType
         }
     }
 
@@ -273,6 +295,16 @@ public enum ICSParser {
             .trimmingCharacters(in: .whitespaces)
         let conferenceLabel = conferenceProp?.params["LABEL"]?
             .trimmingCharacters(in: .whitespaces)
+        let attachments = props
+            .filter { $0.name == "ATTACH" }
+            .map { prop -> ParsedAttachment in
+                ParsedAttachment(
+                    url: prop.value.trimmingCharacters(in: .whitespaces),
+                    title: prop.params["X-FILENAME"] ?? prop.params["FILENAME"],
+                    mimeType: prop.params["FMTTYPE"]
+                )
+            }
+            .filter { !$0.url.isEmpty }
 
         return ParsedEvent(
             uid: uid,
@@ -292,7 +324,8 @@ public enum ICSParser {
             reminderMinutes: reminderMinutes,
             conferenceURL: conferenceURL,
             conferenceLabel: conferenceLabel,
-            conferenceIsGoogleMeet: conferenceProp?.name == "X-GOOGLE-CONFERENCE"
+            conferenceIsGoogleMeet: conferenceProp?.name == "X-GOOGLE-CONFERENCE",
+            attachments: attachments
         )
     }
 

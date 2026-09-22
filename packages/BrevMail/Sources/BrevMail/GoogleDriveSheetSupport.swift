@@ -29,6 +29,37 @@ struct GoogleDriveOptInPrompt: View {
     /// picker.
     let onEnabled: () -> Void
 
+    init(
+        account: BrevAccount,
+        feature: GoogleDriveFeature,
+        onEnabled: @escaping () -> Void
+    ) {
+        self.account = account
+        self.feature = feature
+        self.onEnabled = onEnabled
+    }
+
+    /// Identity-only variant for flows that know the account ID but
+    /// not the account record (calendar event attachments, #14).
+    init(
+        accountID: BrevAccount.ID,
+        feature: GoogleDriveFeature,
+        onEnabled: @escaping () -> Void
+    ) {
+        // The prompt only reads the account's ID; a minimal record
+        // keeps the shared layout without fetching the account.
+        self.init(
+            account: BrevAccount(
+                id: accountID,
+                displayName: "",
+                emailAddress: "",
+                backendIdentifier: BrevAccount.gmailAPIBackendIdentifier
+            ),
+            feature: feature,
+            onEnabled: onEnabled
+        )
+    }
+
     var body: some View {
         VStack(spacing: BrevSpacing.lg) {
             Image(systemName: "externaldrive.badge.plus")

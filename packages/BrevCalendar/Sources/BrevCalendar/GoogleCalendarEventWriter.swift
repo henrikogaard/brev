@@ -120,7 +120,8 @@ public struct GoogleCalendarEventWriter: Sendable {
         let url = try eventsURL(
             collection: collection,
             notifyGuests: true,
-            requestConference: event.conference?.isCreationRequest == true
+            requestConference: event.conference?.isCreationRequest == true,
+            supportsAttachments: !event.attachments.isEmpty
         )
         var request = try jsonRequest(url: url, method: "POST", accessToken: accessToken)
         request.httpBody = try body(for: event)
@@ -142,7 +143,8 @@ public struct GoogleCalendarEventWriter: Sendable {
             collection: collection,
             eventID: event.providerItemKey,
             notifyGuests: true,
-            requestConference: event.conference?.isCreationRequest == true
+            requestConference: event.conference?.isCreationRequest == true,
+            supportsAttachments: !event.attachments.isEmpty
         )
         var request = try jsonRequest(url: url, method: "PATCH", accessToken: accessToken)
         if let etag = event.providerVersion {
@@ -237,6 +239,24 @@ public struct GoogleCalendarEventWriter: Sendable {
         if let uid = event.uid {
             dict["iCalUID"] = uid
         }
+        // #14: Drive link attachments. Google only accepts Drive file
+        // links and requires supportsAttachments=true on the request;
+        // the drive.file grant covers the picked file IDs.
+        if !event.attachments.isEmpty {
+            dict["attachments"] = event.attachments.map { attachment in
+                var entry: [String: Any] = ["fileUrl": attachment.url]
+                if let title = attachment.title {
+                    entry["title"] = title
+                }
+                if let mimeType = attachment.mimeType {
+                    entry["mimeType"] = mimeType
+                }
+                if let iconURL = attachment.iconURL {
+                    entry["iconLink"] = iconURL
+                }
+                return entry
+            }
+        }
         // Meet creation (#13): each request carries a fresh requestId
         // so retried writes can never reuse a code across events.
         if event.conference?.isCreationRequest == true {
@@ -259,7 +279,8 @@ public struct GoogleCalendarEventWriter: Sendable {
     private func eventsURL(
         collection: PIMCollection,
         notifyGuests: Bool,
-        requestConference: Bool = false
+        requestConference: Bool = false,
+        supportsAttachments: Bool = false
     ) throws -> URL {
         guard let encoded = collection.providerKey.addingPercentEncoding(
             withAllowedCharacters: .urlPathAllowed
@@ -268,7 +289,8 @@ public struct GoogleCalendarEventWriter: Sendable {
             "\(Self.baseURL)/\(encoded)/events"
                 + Self.query(
                     notifyGuests: notifyGuests,
-                    requestConference: requestConference
+                    requestConference: requestConference,
+                    supportsAttachments: supportsAttachments
                 )
         ) else {
             throw WriteError.invalidResponse
@@ -280,7 +302,8 @@ public struct GoogleCalendarEventWriter: Sendable {
         collection: PIMCollection,
         eventID: String,
         notifyGuests: Bool,
-        requestConference: Bool = false
+        requestConference: Bool = false,
+        supportsAttachments: Bool = false
     ) throws -> URL {
         guard let encodedCollection = collection.providerKey
             .addingPercentEncoding(withAllowedCharacters: .urlPathAllowed),
@@ -292,7 +315,8 @@ public struct GoogleCalendarEventWriter: Sendable {
                 "\(Self.baseURL)/\(encodedCollection)/events/\(encodedEvent)"
                     + Self.query(
                         notifyGuests: notifyGuests,
-                        requestConference: requestConference
+                        requestConference: requestConference,
+                        supportsAttachments: supportsAttachments
                     )
             )
         else {
@@ -306,11 +330,13 @@ public struct GoogleCalendarEventWriter: Sendable {
     /// without it Google silently ignores the request.
     private static func query(
         notifyGuests: Bool,
-        requestConference: Bool
+        requestConference: Bool,
+        supportsAttachments: Bool = false
     ) -> String {
         var params: [String] = []
         if notifyGuests { params.append("sendUpdates=all") }
         if requestConference { params.append("conferenceDataVersion=1") }
+        if supportsAttachments { params.append("supportsAttachments=true") }
         return params.isEmpty ? "" : "?" + params.joined(separator: "&")
     }
 

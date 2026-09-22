@@ -180,6 +180,35 @@ public struct PIMConference: Sendable, Hashable, Codable {
     }
 }
 
+/// A link attachment on an event (#14): Google `attachments[]` or
+/// iCalendar `ATTACH;VALUE=URI`. Brev only authors Drive links — the
+/// narrow `drive.file` grant never exposes raw bytes to the calendar
+/// provider, so the attachment is a URL plus display metadata.
+public struct PIMEventAttachment: Sendable, Hashable, Codable {
+    /// The link the provider stores: a Drive webViewLink for Google,
+    /// any https URI for CalDAV.
+    public var url: String
+    /// Display name (Google `title`, ICS `X-FILENAME`/`FILENAME`).
+    public var title: String?
+    /// MIME type (Google `mimeType`, ICS `FMTTYPE`).
+    public var mimeType: String?
+    /// Optional icon link (Google `iconLink`); CalDAV round-trips it
+    /// through the raw payload only.
+    public var iconURL: String?
+
+    public init(
+        url: String,
+        title: String? = nil,
+        mimeType: String? = nil,
+        iconURL: String? = nil
+    ) {
+        self.url = url
+        self.title = title
+        self.mimeType = mimeType
+        self.iconURL = iconURL
+    }
+}
+
 /// A provider-neutral cached calendar event (ADR-0072).
 ///
 /// One record per provider item component: a CalDAV resource holding a
@@ -222,6 +251,9 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
     /// dial-ins, and provider status. `conferenceURL` stays populated
     /// as the cheap join link.
     public var conference: PIMConference?
+    /// Link attachments on the event (#14): Google `attachments[]`,
+    /// iCalendar `ATTACH;VALUE=URI`.
+    public var attachments: [PIMEventAttachment]
     /// Series recurrence pattern on the master component.
     public var recurrenceRule: ICSParser.RecurrenceRule?
     /// Exception marker: the original start this component overrides.
@@ -254,6 +286,7 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         reminders: [PIMEventReminder] = [],
         conferenceURL: String? = nil,
         conference: PIMConference? = nil,
+        attachments: [PIMEventAttachment] = [],
         recurrenceRule: ICSParser.RecurrenceRule? = nil,
         recurrenceID: Date? = nil,
         rawPayload: String? = nil,
@@ -279,6 +312,7 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         self.reminders = reminders
         self.conferenceURL = conferenceURL
         self.conference = conference
+        self.attachments = attachments
         self.recurrenceRule = recurrenceRule
         self.recurrenceID = recurrenceID
         self.rawPayload = rawPayload

@@ -313,6 +313,13 @@ public struct PIMDAVEventSync: Sendable {
                 },
                 conferenceURL: parsed.conferenceURL,
                 conference: Self.mapConference(parsed),
+                attachments: parsed.attachments.map {
+                    PIMEventAttachment(
+                        url: $0.url,
+                        title: $0.title,
+                        mimeType: $0.mimeType
+                    )
+                },
                 recurrenceRule: parsed.recurrenceRule,
                 recurrenceID: parsed.recurrenceID,
                 rawPayload: calendarData,

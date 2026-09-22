@@ -41,6 +41,15 @@ struct GoogleDriveClientTests {
         }
     }
 
+    /// Mutable capture target for @Sendable progress callbacks.
+    private final class ProgressRecorder: @unchecked Sendable {
+        private(set) var reported: [(Int64, Int64)] = []
+
+        func record(_ sent: Int64, _ total: Int64) {
+            reported.append((sent, total))
+        }
+    }
+
     private func makeClient(
         _ stub: StubTransport
     ) -> GoogleDriveClient {
@@ -249,5 +258,67 @@ struct GoogleDriveClientTests {
             GoogleDriveClient.scope
                 == "https://www.googleapis.com/auth/drive.file"
         )
+    }
+
+    @Test("create reports byte progress through the upload transport")
+    func createProgress() async throws {
+        let stub = StubTransport()
+        let recorder = ProgressRecorder()
+        let client = GoogleDriveClient(
+            transport: { try stub.send($0) },
+            uploadTransport: { request, onProgress in
+                onProgress(50, 100)
+                onProgress(100, 100)
+                return try stub.send(request)
+            }
+        )
+        stub.handler = { _ in
+            Self.response(
+                200,
+                json: #"{"id":"new","name":"a.bin","mimeType":"application/octet-stream"}"#
+            )
+        }
+
+        _ = try await client.create(
+            name: "a.bin",
+            mimeType: "application/octet-stream",
+            data: Data(repeating: 0, count: 100),
+            parentFolderID: nil,
+            accessToken: "tok",
+            onProgress: { sent, total in recorder.record(sent, total) }
+        )
+
+        #expect(recorder.reported.count == 2)
+        #expect(recorder.reported[0].0 == 50)
+        #expect(recorder.reported[0].1 == 100)
+        #expect(recorder.reported[1].0 == 100)
+        #expect(recorder.reported[1].1 == 100)
+    }
+
+    @Test("cancelling the calling task propagates CancellationError")
+    func createCancellation() async throws {
+        let stub = StubTransport()
+        let client = GoogleDriveClient(
+            transport: { try stub.send($0) },
+            uploadTransport: { _, _ in
+                try await Task.sleep(nanoseconds: 60_000_000_000)
+                throw GoogleDriveClient.DriveError.transportFailed
+            }
+        )
+
+        let task = Task {
+            try await client.create(
+                name: "a.bin",
+                mimeType: "application/octet-stream",
+                data: Data(),
+                parentFolderID: nil,
+                accessToken: "tok",
+                onProgress: { _, _ in }
+            )
+        }
+        task.cancel()
+        await #expect(throws: CancellationError.self) {
+            try await task.value
+        }
     }
 }

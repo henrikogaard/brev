@@ -41,7 +41,8 @@ public protocol DriveFileServing: Sendable {
         mimeType: String,
         data: Data,
         parentFolderID: String?,
-        accountID: BrevAccount.ID
+        accountID: BrevAccount.ID,
+        onProgress: (@Sendable (Int64, Int64) -> Void)?
     ) async throws -> GoogleDriveClient.File
     /// Whether a Brev-created file with this name already exists in the
     /// folder — the save flow's conflict check.
@@ -57,7 +58,8 @@ public protocol DriveFileServing: Sendable {
         fileID: String,
         mimeType: String,
         data: Data,
-        accountID: BrevAccount.ID
+        accountID: BrevAccount.ID,
+        onProgress: (@Sendable (Int64, Int64) -> Void)?
     ) async throws -> GoogleDriveClient.File
 }
 
@@ -113,14 +115,16 @@ public struct GoogleDriveFileService: DriveFileServing {
         mimeType: String,
         data: Data,
         parentFolderID: String?,
-        accountID: BrevAccount.ID
+        accountID: BrevAccount.ID,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> GoogleDriveClient.File {
         try await client.create(
             name: name,
             mimeType: mimeType,
             data: data,
             parentFolderID: parentFolderID,
-            accessToken: accessToken(accountID)
+            accessToken: accessToken(accountID),
+            onProgress: onProgress
         )
     }
 
@@ -141,13 +145,15 @@ public struct GoogleDriveFileService: DriveFileServing {
         fileID: String,
         mimeType: String,
         data: Data,
-        accountID: BrevAccount.ID
+        accountID: BrevAccount.ID,
+        onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> GoogleDriveClient.File {
         try await client.update(
             fileID: fileID,
             mimeType: mimeType,
             data: data,
-            accessToken: accessToken(accountID)
+            accessToken: accessToken(accountID),
+            onProgress: onProgress
         )
     }
 }
@@ -205,6 +211,14 @@ public final class GoogleDriveFeature {
     /// Drive can attach to. Non-Google accounts never see the actions.
     public func isEligible(account: BrevAccount) -> Bool {
         account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier
+    }
+
+    /// Whether the account ID belongs to a Gmail API account — used
+    /// where only the identity is known (calendar sources link by
+    /// account ID). A stored Google OAuth configuration exists only
+    /// for Gmail API accounts.
+    public func isEligible(accountID: BrevAccount.ID) async -> Bool {
+        await configuration(accountID) != nil
     }
 
     /// Whether the account's stored grant already covers

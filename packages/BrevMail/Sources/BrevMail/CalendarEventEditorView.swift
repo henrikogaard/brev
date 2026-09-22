@@ -40,6 +40,8 @@ public struct CalendarEventEditorView: View {
     private let editedEvent: PIMEvent?
     @State private var pendingScopeSave = false
     @State private var newAttendee = ""
+    /// Whether the Drive attach sheet is showing (#14).
+    @State private var isShowingDriveAttach = false
     /// Reminder offsets the picker offers, in minutes.
     private static let reminderOptions = [0, 5, 10, 15, 30, 60, 120, 1440]
 
@@ -97,6 +99,7 @@ public struct CalendarEventEditorView: View {
                     conferenceSection
                     attendeesSection
                     remindersSection
+                    attachmentsSection
                     notesSection
                     if let lastError = editing.lastError {
                         Text(lastError)
@@ -588,6 +591,74 @@ public struct CalendarEventEditorView: View {
                 localized: "\(minutes) minutes before",
                 bundle: .module
             )
+        }
+    }
+
+    /// Drive link attachments (#14): listed with a remove action and
+    /// an add button when the target source's linked Gmail account
+    /// can present the picker.
+    private var attachmentsSection: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Label(
+                String(localized: "Attachments", bundle: .module),
+                systemImage: "paperclip"
+            )
+            .brevFont(.subheadline)
+            .foregroundStyle(theme.textSecondary.color)
+            ForEach(
+                Array(draft.attachments.enumerated()),
+                id: \.offset
+            ) { index, attachment in
+                HStack(spacing: BrevSpacing.sm) {
+                    Image(systemName: "link")
+                        .foregroundStyle(theme.accent.color)
+                    Text(attachment.title ?? attachment.url)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                    Spacer()
+                    Button {
+                        draft.attachments.remove(at: index)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                            .foregroundStyle(theme.danger.color)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(
+                        String(
+                            localized: "Remove attachment",
+                            bundle: .module
+                        )
+                    )
+                }
+            }
+            if let accountID = editing.driveAttachAccountID(
+                for: draft.targetCollectionID
+            ), let driveFeature = editing.driveFeature {
+                Button {
+                    isShowingDriveAttach = true
+                } label: {
+                    Label(
+                        String(
+                            localized: "Attach from Google Drive",
+                            bundle: .module
+                        ),
+                        systemImage: "plus.circle"
+                    )
+                    .brevFont(.body)
+                    .foregroundStyle(theme.accent.color)
+                }
+                .buttonStyle(.plain)
+                .sheet(isPresented: $isShowingDriveAttach) {
+                    GoogleDriveEventAttachSheet(
+                        accountID: accountID,
+                        feature: driveFeature
+                    ) { attachment in
+                        draft.attachments.append(attachment)
+                    }
+                }
+            }
         }
     }
 

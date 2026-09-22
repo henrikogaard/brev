@@ -44,6 +44,10 @@ struct GoogleDriveSaveSheet: View {
     /// A same-named Brev-created file in the chosen folder.
     @State private var conflict: GoogleDriveClient.File?
     @State private var pendingFolderID: String?
+    /// Byte-level upload progress, 0...1; nil while indeterminate.
+    @State private var uploadProgress: Double?
+    /// The in-flight upload task so Cancel aborts it for real.
+    @State private var uploadTask: Task<Void, Never>?
 
     var body: some View {
         VStack(spacing: 0) {
@@ -62,11 +66,11 @@ struct GoogleDriveSaveSheet: View {
         ) {
             Button(String(localized: "Replace", bundle: .module)) {
                 if let conflict {
-                    Task { await upload(replacing: conflict.id) }
+                    startUpload(replacing: conflict.id)
                 }
             }
             Button(String(localized: "Keep Both", bundle: .module)) {
-                Task { await upload(replacing: nil) }
+                startUpload(replacing: nil)
             }
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
         } message: {
@@ -141,13 +145,25 @@ struct GoogleDriveSaveSheet: View {
             }
         case .uploading:
             VStack(spacing: BrevSpacing.md) {
-                ProgressView()
+                if let uploadProgress {
+                    ProgressView(value: uploadProgress)
+                        .frame(maxWidth: 240)
+                } else {
+                    ProgressView()
+                }
                 Text(
                     "Uploading \(filename)…",
                     bundle: .module
                 )
                 .brevFont(.body)
                 .foregroundStyle(theme.textSecondary.color)
+                Button(String(localized: "Cancel", bundle: .module)) {
+                    uploadTask?.cancel()
+                    uploadTask = nil
+                    uploadProgress = nil
+                    step = .pickingFolder
+                }
+                .buttonStyle(.bordered)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
@@ -177,12 +193,19 @@ struct GoogleDriveSaveSheet: View {
                 accountID: account.id
             )
             if conflict == nil {
-                await upload(replacing: nil)
+                startUpload(replacing: nil)
             }
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription
         }
+    }
+
+    /// Starts the upload on a stored task so the Cancel button can
+    /// abort it; byte progress feeds the determinate bar.
+    private func startUpload(replacing fileID: String?) {
+        uploadProgress = nil
+        uploadTask = Task { await upload(replacing: fileID) }
     }
 
     private func upload(replacing fileID: String?) async {
@@ -194,6 +217,12 @@ struct GoogleDriveSaveSheet: View {
             return
         }
         step = .uploading(folderID: pendingFolderID)
+        let onProgress: @Sendable (Int64, Int64) -> Void = { sent, total in
+            guard total > 0 else { return }
+            Task { @MainActor in
+                uploadProgress = Double(sent) / Double(total)
+            }
+        }
         do {
             let file: GoogleDriveClient.File
             if let fileID {
@@ -201,7 +230,8 @@ struct GoogleDriveSaveSheet: View {
                     fileID: fileID,
                     mimeType: mimeType,
                     data: data,
-                    accountID: account.id
+                    accountID: account.id,
+                    onProgress: onProgress
                 )
             } else {
                 file = try await files.create(
@@ -209,11 +239,14 @@ struct GoogleDriveSaveSheet: View {
                     mimeType: mimeType,
                     data: data,
                     parentFolderID: pendingFolderID,
-                    accountID: account.id
+                    accountID: account.id,
+                    onProgress: onProgress
                 )
             }
             onSaved(file)
             dismiss()
+        } catch is CancellationError {
+            // Cancel already reset the sheet to the picker step.
         } catch {
             errorMessage = (error as? LocalizedError)?.errorDescription
                 ?? error.localizedDescription

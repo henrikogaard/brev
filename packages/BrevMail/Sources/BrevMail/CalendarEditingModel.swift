@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 import Foundation
 import Observation
@@ -111,22 +112,29 @@ public final class CalendarEditingModel {
     public private(set) var isSaving = false
     /// Last actionable failure, surfaced inline by the editor sheet.
     public private(set) var lastError: String?
+    /// Calendar sources whose linked account can offer Drive
+    /// attachments (#14) — Gmail API accounts only.
+    public private(set) var driveEligibleSourceIDs: Set<PIMSource.ID> = []
 
     private let writeService: (any CalendarEventWriting)?
     private let coordinator: PIMSourceCoordinator?
     private let collectionService: PIMCollectionService?
     private let now: () -> Date
+    /// The Drive attachment feature, when the session wires one.
+    public let driveFeature: GoogleDriveFeature?
 
     public init(
         writeService: (any CalendarEventWriting)? = nil,
         coordinator: PIMSourceCoordinator? = nil,
         collectionService: PIMCollectionService? = nil,
-        now: @escaping () -> Date = Date.init
+        now: @escaping () -> Date = Date.init,
+        driveFeature: GoogleDriveFeature? = nil
     ) {
         self.writeService = writeService
         self.coordinator = coordinator
         self.collectionService = collectionService
         self.now = now
+        self.driveFeature = driveFeature
     }
 
     /// Whether event authoring is wired in this session.
@@ -161,6 +169,20 @@ public final class CalendarEditingModel {
                 }
             }
             targets = resolved
+            // #14: Drive attach is offered only on sources linked to a
+            // Gmail API account — the account carries the OAuth grant.
+            if let driveFeature {
+                var eligible: Set<PIMSource.ID> = []
+                for source in sources {
+                    if let accountID = source.linkedAccountID,
+                       await driveFeature.isEligible(accountID: accountID) {
+                        eligible.insert(source.id)
+                    }
+                }
+                driveEligibleSourceIDs = eligible
+            } else {
+                driveEligibleSourceIDs = []
+            }
         } catch {
             lastError = error.localizedDescription
         }
@@ -189,6 +211,18 @@ public final class CalendarEditingModel {
     /// exception — so the UI asks for a scope before mutating.
     public func needsScopeChoice(for event: PIMEvent) -> Bool {
         event.recurrenceRule != nil || event.recurrenceID != nil
+    }
+
+    /// The Gmail API account behind the target collection's source
+    /// when Drive attachments are available (#14), else nil.
+    public func driveAttachAccountID(
+        for collectionID: PIMCollection.ID?
+    ) -> BrevAccount.ID? {
+        guard driveFeature != nil,
+              let source = target(for: collectionID)?.source,
+              driveEligibleSourceIDs.contains(source.id)
+        else { return nil }
+        return source.linkedAccountID
     }
 
     // MARK: - Mutations

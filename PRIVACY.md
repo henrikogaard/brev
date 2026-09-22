@@ -483,10 +483,12 @@ provider. Defaults to off.
 ### Google Drive attachments
 
 Gmail API accounts can attach files from Google Drive in compose and
-save message attachments to Google Drive from the reader. Both actions
-are off until you choose them, and the first use runs a fresh Google
-authorization that adds the narrow `drive.file` scope to the
-account's existing grant. If you decline, nothing changes.
+save message attachments to Google Drive from the reader. The event
+editor can also attach a Drive file to a calendar event as a link.
+All of these actions are off until you choose them, and the first use
+runs a fresh Google authorization that adds the narrow `drive.file`
+scope to the account's existing grant. If you decline, nothing
+changes.
 
 `drive.file` only covers files you pick in Google's own file
 chooser and files Brev itself created — Brev cannot list or read the
@@ -499,8 +501,11 @@ After you pick a file to attach, Brev downloads it (or exports a
 Google Docs/Sheets/Slides file to the format you choose) and attaches
 the bytes to the draft like a local file. **Save to Google Drive**
 uploads the attachment to the folder you pick, with a rename-or-replace
-choice when the name already exists. Attach-as-link adds a Drive URL
-to the message body instead of the file bytes.
+choice when the name already exists, and shows upload progress with a
+working cancel. Attach-as-link adds a Drive URL to the message body
+instead of the file bytes. Attaching to an event stores only the Drive
+link on the event — Brev never sends file bytes to the calendar
+provider.
 
 **How to disable:** Do not choose the Drive actions. The grant can be
 removed in your Google account's third-party access settings; Brev

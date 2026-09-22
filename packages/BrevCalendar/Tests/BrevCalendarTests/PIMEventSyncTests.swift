@@ -1062,6 +1062,101 @@ struct PIMEventSyncTests {
         #expect(meet?.conference?.kind == PIMConference.Kind.meet)
         #expect(meet?.conference?.name == "Google Meet")
     }
+
+    @Test("Google sync maps attachments[] to link attachments (#14)")
+    func googleAttachments() async throws {
+        let collection = Self.collection(providerKey: "primary")
+        let page = """
+        {"items":[
+          \(Self.googleEventJSON(
+              id: "g-att",
+              summary: "Review",
+              extra: """
+              ,"attachments":[{"fileUrl":"https://drive.google.com/file/d/abc/view","title":"Deck","mimeType":"application/pdf","iconLink":"https://drive.google.com/icon.png"}]
+              """
+          ))
+        ],"nextSyncToken":"tok-att"}
+        """
+        let transport = ScriptedTransport(steps: [.response(200, body: page)])
+        let (service, _, eventStore, _) = try await makeService(
+            source: Self.source(provider: .google),
+            collections: [collection],
+            davTransport: ScriptedTransport(steps: []),
+            googleTransport: transport,
+            googleAccessToken: { _ in "google-token" }
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let events = try await eventStore.events(
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        let event = events.first { $0.providerItemKey == "g-att" }
+        #expect(event?.attachments.count == 1)
+        #expect(
+            event?.attachments.first?.url
+                == "https://drive.google.com/file/d/abc/view"
+        )
+        #expect(event?.attachments.first?.title == "Deck")
+        #expect(event?.attachments.first?.mimeType == "application/pdf")
+        #expect(
+            event?.attachments.first?.iconURL
+                == "https://drive.google.com/icon.png"
+        )
+    }
+
+    @Test("DAV sync maps ATTACH;VALUE=URI to link attachments (#14)")
+    func davAttachments() async throws {
+        let collection = Self.collection()
+        let vevent = """
+        BEGIN:VCALENDAR
+        VERSION:2.0
+        BEGIN:VEVENT
+        UID:att-1@example.com
+        SUMMARY:With file
+        DTSTART:20260922T140000Z
+        DTEND:20260922T150000Z
+        ATTACH;VALUE=URI;FMTTYPE=application/pdf;X-FILENAME=Deck:https://drive.google.com/file/d/abc/view
+        END:VEVENT
+        END:VCALENDAR
+        """
+        let transport = ScriptedTransport(steps: [
+            .response(
+                207,
+                body: Self.davSyncBody(
+                    members: [
+                        (
+                            "/calendars/henrik/work/att.ics",
+                            "etag-1",
+                            vevent
+                        )
+                    ],
+                    syncToken: "sync-1"
+                )
+            )
+        ])
+        let (service, _, eventStore, _) = try await makeService(
+            source: Self.source(),
+            collections: [collection],
+            davTransport: transport
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let events = try await eventStore.events(
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        let event = events.first { $0.summary == "With file" }
+        #expect(event?.attachments.count == 1)
+        #expect(
+            event?.attachments.first?.url
+                == "https://drive.google.com/file/d/abc/view"
+        )
+        #expect(event?.attachments.first?.title == "Deck")
+        #expect(event?.attachments.first?.mimeType == "application/pdf")
+    }
 }
 
 @Suite("ICSParser event-sync fields")

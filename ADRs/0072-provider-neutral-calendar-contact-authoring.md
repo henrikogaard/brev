@@ -1071,6 +1071,38 @@ grant.
   follow-up decision on whether Drive stays an attachment path or
   becomes a full source kind.
 
+### #14 slice 2 — event Drive link attachments and upload progress (2026-09-22, BrevBackend/BrevCalendar/BrevMail/apps)
+
+- `PIMEventAttachment` is the provider-neutral link-attachment
+  model — URL plus optional title, MIME type, and icon link. Calendar
+  attachments are links by design: providers store a URL, never the
+  bytes, so the narrow `drive.file` grant is never asked to expose
+  file content to the calendar provider.
+- `ICSParser`/`PIMEventICSWriter` round-trip `ATTACH;VALUE=URI`
+  (with `FMTTYPE` and `X-FILENAME`), so CalDAV servers and Google
+  imports keep attachments across sync. `GoogleCalendarEventSync`
+  and `PIMDAVEventSync` map provider attachments into the model.
+- `GoogleCalendarEventWriter` emits `attachments[]` entries and
+  sets `supportsAttachments=true` on insert/patch when attachments
+  are present — Google rejects the field silently without it.
+- `GoogleDriveClient` uploads accept an optional byte-progress
+  callback; the default upload transport is an ephemeral URLSession
+  whose delegate reports progress and whose task is cancelled with
+  the calling task (`URLError.cancelled` maps to
+  `CancellationError`). `DriveFileServing` forwards the callback.
+- The event editor gains an Attachments section: existing links are
+  listed and removable, and Attach from Google Drive appears only
+  when the target collection's source is linked to a Gmail API
+  account (`CalendarEditingModel.driveAttachAccountID`). The sheet
+  runs the same opt-in → Google picker flow as compose; the pick
+  becomes a link attachment. The detail view renders attachments as
+  tappable links.
+- `GoogleDriveSaveSheet` shows determinate upload progress and a
+  working Cancel that aborts the in-flight upload.
+- Deferred: rendered smoke verification against a real Google
+  account; Drive attachments on tasks/contacts are not a provider
+  concept and stay out.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

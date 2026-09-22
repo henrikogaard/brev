@@ -77,7 +77,11 @@ All notable changes to Brev are documented here.
   reach files you pick in Google's own chooser and files it created.
   Picked files can attach as bytes (Workspace files export to PDF,
   Office, or CSV) or as a link; saving uploads to a picked folder with
-  a rename-or-replace choice on name clashes.
+  a rename-or-replace choice on name clashes, with live upload progress
+  and a working cancel. The event editor can also attach a picked
+  Drive file to a calendar event as a link — providers store the URL,
+  never the bytes — and event attachments round-trip through CalDAV
+  (`ATTACH;VALUE=URI`) and Google Calendar (`attachments[]`).
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a
