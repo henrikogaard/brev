@@ -229,18 +229,41 @@ enum MeetingTimeSuggestionFormatter {
     }
 
     private static func dateFormatter(timeZone: TimeZone) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "EEE, MMM d"
-        return formatter
+        cachedFormatter(kind: "date", timeZone: timeZone) {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = timeZone
+            formatter.dateFormat = "EEE, MMM d"
+            return formatter
+        }
     }
 
     private static func timeFormatter(timeZone: TimeZone) -> DateFormatter {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = timeZone
-        formatter.dateFormat = "HH:mm"
+        cachedFormatter(kind: "time", timeZone: timeZone) {
+            let formatter = DateFormatter()
+            formatter.locale = Locale(identifier: "en_US_POSIX")
+            formatter.timeZone = timeZone
+            formatter.dateFormat = "HH:mm"
+            return formatter
+        }
+    }
+
+    /// Slot lists render one formatter pair per line; a small keyed cache keeps
+    /// repeated renders from paying `DateFormatter` construction each time.
+    private static let formatterLock = NSLock()
+    private nonisolated(unsafe) static var formatterCache: [String: DateFormatter] = [:]
+
+    private static func cachedFormatter(
+        kind: String,
+        timeZone: TimeZone,
+        make: () -> DateFormatter
+    ) -> DateFormatter {
+        let key = "\(kind)|\(timeZone.identifier)"
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        if let cached = formatterCache[key] { return cached }
+        let formatter = make()
+        formatterCache[key] = formatter
         return formatter
     }
 }

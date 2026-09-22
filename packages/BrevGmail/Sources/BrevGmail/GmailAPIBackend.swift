@@ -2569,16 +2569,30 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private static func parseDate(_ value: String?, internalDate: String?) -> Date {
         if let value {
-            let formatter = DateFormatter()
-            formatter.locale = Locale(identifier: "en_US_POSIX")
-            formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
-            if let date = formatter.date(from: value) { return date }
+            if let date = rfc2822DateFormatter.date(from: value) { return date }
         }
         if let internalDate, let milliseconds = Double(internalDate) {
             return Date(timeIntervalSince1970: milliseconds / 1000)
         }
         return .distantPast
     }
+
+    /// Shared RFC 2822 parser for message Date headers. `DateFormatter`
+    /// construction is expensive and this runs once per synced message.
+    private static let rfc2822DateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss Z"
+        return formatter
+    }()
+
+    /// Shared `yyyy/MM/dd` writer for Gmail search query date ranges.
+    private static let searchQueryDateFormatter: DateFormatter = {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy/MM/dd"
+        return formatter
+    }()
 
     private static func headerMap(_ headers: [GmailMessageHeader]) -> [String: String] {
         headers.reduce(into: [String: String]()) { result, header in
@@ -2598,10 +2612,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         if query.isFlagged == true { terms.append("is:starred") }
         if let folderID = query.folderID { terms.append("label:\(folderID)") }
         if let range = query.dateRange {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy/MM/dd"
-            terms.append("after:\(formatter.string(from: range.lowerBound))")
-            terms.append("before:\(formatter.string(from: range.upperBound))")
+            terms.append("after:\(searchQueryDateFormatter.string(from: range.lowerBound))")
+            terms.append("before:\(searchQueryDateFormatter.string(from: range.upperBound))")
         }
         return terms.joined(separator: " ")
     }
@@ -2622,10 +2634,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         if let value = query.isUnread { terms.append(value ? "is:unread" : "is:read") }
         if let value = query.isFlagged { terms.append(value ? "is:starred" : "-is:starred") }
         if let range = query.dateRange {
-            let formatter = DateFormatter()
-            formatter.dateFormat = "yyyy/MM/dd"
-            terms.append("after:\(formatter.string(from: range.lowerBound))")
-            terms.append("before:\(formatter.string(from: range.upperBound))")
+            terms.append("after:\(searchQueryDateFormatter.string(from: range.lowerBound))")
+            terms.append("before:\(searchQueryDateFormatter.string(from: range.upperBound))")
         }
 
         var labelID: String?

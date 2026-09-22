@@ -49,6 +49,14 @@ public struct MailProfile: Identifiable, Equatable, Hashable, Codable, Sendable 
 }
 
 enum MailProfileStorage {
+    static let storageKey = "mail.profiles.custom.v1"
+
+    /// Reads the persisted custom-profile payload. Used to seed the root
+    /// view's cached decode before `AppStorage` values are readable.
+    static func load(from defaults: UserDefaults = .standard) -> [MailProfile] {
+        decode(defaults.string(forKey: storageKey) ?? "")
+    }
+
     static func decode(_ rawValue: String) -> [MailProfile] {
         guard let data = rawValue.data(using: .utf8),
               let decoded = try? JSONDecoder().decode([MailProfile].self, from: data)
