@@ -1,5 +1,50 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #49 (compose viewport overflow at accessibility sizes)
+
+### Goal
+
+Fix the compose sheet laying out wider than the phone viewport at the
+largest Dynamic Type sizes, clipping fields and hiding Close/Send/More.
+
+### Root cause
+
+Sheet presentations size content to its ideal width. The recipient and
+subject UITextField adaptors (and the body UITextView) report their
+intrinsic text width as ideal — ~547pt combined at accessibility5 — so
+the sheet's content laid out wider than the 320–430pt viewport.
+
+### Changes
+
+- ComposeView: cap the content's ideal width at 320 (narrowest supported
+  phone) for compact iOS layouts, and cap the accessibility-layout
+  ScrollView's content the same way so it cannot scroll horizontally.
+- ComposeView: remove fixedSize from the mobile toolbar title and Send
+  label (Send label now capped at xxxLarge via the dense-chrome range);
+  drop fixedSize() from the From-row signature picker so it truncates.
+- Tests: ComposeAccessibilityBoundsTests hosts the real view at ideal
+  width under accessibility5 traits and asserts no laid-out subview
+  exceeds 320pt. Fails without the fix (546pt overflow), passes with it.
+- CI: added the suite to the iOS Simulator -only-testing list.
+
+### Verification
+
+- iOS Simulator (iPhone 18 Pro, iOS 27): ComposeAccessibilityBoundsTests
+  green with fix; red without it (OVERFLOW dump shows 546pt content).
+- swift test --package-path packages/BrevMail — logic green; 21
+  pre-existing pixel-snapshot failures on this macOS 27 host, all on the
+  CI macOS<26 skip list and unrelated to this change.
+- scripts/lint.sh — clean.
+- phoneCompose snapshots re-recorded byte-identical — the .image(size:)
+  strategy does not exercise ideal-width sheet sizing; the new bounds
+  test is the regression coverage.
+
+### Skipped
+
+- Real-app rendered verification — the Mac was locked for GUI automation
+  and simctl cannot dismiss the system URL-open dialog; maintainer QA on
+  #49 covers open/dismiss on device.
+
 ## 2026-09-21 — Agent — Issue #13 slice 1 (Google Meet conferences)
 
 ### Goal

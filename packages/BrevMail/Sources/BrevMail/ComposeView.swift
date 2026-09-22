@@ -503,6 +503,16 @@ public struct ComposeView: View {
             }
             .background(BrevWindowSurfaceBackground(role: .utility).ignoresSafeArea())
             .frame(minWidth: frameMetrics.minWidth, minHeight: frameMetrics.minHeight)
+            // On compact iOS, sheet presentations size to the content's
+            // *ideal* width. TextField/UITextView adaptors report their
+            // intrinsic text width as ideal, which at accessibility text
+            // sizes exceeds the viewport and pushes Close/Send/More off
+            // screen (#49). Capping the ideal width keeps the sheet
+            // inside the phone; finite proposals (the actual sheet frame)
+            // are unaffected.
+            .frame(idealWidth: composeLayoutPlatform == .compactIOS
+                || composeLayoutPlatform == .compactIOSAccessibility
+                ? ComposeLayout.compactSheetIdealWidth : nil)
             .accessibilityAddTraits(.isModal)
             .brevWindowTranslucency(windowRole: .utility)
             .task {
@@ -632,6 +642,14 @@ public struct ComposeView: View {
                         fieldPanel.disabled(isBusy)
                         composeEditorContent
                     }
+                    // A vertical ScrollView measures its content at ideal
+                    // width; intrinsic text widths (recipient/subject
+                    // fields, the body editor) exceed the phone viewport
+                    // at accessibility sizes and turn into horizontal
+                    // scrolling/clipping (#49). Capping the ideal width
+                    // keeps the column inside the sheet while finite
+                    // proposals still stretch it to the real width.
+                    .frame(idealWidth: ComposeLayout.compactSheetIdealWidth)
                 }
             } else {
                 header
@@ -814,7 +832,6 @@ public struct ComposeView: View {
                 .font(.headline)
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
                 .layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
 
@@ -1131,7 +1148,7 @@ public struct ComposeView: View {
                     ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
                     .font(.subheadline.weight(.semibold))
                     .lineLimit(1)
-                    .fixedSize(horizontal: true, vertical: false)
+                    .dynamicTypeSize(denseChromeDynamicTypeRange)
             }
             .padding(.horizontal, BrevSpacing.xs)
             .frame(minHeight: toolbarMetrics.hitTargetSize)
@@ -1515,7 +1532,7 @@ public struct ComposeView: View {
                 .frame(height: ComposeLayout.fieldAccessorySize)
             }
             .menuStyle(.borderlessButton)
-            .fixedSize()
+            .lineLimit(1)
             .help(signatureMenuHelpText)
             .accessibilityLabel(String(localized: "Signature", bundle: .module))
             .accessibilityValue(selectedSignature?.title ?? String(localized: "None", bundle: .module))
@@ -3434,6 +3451,10 @@ private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
     static let fieldAccessorySize: CGFloat = 24
     static let aiPreviewMaxHeight: CGFloat = 180
+    /// Ideal width reported for sheet sizing on compact iOS. Matches the
+    /// narrowest supported phone viewport so large-type content can never
+    /// widen the sheet past the screen (#49).
+    static let compactSheetIdealWidth: CGFloat = 320
 }
 
 private struct ComposeFileImporter: ViewModifier {
