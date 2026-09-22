@@ -58,6 +58,9 @@ struct BrevApp: App {
     /// Hoisted so brev://contact deep links can reveal a record in the
     /// shared instance (#10); the Contacts window renders this model.
     @State private var contactsBrowsingModel: ContactsBrowsingModel
+    /// Hoisted so brev://task deep links can reveal a record in the
+    /// shared instance (#12); the Tasks window renders this model.
+    @State private var tasksBrowsingModel: TasksBrowsingModel
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
@@ -79,6 +82,13 @@ struct BrevApp: App {
                 coordinator: session.pimSourceCoordinator,
                 collectionService: session.pimCollectionService,
                 contactSyncService: session.pimContactSyncService
+            )
+        )
+        _tasksBrowsingModel = State(
+            initialValue: TasksBrowsingModel(
+                coordinator: session.pimSourceCoordinator,
+                collectionService: session.pimCollectionService,
+                taskSyncService: session.pimTaskSyncService
             )
         )
     }
@@ -265,6 +275,9 @@ struct BrevApp: App {
                 Button(String(localized: "Contacts")) {
                     openWindow(id: BrevWindowID.contacts)
                 }
+                Button(String(localized: "Tasks")) {
+                    openWindow(id: BrevWindowID.tasks)
+                }
             }
             BrevMailCommands()
         }
@@ -291,6 +304,23 @@ struct BrevApp: App {
                 model: contactsBrowsingModel,
                 editing: ContactsEditingModel(
                     writeService: session.pimContactWriteService,
+                    coordinator: session.pimSourceCoordinator,
+                    collectionService: session.pimCollectionService
+                )
+            )
+            .brevTheme(session.theme)
+            .brevWindowTranslucency(windowRole: .settings)
+            .brevTransparentWindowToolbarBackground()
+            .brevHiddenWindowTitle()
+            .environment(\.openURL, browserOpenURLAction)
+        }
+        .windowResizability(.contentMinSize)
+
+        Window("Tasks", id: BrevWindowID.tasks) {
+            TasksRootView(
+                model: tasksBrowsingModel,
+                editing: TasksEditingModel(
+                    writeService: session.pimTaskWriteService,
                     coordinator: session.pimSourceCoordinator,
                     collectionService: session.pimCollectionService
                 )
@@ -466,6 +496,9 @@ struct BrevApp: App {
             case .contact(let id):
                 openWindow(id: BrevWindowID.contacts)
                 Task { await contactsBrowsingModel.revealContact(id: id) }
+            case .task(let id):
+                openWindow(id: BrevWindowID.tasks)
+                Task { await tasksBrowsingModel.revealTask(id: id) }
             }
             return true
         }
@@ -524,6 +557,7 @@ enum BrevWindowID {
     static let settings = "brev-settings"
     static let calendar = "brev-calendar"
     static let contacts = "brev-contacts"
+    static let tasks = "brev-tasks"
     static let keyboardShortcuts = "brev-keyboard-shortcuts"
 }
 

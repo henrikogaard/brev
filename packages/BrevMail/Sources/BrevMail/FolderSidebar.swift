@@ -116,6 +116,9 @@ public struct FolderSidebar: View {
     /// Opens the Contacts browsing surface (ADR-0072). Nil hides the
     /// footer entry — sessions without PIM wiring never show it.
     private let onOpenContacts: (() -> Void)?
+    /// Opens the Tasks browsing surface (ADR-0072 #12). Nil hides the
+    /// footer entry — sessions without PIM wiring never show it.
+    private let onOpenTasks: (() -> Void)?
     private let onOpenMessages: (() -> Void)?
     /// "New Local Folder…" (ADR-0077) — always offered while a local backend
     /// exists, even when the local account is hidden for having no folders.
@@ -156,6 +159,7 @@ public struct FolderSidebar: View {
         onOpenSettings: (() -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
+        onOpenTasks: (() -> Void)? = nil,
         onOpenMessages: (() -> Void)? = nil,
         onNewLocalFolder: (() -> Void)? = nil
     ) {
@@ -193,6 +197,7 @@ public struct FolderSidebar: View {
         self.onOpenSettings = onOpenSettings
         self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
+        self.onOpenTasks = onOpenTasks
         self.onOpenMessages = onOpenMessages
         self.onNewLocalFolder = onNewLocalFolder
     }
@@ -315,7 +320,7 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var sidebarFooter: some View {
         if onOpenSettings != nil || onOpenCalendar != nil
-            || onOpenContacts != nil {
+            || onOpenContacts != nil || onOpenTasks != nil {
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                 if let onOpenCalendar {
                     footerButton(
@@ -329,6 +334,13 @@ public struct FolderSidebar: View {
                         title: String(localized: "Contacts", bundle: .module),
                         systemImage: "person.crop.circle",
                         action: onOpenContacts
+                    )
+                }
+                if let onOpenTasks {
+                    footerButton(
+                        title: String(localized: "Tasks", bundle: .module),
+                        systemImage: "checklist",
+                        action: onOpenTasks
                     )
                 }
                 if let onOpenSettings {

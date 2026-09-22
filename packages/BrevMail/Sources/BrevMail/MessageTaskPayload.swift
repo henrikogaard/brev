@@ -11,20 +11,56 @@
  */
 
 import BrevBackend
+import BrevCalendar
 import Foundation
 #if canImport(EventKit)
 @preconcurrency import EventKit
 #endif
 
-enum MessageTaskCreationTarget: String, CaseIterable, Equatable, Sendable {
-    case appleReminders
-    case systemShare
+/// Where a Create Task draft lands (#12): Apple Reminders, the system
+/// share sheet, or a writable PIM task list (Google Tasks or a
+/// CalDAV VTODO collection).
+struct MessageTaskTarget: Hashable, Sendable, Identifiable {
+    enum Kind: Hashable, Sendable {
+        case appleReminders
+        case systemShare
+        /// The target task list's collection ID on a PIM tasks source.
+        case providerTaskList(PIMCollection.ID)
+    }
 
-    var title: String {
-        switch self {
-        case .appleReminders: return "Reminders"
-        case .systemShare: return "Share"
+    let kind: Kind
+    /// Display name for the picker row.
+    let title: String
+
+    var id: String {
+        switch kind {
+        case .appleReminders: "appleReminders"
+        case .systemShare: "systemShare"
+        case .providerTaskList(let id): "pim:\(id)"
         }
+    }
+
+    static let appleReminders = MessageTaskTarget(
+        kind: .appleReminders,
+        title: String(localized: "Reminders", bundle: .module)
+    )
+    static let systemShare = MessageTaskTarget(
+        kind: .systemShare,
+        title: String(localized: "Share", bundle: .module)
+    )
+
+    /// The built-in targets plus one entry per writable task list the
+    /// editing model resolved — the sheet's picker options.
+    static func all(
+        providerTargets: [TaskWriteTarget]
+    ) -> [MessageTaskTarget] {
+        [appleReminders, systemShare]
+            + providerTargets.map {
+                MessageTaskTarget(
+                    kind: .providerTaskList($0.collection.id),
+                    title: $0.title
+                )
+            }
     }
 }
 
@@ -33,7 +69,7 @@ struct MessageTaskDraft: Equatable, Sendable {
     var notes: String
     var dueDate: Date?
     var deepLink: URL
-    var target: MessageTaskCreationTarget
+    var target: MessageTaskTarget
 
     var isCreateEnabled: Bool {
         !title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
@@ -52,6 +88,7 @@ enum MessageTaskCreationError: LocalizedError, Equatable {
     case remindersUnavailable
     case remindersAccessDenied
     case unsupportedTarget
+    case providerWriteFailed(String)
 
     var errorDescription: String? {
         switch self {
@@ -61,6 +98,8 @@ enum MessageTaskCreationError: LocalizedError, Equatable {
             String(localized: "Brev does not have permission to create reminders.", bundle: .module)
         case .unsupportedTarget:
             String(localized: "This task handoff target is unavailable.", bundle: .module)
+        case .providerWriteFailed(let message):
+            message
         }
     }
 }
@@ -87,7 +126,7 @@ enum MessageTaskDraftBuilder {
         for header: MessageHeader,
         accountID: String,
         dueDate: Date? = nil,
-        target: MessageTaskCreationTarget = .appleReminders
+        target: MessageTaskTarget = .appleReminders
     ) -> MessageTaskDraft? {
         guard let deepLink = MessageTaskDeepLinkBuilder.url(
             for: header,
@@ -167,7 +206,7 @@ final class AppleReminderTaskCreator: MessageTaskCreating {
     }
 
     func createTask(from draft: MessageTaskDraft) async throws -> MessageTaskCreationResult {
-        guard draft.target == .appleReminders else {
+        guard draft.target.kind == .appleReminders else {
             throw MessageTaskCreationError.unsupportedTarget
         }
         let granted = try await eventStore.requestFullAccessToReminders()
@@ -200,3 +239,44 @@ struct AppleReminderTaskCreator: MessageTaskCreating {
     }
 }
 #endif
+
+/// Creates a task in a writable PIM task list (Google Tasks or a
+/// CalDAV VTODO collection) from a Create Task draft (#12).
+///
+/// Resolves the draft's target list through the editing model at call
+/// time so a stale or freshly-enabled list never writes to the wrong
+/// place. The message's brev:// deep link rides in the task's links so
+/// the provider record keeps a path back to the mail.
+struct PIMTaskMessageCreator: MessageTaskCreating {
+    let editing: TasksEditingModel
+
+    func createTask(from draft: MessageTaskDraft) async throws -> MessageTaskCreationResult {
+        guard case .providerTaskList(let collectionID) = draft.target.kind
+        else {
+            throw MessageTaskCreationError.unsupportedTarget
+        }
+        await editing.load()
+        guard let target = await editing.target(for: collectionID) else {
+            throw MessageTaskCreationError.unsupportedTarget
+        }
+        var taskDraft = TaskDraft()
+        taskDraft.title = draft.title
+        taskDraft.notes = draft.notes
+        taskDraft.due = draft.dueDate
+        taskDraft.targetID = target.id
+        taskDraft.links = [draft.deepLink.absoluteString]
+        do {
+            _ = try await editing.create(taskDraft)
+            return MessageTaskCreationResult(
+                message: String(
+                    localized: "Task created in \(target.collection.displayName).",
+                    bundle: .module
+                )
+            )
+        } catch {
+            throw MessageTaskCreationError.providerWriteFailed(
+                error.localizedDescription
+            )
+        }
+    }
+}

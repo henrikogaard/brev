@@ -25,17 +25,29 @@ struct MessageTaskSheet: View {
 
     private let create: (MessageTaskDraft) async throws -> MessageTaskCreationResult
     private let onClose: () -> Void
+    /// Writable task lists for the target picker (#12); nil offers
+    /// only Reminders and Share. The sheet observes the model so a
+    /// late load() still updates the picker.
+    private let editing: TasksEditingModel?
 
     init(
         draft: MessageTaskDraft,
+        editing: TasksEditingModel? = nil,
         create: @escaping (MessageTaskDraft) async throws -> MessageTaskCreationResult,
         onClose: @escaping () -> Void
     ) {
         _draft = State(initialValue: draft)
         _includesDueDate = State(initialValue: draft.dueDate != nil)
         _selectedDueDate = State(initialValue: draft.dueDate ?? Date().addingTimeInterval(86400))
+        self.editing = editing
         self.create = create
         self.onClose = onClose
+    }
+
+    /// Picker options: the built-in targets plus the writable task
+    /// lists the model has resolved.
+    private var targets: [MessageTaskTarget] {
+        MessageTaskTarget.all(providerTargets: editing?.targets ?? [])
     }
 
     var body: some View {
@@ -84,11 +96,10 @@ struct MessageTaskSheet: View {
 
                 fieldGroup("Target") {
                     Picker(String(localized: "Target", bundle: .module), selection: $draft.target) {
-                        ForEach(MessageTaskCreationTarget.allCases, id: \.self) { target in
+                        ForEach(targets) { target in
                             Text(target.title).tag(target)
                         }
                     }
-                    .pickerStyle(.segmented)
                     .labelsHidden()
                 }
 
@@ -141,7 +152,7 @@ struct MessageTaskSheet: View {
 
     private var footer: some View {
         HStack(spacing: BrevSpacing.sm) {
-            if draft.target == .systemShare {
+            if draft.target.kind == .systemShare {
                 ShareLink(item: MessageTaskSharePayload.text(for: draft)) {
                     Label(String(localized: "Share", bundle: .module), systemImage: "square.and.arrow.up")
                 }
@@ -156,7 +167,10 @@ struct MessageTaskSheet: View {
                 Task { await createTask() }
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(isCreating || !draft.isCreateEnabled || draft.target != .appleReminders)
+            .disabled(
+                isCreating || !draft.isCreateEnabled
+                    || draft.target.kind == .systemShare
+            )
         }
         .padding(BrevSpacing.md)
     }

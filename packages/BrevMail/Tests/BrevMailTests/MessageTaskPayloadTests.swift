@@ -76,11 +76,13 @@ struct MessageTaskPayloadTests {
         #expect(!draft.isCreateEnabled)
     }
 
-    @Test("creation targets are local or system handoff only")
+    @Test("creation targets are local, system share, or a writable PIM list")
     func creationTargetsAreLocalOrSystemOnly() {
-        #expect(MessageTaskCreationTarget.allCases == [.appleReminders, .systemShare])
-        #expect(!MessageTaskCreationTarget.allCases.map(\.rawValue).contains("todoist"))
-        #expect(!MessageTaskCreationTarget.allCases.map(\.rawValue).contains("asana"))
+        let targets = MessageTaskTarget.all(providerTargets: [])
+        #expect(targets == [.appleReminders, .systemShare])
+        // Third-party task services stay out — only PIM lists join.
+        #expect(!targets.map(\.id).contains("todoist"))
+        #expect(!targets.map(\.id).contains("asana"))
     }
 
     private func makeHeader(
