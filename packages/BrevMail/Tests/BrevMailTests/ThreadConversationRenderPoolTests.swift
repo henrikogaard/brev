@@ -59,7 +59,7 @@ struct ThreadConversationRenderPoolTests {
                 // Main-actor children keep the counter mutations race-free;
                 // Task.yield still lets waiters interleave inside a permit.
                 group.addTask { @MainActor in
-                    await pool.withBodyLoadPermit {
+                    try? await pool.withBodyLoadPermit {
                         active += 1
                         maxActive = max(maxActive, active)
                         await Task.yield()
@@ -71,5 +71,44 @@ struct ThreadConversationRenderPoolTests {
 
         #expect(maxActive <= permits)
         #expect(maxActive > 0)
+    }
+
+    @Test("a cancelled permit waiter stops waiting and frees the queue")
+    @MainActor
+    func cancelledWaiterStopsWaiting() async throws {
+        let pool = ThreadConversationRenderPool(bodyLoadPermits: 1)
+        var releaseHolder: CheckedContinuation<Void, Never>?
+        await withCheckedContinuation { holderReady in
+            Task { @MainActor in
+                try? await pool.withBodyLoadPermit {
+                    await withCheckedContinuation { done in
+                        releaseHolder = done
+                        holderReady.resume()
+                    }
+                }
+            }
+        }
+
+        // Occupy the only permit, then queue a waiter and cancel it while
+        // it is suspended — this is the collapse/thread-switch path from
+        // #51 that used to leave the card loading forever.
+        let waiter = Task { @MainActor in
+            try await pool.withBodyLoadPermit {
+                "acquired"
+            }
+        }
+        try await Task.sleep(nanoseconds: 50_000_000)
+        waiter.cancel()
+
+        let outcome = await waiter.result
+        #expect(throws: CancellationError.self) {
+            try outcome.get()
+        }
+
+        // The queue must stay healthy: releasing the holder lets a fresh
+        // caller acquire the permit.
+        releaseHolder?.resume()
+        let next = try await pool.withBodyLoadPermit { "acquired" }
+        #expect(next == "acquired")
     }
 }

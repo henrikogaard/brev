@@ -243,7 +243,9 @@ All notable changes to Brev are documented here.
 - Preserve supplied plain-text paragraphs while attributed HTML import is pending
   or fails.
 - Stop the iPhone conversation reader from repeatedly invalidating its command
-  environment and remaining stuck at Loading message.
+  environment and remaining stuck at Loading message; a cancelled body-load
+  permit waiter no longer suspends forever, and the load timeout now also
+  bounds the permit queue wait.
 - Keep compose recipient fields within the available width and allow the form
   to scroll at accessibility text sizes while Close, Send and More stay visible.
 - Simplify the desktop compose toolbar by grouping duplicate secondary actions

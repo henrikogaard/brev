@@ -38,7 +38,13 @@ final class ThreadConversationRenderPool {
     /// Checkout order, oldest first; the head is the eviction candidate.
     private var checkoutOrder: [MessageHeader.ID] = []
     private var activeBodyLoads = 0
-    private var bodyLoadWaiters: [CheckedContinuation<Void, Never>] = []
+    private var bodyLoadWaiters: [BodyLoadWaiter] = []
+    private var bodyLoadWaiterSequence = 0
+
+    private struct BodyLoadWaiter {
+        let id: Int
+        let continuation: CheckedContinuation<Bool, Never>
+    }
 
     init(
         webViewStoreCapacity: Int = ThreadConversationRenderPool.defaultWebViewStoreCapacity,
@@ -81,18 +87,57 @@ final class ThreadConversationRenderPool {
     /// Runs `operation` after acquiring a body-load permit, suspending while
     /// every permit is checked out. Permits transfer directly from a releaser
     /// to the next waiter — the same slot protocol `AvatarResolver` uses.
+    ///
+    /// The wait is cancellation-aware: a card whose `.task` is cancelled
+    /// while queued (collapse, thread switch, scroll off-screen) throws
+    /// `CancellationError` instead of suspending forever with its loading
+    /// state stuck on — the stuck-spinner defect from #51.
     func withBodyLoadPermit<T>(
         _ operation: () async throws -> T
-    ) async rethrows -> T {
+    ) async throws -> T {
         if activeBodyLoads < bodyLoadPermitCount {
             activeBodyLoads += 1
         } else {
-            await withCheckedContinuation { continuation in
-                bodyLoadWaiters.append(continuation)
+            let acquired = await waitForBodyLoadPermit()
+            if !acquired {
+                throw CancellationError()
             }
         }
         defer { releaseBodyLoadPermit() }
         return try await operation()
+    }
+
+    /// Suspends until a permit is handed over by a releaser, or returns
+    /// `false` when the calling task is cancelled while still queued.
+    /// A waiter already resumed by a releaser ignores late cancellation —
+    /// it owns the transferred permit and must run and release it.
+    private func waitForBodyLoadPermit() async -> Bool {
+        let waiterID = nextBodyLoadWaiterID()
+        return await withTaskCancellationHandler {
+            await withCheckedContinuation { continuation in
+                bodyLoadWaiters.append(
+                    BodyLoadWaiter(id: waiterID, continuation: continuation)
+                )
+            }
+        } onCancel: {
+            Task { @MainActor in
+                cancelBodyLoadWaiter(id: waiterID)
+            }
+        }
+    }
+
+    private func nextBodyLoadWaiterID() -> Int {
+        bodyLoadWaiterSequence += 1
+        return bodyLoadWaiterSequence
+    }
+
+    private func cancelBodyLoadWaiter(id: Int) {
+        guard let index = bodyLoadWaiters.firstIndex(where: { $0.id == id })
+        else { return }
+        let waiter = bodyLoadWaiters.remove(at: index)
+        // Resume with `false`: the caller never acquired a permit, so it
+        // throws CancellationError without touching the permit count.
+        waiter.continuation.resume(returning: false)
     }
 
     private func touch(_ messageID: MessageHeader.ID) {
@@ -103,7 +148,7 @@ final class ThreadConversationRenderPool {
     private func releaseBodyLoadPermit() {
         if let next = bodyLoadWaiters.first {
             bodyLoadWaiters.removeFirst()
-            next.resume()
+            next.continuation.resume(returning: true)
         } else {
             activeBodyLoads -= 1
         }

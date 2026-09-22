@@ -44,6 +44,48 @@ the sheet's content laid out wider than the 320–430pt viewport.
 - Real-app rendered verification — the Mac was locked for GUI automation
   and simctl cannot dismiss the system URL-open dialog; maintainer QA on
   #49 covers open/dismiss on device.
+## 2026-09-22 — Agent — Issue #51 (reader stuck at Loading message)
+
+### Goal
+
+Diagnose and fix the conversation reader pinning at "Loading message…"
+with the main thread looping in SwiftUI layout.
+
+### Root cause
+
+`ThreadConversationRenderPool.withBodyLoadPermit` suspended queued
+waiters on a plain `withCheckedContinuation` with no cancellation
+handling. A card whose `.task(id: isExpanded)` was cancelled while
+queued (collapse, thread switch, scroll off-screen) never resumed —
+`loadBody`'s `defer` never ran, `isLoading` stayed true, and the
+spinner re-invalidated layout forever. The 15s timeout only covered the
+backend read, not the permit wait.
+
+### Changes
+
+- ThreadConversationRenderPool: permit waiters are cancellation-aware —
+  a cancelled waiter resumes with `false` and throws
+  `CancellationError`; a waiter already resumed by a releaser ignores
+  late cancellation (it owns the transferred permit).
+- MessageBodyLoadTimeoutRace: extracted a generic `race` so the
+  conversation card's timeout now bounds permit-wait + backend load.
+- ThreadMessageCard: `bodyWithReaderTimeout` races the whole
+  permit+load span against the 15s timeout.
+- Tests: cancelledWaiterStopsWaiting — red without the fix (hangs),
+  green with it.
+
+### Verification
+
+- swift test --filter ThreadConversationRenderPoolTests — 4/4 green;
+  the new test hangs forever without the fix (verified by stash).
+- swift build --package-path packages/BrevMail — clean.
+- scripts/lint.sh — clean.
+
+### Skipped
+
+- Device/simulator reproduction — the Mac was locked for GUI automation;
+  the unit test reproduces the exact hang mechanism (cancelled permit
+  waiter). Maintainer QA on #51 covers the rendered path.
 
 ## 2026-09-21 — Agent — Issue #13 slice 1 (Google Meet conferences)
 
