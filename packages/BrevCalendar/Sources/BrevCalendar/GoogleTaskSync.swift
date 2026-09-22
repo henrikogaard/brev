@@ -140,7 +140,9 @@ public struct GoogleTaskSync: Sendable {
         var nextPageToken: String?
     }
 
-    struct TaskItem: Codable {
+    /// Wire shape of one Google Tasks resource — public so the write
+    /// path can hand the provider's canonical record back to callers.
+    public struct TaskItem: Codable, Hashable, Sendable {
         var id: String?
         var etag: String?
         var title: String?
@@ -155,7 +157,7 @@ public struct GoogleTaskSync: Sendable {
         var position: String?
         var links: [Link]?
 
-        struct Link: Codable {
+        public struct Link: Codable, Hashable, Sendable {
             var type: String?
             var description: String?
             var link: String?

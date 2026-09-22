@@ -238,6 +238,21 @@ public enum AppSessionFactory {
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
+        // ADR-0072 #12: task writes ride the same credential paths —
+        // Google via the linked account grant (tasks scope), CalDAV via
+        // the Keychain reference on VTODO-capable collections. The
+        // service only acts on sources whose .write capability the user
+        // explicitly enabled.
+        let pimTaskWriteService = PIMTaskWriteService(
+            coordinator: pimSourceCoordinator,
+            collectionStore: JSONPIMCollectionStore(
+                localDataStore: pimLocalDataStore
+            ),
+            taskStore: JSONPIMTaskStore(localDataStore: pimLocalDataStore),
+            credentials: CalDAVKeychainCredentialStore(),
+            googleAccessToken: configuration.googlePIMAccessTokenProvider
+        )
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
@@ -256,6 +271,7 @@ public enum AppSessionFactory {
                 pimTaskSyncService: pimTaskSyncService,
                 pimEventWriteService: pimEventWriteService,
                 pimContactWriteService: pimContactWriteService,
+                pimTaskWriteService: pimTaskWriteService,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -380,6 +396,7 @@ public enum AppSessionFactory {
             pimTaskSyncService: pimTaskSyncService,
             pimEventWriteService: pimEventWriteService,
             pimContactWriteService: pimContactWriteService,
+            pimTaskWriteService: pimTaskWriteService,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )
