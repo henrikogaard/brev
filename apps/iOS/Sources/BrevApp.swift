@@ -208,7 +208,8 @@ struct BrevApp: App {
                             eventSyncService: session.pimEventSyncService,
                             collectionService: session.pimCollectionService,
                             writeService: session.pimEventWriteService
-                        )
+                        ),
+                        driveFeature: session.googleDriveFeature
                     )
                     .environment(\.openURL, browserOpenURLAction)
                     .networkMonitor(networkMonitor)
@@ -660,9 +661,10 @@ extension AppSession {
     /// Default session for the iOS app.
     @MainActor
     static func makeDefault() -> AppSession {
+        let gmailConfigurationStore = UserDefaultsGmailAccountConfigurationStore()
         let gmailConnector = GmailAccountConnector.standard(
             applicationSupportURL: applicationSupportURL,
-            configurationStore: UserDefaultsGmailAccountConfigurationStore(),
+            configurationStore: gmailConfigurationStore,
             tokenStore: KeychainTokenStore(),
             localSearchIndexFactory: { accountID in
                 makeLocalSearchIndex(accountID: accountID)
@@ -706,7 +708,33 @@ extension AppSession {
                 },
                 googlePIMAccessTokenProvider: { accountID in
                     try await gmailConnector.accessToken(for: accountID)
-                }
+                },
+                // #14: Drive rides the shared grant — the drive.file
+                // scope is unioned in only when the user confirms the
+                // opt-in from an attachment action.
+                googleDriveEnablementCoordinator: { accountID in
+                    try await gmailConnector.enablePIMFeature(
+                        accountID: accountID,
+                        additionalScopes: [GoogleDriveClient.scope],
+                        authorize: { scopes in
+                            try await GoogleOAuthFlow().signIn(
+                                presentationContext: oauthPresentationAnchor(),
+                                additionalScopes: scopes
+                            )
+                        }
+                    )
+                },
+                googleDriveConfigurationProvider: { accountID in
+                    await gmailConfigurationStore.configuration(for: accountID)
+                },
+                googleDrivePickerDeveloperKey:
+                Bundle.main.object(
+                    forInfoDictionaryKey: "BREV_GOOGLE_API_KEY"
+                ) as? String ?? "",
+                googleDrivePickerAppID:
+                Bundle.main.object(
+                    forInfoDictionaryKey: "BREV_GOOGLE_APP_ID"
+                ) as? String ?? ""
             )
         )
     }

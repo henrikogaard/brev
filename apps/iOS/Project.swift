@@ -53,6 +53,9 @@ let project = Project(
             "BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI": .string(BrevConstants.googleIOSOAuthRedirectURI),
             "BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME": .string(BrevConstants.googleIOSOAuthCallbackScheme),
             "BREV_MICROSOFT_OAUTH_CLIENT_ID": .string(BrevConstants.microsoftOAuthClientID),
+            // Google Picker credentials for Drive attachments (#14).
+            "BREV_GOOGLE_API_KEY": .string(BrevConstants.googleAPIKey),
+            "BREV_GOOGLE_APP_ID": .string(BrevConstants.googleAppID),
             "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
             "ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES": "BrevIconEnvelopeDarkMetal BrevIconEnvelopeCarbon"
         ],

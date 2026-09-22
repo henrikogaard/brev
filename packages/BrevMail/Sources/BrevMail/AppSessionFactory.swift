@@ -74,6 +74,19 @@ public enum AppSessionFactory {
         /// Absent, Google collection refresh reports unavailable.
         public let googlePIMAccessTokenProvider:
             (@Sendable (BrevAccount.ID) async throws -> String)?
+        /// Authorizes and installs the `drive.file` grant on a
+        /// Google account for the attachment feature (#14). Absent,
+        /// Drive actions stay inert.
+        public let googleDriveEnablementCoordinator:
+            ((BrevAccount.ID) async throws -> Void)?
+        /// Reads the stored Google grant for scope checks (#14).
+        /// Absent, the Drive feature is unavailable.
+        public let googleDriveConfigurationProvider:
+            (@Sendable (BrevAccount.ID) async -> GoogleOAuthAccountConfiguration?)?
+        /// The Picker developer key and app ID Tuist injects from the
+        /// build environment; empty when unconfigured.
+        public let googleDrivePickerDeveloperKey: String
+        public let googleDrivePickerAppID: String
         /// Creates the durable local-mail backend (ADR-0077). Defaults to a
         /// Maildir store under `applicationSupportURL/LocalFolders`; tests can
         /// inject a temporary root.
@@ -118,6 +131,12 @@ public enum AppSessionFactory {
             AppSession.GooglePIMEnablementCoordinator? = nil,
             googlePIMAccessTokenProvider:
             (@Sendable (BrevAccount.ID) async throws -> String)? = nil,
+            googleDriveEnablementCoordinator:
+            ((BrevAccount.ID) async throws -> Void)? = nil,
+            googleDriveConfigurationProvider:
+            (@Sendable (BrevAccount.ID) async -> GoogleOAuthAccountConfiguration?)? = nil,
+            googleDrivePickerDeveloperKey: String = "",
+            googleDrivePickerAppID: String = "",
             localBackendFactory: (@Sendable () -> LocalMailBackend)? = nil
         ) {
             self.applicationSupportURL = applicationSupportURL
@@ -131,6 +150,10 @@ public enum AppSessionFactory {
             self.googleOAuthRemovalCoordinator = googleOAuthRemovalCoordinator
             self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
             self.googlePIMAccessTokenProvider = googlePIMAccessTokenProvider
+            self.googleDriveEnablementCoordinator = googleDriveEnablementCoordinator
+            self.googleDriveConfigurationProvider = googleDriveConfigurationProvider
+            self.googleDrivePickerDeveloperKey = googleDrivePickerDeveloperKey
+            self.googleDrivePickerAppID = googleDrivePickerAppID
             self.localBackendFactory = localBackendFactory
         }
     }
@@ -253,6 +276,24 @@ public enum AppSessionFactory {
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
+        // ADR-0072 #14: Drive rides the shared Google grant — the
+        // configuration provider reads stored scopes, the enablement
+        // coordinator re-authorizes with drive.file unioned in, and
+        // file calls resolve the account token per request.
+        let googleDriveFeature: GoogleDriveFeature? =
+            configuration.googleDriveConfigurationProvider.map { configurationProvider in
+                GoogleDriveFeature(
+                    configuration: configurationProvider,
+                    enablement: configuration.googleDriveEnablementCoordinator,
+                    accessToken: configuration.googlePIMAccessTokenProvider,
+                    files: configuration.googlePIMAccessTokenProvider.map {
+                        GoogleDriveFileService(accessToken: $0)
+                    },
+                    pickerDeveloperKey: configuration.googleDrivePickerDeveloperKey,
+                    pickerAppID: configuration.googleDrivePickerAppID
+                )
+            }
+
         #if DEBUG
         if configuration.isDemoModeRequested() {
             let mock = configuration.makeDemoBackend()
@@ -272,6 +313,7 @@ public enum AppSessionFactory {
                 pimEventWriteService: pimEventWriteService,
                 pimContactWriteService: pimContactWriteService,
                 pimTaskWriteService: pimTaskWriteService,
+                googleDriveFeature: googleDriveFeature,
                 aiProviderAssignmentCleanup: cleanupAIProviderAssignment
             )
         }
@@ -397,6 +439,7 @@ public enum AppSessionFactory {
             pimEventWriteService: pimEventWriteService,
             pimContactWriteService: pimContactWriteService,
             pimTaskWriteService: pimTaskWriteService,
+            googleDriveFeature: googleDriveFeature,
             googlePIMEnablementCoordinator: configuration.googlePIMEnablementCoordinator,
             aiProviderAssignmentCleanup: cleanupAIProviderAssignment
         )

@@ -334,6 +334,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				BREV_GOOGLE_API_KEY = "";
+				BREV_GOOGLE_APP_ID = "";
 				BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME = http;
 				BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID = "";
 				BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI = "http://127.0.0.1";
@@ -443,6 +445,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				BREV_GOOGLE_API_KEY = "";
+				BREV_GOOGLE_APP_ID = "";
 				BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME = http;
 				BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID = "";
 				BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI = "http://127.0.0.1";

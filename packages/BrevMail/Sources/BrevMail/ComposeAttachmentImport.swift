@@ -128,7 +128,7 @@ enum ComposeAttachmentImport {
     /// and matching the limit most mail providers enforce on send.
     static let maxAttachmentByteCount = 25 * 1024 * 1024
 
-    private static func attachmentBudgetExceededMessage(filename: String) -> String {
+    static func attachmentBudgetExceededMessage(filename: String) -> String {
         "Couldn't attach \"\(filename)\": the total attachments exceed the 25 MB limit."
     }
 

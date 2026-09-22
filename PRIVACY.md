@@ -480,6 +480,33 @@ Removing a source deletes its credential, sync cursors and unsent
 drafts, and optionally its cached content; it never deletes data on the
 provider. Defaults to off.
 
+### Google Drive attachments
+
+Gmail API accounts can attach files from Google Drive in compose and
+save message attachments to Google Drive from the reader. Both actions
+are off until you choose them, and the first use runs a fresh Google
+authorization that adds the narrow `drive.file` scope to the
+account's existing grant. If you decline, nothing changes.
+
+`drive.file` only covers files you pick in Google's own file
+chooser and files Brev itself created — Brev cannot list or read the
+rest of your Drive. The chooser is hosted by Google: when a Drive
+sheet opens, it loads Google's picker script and hands it the
+account's access token, the app's Google API key, and app ID so the
+picked file can be shared with Brev.
+
+After you pick a file to attach, Brev downloads it (or exports a
+Google Docs/Sheets/Slides file to the format you choose) and attaches
+the bytes to the draft like a local file. **Save to Google Drive**
+uploads the attachment to the folder you pick, with a rename-or-replace
+choice when the name already exists. Attach-as-link adds a Drive URL
+to the message body instead of the file bytes.
+
+**How to disable:** Do not choose the Drive actions. The grant can be
+removed in your Google account's third-party access settings; Brev
+detects a revoked or narrowed grant on the next call and asks before
+re-authorizing. Defaults to off.
+
 ### Gravatar (sender avatars)
 
 If enabled: Brev sends an SHA-256 hash of each sender's email

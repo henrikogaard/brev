@@ -88,6 +88,20 @@ public enum BrevConstants {
         oauthEnvironmentValue("BREV_MICROSOFT_OAUTH_CLIENT_ID") ?? ""
     }
 
+    /// Google API (developer) key for the Google Picker (#14). The
+    /// picker needs a key from the same Google Cloud project as the
+    /// OAuth client; empty keeps Drive actions hidden behind the
+    /// opt-in's unavailable state.
+    public static var googleAPIKey: String {
+        oauthEnvironmentValue("BREV_GOOGLE_API_KEY") ?? ""
+    }
+
+    /// Google Cloud project number for the Google Picker `setAppId`
+    /// (#14) — the numeric project ID, not the client ID.
+    public static var googleAppID: String {
+        oauthEnvironmentValue("BREV_GOOGLE_APP_ID") ?? ""
+    }
+
     private static var localQAFallbackEnabled: Bool {
         let value = ProcessInfo.processInfo.environment["BREV_LOCAL_QA"]
             ?? ProcessInfo.processInfo.environment["BREV_GOOGLE_OAUTH_ALLOW_LEGACY_FALLBACK"]

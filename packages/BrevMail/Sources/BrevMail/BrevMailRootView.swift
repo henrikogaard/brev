@@ -449,6 +449,10 @@ public struct BrevMailRootView: View {
     /// nil keeps the mail-only confirmation.
     private let inviteReconciler: CalendarInviteReconciler?
 
+    /// The opt-in Google Drive attachment feature (#14); nil hides
+    /// Drive entries in compose and attachment menus.
+    private let driveFeature: GoogleDriveFeature?
+
     private let unreadCountReconciler = UnreadCountReconciler()
 
     /// Creates a mailbox workspace for a single account backend.
@@ -482,7 +486,8 @@ public struct BrevMailRootView: View {
         calendarEditing: CalendarEditingModel? = nil,
         taskEditing: TasksEditingModel? = nil,
         senderContactActions: MailSenderContactActions? = nil,
-        inviteReconciler: CalendarInviteReconciler? = nil
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        driveFeature: GoogleDriveFeature? = nil
     ) {
         self.init(
             backends: [backend],
@@ -511,7 +516,8 @@ public struct BrevMailRootView: View {
             calendarEditing: calendarEditing,
             taskEditing: taskEditing,
             senderContactActions: senderContactActions,
-            inviteReconciler: inviteReconciler
+            inviteReconciler: inviteReconciler,
+            driveFeature: driveFeature
         )
     }
 
@@ -547,7 +553,8 @@ public struct BrevMailRootView: View {
         calendarEditing: CalendarEditingModel? = nil,
         taskEditing: TasksEditingModel? = nil,
         senderContactActions: MailSenderContactActions? = nil,
-        inviteReconciler: CalendarInviteReconciler? = nil
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        driveFeature: GoogleDriveFeature? = nil
     ) {
         let firstBackend = backends[0]
         backend = firstBackend
@@ -591,6 +598,7 @@ public struct BrevMailRootView: View {
         self.taskEditing = taskEditing
         self.senderContactActions = senderContactActions
         self.inviteReconciler = inviteReconciler
+        self.driveFeature = driveFeature
     }
 
     public var body: some View {
@@ -1460,7 +1468,8 @@ public struct BrevMailRootView: View {
                         isMutationWorkBlocked: isCommandMutationBlocked,
                         canFileLocally: localBackend != nil,
                         inviteReconciler: inviteReconciler,
-                        contactActions: senderContactActions
+                        contactActions: senderContactActions,
+                        driveFeature: driveFeature
                     )
                 }
             }
@@ -3648,6 +3657,7 @@ public struct BrevMailRootView: View {
                 hasTrustedSigningIdentity: (trustedSigningIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
                 hasTrustedEncryptionIdentity: (trustedEncryptionIdentityCountProvider?(composeBackend.account) ?? 0) > 0,
                 isWorkBlocked: isComposeWorkBlocked,
+                driveFeature: driveFeature,
                 onClose: onClose,
                 onCompletion: { completion in
                     await handleComposeCompletion(
