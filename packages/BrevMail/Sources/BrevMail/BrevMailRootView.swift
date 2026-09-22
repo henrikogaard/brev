@@ -5205,6 +5205,9 @@ public struct BrevMailRootView: View {
             availableSourceIDs: enabledSourceSections.map(\.id)
         )
         customProfileStorage = MailProfileStorage.encode(normalizedProfiles)
+        // Reconcile navigation against the saved membership in this same turn;
+        // AppStorage's onChange callback does not run until a later view update.
+        cachedCustomProfiles = normalizedProfiles
         activeProfileID = normalizedActiveProfileID
         applyActiveProfileSelection()
     }

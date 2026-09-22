@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-09-22 — Agent — PR #82 review follow-up
+
+- Confirmed review thread discussion_r4070538784: saving profiles reconciled
+  navigation before the cached profiles received the saved membership.
+- Assign the normalized profile cache synchronously before resolving the active
+  profile and reconciling reader/mailbox selection. Persistence observation
+  remains in place for external changes.
+- Verification: all 11 MailProfile tests and scripts/lint.sh pass. No new snapshot:
+  layout is unchanged. Native interaction QA is not yet performed. The private
+  SwiftUI save handler is reviewed directly; existing tests cover the profile
+  selection policy, not mounted-view callback ordering.
+- Documentation sweep: changelog/worklog updated; architecture, privacy,
+  provider behavior, setup and release procedures are unchanged.
+
 ## 2026-09-22 — Agent — Issue #81 (performance/stability pass)
 
 ### Goal
