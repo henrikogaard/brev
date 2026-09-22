@@ -42,6 +42,22 @@ fixing only confirmed hot-path allocations and per-render decodes.
 
 - PR targets main; board → In review on merge.
 
+## 2026-09-22 — Agent — PR #80 review follow-up
+
+- Verified all three export findings in PR #80: same-subject exports overwrote
+  bytes still used by share sheets; long Unicode subjects exceeded filesystem
+  limits; the single-message error omitted localization.
+- Use a unique temporary directory per export, preserving the visible filename;
+  cap basename length by UTF-8 bytes including Unicode decomposition, leaving
+  space for the extension and atomic-write suffix. Failed writes clean up their
+  own directory. Successful exports remain in system temporary storage so a
+  share extension can consume them; no persistent mail store is changed.
+- Red/green: independent-export and long-Unicode-subject tests failed on main,
+  then passed with the fix. Five focused tests and scripts/lint.sh pass.
+- No layout or snapshot change; native share-sheet interaction not run.
+  Documentation sweep: changelog/worklog updated; no new provider calls,
+  architecture, setup or release changes.
+
 ## 2026-09-22 — Agent — Issue #79 (iOS/macOS parity gaps)
 
 ### Goal

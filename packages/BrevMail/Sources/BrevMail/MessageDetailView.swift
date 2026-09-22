@@ -452,7 +452,7 @@ public struct MessageDetailView: View {
                 )
             } catch {
                 attachmentError = MessageDetailInlineStatus(
-                    message: "EML export failed: \(error.localizedDescription)",
+                    message: String(localized: "EML export failed: \(error.localizedDescription)", bundle: .module),
                     tone: .danger,
                     isDismissible: true,
                     lineLimit: nil

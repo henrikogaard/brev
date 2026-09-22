@@ -40,7 +40,7 @@ struct MessageEMLExportTests {
             header: Self.header(subject: "Quarterly Report"),
             rawMessageData: bytes
         )
-        defer { try? FileManager.default.removeItem(at: url) }
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         #expect(url.pathExtension == "eml")
         #expect(url.lastPathComponent == "Quarterly Report.eml")
@@ -53,28 +53,43 @@ struct MessageEMLExportTests {
             header: Self.header(subject: "a/b\\c:.."),
             rawMessageData: Data("x".utf8)
         )
-        defer { try? FileManager.default.removeItem(at: url) }
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
 
         #expect(url.lastPathComponent.hasSuffix(".eml"))
         #expect(!url.lastPathComponent.contains("/"))
         #expect(!url.lastPathComponent.hasPrefix("."))
     }
 
-    @Test("temp export overwrites a previous export of the same message")
-    func temporaryFileOverwrites() throws {
+    @Test("exports with the same subject keep independent raw messages")
+    func temporaryFilesAreIndependent() throws {
         let header = Self.header(subject: "Repeat")
         let first = try MessageEMLExport.writeToTemporaryFile(
             header: header,
             rawMessageData: Data("one".utf8)
         )
-        defer { try? FileManager.default.removeItem(at: first) }
+        defer { try? FileManager.default.removeItem(at: first.deletingLastPathComponent()) }
         let second = try MessageEMLExport.writeToTemporaryFile(
             header: header,
             rawMessageData: Data("two".utf8)
         )
 
-        #expect(first == second)
+        defer { try? FileManager.default.removeItem(at: second.deletingLastPathComponent()) }
+        #expect(first != second)
+        #expect(first.lastPathComponent == second.lastPathComponent)
+        #expect(try Data(contentsOf: first) == Data("one".utf8))
         #expect(try Data(contentsOf: second) == Data("two".utf8))
+    }
+
+    @Test("long Unicode subjects produce writable filenames")
+    func longSubjectIsBounded() throws {
+        let url = try MessageEMLExport.writeToTemporaryFile(
+            header: Self.header(subject: String(repeating: "📬å", count: 200)),
+            rawMessageData: Data("message".utf8)
+        )
+        defer { try? FileManager.default.removeItem(at: url.deletingLastPathComponent()) }
+        #expect(url.lastPathComponent.utf8.count <= 255)
+        #expect(url.pathExtension == "eml")
+        #expect(try Data(contentsOf: url) == Data("message".utf8))
     }
 }
 

@@ -13,6 +13,12 @@ All notable changes to Brev are documented here.
   freebusy requests now reuse cached date formatters instead of
   constructing one per record.
 
+### Export fixes
+
+- Message exports with the same subject keep independent temporary files.
+  Long Unicode subjects now produce bounded filenames, and iOS export failures
+  use the package localization catalog.
+
 ### Added
 
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source
