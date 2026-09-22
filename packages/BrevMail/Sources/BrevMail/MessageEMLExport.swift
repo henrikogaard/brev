@@ -31,17 +31,24 @@ enum MessageEMLExport {
 
     /// Writes the raw message to a named file in the temporary directory so
     /// iOS can hand it to the share sheet (`MailShareSheet`). The file name
-    /// matches the macOS save-panel default; repeat exports of the same
-    /// message overwrite the previous temp copy.
+    /// matches the macOS save-panel default. Each export owns a directory so
+    /// a subsequent export cannot replace bytes held by an active share sheet.
     @discardableResult
     static func writeToTemporaryFile(
         header: MessageHeader,
         rawMessageData: Data
     ) throws -> URL {
-        let url = FileManager.default.temporaryDirectory
-            .appendingPathComponent(fileName(for: header))
-        try write(rawMessageData, to: url)
-        return url
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-eml-" + UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let url = directory.appendingPathComponent(fileName(for: header))
+        do {
+            try write(rawMessageData, to: url)
+            return url
+        } catch {
+            try? FileManager.default.removeItem(at: directory)
+            throw error
+        }
     }
 
     private static func safeFileBaseName(_ value: String) -> String {
@@ -55,7 +62,18 @@ enum MessageEMLExport {
         // Strip leading dots so a subject of "." / ".." can't produce a hidden
         // or reserved name like "..eml".
         let withoutLeadingDots = String(sanitized.drop { $0 == "." })
-        return withoutLeadingDots.isEmpty ? "message" : withoutLeadingDots
+        // Leave room for the extension and atomic-write suffix. Measure the
+        // decomposed form too because Apple filesystems normalize filenames.
+        var bounded = ""
+        var byteCount = 0
+        for character in withoutLeadingDots {
+            let part = String(character)
+            let size = max(part.utf8.count, part.decomposedStringWithCanonicalMapping.utf8.count)
+            guard byteCount + size <= 200 else { break }
+            bounded.append(character)
+            byteCount += size
+        }
+        return bounded.isEmpty ? "message" : bounded
     }
 
     #if canImport(AppKit)
