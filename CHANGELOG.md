@@ -70,6 +70,14 @@ All notable changes to Brev are documented here.
   New/Edit/Delete plus per-row completion; Create Task from a message
   can now write straight into a provider task list instead of only
   Apple Reminders or the share sheet.
+- Google Drive attachments (#14): on Gmail API accounts, compose gains
+  an Attach from Google Drive action and the reader gains Save to
+  Google Drive. Both sit behind a one-time opt-in that re-authorizes
+  the account with the narrow `drive.file` scope — Brev can only
+  reach files you pick in Google's own chooser and files it created.
+  Picked files can attach as bytes (Workspace files export to PDF,
+  Office, or CSV) or as a link; saving uploads to a picked folder with
+  a rename-or-replace choice on name clashes.
 - Calendar browsing (ADR-0072): a Calendar surface on macOS (Window
   menu) and iOS (sidebar footer) shows synced events in a day-grouped
   agenda with per-calendar colors, cancelled-event strikethrough, and a

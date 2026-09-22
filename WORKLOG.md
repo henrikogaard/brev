@@ -1,5 +1,57 @@
 # Worklog
 
+## 2026-09-22 — Agent — Issue #14 slice 1 (Google Drive attachments)
+
+### Goal
+
+Ship the first codeable slice of #14: attach a Drive file (bytes or
+link) in compose and save a message attachment to Drive, gated by the
+narrow `drive.file` opt-in scope.
+
+### Changes
+
+- New `GoogleDriveClient` in BrevBackend: transport-injected
+  Drive v3 calls (metadata, byte download, Workspace export, multipart
+  create/update, name-conflict lookup). Stateless — the session
+  resolves the account token per call.
+- New `GoogleDriveFeature` + `GoogleDriveFileServing`
+  adapter in BrevMail: Gmail-API eligibility, `drive.file`
+  enablement via the shared Google re-authorization path, enabled state
+  read from stored granted scopes.
+- New `GoogleDrivePickerView` (WKWebView hosting Google's
+  Picker), opt-in prompt, attach sheet (file/export-format/link) and
+  save sheet (folder pick + replace/keep-both conflict).
+- Wiring: ComposeView Drive menu item, MessageDetailView Save to Drive,
+  `AppSession.googleDriveFeature`, AppSessionFactory
+  configuration params, both app targets, Tuist-injected
+  `BREV_GOOGLE_API_KEY`/`BREV_GOOGLE_APP_ID` Info.plist
+  keys.
+- Docs: ADR-0006 network table (picker + Drive rows, OAuth row
+  updated), PRIVACY.md opt-in section, CHANGELOG, ADR-0072 slice note.
+
+### Verification
+
+- `swift build --package-path packages/BrevMail`: green.
+- `swift test --filter GoogleDrive`: 8 BrevBackend client tests
+  + 12 BrevMail feature/picker tests pass.
+- Skipped: rendered verification — the picker needs a real Google
+  account and build-time `BREV_GOOGLE_API_KEY`/`BREV_GOOGLE_APP_ID`;
+  deferred to maintainer QA. Snapshot tests not added (sheets are
+  WKWebView-hosted; covered by unit tests on outcomes/configuration).
+
+### Next
+
+- PR targets main; board → In review.
+- Later slices: calendar-event attachment flow, live smoke evidence,
+  R8 decision on Drive as a source kind.
+
+## 2026-09-22 — Agent — Issue #12 slice 3 (retroactive merge note)
+
+PR #76 (tasks browsing UI + Create Task provider targets) merged as
+3f597943 after green CI. Its worklog entry was dropped from the PR
+before merge; recorded here for completeness. Issue #12 stays open for
+maintainer QA acceptance.
+
 ## 2026-09-22 — Agent — Issue #12 slice 2 (task write pipeline)
 
 ### Goal

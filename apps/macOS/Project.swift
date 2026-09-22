@@ -59,7 +59,10 @@ let project = Project(
             "BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID": .string(BrevConstants.googleMacOSOAuthClientID),
             "BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI": .string(BrevConstants.googleMacOSOAuthRedirectURI),
             "BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME": .string(BrevConstants.googleMacOSOAuthCallbackScheme),
-            "BREV_MICROSOFT_OAUTH_CLIENT_ID": .string(BrevConstants.microsoftOAuthClientID)
+            "BREV_MICROSOFT_OAUTH_CLIENT_ID": .string(BrevConstants.microsoftOAuthClientID),
+            // Google Picker credentials for Drive attachments (#14).
+            "BREV_GOOGLE_API_KEY": .string(BrevConstants.googleAPIKey),
+            "BREV_GOOGLE_APP_ID": .string(BrevConstants.googleAppID)
         ],
         configurations: [
             .debug(name: "Debug"),

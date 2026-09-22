@@ -186,6 +186,9 @@ public struct ComposeView: View {
     private let hasTrustedSigningIdentity: Bool
     private let hasTrustedEncryptionIdentity: Bool
     private let isWorkBlocked: Bool
+    /// The opt-in Google Drive attachment feature; nil hides the
+    /// Drive menu entry (#14).
+    private let driveFeature: GoogleDriveFeature?
     private let onClose: (() -> Void)?
     private let onCompletion: (ComposeCompletion) async -> Void
 
@@ -216,6 +219,8 @@ public struct ComposeView: View {
     @State private var pendingAttachments: [PendingAttachment] = []
     @State private var didImportPrefillAttachments = false
     @State private var isPickingFile = false
+    /// Presents the Google Drive attach sheet (opt-in, picker, choice).
+    @State private var isPresentingDriveAttach = false
     /// True while a file drag hovers the compose window; drives the drop highlight.
     @State private var isDropTargeted = false
     @State private var isAIWorking = false
@@ -300,6 +305,7 @@ public struct ComposeView: View {
         hasTrustedSigningIdentity: Bool = false,
         hasTrustedEncryptionIdentity: Bool = false,
         isWorkBlocked: Bool = false,
+        driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
@@ -319,6 +325,7 @@ public struct ComposeView: View {
             hasTrustedSigningIdentity: hasTrustedSigningIdentity,
             hasTrustedEncryptionIdentity: hasTrustedEncryptionIdentity,
             isWorkBlocked: isWorkBlocked,
+            driveFeature: driveFeature,
             onClose: onClose,
             onCompletion: onCompletion
         )
@@ -340,6 +347,7 @@ public struct ComposeView: View {
         hasTrustedSigningIdentity: Bool = false,
         hasTrustedEncryptionIdentity: Bool = false,
         isWorkBlocked: Bool = false,
+        driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
@@ -362,6 +370,7 @@ public struct ComposeView: View {
             hasTrustedSigningIdentity: hasTrustedSigningIdentity,
             hasTrustedEncryptionIdentity: hasTrustedEncryptionIdentity,
             isWorkBlocked: isWorkBlocked,
+            driveFeature: driveFeature,
             onClose: onClose,
             onCompletion: onCompletion
         )
@@ -386,6 +395,7 @@ public struct ComposeView: View {
         hasTrustedSigningIdentity: Bool = false,
         hasTrustedEncryptionIdentity: Bool = false,
         isWorkBlocked: Bool = false,
+        driveFeature: GoogleDriveFeature? = nil,
         onClose: (() -> Void)? = nil,
         onCompletion: @escaping (ComposeCompletion) async -> Void = { _ in }
     ) {
@@ -416,6 +426,7 @@ public struct ComposeView: View {
         self.hasTrustedSigningIdentity = hasTrustedSigningIdentity
         self.hasTrustedEncryptionIdentity = hasTrustedEncryptionIdentity
         self.isWorkBlocked = isWorkBlocked
+        self.driveFeature = driveFeature
         self.onClose = onClose
         self.onCompletion = onCompletion
         let initialBodyText: String
@@ -515,6 +526,16 @@ public struct ComposeView: View {
                 ? ComposeLayout.compactSheetIdealWidth : nil)
             .accessibilityAddTraits(.isModal)
             .brevWindowTranslucency(windowRole: .utility)
+            .sheet(isPresented: $isPresentingDriveAttach) {
+                if let driveFeature {
+                    GoogleDriveAttachSheet(
+                        account: selectedComposeBackend.account,
+                        feature: driveFeature
+                    ) { result in
+                        Task { await attachDriveResult(result) }
+                    }
+                }
+            }
             .task {
                 await loadAliases()
                 await reloadServerSignaturesIfPossible()
@@ -927,6 +948,22 @@ public struct ComposeView: View {
                 aiWriterMenuContent
             }
             .disabled(aiWriterMenuDisabled)
+
+            if let driveFeature,
+               driveFeature.isEligible(account: selectedComposeBackend.account) {
+                Button {
+                    isPresentingDriveAttach = true
+                } label: {
+                    Label(
+                        String(
+                            localized: "Attach from Google Drive",
+                            bundle: .module
+                        ),
+                        systemImage: "externaldrive"
+                    )
+                }
+                .disabled(isInteractionBlocked)
+            }
 
             pluginToolbarButtons
 
@@ -3290,6 +3327,64 @@ public struct ComposeView: View {
         errorMessage = imported.errorMessage
         if imported.errorMessage == nil {
             SharedComposePayload.purgeImportedHandoffDirectories(for: urls)
+        }
+    }
+
+    // MARK: - Google Drive attach (#14)
+
+    /// Performs the user's Drive choice: a real attachment via download
+    /// or workspace export, or a Drive link appended to the body.
+    private func attachDriveResult(_ result: GoogleDriveAttachResult) async {
+        let accountID = selectedComposeBackend.account.id
+        switch result {
+        case .attachLink(let pick):
+            guard let url = pick.url else { return }
+            if !bodyText.isEmpty,
+               !bodyText.hasSuffix("\n") {
+                bodyText += "\n"
+            }
+            bodyText += pick.name + " — " + url + "\n"
+        case .attachFile(let pick, let export):
+            guard let files = driveFeature?.files else { return }
+            do {
+                let data: Data
+                let filename: String
+                let mimeType: String
+                if let export {
+                    data = try await files.export(
+                        fileID: pick.id,
+                        mimeType: export.mimeType,
+                        accountID: accountID
+                    )
+                    filename = GoogleDriveExportFormats.exportedFilename(
+                        for: pick.name, format: export
+                    )
+                    mimeType = export.mimeType
+                } else {
+                    data = try await files.download(
+                        fileID: pick.id,
+                        accountID: accountID
+                    )
+                    filename = pick.name
+                    mimeType = pick.mimeType
+                }
+                guard data.count <= ComposeAttachmentImport.maxAttachmentByteCount else {
+                    errorMessage = ComposeAttachmentImport.attachmentBudgetExceededMessage(
+                        filename: filename
+                    )
+                    return
+                }
+                pendingAttachments.append(
+                    PendingAttachment(
+                        filename: filename,
+                        mimeType: mimeType,
+                        data: data
+                    )
+                )
+            } catch {
+                errorMessage = (error as? LocalizedError)?.errorDescription
+                    ?? error.localizedDescription
+            }
         }
     }
 

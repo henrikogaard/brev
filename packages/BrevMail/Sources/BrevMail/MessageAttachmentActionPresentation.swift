@@ -14,6 +14,8 @@ enum MessageAttachmentActionKind: Equatable, Sendable, Hashable {
     case preview
     case save
     case open
+    /// Upload the attachment into the user's Google Drive (#14).
+    case saveToDrive
 }
 
 struct MessageAttachmentActionPresentation: Equatable, Sendable, Identifiable {
@@ -27,10 +29,11 @@ struct MessageAttachmentActionPresentation: Equatable, Sendable, Identifiable {
     static func actions(
         resourceAvailable: Bool,
         isDownloading: Bool,
-        isWorkBlocked: Bool
+        isWorkBlocked: Bool,
+        driveAvailable: Bool = false
     ) -> [MessageAttachmentActionPresentation] {
         let isDisabled = !resourceAvailable || isDownloading || isWorkBlocked
-        return [
+        var actions = [
             MessageAttachmentActionPresentation(
                 kind: .preview,
                 title: "Preview",
@@ -50,6 +53,20 @@ struct MessageAttachmentActionPresentation: Equatable, Sendable, Identifiable {
                 isDisabled: isDisabled
             )
         ]
+        if driveAvailable {
+            actions.append(
+                MessageAttachmentActionPresentation(
+                    kind: .saveToDrive,
+                    title: String(
+                        localized: "Save to Drive",
+                        bundle: .module
+                    ),
+                    systemImage: "externaldrive",
+                    isDisabled: isDisabled
+                )
+            )
+        }
+        return actions
     }
 
     /// Returns the inline action that makes attachment preview immediately discoverable.

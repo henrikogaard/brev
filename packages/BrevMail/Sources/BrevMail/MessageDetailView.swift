@@ -65,6 +65,9 @@ public struct MessageDetailView: View {
     /// Shared contact-cache actions for message participants (#10);
     /// nil leaves the recipient chips read-only.
     private let contactActions: MailSenderContactActions?
+    /// The opt-in Google Drive feature (#14); nil hides the
+    /// Save-to-Drive attachment action.
+    private let driveFeature: GoogleDriveFeature?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
 
@@ -89,6 +92,8 @@ public struct MessageDetailView: View {
     @State private var downloadingAttachmentID: String?
     @State private var attachmentError: MessageDetailInlineStatus?
     @State private var attachmentSaveToast: String?
+    /// The attachment staged for the save-to-Drive sheet (#14).
+    @State private var pendingDriveSave: PendingDriveSave?
     @State private var isRecipientsExpanded = false
     @State private var parsedInvite: ICSParser.ParsedEvent?
     @State private var calendarInviteEvent: CalendarEvent?
@@ -169,7 +174,8 @@ public struct MessageDetailView: View {
         canFileLocally: Bool = false,
         closeWindow: (() -> Void)? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil,
-        contactActions: MailSenderContactActions? = nil
+        contactActions: MailSenderContactActions? = nil,
+        driveFeature: GoogleDriveFeature? = nil
     ) {
         self.backend = backend
         self.sourceID = sourceID
@@ -182,6 +188,7 @@ public struct MessageDetailView: View {
         self.closeWindow = closeWindow
         self.inviteReconciler = inviteReconciler
         self.contactActions = contactActions
+        self.driveFeature = driveFeature
     }
 
     public var body: some View {
@@ -201,6 +208,22 @@ public struct MessageDetailView: View {
         }
         .task(id: reloadKey) { await reload() }
         .focusedSceneValue(\.mailPrintExportActions, printExportActions)
+        .sheet(item: $pendingDriveSave) { pending in
+            if let driveFeature {
+                GoogleDriveSaveSheet(
+                    account: backend.account,
+                    feature: driveFeature,
+                    filename: pending.name,
+                    mimeType: pending.mimeType,
+                    data: pending.data
+                ) { _ in
+                    attachmentSaveToast = String(
+                        localized: "Saved to Google Drive",
+                        bundle: .module
+                    )
+                }
+            }
+        }
         .confirmationDialog(
             pendingListUnsubscribeAction?.confirmationTitle ?? "Confirm unsubscribe",
             isPresented: $isShowingListUnsubscribeConfirmation,
@@ -1603,7 +1626,10 @@ public struct MessageDetailView: View {
                 let actions = MessageAttachmentActionPresentation.actions(
                     resourceAvailable: attachment.resource != nil,
                     isDownloading: downloadingAttachmentID != nil,
-                    isWorkBlocked: isWorkBlocked
+                    isWorkBlocked: isWorkBlocked,
+                    driveAvailable: driveFeature?.isEligible(
+                        account: backend.account
+                    ) == true
                 )
                 HStack(spacing: BrevSpacing.sm) {
                     Image(systemName: Self.fileTypeSymbol(for: attachment.name))
@@ -1682,6 +1708,29 @@ public struct MessageDetailView: View {
             await save(attachment)
         case .open:
             await openWithSystemApp(attachment)
+        case .saveToDrive:
+            await presentDriveSave(for: attachment)
+        }
+    }
+
+    /// Stages the attachment bytes and presents the save-to-Drive
+    /// sheet (opt-in → folder pick → conflict choice → upload).
+    private func presentDriveSave(for attachment: Attachment) async {
+        do {
+            let url = try await downloadAttachmentFile(
+                attachment,
+                purpose: .savePanelStaging
+            )
+            let data = try Data(contentsOf: url)
+            pendingDriveSave = PendingDriveSave(
+                name: attachment.name,
+                mimeType: attachment.mimeType.isEmpty
+                    ? "application/octet-stream"
+                    : attachment.mimeType,
+                data: data
+            )
+        } catch {
+            // Error is already surfaced by the helper.
         }
     }
 
@@ -2790,4 +2839,14 @@ private extension MessageDetailInlineStatus.Tone {
             return .danger
         }
     }
+}
+
+/// An attachment staged for the save-to-Drive sheet (#14) — bytes are
+/// already on disk locally, so the sheet can upload without re-reading
+/// the message.
+private struct PendingDriveSave: Identifiable {
+    let id = UUID()
+    let name: String
+    let mimeType: String
+    let data: Data
 }

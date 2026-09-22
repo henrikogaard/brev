@@ -1041,6 +1041,36 @@ grant.
 - Deferred: rendered verification of the Tasks window on device,
   live-provider write smoke tests.
 
+### #14 slice 1 — Google Drive attachments (2026-09-22, BrevBackend/BrevMail/apps)
+
+- `GoogleDriveClient` (BrevBackend): a stateless, transport-injected
+  Drive v3 client covering only what the attachment flows need —
+  `files.get` metadata, `alt=media` byte download,
+  `files.export` for Google Workspace files (400/403 map to
+  `exportUnsupported`), multipart `files.create`/
+  `files.update` uploads into a chosen folder, and a
+  name-in-folder conflict lookup for the save sheet.
+- `GoogleDriveFeature` (BrevMail): eligibility is Gmail-API
+  accounts only; enablement reuses the PIM re-authorization path with
+  `drive.file` unioned into the grant, and enabled state is read
+  from the stored granted scopes so a revoked grant degrades honestly.
+  The picker additionally needs the Google API key/app ID that Tuist
+  injects from `BREV_GOOGLE_API_KEY`/`BREV_GOOGLE_APP_ID`.
+- `GoogleDrivePickerView`: a WKWebView hosting Google's Picker
+  (DOCS view for attach, FOLDERS with folder-select for save), bridged
+  back through a single script message. The Google-hosted chooser is
+  the supported way to pick files under `drive.file`, which does
+  not cover listing arbitrary Drive content.
+- Compose gains an Attach from Google Drive menu item (file bytes with
+  the normal attachment budget, Workspace export-format choice, or a
+  Drive link appended to the body). The reader attachment menu gains
+  Save to Google Drive with a replace/keep-both conflict step.
+- Deferred: attach-to-calendar-event flows, rendered smoke verification
+  against a real Google account (needs `BREV_GOOGLE_API_KEY`/
+  `BREV_GOOGLE_APP_ID` at build time), and the wider R8
+  follow-up decision on whether Drive stays an attachment path or
+  becomes a full source kind.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

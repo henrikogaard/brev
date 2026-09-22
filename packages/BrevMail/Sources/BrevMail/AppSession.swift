@@ -239,6 +239,11 @@ public final class AppSession {
     /// support.
     public let pimTaskWriteService: PIMTaskWriteService?
 
+    /// The opt-in Google Drive attachment feature (#14): scope state,
+    /// the enablement coordinator, and account-scoped file operations.
+    /// Nil in sessions without a Google configuration provider.
+    public let googleDriveFeature: GoogleDriveFeature?
+
     /// Local folders, refreshed by `refreshLocalFolders()`.
     public private(set) var localFolders: [Folder] = []
     /// Whether the local account has folders — drives `visibleBackends`.
@@ -299,6 +304,7 @@ public final class AppSession {
         pimEventWriteService: PIMEventWriteService? = nil,
         pimContactWriteService: PIMContactWriteService? = nil,
         pimTaskWriteService: PIMTaskWriteService? = nil,
+        googleDriveFeature: GoogleDriveFeature? = nil,
         googlePIMEnablementCoordinator: GooglePIMEnablementCoordinator? = nil,
         aiProviderAssignmentCleanup: @escaping AIProviderAssignmentCleanup = { accountID in
             try? AIProviderAccountAssignmentStore().removeAccount(accountID)
@@ -314,6 +320,7 @@ public final class AppSession {
         self.pimEventWriteService = pimEventWriteService
         self.pimContactWriteService = pimContactWriteService
         self.pimTaskWriteService = pimTaskWriteService
+        self.googleDriveFeature = googleDriveFeature
         self.googlePIMEnablementCoordinator = googlePIMEnablementCoordinator
         self.themeDefaults = themeDefaults
         self.theme = theme ?? ThemePreferences.load(defaults: themeDefaults)
