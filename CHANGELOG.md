@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Saving a mail profile immediately reconciles navigation with its new
+  membership, including when the selected mailbox is removed from the profile.
+
 ### Performance
 
 - Mail root view no longer re-decodes the VIP sender list and custom
