@@ -669,10 +669,12 @@ grant.
   adapters behind injected transports. Google maps the shared model to
   the `events` REST resource (insert/patch/delete, iCalUID,
   responseStatus, reminder overrides); CalDAV PUTs the serialized ICS
-  to `{collection}/{sanitized-uid}.ics` and DELETEs it. Updates and
-  deletes carry the cached providerVersion as `If-Match`; creates
-  carry `If-None-Match: *`. 401/403 map to authenticationRequired,
-  409/412 to conflict, and a remote 404 on delete counts as done.
+  to `{collection}/{sanitized-uid}.ics` on create and to the stored
+  providerItemKey href on update, and DELETEs the stored href.
+  Updates and deletes carry the cached providerVersion as `If-Match`;
+  creates carry `If-None-Match: *`. 401/403 map to
+  authenticationRequired, 409/412 to conflict, and a remote 404 on
+  delete counts as done.
 - `PIMEventWriteService`: the provider-neutral write entry point.
   `canWrite` requires the write capability on the source *and* a
   non-read-only collection; create/update/delete dispatch on provider,
@@ -1152,6 +1154,23 @@ grant.
   construction during calendar sync, matching the existing
   `SenderContextPanel`/`MessageListDatePresentation` pattern.
   No public API, provider behavior, or stored data changed.
+
+### #11 — stored-href DAV writes and rename supersede (2026-09-23, BrevCalendar)
+
+- `PIMDAVEventWriter` update/delete now address the stored
+  `providerItemKey` href — the contact and task writers already did.
+  `{collection}/{sanitized-uid}.ics` remains a create-only convention:
+  the uid-derived URL broke permanently on servers that rename
+  resources or never follow it, so every `If-Match` PUT 412'd against
+  a path that did not exist. Found via the stub-DAV parity pass in
+  `docs/qa/pim-parity-matrix.md` (wire log L22/27/31).
+- Sync merges (`PIMEventSyncService`, `PIMContactSyncService`,
+  `PIMTaskSyncService`) drop a cached record when an incoming item
+  shares its `PIMSyncItemIdentity` — uid plus recurrence-id for event
+  exceptions — under a different provider item key. A rename reported
+  without a tombstone for the old href now self-heals instead of the
+  dead record shadowing the live item; tombstoned removals are
+  unchanged.
 
 ## References (checked 2026-09-20)
 

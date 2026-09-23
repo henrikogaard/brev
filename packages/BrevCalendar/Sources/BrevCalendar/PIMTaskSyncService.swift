@@ -244,7 +244,7 @@ public actor PIMTaskSyncService {
             result.nextCursorToken = cursor?.token
         }
 
-        let merged: [PIMTask]
+        var merged: [PIMTask]
         if result.isFullSnapshot {
             let kept = Set(result.keptItemKeys)
             merged = result.tasks + cached.filter {
@@ -258,6 +258,7 @@ public actor PIMTaskSyncService {
                     && !upsertedKeys.contains($0.providerItemKey)
             } + result.tasks
         }
+        merged = droppingStaleHrefs(in: merged, incoming: result.tasks)
 
         // The complete generation commits before its checkpoint: a crash
         // between the two writes re-syncs conservatively rather than
@@ -276,6 +277,30 @@ public actor PIMTaskSyncService {
             for: source.id
         )
         return (result.tasks.count, result.removedItemKeys.count)
+    }
+
+    /// Drops cached records an incoming item supersedes by identity:
+    /// a server-side rename reports the item at a new href while the
+    /// dead-href copy stays cached (see `PIMSyncItemIdentity`).
+    private func droppingStaleHrefs(
+        in merged: [PIMTask],
+        incoming: [PIMTask]
+    ) -> [PIMTask] {
+        var liveKeys: [PIMSyncItemIdentity: Set<String>] = [:]
+        for task in incoming {
+            guard let uid = task.uid else { continue }
+            liveKeys[
+                PIMSyncItemIdentity(uid: uid),
+                default: []
+            ].insert(task.providerItemKey)
+        }
+        guard !liveKeys.isEmpty else { return merged }
+        return merged.filter { task in
+            guard let uid = task.uid,
+                  let keys = liveKeys[PIMSyncItemIdentity(uid: uid)]
+            else { return true }
+            return keys.contains(task.providerItemKey)
+        }
     }
 
     /// Runs the provider adapter with one full-resync retry when the

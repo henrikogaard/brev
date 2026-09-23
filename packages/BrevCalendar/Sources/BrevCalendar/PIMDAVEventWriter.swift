@@ -14,11 +14,14 @@ import Foundation
 
 /// CalDAV write path for PIM events (ADR-0072 #7).
 ///
-/// PUT creates or replaces a calendar object resource at
-/// `{collection}/{uid}.ics`; DELETE removes it. Updates and deletes
-/// carry the cached ETag as an `If-Match` precondition so a stale edit
-/// never silently overwrites a newer remote change — a 412 surfaces as
-/// `conflict` and the caller reloads first.
+/// PUT creates a calendar object resource at `{collection}/{uid}.ics`;
+/// updates and deletes address the stored `providerItemKey` href
+/// directly — servers are not required to follow the uid filename
+/// convention and may rename resources, so a recomputed URL can point
+/// at nothing. Writes carry the cached ETag as an `If-Match`
+/// precondition so a stale edit never silently overwrites a newer
+/// remote change — a 412 surfaces as `conflict` and the caller
+/// reloads first.
 ///
 /// Distinct from `CalDAVEventWriter`: that type serves the invite
 /// acceptance flow's single configured target; this one writes any
@@ -115,45 +118,45 @@ public struct PIMDAVEventWriter: Sendable {
         in collection: PIMCollection,
         credential: CalDAVCredential
     ) async throws -> WriteResult {
-        try await put(
-            event,
-            ics: ics,
-            in: collection,
+        let resourceURL = try Self.resourceURL(
+            forUID: event.uid ?? event.providerItemKey,
+            collection: collection
+        )
+        return try await put(
+            ics,
+            to: resourceURL,
             credential: credential,
             precondition: .createOnly
         )
     }
 
-    /// Conditional replace: `If-Match: <etag>` when the cached record
-    /// carries one, else an unconditional replace.
+    /// Conditional replace on the stored href: `If-Match: <etag>`
+    /// when the cached record carries one, else unconditional.
     public func update(
         _ event: PIMEvent,
         ics: String,
         in collection: PIMCollection,
         credential: CalDAVCredential
     ) async throws -> WriteResult {
-        try await put(
-            event,
-            ics: ics,
-            in: collection,
+        let resourceURL = try Self.hrefURL(for: event)
+        return try await put(
+            ics,
+            to: resourceURL,
             credential: credential,
             precondition: event.providerVersion.map(Precondition.match)
                 ?? .unconditional
         )
     }
 
-    /// Deletes the event's resource. `If-Match` rides along when the
-    /// cache has an ETag; a missing resource (404) counts as deleted —
-    /// the desired end state already holds.
+    /// Deletes the event's stored href. `If-Match` rides along when
+    /// the cache has an ETag; a missing resource (404) counts as
+    /// deleted — the desired end state already holds.
     public func delete(
         _ event: PIMEvent,
         in collection: PIMCollection,
         credential: CalDAVCredential
     ) async throws {
-        let resourceURL = try Self.resourceURL(
-            forUID: event.uid ?? event.providerItemKey,
-            collection: collection
-        )
+        let resourceURL = try Self.hrefURL(for: event)
         var request = URLRequest(url: resourceURL)
         request.httpMethod = "DELETE"
         request.setValue(
@@ -176,16 +179,11 @@ public struct PIMDAVEventWriter: Sendable {
     }
 
     private func put(
-        _ event: PIMEvent,
-        ics: String,
-        in collection: PIMCollection,
+        _ ics: String,
+        to resourceURL: URL,
         credential: CalDAVCredential,
         precondition: Precondition
     ) async throws -> WriteResult {
-        let resourceURL = try Self.resourceURL(
-            forUID: event.uid ?? event.providerItemKey,
-            collection: collection
-        )
         var request = URLRequest(
             url: resourceURL,
             cachePolicy: .reloadIgnoringLocalCacheData,
@@ -219,7 +217,7 @@ public struct PIMDAVEventWriter: Sendable {
 
     // MARK: - Helpers
 
-    /// The calendar object resource URL for an event UID — the
+    /// The calendar object resource URL for a new event UID — the
     /// collection URL plus `{sanitized-uid}.ics` (RFC 4791 §5.3.2
     /// convention, shared with CalDAVEventWriter.sanitize).
     static func resourceURL(
@@ -239,6 +237,17 @@ public struct PIMDAVEventWriter: Sendable {
         }
         let safeName = CalDAVWriteTarget.sanitize(uid) + ".ics"
         return base.appendingPathComponent(safeName)
+    }
+
+    /// The stored provider href — authoritative for updates and
+    /// deletes; servers may rename resources on write.
+    static func hrefURL(for event: PIMEvent) throws -> URL {
+        guard let url = URL(
+            string: event.providerItemKey
+        ), url.scheme != nil else {
+            throw WriteError.invalidCollection
+        }
+        return url
     }
 
     private func send(

@@ -252,7 +252,7 @@ public actor PIMEventSyncService {
             result.nextCursorToken = cursor?.token
         }
 
-        let merged: [PIMEvent]
+        var merged: [PIMEvent]
         if result.isFullSnapshot {
             let kept = Set(result.keptItemKeys)
             merged = result.events + cached.filter {
@@ -266,6 +266,7 @@ public actor PIMEventSyncService {
                     && !upsertedKeys.contains($0.providerItemKey)
             } + result.events
         }
+        merged = droppingStaleHrefs(in: merged, incoming: result.events)
 
         // The complete generation commits before its checkpoint: a crash
         // between the two writes re-syncs conservatively rather than
@@ -284,6 +285,38 @@ public actor PIMEventSyncService {
             for: source.id
         )
         return (result.events.count, result.removedItemKeys.count)
+    }
+
+    /// Drops cached records an incoming item supersedes by identity:
+    /// a server-side rename reports the item at a new href while the
+    /// dead-href copy stays cached (see `PIMSyncItemIdentity`).
+    private func droppingStaleHrefs(
+        in merged: [PIMEvent],
+        incoming: [PIMEvent]
+    ) -> [PIMEvent] {
+        var liveKeys: [PIMSyncItemIdentity: Set<String>] = [:]
+        for event in incoming {
+            guard let uid = event.uid else { continue }
+            liveKeys[
+                PIMSyncItemIdentity(
+                    uid: uid,
+                    recurrenceID: event.recurrenceID
+                ),
+                default: []
+            ].insert(event.providerItemKey)
+        }
+        guard !liveKeys.isEmpty else { return merged }
+        return merged.filter { event in
+            guard let uid = event.uid,
+                  let keys = liveKeys[
+                      PIMSyncItemIdentity(
+                          uid: uid,
+                          recurrenceID: event.recurrenceID
+                      )
+                  ]
+            else { return true }
+            return keys.contains(event.providerItemKey)
+        }
     }
 
     /// Runs the provider adapter with one full-resync retry when the

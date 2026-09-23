@@ -4654,3 +4654,30 @@ buttons, and package-aware localization.
   scheduling surface), §1.8 TLS failure (stub is plain http loopback).
 - Next: maintainer live fixtures; stale-href defect proposed as a
   follow-up fix.
+
+## 2026-09-23 — Agent — DAV stale-href write defect (found via #11 stub pass)
+
+- Goal: fix the defect the stub-DAV parity pass surfaced — a synced
+  event whose resource lives at a non-`{uid}.ics` href (server-side
+  rename, or a server that never followed the RFC 4791 filename
+  convention) stayed permanently unwritable; every PUT went to a dead
+  path and 412'd as `conflict` with no self-heal.
+- Changes: `PIMDAVEventWriter.update`/`delete` now address the stored
+  `providerItemKey` href (new `hrefURL(for:)`), matching the contact
+  and task writers; `create` keeps the `{sanitized-uid}.ics`
+  convention. Sync merges in `PIMEventSyncService`,
+  `PIMContactSyncService`, and `PIMTaskSyncService` drop a cached
+  record when an incoming item shares its UID (and recurrence-id for
+  exceptions) under a different href — new `PIMSyncItemIdentity`
+  type — so a rename without a tombstone self-heals instead of
+  shadowing the live record.
+- Verification: `swift test` BrevCalendar 241/241 — new
+  `davUpdateTargetsStoredHref` (writer targets stored href for both
+  update and delete) and `davSyncSupersedesStaleHref` (delta sync
+  drops the stale record, keeps the live one + untouched items);
+  existing DAV update/delete/conflict tests updated to pass real hrefs
+  and assert request URLs.
+- Skipped: iOS E2E (writer fix is transport-level; sync merge is
+  platform-independent). `CalDAVEventWriter` (invite-acceptance
+  single-target flow) intentionally unchanged — it only creates.
+- Next: merge; matrix §2.5 can flip to clean ✓ on the next pass.

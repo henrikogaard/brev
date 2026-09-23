@@ -234,6 +234,7 @@ struct PIMEventSyncTests {
         providerItemKey: String,
         summary: String = "Event",
         etag: String? = nil,
+        uid: String? = nil,
         start: Date? = nil
     ) -> PIMEvent {
         PIMEvent(
@@ -245,6 +246,7 @@ struct PIMEventSyncTests {
             collectionID: collectionID,
             providerItemKey: providerItemKey,
             providerVersion: etag,
+            uid: uid,
             summary: summary,
             start: start
         )
@@ -434,6 +436,77 @@ struct PIMEventSyncTests {
             encoding: .utf8
         )
         #expect(body?.contains("sync-1") == true)
+    }
+
+    @Test("DAV delta with a renamed href supersedes the stale record")
+    func davSyncSupersedesStaleHref() async throws {
+        let collection = Self.collection()
+        let transport = ScriptedTransport(steps: [
+            .response(
+                207,
+                body: Self.davSyncBody(
+                    members: [
+                        (
+                            "/calendars/henrik/work/renamed.ics",
+                            "etag-3",
+                            Self.sampleVEvent
+                        )
+                    ],
+                    syncToken: "sync-2"
+                )
+            )
+        ])
+        let (service, _, eventStore, cursorStore) = try await makeService(
+            source: Self.source(),
+            collections: [collection],
+            davTransport: transport
+        )
+        // The server renamed the resource without a tombstone for the
+        // old path — the cache still holds the same UID under it.
+        try await eventStore.saveEvents(
+            [
+                Self.event(
+                    collectionID: collection.id,
+                    providerItemKey:
+                    "https://dav.example.com/calendars/henrik/work/old-name.ics",
+                    summary: "Stale copy",
+                    etag: "etag-1",
+                    uid: "event-1@example.com"
+                ),
+                Self.event(
+                    collectionID: collection.id,
+                    providerItemKey:
+                    "https://dav.example.com/calendars/henrik/work/keep.ics",
+                    summary: "Keep",
+                    uid: "other@example.com"
+                )
+            ],
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        try await cursorStore.saveCursor(
+            PIMSyncCursor(collectionID: collection.id, token: "sync-1"),
+            for: "pim-test"
+        )
+
+        let summary = try await service.syncNow(sourceID: "pim-test")
+
+        #expect(summary.failures.isEmpty)
+        let events = try await eventStore.events(
+            for: "pim-test",
+            collectionID: collection.id
+        )
+        let keys = Set(events.map(\.providerItemKey))
+        #expect(keys.contains(
+            "https://dav.example.com/calendars/henrik/work/renamed.ics"
+        ))
+        #expect(!keys.contains(
+            "https://dav.example.com/calendars/henrik/work/old-name.ics"
+        ))
+        #expect(keys.contains(
+            "https://dav.example.com/calendars/henrik/work/keep.ics"
+        ))
+        #expect(events.count == 2)
     }
 
     @Test("DAV member without inline data is fetched by multiget")

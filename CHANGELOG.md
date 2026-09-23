@@ -11,6 +11,12 @@ All notable changes to Brev are documented here.
   `text/plain` rendering (matching real multipart/alternative messages), and
   the outgoing `text/plain` alternative part unescapes HTML entities and
   keeps line breaks instead of concatenating markup.
+- Editing or deleting a synced calendar event, contact, or task now
+  targets the resource's stored href instead of re-deriving
+  `{uid}.ics/.vcf` — a server-side rename (or a server that never used
+  the uid-filename convention) no longer leaves the item permanently
+  unwritable with 412 conflicts. Sync also drops a stale cached copy
+  when an incoming item shares its UID under a different href.
 - Saving a mail profile immediately reconciles navigation with its new
   membership, including when the selected mailbox is removed from the profile.
 

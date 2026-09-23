@@ -741,6 +741,8 @@ struct PIMEventWriteTests {
         let collection = Self.collection()
         let event = Self.event(
             collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/uid-dav-brev.ics",
             etag: "\"old\"",
             uid: "uid-dav@brev"
         )
@@ -754,6 +756,54 @@ struct PIMEventWriteTests {
         }
         let request = try #require(transport.requests.first)
         #expect(request.value(forHTTPHeaderField: "If-Match") == "\"old\"")
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/uid-dav-brev.ics"
+        )
+    }
+
+    @Test("DAV update/delete target the stored href, not the uid convention")
+    func davUpdateTargetsStoredHref() async throws {
+        // Servers may store a resource under any href — the
+        // `{sanitized-uid}.ics` name is only a create convention. After
+        // a server-side rename the cached href must win or every write
+        // lands on a dead path and 412s forever.
+        let transport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"v2\""]),
+            .response(204),
+        ])
+        let writer = PIMDAVEventWriter(
+            transport: { try await transport.send($0) }
+        )
+        let collection = Self.collection()
+        let event = Self.event(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/server-named.ics",
+            etag: "\"v1\"",
+            uid: "uid-dav@brev"
+        )
+        let result = try await writer.update(
+            event,
+            ics: "BEGIN:VCALENDAR\r\nEND:VCALENDAR\r\n",
+            in: collection,
+            credential: .basic(username: "u", password: "p")
+        )
+        #expect(
+            result.resourceURL.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/server-named.ics"
+        )
+        try await writer.delete(
+            event,
+            in: collection,
+            credential: .basic(username: "u", password: "p")
+        )
+        for request in transport.requests {
+            #expect(
+                request.url?.absoluteString
+                    == "https://dav.example.com/calendars/henrik/work/server-named.ics"
+            )
+        }
     }
 
     @Test("DAV delete tolerates a missing resource")
@@ -767,6 +817,8 @@ struct PIMEventWriteTests {
         let collection = Self.collection()
         let event = Self.event(
             collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/uid-dav-brev.ics",
             uid: "uid-dav@brev"
         )
         try await writer.delete(
@@ -776,6 +828,10 @@ struct PIMEventWriteTests {
         )
         let request = try #require(transport.requests.first)
         #expect(request.httpMethod == "DELETE")
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/uid-dav-brev.ics"
+        )
     }
 
     // MARK: - Service capability gating
@@ -1072,6 +1128,10 @@ struct PIMEventWriteTests {
         #expect(updated.providerVersion == "\"v2\"")
         let request = try #require(davTransport.requests.first)
         #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v1\"")
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/e1.ics"
+        )
     }
 
     @Test("delete removes the cached record after the remote delete")
@@ -1101,6 +1161,8 @@ struct PIMEventWriteTests {
         )
         let existing = Self.event(
             collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/e1.ics",
             uid: "e1@brev"
         )
         try await eventStore.saveEvents(
@@ -1112,6 +1174,11 @@ struct PIMEventWriteTests {
             existing,
             in: collection,
             source: source
+        )
+        let request = try #require(davTransport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/e1.ics"
         )
         let cached = try await eventStore.events(
             for: source.id,
@@ -1183,6 +1250,8 @@ struct PIMEventWriteTests {
         )
         let existing = Self.event(
             collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/e1.ics",
             etag: "\"v1\"",
             uid: "e1@brev"
         )
