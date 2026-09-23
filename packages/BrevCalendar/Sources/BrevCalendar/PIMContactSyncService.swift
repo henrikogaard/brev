@@ -429,7 +429,7 @@ public actor PIMContactSyncService {
         let inScope = all.filter(scopeFilter)
         let outOfScope = all.filter { !scopeFilter($0) }
 
-        let mergedInScope: [PIMContact]
+        var mergedInScope: [PIMContact]
         if result.isFullSnapshot {
             let kept = Set(result.keptItemKeys)
             mergedInScope = result.contacts + inScope.filter {
@@ -443,6 +443,10 @@ public actor PIMContactSyncService {
                     && !upsertedKeys.contains($0.providerItemKey)
             } + result.contacts
         }
+        mergedInScope = droppingStaleHrefs(
+            in: mergedInScope,
+            incoming: result.contacts
+        )
 
         try await contactStore.saveContacts(
             outOfScope + mergedInScope,
@@ -457,5 +461,29 @@ public actor PIMContactSyncService {
             for: source.id
         )
         return (result.contacts.count, result.removedItemKeys.count)
+    }
+
+    /// Drops cached records an incoming item supersedes by identity:
+    /// a server-side rename reports the item at a new href while the
+    /// dead-href copy stays cached (see `PIMSyncItemIdentity`).
+    private func droppingStaleHrefs(
+        in merged: [PIMContact],
+        incoming: [PIMContact]
+    ) -> [PIMContact] {
+        var liveKeys: [PIMSyncItemIdentity: Set<String>] = [:]
+        for contact in incoming {
+            guard let uid = contact.uid else { continue }
+            liveKeys[
+                PIMSyncItemIdentity(uid: uid),
+                default: []
+            ].insert(contact.providerItemKey)
+        }
+        guard !liveKeys.isEmpty else { return merged }
+        return merged.filter { contact in
+            guard let uid = contact.uid,
+                  let keys = liveKeys[PIMSyncItemIdentity(uid: uid)]
+            else { return true }
+            return keys.contains(contact.providerItemKey)
+        }
     }
 }

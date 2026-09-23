@@ -50,6 +50,27 @@ public struct PIMEventSyncResult: Sendable, Hashable {
     }
 }
 
+/// Identity of a synced item for stale-href superseding.
+///
+/// A DAV server may move an item to a new resource name without
+/// reporting the old path as removed. The dead-href copy would
+/// otherwise stay cached beside the live record and keep rendering —
+/// and every write to it would 412 against a path that no longer
+/// exists. Sync merges drop a cached record when an incoming item
+/// shares this identity but carries a different provider item key.
+struct PIMSyncItemIdentity: Hashable, Sendable {
+    /// The item's UID (VEVENT/VTODO/VCARD UID property).
+    var uid: String
+    /// Recurrence id for event exceptions sharing a UID; nil for
+    /// master records and for contact/task items.
+    var recurrenceID: Date?
+
+    init(uid: String, recurrenceID: Date? = nil) {
+        self.uid = uid
+        self.recurrenceID = recurrenceID
+    }
+}
+
 /// Sync failures that are not source-setup errors (ADR-0072).
 public enum PIMEventSyncError: Error, Sendable, Hashable, LocalizedError {
     /// The stored cursor was rejected (Google 410, DAV invalid
