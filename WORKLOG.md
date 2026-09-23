@@ -4602,3 +4602,27 @@ buttons, and package-aware localization.
   verification of the PhotosPicker sheet itself.
 - Next: maintainer QA on issue #9; remaining issue scope is live
   evidence and duplicate merge actions (out of "review-first" scope).
+
+## 2026-09-23 — Agent — Sent-copy markup rendering fix (release-validation nit)
+
+- Goal: fix the reader showing literal `<br>`/`&lt;` markup on sent-copy
+  bodies flagged in `docs/qa/release-validation-2026-09-22.md`.
+- Root cause: two layers. `MockBackend` stored `draft.htmlBody` as the
+  sent/draft copy's `plainText` with `html` unset, so plain-text surfaces
+  (reader body, list snippet, reply quotes) rendered raw markup. And the
+  real `MIMEMessageBuilder` built the `text/plain` alternative via a naive
+  tag-strip that never unescaped entities and concatenated paragraphs —
+  `&lt;` leaked into real outbound plain parts too.
+- Changes: `HTMLTextStripper` gains `plainText(from:)` — block/`<br>`/`<hr>`
+  boundaries become newlines, remaining tags spaces, entities unescaped,
+  per-line whitespace collapsed. `MockBackend` sent/draft copies now mirror
+  real mail: `html` = draft markup, `plainText` = stripped rendering,
+  snippets stripped. `MIMEMessageBuilder` delegates its `text/plain` part
+  to the same helper.
+- Verification: 5 new/targeted cases green (sent-copy split + readable
+  plain alternative), full MockBackend/MIMEMessageBuilder/IMAP parser/
+  outbound suites 123/123, BrevMail compose/quote/detail suites 67/67,
+  lint.sh + format.sh clean.
+- Skipped: E2E render pass in the app (plain-text fix is unit-covered;
+  reader path unchanged — it was fed bad data).
+- Next: PR for review; parity-matrix stub-DAV rows continue separately.

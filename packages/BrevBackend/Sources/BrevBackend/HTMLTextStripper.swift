@@ -48,6 +48,58 @@ enum HTMLTextStripper {
         return result
     }
 
+    /// Converts HTML to readable plain text for `text/plain` alternatives and
+    /// quote-style surfaces: style/script/comments removed, `<br>`, `<hr>` and
+    /// block-level boundaries become newlines, remaining tags become spaces,
+    /// entities are unescaped, per-line whitespace is collapsed, and blank
+    /// runs are merged. Unlike `stripMarkup` this keeps paragraph breaks.
+    static func plainText(from html: String) -> String {
+        var text = html
+        for pattern in [
+            "(?is)<style[^>]*>.*?</style>",
+            "(?is)<script[^>]*>.*?</script>",
+            "(?s)<!--.*?-->",
+        ] {
+            text = text.replacingOccurrences(of: pattern, with: " ", options: .regularExpression)
+        }
+
+        // Soft breaks and horizontal rules become hard line breaks.
+        for pattern in [
+            #"(?i)<br\s*/?>"#,
+            #"(?i)<hr\b[^>]*>"#,
+            // Block-level boundaries become newlines before tags are removed.
+            #"(?i)</?(?:address|article|aside|blockquote|div|dl|dt|dd|fieldset|figcaption|figure|footer|form|h[1-6]|header|li|main|nav|ol|p|pre|section|table|tbody|td|tfoot|th|thead|tr|ul)\b[^>]*>"#,
+        ] {
+            text = text.replacingOccurrences(of: pattern, with: "\n", options: .regularExpression)
+        }
+
+        // Remaining tags (inline links, spans, formatting) become spaces so
+        // adjacent labels like `</a><a>` do not concatenate into one word.
+        text = text.replacingOccurrences(of: "<[^>]+>", with: " ", options: .regularExpression)
+        text = unescapingEntities(text)
+
+        let lines = text
+            .replacingOccurrences(of: "\r\n", with: "\n")
+            .replacingOccurrences(of: "\r", with: "\n")
+            .components(separatedBy: "\n")
+            .map { $0.split(whereSeparator: { $0.isWhitespace }).joined(separator: " ") }
+
+        var collapsed: [String] = []
+        for line in lines {
+            if line.isEmpty {
+                if collapsed.last?.isEmpty == false {
+                    collapsed.append("")
+                }
+            } else {
+                collapsed.append(line)
+            }
+        }
+        while collapsed.last?.isEmpty == true {
+            collapsed.removeLast()
+        }
+        return collapsed.joined(separator: "\n")
+    }
+
     /// Decodes untrusted HTML bytes (UTF-8, then the declared `<meta>` charset,
     /// then Latin-1) and returns the visible text: markup, style and script
     /// content removed, entities unescaped, whitespace collapsed.

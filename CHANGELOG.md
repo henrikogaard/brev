@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Sent and saved-draft copies no longer show raw markup: the mock backend
+  now stores the draft's `htmlBody` as the `text/html` body plus a stripped
+  `text/plain` rendering (matching real multipart/alternative messages), and
+  the outgoing `text/plain` alternative part unescapes HTML entities and
+  keeps line breaks instead of concatenating markup.
 - Saving a mail profile immediately reconciles navigation with its new
   membership, including when the selected mailbox is removed from the profile.
 

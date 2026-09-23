@@ -414,6 +414,24 @@ struct MIMEMessageBuilderTests {
         #expect(message.contains("Hello there, how are you?"))
     }
 
+    @Test("the text/plain alternative carries readable text, not raw markup")
+    func plainAlternativeIsReadableText() {
+        let draft = Self.makeDraft(htmlBody: "<p>First line</p><p>Second &lt;tag&gt; line</p>")
+        let from = Correspondent(email: "a@example.com")
+        let message = String(data: MIMEMessageBuilder(draft: draft, from: from).build(), encoding: .utf8) ?? ""
+
+        // Entities must be unescaped and block breaks preserved in the plain
+        // part — previously tags were dropped raw, leaking "&lt;" and
+        // concatenating paragraphs.
+        #expect(message.contains("Content-Type: multipart/alternative"))
+        let plainSection = message
+            .components(separatedBy: "Content-Type: text/plain; charset=utf-8")[1]
+            .components(separatedBy: "\r\n--")[0]
+        #expect(plainSection.contains("First line\r\n\r\nSecond <tag> line"))
+        #expect(!plainSection.contains("&lt;"))
+        #expect(!plainSection.contains("<p>"))
+    }
+
     @Test("reply-all payload includes CC recipients")
     func replyAllIncludesCC() {
         let draft = Draft(
