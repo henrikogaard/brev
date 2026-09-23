@@ -2462,7 +2462,8 @@ private actor Store {
             )
             data.messageBodies[draftID] = MessageBody(
                 messageID: draftID,
-                plainText: draft.htmlBody,
+                html: draft.htmlBody,
+                plainText: HTMLTextStripper.plainText(from: draft.htmlBody),
                 attachments: Self.attachments(for: draft.attachmentIDs, in: data)
             )
 
@@ -2560,7 +2561,8 @@ private actor Store {
             data.messagesByFolder[sentFolderID, default: []].append(header)
             data.messageBodies[messageID] = MessageBody(
                 messageID: messageID,
-                plainText: draft.htmlBody,
+                html: draft.htmlBody,
+                plainText: HTMLTextStripper.plainText(from: draft.htmlBody),
                 attachments: Self.attachments(for: draft.attachmentIDs, in: data)
             )
             return (
@@ -2647,7 +2649,11 @@ private actor Store {
     }
 
     private static func snippet(from body: String) -> String {
-        let trimmed = body.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Drafts carry their markup in `htmlBody`; sent/draft copies mirror a
+        // real message's multipart/alternative split, so snippets need the
+        // markup stripped to stay readable in the message list.
+        let trimmed = HTMLTextStripper.visibleText(from: Data(body.utf8))
+            .trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 160 else { return trimmed }
         return String(trimmed.prefix(157)) + "..."
     }

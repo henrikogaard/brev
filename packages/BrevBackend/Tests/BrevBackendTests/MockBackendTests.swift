@@ -702,6 +702,32 @@ import Testing
         #expect(body.plainText == draft.htmlBody)
     }
 
+    @Test("sent copy mirrors the real multipart/alternative split")
+    func sentCopySplitsHTMLAndReadablePlainText() async throws {
+        let backend = MockBackend()
+        let result = try await backend.send(draft: Draft(
+            id: "draft-markup",
+            to: [Correspondent(email: "maja@example.org")],
+            subject: "Markup",
+            htmlBody: "<p>First line</p><p>Second &lt;tag&gt; line</p>"
+        ))
+        let sentID = try #require(result.sentMessageID)
+
+        // The sent copy must not leak raw markup into plain-text surfaces
+        // (reader body, list snippet, reply quotes).
+        let body = try await backend.body(for: sentID)
+        #expect(body.html == "<p>First line</p><p>Second &lt;tag&gt; line</p>")
+        let plainText = try #require(body.plainText)
+        #expect(!plainText.contains("<p>"))
+        #expect(!plainText.contains("&lt;"))
+        #expect(plainText == "First line\n\nSecond <tag> line")
+
+        let sent = try #require(await backend.folders().first(where: { $0.role == .sent }))
+        let (headers, _) = try await backend.messages(in: sent, pageToken: nil)
+        let header = try #require(headers.first { $0.id == sentID })
+        #expect(header.snippet == "First line Second <tag> line")
+    }
+
     @Test("send updates Sent folder total count")
     func sendUpdatesSentFolderTotalCount() async throws {
         let backend = MockBackend()

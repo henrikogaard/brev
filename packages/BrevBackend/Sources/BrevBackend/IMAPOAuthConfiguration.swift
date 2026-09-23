@@ -182,7 +182,7 @@ public struct MIMEMessageBuilder: Sendable {
             lines.append("Content-Type: text/plain; charset=utf-8")
             lines.append("Content-Transfer-Encoding: quoted-printable")
             lines.append("")
-            lines.append(quotedPrintableEncodedBody(htmlToPlainText(draft.htmlBody)))
+            lines.append(quotedPrintableEncodedBody(HTMLTextStripper.plainText(from: draft.htmlBody)))
             lines.append("--\(textBoundary)")
             if hasInline {
                 // Wrap text/html + inline image parts in multipart/related so
@@ -378,11 +378,6 @@ public struct MIMEMessageBuilder: Sendable {
         return Data(value.utf8)
             .map { attrChars.contains($0) ? String(UnicodeScalar($0)) : String(format: "%%%02X", $0) }
             .joined()
-    }
-
-    /// Very basic HTML → plain-text strip for the text/plain part.
-    private func htmlToPlainText(_ html: String) -> String {
-        html.replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
     }
 
     /// Quoted-printable-encodes body text per RFC 2045 §6.7, matching the
