@@ -1,5 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.1.0-nightly.20260921</title><pubDate>Mon, 21 Sep 2026 23:42:24 GMT</pubDate><sparkle:version>2026092123</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260921</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at fbf7fa4ef31159f34d3a8e1599e316e883ed2242.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.1.0-nightly.20260923</title><pubDate>Wed, 23 Sep 2026 23:43:42 GMT</pubDate><sparkle:version>2026092323</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260923</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 3db8a9bf5c62f0675eca9609b874844845a9ad43.
+
+- docs(qa): round-2 UI/UX + accessibility audit and improvement roadmap (#92) (3db8a9b)
+- fix(calendar): write DAV items at their stored href, supersede stale hrefs (#91) (4617777)
+- docs(qa): fill stub-DAV columns of the #11 parity matrix (#90) (5bb20c5)
+- fix(backend): keep sent copies readable — split mock bodies, unescape plain alternative (#89) (9ea61d8)
+- fix(calendar): render grid titles in the caller's time zone + release-validation doc (#88) (9ad89e9)
+- fix(ui): re-land #85 changes reverted by stale-base squash (#86) (14923a8)
+- feat(contacts): photos, dates/URLs, and review-first duplicate suggestions (#9) (#87) (55d45ee)
+- docs(qa): add fillable PIM parity matrix for #11 (#86) (295d439)
+- fix(ui): UI/UX audit pass — filter leak, iOS covers, draft reopen, menu/footer polish (#85) (38e9c35)
+- fix(mail): isolate EML exports and bound Unicode filenames (#84) (bbec381)
+- fix(mail): reconcile saved profiles against updated cache (#83) (aae0195)
+- perf(mail): cache per-render decodes and per-record date formatters (#81) (#82) (ace8c8e)
+- fix(ios): eml export via share sheet and iPad keyboard shortcuts help (#79) (#80) (6cef52c)
+- feat(calendar): event Drive link attachments and upload progress (#14) (#78) (e874e6b)
+- feat(mail): Google Drive attach/save behind drive.file opt-in (#14) (#77) (ea85a99)
+- feat(mail): tasks browsing UI and Create Task provider targets (#12) (#76) (3f59794)
+- feat(calendar): task write pipeline and editing opt-in (#12) (#75) (c768b8d)
+- fix(mail): release cancelled body-load permit waiters in thread reader (#51) (#74) (3e541e0)
+- fix(compose): keep sheet inside the phone viewport at accessibility sizes (#49) (#73) (88a4efd)
+- feat(calendar): task read sync for Google Tasks and CalDAV VTODO (#12) (#72) (01dcff8)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260923.dmg" length="30529219" type="application/octet-stream" sparkle:edSignature="o1VrqLKANj7vs/kJKx5gdogOtUqx9EMMslkKoB+hzGMAAeMO/qX2hRk34ErWkt0XRpyj5JbEPhLLKCbcR8J1AA==" /></item><item><title>0.1.0-nightly.20260921</title><pubDate>Mon, 21 Sep 2026 23:42:24 GMT</pubDate><sparkle:version>2026092123</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260921</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at fbf7fa4ef31159f34d3a8e1599e316e883ed2242.
 
 - feat(calendar): Google Meet conference support (#13) (#71) (fbf7fa4)
 - feat(mail): contact actions, shared autocomplete, RSVP reconciliation, deep links (#10) (#70) (4803656)
@@ -47,7 +68,7 @@
 - perf(app): defer launch work, gate fetch backoff, narrow settings invalidation (230c25b)
 - perf(mail): memoize per-row lookups and pool thread renderers (24aadf6)
 - perf(gmail): materialize sync columns and batch refresh work (5c89aa9)
-- perf(sync): bound local search scans and skip flag-only index rewrites (66f4a55)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260921.dmg" length="29517569" type="application/octet-stream" sparkle:edSignature="lrQZP0DaOozrIAgBjpuSxs0zJeoga6T3qUPpHq/vlDM9ovE+wun/aS1Y1ZX7YHTJukwLdrfsoc6GLCRG84aTCQ==" /></item><item><title>0.1.0-nightly.20260919</title><pubDate>Sat, 19 Sep 2026 01:30:39 GMT</pubDate><sparkle:version>2026091901</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260919</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 703f42fd5fedf70fc4c22b2a57f881c5cd5be669.
+- perf(sync): bound local search scans and skip flag-only index rewrites (66f4a55)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260921.dmg" length="29517569" type="application/octet-stream" sparkle:edSignature="lrQZP0DaOozrIAgBjpuSxs0zJeoga6T3qUPpHq/vlDM9ovE+wun/aS1Y1ZX7YHTJukwLdrfsoc6GLCRG84aTCQ==" /></item><item><title>0.1.0-nightly.20260919</title><pubDate>Sat, 19 Sep 2026 01:30:39 GMT</pubDate><sparkle:version>2026091901</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260919</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 703f42fd5fedf70fc4c22b2a57f881c5cd5be669.
 
 - Merge pull request #44 from henrikogaard/feature/ios-daily-driver (703f42f)
 - test(ios): add BrevIOSTests target for app-shell logic (e85d62d)
