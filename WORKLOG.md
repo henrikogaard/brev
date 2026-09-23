@@ -1,5 +1,16 @@
 # Worklog
 
+## 2026-09-23 — Agent — Round-2 UI/UX + a11y audit @ 4617777
+
+- Rebuilt both apps off `4617777` and ran a recorded full-surface pass
+  (mail, compose, PIM surfaces, settings, chrome, a11y readback).
+- No release blockers; stub DAV sources now populate Calendar/
+  Contacts/Tasks in mock. All #85 fixes hold; #89 verified.
+- Findings + improvement roadmap in `docs/qa/uiux-audit-2026-09-23.md`:
+  top items are macOS keyboard nav (N1, a11y), dark-mode empty panes
+  (N2), macOS calendar rail confinement (N3), iOS reader menu parity
+  (N6), compose quote hygiene (N5).
+
 ## 2026-09-23 — Agent — Release validation + calendar title TZ fix
 
 - Full-suite validation on repaired main `14923a8`: every package
