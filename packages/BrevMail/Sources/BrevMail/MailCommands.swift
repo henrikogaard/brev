@@ -218,61 +218,68 @@ public struct MailCommands: Commands {
 
             Divider()
 
-            // -- Additional / alternative shortcuts --------------------------
-            // These parallel the shortcuts above but use the bindings that
-            // experienced users of Apple Mail, Thunderbird, and Gmail expect.
-
-            Button(readToggleTitle) {
-                guard isMessageActionAvailable,
-                      let header = navigation?.selectedHeader else { return }
-                Task {
-                    await messageActions?.toggleRead(header)
+            // Additional / alternative shortcuts live in a submenu so the
+            // top-level Message menu lists each action once, while the
+            // bindings Apple Mail, Thunderbird, and Gmail users expect stay
+            // registered and active.
+            Menu(String(localized: "Alternate Shortcuts", bundle: .module)) {
+                Button(readToggleTitle) {
+                    guard isMessageActionAvailable,
+                          let header = navigation?.selectedHeader else { return }
+                    Task {
+                        await messageActions?.toggleRead(header)
+                    }
                 }
-            }
-            // Cmd+U — alternate for toggle read (Apple Mail binding)
-            .keyboardShortcut("u")
-            .disabled(!messageCommandState.canToggleRead)
+                // Cmd+U — alternate for toggle read (Apple Mail binding)
+                .keyboardShortcut("u")
+                .disabled(!messageCommandState.canToggleRead)
 
-            Button(flagToggleTitle) {
-                guard isMessageActionAvailable,
-                      let header = navigation?.selectedHeader else { return }
-                Task {
-                    await messageActions?.toggleStar(header)
+                Button(flagToggleTitle) {
+                    guard isMessageActionAvailable,
+                          let header = navigation?.selectedHeader else { return }
+                    Task {
+                        await messageActions?.toggleStar(header)
+                    }
                 }
-            }
-            // Cmd+S — alternate for toggle flag
-            .keyboardShortcut("s")
-            .disabled(!messageCommandState.canToggleFlag)
+                // Cmd+S — alternate for toggle flag
+                .keyboardShortcut("s")
+                .disabled(!messageCommandState.canToggleFlag)
 
-            Button(String(localized: "Forward", bundle: .module)) {
-                guard isComposePresentationAvailable,
-                      let header = navigation?.selectedHeader else { return }
-                composeActions?.forward(header)
-            }
-            // Cmd+F — alternate for forward (Apple Mail binding)
-            .keyboardShortcut("f")
-            .disabled(!messageCommandState.canForward)
+                Button(String(localized: "Forward", bundle: .module)) {
+                    guard isComposePresentationAvailable,
+                          let header = navigation?.selectedHeader else { return }
+                    composeActions?.forward(header)
+                }
+                // Cmd+F — alternate for forward (Apple Mail binding)
+                .keyboardShortcut("f")
+                .disabled(!messageCommandState.canForward)
 
-            Button(String(localized: "Previous Message", bundle: .module)) {
-                navigation?.selectPreviousHeader()
-            }
-            // Cmd+[ — Gmail-style previous-message shortcut
-            .keyboardShortcut("[")
-            .disabled(navigation?.currentFolderHeaders.isEmpty != false)
+                Button(String(localized: "Previous Message", bundle: .module)) {
+                    navigation?.selectPreviousHeader()
+                }
+                // Cmd+[ — Gmail-style previous-message shortcut
+                .keyboardShortcut("[")
+                .disabled(navigation?.currentFolderHeaders.isEmpty != false)
 
-            Button(String(localized: "Next Message", bundle: .module)) {
-                navigation?.selectNextHeader()
+                Button(String(localized: "Next Message", bundle: .module)) {
+                    navigation?.selectNextHeader()
+                }
+                // Cmd+] — Gmail-style next-message shortcut
+                .keyboardShortcut("]")
+                .disabled(navigation?.currentFolderHeaders.isEmpty != false)
             }
-            // Cmd+] — Gmail-style next-message shortcut
-            .keyboardShortcut("]")
-            .disabled(navigation?.currentFolderHeaders.isEmpty != false)
 
             Button(String(localized: "Focus Search", bundle: .module)) {
                 navigation?.requestSearchFocus()
             }
             .keyboardShortcut("/")
+        }
 
-            #if os(macOS)
+        // MARK: - View menu
+
+        #if os(macOS)
+        SidebarCommands()
+        CommandGroup(after: .sidebar) {
             Divider()
 
             Button(mailContextColumnAction?.label ?? MailContextColumnVisibility.toolbarLabel) {
@@ -283,8 +290,8 @@ public struct MailCommands: Commands {
                 modifiers: MailContextColumnVisibility.keyboardShortcutModifiers
             )
             .disabled(mailContextColumnAction?.isAvailable != true)
-            #endif
         }
+        #endif
 
         #if os(iOS)
         iOSHelpCommands

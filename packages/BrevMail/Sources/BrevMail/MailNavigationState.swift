@@ -153,6 +153,10 @@ public final class MailNavigationState {
     /// such as the iOS share extension. Cleared on dismiss.
     public var composePrefill: ComposePrefill?
 
+    /// Existing draft being re-opened for editing, when the user activates
+    /// a message inside the Drafts folder. Cleared on dismiss.
+    public var composeDraft: Draft?
+
     /// Headers currently loaded for the selected folder. Owned by
     /// `MessageListView` after each load so the detail pane can look
     /// up the selected message and thread peers without re-fetching
@@ -270,6 +274,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         currentFolderHeaders = []
         bulkSelection.removeAll()
+        mailboxFilter = .none
     }
 
     public func selectFlaggedSmartView() {
@@ -318,6 +323,9 @@ public final class MailNavigationState {
         searchFocusRequestID += 1
     }
 
+    // The smart view's own list seeds `mailboxFilter` from its saved query on
+    // appearance; clearing here keeps a previous view's query from leaking
+    // into the next list (and vice versa).
     func selectSmartView(folderID: Folder.ID) {
         selectedCollectionFolderID = nil
         selectedSourceID = nil
@@ -325,6 +333,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         currentFolderHeaders = []
         bulkSelection.removeAll()
+        mailboxFilter = .none
     }
 
     /// Select a folder within a specific account/mailbox source.
@@ -335,6 +344,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         currentFolderHeaders = []
         bulkSelection.removeAll()
+        mailboxFilter = .none
     }
 
     /// Clears a reader whose account left the profile without leaving the virtual collection.
@@ -347,6 +357,7 @@ public final class MailNavigationState {
         selectedMessageID = nil
         currentFolderHeaders = []
         bulkSelection.removeAll()
+        mailboxFilter = .none
     }
 
     /// Selects a row from the visible list without changing its folder/search scope.
@@ -535,6 +546,7 @@ public final class MailNavigationState {
         composeForwardOf = nil
         composeSourceID = nil
         composePrefill = nil
+        composeDraft = nil
         presentCompose()
     }
 
@@ -546,6 +558,7 @@ public final class MailNavigationState {
         composeForwardOf = nil
         composeSourceID = nil
         composePrefill = prefill
+        composeDraft = nil
         presentCompose()
     }
 
@@ -557,6 +570,7 @@ public final class MailNavigationState {
         composeForwardOf = nil
         composeSourceID = sourceID
         composePrefill = nil
+        composeDraft = nil
         presentCompose()
     }
 
@@ -568,6 +582,7 @@ public final class MailNavigationState {
         composeForwardOf = nil
         composeSourceID = sourceID
         composePrefill = nil
+        composeDraft = nil
         presentCompose()
     }
 
@@ -579,6 +594,20 @@ public final class MailNavigationState {
         composeReplyMode = .sender
         composeSourceID = sourceID
         composePrefill = nil
+        composeDraft = nil
+        presentCompose()
+    }
+
+    /// Re-open an existing draft for editing, e.g. when the user activates
+    /// a message inside the Drafts folder.
+    public func presentDraft(_ draft: Draft, sourceID: MailSourceID? = nil) {
+        guard canPresentCompose else { return }
+        composeReplyTo = nil
+        composeReplyMode = .sender
+        composeForwardOf = nil
+        composeSourceID = sourceID
+        composePrefill = nil
+        composeDraft = draft
         presentCompose()
     }
 

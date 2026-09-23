@@ -135,9 +135,9 @@ struct MailContextColumnSnapshotTests {
                     folderNameByID: [:],
                     composeActions: MailComposePresentationActions(
                         newMessage: {},
-                        reply: { _, _ in },
-                        replyAll: { _, _ in },
-                        forward: { _, _ in }
+                        reply: { _ in },
+                        replyAll: { _ in },
+                        forward: { _ in }
                     ),
                     onOpenMessage: { _ in },
                     onShowAllFromSender: { _ in }
@@ -229,9 +229,9 @@ struct MailContextColumnSnapshotTests {
             sourceID: MailSourceID(accountID: "acct", mailboxID: "primary"),
             composeActions: MailComposePresentationActions(
                 newMessage: {},
-                reply: { _, _ in },
-                replyAll: { _, _ in },
-                forward: { _, _ in }
+                reply: { _ in },
+                replyAll: { _ in },
+                forward: { _ in }
             ),
             onOpenMessage: { _ in },
             onShowAllFromSender: { _ in }
@@ -486,9 +486,9 @@ private struct SidebarWorkspaceHarness: View {
             folderNameByID: [:],
             composeActions: MailComposePresentationActions(
                 newMessage: {},
-                reply: { _, _ in },
-                replyAll: { _, _ in },
-                forward: { _, _ in }
+                reply: { _ in },
+                replyAll: { _ in },
+                forward: { _ in }
             ),
             onOpenMessage: { _ in },
             onShowAllFromSender: { _ in }

@@ -1085,10 +1085,7 @@ public struct MessageDetailView: View {
     }
 
     private func recipientLine(_ recipients: [Correspondent]) -> String {
-        if recipients.isEmpty { return "" }
-        let lead = recipients.prefix(3).map { $0.displayName }.joined(separator: ", ")
-        let extra = recipients.count - 3
-        return extra > 0 ? "to \(lead) + \(extra) more" : "to \(lead)"
+        MessageDetailPresentation.collapsedRecipientLine(recipients)
     }
 
     @ViewBuilder

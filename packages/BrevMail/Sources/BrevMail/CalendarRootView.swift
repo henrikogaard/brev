@@ -32,6 +32,9 @@ public struct CalendarRootView: View {
     @State private var model: CalendarBrowsingModel
     /// Event authoring; nil keeps the surface read-only.
     private let editing: CalendarEditingModel?
+    /// Dismisses the hosting surface (iOS presents the view in a full-screen
+    /// cover); nil hides the Done affordance.
+    private let onDismiss: (() -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
@@ -60,12 +63,16 @@ public struct CalendarRootView: View {
     ///   over the session's PIM services.
     /// - Parameter editing: The authoring model; pass nil (default) for
     ///   a read-only calendar.
+    /// - Parameter onDismiss: Dismiss action for a host that presents the
+    ///   view modally; nil (default) shows no Done button.
     public init(
         model: CalendarBrowsingModel,
-        editing: CalendarEditingModel? = nil
+        editing: CalendarEditingModel? = nil,
+        onDismiss: (() -> Void)? = nil
     ) {
         _model = State(initialValue: model)
         self.editing = editing
+        self.onDismiss = onDismiss
     }
 
     public var body: some View {
@@ -120,6 +127,10 @@ public struct CalendarRootView: View {
             content
         }
         .toolbar { toolbarContent }
+        // The sidebar renders ~90pt wide in a small aux window on macOS,
+        // which wraps empty-state copy mid-word. Give the column a floor
+        // wide enough for the copy and the source list.
+        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 360)
     }
 
     @ViewBuilder
@@ -376,6 +387,11 @@ public struct CalendarRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        if let onDismiss {
+            ToolbarItem(placement: .cancellationAction) {
+                Button(String(localized: "Done", bundle: .module), action: onDismiss)
+            }
+        }
         ToolbarItem(placement: .principal) {
             HStack(spacing: BrevSpacing.sm) {
                 Picker(

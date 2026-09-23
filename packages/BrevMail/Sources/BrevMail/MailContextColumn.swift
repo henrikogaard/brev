@@ -35,9 +35,9 @@ struct MailContextColumn: View {
     var composeActions = MailComposePresentationActions(
         isBlocked: true,
         newMessage: {},
-        reply: { _, _ in },
-        replyAll: { _, _ in },
-        forward: { _, _ in }
+        reply: { _ in },
+        replyAll: { _ in },
+        forward: { _ in }
     )
     var onOpenMessage: (SenderContextRecentItem) -> Void = { _ in }
     var onShowAllFromSender: (String) -> Void = { _ in }

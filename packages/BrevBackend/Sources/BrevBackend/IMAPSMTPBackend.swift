@@ -2129,6 +2129,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         )
     }
 
+    /// Staged drafts are indexed under both their local id and remote id
+    /// (`folder:uid`), so a drafts-folder message header id resolves directly.
+    public func draft(for messageID: String) async throws -> Draft? {
+        await draftStagingStore?.draft(accountID: account.id, draftID: messageID)
+    }
+
+    public func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
+        try validateSourceID(sourceID)
+        return try await draft(for: messageID)
+    }
+
     public func discard(draftID: String) async throws {
         try await state.requireConnected()
         try await deleteRemoteDraft(draftID)
