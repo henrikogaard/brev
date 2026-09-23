@@ -31,9 +31,6 @@ public struct ContactsRootView: View {
     @State private var model: ContactsBrowsingModel
     /// Contact authoring; nil keeps the surface read-only.
     private let editing: ContactsEditingModel?
-    /// Dismisses the hosting surface (iOS presents the view in a full-screen
-    /// cover); nil hides the Done affordance.
-    private let onDismiss: (() -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
@@ -59,16 +56,12 @@ public struct ContactsRootView: View {
     ///   over the session's PIM services.
     /// - Parameter editing: The authoring model; pass nil (default) for
     ///   a read-only contacts list.
-    /// - Parameter onDismiss: Dismiss action for a host that presents the
-    ///   view modally; nil (default) shows no Done button.
     public init(
         model: ContactsBrowsingModel,
-        editing: ContactsEditingModel? = nil,
-        onDismiss: (() -> Void)? = nil
+        editing: ContactsEditingModel? = nil
     ) {
         _model = State(initialValue: model)
         self.editing = editing
-        self.onDismiss = onDismiss
     }
 
     public var body: some View {
@@ -123,10 +116,6 @@ public struct ContactsRootView: View {
             content
         }
         .toolbar { toolbarContent }
-        // The sidebar renders ~90pt wide in a small aux window on macOS,
-        // which wraps empty-state copy mid-word. Give the column a floor
-        // wide enough for the copy and the source list.
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 360)
     }
 
     @ViewBuilder
@@ -344,11 +333,6 @@ public struct ContactsRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
-        if let onDismiss {
-            ToolbarItem(placement: .cancellationAction) {
-                Button(String(localized: "Done", bundle: .module), action: onDismiss)
-            }
-        }
         if !model.allCollections.isEmpty {
             ToolbarItem(placement: .secondaryAction) {
                 Menu {

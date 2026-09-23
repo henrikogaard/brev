@@ -227,28 +227,11 @@ struct ThreadMessageCard: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    // Expanded cards share the reader's sender pattern —
-                    // display name with the address inline — while collapsed
-                    // rows keep the compact name-only line.
-                    if isExpanded {
-                        Text(header.from.displayName)
-                            .font(mailboxFontFamily.font(
-                                size: mailboxTextSize.listTitlePointSize,
-                                weight: .medium
-                            ))
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(1)
-                        Text(verbatim: "<\(header.from.email)>")
-                            .font(mailboxFontFamily.font(size: mailboxTextSize.captionPointSize))
-                            .foregroundStyle(theme.textTertiary.color)
-                            .lineLimit(1)
-                    } else {
-                        Text(header.from.name ?? header.from.email)
-                            .font(.subheadline)
-                            .fontWeight(.semibold)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(1)
-                    }
+                    Text(header.from.name ?? header.from.email)
+                        .font(.subheadline)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
 
                     Spacer()
 
@@ -288,10 +271,10 @@ struct ThreadMessageCard: View {
 
     @ViewBuilder
     private var recipientSummary: some View {
-        let toText = MessageDetailPresentation.collapsedRecipientLine(header.to)
+        let toText = header.to.map { $0.name ?? $0.email }.joined(separator: ", ")
         if !toText.isEmpty {
-            Text(toText)
-                .font(mailboxFontFamily.font(size: mailboxTextSize.captionPointSize))
+            Text("To: \(toText)", bundle: .module)
+                .font(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .lineLimit(1)
         }

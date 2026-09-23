@@ -253,45 +253,66 @@ struct BrevApp: App {
                 .brevTheme(session.theme)
             }
             .fullScreenCover(isPresented: $showCalendar) {
-                // No NavigationStack wrapper: the root view is itself a
-                // NavigationSplitView, which renders nothing when nested
-                // inside a stack on iOS.
-                CalendarRootView(
-                    model: calendarBrowsingModel,
-                    editing: CalendarEditingModel(
-                        writeService: session.pimEventWriteService,
-                        coordinator: session.pimSourceCoordinator,
-                        collectionService: session.pimCollectionService,
-                        driveFeature: session.googleDriveFeature
-                    ),
-                    onDismiss: { showCalendar = false }
-                )
+                NavigationStack {
+                    CalendarRootView(
+                        model: calendarBrowsingModel,
+                        editing: CalendarEditingModel(
+                            writeService: session.pimEventWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService,
+                            driveFeature: session.googleDriveFeature
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showCalendar = false
+                            }
+                        }
+                    }
+                }
                 .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showContacts) {
-                ContactsRootView(
-                    model: contactsBrowsingModel,
-                    editing: ContactsEditingModel(
-                        writeService: session.pimContactWriteService,
-                        coordinator: session.pimSourceCoordinator,
-                        collectionService: session.pimCollectionService
-                    ),
-                    onDismiss: { showContacts = false }
-                )
+                NavigationStack {
+                    ContactsRootView(
+                        model: contactsBrowsingModel,
+                        editing: ContactsEditingModel(
+                            writeService: session.pimContactWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showContacts = false
+                            }
+                        }
+                    }
+                }
                 .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showTasks) {
-                TasksRootView(
-                    model: tasksBrowsingModel,
-                    editing: TasksEditingModel(
-                        writeService: session.pimTaskWriteService,
-                        coordinator: session.pimSourceCoordinator,
-                        collectionService: session.pimCollectionService
-                    ),
-                    onDismiss: { showTasks = false }
-                )
+                NavigationStack {
+                    TasksRootView(
+                        model: tasksBrowsingModel,
+                        editing: TasksEditingModel(
+                            writeService: session.pimTaskWriteService,
+                            coordinator: session.pimSourceCoordinator,
+                            collectionService: session.pimCollectionService
+                        )
+                    )
+                    .toolbar {
+                        ToolbarItem(placement: .cancellationAction) {
+                            Button(String(localized: "Done")) {
+                                showTasks = false
+                            }
+                        }
+                    }
+                }
                 .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }

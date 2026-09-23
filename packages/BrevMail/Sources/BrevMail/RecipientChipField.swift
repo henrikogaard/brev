@@ -110,9 +110,7 @@ struct RecipientChipField: View {
                 #endif
             }
             if isFocused, !suggestions.isEmpty {
-                RecipientSuggestionList(suggestions: suggestions) { suggestion in
-                    selectSuggestion(suggestion)
-                }
+                suggestionList
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -159,44 +157,11 @@ struct RecipientChipField: View {
         .map { Text($0) }
     }
 
-    private func selectSuggestion(_ suggestion: RecipientAutocompleteSuggestion) {
-        if !recipients.contains(where: { $0.caseInsensitiveCompare(suggestion.email) == .orderedSame }) {
-            recipients.append(suggestion.email)
-        }
-        inputText = ""
-        onSuggestionSelected(suggestion)
-    }
-
-    private func commitInput() {
-        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { return }
-        // Split on commas/semicolons/whitespace in case multiple addresses
-        // were pasted at once.
-        let addresses = trimmed
-            .split(omittingEmptySubsequences: true) { $0 == "," || $0 == ";" || $0.isWhitespace }
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        for addr in addresses where !recipients.contains(addr) {
-            recipients.append(addr)
-        }
-        inputText = ""
-        onInputTextChanged("")
-    }
-}
-
-/// Autocomplete suggestions below a recipient field — full-width rows
-/// matching the mail-client pattern rather than floating chips.
-struct RecipientSuggestionList: View {
-    @Environment(\.brevTheme) private var theme
-
-    let suggestions: [RecipientAutocompleteSuggestion]
-    let onSelect: (RecipientAutocompleteSuggestion) -> Void
-
-    var body: some View {
+    private var suggestionList: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(suggestions) { suggestion in
                 Button {
-                    onSelect(suggestion)
+                    selectSuggestion(suggestion)
                 } label: {
                     HStack(spacing: BrevSpacing.sm) {
                         Image(systemName: "person.crop.circle")
@@ -236,7 +201,31 @@ struct RecipientSuggestionList: View {
             RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .stroke(theme.border.color.opacity(0.7), lineWidth: 1)
         )
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: 360, alignment: .leading)
+    }
+
+    private func selectSuggestion(_ suggestion: RecipientAutocompleteSuggestion) {
+        if !recipients.contains(where: { $0.caseInsensitiveCompare(suggestion.email) == .orderedSame }) {
+            recipients.append(suggestion.email)
+        }
+        inputText = ""
+        onSuggestionSelected(suggestion)
+    }
+
+    private func commitInput() {
+        let trimmed = inputText.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        // Split on commas/semicolons/whitespace in case multiple addresses
+        // were pasted at once.
+        let addresses = trimmed
+            .split(omittingEmptySubsequences: true) { $0 == "," || $0 == ";" || $0.isWhitespace }
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        for addr in addresses where !recipients.contains(addr) {
+            recipients.append(addr)
+        }
+        inputText = ""
+        onInputTextChanged("")
     }
 }
 

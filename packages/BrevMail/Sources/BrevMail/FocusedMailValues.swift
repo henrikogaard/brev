@@ -194,7 +194,6 @@ public struct MailComposePresentationActions {
     private let replyAction: @MainActor (MessageHeader, MailSourceID?) -> Void
     private let replyAllAction: @MainActor (MessageHeader, MailSourceID?) -> Void
     private let forwardAction: @MainActor (MessageHeader, MailSourceID?) -> Void
-    private let openDraftAction: (@MainActor (MessageHeader, MailSourceID?) -> Void)?
 
     public init(
         isBlocked: Bool = false,
@@ -208,7 +207,6 @@ public struct MailComposePresentationActions {
         replyAction = { header, _ in reply(header) }
         replyAllAction = { header, _ in replyAll(header) }
         forwardAction = { header, _ in forward(header) }
-        openDraftAction = nil
     }
 
     public init(
@@ -216,15 +214,13 @@ public struct MailComposePresentationActions {
         newMessage: @escaping @MainActor () -> Void,
         reply: @escaping @MainActor (MessageHeader, MailSourceID?) -> Void,
         replyAll: @escaping @MainActor (MessageHeader, MailSourceID?) -> Void,
-        forward: @escaping @MainActor (MessageHeader, MailSourceID?) -> Void,
-        openDraft: @escaping @MainActor (MessageHeader, MailSourceID?) -> Void
+        forward: @escaping @MainActor (MessageHeader, MailSourceID?) -> Void
     ) {
         self.isBlocked = isBlocked
         newMessageAction = newMessage
         replyAction = reply
         replyAllAction = replyAll
         forwardAction = forward
-        openDraftAction = openDraft
     }
 
     @MainActor
@@ -249,17 +245,6 @@ public struct MailComposePresentationActions {
     public func forward(_ header: MessageHeader, sourceID: MailSourceID? = nil) {
         guard isAvailable else { return }
         forwardAction(header, sourceID)
-    }
-
-    /// Reopen a drafts-folder message in the composer. Returns `false` when
-    /// the host has no draft-reopen path, so callers can fall back to the
-    /// read-only reader.
-    @MainActor
-    @discardableResult
-    public func openDraft(_ header: MessageHeader, sourceID: MailSourceID? = nil) -> Bool {
-        guard isAvailable, let openDraftAction else { return false }
-        openDraftAction(header, sourceID)
-        return true
     }
 }
 

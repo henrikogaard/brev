@@ -255,13 +255,6 @@ public protocol MailBackend: AnyObject, Sendable {
     /// Persist a draft remotely (if supported) or just locally.
     func save(draft: Draft) async throws -> Draft
 
-    /// The backend's staged copy of a draft for `messageID`, when it keeps
-    /// one (for example an IMAP draft saved on this device). `messageID` is
-    /// the message header id shown in the drafts folder. `nil` means there is
-    /// no staged copy — callers should rebuild the draft from the header and
-    /// body instead.
-    func draft(for messageID: String) async throws -> Draft?
-
     /// Upload an attachment for the given draft. Returns the
     /// backend-assigned attachment ID to include in `Draft.attachmentIDs`.
     func uploadAttachment(draftID: String, data: Data, filename: String, mimeType: String) async throws -> String
@@ -432,8 +425,6 @@ public protocol MailBackend: AnyObject, Sendable {
     func copy(messageIDs: [String], to folder: Folder, sourceID: MailSourceID) async throws
     func delete(messageIDs: [String], sourceID: MailSourceID) async throws
     func save(draft: Draft, sourceID: MailSourceID) async throws -> Draft
-    /// Source-scoped variant of `draft(for:)`.
-    func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft?
     func uploadAttachment(
         draftID: String,
         data: Data,
@@ -486,19 +477,6 @@ public extension MailBackend {
     /// Backends without a header cache cannot enumerate saved-view candidates.
     func cachedMessageHeaders(in folder: Folder, sourceID: MailSourceID) async throws -> [MessageHeader] {
         throw MailBackendError.notSupported(capabilities)
-    }
-
-    /// Default: no staged drafts to reopen.
-    func draft(for messageID: String) async throws -> Draft? {
-        _ = messageID
-        return nil
-    }
-
-    /// Default: no staged drafts to reopen.
-    func draft(for messageID: String, sourceID: MailSourceID) async throws -> Draft? {
-        _ = messageID
-        _ = sourceID
-        return nil
     }
 
     /// Legacy adapters still move mail, but never invent destination identities for Undo.

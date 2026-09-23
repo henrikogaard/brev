@@ -2076,17 +2076,7 @@ public struct BrevMailRootView: View {
     /// compose, where it replaced the in-pane filter strip.
     private var mailboxFilterToolbarControl: some View {
         MailboxFilterMenu(
-            activeFilter: Binding(
-                get: { navigation.mailboxFilter },
-                set: { newValue in
-                    // The VIP quick filter only matches when the query carries
-                    // the local VIP sender set; outside the VIP smart view the
-                    // query is built here, so it has to be resolved on write.
-                    var resolved = newValue
-                    resolved.vipEmails = Set(cachedVIPSenderEmails.map { $0.lowercased() })
-                    navigation.mailboxFilter = resolved
-                }
-            ),
+            activeFilter: $navigation.mailboxFilter,
             sortOrder: mailboxSortOrderBinding,
             lockedFilters: selectedSmartView?.query.activeFilters ?? []
         )
@@ -2320,13 +2310,6 @@ public struct BrevMailRootView: View {
                                 }
                                 .disabled(navigation.presentedSheet != nil)
 
-                                Button {
-                                    readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
-                                } label: {
-                                    Label(snoozeMenuTitle(for: header), systemImage: snoozeMenuSymbolName(for: header))
-                                }
-                                .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
-
                                 if !folders.isEmpty {
                                     Button {
                                         presentMoveToFolder(for: header)
@@ -2429,16 +2412,6 @@ public struct BrevMailRootView: View {
                     .disabled(navigation.presentedSheet != nil)
                     .accessibilityLabel(String(localized: "Follow Up", bundle: .module))
                     .help(String(localized: "Follow Up", bundle: .module))
-                }
-                ToolbarItem(placement: .primaryAction) {
-                    Button {
-                        readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
-                    } label: {
-                        Image(systemName: snoozeMenuSymbolName(for: header))
-                    }
-                    .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
-                    .accessibilityLabel(snoozeMenuTitle(for: header))
-                    .help(snoozeMenuTitle(for: header))
                 }
                 if !folders.isEmpty {
                     ToolbarItem(placement: .primaryAction) {
@@ -2684,7 +2657,6 @@ public struct BrevMailRootView: View {
                     navigation.composeReplyMode = .sender
                     navigation.composeForwardOf = nil
                     navigation.composePrefill = nil
-                    navigation.composeDraft = nil
                 }
                 navigation.presentedSheet = newValue
             }
@@ -3024,17 +2996,14 @@ public struct BrevMailRootView: View {
             newMessage: {
                 presentNewMessage()
             },
-            reply: { header, sourceID in
-                presentReply(to: header, sourceID: sourceID)
+            reply: { header in
+                presentReply(to: header)
             },
-            replyAll: { header, sourceID in
-                presentReplyAll(to: header, sourceID: sourceID)
+            replyAll: { header in
+                presentReplyAll(to: header)
             },
-            forward: { header, sourceID in
-                presentForward(of: header, sourceID: sourceID)
-            },
-            openDraft: { header, sourceID in
-                openDraft(header, sourceID: sourceID)
+            forward: { header in
+                presentForward(of: header)
             }
         )
     }
@@ -3158,60 +3127,6 @@ public struct BrevMailRootView: View {
         }
         #endif
         navigation.presentForward(of: header, sourceID: sourceID ?? navigation.selectedSourceID)
-    }
-
-    /// Reopens a drafts-folder message in the composer. The staged/body
-    /// resolution is async, so the sheet is presented once it completes.
-    private func openDraft(_ header: MessageHeader, sourceID: MailSourceID? = nil) {
-        guard canPresentCompose() else { return }
-        let resolvedSourceID = sourceID ?? navigation.selectedSourceID
-        let draftBackend = backend(for: resolvedSourceID)
-        Task {
-            let draft = await composeDraftSource(
-                for: header,
-                backend: draftBackend,
-                sourceID: resolvedSourceID
-            )
-            guard let draft, canPresentCompose() else { return }
-            navigation.presentDraft(draft, sourceID: resolvedSourceID)
-        }
-    }
-
-    /// The draft to reopen for `header`. The backend's locally staged copy
-    /// (kept when the draft was saved on this device) preserves attachment
-    /// ids and threading metadata, so it is preferred. When there is no
-    /// staged copy — the draft was composed elsewhere — one is rebuilt from
-    /// the header and cached body; `remoteID = header.id` makes the next
-    /// save supersede the same server-side draft.
-    private func composeDraftSource(
-        for header: MessageHeader,
-        backend: any MailBackend,
-        sourceID: MailSourceID?
-    ) async -> Draft? {
-        let staged: Draft?
-        if let sourceID {
-            staged = try? await backend.draft(for: header.id, sourceID: sourceID)
-        } else {
-            staged = try? await backend.draft(for: header.id)
-        }
-        if let staged { return staged }
-        let body: MessageBody?
-        if let sourceID {
-            body = try? await backend.body(for: header.id, sourceID: sourceID)
-        } else {
-            body = try? await backend.body(for: header.id)
-        }
-        return Draft(
-            id: UUID().uuidString,
-            remoteID: header.id,
-            threadID: header.threadID,
-            inReplyToMessageID: header.inReplyTo,
-            to: header.to,
-            cc: header.cc,
-            bcc: header.bcc,
-            subject: header.subject,
-            htmlBody: body?.html ?? ComposeHTMLBodyPolicy.html(fromEditorText: body?.plainText ?? "")
-        )
     }
 
     #if os(iOS)
@@ -3732,14 +3647,10 @@ public struct BrevMailRootView: View {
             )
             let sourceID = senderResolution.sourceID
             let composeBackend = backend(for: sourceID)
-            // A reopened existing draft must not also seed crash-recovery —
-            // the two restore paths seed the same fields.
-            let recoveredDraft = navigation.composeDraft == nil
-                ? newMessageRecoverySnapshot(
-                    accountID: composeBackend.account.id,
-                    sourceID: sourceID
-                )
-                : nil
+            let recoveredDraft = newMessageRecoverySnapshot(
+                accountID: composeBackend.account.id,
+                sourceID: sourceID
+            )
             ComposeView(
                 backend: composeBackend,
                 sourceID: sourceID,
@@ -3758,7 +3669,6 @@ public struct BrevMailRootView: View {
                 forwardingFrom: navigation.composeForwardOf,
                 prefill: navigation.composePrefill,
                 recoveredDraft: recoveredDraft,
-                existingDraft: navigation.composeDraft,
                 aiBackend: aiBackend(for: composeBackend.account),
                 signatureContext: signatureContextProvider?(composeBackend.account),
                 composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
@@ -5120,23 +5030,6 @@ public struct BrevMailRootView: View {
         LocalMessageWorkflowLookup(state: localMessageWorkflowStateBinding.wrappedValue)
     }
 
-    private func isReaderSnoozed(_ header: MessageHeader) -> Bool {
-        readerWorkflowLookup().isSnoozed(SourceMessageID(
-            sourceID: readerWorkflowSourceID(for: navigation.selectedSourceID),
-            messageID: header.id
-        ))
-    }
-
-    private func snoozeMenuTitle(for header: MessageHeader) -> String {
-        isReaderSnoozed(header)
-            ? String(localized: "Unsnooze", bundle: .module)
-            : String(localized: "Snooze…", bundle: .module)
-    }
-
-    private func snoozeMenuSymbolName(for header: MessageHeader) -> String {
-        isReaderSnoozed(header) ? "alarm.waves.left.and.right" : "clock"
-    }
-
     private func readerToggleSnooze(header: MessageHeader, sourceID: MailSourceID?) {
         let messageID = SourceMessageID(
             sourceID: readerWorkflowSourceID(for: sourceID),
@@ -6135,11 +6028,9 @@ public struct BrevMailRootView: View {
             activeRequest: activeComposeCompletionRequest,
             capturedComposePresentationID: composePresentationID
         ) else {
-            applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             return
         }
         guard canApplyComposeCompletionResponse(request) else {
-            applyOrphanedDraftSaveFeedbackIfNeeded(completion)
             finishComposeCompletion(request)
             return
         }
@@ -6159,15 +6050,6 @@ public struct BrevMailRootView: View {
         // exactly like a stuck send window. The send already succeeded; the refresh must
         // not gate closing the composer.
         Task { await loadFolders() }
-    }
-
-    /// Draft autosaves that land after the compose sheet dismissed (the
-    /// request is torn down on sheet change) are still real saves — apply
-    /// their benign feedback so the user sees "Draft saved." Send results
-    /// stay request-gated: they must not disturb a newer presentation.
-    private func applyOrphanedDraftSaveFeedbackIfNeeded(_ completion: ComposeCompletion) {
-        guard case .savedDraft = completion else { return }
-        applyComposeCompletionFeedback(ComposeCompletionPresentation.feedback(for: completion))
     }
 
     private func newMessageRecoverySnapshot(

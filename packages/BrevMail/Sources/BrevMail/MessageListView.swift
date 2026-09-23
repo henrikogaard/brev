@@ -678,15 +678,11 @@ public struct MessageListView: View {
         } else if isLoading, headers.isEmpty {
             BrevSkeletonList(rowCount: 8)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else if presentation.headers.isEmpty {
+        } else if headers.isEmpty {
             MessageListEmptyStateView(
-                status: MessageListPresentation.emptyStatus(
-                    searchText: navigation.searchText,
-                    filtersActive: navigation.mailboxFilter.isActive
-                )
+                status: MessageListPresentation.emptyStatus(searchText: navigation.searchText)
             ) {
                 navigation.searchText = ""
-                navigation.mailboxFilter.clear()
             }
         } else {
             List {
@@ -732,7 +728,6 @@ public struct MessageListView: View {
             // the gap between date groups.
             .environment(\.defaultMinListRowHeight, 1)
             .refreshable { await reloadVisibleMessages() }
-            .brevBottomBarScrollInset()
         }
     }
 
@@ -778,10 +773,6 @@ public struct MessageListView: View {
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
                 if navigation.bulkSelection.isEmpty {
-                    // Drafts reopen in the composer instead of the reader.
-                    if folder?.role == .drafts, composeActions.openDraft(header, sourceID: sourceID) {
-                        return
-                    }
                     MessageListInlineExpansion.expandIfNeeded(
                         threadID: header.threadID,
                         threadCount: threadCount(for: header),
@@ -3422,18 +3413,6 @@ private extension View {
         #endif
     }
 
-    /// iOS renders the bottom-bar toolbar as a floating pill the List doesn't
-    /// inset for inside a split-view column, so the last row scrolls under it.
-    /// Reserve matching scroll space there; a no-op elsewhere.
-    @ViewBuilder
-    func brevBottomBarScrollInset() -> some View {
-        #if os(iOS)
-        contentMargins(.bottom, 48, for: .scrollContent)
-        #else
-        self
-        #endif
-    }
-
     @ViewBuilder
     func accessibilityCompactStatusValue(
         _ enabled: Bool,
@@ -3666,17 +3645,6 @@ struct MessageListRow: View {
         .highPriorityGesture(
             SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
                 .onEnded { value in
-                    #if canImport(AppKit)
-                    // Secondary clicks arrive here too and would otherwise run
-                    // the primary action, swallowing the context menu. Platform
-                    // convention selects the row under the pointer instead.
-                    if NSApp.currentEvent?.type == .rightMouseUp {
-                        if !isSelected {
-                            onActivate()
-                        }
-                        return
-                    }
-                    #endif
                     switch MessageListRowTapRouting.destination(
                         for: value.location,
                         threadToggleFrame: threadToggleFrame

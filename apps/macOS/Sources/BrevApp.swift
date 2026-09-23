@@ -270,8 +270,17 @@ struct BrevApp: App {
                 }
                 .disabled(!updateController.settingsActions.isManualCheckAvailable)
             }
-            // Window scenes register themselves in the Window menu's window
-            // list automatically — a manual group here produced duplicates.
+            CommandGroup(after: .windowList) {
+                Button(String(localized: "Calendar")) {
+                    openWindow(id: BrevWindowID.calendar)
+                }
+                Button(String(localized: "Contacts")) {
+                    openWindow(id: BrevWindowID.contacts)
+                }
+                Button(String(localized: "Tasks")) {
+                    openWindow(id: BrevWindowID.tasks)
+                }
+            }
             BrevMailCommands()
         }
 

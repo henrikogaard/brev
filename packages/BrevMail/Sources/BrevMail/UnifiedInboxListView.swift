@@ -269,17 +269,9 @@ struct UnifiedInboxListView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 } else if presentation.visibleItems.isEmpty {
                     MessageListEmptyStateView(
-                        status: MessageListPresentation.emptyStatus(
-                            searchText: navigation.searchText,
-                            filtersActive: navigation.mailboxFilter != (smartView?.query ?? .none),
-                            smartView: smartView,
-                            isSavedSearch: savedSearchTitle != nil
-                        )
+                        status: MessageListPresentation.emptyStatus(searchText: navigation.searchText)
                     ) {
                         navigation.searchText = ""
-                        // On a smart view its saved query is the baseline, so
-                        // clearing restores it rather than wiping the view.
-                        navigation.mailboxFilter = smartView?.query ?? .none
                     }
                 } else {
                     List {
@@ -730,32 +722,19 @@ struct UnifiedInboxListView: View {
         for presentation: UnifiedInboxPresentationSnapshot
     ) -> MessageListFolderStatsFooterPresentation? {
         guard showFolderStats else { return nil }
-        // Smart views and saved searches are scoped lists, not inboxes —
-        // counting the unified inbox's totals against them reports mail the
-        // view can never show. Their scope is the view's own matching items.
-        let isScopedView = savedSearchTitle != nil || smartView != nil
-        let isConstrained = isScopedView
-            ? (navigation.mailboxFilter != (smartView?.query ?? .none) || !trimmedSearchText.isEmpty)
-            : (navigation.mailboxFilter.isActive || !trimmedSearchText.isEmpty)
         return MessageListPresentation.folderStatsFooter(
             MessageListFolderStats(
                 folderName: savedSearchTitle ?? smartView?.title ?? "Unified Inbox",
-                totalCount: isScopedView
-                    ? max(presentation.visibleItems.count, isConstrained ? items.count : 0)
-                    : max(unifiedInboxTotalCount, items.count),
+                totalCount: max(unifiedInboxTotalCount, items.count),
                 // Unread/pinned tallies come from the cached snapshot's
                 // single source pass — identical to the old per-render
-                // filters over `items`. On an unconstrained scoped view the
-                // footer describes the view itself, so unread must be
-                // tallied over the visible items, not all loaded items.
-                unreadCount: isScopedView && !isConstrained
-                    ? presentation.visibleItems.reduce(into: 0) { $0 += $1.header.isRead ? 0 : 1 }
-                    : max(unifiedInboxUnreadCount, presentation.unreadItemCount),
+                // filters over `items`.
+                unreadCount: max(unifiedInboxUnreadCount, presentation.unreadItemCount),
                 loadedCount: items.count,
                 visibleCount: presentation.visibleItems.count,
                 pinnedCount: presentation.pinnedItemCount,
                 isThreaded: false,
-                isConstrained: isConstrained
+                isConstrained: navigation.mailboxFilter.isActive || !trimmedSearchText.isEmpty
             ),
             detail: mailboxFolderStatsDetail
         )
@@ -1066,11 +1045,6 @@ struct UnifiedInboxListView: View {
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
                 if selectedItemIDs.isEmpty {
-                    // Drafts reopen in the composer instead of the reader.
-                    if item.folder.role == .drafts,
-                       composeActions.openDraft(item.header, sourceID: item.sourceID) {
-                        return
-                    }
                     // Sources without threading never reach a count above 1,
                     // so the capability check already happened upstream.
                     MessageListInlineExpansion.expandIfNeeded(

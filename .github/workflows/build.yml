@@ -241,8 +241,6 @@ jobs:
             '-only-testing:BrevMailTests/BrevMailRootViewSnapshotTests/rootViewWideLayout()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/bodyLoadErrorState()' \
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/threadMessageCardCollapsedRenders()' \
-            '-only-testing:BrevMailTests/BrevMailSnapshotTests/threadMessageCardExpandedRenders()' \
-            '-only-testing:BrevMailTests/BrevMailSnapshotTests/recipientSuggestionListRenders()' \
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/threadConversationViewRendersDeterministically()' \
             '-only-testing:BrevMailTests/BrevMailSnapshotTests/composeViewRendersSignaturePicker()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \

@@ -209,15 +209,6 @@ enum MessageDetailPresentation {
             : .surfaceError(reason)
     }
 
-    /// Collapsed recipient summary shared by the reader header and thread
-    /// cards — "to A, B" or "to A, B + N more" past three recipients.
-    static func collapsedRecipientLine(_ recipients: [Correspondent]) -> String {
-        if recipients.isEmpty { return "" }
-        let lead = recipients.prefix(3).map { $0.displayName }.joined(separator: ", ")
-        let extra = recipients.count - 3
-        return extra > 0 ? "to \(lead) + \(extra) more" : "to \(lead)"
-    }
-
     static func attachmentDisplayName(_ filename: String) -> String {
         safeDisplayFilename(filename)
     }

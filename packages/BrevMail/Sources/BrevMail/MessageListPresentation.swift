@@ -304,72 +304,21 @@ enum MessageListPresentation {
         )
     }
 
-    static func emptyStatus(
-        searchText: String,
-        filtersActive: Bool = false,
-        smartView: MailboxSmartView? = nil,
-        isSavedSearch: Bool = false
-    ) -> MessageListStatus {
+    static func emptyStatus(searchText: String) -> MessageListStatus {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !query.isEmpty {
+        if query.isEmpty {
             return MessageListStatus(
                 title: "No messages",
-                icon: "magnifyingglass",
-                subtitle: "No results for \"\(query)\".",
-                actionTitle: "Clear search"
-            )
-        }
-        if filtersActive {
-            return MessageListStatus(
-                title: "No matching messages",
-                icon: "line.3.horizontal.decrease.circle",
-                subtitle: "No messages match the current filters.",
-                actionTitle: "Clear filters"
-            )
-        }
-        if let smartView {
-            return smartViewEmptyStatus(for: smartView)
-        }
-        if isSavedSearch {
-            return MessageListStatus(
-                title: "No matches",
-                icon: "magnifyingglass",
-                subtitle: "No messages match this saved search.",
+                icon: "tray",
+                subtitle: "Messages you receive will appear here.",
                 actionTitle: nil
             )
         }
         return MessageListStatus(
             title: "No messages",
-            icon: "tray",
-            subtitle: "Messages you receive will appear here.",
-            actionTitle: nil
-        )
-    }
-
-    /// Empty-state copy scoped to each built-in smart view, so an empty list
-    /// explains what the view would have held rather than describing a
-    /// generic inbox.
-    private static func smartViewEmptyStatus(for smartView: MailboxSmartView) -> MessageListStatus {
-        let subtitle: String
-        switch smartView.id {
-        case MailboxSmartView.today.id:
-            subtitle = "Messages received today will appear here."
-        case MailboxSmartView.flagged.id:
-            subtitle = "Flagged messages will appear here."
-        case MailboxSmartView.snoozed.id:
-            subtitle = "Snoozed messages will appear here."
-        case MailboxSmartView.done.id:
-            subtitle = "Messages marked done will appear here."
-        case MailboxSmartView.vip.id:
-            subtitle = "Messages from your VIP senders will appear here."
-        default:
-            subtitle = "Messages you receive will appear here."
-        }
-        return MessageListStatus(
-            title: "No messages",
-            icon: smartView.symbolName,
-            subtitle: subtitle,
-            actionTitle: nil
+            icon: "magnifyingglass",
+            subtitle: "No results for \"\(query)\".",
+            actionTitle: "Clear search"
         )
     }
 
