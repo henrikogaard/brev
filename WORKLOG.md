@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-09-23 — Agent — Release validation + calendar title TZ fix
+
+- Full-suite validation on repaired main `14923a8`: every package
+  functionally green (BrevBackend 1141, BrevCalendar 239, BrevGmail 160,
+  BrevAI 52, others); BrevMail/BrevSettings pixel-snapshot diffs are
+  pre-existing baseline/env mismatches reproduced on clean main.
+- Runtime regression matrix re-run on both rebuilt apps: all 13
+  verifiable items pass (see `docs/qa/release-validation-2026-09-22.md`).
+- Fixed `CalendarGridLayout` day/week/month titles rendering in the
+  system time zone rather than the passed calendar's (found by the
+  date-dependent "range titles render per mode" test on PDT).
+
 ## 2026-09-23 — Agent — Re-land PR #85 after stale-base squash revert
 
 - The #86 squash merge (`295d439`) carried a tree built before #85

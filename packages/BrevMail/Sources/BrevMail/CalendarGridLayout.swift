@@ -286,12 +286,29 @@ public enum CalendarGridLayout {
 
     // MARK: - Range titles
 
+    /// Applies the caller's calendar (incl. time zone) to a title format;
+    /// `Date.formatted(_:)` otherwise renders in the system zone.
+    private static func titleStyle(
+        _ style: Date.FormatStyle,
+        calendar: Calendar
+    ) -> Date.FormatStyle {
+        var styled = style
+        styled.calendar = calendar
+        styled.timeZone = calendar.timeZone
+        return styled
+    }
+
     /// Toolbar title for the day view: "Tuesday, September 22".
     public static func dayTitle(
         for day: Date,
         calendar: Calendar
     ) -> String {
-        day.formatted(.dateTime.weekday(.wide).month(.wide).day())
+        day.formatted(
+            titleStyle(
+                .dateTime.weekday(.wide).month(.wide).day(),
+                calendar: calendar
+            )
+        )
     }
 
     /// Toolbar title for the week view: "Sep 21 – 27, 2026".
@@ -303,9 +320,17 @@ public enum CalendarGridLayout {
         guard let first = days.first, let last = days.last else {
             return dayTitle(for: day, calendar: calendar)
         }
-        let startText = first.formatted(.dateTime.month(.abbreviated).day())
+        let startText = first.formatted(
+            titleStyle(
+                .dateTime.month(.abbreviated).day(),
+                calendar: calendar
+            )
+        )
         let endText = last.formatted(
-            .dateTime.month(.abbreviated).day().year()
+            titleStyle(
+                .dateTime.month(.abbreviated).day().year(),
+                calendar: calendar
+            )
         )
         return "\(startText) – \(endText)"
     }
@@ -315,6 +340,11 @@ public enum CalendarGridLayout {
         containing day: Date,
         calendar: Calendar
     ) -> String {
-        day.formatted(.dateTime.month(.wide).year())
+        day.formatted(
+            titleStyle(
+                .dateTime.month(.wide).year(),
+                calendar: calendar
+            )
+        )
     }
 }
