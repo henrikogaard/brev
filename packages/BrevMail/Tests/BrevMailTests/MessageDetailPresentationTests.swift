@@ -151,6 +151,26 @@ struct MessageDetailPresentationTests {
         ) == .surfaceFallbackNotice("Network error: offline"))
     }
 
+    @Test("collapsed recipient line matches reader and thread-card summary")
+    func collapsedRecipientLineMatchesReaderAndCards() {
+        #expect(MessageDetailPresentation.collapsedRecipientLine([]) == "")
+        #expect(MessageDetailPresentation.collapsedRecipientLine([
+            Correspondent(name: "Ana", email: "a@example.org")
+        ]) == "to Ana")
+        #expect(MessageDetailPresentation.collapsedRecipientLine([
+            Correspondent(name: "Ana", email: "a@example.org"),
+            Correspondent(name: "Bo", email: "b@example.org"),
+            Correspondent(name: "Cy", email: "c@example.org")
+        ]) == "to Ana, Bo, Cy")
+        #expect(MessageDetailPresentation.collapsedRecipientLine([
+            Correspondent(name: "Ana", email: "a@example.org"),
+            Correspondent(name: "Bo", email: "b@example.org"),
+            Correspondent(name: "Cy", email: "c@example.org"),
+            Correspondent(name: "Di", email: "d@example.org"),
+            Correspondent(name: "El", email: "e@example.org")
+        ]) == "to Ana, Bo, Cy + 2 more")
+    }
+
     @Test("empty body falls back to selected header snippet")
     func emptyBodyFallsBackToSelectedHeaderSnippet() {
         #expect(MessageDetailPresentation.displayPlainText(

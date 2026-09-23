@@ -1,5 +1,101 @@
 # Worklog
 
+## 2026-09-22 — Agent — UI/UX audit fixes (docs/qa/uiux-audit-2026-09-22.md)
+
+### Goal
+
+Fix the confirmed findings from the same-day dual-platform UI/UX audit
+(`docs/qa/uiux-audit-2026-09-22.md`): C1 smart-view filter leak, C2 iOS
+PIM covers rendering as voids, C3 drafts dead-end on tap, plus the cheap
+menu/footer/empty-state nice-to-haves (N1–N3, N5, N8, N11–N13). C4
+(quit-on-last-window) and N4 (shortcut help inventory) verified as
+non-issues; N6/N7/N9/N10 deferred as non-cheap.
+
+### Changes
+
+- C1: unified inbox re-seeds `mailboxFilter` to the smart view's own
+  query on selection and clears it back to `.none` when leaving the
+  view, so folder lists no longer inherit smart-view filters.
+- C2: Calendar/Contacts/Tasks iOS covers now render the same empty-state
+  surfaces as macOS instead of a blank cover.
+- C3: draft rows in Drafts folders route through
+  `MailComposePresentationActions.openDraft` →
+  `MailNavigationState.presentDraft` → `ComposeView(existingDraft:)`,
+  which seeds To/Cc/Bcc/Subject/body/draftID/remoteID so re-saving
+  supersedes the same draft. `MailBackend.draft(for:)` added (default
+  `nil`; IMAPSMTPBackend indexes staged drafts) as the richer restore
+  path when a backend holds one.
+- Menus: single AI Sidebar entry in a dedicated View group, deduplicated
+  Calendar/Contacts/Tasks window commands, Keyboard Shortcuts help
+  inventory reconciled. Message-menu alternate bindings (⌘U, ⌘S, ⌘F,
+  ⌘[/⌘]) moved into an "Alternate Shortcuts" submenu — top level shows
+  each action once while the key equivalents stay registered.
+- N5: PIM sidebar columns get `navigationSplitViewColumnWidth` so the
+  ~90pt rail no longer wraps copy mid-word.
+- N8: iOS bottom-bar floating pill gets a reserved scroll-content margin
+  so the last row isn't covered (`brevBottomBarScrollInset`).
+- N11: `MessageListPresentation.emptyStatus` gains smart-view /
+  saved-search scoped empty-state copy.
+- N12: folder-stats footer on smart views/saved searches reports the
+  view's own visible totals instead of unified-inbox aggregates.
+- N13: Snooze/Unsnooze added to the macOS reader "…" toolbar menu for
+  parity with the shared `messageMenu` inventory.
+- Tests: `MessageListPresentationTests` gains empty-state coverage;
+  `MailComposePresentationActionsTests` /
+  `MailContextColumnSnapshotTests` updated for the `openDraft:` init.
+
+### Round 2 — deferred findings N6/N7/N9/N10
+
+- N6: `MessageListRow`'s `SpatialTapGesture` fired on secondary clicks,
+  running `onActivate` and swallowing the context menu. macOS now
+  ignores the tap for `rightMouseUp` and selects the row instead, so
+  right-clicking any row selects it and opens its menu.
+- N7: autocomplete suggestions extracted to `RecipientSuggestionList`,
+  rendered as full-width rows below the field on both platforms
+  (previously capped at 360pt).
+- N9: draft autosaves that complete after the compose sheet dismisses
+  (the completion request is torn down on sheet change) no longer drop
+  their feedback — "Draft saved." toast now shows on iOS too.
+  Send-result feedback stays request-gated.
+- N10: thread cards and the reader share one header pattern — expanded
+  cards render `displayName + <email>` and the shared
+  `MessageDetailPresentation.collapsedRecipientLine` ("to A, B + N
+  more"); collapsed cards keep the compact name/snippet line.
+- Tests: `MessageDetailPresentationTests.collapsedRecipientLineMatches
+  ReaderAndCards`; new iOS snapshot tests
+  `threadMessageCardExpandedRenders` + `recipientSuggestionListRenders`
+  registered in the snapshot lane's `-only-testing` list.
+
+### Verification
+
+- macOS `Brev Test (2026-09-22).app` (mock): VIP smart view → folder
+  restores contents (C1); draft row reopen restores composer fields
+  (C3); View/Message/Window menus show single entries (N1–N3); VIP
+  footer reads "0 messages · 0 unread" (N12) with per-view empty copy
+  (N11); Snooze… in reader "…" menu (N13); Calendar sidebar fits copy
+  (N5).
+- iOS sim (iPhone 17, iOS 27.0, mock): Calendar/Contacts/Tasks covers
+  show proper empty states + Done (C2); compose ✕ autosaves a draft and
+  tapping it reopens the composer with fields restored (C3); last inbox
+  row clears the bottom pill (N8); VIP empty copy shown (N11).
+- `swift test --filter MessageListPresentationTests|
+  MailComposePresentationActionsTests|UnifiedInboxThreadGroupingTests`:
+  37/37 pass. `scripts/lint.sh` and `scripts/format.sh` clean.
+- Round 2: right-click on unselected "Ledger & Co" row selects it and
+  opens the full context menu (N6); iOS compose "ing" query renders
+  full-width suggestion rows that tap into chips (N7); closing compose
+  with content shows "Draft saved." toast on iOS (N9); expanded thread
+  card header matches the reader header — name + <email> + "to …"
+  (N10). All four verified live by recorded QA pass.
+- `swift test --filter MessageDetailPresentationTests`: 26/26 pass.
+- Skipped: pixel-snapshot re-baselines for the two NEW snapshot tests
+  (baselines record on first iOS-27 run; metadata check unaffected).
+
+### Next
+
+- PR targets main on `fix/uiux-audit-sep22`. All audit findings
+  (C1–C4, N1–N13) are now addressed or verified as non-issues.
+
 ## 2026-09-22 — Agent — PR #82 review follow-up
 
 - Confirmed review thread discussion_r4070538784: saving profiles reconciled

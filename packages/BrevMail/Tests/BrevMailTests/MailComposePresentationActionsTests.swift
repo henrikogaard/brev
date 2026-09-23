@@ -27,7 +27,8 @@ struct MailComposePresentationActionsTests {
             newMessage: { invoked.append("new") },
             reply: { invoked.append("reply:\($0.id):\($1?.mailboxID ?? "none")") },
             replyAll: { invoked.append("replyAll:\($0.id):\($1?.mailboxID ?? "none")") },
-            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") }
+            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") },
+            openDraft: { _, _ in }
         )
 
         actions.newMessage()
@@ -52,7 +53,8 @@ struct MailComposePresentationActionsTests {
             newMessage: {},
             reply: { invoked.append("reply:\($0.id):\($1?.mailboxID ?? "none")") },
             replyAll: { invoked.append("replyAll:\($0.id):\($1?.mailboxID ?? "none")") },
-            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") }
+            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") },
+            openDraft: { _, _ in }
         )
 
         actions.reply(header)
@@ -74,7 +76,8 @@ struct MailComposePresentationActionsTests {
             newMessage: {},
             reply: { _, _ in },
             replyAll: { _, _ in },
-            forward: { _, _ in }
+            forward: { _, _ in },
+            openDraft: { _, _ in }
         )
 
         #expect(actions.isBlocked)
@@ -91,7 +94,8 @@ struct MailComposePresentationActionsTests {
             newMessage: { invoked.append("new") },
             reply: { invoked.append("reply:\($0.id):\($1?.mailboxID ?? "none")") },
             replyAll: { invoked.append("replyAll:\($0.id):\($1?.mailboxID ?? "none")") },
-            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") }
+            forward: { invoked.append("forward:\($0.id):\($1?.mailboxID ?? "none")") },
+            openDraft: { _, _ in }
         )
 
         actions.newMessage()

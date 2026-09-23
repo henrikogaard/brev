@@ -179,6 +179,10 @@ public struct ComposeView: View {
     private let forwardingFrom: MessageHeader?
     private let prefill: ComposePrefill?
     private let recoveredDraft: ComposeDraftRecoverySnapshot?
+    /// The already-saved draft this compose session re-opened, when present.
+    /// Server-side fields compose state cannot express (attachment ids,
+    /// threading metadata, scheduled send) are carried forward on save.
+    private let restoredDraft: Draft?
     private let aiBackend: (any AIBackend)?
     private let backendSupportsAIWriter: Bool
     private let signatureContext: ComposeSignatureContext?
@@ -298,6 +302,7 @@ public struct ComposeView: View {
         forwardingFrom: MessageHeader? = nil,
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
+        existingDraft: Draft? = nil,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -318,6 +323,7 @@ public struct ComposeView: View {
             forwardingFrom: forwardingFrom,
             prefill: prefill,
             recoveredDraft: recoveredDraft,
+            existingDraft: existingDraft,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -340,6 +346,7 @@ public struct ComposeView: View {
         forwardingFrom: MessageHeader? = nil,
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
+        existingDraft: Draft? = nil,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -363,6 +370,7 @@ public struct ComposeView: View {
             forwardingFrom: forwardingFrom,
             prefill: prefill,
             recoveredDraft: recoveredDraft,
+            existingDraft: existingDraft,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -388,6 +396,11 @@ public struct ComposeView: View {
         forwardingFrom: MessageHeader? = nil,
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
+        /// An already-saved draft being re-opened for editing (activating a
+        /// message inside the Drafts folder). Carried in `restoredDraft` so
+        /// saves keep the draft's server-side attachments, threading, and
+        /// scheduled-send state that compose state cannot express.
+        existingDraft: Draft? = nil,
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -419,6 +432,7 @@ public struct ComposeView: View {
         self.forwardingFrom = forwardingFrom
         self.prefill = prefill
         self.recoveredDraft = recoveredDraft
+        restoredDraft = existingDraft
         self.aiBackend = aiBackend
         self.backendSupportsAIWriter = backendSupportsAIWriter ?? backend.capabilities.contains(.aiWriter)
         self.signatureContext = signatureContext
@@ -444,6 +458,15 @@ public struct ComposeView: View {
         } else if let forwardingFrom {
             _subject = State(initialValue: ComposeForwardFormatter.subject(for: forwardingFrom.subject))
             initialBodyText = ComposeForwardFormatter.body(for: forwardingFrom)
+        } else if let existingDraft {
+            _to = State(initialValue: existingDraft.to.map(\.email))
+            _cc = State(initialValue: existingDraft.cc.map(\.email))
+            _bcc = State(initialValue: existingDraft.bcc.map(\.email))
+            _subject = State(initialValue: existingDraft.subject)
+            _draftID = State(initialValue: existingDraft.id)
+            _savedDraftRemoteID = State(initialValue: existingDraft.remoteID)
+            _scheduledSendDate = State(initialValue: existingDraft.scheduledFor)
+            initialBodyText = ComposeHTMLBodyPolicy.editorText(fromStoredHTML: existingDraft.htmlBody)
         } else if let recoveredDraft {
             _to = State(initialValue: recoveredDraft.to)
             _cc = State(initialValue: recoveredDraft.cc)
@@ -461,7 +484,8 @@ public struct ComposeView: View {
         } else {
             initialBodyText = ""
         }
-        let initialSignature = recoveredDraft == nil ? signatureContext?.selectedSignature : nil
+        let initialSignature = recoveredDraft == nil && existingDraft == nil
+            ? signatureContext?.selectedSignature : nil
         let signedInitialBody = ComposeSignatureBodyPolicy.body(
             afterSelecting: initialSignature?.body,
             in: initialBodyText,
@@ -474,7 +498,8 @@ public struct ComposeView: View {
         ))
         // Only reply/forward start with a provisional snippet-backed quote that
         // may later be replaced by a CTE-decoded MessageBody.
-        if recoveredDraft == nil, replyingTo != nil || forwardingFrom != nil {
+        if recoveredDraft == nil, existingDraft == nil,
+           replyingTo != nil || forwardingFrom != nil {
             _provisionalSignedBody = State(initialValue: signedInitialBody)
         } else {
             _provisionalSignedBody = State(initialValue: nil)
@@ -3021,11 +3046,17 @@ public struct ComposeView: View {
         // Already-staged inline image IDs come first so `stagedAttachments(for:)`
         // finds them alongside regular file attachments. Regular attachments are
         // appended after so ordering is stable across retries.
-        let attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
+        var attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
             inline: currentInlineAttachmentIDs,
             regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(from: pendingAttachments)
         )
-        return ComposeDraftBuilder.draft(
+        // A draft reopened from the Drafts folder references attachments that
+        // were already uploaded to the backend staging store; they are not in
+        // `pendingAttachments`, so carry their ids forward explicitly.
+        for id in restoredDraft?.attachmentIDs ?? [] where !attachmentIDs.contains(id) {
+            attachmentIDs.append(id)
+        }
+        var draft = ComposeDraftBuilder.draft(
             id: draftID,
             remoteID: savedDraftRemoteID,
             identityID: selectedAliasID,
@@ -3050,6 +3081,20 @@ public struct ComposeView: View {
                 encrypting: encryptMessage
             )
         )
+        if let restoredDraft {
+            // Reopened drafts are neither reply nor forward sessions, but the
+            // original draft may itself be a reply/forward — keep its
+            // threading metadata so the sent message still threads.
+            if replyingTo == nil {
+                draft.threadID = restoredDraft.threadID
+                draft.inReplyToMessageID = restoredDraft.inReplyToMessageID
+            }
+            if forwardingFrom == nil {
+                draft.forwardedMessageID = restoredDraft.forwardedMessageID
+            }
+            draft.scheduledFor = draft.scheduledFor ?? restoredDraft.scheduledFor
+        }
+        return draft
     }
 
     private var autoSaveFingerprint: ComposeAutoSaveFingerprint {
