@@ -176,7 +176,14 @@ public struct ContactsRootView: View {
                 source: model.source(for: contact),
                 groupNames: groupNames(for: contact),
                 onEdit: editAction(for: contact),
-                onDelete: deleteAction(for: contact)
+                onDelete: deleteAction(for: contact),
+                duplicates: ContactDuplicateSuggestions.candidates(
+                    for: contact,
+                    in: model.contacts
+                ),
+                onReviewDuplicate: { candidate in
+                    model.selectedContactID = candidate.id
+                }
             )
         } else {
             ContentUnavailableView(

@@ -295,11 +295,20 @@ struct PIMContactWriteTests {
         ].joined(separator: "\r\n")
         var contact = Self.contact(rawPayload: raw)
         contact.displayName = "New Name"
+        contact.dates = [
+            PIMContactDate(
+                label: "birthday",
+                year: 1990,
+                month: 4,
+                day: 12
+            ),
+        ]
         let merged = PIMVCardWriter.mergedVCard(
             for: contact,
             revisedAt: Self.fixedNow
         )
         #expect(merged.contains("VERSION:4.0"))
+        // BDAY is managed — regenerated from the model, same value.
         #expect(merged.contains("BDAY:1990-04-12"))
         #expect(merged.contains("X-SOCIALPROFILE;TYPE=twitter:https://x.com/h"))
         #expect(merged.contains("FN:New Name"))
@@ -623,6 +632,14 @@ struct PIMContactWriteTests {
         )
         var edit = Self.contact(rawPayload: raw)
         edit.displayName = "New"
+        edit.dates = [
+            PIMContactDate(
+                label: "birthday",
+                year: 1990,
+                month: 4,
+                day: 12
+            ),
+        ]
         let saved = try await service.update(edit, source: Self.source())
         #expect(saved.providerVersion == "\"dav-2\"")
         let request = try #require(transport.requests.first)
@@ -667,5 +684,400 @@ struct PIMContactWriteTests {
                 source: Self.source(write: false)
             )
         }
+    }
+
+    // MARK: - Photos, dates, URLs
+
+    /// A minimal JPEG header — enough for the writer's media sniffing.
+    private static let jpegData = Data([
+        0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46,
+    ])
+
+    @Test("vCard emits inline photo, dates, and URLs")
+    func vcardPhotoDatesUrls() {
+        var contact = Self.contact()
+        contact.photoData = Self.jpegData
+        contact.dates = [
+            PIMContactDate(
+                label: "birthday", year: nil, month: 4, day: 12
+            ),
+            PIMContactDate(
+                label: "anniversary", year: 2015, month: 6, day: 1
+            ),
+            PIMContactDate(
+                label: "nameday", year: 2020, month: 2, day: 29
+            ),
+        ]
+        contact.urls = [
+            PIMContactField(label: "home", value: "https://h.example.com"),
+        ]
+        let vcard = PIMVCardWriter.vcard(
+            for: contact,
+            revisedAt: Self.fixedNow
+        )
+        // vCard 3 spelling: TYPE + ENCODING=b, base64 payload folded.
+        #expect(vcard.contains("PHOTO;TYPE=JPEG;ENCODING=b:"))
+        #expect(vcard.contains("BDAY:--04-12"))
+        // v3 has no ANNIVERSARY — it lands as the X-ABDATE extension.
+        #expect(vcard.contains("X-ABDATE;TYPE=ANNIVERSARY:2015-06-01"))
+        #expect(vcard.contains("X-ABDATE;TYPE=NAMEDAY:2020-02-29"))
+        #expect(vcard.contains("URL;TYPE=home:https://h.example.com"))
+        // The emitted card parses back with every new field intact.
+        let parsed = try? #require(PIMVCardParser.parse(vcard))
+        #expect(parsed?.photoData == Self.jpegData)
+        #expect(parsed?.dates.count == 3)
+        #expect(parsed?.urls.first?.value == "https://h.example.com")
+    }
+
+    @Test("vCard emits URI photo when no bytes, nothing when empty")
+    func vcardPhotoUriAndAbsent() {
+        var byURL = Self.contact()
+        byURL.photoURL = "https://example.com/photo.jpg"
+        let uriCard = PIMVCardWriter.vcard(
+            for: byURL,
+            revisedAt: Self.fixedNow
+        )
+        #expect(uriCard.contains("PHOTO;VALUE=URI:https://example.com/photo.jpg"))
+        let plain = PIMVCardWriter.vcard(
+            for: Self.contact(),
+            revisedAt: Self.fixedNow
+        )
+        #expect(!plain.contains("PHOTO"))
+    }
+
+    @Test("mergedVCard keeps unknown fields while swapping PHOTO bytes")
+    func vcardMergePreservesUnknownWithPhoto() {
+        let raw = [
+            "BEGIN:VCARD",
+            "VERSION:4.0",
+            "UID:uid-c@brev",
+            "FN:Henrik Ogard",
+            "PHOTO:https://old.example.com/p.jpg",
+            "X-FOO-PARAM;THING=1:kept",
+            "END:VCARD",
+        ].joined(separator: "\r\n")
+        var contact = Self.contact(rawPayload: raw)
+        contact.photoData = Self.jpegData
+        let merged = PIMVCardWriter.mergedVCard(
+            for: contact,
+            revisedAt: Self.fixedNow
+        )
+        #expect(merged.contains("X-FOO-PARAM;THING=1:kept"))
+        // v4 spelling: a data-URI photo replaces the old URI reference.
+        #expect(
+            merged.contains("PHOTO:data:image/jpeg;base64,")
+        )
+        #expect(!merged.contains("PHOTO:https://old.example.com"))
+    }
+
+    @Test("vCard parser reads BDAY, ANNIVERSARY, X-ABDATE, URL, PHOTO")
+    func vcardParserNewFields() {
+        let raw = [
+            "BEGIN:VCARD",
+            "VERSION:3.0",
+            "FN:Henrik Ogard",
+            "BDAY:--04-12",
+            "ANNIVERSARY:2015-06-01",
+            "X-ABDATE;TYPE=nameday:2020-02-29",
+            "URL;TYPE=home:https://h.example.com",
+            "PHOTO;TYPE=JPEG;ENCODING=b:"
+                + Self.jpegData.base64EncodedString(),
+            "END:VCARD",
+        ].joined(separator: "\r\n")
+        let parsed = try? #require(PIMVCardParser.parse(raw))
+        #expect(parsed?.photoData == Self.jpegData)
+        #expect(parsed?.dates.count == 3)
+        #expect(
+            parsed?.dates.contains(PIMContactDate(
+                label: "birthday", year: nil, month: 4, day: 12
+            )) == true
+        )
+        #expect(
+            parsed?.dates.contains(PIMContactDate(
+                label: "anniversary", year: 2015, month: 6, day: 1
+            )) == true
+        )
+        #expect(
+            parsed?.dates.contains(PIMContactDate(
+                label: "nameday", year: 2020, month: 2, day: 29
+            )) == true
+        )
+        #expect(
+            parsed?.urls
+                == [PIMContactField(
+                    label: "home",
+                    value: "https://h.example.com"
+                )]
+        )
+    }
+
+    @Test("Google photo calls hit the dedicated endpoints with bytes")
+    func googlePhotoEndpoints() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(
+                200,
+                body: #"{"person":{"resourceName":"people/c1","etag":"\"e2\"","photos":[{"url":"https://lh3.example.com/p.jpg"}]}}"#
+            ),
+            .response(
+                200,
+                body: #"{"person":{"resourceName":"people/c1","etag":"\"e3\"","photos":[{"url":"https://www.gstatic.com/default.jpg","default":true}]}}"#
+            ),
+        ])
+        let writer = GooglePeopleContactWriter(
+            transport: { try await transport.send($0) }
+        )
+        let contact = Self.contact(providerItemKey: "people/c1")
+        let uploaded = try await writer.updatePhoto(
+            contact,
+            photoData: Self.jpegData,
+            accessToken: "token"
+        )
+        #expect(uploaded.etag == "\"e2\"")
+        #expect(uploaded.photoURL == "https://lh3.example.com/p.jpg")
+        let upload = try #require(transport.requests.first)
+        #expect(upload.httpMethod == "PATCH")
+        #expect(
+            upload.url?.absoluteString
+                == "https://people.googleapis.com/v1/people/c1:updateContactPhoto"
+        )
+        let body = try #require(upload.httpBody)
+        let json = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        #expect(
+            json["photoBytes"] as? String
+                == Self.jpegData.base64EncodedString()
+        )
+        let removed = try await writer.deletePhoto(
+            contact,
+            accessToken: "token"
+        )
+        #expect(removed.etag == "\"e3\"")
+        // A default-only photo list resolves to no photo.
+        #expect(removed.photoURL == nil)
+        let deletion = try #require(transport.requests.last)
+        #expect(deletion.httpMethod == "DELETE")
+        #expect(
+            deletion.url?.absoluteString
+                == "https://people.googleapis.com/v1/people/c1:deleteContactPhoto"
+        )
+    }
+
+    @Test("Google updatePersonFields includes birthdays, events, urls")
+    func googleUpdateMaskAndBody() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"resourceName":"people/c1","etag":"\"e2\""}"#),
+        ])
+        let writer = GooglePeopleContactWriter(
+            transport: { try await transport.send($0) }
+        )
+        var contact = Self.contact(providerItemKey: "people/c1")
+        contact.dates = [
+            PIMContactDate(
+                label: nil, year: 1990, month: 4, day: 12
+            ),
+            PIMContactDate(
+                label: "anniversary", year: 2015, month: 6, day: 1
+            ),
+            PIMContactDate(
+                label: "Nameday", year: nil, month: 2, day: 29
+            ),
+        ]
+        contact.urls = [
+            PIMContactField(label: "home", value: "https://h.example.com"),
+        ]
+        _ = try await writer.update(contact, accessToken: "token")
+        let request = try #require(transport.requests.first)
+        let mask = try #require(
+            request.url?.absoluteString
+        )
+        #expect(mask.contains("birthdays"))
+        #expect(mask.contains("events"))
+        #expect(mask.contains("urls"))
+        // Photos never ride the fields mask.
+        #expect(!mask.contains("photos"))
+        let body = try #require(request.httpBody)
+        let json = try #require(
+            JSONSerialization.jsonObject(with: body) as? [String: Any]
+        )
+        let birthdays = try #require(
+            json["birthdays"] as? [[String: Any]]
+        )
+        let date = try #require(
+            birthdays.first?["date"] as? [String: Any]
+        )
+        #expect(date["year"] as? Int == 1990)
+        #expect(date["month"] as? Int == 4)
+        let events = try #require(json["events"] as? [[String: Any]])
+        #expect(events.count == 2)
+        let anniversary = events.first { $0["type"] as? String == "anniversary" }
+        #expect(anniversary != nil)
+        let custom = events.first { $0["type"] as? String == "custom" }
+        #expect(custom?["customType"] as? String == "Nameday")
+        let urls = try #require(json["urls"] as? [[String: Any]])
+        #expect(urls.first?["value"] as? String == "https://h.example.com")
+        #expect(urls.first?["type"] as? String == "home")
+    }
+
+    @Test("service create uploads the picked photo through updateContactPhoto")
+    func serviceGoogleCreateWithPhoto() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"resourceName":"people/c9","etag":"\"e9\""}"#),
+            .response(
+                200,
+                body: #"{"person":{"resourceName":"people/c9","etag":"\"e10\"","photos":[{"url":"https://lh3.example.com/p.jpg"}]}}"#
+            ),
+        ])
+        let store = InMemoryContactStore()
+        let service = try await makeService(
+            source: Self.source(provider: .google),
+            googleTransport: transport,
+            contactStore: store
+        )
+        var draft = Self.contact(
+            providerItemKey: "draft",
+            etag: nil,
+            uid: nil
+        )
+        draft.collectionID = nil
+        draft.photoData = Self.jpegData
+        let saved = try await service.create(
+            draft,
+            in: nil,
+            source: Self.source(provider: .google)
+        )
+        #expect(saved.providerVersion == "\"e10\"")
+        #expect(saved.photoURL == "https://lh3.example.com/p.jpg")
+        #expect(saved.photoData == Self.jpegData)
+        #expect(transport.requests.count == 2)
+        #expect(
+            transport.requests.last?.url?.absoluteString
+                == "https://people.googleapis.com/v1/people/c9:updateContactPhoto"
+        )
+    }
+
+    @Test("service update replaces and removes photos on Google")
+    func serviceGooglePhotoUpdateAndRemoval() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"resourceName":"people/c1","etag":"\"e2\""}"#),
+            .response(
+                200,
+                body: #"{"person":{"resourceName":"people/c1","etag":"\"e3\"","photos":[{"url":"https://lh3.example.com/new.jpg"}]}}"#
+            ),
+            .response(200, body: #"{"resourceName":"people/c1","etag":"\"e4\""}"#),
+            .response(
+                200,
+                body: #"{"person":{"resourceName":"people/c1","etag":"\"e5\""}}"#
+            ),
+        ])
+        let store = InMemoryContactStore()
+        var stored = Self.contact(providerItemKey: "people/c1")
+        stored.photoURL = "https://lh3.example.com/old.jpg"
+        try await store.saveContacts([stored], for: "pim-test")
+        let service = try await makeService(
+            source: Self.source(provider: .google),
+            googleTransport: transport,
+            contactStore: store
+        )
+        // Replace: photoData set → updateContact then updateContactPhoto.
+        var replacing = stored
+        replacing.photoData = Self.jpegData
+        let saved = try await service.update(
+            replacing,
+            source: Self.source(provider: .google)
+        )
+        #expect(saved.photoURL == "https://lh3.example.com/new.jpg")
+        #expect(saved.providerVersion == "\"e3\"")
+        #expect(
+            transport.requests.last?.url?.absoluteString.contains(
+                ":updateContactPhoto"
+            ) == true
+        )
+        // Remove: photo fields cleared on a record that had a photo →
+        // updateContact then deleteContactPhoto.
+        var removing = saved
+        removing.photoData = nil
+        removing.photoURL = nil
+        let cleared = try await service.update(
+            removing,
+            source: Self.source(provider: .google)
+        )
+        #expect(cleared.photoURL == nil)
+        #expect(cleared.photoData == nil)
+        #expect(cleared.providerVersion == "\"e5\"")
+        #expect(
+            transport.requests.last?.url?.absoluteString.contains(
+                ":deleteContactPhoto"
+            ) == true
+        )
+    }
+
+    @Test("service sends no photo call when a photo-free contact edits")
+    func serviceGoogleNoPhotoNoCall() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"resourceName":"people/c1","etag":"\"e2\""}"#),
+        ])
+        let store = InMemoryContactStore()
+        let stored = Self.contact(providerItemKey: "people/c1")
+        try await store.saveContacts([stored], for: "pim-test")
+        let service = try await makeService(
+            source: Self.source(provider: .google),
+            googleTransport: transport,
+            contactStore: store
+        )
+        var edit = stored
+        edit.nickname = "HK"
+        _ = try await service.update(
+            edit,
+            source: Self.source(provider: .google)
+        )
+        // Only the field update — no photo endpoint touched.
+        #expect(transport.requests.count == 1)
+    }
+
+    @Test("CardDAV service round-trips photo bytes inside the vCard")
+    func serviceDavPhotoRoundTrip() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(201, headers: ["ETag": "\"dav-1\""]),
+            .response(200, headers: ["ETag": "\"dav-2\""]),
+        ])
+        let store = InMemoryContactStore()
+        let service = try await makeService(
+            source: Self.source(),
+            davTransport: transport,
+            contactStore: store
+        )
+        var draft = Self.contact(
+            providerItemKey: "draft",
+            etag: nil,
+            uid: nil
+        )
+        draft.photoData = Self.jpegData
+        let saved = try await service.create(
+            draft,
+            in: Self.collection(),
+            source: Self.source()
+        )
+        let createBody = try String(
+            decoding: #require(transport.requests.first?.httpBody),
+            as: UTF8.self
+        )
+        #expect(createBody.contains("PHOTO;TYPE=JPEG;ENCODING=b:"))
+        #expect(saved.photoData == Self.jpegData)
+        // Removing the photo regenerates PHOTO out of the merged card.
+        var removing = saved
+        removing.rawPayload = saved.rawPayload ?? createBody
+        removing.photoData = nil
+        removing.photoURL = nil
+        _ = try await service.update(
+            removing,
+            source: Self.source()
+        )
+        let updateBody = try String(
+            decoding: #require(transport.requests.last?.httpBody),
+            as: UTF8.self
+        )
+        #expect(!updateBody.contains("PHOTO"))
+        #expect(updateBody.contains("FN:Henrik Ogard"))
     }
 }

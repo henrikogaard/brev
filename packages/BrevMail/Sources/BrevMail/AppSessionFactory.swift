@@ -175,12 +175,27 @@ public enum AppSessionFactory {
             credentials: CalDAVKeychainCredentialStore(),
             localData: pimLocalDataStore
         )
+        // The JSON stores cache reads in memory per instance, so every
+        // consumer must share one instance — a write through a second
+        // instance would stay invisible to readers for the session.
+        let pimCollectionStore = JSONPIMCollectionStore(
+            localDataStore: pimLocalDataStore
+        )
+        let pimEventStore = JSONPIMEventStore(
+            localDataStore: pimLocalDataStore
+        )
+        let pimContactStore = JSONPIMContactStore(
+            localDataStore: pimLocalDataStore
+        )
+        let pimTaskStore = JSONPIMTaskStore(
+            localDataStore: pimLocalDataStore
+        )
         // ADR-0072 #6: collection discovery rides the same credential
         // paths — DAV sources via their Keychain reference, Google sources
         // via the linked account's shared grant.
         let pimCollectionService = PIMCollectionService(
             coordinator: pimSourceCoordinator,
-            store: JSONPIMCollectionStore(localDataStore: pimLocalDataStore),
+            store: pimCollectionStore,
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
@@ -189,10 +204,8 @@ public enum AppSessionFactory {
         // removal cursor directory.
         let pimEventSyncService = PIMEventSyncService(
             coordinator: pimSourceCoordinator,
-            collectionStore: JSONPIMCollectionStore(
-                localDataStore: pimLocalDataStore
-            ),
-            eventStore: JSONPIMEventStore(localDataStore: pimLocalDataStore),
+            collectionStore: pimCollectionStore,
+            eventStore: pimEventStore,
             cursorStore: JSONPIMSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
@@ -205,12 +218,8 @@ public enum AppSessionFactory {
         // removal cursor directory.
         let pimContactSyncService = PIMContactSyncService(
             coordinator: pimSourceCoordinator,
-            collectionStore: JSONPIMCollectionStore(
-                localDataStore: pimLocalDataStore
-            ),
-            contactStore: JSONPIMContactStore(
-                localDataStore: pimLocalDataStore
-            ),
+            collectionStore: pimCollectionStore,
+            contactStore: pimContactStore,
             cursorStore: JSONPIMContactSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
@@ -224,10 +233,8 @@ public enum AppSessionFactory {
         // sources whose .write capability the user explicitly enabled.
         let pimEventWriteService = PIMEventWriteService(
             coordinator: pimSourceCoordinator,
-            collectionStore: JSONPIMCollectionStore(
-                localDataStore: pimLocalDataStore
-            ),
-            eventStore: JSONPIMEventStore(localDataStore: pimLocalDataStore),
+            collectionStore: pimCollectionStore,
+            eventStore: pimEventStore,
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
@@ -238,9 +245,7 @@ public enum AppSessionFactory {
         // whose .write capability the user explicitly enabled.
         let pimContactWriteService = PIMContactWriteService(
             coordinator: pimSourceCoordinator,
-            contactStore: JSONPIMContactStore(
-                localDataStore: pimLocalDataStore
-            ),
+            contactStore: pimContactStore,
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
@@ -250,10 +255,8 @@ public enum AppSessionFactory {
         // CalDAV via the Keychain reference on VTODO-capable collections.
         let pimTaskSyncService = PIMTaskSyncService(
             coordinator: pimSourceCoordinator,
-            collectionStore: JSONPIMCollectionStore(
-                localDataStore: pimLocalDataStore
-            ),
-            taskStore: JSONPIMTaskStore(localDataStore: pimLocalDataStore),
+            collectionStore: pimCollectionStore,
+            taskStore: pimTaskStore,
             cursorStore: JSONPIMSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
@@ -268,10 +271,8 @@ public enum AppSessionFactory {
         // explicitly enabled.
         let pimTaskWriteService = PIMTaskWriteService(
             coordinator: pimSourceCoordinator,
-            collectionStore: JSONPIMCollectionStore(
-                localDataStore: pimLocalDataStore
-            ),
-            taskStore: JSONPIMTaskStore(localDataStore: pimLocalDataStore),
+            collectionStore: pimCollectionStore,
+            taskStore: pimTaskStore,
             credentials: CalDAVKeychainCredentialStore(),
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )

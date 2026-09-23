@@ -28,7 +28,8 @@ public enum PIMVCardWriter {
     private static let managedProperties: Set<String> = [
         "FN", "N", "NICKNAME", "EMAIL", "TEL", "ADR", "ORG",
         "TITLE", "NOTE", "PHOTO", "CATEGORIES", "REV", "UID",
-        "VERSION", "PRODID", "BEGIN", "END",
+        "VERSION", "PRODID", "BEGIN", "END", "URL", "BDAY",
+        "ANNIVERSARY", "X-ABDATE",
     ]
 
     /// A fresh vCard 3.0 document for a new contact.
@@ -41,7 +42,7 @@ public enum PIMVCardWriter {
             "VERSION:3.0",
             "PRODID:-//Brev//Brev Mail//EN",
         ]
-        lines.append(contentsOf: managedLines(for: contact))
+        lines.append(contentsOf: managedLines(for: contact, version: "3.0"))
         lines.append(
             "REV:" + revFormatter.string(from: revisedAt)
         )
@@ -64,7 +65,15 @@ public enum PIMVCardWriter {
         }
         var kept: [String] = []
         var rawVersion: String?
-        for line in raw.components(separatedBy: .newlines) {
+        // Unfold before splitting — a folded managed property (inline
+        // PHOTO payloads are always longer than 75 octets) must not
+        // leave its continuation fragments behind as stray kept lines.
+        let unfolded = raw
+            .replacingOccurrences(of: "\r\n ", with: "")
+            .replacingOccurrences(of: "\r\n\t", with: "")
+            .replacingOccurrences(of: "\n ", with: "")
+            .replacingOccurrences(of: "\n\t", with: "")
+        for line in unfolded.components(separatedBy: .newlines) {
             let trimmed = line.trimmingCharacters(
                 in: .whitespacesAndNewlines
             )
@@ -82,9 +91,12 @@ public enum PIMVCardWriter {
         var lines = ["BEGIN:VCARD"]
         // The stored VERSION stays authoritative — a vCard 4 source
         // keeps its version so the server parses what it wrote.
-        lines.append("VERSION:" + (rawVersion ?? "3.0"))
+        let version = rawVersion ?? "3.0"
+        lines.append("VERSION:" + version)
         lines.append("PRODID:-//Brev//Brev Mail//EN")
-        lines.append(contentsOf: managedLines(for: contact))
+        lines.append(
+            contentsOf: managedLines(for: contact, version: version)
+        )
         lines.append(
             "REV:" + revFormatter.string(from: revisedAt)
         )
@@ -96,9 +108,12 @@ public enum PIMVCardWriter {
     // MARK: - Managed properties
 
     /// The property lines the model owns, in stable order: identity
-    /// first, then the repeated and structured fields.
+    /// first, then the repeated and structured fields. `version` is the
+    /// document's VERSION value — photo and anniversary spellings differ
+    /// between vCard 3 and 4.
     private static func managedLines(
-        for contact: PIMContact
+        for contact: PIMContact,
+        version: String
     ) -> [String] {
         var lines: [String] = []
         if let uid = contact.uid {
@@ -144,9 +159,15 @@ public enum PIMVCardWriter {
         if let note = contact.note, !note.isEmpty {
             lines.append("NOTE:" + escape(note))
         }
-        if let photoURL = contact.photoURL, !photoURL.isEmpty {
-            lines.append("PHOTO;VALUE=URI:" + photoURL)
+        if let photoLine = photoLine(for: contact, version: version) {
+            lines.append(photoLine)
         }
+        for field in contact.urls where !field.value.isEmpty {
+            lines.append(
+                labeled("URL", label: field.label) + escape(field.value)
+            )
+        }
+        lines.append(contentsOf: dateLines(for: contact, version: version))
         if !contact.groupKeys.isEmpty {
             lines.append(
                 "CATEGORIES:"
@@ -156,6 +177,79 @@ public enum PIMVCardWriter {
             )
         }
         return lines
+    }
+
+    /// PHOTO as inline bytes or an external URI. Inline bytes spell
+    /// `PHOTO;TYPE=JPEG;ENCODING=b:` in vCard 3 and a data URI in
+    /// vCard 4; a bare URI stays `VALUE=URI` (v3) or the default URI
+    /// value (v4).
+    private static func photoLine(
+        for contact: PIMContact,
+        version: String
+    ) -> String? {
+        if let data = contact.photoData, !data.isEmpty {
+            let type = mediaTypeName(for: data)
+            if version.hasPrefix("4") {
+                return "PHOTO:data:image/"
+                    + type.lowercased() + ";base64,"
+                    + data.base64EncodedString()
+            }
+            return "PHOTO;TYPE=" + type + ";ENCODING=b:"
+                + data.base64EncodedString()
+        }
+        if let photoURL = contact.photoURL, !photoURL.isEmpty {
+            if version.hasPrefix("4") {
+                return "PHOTO:" + photoURL
+            }
+            return "PHOTO;VALUE=URI:" + photoURL
+        }
+        return nil
+    }
+
+    /// The image type token from magic bytes; JPEG when unknown so the
+    /// server stores a valid PHOTO value.
+    private static func mediaTypeName(for data: Data) -> String {
+        let bytes = [UInt8](data.prefix(4))
+        if bytes.starts(with: [0xFF, 0xD8, 0xFF]) { return "JPEG" }
+        if bytes.starts(with: [0x89, 0x50, 0x4E, 0x47]) { return "PNG" }
+        if bytes.starts(with: [0x47, 0x49, 0x46]) { return "GIF" }
+        return "JPEG"
+    }
+
+    /// BDAY / ANNIVERSARY / X-ABDATE lines. vCard 3 has no ANNIVERSARY,
+    /// so a 3.0 document spells non-birthday dates as the Apple's
+    /// X-ABDATE;TYPE=<label> extension; a 4.0 document uses ANNIVERSARY
+    /// and keeps X-ABDATE for custom labels only.
+    private static func dateLines(
+        for contact: PIMContact,
+        version: String
+    ) -> [String] {
+        contact.dates.compactMap { date in
+            let value = dateValue(date)
+            let label = date.label?.lowercased()
+            if label == nil || label == "birthday" {
+                return "BDAY:" + value
+            }
+            if label == "anniversary", version.hasPrefix("4") {
+                return "ANNIVERSARY:" + value
+            }
+            let type = date.label.map { $0.uppercased() } ?? "OTHER"
+            return "X-ABDATE;TYPE=" + type + ":" + value
+        }
+    }
+
+    /// `YYYY-MM-DD` with a year, `--MM-DD` without — the truncated form
+    /// is the year-less spelling Apple uses in both vCard versions.
+    private static func dateValue(_ date: PIMContactDate) -> String {
+        let monthDay = String(
+            format: "-%02d-%02d",
+            date.month,
+            date.day
+        )
+        guard let year = date.year else {
+            return "-" + monthDay
+        }
+        return String(format: "%04d", year) + monthDay
     }
 
     /// EMAIL;TYPE=work:value — the vCard3 spelling vCard4 servers also

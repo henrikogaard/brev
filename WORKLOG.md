@@ -4445,3 +4445,40 @@ buttons, and package-aware localization.
   coverage. Live-provider write smoke tests remain the maintainer gate.
 - Next: #12 stays In progress pending maintainer QA; remaining issue
   scope is rendered/live verification, not code.
+
+## 2026-09-22 — Agent — Issue #9 slice 3 (photos, dates/URLs, duplicate suggestions)
+
+- Goal: close the three remaining contact gaps on the merged write
+  pipeline + editor (PR #68) — photo set/replace/remove, date and URL
+  fields, and review-first duplicate suggestions.
+- Changes: `PIMContact` gains `photoData`, `dates`, `urls`; vCard
+  writer/parser manage BDAY/ANNIVERSARY/X-ABDATE/URL/PHOTO
+  version-aware and preserve unknown fields; Google People writer adds
+  `:updateContactPhoto`/`:deleteContactPhoto` (bytes never in
+  updatePersonFields) and birthdays/events/urls field mappings; sync
+  parses the same fields so masks never erase unseen provider values;
+  write service diffs stored-vs-draft photo state; editor gains photo
+  (PhotosPicker), URLs, Dates sections; detail pane shows photo/URLs/
+  dates plus a Possible Duplicates section fed by the pure
+  `ContactDuplicateSuggestions` scorer (Review selects only — never
+  merges); ADR-0006 gains CardDAV/Google contact-write rows, PRIVACY.md
+  documents photo uploads, ADR-0072 records the slice.
+- Verification: 26 PIMContactWrite + 19 PIMContactSync cases green
+  (photo set/replace/remove round-trip on both writers, date+URL
+  round-trip, unknown-field preservation with photos); 49 affected
+  BrevMail cases green (draft mapping, duplicate ranking + no-mutation,
+  editor/detail snapshots re-recorded); lint.sh and format.sh clean.
+- Fixes during verification: parser `=\n` quoted-printable unfold
+  swallowed the property after a base64 payload's `=` padding — now
+  joins only when the next line is not itself a property; merge now
+  unfolds raw vCards so folded PHOTO payloads leave no orphan lines;
+  duplicate name matching compares display and split name forms so
+  cross-form twins still match; AppSessionFactory now shares each
+  `JSONPIM*Store` across sync/write services — the write service's
+  private store instance left list/detail stale until relaunch
+  (found by E2E on a stub CardDAV server; affected events/tasks too).
+- Skipped: live-provider evidence (Google Workspace + writable CardDAV
+  photo/date round-trips) — maintainer-gated per the issue; rendered
+  verification of the PhotosPicker sheet itself.
+- Next: maintainer QA on issue #9; remaining issue scope is live
+  evidence and duplicate merge actions (out of "review-first" scope).

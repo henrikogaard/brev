@@ -75,6 +75,22 @@ public enum ContactPresentation {
         return label
     }
 
+    /// Display text for a labeled date — month + day only when the
+    /// date carries no year.
+    public static func dateText(for date: PIMContactDate) -> String {
+        var components = DateComponents()
+        components.year = date.year
+        components.month = date.month
+        components.day = date.day
+        guard let value = Calendar.current.date(from: components) else {
+            return ""
+        }
+        if date.year == nil {
+            return value.formatted(.dateTime.month().day())
+        }
+        return value.formatted(.dateTime.month().day().year())
+    }
+
     /// One-line postal address for list/detail display.
     public static func addressText(for address: PIMContactAddress) -> String {
         [
@@ -112,6 +128,7 @@ public enum ContactPresentation {
         if let jobTitle = contact.jobTitle { fields.append(jobTitle) }
         fields.append(contentsOf: contact.emails.map(\.value))
         fields.append(contentsOf: contact.phones.map(\.value))
+        fields.append(contentsOf: contact.urls.map(\.value))
         return fields.joined(separator: "\n")
     }
 

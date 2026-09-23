@@ -142,4 +142,55 @@ struct ContactDraftTests {
         #expect(contact.uid == nil)
         #expect(contact.displayName == "Ana Lind")
     }
+
+    @Test("dates, URLs, and photo bytes round-trip through the draft")
+    func datesUrlsPhotoMapping() {
+        var base = Self.contact()
+        base.dates = [
+            PIMContactDate(label: "birthday", year: 1990, month: 4, day: 12),
+            PIMContactDate(label: "anniversary", year: nil, month: 6, day: 1),
+        ]
+        base.urls = [
+            PIMContactField(label: "home", value: "https://h.example.com"),
+        ]
+        let photo = Data([0xFF, 0xD8, 0xFF, 0xE0])
+        base.photoData = photo
+
+        var draft = ContactDraft(contact: base)
+        #expect(draft.dates.count == 2)
+        #expect(draft.dates[1].year == nil)
+        #expect(draft.urls.first?.value == "https://h.example.com")
+        #expect(draft.photoData == photo)
+        #expect(!draft.photoRemoved)
+
+        // Blanks and invalid dates drop out of the built record.
+        draft.dates.append(
+            PIMContactDate(label: " ", year: nil, month: 13, day: 1)
+        )
+        draft.urls.append(PIMContactField(label: nil, value: "  "))
+        let contact = draft.makeContact(
+            sourceID: "s1",
+            collectionID: "book1"
+        )
+        #expect(contact.dates.count == 2)
+        #expect(contact.dates.first?.label == "birthday")
+        #expect(contact.urls.count == 1)
+        #expect(contact.photoData == photo)
+        #expect(contact.photoURL == "https://example.com/p.jpg")
+    }
+
+    @Test("photoRemoved clears both photo fields from the record")
+    func photoRemoval() {
+        var base = Self.contact()
+        base.photoData = Data([0xFF, 0xD8])
+        var draft = ContactDraft(contact: base)
+        draft.photoRemoved = true
+
+        let contact = draft.makeContact(
+            sourceID: "s1",
+            collectionID: "book1"
+        )
+        #expect(contact.photoData == nil)
+        #expect(contact.photoURL == nil)
+    }
 }

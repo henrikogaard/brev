@@ -14,15 +14,17 @@ import Foundation
 
 /// Writes contacts to Google via the People API (ADR-0072 #9).
 ///
-/// createContact / updateContact / deleteContact only — sync stays
-/// with GooglePeopleContactSync. Every call needs the `contacts`
-/// scope the write-enablement flow grants; a missing grant surfaces as
-/// authenticationRequired rather than a silent failure. updateContact
-/// carries the cached etag in the body plus an `updatePersonFields`
-/// mask listing exactly the fields Brev owns, so provider fields the
-/// model does not read are preserved server-side. Group membership is
-/// written through the memberships field — the contactGroups resource
-/// is untouched.
+/// createContact / updateContact / deleteContact plus the contacts
+/// photo endpoints — sync stays with GooglePeopleContactSync. Every
+/// call needs the `contacts` scope the write-enablement flow grants; a
+/// missing grant surfaces as authenticationRequired rather than a
+/// silent failure. updateContact carries the cached etag in the body
+/// plus an `updatePersonFields` mask listing exactly the fields Brev
+/// owns, so provider fields the model does not read are preserved
+/// server-side. Photo bytes never ride updatePersonFields —
+/// updateContactPhoto/deleteContactPhoto handle them. Group membership
+/// is written through the memberships field — the contactGroups
+/// resource is untouched.
 public struct GooglePeopleContactWriter: Sendable {
     /// Errors surfaced by the Google write path.
     public enum WriteError: Error, Sendable, Hashable, LocalizedError {
@@ -90,6 +92,7 @@ public struct GooglePeopleContactWriter: Sendable {
     private static let writableFields = [
         "names", "nicknames", "emailAddresses", "phoneNumbers",
         "organizations", "addresses", "biographies", "memberships",
+        "birthdays", "events", "urls",
     ]
 
     private let transport: Transport
@@ -194,6 +197,116 @@ public struct GooglePeopleContactWriter: Sendable {
         try requireSuccess(response, data: nil, allowed: [200, 204, 404])
     }
 
+    /// Outcome of a photo write — the latest etag plus the photo URL
+    /// Google reports (nil after a delete or when only the default
+    /// placeholder remains).
+    public struct PhotoWriteResult: Sendable, Hashable {
+        public let etag: String?
+        public let photoURL: String?
+
+        public init(etag: String?, photoURL: String?) {
+            self.etag = etag
+            self.photoURL = photoURL
+        }
+    }
+
+    /// Uploads contact photo bytes — never part of updatePersonFields.
+    public func updatePhoto(
+        _ contact: PIMContact,
+        photoData: Data,
+        accessToken: String
+    ) async throws -> PhotoWriteResult {
+        var request = try photoRequest(
+            contact,
+            method: "PATCH",
+            action: "updateContactPhoto",
+            accessToken: accessToken
+        )
+        request.httpBody = try JSONSerialization.data(
+            withJSONObject: ["photoBytes": photoData.base64EncodedString()]
+        )
+        let (data, response) = try await send(request)
+        try requireSuccess(response, data: data, allowed: 200 ..< 300)
+        return try parsePhotoResult(data)
+    }
+
+    /// Removes the contact photo. A remote 404 counts as done — the
+    /// photo-less end state already holds.
+    public func deletePhoto(
+        _ contact: PIMContact,
+        accessToken: String
+    ) async throws -> PhotoWriteResult {
+        let request = try photoRequest(
+            contact,
+            method: "DELETE",
+            action: "deleteContactPhoto",
+            accessToken: accessToken
+        )
+        let (data, response) = try await send(request)
+        try requireSuccess(response, data: data, allowed: [200, 204, 404])
+        // A 404 answers an empty body — the end state is photo-free.
+        guard response.statusCode != 404, !data.isEmpty else {
+            return PhotoWriteResult(etag: nil, photoURL: nil)
+        }
+        return try parsePhotoResult(data)
+    }
+
+    /// The shared request builder for the two contacts photo actions.
+    private func photoRequest(
+        _ contact: PIMContact,
+        method: String,
+        action: String,
+        accessToken: String
+    ) throws -> URLRequest {
+        let resourceName = contact.providerItemKey
+        guard !resourceName.isEmpty,
+              let encoded = resourceName.addingPercentEncoding(
+                  withAllowedCharacters: .urlPathAllowed
+              ),
+              let url = URL(
+                  string: Self.baseURL + "/" + encoded + ":" + action
+              )
+        else {
+            throw WriteError.invalidResponse
+        }
+        return try jsonRequest(
+            url: url,
+            method: method,
+            accessToken: accessToken
+        )
+    }
+
+    /// Reads the nested `person` from a photo action's response — its
+    /// etag and the first non-default https photo URL.
+    private func parsePhotoResult(
+        _ data: Data
+    ) throws -> PhotoWriteResult {
+        guard let json = try? JSONSerialization.jsonObject(with: data)
+            as? [String: Any],
+            let person = json["person"] as? [String: Any]
+        else {
+            throw WriteError.invalidResponse
+        }
+        return PhotoWriteResult(
+            etag: person["etag"] as? String,
+            photoURL: Self.photoURL(from: person)
+        )
+    }
+
+    /// The first non-default https photo URL on a Person — the same
+    /// filter the sync path applies.
+    static func photoURL(from person: [String: Any]) -> String? {
+        let photos = person["photos"] as? [[String: Any]] ?? []
+        for photo in photos {
+            guard photo["default"] as? Bool != true,
+                  let url = photo["url"] as? String,
+                  url.lowercased().hasPrefix("https://")
+            else { continue }
+            return url
+        }
+        return nil
+    }
+
     // MARK: - Body mapping
 
     /// The Person resource body for a shared contact. Only the fields
@@ -271,6 +384,39 @@ public struct GooglePeopleContactWriter: Sendable {
                 "contentType": "TEXT_PLAIN",
             ]]
         }
+        // Birthdays keep the year-less flag as an omitted year; every
+        // other labeled date lands in events with a matching type.
+        let birthdays = contact.dates.filter {
+            let label = $0.label?.lowercased()
+            return label == nil || label == "birthday"
+        }
+        if !birthdays.isEmpty {
+            dict["birthdays"] = birthdays.map { date in
+                ["date": googleDate(date)] as [String: Any]
+            }
+        }
+        let events = contact.dates.filter {
+            let label = $0.label?.lowercased()
+            return label != nil && label != "birthday"
+        }
+        if !events.isEmpty {
+            dict["events"] = events.map { date -> [String: Any] in
+                var entry: [String: Any] = ["date": googleDate(date)]
+                let label = date.label?.lowercased()
+                if label == "anniversary" {
+                    entry["type"] = "anniversary"
+                } else {
+                    entry["type"] = "custom"
+                    entry["customType"] = date.label ?? "other"
+                }
+                return entry
+            }
+        }
+        if !contact.urls.isEmpty {
+            dict["urls"] = contact.urls
+                .filter { !$0.value.isEmpty }
+                .map { labeledField(value: $0.value, type: $0.label) }
+        }
         // Memberships are written as contactGroupMembership entries.
         // The system myContacts group is implicit — sending it back
         // errors, so it is filtered out here and re-added by Google.
@@ -299,6 +445,18 @@ public struct GooglePeopleContactWriter: Sendable {
             entry["type"] = type
         }
         return entry
+    }
+
+    /// google.type.Date — year omitted for year-less dates.
+    private func googleDate(_ date: PIMContactDate) -> [String: Any] {
+        var dict: [String: Any] = [
+            "month": date.month,
+            "day": date.day,
+        ]
+        if let year = date.year {
+            dict["year"] = year
+        }
+        return dict
     }
 
     // MARK: - Helpers

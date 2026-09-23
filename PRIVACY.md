@@ -288,8 +288,11 @@ address URL, Google sources call the People API's
 after re-authorizing with the `contacts` scope. Updates carry the
 stored etag precondition, CardDAV edits merge into the stored vCard so
 fields Brev does not read are preserved, and Google edits are masked to
-the fields Brev owns. Brev never modifies provider-side contact groups
-or photos.
+the fields Brev owns. A photo you set or remove in the editor travels
+with the same opt-in: CardDAV encodes it inside the vCard payload and
+Google uploads it through the dedicated contact-photo endpoints —
+photo bytes are never part of a field mask and are never fetched or
+uploaded otherwise. Brev never modifies provider-side contact groups.
 
 For a Gmail API account, Brev then contacts `gmail.googleapis.com` using the
 Google access token. Gmail returns stable account-wide message and thread IDs,

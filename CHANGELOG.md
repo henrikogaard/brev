@@ -163,6 +163,17 @@ All notable changes to Brev are documented here.
   address book (moving a CardDAV contact between books is supported),
   and notes. Delete asks for confirmation and names the provider
   impact; unknown provider fields are preserved on every edit.
+- Contact photos, dates, and URLs (ADR-0072, #9): the editor can set,
+  replace, or remove a contact photo on both platforms — CardDAV
+  encodes it inside the vCard, Google uploads through the dedicated
+  contact-photo endpoints — and edits labeled dates (birthday,
+  anniversary, custom; year optional) and URLs through both writers.
+  The detail pane shows them all, and synced provider values survive
+  edits they are not part of.
+- Review-first duplicate suggestions (ADR-0072, #9): the contact
+  detail pane lists Possible Duplicates — contacts sharing an email,
+  phone, or name — with a Review action that opens the candidate.
+  Suggestions never merge or modify any record.
 - Create Event from Message (ADR-0072, #10): the message action now
   opens the shared calendar editor — subject, attendees, received
   timestamp, and a Brev deep link pre-filled — with the writable

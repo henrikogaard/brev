@@ -13,7 +13,13 @@
 import BrevCalendar
 import BrevDesign
 import BrevThemes
+import PhotosUI
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// The contact editor sheet: create and edit for Google and CardDAV
 /// contacts (ADR-0072 #9).
@@ -22,8 +28,9 @@ import SwiftUI
 /// ContactsEditingModel so capability checks, provider dispatch, and
 /// conflict mapping stay out of the view. Google sources edit group
 /// membership as toggles over discovered contact groups; CardDAV
-/// sources edit CATEGORIES as free text. Photo references stay
-/// display-only — image upload is a later slice.
+/// sources edit CATEGORIES as free text. Photos upload from the
+/// Photos picker — bytes land in draft.photoData and the write path
+/// routes them per provider.
 public struct ContactEditorView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dismiss) private var dismiss
@@ -34,6 +41,7 @@ public struct ContactEditorView: View {
     let onSaved: () async -> Void
 
     @State private var draft: ContactDraft
+    @State private var pickedPhotoItem: PhotosPickerItem?
     /// The source the edited/created contact belongs to — drives the
     /// provider-specific group section.
     private let source: PIMSource?
@@ -84,6 +92,7 @@ public struct ContactEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                    photoSection
                     namesSection
                     organizationSection
                     targetSection
@@ -119,6 +128,23 @@ public struct ContactEditorView: View {
                         ),
                         fields: $draft.phones
                     )
+                    fieldsSection(
+                        title: String(
+                            localized: "URLs",
+                            bundle: .module
+                        ),
+                        symbol: "link",
+                        placeholder: String(
+                            localized: "https://example.com",
+                            bundle: .module
+                        ),
+                        addTitle: String(
+                            localized: "Add URL",
+                            bundle: .module
+                        ),
+                        fields: $draft.urls
+                    )
+                    datesSection
                     addressesSection
                     groupsSection
                     notesSection
@@ -150,9 +176,222 @@ public struct ContactEditorView: View {
                 draft.targetID = editing.defaultTarget?.id
             }
         }
+        .onChange(of: pickedPhotoItem) { _, item in
+            if let item { Task { await applyPickedPhoto(item) } }
+        }
     }
 
     // MARK: - Sections
+
+    /// The photo row: current photo preview plus pick/remove actions.
+    /// Preview shows only bytes Brev holds — a provider-hosted photoURL
+    /// is never fetched (ADR-0006), so it renders as the placeholder.
+    private var photoSection: some View {
+        HStack(spacing: BrevSpacing.md) {
+            photoPreview
+                .frame(width: 56, height: 56)
+                .clipShape(Circle())
+                .overlay(
+                    Circle().stroke(
+                        theme.textSecondary.color.opacity(0.3)
+                    )
+                )
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                PhotosPicker(
+                    selection: $pickedPhotoItem,
+                    matching: .images
+                ) {
+                    Text(
+                        hasPhoto
+                            ? String(
+                                localized: "Change Photo",
+                                bundle: .module
+                            )
+                            : String(
+                                localized: "Choose Photo",
+                                bundle: .module
+                            )
+                    )
+                }
+                .brevFont(.body)
+                if hasPhoto {
+                    Button(
+                        String(
+                            localized: "Remove Photo",
+                            bundle: .module
+                        ),
+                        role: .destructive
+                    ) {
+                        draft.photoRemoved = true
+                        draft.photoData = nil
+                        draft.photoURL = nil
+                    }
+                    .brevFont(.caption)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.danger.color)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var photoPreview: some View {
+        if !draft.photoRemoved,
+           let data = draft.photoData,
+           let image = platformImage(data) {
+            image.resizable().scaledToFill()
+        } else {
+            Image(systemName: "person.crop.circle.fill")
+                .resizable()
+                .scaledToFit()
+                .foregroundStyle(theme.textSecondary.color)
+        }
+    }
+
+    private var hasPhoto: Bool {
+        !draft.photoRemoved
+            && (draft.photoData != nil || draft.photoURL != nil)
+    }
+
+    /// Stores the picked image: JPEG when the bytes decode (so a HEIC
+    /// pick uploads in a format both providers accept), else the raw
+    /// data — the writers emit whatever arrives.
+    @MainActor
+    private func applyPickedPhoto(_ item: PhotosPickerItem) async {
+        defer { pickedPhotoItem = nil }
+        guard let data = try? await item.loadTransferable(
+            type: Data.self
+        ) else { return }
+        draft.photoData = Self.jpegData(for: data) ?? data
+        draft.photoRemoved = false
+    }
+
+    private func platformImage(_ data: Data) -> Image? {
+        #if os(macOS)
+        NSImage(data: data).map { Image(nsImage: $0) }
+        #else
+        UIImage(data: data).map { Image(uiImage: $0) }
+        #endif
+    }
+
+    /// Re-encodes to JPEG so picked HEIC/WEBP bytes reach providers in
+    /// a supported format; nil when the data is not a decodable image.
+    private static func jpegData(for data: Data) -> Data? {
+        #if os(macOS)
+        guard let image = NSImage(data: data),
+              let tiff = image.tiffRepresentation,
+              let bitmap = NSBitmapImageRep(data: tiff)
+        else { return nil }
+        return bitmap.representation(
+            using: .jpeg,
+            properties: [.compressionFactor: 0.85]
+        )
+        #else
+        return UIImage(data: data)?.jpegData(compressionQuality: 0.85)
+        #endif
+    }
+
+    /// A labeled editable-date list: each row is a label field, a date
+    /// picker, an "include year" toggle, and a remove button.
+    private var datesSection: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Label(
+                String(localized: "Dates", bundle: .module),
+                systemImage: "calendar"
+            )
+            .brevFont(.subheadline)
+            .foregroundStyle(theme.textSecondary.color)
+            ForEach(
+                Array($draft.dates.enumerated()),
+                id: \.offset
+            ) { index, _ in
+                HStack(spacing: BrevSpacing.sm) {
+                    TextField(
+                        String(localized: "Label", bundle: .module),
+                        text: dateLabelBinding(at: index)
+                    )
+                    .frame(width: 72)
+                    .brevFont(.caption)
+                    DatePicker(
+                        "",
+                        selection: dateBinding(at: index),
+                        displayedComponents: .date
+                    )
+                    .labelsHidden()
+                    Toggle(
+                        String(localized: "Year", bundle: .module),
+                        isOn: yearBinding(at: index)
+                    )
+                    .brevFont(.caption)
+                    Button {
+                        draft.dates.remove(at: index)
+                    } label: {
+                        Image(systemName: "minus.circle")
+                            .foregroundStyle(theme.danger.color)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            Button {
+                draft.dates.append(
+                    PIMContactDate(
+                        label: "birthday",
+                        year: nil,
+                        month: Calendar.current.component(
+                            .month,
+                            from: Date()
+                        ),
+                        day: Calendar.current.component(
+                            .day,
+                            from: Date()
+                        )
+                    )
+                )
+            } label: {
+                Label(
+                    String(localized: "Add date", bundle: .module),
+                    systemImage: "plus.circle"
+                )
+                .brevFont(.body)
+                .foregroundStyle(theme.accent.color)
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    private func dateLabelBinding(at index: Int) -> Binding<String> {
+        Binding(
+            get: { draft.dates[safe: index]?.label ?? "" },
+            set: { newValue in
+                guard index < draft.dates.count else { return }
+                draft.dates[index].label =
+                    newValue.isEmpty ? nil : newValue
+            }
+        )
+    }
+
+    private func dateBinding(at index: Int) -> Binding<Date> {
+        Binding(
+            get: { draft.dates[safe: index]?.date ?? Date() },
+            set: { newValue in
+                guard index < draft.dates.count else { return }
+                draft.dates[index] =
+                    draft.dates[index].withDate(newValue)
+            }
+        )
+    }
+
+    private func yearBinding(at index: Int) -> Binding<Bool> {
+        Binding(
+            get: { draft.dates[safe: index]?.year != nil },
+            set: { hasYear in
+                guard index < draft.dates.count else { return }
+                draft.dates[index].year = hasYear
+                    ? Calendar.current.component(.year, from: Date())
+                    : nil
+            }
+        )
+    }
 
     private var namesSection: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {

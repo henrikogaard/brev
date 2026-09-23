@@ -893,6 +893,143 @@ struct PIMContactSyncTests {
             ).isEmpty
         )
     }
+
+    // MARK: - Dates, URLs, inline photos
+
+    @Test("CardDAV sync parses dates, URLs and inline photo bytes")
+    func davSyncDatesUrlsPhoto() async throws {
+        let vcard = """
+        BEGIN:VCARD
+        VERSION:3.0
+        UID:c-dates
+        FN:Dated Person
+        BDAY:1990-04-12
+        X-ABDATE;TYPE=ANNIVERSARY:--06-01
+        URL;TYPE=WORK:https://work.example.com
+        PHOTO;TYPE=JPEG;ENCODING=b:/9j/4AAQ
+        END:VCARD
+        """
+        let collection = Self.collection()
+        let transport = ScriptedTransport(steps: [
+            .response(
+                207,
+                body: Self.davSyncBody(
+                    members: [
+                        (
+                            "/addressbooks/henrik/default/d.vcf",
+                            "e1",
+                            vcard
+                        )
+                    ],
+                    syncToken: "s1"
+                )
+            )
+        ])
+        let (service, _, contactStore, _) = try await makeService(
+            source: Self.source(),
+            collections: [collection],
+            davTransport: transport
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let contact = try await contactStore
+            .contacts(for: "pim-test").first
+        #expect(
+            contact?.dates.contains(PIMContactDate(
+                label: "birthday",
+                year: 1990,
+                month: 4,
+                day: 12
+            )) == true
+        )
+        #expect(
+            contact?.dates.contains(PIMContactDate(
+                label: "anniversary",
+                year: nil,
+                month: 6,
+                day: 1
+            )) == true
+        )
+        #expect(
+            contact?.urls
+                == [PIMContactField(
+                    label: "work",
+                    value: "https://work.example.com"
+                )]
+        )
+        #expect(
+            contact?.photoData == Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10])
+        )
+    }
+
+    @Test("Google sync maps birthdays, events and urls; requests their fields")
+    func googleSyncDatesUrls() async throws {
+        let page = """
+        {"connections":[
+          \(Self.personJSON(
+              resourceName: "people/d1",
+              displayName: "Dated",
+              extra: """
+              ,"birthdays":[{"date":{"year":1990,"month":4,"day":12}}]
+              ,"events":[{"type":"anniversary","date":{"month":6,"day":1}},
+                         {"type":"custom","customType":"Nameday","date":{"year":2020,"month":2,"day":29}}]
+              ,"urls":[{"value":"https://h.example.com","formattedType":"Home"}]
+              """
+          ))
+        ],"nextSyncToken":"tok-1"}
+        """
+        let transport = ScriptedTransport(steps: [.response(200, body: page)])
+        let (service, _, contactStore, _) = try await makeService(
+            source: Self.source(provider: .google),
+            collections: [],
+            davTransport: ScriptedTransport(steps: []),
+            googleTransport: transport,
+            googleAccessToken: { _ in "google-token" }
+        )
+
+        _ = try await service.syncNow(sourceID: "pim-test")
+
+        let contact = try await contactStore
+            .contacts(for: "pim-test").first
+        #expect(
+            contact?.dates.contains(PIMContactDate(
+                label: "birthday",
+                year: 1990,
+                month: 4,
+                day: 12
+            )) == true
+        )
+        #expect(
+            contact?.dates.contains(PIMContactDate(
+                label: "anniversary",
+                year: nil,
+                month: 6,
+                day: 1
+            )) == true
+        )
+        #expect(
+            contact?.dates.contains(PIMContactDate(
+                label: "nameday",
+                year: 2020,
+                month: 2,
+                day: 29
+            )) == true
+        )
+        #expect(
+            contact?.urls
+                == [PIMContactField(
+                    label: "home",
+                    value: "https://h.example.com"
+                )]
+        )
+        // The field mask must include them or an update would erase
+        // provider-side values the model never saw.
+        let query = transport.requests[0].url?.query ?? ""
+        #expect(query.contains("birthdays"))
+        #expect(query.contains("events"))
+        #expect(query.contains("urls"))
+    }
 }
 
 @Suite("PIMVCardParser")
@@ -964,15 +1101,35 @@ struct PIMVCardParserTests {
         #expect(parsed?.displayName == "Grace Hopper")
     }
 
-    @Test("Non-HTTPS and inline photos are dropped")
+    @Test("Non-HTTPS photos and invalid inline payloads are dropped")
     func photoSafety() {
         let inline = PIMVCardParser.parse(
             "BEGIN:VCARD\nFN:A\nPHOTO;ENCODING=b:BASE64DATA\nEND:VCARD"
         )
         #expect(inline?.photoURL == nil)
+        #expect(inline?.photoData == nil)
         let insecure = PIMVCardParser.parse(
             "BEGIN:VCARD\nFN:A\nPHOTO;VALUE=URI:http://x.example.com/a.jpg\nEND:VCARD"
         )
         #expect(insecure?.photoURL == nil)
+    }
+
+    @Test("Base64 photo padding does not swallow the following property")
+    func photoPaddingVsUnfold() {
+        // A base64 payload ends in '=' — the quoted-printable soft-break
+        // heuristic must not merge the next property into the photo.
+        let vcard = """
+        BEGIN:VCARD
+        FN:A
+        PHOTO;ENCODING=b:/9j/4AAQ
+        URL:https://after.example.com
+        END:VCARD
+        """
+        let parsed = PIMVCardParser.parse(vcard)
+        #expect(parsed?.photoData == Data([0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10]))
+        #expect(
+            parsed?.urls
+                == [PIMContactField(value: "https://after.example.com")]
+        )
     }
 }

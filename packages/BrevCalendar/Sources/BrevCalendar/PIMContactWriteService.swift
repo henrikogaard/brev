@@ -181,6 +181,19 @@ public actor PIMContactWriteService {
             }
             draft.providerItemKey = result.resourceName
             draft.providerVersion = result.etag
+            // Photo bytes ride their own endpoint — never the fields
+            // mask. Runs after create so the resourceName exists.
+            if let photoData = draft.photoData, !photoData.isEmpty {
+                let photo = try await mapGoogleError {
+                    try await googleWriter.updatePhoto(
+                        draft,
+                        photoData: photoData,
+                        accessToken: token
+                    )
+                }
+                draft.providerVersion = photo.etag
+                draft.photoURL = photo.photoURL
+            }
         case .cardDAV:
             guard let collection else {
                 throw WriteError.notWritable
@@ -227,7 +240,10 @@ public actor PIMContactWriteService {
             emails: draft.emails,
             phones: draft.phones,
             addresses: draft.addresses,
+            dates: draft.dates,
+            urls: draft.urls,
             photoURL: draft.photoURL,
+            photoData: draft.photoData,
             groupKeys: draft.groupKeys,
             rawPayload: draft.rawPayload,
             providerUpdatedAt: draft.providerUpdatedAt,
@@ -263,6 +279,11 @@ public actor PIMContactWriteService {
                 )
             }
             updated.providerVersion = result.etag
+            updated = try await applyGooglePhotoChange(
+                to: updated,
+                source: source,
+                token: token
+            )
         case .cardDAV:
             let credential = try await davCredential(for: source)
             let vcard = PIMVCardWriter.mergedVCard(
@@ -284,6 +305,46 @@ public actor PIMContactWriteService {
         updated.syncedAt = now()
         try await store(updated)
         return updated
+    }
+
+    /// Applies a photo change on Google after the field update: bytes
+    /// upload through updateContactPhoto, removal through
+    /// deleteContactPhoto — keyed on the stored record so a contact
+    /// that never had a photo sends nothing. CardDAV needs no separate
+    /// call — PHOTO regenerates inside the merged vCard.
+    private func applyGooglePhotoChange(
+        to updated: PIMContact,
+        source: PIMSource,
+        token: String
+    ) async throws -> PIMContact {
+        var contact = updated
+        if let photoData = contact.photoData, !photoData.isEmpty {
+            let photo = try await mapGoogleError {
+                try await googleWriter.updatePhoto(
+                    contact,
+                    photoData: photoData,
+                    accessToken: token
+                )
+            }
+            contact.providerVersion = photo.etag ?? contact.providerVersion
+            contact.photoURL = photo.photoURL
+            return contact
+        }
+        guard contact.photoURL == nil else { return contact }
+        let stored = try await contactStore.contacts(for: source.id)
+            .first { $0.id == contact.id }
+        let storedHadPhoto = stored?.photoURL != nil
+            || stored?.photoData != nil
+        guard storedHadPhoto else { return contact }
+        let photo = try await mapGoogleError {
+            try await googleWriter.deletePhoto(
+                contact,
+                accessToken: token
+            )
+        }
+        contact.providerVersion = photo.etag ?? contact.providerVersion
+        contact.photoURL = nil
+        return contact
     }
 
     // MARK: - Delete

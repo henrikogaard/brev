@@ -41,7 +41,8 @@ public struct GooglePeopleContactSync: Sendable {
     /// only — image bytes are never fetched during sync.
     private static let personFields =
         "names,nicknames,emailAddresses,phoneNumbers,organizations,"
-            + "addresses,biographies,photos,memberships,metadata"
+            + "addresses,biographies,photos,memberships,metadata,"
+            + "birthdays,events,urls"
 
     public init(transport: any PIMDAVTransport = URLSessionPIMDAVTransport()) {
         self.transport = transport
@@ -230,6 +231,10 @@ public struct GooglePeopleContactSync: Sendable {
                 addresses: Self.mapAddresses(
                     person["addresses"] as? [[String: Any]]
                 ),
+                dates: Self.mapDates(person),
+                urls: Self.mapFields(
+                    person["urls"] as? [[String: Any]]
+                ),
                 photoURL: Self.mapPhoto(person),
                 groupKeys: Self.mapGroupKeys(person),
                 rawPayload: Self.rawPayload(for: person),
@@ -288,6 +293,50 @@ public struct GooglePeopleContactSync: Sendable {
             )
         }
         .filter { !$0.isEmpty }
+    }
+
+    /// Birthdays plus events map onto the shared labeled-date list —
+    /// a Person's `birthdays` entries carry label \"birthday\", events
+    /// carry their type (custom types come back through customType).
+    private static func mapDates(
+        _ person: [String: Any]
+    ) -> [PIMContactDate] {
+        var dates: [PIMContactDate] = []
+        let birthdays = person["birthdays"] as? [[String: Any]] ?? []
+        for entry in birthdays {
+            if let date = mapDateEntry(entry, label: "birthday") {
+                dates.append(date)
+            }
+        }
+        let events = person["events"] as? [[String: Any]] ?? []
+        for entry in events {
+            let type = (entry["type"] as? String)?.lowercased()
+            let label = type == "custom"
+                ? (entry["customType"] as? String)?.lowercased()
+                : type
+            if let date = mapDateEntry(entry, label: label ?? "other") {
+                dates.append(date)
+            }
+        }
+        return dates
+    }
+
+    /// One google.type.Date entry — year-less dates omit year.
+    private static func mapDateEntry(
+        _ entry: [String: Any],
+        label: String
+    ) -> PIMContactDate? {
+        guard let date = entry["date"] as? [String: Any],
+              let month = date["month"] as? Int,
+              let day = date["day"] as? Int
+        else { return nil }
+        let year = (date["year"] as? Int).flatMap { $0 > 0 ? $0 : nil }
+        return PIMContactDate(
+            label: label,
+            year: year,
+            month: month,
+            day: day
+        )
     }
 
     /// Only HTTPS photo URLs are stored; Google's default silhouette

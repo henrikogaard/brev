@@ -289,7 +289,10 @@ public struct PIMDAVContactSync: Sendable {
             emails: parsed.emails,
             phones: parsed.phones,
             addresses: parsed.addresses,
+            dates: parsed.dates,
+            urls: parsed.urls,
             photoURL: parsed.photoURL,
+            photoData: parsed.photoData,
             groupKeys: parsed.groupKeys,
             rawPayload: addressData,
             providerUpdatedAt: parsed.revisedAt

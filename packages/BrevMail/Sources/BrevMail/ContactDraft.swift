@@ -19,8 +19,9 @@ import Foundation
 /// from PIMContact. Provider identity fields (uid, providerItemKey,
 /// providerVersion, rawPayload) ride along untouched so an edit
 /// round-trips the record the provider owns while the user-facing
-/// fields carry the edits. Photos stay reference-only — the editor
-/// displays the existing photo URL state but does not upload images.
+/// fields carry the edits. Photos upload through the draft's
+/// photoData — picked bytes replace, the photoRemoved flag drops, and
+/// untouched state passes through unchanged.
 public struct ContactDraft: Sendable, Hashable {
     public var givenName = ""
     public var familyName = ""
@@ -31,11 +32,20 @@ public struct ContactDraft: Sendable, Hashable {
     public var emails: [PIMContactField] = []
     public var phones: [PIMContactField] = []
     public var addresses: [PIMContactAddress] = []
+    /// Labeled dates (birthday, anniversary, custom).
+    public var dates: [PIMContactDate] = []
+    /// Labeled URL fields.
+    public var urls: [PIMContactField] = []
     /// Group memberships: Google contactGroupResourceNames or CardDAV
     /// CATEGORIES values, edited per provider in the editor.
     public var groupKeys: [String] = []
-    /// Provider photo reference — display-only in this slice.
+    /// Provider photo reference — kept so an untouched photo survives.
     public var photoURL: String?
+    /// Photo bytes to upload — picked in the editor, nil means either
+    /// "keep the existing photo" or "no photo" per photoRemoved.
+    public var photoData: Data?
+    /// Explicit photo removal — wins over photoURL/photoData.
+    public var photoRemoved = false
     /// The write target: a CardDAV collection ID for DAV sources, or
     /// the Google account-wide sentinel for Google sources.
     public var targetID: String?
@@ -68,8 +78,11 @@ public struct ContactDraft: Sendable, Hashable {
         emails = contact.emails
         phones = contact.phones
         addresses = contact.addresses
+        dates = contact.dates
+        urls = contact.urls
         groupKeys = contact.groupKeys
         photoURL = contact.photoURL
+        photoData = contact.photoData
         targetID = contact.collectionID
         originalCollectionID = contact.collectionID
         uid = contact.uid
@@ -139,7 +152,10 @@ public struct ContactDraft: Sendable, Hashable {
             emails: cleaned(emails),
             phones: cleaned(phones),
             addresses: addresses.filter { !$0.isEmpty },
-            photoURL: photoURL,
+            dates: cleaned(dates),
+            urls: cleaned(urls),
+            photoURL: photoRemoved ? nil : photoURL,
+            photoData: photoRemoved ? nil : photoData,
             groupKeys: groupKeys,
             rawPayload: rawPayload,
             providerUpdatedAt: providerUpdatedAt
@@ -167,6 +183,27 @@ public struct ContactDraft: Sendable, Hashable {
             return PIMContactField(
                 label: label?.isEmpty == false ? label : nil,
                 value: value
+            )
+        }
+    }
+
+    /// Drops dates with an impossible month/day and blanks the label
+    /// whitespace; the pickers already constrain the day range.
+    private func cleaned(
+        _ dates: [PIMContactDate]
+    ) -> [PIMContactDate] {
+        dates.compactMap { date in
+            guard (1 ... 12).contains(date.month),
+                  (1 ... 31).contains(date.day)
+            else { return nil }
+            let label = date.label?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            )
+            return PIMContactDate(
+                label: label?.isEmpty == false ? label : nil,
+                year: date.year,
+                month: date.month,
+                day: date.day
             )
         }
     }

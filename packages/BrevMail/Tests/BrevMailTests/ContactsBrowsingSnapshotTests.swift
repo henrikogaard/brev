@@ -27,6 +27,13 @@ import Testing
 struct ContactsBrowsingSnapshotTests {
     private static let syncedAt = Date(timeIntervalSince1970: 1_800_000_000)
 
+    /// A 1x1 transparent PNG — enough for the photo previews.
+    private static let onePixelPNG = Data(
+        base64Encoded:
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJ"
+            + "AAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+    )
+
     private static func contact(
         id: String,
         displayName: String,
@@ -129,6 +136,16 @@ struct ContactsBrowsingSnapshotTests {
             ),
         ]
         contact.note = "Met at the launch."
+        contact.dates = [
+            PIMContactDate(label: "birthday", year: 1990, month: 4, day: 12),
+            PIMContactDate(
+                label: "anniversary", year: nil, month: 6, day: 1
+            ),
+        ]
+        contact.urls = [
+            PIMContactField(label: "work", value: "https://ogard.cloud"),
+        ]
+        contact.photoData = Self.onePixelPNG
         contact.providerUpdatedAt = Self.syncedAt
 
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
@@ -158,19 +175,77 @@ struct ContactsBrowsingSnapshotTests {
                 createdAt: Self.syncedAt,
                 updatedAt: Self.syncedAt
             ),
-            groupNames: ["Team"]
+            groupNames: ["Team"],
+            duplicates: [
+                ContactDuplicateSuggestions.Candidate(
+                    contact: Self.contact(
+                        id: "dup1",
+                        displayName: "Ada L.",
+                        emails: [
+                            PIMContactField(value: "ada@ogard.cloud"),
+                        ]
+                    ),
+                    reasons: ["Same email address"],
+                    score: 100
+                ),
+            ],
+            onReviewDuplicate: { _ in }
         )
-        .frame(width: 420, height: 620)
+        .frame(width: 420, height: 780)
         .brevTheme(theme)
         .environment(\.colorScheme, theme.mode.colorScheme)
 
         let host = NSHostingController(rootView: view)
-        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 620)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 780)
 
         assertSnapshot(
             of: host,
-            as: .image(size: CGSize(width: 420, height: 620)),
+            as: .image(size: CGSize(width: 420, height: 780)),
             named: "detail-\(mode)",
+            record: ProcessInfo.processInfo
+                .environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test(
+        "contact editor renders photo, dates, and URL sections",
+        arguments: ["light", "dark"]
+    )
+    func contactEditor(mode: String) {
+        var draft = ContactDraft()
+        draft.givenName = "Ada"
+        draft.familyName = "Lovelace"
+        draft.emails = [
+            PIMContactField(label: "work", value: "ada@ogard.cloud"),
+        ]
+        draft.urls = [
+            PIMContactField(label: "work", value: "https://ogard.cloud"),
+        ]
+        draft.dates = [
+            PIMContactDate(label: "birthday", year: 1990, month: 4, day: 12),
+        ]
+        draft.photoData = Self.onePixelPNG
+        draft.targetID = "c1"
+
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        // Tall enough that the editor's ScrollView never engages —
+        // scroll offset jitter would flake the pixel assertion.
+        let view = ContactEditorView(
+            editing: ContactsEditingModel(),
+            draft: draft,
+            source: nil
+        )
+        .frame(width: 420, height: 940)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 940)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 940)),
+            named: "editor-\(mode)",
             record: ProcessInfo.processInfo
                 .environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )

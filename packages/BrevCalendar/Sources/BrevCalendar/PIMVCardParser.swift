@@ -14,9 +14,10 @@ import Foundation
 
 /// Minimal vCard 3.0/4.0 parser for the PIM contact sync path
 /// (ADR-0072). Reads the fields the shared contact model displays —
-/// FN, N, NICKNAME, EMAIL, TEL, ADR, ORG, TITLE, NOTE, PHOTO (URI only),
-/// CATEGORIES, REV, UID — and leaves everything else to the record's
-/// `rawPayload` for round-trip preservation.
+/// FN, N, NICKNAME, EMAIL, TEL, ADR, ORG, TITLE, NOTE, PHOTO,
+/// URL, BDAY, ANNIVERSARY, X-ABDATE, CATEGORIES, REV, UID — and leaves
+/// everything else to the record's `rawPayload` for round-trip
+/// preservation.
 ///
 /// Line folding (RFC 6350 §3.2) is unfolded first; groups
 /// (`item1.EMAIL`) and quoted parameter values are tolerated.
@@ -33,7 +34,10 @@ enum PIMVCardParser {
         var emails: [PIMContactField] = []
         var phones: [PIMContactField] = []
         var addresses: [PIMContactAddress] = []
+        var dates: [PIMContactDate] = []
+        var urls: [PIMContactField] = []
         var photoURL: String?
+        var photoData: Data?
         var groupKeys: [String] = []
         var revisedAt: Date?
     }
@@ -119,12 +123,34 @@ enum PIMVCardParser {
             contact.jobTitle = value.nilIfEmpty
         case "NOTE":
             contact.note = value.nilIfEmpty
+        case "URL":
+            if !value.isEmpty {
+                contact.urls.append(
+                    PIMContactField(label: property.label, value: value)
+                )
+            }
+        case "BDAY":
+            if let date = parseDate(property.value, label: "birthday") {
+                contact.dates.append(date)
+            }
+        case "ANNIVERSARY":
+            if let date = parseDate(property.value, label: "anniversary") {
+                contact.dates.append(date)
+            }
+        case "X-ABDATE":
+            // Apple's labeled-date extension; TYPE carries the label.
+            if let date = parseDate(property.value, label: property.label) {
+                contact.dates.append(date)
+            }
         case "PHOTO":
-            // Only URI references are stored; inline ENCODING=b payloads
-            // stay in rawPayload and are never decoded or fetched here.
+            // URI references store the URL; inline ENCODING=b / data-URI
+            // payloads decode into photoData so the editor can show and
+            // re-emit them. Nothing is ever fetched.
             if property.params["VALUE"]?.uppercased() == "URI",
                value.lowercased().hasPrefix("https://") {
                 contact.photoURL = value
+            } else if let encoded = inlinePhotoPayload(property, value) {
+                contact.photoData = Data(base64Encoded: encoded)
             }
         case "CATEGORIES":
             contact.groupKeys = property.value
@@ -156,12 +182,11 @@ enum PIMVCardParser {
     }
 
     /// RFC 6350 §3.2 unfolding plus quoted-printable soft breaks some
-    /// servers still emit (`=\n` line continuations).
+    /// servers still emit (`=\n` line continuations). A `=` join happens
+    /// only when the next line is not itself a property — otherwise a
+    /// base64 PHOTO payload's `=` padding would swallow the next field.
     private static func unfold(_ raw: String) -> [String] {
-        raw
-            .replacingOccurrences(of: "=\r\n", with: "")
-            .replacingOccurrences(of: "=\n", with: "")
-            .replacingOccurrences(of: "=\r", with: "")
+        let lines = raw
             .replacingOccurrences(of: "\r\n ", with: "")
             .replacingOccurrences(of: "\r\n\t", with: "")
             .replacingOccurrences(of: "\n ", with: "")
@@ -169,6 +194,17 @@ enum PIMVCardParser {
             .components(separatedBy: .newlines)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
+        var joined: [String] = []
+        for line in lines {
+            if let last = joined.last,
+               last.hasSuffix("="),
+               parseProperty(line) == nil {
+                joined[joined.count - 1] = String(last.dropLast()) + line
+            } else {
+                joined.append(line)
+            }
+        }
+        return joined
     }
 
     private static func parseProperty(_ line: String) -> Property? {
@@ -202,6 +238,62 @@ enum PIMVCardParser {
             }
         }
         return Property(name: name, params: params, value: value)
+    }
+
+    /// The base64 payload of an inline PHOTO, or nil when the property
+    /// is not inline data. `data:` URIs are unwrapped; ENCODING=b/BASE64
+    /// returns the value. Oversized payloads return nil — the bytes stay
+    /// in rawPayload and the write path re-emits them verbatim.
+    private static func inlinePhotoPayload(
+        _ property: Property,
+        _ value: String
+    ) -> String? {
+        let limit = 14_000_000
+        let lowered = value.lowercased()
+        if lowered.hasPrefix("data:"),
+           let marker = lowered.range(of: ";base64,") {
+            let payload = String(value[marker.upperBound...])
+            return payload.count <= limit ? payload : nil
+        }
+        let encoding = property.params["ENCODING"]?.uppercased()
+        if encoding == "B" || encoding == "BASE64" {
+            return value.count <= limit ? value : nil
+        }
+        return nil
+    }
+
+    /// `YYYY-MM-DD`/`YYYYMMDD` with a year, `--MM-DD`/`--MMDD` without —
+    /// the spellings BDAY, ANNIVERSARY, and X-ABDATE carry.
+    private static func parseDate(
+        _ raw: String,
+        label: String?
+    ) -> PIMContactDate? {
+        let value = raw.trimmingCharacters(in: .whitespaces)
+        var year: Int?
+        var monthDay = value
+        if monthDay.hasPrefix("--") {
+            monthDay = String(monthDay.dropFirst(2))
+        } else {
+            let head = monthDay.prefix(4)
+            guard head.count == 4,
+                  head.allSatisfy({ $0.isNumber }),
+                  let parsedYear = Int(head)
+            else { return nil }
+            year = parsedYear
+            monthDay = String(monthDay.dropFirst(4))
+        }
+        let digits = monthDay.filter { $0.isNumber }
+        guard digits.count == 4,
+              let month = Int(digits.prefix(2)),
+              let day = Int(digits.suffix(2)),
+              (1 ... 12).contains(month), (1 ... 31).contains(day)
+        else { return nil }
+        return PIMContactDate(
+            label: label,
+            year: year,
+            month: month,
+            day: day
+        )
     }
 
     /// REV is an ISO timestamp — basic or extended, with or without Z.

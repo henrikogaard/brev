@@ -804,6 +804,45 @@ grant.
   provider-side group creation, duplicate review suggestions, and
   offline write queueing.
 
+### #9 slice 3 — photos, dates/URLs, duplicate suggestions (2026-09-22, BrevCalendar/BrevMail)
+
+- `PIMContact` gains `photoData`, `dates` (`PIMContactDate` — label,
+  optional year, month, day), and `urls`; sync parses them on both
+  providers so the field mask never erases values the model never saw
+  (Google `birthdays`/`events`/`urls`, vCard `BDAY`/`ANNIVERSARY`/
+  `X-ABDATE`/`URL`/inline `PHOTO`). Inline photo bytes persist on the
+  record so a CardDAV re-save re-emits rather than drops them.
+- `PIMVCardWriter` manages the new properties version-aware (v3
+  `PHOTO;TYPE=…;ENCODING=b` + `X-ABDATE`, v4 data-URI `PHOTO:` +
+  `ANNIVERSARY:`; `--MM-DD` for year-less dates), unfolds before merging
+  so folded managed payloads leave no orphan continuation lines, and
+  still passes unknown properties through untouched.
+- `GooglePeopleContactWriter.updatePhoto`/`deletePhoto` call the
+  dedicated `:updateContactPhoto`/`:deleteContactPhoto` endpoints —
+  photo bytes never ride `updatePersonFields`. `PIMContactWriteService`
+  diffs stored-vs-draft photo state to decide upload vs delete.
+- The editor gains a photo section (PhotosPicker on both platforms,
+  local preview, Remove), a URLs field list, and an editable Dates
+  list (label, date picker, optional year); the detail pane shows
+  photo, URLs, and dates.
+- `ContactDuplicateSuggestions` is a pure matcher over cached
+  contacts (identical email, digit-normalized phone, folded full-name
+  equality) returning ranked `Candidate`s with human-readable reasons.
+  The detail pane lists them under Possible Duplicates with a Review
+  button that only selects the candidate — merging stays a human
+  decision; nothing mutates records, matching the issue's
+  "review-first, never merge automatically" criterion.
+- Photo writes ride the existing Editing opt-in; ADR-0006 gained
+  CardDAV/Google contact-write rows and PRIVACY.md now documents
+  photo uploads. Live-provider evidence remains maintainer-gated.
+- `AppSessionFactory` now hands every PIM consumer shared
+  `JSONPIM*Store` instances — the stores cache reads in memory per
+  instance, so the write service's private copy left list/detail
+  views stale until relaunch (caught by E2E verification on a stub
+  CardDAV server).
+- Still deferred: provider-side group creation, duplicate merge
+  actions, and offline write queueing.
+
 ### #10 slice 1 — create event from message via the shared editor (2026-09-21, BrevMail/apps)
 
 - `MessageCreateEventSheet` routes the existing Create Meeting

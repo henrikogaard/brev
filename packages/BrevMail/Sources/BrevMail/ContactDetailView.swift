@@ -14,17 +14,25 @@ import BrevCalendar
 import BrevDesign
 import BrevThemes
 import SwiftUI
+#if os(macOS)
+import AppKit
+#else
+import UIKit
+#endif
 
 /// Read-only detail pane for one cached contact (ADR-0072).
 ///
-/// Shows every field the shared model carries: monogram, name, nickname,
-/// job title and organization, labeled emails/phones/addresses, note,
-/// and group memberships. Source and collection provenance close the
-/// pane so ownership stays visible. Photo references stay unfetched —
-/// the avatar is always the monogram. When the parent supplies edit or
-/// delete actions (writable source, issue #9) an action row appears
-/// under the header; the delete confirmation names the provider impact
-/// so remote deletion is never mistaken for a local cache clear.
+/// Shows every field the shared model carries: monogram or photo, name,
+/// nickname, job title and organization, labeled emails/phones/URLs/
+/// addresses/dates, note, and group memberships. Source and collection
+/// provenance close the pane so ownership stays visible. Photos render
+/// only when Brev holds the bytes — remote photoURLs stay unfetched
+/// (ADR-0006) and fall back to the monogram. When the parent supplies
+/// edit or delete actions (writable source, issue #9) an action row
+/// appears under the header; the delete confirmation names the provider
+/// impact so remote deletion is never mistaken for a local cache clear.
+/// Duplicate suggestions, when supplied, are review-only — each row
+/// navigates to the candidate and nothing ever merges automatically.
 public struct ContactDetailView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
@@ -40,6 +48,10 @@ public struct ContactDetailView: View {
     /// Deletes the contact remotely and from the cache; nil hides the
     /// Delete action.
     let onDelete: (() -> Void)?
+    /// Review-first duplicate suggestions; empty hides the section.
+    let duplicates: [ContactDuplicateSuggestions.Candidate]
+    /// Opens a suggested candidate for review; nil keeps rows read-only.
+    let onReviewDuplicate: ((PIMContact) -> Void)?
 
     @State private var showsDeleteConfirmation = false
 
@@ -49,7 +61,9 @@ public struct ContactDetailView: View {
         source: PIMSource? = nil,
         groupNames: [String] = [],
         onEdit: (() -> Void)? = nil,
-        onDelete: (() -> Void)? = nil
+        onDelete: (() -> Void)? = nil,
+        duplicates: [ContactDuplicateSuggestions.Candidate] = [],
+        onReviewDuplicate: ((PIMContact) -> Void)? = nil
     ) {
         self.contact = contact
         self.collection = collection
@@ -57,6 +71,8 @@ public struct ContactDetailView: View {
         self.groupNames = groupNames
         self.onEdit = onEdit
         self.onDelete = onDelete
+        self.duplicates = duplicates
+        self.onReviewDuplicate = onReviewDuplicate
     }
 
     public var body: some View {
@@ -131,6 +147,12 @@ public struct ContactDetailView: View {
                         }
                     }
                 }
+                if !contact.urls.isEmpty {
+                    urlsSection
+                }
+                if !contact.dates.isEmpty {
+                    datesSection
+                }
                 if !contact.addresses.isEmpty {
                     addressesSection
                 }
@@ -155,6 +177,9 @@ public struct ContactDetailView: View {
                             .brevFont(.body)
                             .foregroundStyle(theme.textPrimary.color)
                     }
+                }
+                if !duplicates.isEmpty {
+                    duplicatesSection
                 }
                 provenanceFooter
             }
@@ -254,12 +279,22 @@ public struct ContactDetailView: View {
 
     private var header: some View {
         HStack(spacing: BrevSpacing.md) {
-            Text(ContactPresentation.initials(for: contact))
-                .brevFont(.title)
-                .foregroundStyle(theme.bgPrimary.color)
-                .frame(width: 56, height: 56)
-                .background(Circle().fill(theme.accentMuted.color))
-                .accessibilityHidden(true)
+            if let data = contact.photoData,
+               let image = photoImage(data) {
+                image
+                    .resizable()
+                    .scaledToFill()
+                    .frame(width: 56, height: 56)
+                    .clipShape(Circle())
+                    .accessibilityHidden(true)
+            } else {
+                Text(ContactPresentation.initials(for: contact))
+                    .brevFont(.title)
+                    .foregroundStyle(theme.bgPrimary.color)
+                    .frame(width: 56, height: 56)
+                    .background(Circle().fill(theme.accentMuted.color))
+                    .accessibilityHidden(true)
+            }
 
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text(contact.displayName)
@@ -323,6 +358,125 @@ public struct ContactDetailView: View {
             .brevFont(.body)
             .foregroundStyle(theme.textPrimary.color)
             .textSelection(.enabled)
+    }
+
+    /// Labeled URLs — tapping opens the link via the system.
+    private var urlsSection: some View {
+        detailSection(
+            title: String(localized: "URLs", bundle: .module),
+            symbol: "link"
+        ) {
+            ForEach(
+                Array(contact.urls.enumerated()),
+                id: \.offset
+            ) { _, field in
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    if let url = URL(string: field.value),
+                       url.scheme?.hasPrefix("http") == true {
+                        Button {
+                            openURL(url)
+                        } label: {
+                            Text(field.value)
+                                .brevFont(.body)
+                                .foregroundStyle(theme.accent.color)
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        fieldText(field.value)
+                    }
+                    fieldLabel(
+                        field.label,
+                        fallback: String(
+                            localized: "URL",
+                            bundle: .module
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /// Labeled dates — birthday/anniversary/custom rendered locally.
+    private var datesSection: some View {
+        detailSection(
+            title: String(localized: "Dates", bundle: .module),
+            symbol: "calendar"
+        ) {
+            ForEach(
+                Array(contact.dates.enumerated()),
+                id: \.offset
+            ) { _, date in
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    fieldText(ContactPresentation.dateText(for: date))
+                    fieldLabel(
+                        date.label,
+                        fallback: String(
+                            localized: "Birthday",
+                            bundle: .module
+                        )
+                    )
+                }
+            }
+        }
+    }
+
+    /// Review-first duplicate suggestions — a candidate row opens the
+    /// other record so the user compares; nothing merges itself.
+    private var duplicatesSection: some View {
+        detailSection(
+            title: String(
+                localized: "Possible Duplicates",
+                bundle: .module
+            ),
+            symbol: "person.2"
+        ) {
+            ForEach(duplicates) { candidate in
+                HStack(spacing: BrevSpacing.sm) {
+                    VStack(
+                        alignment: .leading,
+                        spacing: BrevSpacing.xxs
+                    ) {
+                        Text(candidate.contact.displayName)
+                            .brevFont(.body)
+                            .foregroundStyle(theme.textPrimary.color)
+                        Text(candidate.reasons.joined(separator: " · "))
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                    Spacer(minLength: BrevSpacing.sm)
+                    if let onReviewDuplicate {
+                        Button {
+                            onReviewDuplicate(candidate.contact)
+                        } label: {
+                            Text(
+                                String(
+                                    localized: "Review",
+                                    bundle: .module
+                                )
+                            )
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.accent.color)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+            }
+            Text(String(
+                localized:
+                "Suggestions never merge contacts — review each record yourself.",
+                bundle: .module
+            ))
+            .brevFont(.caption)
+            .foregroundStyle(theme.textTertiary.color)
+        }
+    }
+
+    private func photoImage(_ data: Data) -> Image? {
+        #if os(macOS)
+        NSImage(data: data).map { Image(nsImage: $0) }
+        #else
+        UIImage(data: data).map { Image(uiImage: $0) }
+        #endif
     }
 
     // MARK: - Provenance

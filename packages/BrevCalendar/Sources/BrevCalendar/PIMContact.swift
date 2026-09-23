@@ -25,6 +25,52 @@ public struct PIMContactField: Sendable, Hashable, Codable {
     }
 }
 
+/// A labeled date on a contact — a birthday, an anniversary, or a
+/// custom-typed day (ADR-0072 person contract). Year-less dates keep
+/// `year` nil so a birthday without a birth year round-trips.
+public struct PIMContactDate: Sendable, Hashable, Codable {
+    /// Provider label (birthday / anniversary / custom), lowercased
+    /// when known.
+    public var label: String?
+    /// The calendar year; nil for year-less dates.
+    public var year: Int?
+    public var month: Int
+    public var day: Int
+
+    public init(label: String? = nil, year: Int? = nil, month: Int, day: Int) {
+        self.label = label
+        self.year = year
+        self.month = month
+        self.day = day
+    }
+
+    /// The date as a `Date` in the current calendar, with a fallback
+    /// year for year-less entries — for formatting and pickers only.
+    public var date: Date {
+        var components = DateComponents()
+        components.year = year ?? 2000
+        components.month = month
+        components.day = day
+        return Calendar.current.date(from: components) ?? Date(
+            timeIntervalSince1970: 0
+        )
+    }
+
+    /// Rebuilds the value from a `Date` in the current calendar,
+    /// keeping the year-less flag.
+    public func withDate(_ newDate: Date) -> PIMContactDate {
+        let components = Calendar.current.dateComponents(
+            [.year, .month, .day],
+            from: newDate
+        )
+        var copy = self
+        copy.year = year == nil ? nil : components.year
+        copy.month = components.month ?? month
+        copy.day = components.day ?? day
+        return copy
+    }
+}
+
 /// A postal address on a contact. Components stay optional — providers
 /// disagree on granularity and empty parts are omitted, not zeroed.
 public struct PIMContactAddress: Sendable, Hashable, Codable {
@@ -92,10 +138,17 @@ public struct PIMContact: Sendable, Hashable, Codable, Identifiable {
     public var emails: [PIMContactField]
     public var phones: [PIMContactField]
     public var addresses: [PIMContactAddress]
+    /// Labeled dates (birthdays, anniversaries, custom days).
+    public var dates: [PIMContactDate]
+    /// Labeled URL fields (home page, blog, profiles).
+    public var urls: [PIMContactField]
     /// Provider photo URL reference. Sync stores the reference only —
     /// fetching image data is a separate, later user-visible surface and
     /// never happens during sync (ADR-0072 trust boundaries).
     public var photoURL: String?
+    /// Photo bytes the user picked or a CardDAV inline PHOTO carried.
+    /// Persisted so a later save keeps an untouched inline photo.
+    public var photoData: Data?
     /// Group membership keys: Google contactGroupResourceNames or
     /// CardDAV CATEGORIES values.
     public var groupKeys: [String]
@@ -124,7 +177,10 @@ public struct PIMContact: Sendable, Hashable, Codable, Identifiable {
         emails: [PIMContactField] = [],
         phones: [PIMContactField] = [],
         addresses: [PIMContactAddress] = [],
+        dates: [PIMContactDate] = [],
+        urls: [PIMContactField] = [],
         photoURL: String? = nil,
+        photoData: Data? = nil,
         groupKeys: [String] = [],
         rawPayload: String? = nil,
         providerUpdatedAt: Date? = nil,
@@ -146,7 +202,10 @@ public struct PIMContact: Sendable, Hashable, Codable, Identifiable {
         self.emails = emails
         self.phones = phones
         self.addresses = addresses
+        self.dates = dates
+        self.urls = urls
         self.photoURL = photoURL
+        self.photoData = photoData
         self.groupKeys = groupKeys
         self.rawPayload = rawPayload
         self.providerUpdatedAt = providerUpdatedAt
