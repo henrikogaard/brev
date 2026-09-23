@@ -1,0 +1,57 @@
+PROPFIND / depth=0 auth=- cond=- -> 207
+PROPFIND /cal/u/ depth=1 auth=- cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=- cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=- cond=- -> 207
+PUT /cal/u/main/new.ics depth=- auth=- cond=* -> 201
+PUT /cal/u/main/new.ics depth=- auth=- cond=* -> 412
+PUT /cal/u/main/new.ics depth=- auth=- cond="bogus" -> 412
+REPORT /cal/u/main/ depth=1 auth=- cond=- -> 207
+GET /cal/u/main/new.ics depth=- auth=- cond=- -> 200
+GET /__control/log depth=- auth=- cond=- -> 200
+GET /cal/u/main/evt-standup.ics depth=- auth=- cond=- -> 200
+GET /card/u/main/1.vcf depth=- auth=- cond=- -> 404
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /cal/u/ depth=1 auth=Basic *** cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /card/u/ depth=1 auth=Basic *** cond=- -> 207
+REPORT /card/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PUT /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=Basic *** cond=* -> 201
+PUT /cal/u/main/evt-standup-stub.ics depth=- auth=Basic *** cond="seed-evt-standup" -> 412
+PROPFIND /cal/u/main/ depth=1 auth=- cond=- -> 207
+PROPFIND /cal/u/main/ depth=1 auth=- cond=- -> 207
+PROPFIND /cal/u/main/ depth=1 auth=- cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PUT /cal/u/main/evt-standup-stub.ics depth=- auth=Basic *** cond="seed-evt-standup" -> 412
+PUT /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=Basic *** cond="stub-3-1790174486995" -> 204
+GET /cal/u/main/evt-review.ics depth=- auth=- cond=- -> 200
+POST /__control/add depth=- auth=- cond=- -> 200
+PUT /cal/u/main/evt-review-stub.ics depth=- auth=Basic *** cond="seed-evt-review" -> 412
+GET /cal/u/main/evt-review.ics depth=- auth=- cond=- -> 200
+PROPFIND /cal/u/main/ depth=1 auth=- cond=- -> 207
+POST /__control/add depth=- auth=- cond=- -> 200
+PUT /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=Basic *** cond="stub-4-1790174795289" -> 412
+GET /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=- cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+DELETE /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=Basic *** cond="stub-6-1790174890030" -> 204
+GET /cal/u/main/CAEE0900-423C-4A9E-BC43-8C1B8A5C1E06-brev.ics depth=- auth=- cond=- -> 404
+PUT /card/u/main/E815BFFB-AF9B-46F9-A7E0-034327C7C0F9-brev.vcf depth=- auth=Basic *** cond=* -> 201
+PUT /card/u/main/alice.vcf depth=- auth=Basic *** cond="seed-alice" -> 204
+GET /card/u/main/alice.vcf depth=- auth=- cond=- -> 200
+POST /__control/add depth=- auth=- cond=- -> 200
+PUT /card/u/main/alice.vcf depth=- auth=Basic *** cond="stub-9-1790175129747" -> 412
+GET /card/u/main/alice.vcf depth=- auth=- cond=- -> 200
+REPORT /card/u/main/ depth=1 auth=Basic *** cond=- -> 207
+DELETE /card/u/main/bob.vcf depth=- auth=Basic *** cond="seed-bob" -> 204
+GET /card/u/main/bob.vcf depth=- auth=- cond=- -> 404
+POST /__control/expire-sync depth=- auth=- cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+POST /__control/expire-sync depth=- auth=- cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=- cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=- cond=- -> 207
+POST /__control/expire-sync depth=- auth=- cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 403
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PROPFIND / depth=- auth=- cond=- -> 207

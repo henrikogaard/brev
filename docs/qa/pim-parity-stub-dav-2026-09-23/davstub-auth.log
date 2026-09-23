@@ -1,0 +1,7 @@
+stub-dav listening on http://127.0.0.1:8644
+PROPFIND / depth=- auth=- cond=- -> 401
+PROPFIND / depth=- auth=Basic *** cond=- -> 207
+PROPFIND / depth=- auth=Basic *** cond=- -> 401
+GET / depth=- auth=- cond=- -> 401
+PROPFIND / depth=0 auth=Basic *** cond=- -> 401
+PROPFIND / depth=0 auth=Basic *** cond=- -> 401
