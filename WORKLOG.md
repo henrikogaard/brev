@@ -4626,3 +4626,31 @@ buttons, and package-aware localization.
 - Skipped: E2E render pass in the app (plain-text fix is unit-covered;
   reader path unchanged — it was fed bad data).
 - Next: PR for review; parity-matrix stub-DAV rows continue separately.
+
+## 2026-09-23 — Agent — Issue #11 stub-DAV parity rows (C/D mac)
+
+- Goal: fill the CalDAV (C) and CardDAV (D) macOS cells of
+  `docs/qa/pim-parity-matrix.md` that a localhost stub can honestly
+  cover, ahead of maintainer live fixtures.
+- Changes: `scripts/stub-dav-server.py` — a single-file Python stub
+  speaking enough RFC 4791/6352/6578 for real flows: PROPFIND discovery
+  (principal → home set → collections), sync-collection REPORT with
+  sync-token expiry control, query/multiget REPORTs, GET, conditional
+  PUT (If-None-Match/If-Match → 201/204/412), DELETE, optional Basic
+  auth. Matrix filled for §1.6/1.7, §2.1/2.3/2.4/2.5⚠/2.9/2.10,
+  §3.1/3.4/3.5/3.7/3.8, §4.1*/4.2/4.5/4.6⚠, §6.1 with wire-log line
+  refs; wire logs + two evidence screenshots committed under
+  `docs/qa/pim-parity-stub-dav-2026-09-23/`.
+- Verification: stub smoke-tested with curl (207/401/412/201/204 paths,
+  sync-token expiry); all UI cells driven end-to-end in the mock build
+  via the real "Add DAV Source…" connect sheet.
+- Found during verification (real defect): sync refreshes a cached
+  item's etag but never its href — a server-side rename leaves the
+  record pointing at a dead path and every subsequent write 412s with
+  no self-heal (wire log L22/L27/L31). Also `lastError` callouts are
+  never cleared on fresh editor opens (cosmetic).
+- Skipped: iOS cells, Google fixture (none exists), §2.6–2.8
+  recurrence/invite/RSVP and §3.6 groups (stub lacks multi-collection
+  scheduling surface), §1.8 TLS failure (stub is plain http loopback).
+- Next: maintainer live fixtures; stale-href defect proposed as a
+  follow-up fix.
