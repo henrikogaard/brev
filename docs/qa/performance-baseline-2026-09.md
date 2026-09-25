@@ -70,3 +70,39 @@ The operator script for that pass is `docs/qa/performance-live-run.md`
 (ten scenarios, ~30 minutes); `scripts/performance-summarize-trace.py` turns
 the log export into the budget-gate JSON. Results go under
 `docs/qa/results/` and a **Live measurements** section is appended here.
+
+## Live measurements — mock smoke pass 2026-09-25
+
+Conditions: `Brev Test (2026-09-25).app` @ `2435e40`, `BREV_USE_MOCK=1`, mock
+fixtures (29-folder inbox / 38 unified). Apple Silicon, foreground Debug
+build. **This is a smoke pass, not the #28 §5 gate** — the mock emits no
+`mail.*` backend events and the list is small, so `cached_inbox_query_ms` and
+true frame p95 are not covered. Results JSON:
+`docs/qa/results/performance-mock-2026-09-25.json`.
+
+| Metric | Measured | Budget | Verdict |
+| --- | ---: | ---: | --- |
+| `cached_inbox_usable_ms` | 324 (max `ui.list` reload, n=8, median 87.5) | 1500 | pass |
+| `cached_inbox_query_ms` | — | 400 | not measurable in mock (IMAP-path event) |
+| `cached_thread_open_ms` | 1222 (`ui.body.visible`, webView, n=1) | 600 | **over** — first WKWebView render of session; re-measure warm on live run |
+| `list_scroll_frame_p95_ms` | ≈1 (proxy: Presentation Build signposts during hard scroll) | 32 | pass-by-proxy; frame timing still owed to Instruments |
+| `idle_resident_memory_mb` | 208 (RSS after ~3 min idle, cpu 0.2%) | 900 | pass |
+| `ui.startup.ready` (workspace) | 1773–2607 (3 launches) | — | informational; includes mock session seeding |
+| `ui.search` (cacheThenServer) | 397, n=1 | — | informational |
+| iOS sim (`ui.list` unified reload) | 19 | — | informational |
+| iOS sim (`ui.search` unified) | 60 | — | informational |
+
+Findings:
+
+- **First rich-HTML thread open = 1.22 s** (single `Message Open` signpost,
+  renderer=webView) — exceeds the 600 ms hard limit. Subsequent opens emit no
+  sample because `cancelMessageOpenTiming` drops interrupted intervals; the
+  one that lands is the WKWebView first-paint (process spawn + layout).
+  Worth a warm-path re-measure and, if it reproduces live, a renderer
+  pre-warm.
+- **Collector script fixed**: `scripts/collect-performance-trace.sh` now
+  passes `--info` — without it `log show` drops the info-level Performance
+  events and the export was silently empty.
+- Scroll health proxy is clean: `Message List Presentation Build` fired 15
+  times at ≤1 ms during aggressive scrolling — no per-frame rebuilds.
+- Idle footprint is far inside budget (208 MB RSS, 0.2% CPU).

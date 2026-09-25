@@ -38,7 +38,9 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 
-command=(/usr/bin/log show --style compact --last "$duration" --predicate 'subsystem == "eu.brevmail.brev" AND category == "Performance"')
+# --info is required: the Performance events are emitted at info level, which
+# `log show` filters out by default, leaving an empty export.
+command=(/usr/bin/log show --style compact --info --last "$duration" --predicate 'subsystem == "eu.brevmail.brev" AND category == "Performance"')
 if [[ -n "$output" ]]; then
   "${command[@]}" >"$output"
   echo "wrote performance trace to $output"

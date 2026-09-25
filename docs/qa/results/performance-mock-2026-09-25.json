@@ -1,0 +1,13 @@
+{
+  "cached_inbox_usable_ms": 324,
+  "cached_thread_open_ms": 1222,
+  "list_scroll_frame_p95_ms": 1,
+  "idle_resident_memory_mb": 208,
+  "_measurement_notes": {
+    "cached_inbox_usable_ms": "max ui.list reload durationMs across folder selections (messageList + unifiedInbox), mock fixtures 29-38 headers",
+    "cached_inbox_query_ms": "NOT MEASURED — mail.messages.page events are emitted only by the real IMAP backend path; MockBackend produces no cache-query event",
+    "cached_thread_open_ms": "single ui.body.visible renderer=webView sample; first rich-HTML render of the session (WKWebView process spawn). Later opens cancel per cancelMessageOpenTiming on rapid reselection",
+    "list_scroll_frame_p95_ms": "frame timing not measurable headless; proxy = Message List Presentation Build signpost durations during hard scroll (0-1ms, no per-frame rebuilds)",
+    "idle_resident_memory_mb": "ps rss after ~3min idle on All Inboxes; cpu 0.2%"
+  }
+}

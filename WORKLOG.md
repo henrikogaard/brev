@@ -4784,3 +4784,22 @@ buttons, and package-aware localization.
 **Verification:** `scripts/lint.sh` + `scripts/format.sh` clean; rebuilt `Brev Test (2026-09-24).app` in mock mode and visually verified on device — "Mailboxes", "Smart Views", and both source headers share one flush-left muted header style; folder chevrons, icons, labels, and counts all sit on shared columns.
 
 **Skipped:** iOS — branches untouched (headers already used label-then-chevron); snapshot baselines have pre-existing env drift.
+
+## 2026-09-25 — Agent — Platform parity + performance smoke pass
+
+- **Goal**: Post-merge iOS/macOS parity assessment + performance benchmark vs
+  #304 budgets (user request).
+- **Changes**: `docs/qa/platform-parity-2026-09-25.md` (parity matrix),
+  `docs/qa/results/performance-mock-2026-09-25.json` (budget JSON),
+  `performance-baseline-2026-09.md` Live-measurements section,
+  `scripts/collect-performance-trace.sh` `--info` fix (export was silently
+  empty — Performance events log at info level).
+- **Verification**: both apps driven on identical mock fixtures; trace
+  collected via fixed collector on macOS and `simctl spawn log show` on iOS;
+  budget gate run and violations recorded in the doc.
+- **Findings**: first rich-HTML thread open 1222 ms (over 600 ms hard limit,
+  n=1, WKWebView first paint — needs warm live re-measure);
+  `cached_inbox_query_ms` not measurable in mock; all other budgets pass or
+  pass-by-proxy; parity confirmed on all user-visible surfaces.
+- **Skipped**: true scroll frame p95 and the full #28 §5 live run — needs
+  Instruments + a real mailbox.
