@@ -106,6 +106,14 @@ maintain at least 4.5:1 contrast against both `bgPrimary` and `bgSecondary`.
 Palette calibration may adjust those role values without adding a token or
 changing the theme schema; focused tests cover every built-in palette.
 
+(2026-09: `BrevSelectionPalette` gained the focused-pane contract —
+`isActive: false` demotes the selected-row fill from `selection` to
+`bgSecondary` and dims the leading indicator. macOS call sites drive it
+from `controlActiveState` *and* the pane's keyboard-focus state so the
+focused column owns the selection tint, the Apple Mail cue that
+replaces a drawn focus ring. iOS call sites leave `isActive` at its
+default `true`.)
+
 ### Shared component surfaces
 
 Recurring view recipes live in `BrevDesign` so call sites cannot drift

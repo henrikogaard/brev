@@ -42,7 +42,9 @@ public struct FolderSidebar: View {
     #endif
     private var selectionPalette: MailSelectionPalette {
         #if os(macOS)
-        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
+        // Focused-pane selection tint (Apple Mail): the selected row keeps
+        // the full selection fill only while this pane holds keyboard focus.
+        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive && sidebarKeyboardFocus)
         #else
         MailSelectionPalette(theme: theme)
         #endif
@@ -303,6 +305,11 @@ public struct FolderSidebar: View {
             .onAppear {
                 disclosureState = loadDisclosureState()
                 restoreSourceExpansion()
+                #if os(macOS)
+                // Mail starts cold with the mailbox column as the key view,
+                // so its selection renders in the active tint at launch.
+                sidebarKeyboardFocus = true
+                #endif
             }
             .onChange(of: disclosureStateData) { disclosureState = loadDisclosureState() }
             .onChange(of: expandedSourceIDs) {
