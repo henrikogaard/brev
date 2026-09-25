@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-09-25 — Agent — Unified inbox keyboard navigation (macOS)
+
+- The merged "All Inboxes"/saved-search list had no focus machinery while
+  the folder list did. Adds the MessageListView container contract to
+  `UnifiedInboxListView`: focusSection/focusable/focused + focusEffectDisabled,
+  arrow keys walk the merged displayed order (parents + expanded thread
+  children across sources), Return activates like a click (drafts ->
+  composer, threads expand, bulk toggles), pointer selection claims the
+  key session, automatic selection-restore opts out of focus claiming,
+  and sidebar mailbox activation hands the keyboard over via
+  `messageListFocusRequestID`. ScrollViewReader added for selection
+  scroll-follow (row ids are the composite `source:folder:message` ids).
+- Verified: `swift build` for BrevMail clean; `scripts/format.sh --check`
+  and `scripts/lint.sh` pass.
+
 ## 2026-09-24 — Agent — Fix ComposePresentationTests overflow expectations
 
 - `ComposePresentationTests` expected `overflowActions` without the new
