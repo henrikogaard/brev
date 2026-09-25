@@ -291,6 +291,7 @@ struct BrevApp: App {
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
+        .defaultSize(width: 1100, height: 720)
         .windowResizability(.contentMinSize)
 
         Window("Contacts", id: BrevWindowID.contacts) {
@@ -308,6 +309,7 @@ struct BrevApp: App {
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
+        .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
 
         Window("Tasks", id: BrevWindowID.tasks) {
@@ -378,6 +380,7 @@ struct BrevApp: App {
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
+        .defaultSize(width: 960, height: 640)
         .windowResizability(.contentMinSize)
 
         Window("Keyboard Shortcuts", id: BrevWindowID.keyboardShortcuts) {

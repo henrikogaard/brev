@@ -1,0 +1,12 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:alice-stub@brev.example
+N:Halvorsen;Alice;;;
+FN:Alice Halvorsen
+ORG:Harbour Logistics;Engineering
+TITLE:Migration Lead
+EMAIL;TYPE=WORK:alice.halvorsen@harbour-logistics.example
+TEL;TYPE=WORK,VOICE:+47 40 11 22 33
+ADR;TYPE=WORK:;;Pier 9, Dock Street;Bergen;;5020;Norway
+URL:https://harbour-logistics.example/team/alice
+END:VCARD

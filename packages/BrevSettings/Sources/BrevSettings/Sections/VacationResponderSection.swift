@@ -278,7 +278,7 @@ private struct VacationResponderPane: View {
                 .scrollContentBackground(.hidden)
                 .padding(BrevSpacing.xs)
                 .brevQuietSurface(cornerRadius: BrevRadius.sm)
-            if let validationError = draft.firstValidationError {
+            if draft.isEnabled, let validationError = draft.firstValidationError {
                 Text(validationError)
                     .brevFont(.caption)
                     .foregroundStyle(theme.danger.color)

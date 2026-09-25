@@ -139,16 +139,25 @@ enum MailboxChatComposerPolicy {
     /// filter glyph made.
     static let sendSymbolName = "arrow.up"
 
-    /// A blocked field says so rather than inviting a question it will not take.
-    /// The notice above it carries the reason, so this only has to stop the
-    /// placeholder from reading as an available control.
+    /// A blocked field says what unblocks it rather than inviting a question
+    /// it will not take. The notice above carries the full explanation and the
+    /// action; the placeholder restates the short version next to the field
+    /// that notice disables.
     static func placeholder(
         subject: String,
         disabledReason: MailboxChatDisabledReason?
     ) -> String {
-        disabledReason == nil
-            ? String(localized: "Ask about \(subject)…", bundle: .module)
-            : String(localized: "Unavailable", bundle: .module)
+        guard let disabledReason else {
+            return String(localized: "Ask about \(subject)…", bundle: .module)
+        }
+        switch disabledReason {
+        case .missingBackend:
+            return String(localized: "Set up an AI provider to ask", bundle: .module)
+        case .notEnabled:
+            return String(localized: "AI Writer is off", bundle: .module)
+        case .consentRequired:
+            return String(localized: "Consent required to ask", bundle: .module)
+        }
     }
 }
 
@@ -378,7 +387,7 @@ struct MailboxChatPanel: View {
                     #if os(iOS)
                         .frame(minHeight: 44)
                     #endif
-                } else {
+                } else if disabledReason == nil {
                     Button {
                         Task {
                             await send()

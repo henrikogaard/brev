@@ -737,6 +737,16 @@ public struct ThreadConversationView: View {
 
     private var threadActionsMenu: some View {
         Menu {
+            #if os(iOS)
+            // iPhone has no per-card overflow button, so Reply/Snooze/etc.
+            // were only reachable by long-press. Surface the same inventory
+            // here, acting on the thread's latest message.
+            if let latest = visibleHeaders.last {
+                cardMenuButtons(for: latest)
+                Divider()
+            }
+            #endif
+
             if shouldShowAISummaryMenu {
                 aiSummaryMenuItems
                 Divider()

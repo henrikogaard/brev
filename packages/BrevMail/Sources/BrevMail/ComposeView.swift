@@ -239,6 +239,8 @@ public struct ComposeView: View {
     /// Signed compose body seeded at open for reply/forward. Used to upgrade
     /// the quote from a decoded `MessageBody` without clobbering user edits.
     @State private var provisionalSignedBody: String?
+    /// Read-only quoted-original region of the body for reply/forward sessions.
+    @State private var quoteProtection: ComposeQuoteProtection?
     @State private var isQuotedBodyUpgradePending: Bool
     @State private var pendingSendGuardWarning: ComposeSendGuardWarning?
     @State private var signMessage: Bool
@@ -451,13 +453,22 @@ public struct ComposeView: View {
                 accountEmail: from.email
             ))
             _subject = State(initialValue: ComposeReplyFormatter.subject(for: replyingTo.subject))
+            let placement = ComposeReplyQuotePlacement.load()
             initialBodyText = ComposeReplyFormatter.body(
                 for: replyingTo,
-                placement: ComposeReplyQuotePlacement.load()
+                placement: placement
             )
+            _quoteProtection = State(initialValue: ComposeQuoteProtection(
+                marker: ComposeReplyFormatter.quoteMarker(for: replyingTo),
+                edge: placement == .belowReply ? .bottom : .top
+            ))
         } else if let forwardingFrom {
             _subject = State(initialValue: ComposeForwardFormatter.subject(for: forwardingFrom.subject))
             initialBodyText = ComposeForwardFormatter.body(for: forwardingFrom)
+            _quoteProtection = State(initialValue: ComposeQuoteProtection(
+                marker: ComposeForwardFormatter.quoteMarker,
+                edge: .bottom
+            ))
         } else if let existingDraft {
             _to = State(initialValue: existingDraft.to.map(\.email))
             _cc = State(initialValue: existingDraft.cc.map(\.email))
@@ -1037,6 +1048,15 @@ public struct ComposeView: View {
                 )
             }
             .disabled(isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil)
+
+            Divider()
+
+            Button(role: .destructive) {
+                Task { await discardDraft() }
+            } label: {
+                Label(ComposeToolbarAction.discardDraft.accessibilityLabel, systemImage: "trash")
+            }
+            .disabled(isDiscardDisabled)
         } label: {
             toolbarControlIcon("ellipsis.circle")
         }
@@ -1124,6 +1144,15 @@ public struct ComposeView: View {
                 )
             }
             .disabled(isInteractionBlocked || selectedComposeBackend.extensionService(ScheduledSendManaging.self) == nil)
+
+            Divider()
+
+            Button(role: .destructive) {
+                Task { await discardDraft() }
+            } label: {
+                Label(ComposeToolbarAction.discardDraft.accessibilityLabel, systemImage: "trash")
+            }
+            .disabled(isDiscardDisabled)
         }
         .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
     }
@@ -1820,7 +1849,8 @@ public struct ComposeView: View {
             },
             onFileDragTargetChanged: { isTargeted in
                 isDropTargeted = isTargeted
-            }
+            },
+            quoteProtection: quoteProtection
         )
         .padding(.horizontal, BrevSpacing.xl)
         .padding(.vertical, BrevSpacing.lg)
@@ -2759,6 +2789,13 @@ public struct ComposeView: View {
         )
     }
 
+    /// Discard is meaningful whenever there is content to throw away or a
+    /// previously saved/restored draft to delete.
+    private var isDiscardDisabled: Bool {
+        isInteractionBlocked
+            || (!canSave && savedDraftRemoteID == nil && restoredDraft == nil)
+    }
+
     private var isBusy: Bool {
         ComposePresentation.isInteractionBusy(
             isSending: isSending,
@@ -2847,6 +2884,31 @@ public struct ComposeView: View {
             guard canApplyComposeOperationResponse(request) else { return }
             errorMessage = ComposePresentation.saveDraftErrorMessage(for: error)
         }
+    }
+
+    /// Deletes the current draft (locally staged or remotely saved) and
+    /// closes without auto-saving. Drafts lists refresh from the backend's
+    /// own removal event, so no completion payload is emitted here.
+    private func discardDraft() async {
+        guard !isInteractionBlocked else { return }
+        cancelAutoSaveDraftTask()
+        let backend = selectedComposeBackend
+        do {
+            if let sourceID = selectedComposeSourceID {
+                try await backend.discard(draftID: draftID, sourceID: sourceID)
+            } else {
+                try await backend.discard(draftID: draftID)
+            }
+        } catch {
+            errorMessage = String(
+                localized: "Couldn't discard the draft.",
+                bundle: .module
+            )
+            return
+        }
+        savedDraftRemoteID = nil
+        hasCompletedExplicitOperation = true
+        close()
     }
 
     private func canStartComposeOperation(kind: ComposeOperationKind) -> Bool {

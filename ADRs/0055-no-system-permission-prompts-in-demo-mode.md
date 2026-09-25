@@ -92,3 +92,18 @@ own ADR alongside the Settings affordance it needs.
 can be false there without touching real runs. Fixes the preference value
 but not the race, since the resolver still starts from
 `AvatarPreferences.default`.
+
+## Addendum (2026-09-24): DAV credentials follow the same rule
+
+The stub CalDAV/CardDAV sources added for demo-mode PIM testing surfaced
+the same class of leak: saving a stub source wrote its password to the
+real login Keychain and read it back through `CalDAVKeychainCredentialStore`,
+so a demo run could touch (and depend on) real credential state.
+
+`BrevCalendar` gains `InMemoryCalDAVCredentialStore`, a process-local
+actor holding credentials for the session only. `AppSessionFactory`
+injects it whenever `configuration.isDemoModeRequested()` in DEBUG builds;
+release and non-demo builds keep the Keychain store. The consequence
+mirrors the Contacts gate: demo mode neither writes to nor reads the real
+Keychain, deterministically, and stub-source saves disappear with the
+session.

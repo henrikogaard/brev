@@ -293,9 +293,45 @@ enum ComposeDraftBuilder {
 // swiftlint:enable function_parameter_count
 
 enum ComposeHTMLBodyPolicy {
+    /// Plain editor text to HTML. Runs of `>`-prefixed lines become a real
+    /// `<blockquote>` (which our reader and other clients style as a quote)
+    /// instead of escaped `&gt;` markers rendering literally in the copy.
     static func html(fromEditorText text: String) -> String {
         let normalized = normalizeLineEndings(text)
-        return escapeHTML(normalized).replacingOccurrences(of: "\n", with: "<br>")
+        let lines = normalized.split(separator: "\n", omittingEmptySubsequences: false)
+        var segments: [String] = []
+        var textLines: [Substring] = []
+        var quoteLines: [Substring] = []
+
+        func flushTextLines() {
+            guard !textLines.isEmpty else { return }
+            segments.append(
+                escapeHTML(textLines.joined(separator: "\n"))
+                    .replacingOccurrences(of: "\n", with: "<br>")
+            )
+            textLines.removeAll(keepingCapacity: true)
+        }
+        func flushQuoteLines() {
+            guard !quoteLines.isEmpty else { return }
+            let inner = quoteLines
+                .map { escapeHTML(quoteMarkerStripped($0)) }
+                .joined(separator: "<br>")
+            segments.append("<blockquote>\(inner)</blockquote>")
+            quoteLines.removeAll(keepingCapacity: true)
+        }
+
+        for line in lines {
+            if line.hasPrefix(">") {
+                flushTextLines()
+                quoteLines.append(line)
+            } else {
+                flushQuoteLines()
+                textLines.append(line)
+            }
+        }
+        flushTextLines()
+        flushQuoteLines()
+        return segments.joined()
     }
 
     static func richHTML(fromEditorHTML editorHTML: String) -> String {
@@ -333,7 +369,8 @@ enum ComposeHTMLBodyPolicy {
 
     static func editorText(fromStoredHTML html: String) -> String {
         let normalized = normalizeLineEndings(html)
-        let withLineBreaks = normalized
+        let withQuotes = restoreQuoteMarkers(in: normalized)
+        let withLineBreaks = withQuotes
             .replacingOccurrences(
                 of: #"(?i)<\s*br\s*/?\s*>"#,
                 with: "\n",
@@ -355,6 +392,53 @@ enum ComposeHTMLBodyPolicy {
             options: .regularExpression
         )
         return decodeHTMLEntities(withoutTags).trimmingCharacters(in: .newlines)
+    }
+
+    /// Strips one `>` quote marker plus a single optional space, keeping
+    /// deeper `>>` nesting visible as text inside the blockquote.
+    private static func quoteMarkerStripped(_ line: Substring) -> String {
+        var stripped = line.dropFirst()
+        if stripped.hasPrefix(" ") { stripped = stripped.dropFirst() }
+        return String(stripped)
+    }
+
+    /// Converts `<blockquote>` regions back to `>`-prefixed lines so a
+    /// saved draft round-trips into the editor with its quote intact.
+    private static func restoreQuoteMarkers(in html: String) -> String {
+        let pattern = #"(?is)<blockquote\b[^>]*>(.*?)</\s*blockquote\s*>"#
+        guard let regex = try? NSRegularExpression(pattern: pattern) else {
+            return html
+        }
+        let nsRange = NSRange(html.startIndex..., in: html)
+        var result = ""
+        var last = html.startIndex
+        for match in regex.matches(in: html, range: nsRange) {
+            guard let whole = Range(match.range, in: html),
+                  let innerRange = Range(match.range(at: 1), in: html) else { continue }
+            result += html[last ..< whole.lowerBound]
+            let innerLines = String(html[innerRange])
+                .replacingOccurrences(
+                    of: #"(?i)<\s*br\s*/?\s*>"#,
+                    with: "\n",
+                    options: .regularExpression
+                )
+                .components(separatedBy: "\n")
+                .map { $0.isEmpty ? ">" : "> \($0)" }
+                .joined(separator: "\n")
+            // A `<br>` adjacent to the block-level tag already supplies the
+            // line break; only inject one where nothing else does.
+            if !result.isEmpty, !result.hasSuffix("\n"), !result.hasSuffix("<br>") {
+                result += "\n"
+            }
+            result += innerLines
+            let remainder = html[whole.upperBound...]
+            if !remainder.isEmpty, !remainder.hasPrefix("<br>") {
+                result += "\n"
+            }
+            last = whole.upperBound
+        }
+        result += html[last...]
+        return result
     }
 
     private static func normalizeLineEndings(_ value: String) -> String {

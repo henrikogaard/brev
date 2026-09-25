@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-09-24 — Agent — Fix ComposePresentationTests overflow expectations
+
+- `ComposePresentationTests` expected `overflowActions` without the new
+  `.discardDraft` entry added in a367be9; updated the macOS + compact-iOS
+  expectations and the accessibility value string so the BrevMail suite
+  passes on this branch. Verified: `swift test --filter ComposePresentation`
+  (57 tests green).
+
 ## 2026-09-23 — Agent — Round-2 UI/UX + a11y audit @ 4617777
 
 - Rebuilt both apps off `4617777` and ran a recorded full-surface pass
@@ -4692,3 +4700,87 @@ buttons, and package-aware localization.
   platform-independent). `CalDAVEventWriter` (invite-acceptance
   single-target flow) intentionally unchanged — it only creates.
 - Next: merge; matrix §2.5 can flip to clean ✓ on the next pass.
+
+## 2026-09-24 — Agent — Round-2 verification fixes (PR #93 findings)
+
+- Goal: fix the six findings the recorded round-2 verification pass
+  reported on `a367be9` plus the N1 keyboard-nav remainder.
+- Changes:
+  - Calendar toolbar vanish (release-affecting): `.toolbar` items on
+    the NavigationSplitView sidebar column only propagate to the macOS
+    window titlebar when the column content is a `List` — the
+    grid-mode views (`ScrollView`) silently dropped the layout picker,
+    date navigation, New Event, and Sync. Replaced with a deterministic
+    in-view `navigationHeader` (menu-style picker + date nav + actions)
+    that renders identically in every mode on both platforms.
+  - Compose Discard Draft: the `discardDraft` action existed in
+    presentation + a11y strings but no menu rendered it — closing a
+    compose window still silently saved. Wired a destructive
+    `Discard Draft` item (trash icon) into the macOS overflow and iOS
+    compact menus; `discardDraft()` cancels autosave, calls
+    `backend.discard(draftID:)`/`(draftID:sourceID:)`, and closes
+    without saving.
+  - P5 HTML sent copies: `ComposeHTMLBodyPolicy.html(fromEditorText:)`
+    escaped `>` quote markers to `&gt;` so sent copies showed literal
+    `> ` lines. Consecutive `>`-prefixed runs now emit a real
+    `<blockquote>` (already styled by the reader's blockquote CSS and
+    every recipient client); `editorText(fromStoredHTML:)` round-trips
+    blockquotes back to `>` lines so draft reopen keeps the quote.
+  - P11 Find settings: validation warnings were silent no-ops —
+    `statusAndGuidanceSection` only mounts after
+    `didStartDiscoveryProbe`, but the validation early-return happened
+    before the flag was set. Flag now marks before validation in both
+    `discover` and `applySkip`.
+  - N6 iOS reader overflow: the thread `…` menu held only thread
+    controls — Reply/Reply All/Forward/Snooze were long-press only.
+    iOS menu now leads with the consolidated per-card inventory acting
+    on the thread's latest message.
+  - N1 remainder: `focusSection()` puts sidebar + message list in the
+    macOS Tab key loop, and arrow-key input now claims container focus
+    so the accent focus ring actually appears.
+- Verification: `swift build` clean; `swift test` filtered suites
+  99/99 (ComposeDraftBuilder +2 round-trip tests, ComposePresentation,
+  IMAPAccountSetup); `scripts/lint.sh` OK; swiftformat 0 changes.
+  On-device verification pending on this commit.
+- Skipped: P6 iOS stale calendar data — pending investigation
+  (suspected environment artifact, not code).
+- Next: merge into the stacked composer branch (PR #94); recorded
+  re-verification of the six items.
+
+## 2026-09-24 — Agent — Round-2 verification follow-ups (PR #93 re-verification findings)
+
+**Goal:** Fix the two code-change findings from the `c2ae433` re-verification pass and one minor label wrap.
+
+**Changes:**
+- `MessageListView` — moved the macOS focus machinery (`focusSection`/`focusable`/`focused`/`focusEffectDisabled`/arrow+Return handlers/accent ring) off the `List` onto a wrapping `Group`: a `List`'s AppKit backing never joins the key loop, so the column could never be focused. `selectMessage` now also claims `listKeyboardFocus` so pointer interaction marks the list as the keyboard surface (Apple Mail ring-follows-focus).
+- `MailNavigationState` — added `messageListFocusRequestID` token + `requestMessageListFocus()`; `MessageListView` observes it and claims focus.
+- `FolderSidebar` — `.return` on a highlighted destination and `→` on a leaf call `onOpenMessages` (drill into the list, Finder column-view style); Outbox keeps its own activation on both.
+- `BrevMailRootView` — `onOpenMessages` on macOS bumps `requestMessageListFocus()`, so any mailbox activation hands the keyboard to its list.
+- `MockBackend.removeDraft` — discard now matches the draft's local id *and* its staged folder id (`draft-<id>`/remoteID), matching the local-id contract `IMAPSMTPBackend.discard` exposes. Fixes the iOS Discard leak where an auto-persisted reply draft survived because the composer's `draftID` (local UUID) never matched the `draft-<uuid>` folder key. New `discardByLocalIDRemovesSavedDraft` test covers it (and caught the first incomplete attempt at the fix).
+- `CalendarRootView` — `.fixedSize()` on the layout Picker so "Month" stops wrapping to "Mont h" on iOS.
+- `.agents/skills/testing-brev-ui/SKILL.md` — added sim PIM-source injection, focus-state AX caveat, and the ⌘W-keepalive/`reopen` note from the verification pass.
+
+**Verification:** `swift test --filter discard` — 4/4 green incl. new test; `swift test` BrevMail 1869 tests, 84 issues all in `*SnapshotTests.swift` (pre-existing env baseline drift, zero functional failures); `swift build` macOS clean; `scripts/lint.sh` + `scripts/format.sh` clean.
+
+**Skipped:** Device re-verification (testing agent) — pending.
+
+**Handoff:** P11 (Add-account Find-settings) remains mock-limited — needs `imapAccountDiscoveryCoordinator` wired into the demo session or real-session verification.
+- `AppSessionFactory` — demo session now gets an offline
+  `imapAccountDiscoveryCoordinator` (built-in profile table + manual
+  fallback only, no DNS/autoconfig) so the Find-settings flow — and
+  the P11 validation status surface — is exercisable in mock mode
+  without violating the zero-network default.
+
+## 2026-09-25 — Agent — PR #93
+
+**Goal:** Sidebar header consistency + alignment follow-up (Henrik's Apple Mail comparison screenshots).
+
+**Changes:**
+- `FolderSidebar` — unified all macOS section headers to one Apple Mail-style treatment: `caption` + `semibold` + `textSecondary`, flush-left at the disclosure column (`folderRowBaseLeadingPadding`), disclosure chevron trailing the label (10pt semibold, `textTertiary`) — matches Mail's "Favoritter / Smarte postkasser / Google" edge and the existing iOS text-then-chevron pattern.
+- `profileSwitcher` (macOS): downgraded from `.body`/semibold/`textPrimary` title to the shared header style (was the inconsistent large header in the screenshot); now uses `sourceHeaderMinimumHeight` + `sourceHeaderVerticalPadding`.
+- `mailboxDisclosureHeader` + `smartViewsSection` (macOS): reordered to label-then-chevron so header text sits flush-left at the chevron column instead of the icon column.
+- Removed now-unused `sidebarHeaderLabelLeadingPadding`.
+
+**Verification:** `scripts/lint.sh` + `scripts/format.sh` clean; rebuilt `Brev Test (2026-09-24).app` in mock mode and visually verified on device — "Mailboxes", "Smart Views", and both source headers share one flush-left muted header style; folder chevrons, icons, labels, and counts all sit on shared columns.
+
+**Skipped:** iOS — branches untouched (headers already used label-then-chevron); snapshot baselines have pre-existing env drift.

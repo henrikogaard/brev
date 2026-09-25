@@ -251,6 +251,36 @@ struct ComposeDraftBuilderTests {
         #expect(draft.htmlBody == "Fish &amp; &lt;chips&gt;<br>&quot;quoted&quot;")
     }
 
+    @Test("plain text quote runs become blockquote HTML")
+    func plainTextQuoteRunsBecomeBlockquote() {
+        let draft = ComposeDraftBuilder.draft(
+            id: "local-1",
+            replyingTo: nil,
+            forwardingFrom: nil,
+            to: ["ada@example.org"],
+            cc: [],
+            bcc: [],
+            subject: "Re: Hello",
+            bodyText: "Thanks!\n\nOn Jan 1, Ada wrote:\n> original line\n> second line\n\nAfter quote"
+        )
+
+        #expect(
+            draft.htmlBody == """
+            Thanks!<br><br>On Jan 1, Ada wrote:<blockquote>original line<br>second line</blockquote><br>After quote
+            """
+        )
+    }
+
+    @Test("stored HTML blockquote restores quote markers in editor text")
+    func storedHTMLBlockquoteRestoresQuoteMarkers() {
+        let text = ComposeHTMLBodyPolicy.editorText(
+            fromStoredHTML:
+            "Thanks!<br><br>On Jan 1, Ada wrote:<br><blockquote>original line<br>second line</blockquote><br><br>After quote"
+        )
+
+        #expect(text == "Thanks!\n\nOn Jan 1, Ada wrote:\n> original line\n> second line\n\nAfter quote")
+    }
+
     @Test("rich text body preserves the supported HTML formatting subset")
     func richTextBodyPreservesSupportedHTMLSubset() {
         let draft = ComposeDraftBuilder.draft(

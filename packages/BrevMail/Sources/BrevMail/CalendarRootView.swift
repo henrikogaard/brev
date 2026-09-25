@@ -124,13 +124,16 @@ public struct CalendarRootView: View {
             if let deepLinkNotice = model.deepLinkNotice {
                 errorBanner(deepLinkNotice)
             }
+            if model.hasSources {
+                navigationHeader
+            }
             content
         }
         .toolbar { toolbarContent }
-        // The sidebar renders ~90pt wide in a small aux window on macOS,
-        // which wraps empty-state copy mid-word. Give the column a floor
-        // wide enough for the copy and the source list.
-        .navigationSplitViewColumnWidth(min: 220, ideal: 240, max: 360)
+        // The calendar grid lives in this column — it needs real width on
+        // macOS or day/week/month cells collapse to chips. iOS compact
+        // ignores the width and stacks columns as before.
+        .navigationSplitViewColumnWidth(min: 300, ideal: 460, max: 760)
     }
 
     @ViewBuilder
@@ -241,6 +244,8 @@ public struct CalendarRootView: View {
                 ))
             )
             .foregroundStyle(theme.textSecondary.color)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(theme.bgPrimary.color)
         }
     }
 
@@ -306,6 +311,7 @@ public struct CalendarRootView: View {
         )
         .foregroundStyle(theme.textSecondary.color)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(theme.bgPrimary.color)
     }
 
     /// The Edit action for the detail pane — present only while the
@@ -392,91 +398,88 @@ public struct CalendarRootView: View {
                 Button(String(localized: "Done", bundle: .module), action: onDismiss)
             }
         }
-        ToolbarItem(placement: .principal) {
-            HStack(spacing: BrevSpacing.sm) {
-                Picker(
-                    String(localized: "Layout", bundle: .module),
-                    selection: Bindable(model).viewMode
-                ) {
-                    ForEach(
-                        CalendarBrowsingModel.ViewMode.allCases,
-                        id: \.self
-                    ) { mode in
-                        Text(mode.title).tag(mode)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .frame(maxWidth: 320)
-                .accessibilityLabel(
-                    String(localized: "Calendar layout", bundle: .module)
-                )
-                if model.showsDateNavigation {
-                    HStack(spacing: BrevSpacing.xxs) {
-                        Button {
-                            model.goToPrevious()
-                        } label: {
-                            Image(systemName: "chevron.left")
-                        }
-                        .accessibilityLabel(
-                            String(
-                                localized: "Previous",
-                                bundle: .module
-                            )
-                        )
-                        Button {
-                            model.goToToday()
-                        } label: {
-                            Text(
-                                String(
-                                    localized: "Today",
-                                    bundle: .module
-                                )
-                            )
-                        }
-                        Button {
-                            model.goToNext()
-                        } label: {
-                            Image(systemName: "chevron.right")
-                        }
-                        .accessibilityLabel(
-                            String(localized: "Next", bundle: .module)
-                        )
-                    }
-                    Text(model.rangeTitle)
-                        .brevFont(.subheadline)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
+    }
+
+    // MARK: - Navigation header
+
+    /// In-view replacement for `.principal`/`.primaryAction` toolbar items:
+    /// on macOS sidebar toolbars only propagate to the window titlebar when
+    /// the column content is a `List`, so grid modes (ScrollView) dropped
+    /// every toolbar item and the mode picker became unreachable. Rendering
+    /// the controls inline keeps them visible in every mode and layout on
+    /// both platforms.
+    private var navigationHeader: some View {
+        HStack(spacing: BrevSpacing.sm) {
+            Picker(
+                String(localized: "Layout", bundle: .module),
+                selection: Bindable(model).viewMode
+            ) {
+                ForEach(
+                    CalendarBrowsingModel.ViewMode.allCases,
+                    id: \.self
+                ) { mode in
+                    Text(mode.title).tag(mode)
                 }
             }
-        }
-        if let editing,
-           editing.canAuthor, editing.defaultTarget != nil {
-            ToolbarItem(placement: .primaryAction) {
+            // Menu style stays compact at any column width — the segmented
+            // variant needs ~320pt the sidebar cannot guarantee. fixedSize
+            // keeps the selected-mode label ("Month") on one line where
+            // narrow columns would otherwise wrap it mid-word.
+            .pickerStyle(.menu)
+            .labelsHidden()
+            .fixedSize()
+            .accessibilityLabel(
+                String(localized: "Calendar layout", bundle: .module)
+            )
+
+            if model.showsDateNavigation {
+                HStack(spacing: BrevSpacing.xxs) {
+                    Button {
+                        model.goToPrevious()
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .accessibilityLabel(
+                        String(localized: "Previous", bundle: .module)
+                    )
+                    Button {
+                        model.goToToday()
+                    } label: {
+                        Text(String(localized: "Today", bundle: .module))
+                    }
+                    Button {
+                        model.goToNext()
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .accessibilityLabel(
+                        String(localized: "Next", bundle: .module)
+                    )
+                }
+                Text(model.rangeTitle)
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+            }
+
+            Spacer(minLength: 0)
+
+            if let editing,
+               editing.canAuthor, editing.defaultTarget != nil {
                 Button {
                     Task { await presentNewEvent() }
                 } label: {
-                    Label(
-                        String(
-                            localized: "New Event",
-                            bundle: .module
-                        ),
-                        systemImage: "plus"
-                    )
+                    Image(systemName: "plus")
                 }
                 .accessibilityLabel(
                     String(localized: "New event", bundle: .module)
                 )
             }
-        }
-        ToolbarItem(placement: .primaryAction) {
             Button {
                 Task { await model.syncAll() }
             } label: {
                 if model.syncingSourceIDs.isEmpty {
-                    Label(
-                        String(localized: "Sync Now", bundle: .module),
-                        systemImage: "arrow.triangle.2.circlepath"
-                    )
+                    Image(systemName: "arrow.triangle.2.circlepath")
                 } else {
                     ProgressView()
                         .controlSize(.small)
@@ -487,5 +490,7 @@ public struct CalendarRootView: View {
                 String(localized: "Sync calendars now", bundle: .module)
             )
         }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
     }
 }

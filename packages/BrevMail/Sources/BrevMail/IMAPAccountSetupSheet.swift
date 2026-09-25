@@ -307,7 +307,10 @@ public struct IMAPAccountSetupSheet: View {
         ) {
             discover(asPath: .discovered)
         }
-        .disabled(isDiscovering || !canDiscoverSettings)
+        // Enabled even with a malformed email so tapping surfaces the
+        // validation warning from `discover` instead of being a silent
+        // disabled no-op.
+        .disabled(isDiscovering || !session.canDiscoverIMAPSettings)
         .imapSetupTouchTarget()
     }
 
@@ -781,13 +784,6 @@ public struct IMAPAccountSetupSheet: View {
             && !isTestingConnection
     }
 
-    private var canDiscoverSettings: Bool {
-        IMAPAccountSetupPresentation.canDiscoverSettings(
-            emailAddress: emailAddress,
-            isDiscoveryAvailable: session.canDiscoverIMAPSettings
-        )
-    }
-
     private var setupState: IMAPAccountSetupPresentation.State {
         IMAPAccountSetupPresentation.State(
             emailAddress: emailAddress,
@@ -914,6 +910,9 @@ public struct IMAPAccountSetupSheet: View {
 
     /// Runs discovery only from Find settings (or one-shot re-auth).
     private func discover(asPath path: IMAPAccountSetupPresentation.SetupPath) {
+        // Mark the probe before validation so its status section mounts and
+        // the warning actually renders instead of being a silent no-op.
+        didStartDiscoveryProbe = true
         let email = trimmed(emailAddress)
         if let validationMessage = IMAPAccountSetupPresentation.discoveryValidationMessage(
             emailAddress: email,
@@ -927,7 +926,6 @@ public struct IMAPAccountSetupSheet: View {
             return
         }
         localStatus = nil
-        didStartDiscoveryProbe = true
         isDiscovering = true
         Task {
             defer { isDiscovering = false }
@@ -950,6 +948,7 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     private func applySkip(_ shortcut: IMAPAccountSetupPresentation.SkipShortcut) {
+        didStartDiscoveryProbe = true
         let email = trimmed(emailAddress)
         if shortcut != .manual {
             guard MailAccountAutodiscovery.isValidEmailAddress(email) else {
@@ -991,7 +990,6 @@ public struct IMAPAccountSetupSheet: View {
         case .outlook: .outlook
         case .manual: .manual
         }
-        didStartDiscoveryProbe = true
         applyDiscovery(result, path: path)
         if shortcut == .manual {
             showServerFields = true

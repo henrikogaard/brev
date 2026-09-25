@@ -178,6 +178,7 @@ public struct RecentRecipientStore {
         return storedRecipients()
             .filter { recipient in
                 recipient.accountID == accountID
+                    && isLikelyEmail(recipient.email)
                     && (recipient.email.localizedCaseInsensitiveContains(needle)
                         || (recipient.displayName?.localizedCaseInsensitiveContains(needle) ?? false))
             }
@@ -189,7 +190,7 @@ public struct RecentRecipientStore {
         var seen = Set<String>()
         return storedRecipients()
             .sorted(by: newestFirst)
-            .filter { seen.insert(normalizedEmail($0.email)).inserted }
+            .filter { isLikelyEmail($0.email) && seen.insert(normalizedEmail($0.email)).inserted }
     }
 
     /// Removes a local recipient from every account without touching Apple Contacts.
@@ -271,7 +272,33 @@ public struct RecentRecipientStore {
     private func isLikelyEmail(_ email: String) -> Bool {
         let parts = email.split(separator: "@", omittingEmptySubsequences: false)
         guard parts.count == 2, !parts[0].isEmpty, !parts[1].isEmpty else { return false }
-        return parts[1].contains(".") && !email.contains(where: \.isWhitespace)
+        guard !parts[0].contains(where: \.isWhitespace) else { return false }
+        return isPlausibleRecipientDomain(String(parts[1]))
+    }
+
+    /// Domain check for suggestion-quality recipients: dotted labels with
+    /// alphanumeric edges and hyphen interiors, ending in a letters-only or
+    /// punycode (`xn--`) final label — enough to keep merge-corrupted
+    /// strings (e.g. `acme.examplepost-merge`) out of the suggestion store
+    /// without needing a live DNS answer.
+    private func isPlausibleRecipientDomain(_ domain: String) -> Bool {
+        var trimmed = domain.trimmingCharacters(in: .whitespacesAndNewlines)
+        if trimmed.hasSuffix(".") { trimmed.removeLast() }
+        guard !trimmed.isEmpty else { return false }
+        let labels = trimmed.split(separator: ".", omittingEmptySubsequences: false)
+        guard labels.count >= 2 else { return false }
+        for label in labels {
+            guard !label.isEmpty, label.count <= 63,
+                  let first = label.first, let last = label.last,
+                  first.isASCII, first.isLetter || first.isNumber,
+                  last.isASCII, last.isLetter || last.isNumber,
+                  label.allSatisfy({ $0.isASCII && ($0.isLetter || $0.isNumber || $0 == "-") })
+            else {
+                return false
+            }
+        }
+        let tld = labels[labels.count - 1]
+        return tld.allSatisfy(\.isLetter) || tld.lowercased().hasPrefix("xn--")
     }
 
     private func newestFirst(_ lhs: RecentRecipient, _ rhs: RecentRecipient) -> Bool {

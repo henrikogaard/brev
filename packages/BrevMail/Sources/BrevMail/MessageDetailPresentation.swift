@@ -336,3 +336,75 @@ enum MessageDetailPresentation {
         return message.isEmpty ? fallback : message
     }
 }
+
+/// One run of a plain-text body split at quote boundaries — contiguous
+/// `>`-prefixed lines become a `quote` segment, everything else `text`.
+enum PlainBodyQuoteSegment: Equatable {
+    case text(String)
+    case quote(String)
+}
+
+/// Splits a plain-text message body into alternating normal/quoted runs so
+/// the reader can render `>` quote lines as a styled block instead of
+/// literal angle brackets (the sent-copy path has no HTML to style).
+enum PlainBodyQuoteSegmentation {
+    /// Quote runs collapse leading whitespace, the run of `>` markers, and
+    /// one optional space; a line is quoted only when it starts with `>`
+    /// after leading spaces. Empty lines between two quoted runs keep the
+    /// runs separate so the visual block stays tight.
+    static func segments(of body: String) -> [PlainBodyQuoteSegment] {
+        var segments: [PlainBodyQuoteSegment] = []
+        var textLines: [String] = []
+        var quoteLines: [String] = []
+        var pendingGap: [String] = []
+
+        func flushText() {
+            guard !textLines.isEmpty else { return }
+            segments.append(.text(textLines.joined(separator: "\n")))
+            textLines = []
+        }
+        func flushQuote() {
+            guard !quoteLines.isEmpty else { return }
+            segments.append(.quote(quoteLines.joined(separator: "\n")))
+            quoteLines = []
+        }
+
+        for line in body.split(separator: "\n", omittingEmptySubsequences: false).map(String.init) {
+            if let stripped = quoteContent(of: line) {
+                if quoteLines.isEmpty {
+                    textLines.append(contentsOf: pendingGap)
+                    pendingGap = []
+                    flushText()
+                } else {
+                    quoteLines.append(contentsOf: pendingGap)
+                    pendingGap = []
+                }
+                quoteLines.append(stripped)
+            } else if line.trimmingCharacters(in: .whitespaces).isEmpty {
+                // Blank line: could sit inside a quote block — hold it until
+                // the next content line decides which run it belongs to.
+                pendingGap.append(line)
+            } else {
+                textLines.append(contentsOf: pendingGap)
+                pendingGap = []
+                flushQuote()
+                textLines.append(line)
+            }
+        }
+        textLines.append(contentsOf: pendingGap)
+        flushText()
+        flushQuote()
+        return segments
+    }
+
+    /// `"> > nested"` → `"nested"`; `nil` when the line isn't a quote line.
+    private static func quoteContent(of line: String) -> String? {
+        var rest = line.drop(while: { $0 == " " || $0 == "\t" })
+        guard rest.hasPrefix(">") else { return nil }
+        while rest.hasPrefix(">") {
+            rest = rest.dropFirst()
+            if rest.hasPrefix(" ") { rest = rest.dropFirst() }
+        }
+        return String(rest)
+    }
+}

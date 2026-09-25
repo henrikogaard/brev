@@ -112,6 +112,11 @@ public struct MessageListView: View {
     /// Progressive disclosure for search execution / scope chips. Expands
     /// automatically when the user leaves the default search options.
     @State private var isSearchOptionsExpanded = false
+    #if os(macOS)
+    /// Keyboard focus on the message list — up/down arrows move the
+    /// selection through visible headers while the list is focused.
+    @FocusState private var listKeyboardFocus: Bool
+    #endif
 
     @AppStorage(MailboxViewPreferenceKey.groupByThread) private var groupByThread = true
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
@@ -689,50 +694,100 @@ public struct MessageListView: View {
                 navigation.mailboxFilter.clear()
             }
         } else {
-            List {
-                if groupByDate {
-                    ForEach(presentation.dateSections) { section in
-                        dateSectionHeaderRow(section)
-                        ForEach(section.visibleHeaders) { header in
-                            messageRow(
-                                for: header,
-                                visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
-                                visibleCount: presentation.headers.count,
-                                threadChildrenByID: presentation.headersByThreadID
-                            )
+            Group {
+                ScrollViewReader { proxy in
+                    List {
+                        if groupByDate {
+                            ForEach(presentation.dateSections) { section in
+                                dateSectionHeaderRow(section)
+                                ForEach(section.visibleHeaders) { header in
+                                    messageRow(
+                                        for: header,
+                                        visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                                        visibleCount: presentation.headers.count,
+                                        threadChildrenByID: presentation.headersByThreadID
+                                    )
+                                }
+                            }
+                        } else {
+                            ForEach(presentation.headers) { header in
+                                messageRow(
+                                    for: header,
+                                    visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
+                                    visibleCount: presentation.headers.count,
+                                    threadChildrenByID: presentation.headersByThreadID
+                                )
+                            }
+                        }
+                        if isLoadingMore {
+                            ProgressView()
+                                .padding(BrevSpacing.md)
+                                .listRowSeparator(.hidden)
+                                .messageListThemedRowBackground()
+                        } else if let loadMoreErrorStatus {
+                            MessageListFooterStatusView(status: loadMoreErrorStatus) {
+                                Task { await loadMore() }
+                            }
+                            .listRowSeparator(.hidden)
+                            .messageListThemedRowBackground()
                         }
                     }
-                } else {
-                    ForEach(presentation.headers) { header in
-                        messageRow(
-                            for: header,
-                            visibleIndex: presentation.visibleIndex(for: header.id) ?? 0,
-                            visibleCount: presentation.headers.count,
-                            threadChildrenByID: presentation.headersByThreadID
-                        )
-                    }
-                }
-                if isLoadingMore {
-                    ProgressView()
-                        .padding(BrevSpacing.md)
-                        .listRowSeparator(.hidden)
-                        .messageListThemedRowBackground()
-                } else if let loadMoreErrorStatus {
-                    MessageListFooterStatusView(status: loadMoreErrorStatus) {
-                        Task { await loadMore() }
-                    }
-                    .listRowSeparator(.hidden)
-                    .messageListThemedRowBackground()
+                    .listStyle(.plain)
+                    .scrollContentBackground(.hidden)
+                    // The section headers are intentionally smaller than message rows.
+                    // Remove List's platform minimum so their own padding determines
+                    // the gap between date groups.
+                    .environment(\.defaultMinListRowHeight, 1)
+                    .refreshable { await reloadVisibleMessages() }
+                    .brevBottomBarScrollInset()
+                    #if os(macOS)
+                        .onChange(of: navigation.selectedMessageID) { _, selection in
+                            guard let selection else { return }
+                            proxy.scrollTo(selection)
+                        }
+                    #endif
                 }
             }
-            .listStyle(.plain)
-            .scrollContentBackground(.hidden)
-            // The section headers are intentionally smaller than message rows.
-            // Remove List's platform minimum so their own padding determines
-            // the gap between date groups.
-            .environment(\.defaultMinListRowHeight, 1)
-            .refreshable { await reloadVisibleMessages() }
-            .brevBottomBarScrollInset()
+            #if os(macOS)
+            // The List's AppKit backing never joins the key loop, so the
+            // focus machinery lives on this wrapping container instead:
+            // focusSection + focusable make it a Tab-reachable group, the
+            // accent outline plays the focus ring, and arrow input on the
+            // focused region claims `listKeyboardFocus` so the ring marks
+            // an active keyboard session on this list.
+            .focusSection()
+            .focusable()
+            .focused($listKeyboardFocus)
+            .focusEffectDisabled()
+            .onKeyPress(.upArrow) {
+                listKeyboardFocus = true
+                navigation.selectPreviousHeader()
+                return .handled
+            }
+            .onKeyPress(.downArrow) {
+                listKeyboardFocus = true
+                navigation.selectNextHeader()
+                return .handled
+            }
+            .onKeyPress(.return) {
+                listKeyboardFocus = true
+                activateSelectedMessageFromKeyboard()
+                return .handled
+            }
+            .overlay {
+                if listKeyboardFocus {
+                    RoundedRectangle(cornerRadius: BrevRadius.sm)
+                        .strokeBorder(theme.accent.color, lineWidth: 1.5)
+                        .padding(BrevSpacing.xxs)
+                        .allowsHitTesting(false)
+                }
+            }
+            .onChange(of: navigation.messageListFocusRequestID) { _, _ in
+                // Mailbox activation from the sidebar (Return / → on a
+                // leaf, or a click) hands the keyboard to this list.
+                listKeyboardFocus = true
+            }
+            #endif
         }
     }
 
@@ -1795,9 +1850,38 @@ public struct MessageListView: View {
     }
 
     private func selectMessage(_ header: MessageHeader) {
+        #if os(macOS)
+        // Pointer selection claims container focus too: the focused list is
+        // the one arrow keys drive, matching Apple Mail's ring-follows-focus.
+        listKeyboardFocus = true
+        #endif
         navigation.selectMessage(header, from: navigationHeaders(for: headers))
         onSelectMessage?(header)
     }
+
+    #if os(macOS)
+    /// Return activates the selected row like a click: drafts reopen in
+    /// the composer, multi-message threads expand, bulk mode toggles.
+    private func activateSelectedMessageFromKeyboard() {
+        guard let header = navigation.selectedHeader else { return }
+        if !navigation.bulkSelection.isEmpty {
+            toggleSelection(for: header)
+            return
+        }
+        if folder?.role == .drafts,
+           composeActions.openDraft(header, sourceID: sourceID) {
+            return
+        }
+        guard backend.groupsMessagesIntoThreads,
+              threadCount(for: header) > 1 else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            MessageListInlineExpansion.toggle(
+                threadID: header.threadID,
+                in: &expandedThreadIDs
+            )
+        }
+    }
+    #endif
 
     /// Rebuilds the per-thread message tally. Cheap O(n) pass run only when
     /// `headers` or `groupByThread` change — not per row, per render.
@@ -3312,6 +3396,15 @@ struct MailboxFilterMenu: View {
         } label: {
             menuLabel
         }
+        // Toolbar menus render their label as a template symbol, which drops
+        // `foregroundStyle`; the tint channel is the one that survives on macOS.
+        // On iOS the bar's default glyph color is already the accent tint, so
+        // the active state has to come from the filled-circle variant instead.
+        #if os(macOS)
+        .tint(activeFilterCount > 0 ? theme.accent.color : nil)
+        #else
+        .symbolVariant(activeFilterCount > 0 ? .circle.fill : .none)
+        #endif
         .accessibilityLabel(filterMenuAccessibilityLabel)
         .help(filterMenuAccessibilityLabel)
     }

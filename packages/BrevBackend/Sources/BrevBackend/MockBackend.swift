@@ -2607,10 +2607,17 @@ private actor Store {
             return nil
         }
         let existing = data.messagesByFolder[draftsFolderID] ?? []
-        let removed = existing.filter { $0.id == draftID }.map(\.id)
+        // Drafts are staged under the folder message id `draft-<Draft.id>`
+        // (or the draft's remoteID once saved), but callers discard by the
+        // draft's local id — match both forms so `discard(draftID:)` keeps
+        // the same local-id contract the other backends expose.
+        let candidateIDs = Set([draftID, "draft-\(draftID)"])
+        let removed = existing.filter { candidateIDs.contains($0.id) }.map(\.id)
         guard !removed.isEmpty else { return nil }
-        data.messagesByFolder[draftsFolderID] = existing.filter { $0.id != draftID }
-        data.messageBodies[draftID] = nil
+        data.messagesByFolder[draftsFolderID] = existing.filter { !candidateIDs.contains($0.id) }
+        for id in removed {
+            data.messageBodies[id] = nil
+        }
         return .messagesRemoved(folderID: draftsFolderID, messageIDs: removed)
     }
 

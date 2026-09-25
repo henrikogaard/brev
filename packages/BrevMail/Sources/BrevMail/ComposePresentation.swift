@@ -109,6 +109,7 @@ enum ComposeToolbarAction: Equatable, Sendable, Hashable {
     case saveDraft
     case scheduleSend
     case send
+    case discardDraft
     case moreActions
 
     var accessibilityLabel: String {
@@ -139,6 +140,8 @@ enum ComposeToolbarAction: Equatable, Sendable, Hashable {
             return String(localized: "Schedule send", bundle: .module)
         case .send:
             return String(localized: "Send", bundle: .module)
+        case .discardDraft:
+            return String(localized: "Discard Draft", bundle: .module)
         case .moreActions:
             return String(localized: "Compose actions", bundle: .module)
         }
@@ -262,7 +265,8 @@ enum ComposePresentation {
                     .security,
                     .aiWriter,
                     .saveDraft,
-                    .scheduleSend
+                    .scheduleSend,
+                    .discardDraft
                 ]
             )
         case .macOS:
@@ -278,7 +282,8 @@ enum ComposePresentation {
                     .editorAppearance,
                     .preview,
                     .saveDraft,
-                    .scheduleSend
+                    .scheduleSend,
+                    .discardDraft
                 ],
             )
         }

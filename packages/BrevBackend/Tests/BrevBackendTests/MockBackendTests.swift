@@ -577,6 +577,25 @@ import Testing
         #expect(updatedDrafts.totalCount == drafts.totalCount)
     }
 
+    @Test("discard removes a saved draft when called with its local id")
+    func discardByLocalIDRemovesSavedDraft() async throws {
+        let backend = MockBackend()
+        let drafts = try #require(await backend.folders().first(where: { $0.role == .drafts }))
+        let saved = try await backend.save(draft: Draft(
+            id: "local-discard",
+            subject: "Discard by local id",
+            htmlBody: "Body"
+        ))
+        // The composer discards by Draft.id — the staged folder message lives
+        // under `draft-<id>` / remoteID, so discard must resolve that mapping.
+        #expect(saved.remoteID == "draft-local-discard")
+
+        try await backend.discard(draftID: "local-discard")
+
+        let (headers, _) = try await backend.messages(in: drafts, pageToken: nil)
+        #expect(!headers.contains { $0.id == "draft-local-discard" })
+    }
+
     @Test("send removes a saved draft from Drafts")
     func sendRemovesSavedDraftFromDrafts() async throws {
         let backend = MockBackend()

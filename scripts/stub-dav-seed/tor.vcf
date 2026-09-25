@@ -1,0 +1,9 @@
+BEGIN:VCARD
+VERSION:3.0
+UID:tor-stub@brev.example
+N:Eide;Tor;;;
+FN:Tor Eide
+ORG:Harbour Logistics;Operations
+EMAIL;TYPE=WORK:tor.eide@harbour-logistics.example
+TEL;TYPE=WORK,VOICE:+47 91 22 44 66
+END:VCARD

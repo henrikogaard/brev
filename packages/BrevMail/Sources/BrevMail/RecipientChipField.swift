@@ -31,6 +31,8 @@ struct RecipientChipField: View {
     let onInputTextChanged: (String) -> Void
     let onSuggestionSelected: (RecipientAutocompleteSuggestion) -> Void
     @FocusState private var isFocused: Bool
+    /// Escape hides the suggestion list once; typing again reopens it.
+    @State private var suggestionsDismissed = false
 
     init(
         label: String,
@@ -91,6 +93,7 @@ struct RecipientChipField: View {
                     .frame(minWidth: 120)
                     .onSubmit { commitInput() }
                     .onChange(of: inputText) { _, newValue in
+                        suggestionsDismissed = false
                         if let last = newValue.last, last == "," || last == ";" || last == " " {
                             inputText = String(newValue.dropLast())
                             commitInput()
@@ -106,10 +109,20 @@ struct RecipientChipField: View {
                         if !focused { commitInput() }
                     }
                 #if os(macOS)
-                    .onExitCommand { commitInput() }
+                    // Escape dismisses open suggestions first; with no list
+                    // showing it cancels the half-typed text rather than
+                    // committing it as a chip.
+                    .onExitCommand {
+                        if !suggestions.isEmpty, !suggestionsDismissed {
+                            suggestionsDismissed = true
+                        } else {
+                            inputText = ""
+                            onInputTextChanged("")
+                        }
+                    }
                 #endif
             }
-            if isFocused, !suggestions.isEmpty {
+            if isFocused, !suggestions.isEmpty, !suggestionsDismissed {
                 RecipientSuggestionList(suggestions: suggestions) { suggestion in
                     selectSuggestion(suggestion)
                 }

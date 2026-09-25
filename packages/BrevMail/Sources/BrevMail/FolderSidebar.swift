@@ -78,6 +78,11 @@ public struct FolderSidebar: View {
     @AppStorage(SmartMailboxSettings.storageKey) private var smartMailboxData = Data()
     @State private var showsSmartViewSettings = false
     @State private var savedSearchEditorTarget: SavedSearchEditorTarget?
+    #if os(macOS)
+    /// Focus on the sidebar — while held, arrow keys drive the selection
+    /// through the visible destinations (Mail.app behavior).
+    @FocusState private var sidebarKeyboardFocus: Bool
+    #endif
     @Bindable private var navigation: MailNavigationState
     private let folders: [Folder]
     private let loadError: FolderLoadError?
@@ -212,21 +217,81 @@ public struct FolderSidebar: View {
                     .padding(.bottom, sidebarMetrics.sectionSpacing)
             }
             #endif
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
-                    if !sourceSections.isEmpty || !profiles.isEmpty {
-                        sourceTree
-                    } else if mailboxes.count > 1 {
-                        mailboxHeader
-                            .padding(.bottom, BrevSpacing.xs)
-                        outboxButton
-                        folderList(folders: folders, sourceID: nil, loadError: loadError)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    LazyVStack(alignment: .leading, spacing: sidebarMetrics.sectionSpacing) {
+                        if !sourceSections.isEmpty || !profiles.isEmpty {
+                            sourceTree
+                        } else if mailboxes.count > 1 {
+                            mailboxHeader
+                                .padding(.bottom, BrevSpacing.xs)
+                            outboxButton
+                            folderList(folders: folders, sourceID: nil, loadError: loadError)
+                        } else {
+                            outboxButton
+                            folderList(folders: folders, sourceID: nil, loadError: loadError)
+                        }
+                    }
+                    .padding(sidebarMetrics.sidebarPadding)
+                }
+                #if os(macOS)
+                // focusSection puts the sidebar in the Tab key loop so the
+                // keyboard focus ring below can actually engage.
+                .focusSection()
+                .focusable()
+                .focused($sidebarKeyboardFocus)
+                .focusEffectDisabled()
+                .onKeyPress(.upArrow) {
+                    // Arrow input may arrive via a focused child — claim
+                    // container focus so the ring reflects keyboard use.
+                    sidebarKeyboardFocus = true
+                    moveSidebarKeyboardSelection(by: -1)
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    sidebarKeyboardFocus = true
+                    moveSidebarKeyboardSelection(by: 1)
+                    return .handled
+                }
+                .onKeyPress(.leftArrow) {
+                    sidebarKeyboardFocus = true
+                    sidebarKeyboardCollapseOrAscend()
+                    return .handled
+                }
+                .onKeyPress(.rightArrow) {
+                    sidebarKeyboardFocus = true
+                    sidebarKeyboardExpandSelection()
+                    return .handled
+                }
+                .onKeyPress(.return) {
+                    // Return opens the highlighted destination's message
+                    // list: Outbox activates its own presentation, every
+                    // other destination hands keyboard focus to the list
+                    // column (Apple Mail's mailbox-activation hand-off).
+                    if sidebarKeyboardSelectionItem == .outbox {
+                        if let item = sidebarKeyboardSelectionItem {
+                            activateSidebarKeyboardItem(item)
+                        }
                     } else {
-                        outboxButton
-                        folderList(folders: folders, sourceID: nil, loadError: loadError)
+                        onOpenMessages?()
+                    }
+                    return .handled
+                }
+                // The suppressed system ring is replaced by this accent
+                // outline so the focused surface stays visible.
+                .overlay {
+                    if sidebarKeyboardFocus {
+                        RoundedRectangle(cornerRadius: BrevRadius.sm)
+                            .strokeBorder(theme.accent.color, lineWidth: 1.5)
+                            .padding(BrevSpacing.xxs)
+                            .allowsHitTesting(false)
                     }
                 }
-                .padding(sidebarMetrics.sidebarPadding)
+                .onChange(of: sidebarKeyboardSelectionItem) { _, item in
+                    guard let item else { return }
+                    proxy.scrollTo(item)
+                }
+                #endif
             }
         }
         .scrollContentBackground(.hidden)
@@ -476,21 +541,21 @@ public struct FolderSidebar: View {
             .frame(minHeight: sidebarMetrics.profilePickerMinimumHeight)
             .contentShape(Rectangle())
             #else
-            HStack(spacing: profileContentSpacing) {
+            HStack(spacing: BrevSpacing.xxs) {
                 Text(verbatim: profileHeaderTitle)
-                    .brevFont(.body)
+                    .brevFont(.caption)
                     .fontWeight(.semibold)
-                    .foregroundStyle(theme.textPrimary.color)
+                    .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
                 Image(systemName: "chevron.down")
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .frame(width: sidebarMetrics.disclosureHitSize)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(theme.textTertiary.color)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.vertical, BrevSpacing.xs)
-            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.profilePickerMinimumHeight, alignment: .leading)
+            .padding(.leading, sidebarMetrics.folderRowBaseLeadingPadding)
+            .padding(.trailing, sidebarMetrics.sourceHeaderHorizontalPadding)
+            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             #endif
         }
@@ -512,14 +577,18 @@ public struct FolderSidebar: View {
         } label: {
             sidebarActionRow(title: String(localized: "All Inboxes", bundle: .module),
                              isSelected: navigation.isUnifiedInboxSelected, alignment: .sourceHeader) {
-                Image(systemName: "tray.full")
+                Image(systemName: "tray.2")
                     .foregroundStyle(theme.textSecondary.color)
+                    .font(.body)
                     .frame(width: sidebarMetrics.iconWidth)
             } trailing: {
                 unreadBadge(unifiedUnreadCount)
             }
         }
         .buttonStyle(.plain)
+        #if os(macOS)
+            .id(SidebarKeyboardItem.unifiedInbox)
+        #endif
     }
 
     @ViewBuilder
@@ -536,6 +605,7 @@ public struct FolderSidebar: View {
         return Button {
             expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
         } label: {
+            #if os(iOS)
             HStack(spacing: BrevSpacing.xs) {
                 Text(verbatim: section.title)
                     .brevFont(.caption)
@@ -560,6 +630,32 @@ public struct FolderSidebar: View {
             .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
+            #else
+            HStack(spacing: BrevSpacing.xxs) {
+                Text(verbatim: section.title)
+                    .brevFont(.caption)
+                    .fontWeight(.semibold)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(theme.textTertiary.color)
+                    .accessibilityHidden(true)
+                Spacer(minLength: BrevSpacing.sm)
+                if section.loadError != nil {
+                    Image(systemName: "exclamationmark.triangle")
+                        .foregroundStyle(theme.warning.color)
+                } else if !isExpanded {
+                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
+                }
+            }
+            .foregroundStyle(theme.textSecondary.color)
+            .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .contentShape(Rectangle())
+            #endif
         }
         .buttonStyle(.plain)
         .help("\(section.title)\n\(section.subtitle)")
@@ -635,6 +731,9 @@ public struct FolderSidebar: View {
             }
             .buttonStyle(.plain)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+            #if os(macOS)
+                .id(SidebarKeyboardItem.outbox)
+            #endif
         }
     }
 
@@ -652,6 +751,7 @@ public struct FolderSidebar: View {
                     hasSelectedSmartView: hasSelectedSmartView
                 )
             } label: {
+                #if os(iOS)
                 HStack(spacing: profileContentSpacing) {
                     Text("Smart Views", bundle: .module)
                         .brevFont(.caption)
@@ -662,6 +762,19 @@ public struct FolderSidebar: View {
                         .foregroundStyle(theme.textTertiary.color)
                         .accessibilityHidden(true)
                 }
+                #else
+                HStack(spacing: BrevSpacing.xxs) {
+                    Text("Smart Views", bundle: .module)
+                        .brevFont(.caption)
+                        .fontWeight(.semibold)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                    Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(theme.textTertiary.color)
+                        .accessibilityHidden(true)
+                }
+                #endif
             }
             .buttonStyle(.plain)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.disclosureHitSize)
@@ -700,7 +813,7 @@ public struct FolderSidebar: View {
             .help(String(localized: "Smart View Actions", bundle: .module))
         }
         #if os(macOS)
-        .padding(.leading, sidebarMetrics.sourceHeaderHorizontalPadding)
+        .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
         .frame(minHeight: sidebarMetrics.folderRowMinimumHeight)
         #else
@@ -773,6 +886,9 @@ public struct FolderSidebar: View {
         }
         .buttonStyle(.plain)
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+        #if os(macOS)
+            .id(SidebarKeyboardItem.smartView(smartView.id))
+        #endif
     }
 
     @ViewBuilder
@@ -808,25 +924,28 @@ public struct FolderSidebar: View {
             }
             .buttonStyle(.plain)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
-            .contextMenu {
-                Button {
-                    if let mailbox = settings.mailboxes.first(where: { $0.id == row.id }) {
-                        savedSearchEditorTarget = .edit(mailbox)
+            #if os(macOS)
+                .id(SidebarKeyboardItem.savedSearch(row.id))
+            #endif
+                .contextMenu {
+                    Button {
+                        if let mailbox = settings.mailboxes.first(where: { $0.id == row.id }) {
+                            savedSearchEditorTarget = .edit(mailbox)
+                        }
+                    } label: {
+                        Label(String(localized: "Edit", bundle: .module), systemImage: "pencil")
                     }
-                } label: {
-                    Label(String(localized: "Edit", bundle: .module), systemImage: "pencil")
+                    Button {
+                        toggleCustomSmartView(id: row.id)
+                    } label: {
+                        Label(String(localized: "Hide", bundle: .module), systemImage: "eye.slash")
+                    }
+                    Button(role: .destructive) {
+                        deleteSavedSearch(id: row.id)
+                    } label: {
+                        Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
+                    }
                 }
-                Button {
-                    toggleCustomSmartView(id: row.id)
-                } label: {
-                    Label(String(localized: "Hide", bundle: .module), systemImage: "eye.slash")
-                }
-                Button(role: .destructive) {
-                    deleteSavedSearch(id: row.id)
-                } label: {
-                    Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
-                }
-            }
         }
     }
 
@@ -862,6 +981,9 @@ public struct FolderSidebar: View {
         }
         .buttonStyle(.plain)
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
+        #if os(macOS)
+            .id(SidebarKeyboardItem.allAttachments)
+        #endif
     }
 
     private func toggleCustomSmartView(id: SmartMailbox.ID) {
@@ -987,6 +1109,10 @@ public struct FolderSidebar: View {
                         RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
                             .frame(width: 2).padding(.vertical, BrevSpacing.xs)
                     }
+                #endif
+            } else {
+                #if os(macOS)
+                SidebarRowHoverFill()
                 #endif
             }
         }
@@ -1146,6 +1272,24 @@ public struct FolderSidebar: View {
         var id: SourceFolderID { SourceFolderID(sourceID: sourceID, folderID: row.folder.id) }
     }
 
+    #if os(macOS)
+    /// Pointer-hover fill for sidebar rows — invisible until the pointer
+    /// enters, matching the message list's hover feedback. Selection
+    /// renders instead, so this only shows on unselected rows.
+    private struct SidebarRowHoverFill: View {
+        @Environment(\.brevTheme) private var theme
+        @State private var isHovered = false
+
+        var body: some View {
+            RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
+                .fill(theme.bgSecondary.color)
+                .opacity(isHovered ? 1 : 0)
+                .onHover { isHovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: isHovered)
+        }
+    }
+    #endif
+
     private func folderRow(
         _ row: FolderSidebarRow,
         sourceID: MailSourceID?
@@ -1202,15 +1346,29 @@ public struct FolderSidebar: View {
                             .frame(width: 2).padding(.vertical, BrevSpacing.xs)
                     }
                 #endif
+            } else {
+                #if os(macOS)
+                SidebarRowHoverFill()
+                #endif
             }
         }
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
-        .dropDestination(for: String.self) { representations, _ in
-            handleDrop(representations, on: folder, sourceID: sourceID)
-        }
-        .contextMenu {
-            folderContextMenu(folder: folder, sourceID: sourceID)
-        }
+        #if os(macOS)
+            .id(
+                sourceID
+                    .map {
+                        SidebarKeyboardItem.folder(
+                            SourceFolderID(sourceID: $0, folderID: folder.id)
+                        )
+                    } ?? .rootFolder(folder.id)
+            )
+        #endif
+            .dropDestination(for: String.self) { representations, _ in
+                handleDrop(representations, on: folder, sourceID: sourceID)
+            }
+            .contextMenu {
+                folderContextMenu(folder: folder, sourceID: sourceID)
+            }
     }
 
     @ViewBuilder
@@ -1225,7 +1383,7 @@ public struct FolderSidebar: View {
                 toggleFolderDisclosure(row.folder.id, sourceID: sourceID)
             } label: {
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(theme.textTertiary.color)
                     .frame(
                         width: sidebarMetrics.disclosureHitSize,
@@ -1622,6 +1780,239 @@ public struct FolderSidebar: View {
         case .custom: return "folder"
         }
     }
+
+    #if os(macOS)
+
+    // MARK: - macOS keyboard navigation
+
+    /// A selectable sidebar destination in paint order. Section headers
+    /// and disclosure controls are skipped — arrows move between the
+    /// destinations themselves, like Mail.app's mailbox list.
+    private enum SidebarKeyboardItem: Hashable {
+        case unifiedInbox
+        case smartView(String)
+        case allAttachments
+        case savedSearch(SmartMailbox.ID)
+        case outbox
+        case folder(SourceFolderID)
+        case rootFolder(Folder.ID)
+    }
+
+    /// A keyboard-reachable destination plus its row, when it renders a
+    /// folder — depth and child state drive the left/right arrows.
+    private struct SidebarKeyboardTarget {
+        let item: SidebarKeyboardItem
+        let row: FolderSidebarRow?
+        let sourceID: MailSourceID?
+    }
+
+    /// Visible destinations in paint order — mirrors the rows the body
+    /// lays out so arrow keys walk the same sequence the eye scans.
+    private var sidebarKeyboardTargets: [SidebarKeyboardTarget] {
+        var targets: [SidebarKeyboardTarget] = []
+        if sourceSections.count > 1 {
+            targets.append(
+                SidebarKeyboardTarget(item: .unifiedInbox, row: nil, sourceID: nil)
+            )
+        }
+        if showsSmartViews, smartViewSettings.showInSidebar,
+           FolderSidebarSmartViewPresentation.isExpanded(
+               userExpanded: smartViewsUserExpanded,
+               hasSelectedSmartView: hasSelectedSmartView
+           ) {
+            for entry in smartViewSettings.orderedEntries.filter(\.isEnabled) {
+                if let builtInID = entry.builtInID {
+                    let item: SidebarKeyboardItem =
+                        builtInID == Self.allAttachmentsSmartViewVisibilityID
+                            ? .allAttachments
+                            : .smartView(builtInID)
+                    targets.append(
+                        SidebarKeyboardTarget(item: item, row: nil, sourceID: nil)
+                    )
+                } else if let mailbox = entry.mailbox {
+                    for row in SavedSearchSidebarPresentation.rows(from: [mailbox]) {
+                        targets.append(
+                            SidebarKeyboardTarget(
+                                item: .savedSearch(row.id),
+                                row: nil,
+                                sourceID: nil
+                            )
+                        )
+                    }
+                }
+            }
+        }
+        if outboxPendingCount > 0 {
+            targets.append(
+                SidebarKeyboardTarget(item: .outbox, row: nil, sourceID: nil)
+            )
+        }
+        if sourceSections.isEmpty {
+            // Outside the source tree the folder list always renders;
+            // inside it the list only shows for the all-mailboxes profile.
+            let foldersShown = profiles.isEmpty
+                || normalizedActiveProfileID == MailProfile.allMailboxesID
+            if foldersShown {
+                targets += sidebarKeyboardFolderTargets(
+                    folders: folders,
+                    sourceID: nil
+                )
+            }
+        } else {
+            for section in sourceSections
+                where expandedSourceIDs.contains(section.id) {
+                targets += sidebarKeyboardFolderTargets(
+                    folders: section.folders,
+                    sourceID: section.id
+                )
+            }
+        }
+        return targets
+    }
+
+    private func sidebarKeyboardFolderTargets(
+        folders: [Folder],
+        sourceID: MailSourceID?
+    ) -> [SidebarKeyboardTarget] {
+        FolderSidebarPresentation.visibleRows(
+            folders: folders,
+            visibility: effectiveFolderVisibility(for: sourceID),
+            collapsedFolderIDs: collapsedFolderIDs(for: sourceID)
+        ).map { row in
+            SidebarKeyboardTarget(
+                item: sourceID
+                    .map {
+                        SidebarKeyboardItem.folder(
+                            SourceFolderID(sourceID: $0, folderID: row.folder.id)
+                        )
+                    } ?? .rootFolder(row.folder.id),
+                row: row,
+                sourceID: sourceID
+            )
+        }
+    }
+
+    /// The keyboard item matching the current navigation selection, when
+    /// the selection is one of the reachable destinations.
+    private var sidebarKeyboardSelectionItem: SidebarKeyboardItem? {
+        if navigation.isUnifiedInboxSelected { return .unifiedInbox }
+        if navigation.isAllAttachmentsSelected { return .allAttachments }
+        if let searchID = navigation.selectedSavedSearchID {
+            return .savedSearch(searchID)
+        }
+        if let smartView = MailboxSmartView.builtIns
+            .first(where: { $0.isSelected(in: navigation) }) {
+            return .smartView(smartView.id)
+        }
+        if let folderID = navigation.selectedFolderID {
+            if let sourceID = navigation.selectedSourceID {
+                return .folder(
+                    SourceFolderID(sourceID: sourceID, folderID: folderID)
+                )
+            }
+            return .rootFolder(folderID)
+        }
+        return nil
+    }
+
+    private func moveSidebarKeyboardSelection(by offset: Int) {
+        let targets = sidebarKeyboardTargets
+        guard !targets.isEmpty else { return }
+        let current = sidebarKeyboardSelectionItem
+            .flatMap { item in
+                targets.firstIndex { $0.item == item }
+            }
+        let index: Int
+        if let current {
+            index = min(max(current + offset, 0), targets.count - 1)
+        } else {
+            index = offset > 0 ? 0 : targets.count - 1
+        }
+        activateSidebarKeyboardItem(targets[index].item)
+    }
+
+    /// Left arrow: collapse the expanded folder under the selection, or
+    /// jump selection up to its parent on a leaf/collapsed folder.
+    private func sidebarKeyboardCollapseOrAscend() {
+        let targets = sidebarKeyboardTargets
+        guard let index = targets.firstIndex(
+            where: { $0.item == sidebarKeyboardSelectionItem }
+        ),
+            let row = targets[index].row
+        else { return }
+        if row.hasChildren,
+           isFolderExpanded(row.folder.id, sourceID: targets[index].sourceID) {
+            toggleFolderDisclosure(
+                row.folder.id,
+                sourceID: targets[index].sourceID
+            )
+        } else if row.depth > 0,
+                  let parent = targets[..<index].last(
+                      where: { $0.row?.depth == row.depth - 1 }
+                  ) {
+            activateSidebarKeyboardItem(parent.item)
+        }
+    }
+
+    /// Right arrow: expand the collapsed folder under the selection, or
+    /// descend selection into its first child when already expanded.
+    private func sidebarKeyboardExpandSelection() {
+        let targets = sidebarKeyboardTargets
+        guard let index = targets.firstIndex(
+            where: { $0.item == sidebarKeyboardSelectionItem }
+        ) else { return }
+        guard let row = targets[index].row,
+              row.hasChildren
+        else {
+            // → on a leaf drills into the message list for the selected
+            // destination — the Finder column-view drill gesture. Outbox
+            // keeps its dedicated presentation instead.
+            if targets[index].item == .outbox {
+                activateSidebarKeyboardItem(targets[index].item)
+            } else {
+                onOpenMessages?()
+            }
+            return
+        }
+        if isFolderExpanded(row.folder.id, sourceID: targets[index].sourceID) {
+            if let child = targets[(index + 1)...].first(
+                where: { $0.row?.depth == row.depth + 1 }
+            ) {
+                activateSidebarKeyboardItem(child.item)
+            }
+        } else {
+            toggleFolderDisclosure(
+                row.folder.id,
+                sourceID: targets[index].sourceID
+            )
+        }
+    }
+
+    private func activateSidebarKeyboardItem(_ item: SidebarKeyboardItem) {
+        switch item {
+        case .unifiedInbox:
+            activateDestination { navigation.selectUnifiedInbox() }
+        case .smartView(let builtInID):
+            if let smartView = MailboxSmartView.builtIns
+                .first(where: { $0.id == builtInID }) {
+                activateDestination { smartView.select(in: navigation) }
+            }
+        case .allAttachments:
+            activateDestination { navigation.selectAllAttachmentsSmartView() }
+        case .savedSearch(let id):
+            activateDestination { navigation.selectSavedSearch(id: id) }
+        case .outbox:
+            onOpenOutbox?()
+        case .folder, .rootFolder:
+            if let target = sidebarKeyboardTargets.first(
+                where: { $0.item == item }
+            ),
+                let folder = target.row?.folder {
+                select(folder, in: target.sourceID)
+            }
+        }
+    }
+    #endif
 }
 
 private extension View {

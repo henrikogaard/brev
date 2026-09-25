@@ -146,3 +146,29 @@ public actor CalDAVKeychainCredentialStore: CalDAVCredentialStore {
         }
     }
 }
+
+/// Non-persistent `CalDAVCredentialStore` for demo/testing sessions.
+///
+/// Demo mode wires this in place of the Keychain store so stub DAV
+/// sources never prompt for the real login Keychain. Values live only
+/// for the lifetime of the session.
+public actor InMemoryCalDAVCredentialStore: CalDAVCredentialStore {
+    private var credentials: [String: CalDAVCredential] = [:]
+
+    public init() {}
+
+    public func credential(for account: String) async throws -> CalDAVCredential? {
+        credentials[account]
+    }
+
+    public func setCredential(
+        _ credential: CalDAVCredential,
+        for account: String
+    ) async throws {
+        credentials[account] = credential
+    }
+
+    public func deleteCredential(for account: String) async throws {
+        credentials[account] = nil
+    }
+}

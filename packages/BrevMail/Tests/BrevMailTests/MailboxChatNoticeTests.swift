@@ -77,8 +77,8 @@ struct MailboxChatNoticeTests {
         #expect(!symbol.contains("circle"))
     }
 
-    @Test("a blocked composer says it is blocked instead of inviting a question")
-    func aBlockedComposerSaysItIsBlocked() {
+    @Test("a blocked composer names the unblock action instead of inviting a question")
+    func aBlockedComposerNamesTheUnblockAction() {
         let inviting = MailboxChatComposerPolicy.placeholder(
             subject: "all folders",
             disabledReason: nil
@@ -91,7 +91,7 @@ struct MailboxChatNoticeTests {
                 disabledReason: reason
             )
             #expect(blocked != inviting)
-            #expect(blocked == "Unavailable")
+            #expect(blocked != "Unavailable")
         }
     }
 }

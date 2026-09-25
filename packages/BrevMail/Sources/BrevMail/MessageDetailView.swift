@@ -79,6 +79,9 @@ public struct MessageDetailView: View {
     @State private var messageBody: MessageBody?
     @State private var messageSecurityState: MessageSecurityState = .none
     @State private var renderedHTML: AttributedString?
+    /// `true` once the current message's HTML web view has finished its first
+    /// paint — drives the skeleton that fills the render gap on open.
+    @State private var htmlBodyPainted = false
     @State private var isLoading = false
     @State private var errorMessage: String?
     @State private var bodyLoadFallbackNotice: String?
@@ -2053,10 +2056,7 @@ public struct MessageDetailView: View {
                         state: remoteContentState ?? messageRemoteContentState(for: html, header: header)
                     )
                     if let plainText {
-                        Text(plainText)
-                            .font(messageBodyFont)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .textSelection(.enabled)
+                        quotedPlainBody(plainText)
                     } else {
                         Text(htmlFallback(html))
                             .font(messageBodyFont)
@@ -2078,10 +2078,7 @@ public struct MessageDetailView: View {
                         .textSelection(.enabled)
                 }
             case .plainText(let text):
-                Text(text)
-                    .font(messageBodyFont)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .textSelection(.enabled)
+                quotedPlainBody(text)
             case .htmlFallback(let html):
                 Text(htmlFallback(html))
                     .font(messageBodyFont)
@@ -2091,6 +2088,43 @@ public struct MessageDetailView: View {
                 Text("No body content.", bundle: .module)
                     .font(messageBodyFont)
                     .foregroundStyle(theme.textTertiary.color)
+            }
+        }
+    }
+
+    /// Plain-text body with `>` quote runs rendered as a blockquote-style
+    /// bar + secondary text, matching how rich HTML styles the same content
+    /// instead of showing literal angle brackets.
+    @ViewBuilder
+    private func quotedPlainBody(_ text: String) -> some View {
+        let segments = PlainBodyQuoteSegmentation.segments(of: text)
+        if segments.count == 1, case .text(let only) = segments[0] {
+            Text(only)
+                .font(messageBodyFont)
+                .foregroundStyle(theme.textPrimary.color)
+                .textSelection(.enabled)
+        } else {
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                ForEach(segments.indices, id: \.self) { index in
+                    switch segments[index] {
+                    case .text(let run):
+                        Text(run)
+                            .font(messageBodyFont)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .textSelection(.enabled)
+                    case .quote(let run):
+                        HStack(spacing: BrevSpacing.sm) {
+                            RoundedRectangle(cornerRadius: 1.5)
+                                .fill(theme.textTertiary.color)
+                                .frame(width: 3)
+                            Text(run)
+                                .font(messageBodyFont)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .textSelection(.enabled)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
+                }
             }
         }
     }
@@ -2115,20 +2149,29 @@ public struct MessageDetailView: View {
                     state: remoteContentState
                 )
             }
-            HTMLBodyWebView(
-                store: htmlWebViewStore,
-                html: html,
-                allowRemoteContent: remoteContentState.allowsRemoteContent,
-                fontFamily: mailboxFontFamily,
-                textSize: mailboxTextSize,
-                renderingMode: htmlRenderingMode(for: header),
-                onOpenURL: {
-                    handleMessageLink($0, analysis: messageSecurityAnalysis(for: header))
-                },
-                onDidFinishRendering: {
-                    finishMessageOpenTiming(messageID: header.id, renderer: .webView)
+            ZStack(alignment: .topLeading) {
+                // The web view's document is transparent until its first
+                // paint — fill that gap instead of flashing an empty card.
+                if !htmlBodyPainted {
+                    BrevSkeletonText(lineCount: 6)
+                        .padding(.vertical, BrevSpacing.sm)
                 }
-            )
+                HTMLBodyWebView(
+                    store: htmlWebViewStore,
+                    html: html,
+                    allowRemoteContent: remoteContentState.allowsRemoteContent,
+                    fontFamily: mailboxFontFamily,
+                    textSize: mailboxTextSize,
+                    renderingMode: htmlRenderingMode(for: header),
+                    onOpenURL: {
+                        handleMessageLink($0, analysis: messageSecurityAnalysis(for: header))
+                    },
+                    onDidFinishRendering: {
+                        htmlBodyPainted = true
+                        finishMessageOpenTiming(messageID: header.id, renderer: .webView)
+                    }
+                )
+            }
         }
     }
 
@@ -2324,6 +2367,7 @@ public struct MessageDetailView: View {
         activeInviteResponseRequest = nil
         beginMessageOpenTiming(messageID: header.id)
         resetState(for: .messageLoadStarted)
+        htmlBodyPainted = false
         if let previewText = MessageDetailPresentation.previewFallbackPlainText(header.snippet) {
             messageBody = MessageBody(messageID: header.id, plainText: previewText)
         }

@@ -35,12 +35,18 @@ enum ComposeReplyFormatter {
         return "Re: \(displaySubject(trimmed))"
     }
 
+    /// First line of the quoted original block — also the marker the
+    /// compose quote-edit guard uses to locate the read-only region.
+    static func quoteMarker(for header: MessageHeader) -> String {
+        "On \(format(header.date)), \(format(header.from)) wrote:"
+    }
+
     static func body(
         for header: MessageHeader,
         quoteText: String? = nil,
         placement: ComposeReplyQuotePlacement = .belowReply
     ) -> String {
-        let quoteHeader = "On \(format(header.date)), \(format(header.from)) wrote:"
+        let quoteHeader = quoteMarker(for: header)
         let quotedSnippet = quoteLines(from: quoteText ?? header.snippet)
 
         switch placement {

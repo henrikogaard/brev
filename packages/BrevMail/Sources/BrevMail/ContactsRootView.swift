@@ -206,6 +206,8 @@ public struct ContactsRootView: View {
                 ))
             )
             .foregroundStyle(theme.textSecondary.color)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(theme.bgPrimary.color)
         }
     }
 

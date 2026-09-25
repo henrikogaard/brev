@@ -1,0 +1,12 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Brev//Stub DAV Seed//EN
+BEGIN:VTODO
+UID:task-harbour-data-stub@brev.example
+DTSTAMP:20260920T080000Z
+SUMMARY:harbour-data — verify post-merge state
+STATUS:NEEDS-ACTION
+DUE:20260926T120000Z
+DESCRIPTION:Confirm the berth schema migration applied cleanly on staging.
+END:VTODO
+END:VCALENDAR

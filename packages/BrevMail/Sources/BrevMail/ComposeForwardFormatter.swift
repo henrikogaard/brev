@@ -14,6 +14,10 @@ import BrevBackend
 import Foundation
 
 enum ComposeForwardFormatter {
+    /// First line of the quoted original block — also the marker the
+    /// compose quote-edit guard uses to locate the read-only region.
+    static let quoteMarker = "---------- Forwarded message ----------"
+
     static func subject(for original: String) -> String {
         let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
         if trimmed.lowercased().hasPrefix("fwd:") { return trimmed }
@@ -27,7 +31,7 @@ enum ComposeForwardFormatter {
         var lines = [
             "",
             "",
-            "---------- Forwarded message ----------",
+            quoteMarker,
             "From: \(format(header.from))",
             "Date: \(format(header.date))",
             "Subject: \(displaySubject(header.subject))"

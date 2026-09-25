@@ -38,6 +38,9 @@ struct ComposeBodyEditor: View {
     /// Reports whether a file drag is currently hovering the body, so the parent
     /// can show the same drop highlight it uses for the rest of the window.
     var onFileDragTargetChanged: ((Bool) -> Void)?
+    /// Read-only quoted-original region of the body (replies/forwards); the
+    /// platform editor refuses text changes landing inside it.
+    var quoteProtection: ComposeQuoteProtection?
 
     var body: some View {
         PlatformComposeBodyEditor(
@@ -55,7 +58,8 @@ struct ComposeBodyEditor: View {
             onRequestLinkSheet: onRequestLinkSheet,
             iosRichTextTargetBox: iosRichTextTargetBox,
             onDropFileURLs: onDropFileURLs,
-            onFileDragTargetChanged: onFileDragTargetChanged
+            onFileDragTargetChanged: onFileDragTargetChanged,
+            quoteProtection: quoteProtection
         )
     }
 }
@@ -261,6 +265,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     var iosRichTextTargetBox: ComposeIOSRichTextTargetBox?
     var onDropFileURLs: (([URL]) -> Void)?
     var onFileDragTargetChanged: ((Bool) -> Void)?
+    var quoteProtection: ComposeQuoteProtection?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -332,6 +337,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         // Keep callbacks in sync across SwiftUI re-renders.
         context.coordinator.inlineImageRegistry = inlineImageRegistry
         context.coordinator.onRequestLinkSheet = onRequestLinkSheet
+        context.coordinator.quoteProtection = quoteProtection
         context.coordinator.attachHTMLPublicationFlushBox(htmlPublicationFlushBox)
         textView.onDropFileURLs = onDropFileURLs
         textView.onFileDragTargetChanged = onFileDragTargetChanged
@@ -383,6 +389,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         /// Callback to request the link insertion sheet from the parent view.
         var onRequestLinkSheet: ((ComposeLinkSheetInput) -> Void)?
         var htmlPublicationFlushBox: ComposeHTMLPublicationFlushBox?
+        /// Read-only quoted-original region; edits inside it are refused.
+        var quoteProtection: ComposeQuoteProtection?
         private lazy var htmlPublicationController = ComposeHTMLPublicationController<NSAttributedString>(
             serialize: { ComposeRichTextHTMLSerializer.html(from: $0) },
             publish: { [weak self] html in self?.richHTML = html }
@@ -422,6 +430,19 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         }
 
         // MARK: NSTextViewDelegate
+
+        func textView(
+            _ textView: NSTextView,
+            shouldChangeTextIn affectedCharRange: NSRange,
+            replacementString: String?
+        ) -> Bool {
+            guard let storage = textView.textStorage else { return true }
+            return ComposeQuoteEditGuard.allows(
+                changeRange: affectedCharRange,
+                in: storage.mutableString,
+                protection: quoteProtection
+            )
+        }
 
         func textDidChange(_ notification: Notification) {
             guard !isUpdatingFromSwiftUI, let textView = notification.object as? NSTextView else {
@@ -784,6 +805,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     /// Unused on iOS: the SwiftUI drop target in `ComposeView` handles drops.
     var onDropFileURLs: (([URL]) -> Void)?
     var onFileDragTargetChanged: ((Bool) -> Void)?
+    var quoteProtection: ComposeQuoteProtection?
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }
 
@@ -820,6 +842,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         context.coordinator.attachHTMLPublicationFlushBox(htmlPublicationFlushBox)
         context.coordinator.targetBox = iosRichTextTargetBox
         iosRichTextTargetBox?.target = context.coordinator
+        context.coordinator.quoteProtection = quoteProtection
         context.coordinator.publishRichHTML(from: textView)
         context.coordinator.updateSelection(from: textView)
         return textView
@@ -828,6 +851,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     func updateUIView(_ textView: UITextView, context: Context) {
         context.coordinator.isUpdatingFromSwiftUI = true
         context.coordinator.isRichText = isRichText
+        context.coordinator.quoteProtection = quoteProtection
         context.coordinator.inlineImageRegistry = inlineImageRegistry
         context.coordinator.onRequestLinkSheet = onRequestLinkSheet
         context.coordinator.targetBox = iosRichTextTargetBox
@@ -887,6 +911,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         var inlineImageRegistry: ComposeInlineImageRegistry?
         var onRequestLinkSheet: ((ComposeLinkSheetInput) -> Void)?
         var htmlPublicationFlushBox: ComposeHTMLPublicationFlushBox?
+        /// Read-only quoted-original region; edits inside it are refused.
+        var quoteProtection: ComposeQuoteProtection?
         private lazy var htmlPublicationController = ComposeHTMLPublicationController<NSAttributedString>(
             serialize: { ComposeRichTextHTMLSerializer.html(from: $0) },
             publish: { [weak self] html in self?.richHTML = html }
@@ -927,6 +953,18 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
                 publishRichHTML(from: textView)
             }
             htmlPublicationController.flush()
+        }
+
+        func textView(
+            _ textView: UITextView,
+            shouldChangeTextIn range: NSRange,
+            replacementText: String
+        ) -> Bool {
+            ComposeQuoteEditGuard.allows(
+                changeRange: range,
+                in: textView.textStorage.mutableString,
+                protection: quoteProtection
+            )
         }
 
         func textViewDidChange(_ textView: UITextView) {

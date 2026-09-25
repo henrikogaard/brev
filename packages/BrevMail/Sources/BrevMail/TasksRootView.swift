@@ -219,6 +219,8 @@ public struct TasksRootView: View {
                 ))
             )
             .foregroundStyle(theme.textSecondary.color)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(theme.bgPrimary.color)
         }
     }
 

@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Brev//Stub DAV Seed//EN
+BEGIN:VEVENT
+UID:evt-standup-stub@brev.example
+DTSTAMP:20260920T080000Z
+DTSTART:20260924T073000Z
+DTEND:20260924T075000Z
+SUMMARY:Harbour Data — daily standup
+LOCATION:Video call
+DESCRIPTION:Daily sync for the harbour-data migration team.
+END:VEVENT
+END:VCALENDAR

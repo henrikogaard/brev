@@ -171,7 +171,8 @@ struct ComposePresentationTests {
             .security,
             .aiWriter,
             .saveDraft,
-            .scheduleSend
+            .scheduleSend,
+            .discardDraft
         ])
         #expect(layout.moreActionsAccessibilityLabel == "Compose actions")
         #expect(layout.moreActionsAccessibilityValue == [
@@ -182,7 +183,8 @@ struct ComposePresentationTests {
             "Message Security",
             "AI Writer",
             "Save Draft",
-            "Schedule send"
+            "Schedule send",
+            "Discard Draft"
         ].joined(separator: ", "))
     }
 
@@ -211,7 +213,8 @@ struct ComposePresentationTests {
             .editorAppearance,
             .preview,
             .saveDraft,
-            .scheduleSend
+            .scheduleSend,
+            .discardDraft
         ])
     }
 

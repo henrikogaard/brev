@@ -43,6 +43,44 @@ struct RecentRecipientStoreTests {
         #expect(store.allRecipients().map(\.email) == ["grace@example.org", "ada@example.org"])
     }
 
+    @Test("malformed addresses are rejected on write and filtered on read")
+    func malformedAddressesAreRejectedOnWriteAndFilteredOnRead() throws {
+        let defaults = try makeDefaults()
+        let store = RecentRecipientStore(defaults: defaults)
+        let date = Date(timeIntervalSince1970: 1_700_000_000)
+
+        store.record([
+            RecentRecipientObservation(
+                accountID: "personal",
+                displayName: "Ingrid",
+                email: "ingrid.halvorsen@acme.examplepost-merge",
+                date: date
+            ),
+            RecentRecipientObservation(
+                accountID: "personal",
+                displayName: "Valid Sender",
+                email: "valid@example.org",
+                date: date
+            )
+        ])
+
+        #expect(store.allRecipients().map(\.email) == ["valid@example.org"])
+        #expect(store.recipients(matching: "ingrid", accountID: "personal").isEmpty)
+
+        // Legacy corrupted records already persisted before validation also
+        // disappear from suggestion and management surfaces.
+        let legacy = RecentRecipient(
+            accountID: "personal",
+            displayName: "Polluted",
+            email: "ingrid.halvorsen@acme.examplepost-merge",
+            lastCorrespondenceAt: date
+        )
+        let data = try JSONEncoder().encode([legacy])
+        defaults.set(data, forKey: "compose.recentRecipients.v1")
+        #expect(store.allRecipients().isEmpty)
+        #expect(store.recipients(matching: "ingrid", accountID: "personal").isEmpty)
+    }
+
     @Test("newer correspondence updates the local record without duplicating it")
     func newerCorrespondenceUpdatesTheLocalRecordWithoutDuplicatingIt() throws {
         let defaults = try makeDefaults()

@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Brev//Stub DAV Seed//EN
+BEGIN:VEVENT
+UID:evt-review-stub@brev.example
+DTSTAMP:20260920T080000Z
+DTSTART:20260925T110000Z
+DTEND:20260925T120000Z
+SUMMARY:Berth schema migration — design review
+LOCATION:Harbour office, room 3
+DESCRIPTION:Walk through the new berth schema before the migration window.\n\nAgenda:\n- Current layout recap\n- New constraint model\n- Rollback plan
+END:VEVENT
+END:VCALENDAR

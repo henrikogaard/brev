@@ -1391,6 +1391,11 @@ public struct BrevMailRootView: View {
             onOpenContacts: onOpenContacts,
             onOpenTasks: onOpenTasks,
             onOpenMessages: {
+                #if os(macOS)
+                // Activating a mailbox hands the keyboard to its message
+                // list — the same focus hand-off Apple Mail performs.
+                navigation.requestMessageListFocus()
+                #endif
                 openSelectedMessagesOnCompact()
             },
             onNewLocalFolder: localBackend == nil ? nil : {
@@ -2275,25 +2280,61 @@ public struct BrevMailRootView: View {
                             }
                             #endif
 
+                            // Compact iOS readers surface the response and
+                            // workflow actions in this overflow menu; wider
+                            // layouts keep them as direct toolbar buttons.
+                            #if os(iOS)
+                            Button {
+                                presentReply(to: header)
+                            } label: {
+                                Label(
+                                    String(localized: "Reply", bundle: .module),
+                                    systemImage: "arrowshape.turn.up.left"
+                                )
+                            }
+                            .disabled(!canPresentCompose())
+
+                            if !MailRootDetailToolbarPolicy.showsExtendedResponseActions(
+                                platform: toolbarPlatform,
+                                readerWidth: readerPaneWidth
+                            ) {
+                                Button {
+                                    presentReplyAll(to: header)
+                                } label: {
+                                    Label(
+                                        String(localized: "Reply All", bundle: .module),
+                                        systemImage: "arrowshape.turn.up.left.2"
+                                    )
+                                }
+                                .disabled(!canPresentCompose())
+
+                                Button {
+                                    presentForward(of: header)
+                                } label: {
+                                    Label(String(localized: "Forward", bundle: .module), systemImage: "arrowshape.turn.up.right")
+                                }
+                                .disabled(!canPresentCompose())
+                            }
+
+                            Button {
+                                readerToggleSnooze(header: header, sourceID: navigation.selectedSourceID)
+                            } label: {
+                                Label(snoozeMenuTitle(for: header), systemImage: snoozeMenuSymbolName(for: header))
+                            }
+                            .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
+
+                            Divider()
+                            #endif
+
                             // The macOS AI Sidebar column presents as a sheet
-                            // on iOS; both stay secondary to core mail actions.
+                            // on iOS; on macOS the View menu and toolbar own
+                            // the toggle, so it stays out of message actions.
                             #if os(iOS)
                             Button {
                                 isMailContextSheetPresented = true
                             } label: {
                                 Label(
                                     MailContextColumnVisibility.toolbarLabel,
-                                    systemImage: MailContextColumnVisibility.toolbarSymbolName
-                                )
-                            }
-                            #else
-                            Button {
-                                isMailContextColumnPresented.toggle()
-                            } label: {
-                                Label(
-                                    isMailContextColumnPresented
-                                        ? String(localized: "Hide AI Sidebar", bundle: .module)
-                                        : MailContextColumnVisibility.toolbarLabel,
                                     systemImage: MailContextColumnVisibility.toolbarSymbolName
                                 )
                             }
@@ -2466,17 +2507,6 @@ public struct BrevMailRootView: View {
                         Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
                     }
                     .disabled(visibleRefreshTarget == nil || !canStartRefresh())
-
-                    Button {
-                        isMailContextColumnPresented.toggle()
-                    } label: {
-                        Label(
-                            isMailContextColumnPresented
-                                ? String(localized: "Hide AI Sidebar", bundle: .module)
-                                : MailContextColumnVisibility.toolbarLabel,
-                            systemImage: MailContextColumnVisibility.toolbarSymbolName
-                        )
-                    }
                 } label: {
                     Image(systemName: "ellipsis.circle")
                 }

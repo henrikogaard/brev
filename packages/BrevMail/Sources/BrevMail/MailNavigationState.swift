@@ -163,6 +163,19 @@ public final class MailNavigationState {
     /// headers from the backend. Cleared when the folder changes.
     public var currentFolderHeaders: [MessageHeader]
 
+    /// Monotonic token incremented whenever the UI asks to move keyboard
+    /// focus into the message list (macOS: activating a mailbox from the
+    /// sidebar, e.g. Return or → on a leaf row). `MessageListView`
+    /// observes the token and claims its container focus so arrow keys
+    /// drive the list — the same hand-off Apple Mail performs when a
+    /// mailbox is opened.
+    public var messageListFocusRequestID = 0
+
+    /// Requests keyboard focus move into the message list.
+    public func requestMessageListFocus() {
+        messageListFocusRequestID += 1
+    }
+
     /// Multi-selection in the message list. Empty means single-select
     /// mode (the row tap drives the detail pane). Non-empty means the
     /// list is in bulk-action mode.

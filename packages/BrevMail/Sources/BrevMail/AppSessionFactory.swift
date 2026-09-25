@@ -168,11 +168,20 @@ public enum AppSessionFactory {
         let pimLocalDataStore = FilePIMSourceLocalDataStore(
             rootURL: pimBrevDirectory.appendingPathComponent("PIMSources", isDirectory: true)
         )
+        #if DEBUG
+        // Demo mode keeps DAV credentials in memory — stub DAV sources
+        // must never prompt for the real login Keychain.
+        let davCredentials: any CalDAVCredentialStore = configuration.isDemoModeRequested()
+            ? InMemoryCalDAVCredentialStore()
+            : CalDAVKeychainCredentialStore()
+        #else
+        let davCredentials: any CalDAVCredentialStore = CalDAVKeychainCredentialStore()
+        #endif
         let pimSourceCoordinator = PIMSourceCoordinator(
             store: JSONPIMSourceStore(
                 fileURL: pimBrevDirectory.appendingPathComponent("pim-sources.json")
             ),
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             localData: pimLocalDataStore
         )
         // The JSON stores cache reads in memory per instance, so every
@@ -196,7 +205,7 @@ public enum AppSessionFactory {
         let pimCollectionService = PIMCollectionService(
             coordinator: pimSourceCoordinator,
             store: pimCollectionStore,
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
         // ADR-0072 #6: event sync rides the same credential paths and
@@ -209,7 +218,7 @@ public enum AppSessionFactory {
             cursorStore: JSONPIMSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -223,7 +232,7 @@ public enum AppSessionFactory {
             cursorStore: JSONPIMContactSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -235,7 +244,7 @@ public enum AppSessionFactory {
             coordinator: pimSourceCoordinator,
             collectionStore: pimCollectionStore,
             eventStore: pimEventStore,
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -246,7 +255,7 @@ public enum AppSessionFactory {
         let pimContactWriteService = PIMContactWriteService(
             coordinator: pimSourceCoordinator,
             contactStore: pimContactStore,
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -260,7 +269,7 @@ public enum AppSessionFactory {
             cursorStore: JSONPIMSyncCursorStore(
                 localDataStore: pimLocalDataStore
             ),
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -273,7 +282,7 @@ public enum AppSessionFactory {
             coordinator: pimSourceCoordinator,
             collectionStore: pimCollectionStore,
             taskStore: pimTaskStore,
-            credentials: CalDAVKeychainCredentialStore(),
+            credentials: davCredentials,
             googleAccessToken: configuration.googlePIMAccessTokenProvider
         )
 
@@ -311,6 +320,17 @@ public enum AppSessionFactory {
                 tokenStore: KeychainTokenStore(),
                 loginCoordinator: {
                     AppSession.LoginResult(backend: mock, account: mock.account)
+                },
+                imapAccountDiscoveryCoordinator: { emailAddress in
+                    // Offline discovery only: the built-in profile table
+                    // and manual fallback need no DNS/autoconfig calls, so
+                    // the demo session keeps Brev's zero-network default
+                    // while still exercising the Find-settings flow.
+                    MailAccountAutodiscovery.profile(
+                        forEmailAddress: emailAddress
+                    ) ?? MailAccountAutodiscovery.manualFallback(
+                        forEmailAddress: emailAddress
+                    )
                 },
                 pimSourceCoordinator: pimSourceCoordinator,
                 pimCollectionService: pimCollectionService,
