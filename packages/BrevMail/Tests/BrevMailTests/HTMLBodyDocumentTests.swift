@@ -78,6 +78,16 @@ struct HTMLBodyDocumentTests {
         #expect(!store.isPrewarmed)
     }
 
+    @MainActor
+    @Test("shared renderer prewarm is idempotent")
+    func sharedRendererPrewarmIsIdempotent() {
+        HTMLBodyWebViewStore.prewarmSharedRenderer()
+        #expect(HTMLBodyWebViewStore.isSharedRendererPrewarmed)
+        // A second call must not spawn a replacement warm store.
+        HTMLBodyWebViewStore.prewarmSharedRenderer()
+        #expect(HTMLBodyWebViewStore.isSharedRendererPrewarmed)
+    }
+
     @Test("reader permits repeated local documents after prewarming")
     func readerPermitsRepeatedLocalDocumentsAfterPrewarming() {
         #expect(HTMLBodyNavigationPolicy.isLocalDocumentURL(URL(string: "about:blank")))

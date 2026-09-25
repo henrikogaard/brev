@@ -48,12 +48,37 @@ final class HTMLBodyWebViewStore: ObservableObject {
         return webView
     }
 
+    /// A hidden store kept warm for the app's lifetime. Every `WKWebView`
+    /// draws from the same WebKit process pool, so keeping one offscreen
+    /// instance alive means the first message open pays only the document
+    /// load — not the multi-hundred-ms process spawn.
+    private static var sharedWarmStore: HTMLBodyWebViewStore?
+
+    /// Spins up the shared WebKit process and compiles the remote-content
+    /// rule list off the open path. Idempotent; call once during the
+    /// background startup phase so the first real open hits warm caches.
+    /// A late call is harmless: a store that already loaded content just
+    /// reloads its empty document.
+    static func prewarmSharedRenderer() {
+        let store = sharedWarmStore ?? HTMLBodyWebViewStore()
+        sharedWarmStore = store
+        store.prewarm()
+    }
+
+    /// Whether the shared warm-up already ran (testing hook).
+    static var isSharedRendererPrewarmed: Bool {
+        sharedWarmStore?.isPrewarmed == true
+    }
+
     /// Starts WebKit with a local empty document. This performs no network
     /// access and is safe to call repeatedly.
     func prewarm() {
         guard !isPrewarmed, !hasScheduledContentLoad else { return }
         isPrewarmed = true
         webView.loadHTMLString("<html><body></body></html>", baseURL: nil)
+        // The block-all-subresources rule list compiles lazily inside
+        // `load(…)`; warming it here keeps that compile off the open path.
+        Task { _ = await HTMLBlocker.shared.list() }
     }
 
     /// Prevents a late warm-up task from replacing real message content.

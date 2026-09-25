@@ -750,7 +750,21 @@ public struct BrevMailRootView: View {
                 await refreshOutboxCount()
                 await startDeferredBackendStartupWorkIfNeeded()
                 await observeMailboxSyncSettingsChanges()
+                prewarmBodyRendererIfEnabled()
             }
+    }
+
+    /// Warms the shared WebKit process and the remote-content rule list so
+    /// the first message open doesn't pay their cold-start cost — the
+    /// `ui.body.visible` over-budget gap from the perf smoke pass. Skipped
+    /// when bodies render as plain text (no web view is ever mounted).
+    /// Runs in the background startup phase, off the launch path.
+    private func prewarmBodyRendererIfEnabled() {
+        let richEnabled = UserDefaults.standard.object(
+            forKey: MailboxViewPreferenceKey.useRichRenderer
+        ) as? Bool ?? true
+        guard richEnabled else { return }
+        HTMLBodyWebViewStore.prewarmSharedRenderer()
     }
 
     private func handleBackendSessionChange(previousIDs: [ObjectIdentifier]) {

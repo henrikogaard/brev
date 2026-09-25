@@ -4803,3 +4803,20 @@ buttons, and package-aware localization.
   pass-by-proxy; parity confirmed on all user-visible surfaces.
 - **Skipped**: true scroll frame p95 and the full #28 §5 live run — needs
   Instruments + a real mailbox.
+
+## 2026-09-25 — Agent — Message-open renderer pre-warm (perf P1)
+
+- **Goal**: close the `ui.body.visible` over-budget gap measured in the
+  mock performance smoke pass (1222 ms first rich-HTML open vs the
+  600 ms `cached_thread_open_ms` budget).
+- **Changes**: `HTMLBodyWebViewStore` gains a shared hidden warm store
+  (`prewarmSharedRenderer()`) that spins the shared WebKit process pool
+  and pre-compiles the `WKContentRuleList` remote-content blocker off the
+  open path; `prewarm()` now also kicks the blocker compile. The mail
+  root invokes it in the existing background-phase startup task, gated
+  on the `body.useRichRenderer` preference (plain-text users never mount
+  a web view). New test asserts the warm-up is idempotent.
+- **Verification**: `swift test --filter HTMLBodyDocument` 21/21 pass;
+  lint + format clean. Rebuilt the mock app and re-measured
+  `ui.body.visible` end-to-end (see PR description).
+- **Skipped**: live-mailbox warm re-measure — needs a real account (#11).
