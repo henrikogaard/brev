@@ -83,6 +83,9 @@ struct UnifiedInboxListView: View {
     @State private var isLoading = false
     @State private var isMutating = false
     @State private var selectedItemIDs: Set<UnifiedInboxItem.ID> = []
+    /// Keyboard-session owner for the list pane (macOS). Used only inside
+    /// `#if os(macOS)` blocks — iOS has no focus machinery.
+    @FocusState private var listKeyboardFocus: Bool
     @State private var errorMessage: String?
     @State private var pageCursors: [MailSourceID: UnifiedInboxPageCursor] = [:]
     @State private var isLoadingMore = false
@@ -282,49 +285,90 @@ struct UnifiedInboxListView: View {
                         navigation.mailboxFilter = smartView?.query ?? .none
                     }
                 } else {
-                    List {
-                        if groupByDate {
-                            ForEach(presentation.dateSections) { section in
-                                dateSectionHeaderRow(section)
-                                ForEach(section.visibleItems) { item in
-                                    messageRow(
-                                        for: item,
-                                        visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
-                                        visibleCount: presentation.visibleItems.count,
-                                        pinnedMessageIDs: presentation.pinnedMessageIDs,
-                                        threadCounts: presentation.threadCounts,
-                                        itemsByThreadKey: presentation.itemsByThreadKey
-                                    )
+                    Group {
+                        ScrollViewReader { proxy in
+                            List {
+                                if groupByDate {
+                                    ForEach(presentation.dateSections) { section in
+                                        dateSectionHeaderRow(section)
+                                        ForEach(section.visibleItems) { item in
+                                            messageRow(
+                                                for: item,
+                                                visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
+                                                visibleCount: presentation.visibleItems.count,
+                                                pinnedMessageIDs: presentation.pinnedMessageIDs,
+                                                threadCounts: presentation.threadCounts,
+                                                itemsByThreadKey: presentation.itemsByThreadKey
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    ForEach(presentation.visibleItems) { item in
+                                        messageRow(
+                                            for: item,
+                                            visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
+                                            visibleCount: presentation.visibleItems.count,
+                                            pinnedMessageIDs: presentation.pinnedMessageIDs,
+                                            threadCounts: presentation.threadCounts,
+                                            itemsByThreadKey: presentation.itemsByThreadKey
+                                        )
+                                    }
+                                }
+                                if isLoadingMore {
+                                    ProgressView()
+                                        .padding(BrevSpacing.md)
+                                        .listRowSeparator(.hidden)
+                                        .messageListThemedRowBackground()
+                                } else if let loadMoreErrorStatus {
+                                    MessageListFooterStatusView(status: loadMoreErrorStatus) {
+                                        Task { await loadMore() }
+                                    }
+                                    .listRowSeparator(.hidden)
+                                    .messageListThemedRowBackground()
                                 }
                             }
-                        } else {
-                            ForEach(presentation.visibleItems) { item in
-                                messageRow(
-                                    for: item,
-                                    visibleIndex: presentation.visibleIndex(for: item.id) ?? -1,
-                                    visibleCount: presentation.visibleItems.count,
-                                    pinnedMessageIDs: presentation.pinnedMessageIDs,
-                                    threadCounts: presentation.threadCounts,
-                                    itemsByThreadKey: presentation.itemsByThreadKey
-                                )
-                            }
-                        }
-                        if isLoadingMore {
-                            ProgressView()
-                                .padding(BrevSpacing.md)
-                                .listRowSeparator(.hidden)
-                                .messageListThemedRowBackground()
-                        } else if let loadMoreErrorStatus {
-                            MessageListFooterStatusView(status: loadMoreErrorStatus) {
-                                Task { await loadMore() }
-                            }
-                            .listRowSeparator(.hidden)
-                            .messageListThemedRowBackground()
+                            .listStyle(.plain)
+                            .scrollContentBackground(.hidden)
+                            .refreshable { await reloadVisibleItems() }
+                            #if os(macOS)
+                                .onChange(of: selectedUnifiedItemID) { _, selection in
+                                    guard let selection else { return }
+                                    proxy.scrollTo(selection)
+                                }
+                            #endif
                         }
                     }
-                    .listStyle(.plain)
-                    .scrollContentBackground(.hidden)
-                    .refreshable { await reloadVisibleItems() }
+                    #if os(macOS)
+                    // The List's AppKit backing never joins the key loop, so
+                    // the focus machinery lives on this wrapping container —
+                    // the same contract MessageListView uses: Tab-reachable,
+                    // arrow input claims the keyboard session, and the
+                    // focused pane is implied by selection tint (no ring).
+                    .focusSection()
+                    .focusable()
+                    .focused($listKeyboardFocus)
+                    .focusEffectDisabled()
+                    .onKeyPress(.upArrow) {
+                        listKeyboardFocus = true
+                        selectAdjacentItem(forward: false)
+                        return .handled
+                    }
+                    .onKeyPress(.downArrow) {
+                        listKeyboardFocus = true
+                        selectAdjacentItem(forward: true)
+                        return .handled
+                    }
+                    .onKeyPress(.return) {
+                        listKeyboardFocus = true
+                        activateSelectedItemFromKeyboard()
+                        return .handled
+                    }
+                    .onChange(of: navigation.messageListFocusRequestID) { _, _ in
+                        // Mailbox activation from the sidebar (Return / → on
+                        // a leaf, or a click) hands the keyboard to this list.
+                        listKeyboardFocus = true
+                    }
+                    #endif
                 }
             }
             if let folderStatsFooterPresentation = folderStatsFooterPresentation(for: presentation) {
@@ -1988,7 +2032,16 @@ struct UnifiedInboxListView: View {
         onOpenInNewWindow?(item)
     }
 
-    private func selectMessage(_ item: UnifiedInboxItem) {
+    private func selectMessage(_ item: UnifiedInboxItem, claimsKeyboardFocus: Bool = true) {
+        #if os(macOS)
+        if claimsKeyboardFocus {
+            // Pointer selection claims container focus too: the focused list
+            // is the one arrow keys drive, matching Apple Mail's
+            // ring-follows-focus. Automatic selection restore opts out so a
+            // reload can't steal the key session.
+            listKeyboardFocus = true
+        }
+        #endif
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
@@ -2012,8 +2065,80 @@ struct UnifiedInboxListView: View {
             }
         }
         guard selectFirstIfNeeded, let first = presentationSnapshot.visibleItems.first else { return }
-        selectMessage(first)
+        selectMessage(first, claimsKeyboardFocus: false)
     }
+
+    #if os(macOS)
+    /// Items in displayed order — parent rows plus expanded thread
+    /// children — the sequence arrow-key selection walks. Unlike
+    /// `currentFolderHeaders` (per-source), this follows the merged
+    /// timeline the user actually sees.
+    private var keyboardNavigableItems: [UnifiedInboxItem] {
+        var flattened: [UnifiedInboxItem] = []
+        for item in presentationSnapshot.visibleItems {
+            flattened.append(item)
+            let threadKey = UnifiedInboxThreadGrouping.key(for: item)
+            if expandedThreadKeys.contains(threadKey) {
+                flattened.append(contentsOf: (presentationSnapshot.itemsByThreadKey[threadKey] ?? [])
+                    .filter { $0.id != item.id })
+            }
+        }
+        return flattened
+    }
+
+    /// The row id of the reader's selected item — composite
+    /// (`account:mailbox:message`), which is what `ScrollViewReader`
+    /// matches, not the bare header id.
+    private var selectedUnifiedItemID: UnifiedInboxItem.ID? {
+        keyboardNavigableItems.first {
+            $0.header.id == navigation.selectedMessageID
+                && $0.sourceID == navigation.selectedSourceID
+        }?.id
+    }
+
+    /// Moves selection to the next/previous row in displayed order —
+    /// across sources, matching the merged timeline.
+    private func selectAdjacentItem(forward: Bool) {
+        let items = keyboardNavigableItems
+        guard !items.isEmpty else { return }
+        guard let index = items.firstIndex(where: {
+            $0.header.id == navigation.selectedMessageID
+                && $0.sourceID == navigation.selectedSourceID
+        }) else {
+            selectMessage(forward ? items[0] : items[items.count - 1])
+            return
+        }
+        let nextIndex = index + (forward ? 1 : -1)
+        if items.indices.contains(nextIndex) {
+            selectMessage(items[nextIndex])
+        }
+    }
+
+    /// Return activates the selected row like a click: drafts reopen in
+    /// the composer, multi-message threads expand, bulk mode toggles.
+    private func activateSelectedItemFromKeyboard() {
+        guard let item = keyboardNavigableItems.first(where: {
+            $0.header.id == navigation.selectedMessageID
+                && $0.sourceID == navigation.selectedSourceID
+        }) else { return }
+        if !selectedItemIDs.isEmpty {
+            toggleSelection(for: item)
+            return
+        }
+        if item.folder.role == .drafts,
+           composeActions.openDraft(item.header, sourceID: item.sourceID) {
+            return
+        }
+        let threadKey = UnifiedInboxThreadGrouping.key(for: item)
+        guard (presentationSnapshot.threadCounts[threadKey] ?? 1) > 1 else { return }
+        withAnimation(.easeInOut(duration: 0.18)) {
+            MessageListInlineExpansion.toggle(
+                threadID: threadKey,
+                in: &expandedThreadKeys
+            )
+        }
+    }
+    #endif
 
     private func toggleSelection(for item: UnifiedInboxItem) {
         if selectedItemIDs.contains(item.id) {
