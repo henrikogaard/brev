@@ -751,10 +751,10 @@ public struct MessageListView: View {
             #if os(macOS)
             // The List's AppKit backing never joins the key loop, so the
             // focus machinery lives on this wrapping container instead:
-            // focusSection + focusable make it a Tab-reachable group, the
-            // accent outline plays the focus ring, and arrow input on the
-            // focused region claims `listKeyboardFocus` so the ring marks
-            // an active keyboard session on this list.
+            // focusSection + focusable make it a Tab-reachable group, and
+            // arrow input on the focused region claims `listKeyboardFocus`
+            // so the list owns the keyboard session (no visible ring —
+            // Apple Mail implies the focused pane by selection tint only).
             .focusSection()
             .focusable()
             .focused($listKeyboardFocus)
@@ -773,14 +773,6 @@ public struct MessageListView: View {
                 listKeyboardFocus = true
                 activateSelectedMessageFromKeyboard()
                 return .handled
-            }
-            .overlay {
-                if listKeyboardFocus {
-                    RoundedRectangle(cornerRadius: BrevRadius.sm)
-                        .strokeBorder(theme.accent.color, lineWidth: 1.5)
-                        .padding(BrevSpacing.xxs)
-                        .allowsHitTesting(false)
-                }
             }
             .onChange(of: navigation.messageListFocusRequestID) { _, _ in
                 // Mailbox activation from the sidebar (Return / → on a

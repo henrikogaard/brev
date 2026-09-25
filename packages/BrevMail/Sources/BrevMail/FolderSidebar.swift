@@ -277,16 +277,8 @@ public struct FolderSidebar: View {
                     }
                     return .handled
                 }
-                // The suppressed system ring is replaced by this accent
-                // outline so the focused surface stays visible.
-                .overlay {
-                    if sidebarKeyboardFocus {
-                        RoundedRectangle(cornerRadius: BrevRadius.sm)
-                            .strokeBorder(theme.accent.color, lineWidth: 1.5)
-                            .padding(BrevSpacing.xxs)
-                            .allowsHitTesting(false)
-                    }
-                }
+                // No visible ring — Apple Mail implies the focused pane
+                // by the row selection tint alone.
                 .onChange(of: sidebarKeyboardSelectionItem) { _, item in
                     guard let item else { return }
                     proxy.scrollTo(item)
