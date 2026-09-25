@@ -54,12 +54,6 @@ enum ComposeReplyFormatter {
         "On \(format(header.date)), \(format(header.from)) wrote:"
     }
 
-    /// First line of the quoted original block — also the marker the
-    /// compose quote-edit guard uses to locate the read-only region.
-    static func quoteMarker(for header: MessageHeader) -> String {
-        "On \(format(header.date)), \(format(header.from)) wrote:"
-    }
-
     static func body(
         for header: MessageHeader,
         quoteText: String? = nil,
