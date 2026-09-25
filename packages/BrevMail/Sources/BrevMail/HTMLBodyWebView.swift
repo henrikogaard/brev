@@ -70,15 +70,26 @@ final class HTMLBodyWebViewStore: ObservableObject {
         sharedWarmStore?.isPrewarmed == true
     }
 
+    /// The navigation `prewarm()` started, so the mounted coordinator can
+    /// ignore its `didFinish` — warm-up completing after the delegate
+    /// attaches must not read as the message body finishing (it would clear
+    /// the skeleton and record `ui.body.visible` before the body painted).
+    private(set) var prewarmNavigation: WKNavigation?
+
     /// Starts WebKit with a local empty document. This performs no network
     /// access and is safe to call repeatedly.
     func prewarm() {
         guard !isPrewarmed, !hasScheduledContentLoad else { return }
         isPrewarmed = true
-        webView.loadHTMLString("<html><body></body></html>", baseURL: nil)
+        prewarmNavigation = webView.loadHTMLString("<html><body></body></html>", baseURL: nil)
         // The block-all-subresources rule list compiles lazily inside
         // `load(…)`; warming it here keeps that compile off the open path.
         Task { _ = await HTMLBlocker.shared.list() }
+    }
+
+    /// Clears the tracked warm-up navigation once it completes.
+    func completePrewarmNavigation() {
+        prewarmNavigation = nil
     }
 
     /// Prevents a late warm-up task from replacing real message content.
@@ -94,6 +105,7 @@ final class HTMLBodyWebViewStore: ObservableObject {
         storedWebView = nil
         isPrewarmed = false
         hasScheduledContentLoad = false
+        prewarmNavigation = nil
     }
 
     private static func configuration() -> WKWebViewConfiguration {
@@ -427,6 +439,14 @@ extension WebViewRepresentable {
         static let maxContentHeight: CGFloat = 20000
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            // A warm-up navigation can still be in flight when this delegate
+            // attaches (the prewarm `.task` races the real load). Its empty
+            // document must not count as the body finishing — reporting now
+            // would drop the skeleton and log `ui.body.visible` pre-paint.
+            if let warmUp = parent.store.prewarmNavigation, navigation === warmUp {
+                parent.store.completePrewarmNavigation()
+                return
+            }
             // Measure the *body* content height, not the documentElement's —
             // `documentElement.scrollHeight` is floored at the web view's own
             // viewport height, so short emails would never shrink below the

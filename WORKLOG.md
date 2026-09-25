@@ -1,5 +1,18 @@
 # Worklog
 
+## 2026-09-25 — Agent — Prewarm navigation no longer reports as body-visible (#98)
+
+- Codex P1 on #98: `MessageDetailView`'s prewarm `.task` races the mounted
+  coordinator; the empty-document navigation can still be in flight when
+  the delegate attaches, and its `didFinish` would drop the skeleton and
+  record `ui.body.visible` before the message painted.
+- `HTMLBodyWebViewStore` now tracks `prewarmNavigation` (cleared on
+  completion and `releaseWebView`); the coordinator ignores that
+  navigation's `didFinish` instead of measuring/reporting.
+- Verified: `swift test --filter HTMLBodyDocument` (22 green, incl. new
+  prewarmNavigation contract test), lint.sh + format.sh clean.
+
+
 ## 2026-09-24 — Agent — Fix ComposePresentationTests overflow expectations
 
 - `ComposePresentationTests` expected `overflowActions` without the new
