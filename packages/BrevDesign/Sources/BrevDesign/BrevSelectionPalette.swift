@@ -20,8 +20,11 @@ public struct BrevSelectionPalette: Equatable {
     public let indicator: BrevColor
 
     /// Resolves selection colors while keeping accent preferences independent.
+    /// `isActive: false` (window inactive, or the pane does not hold keyboard
+    /// focus) demotes the fill to `bgSecondary`, the Apple Mail
+    /// focused-pane-owns-the-selection cue — no focus ring is drawn.
     public init(theme: BrevTheme, isActive: Bool = true) {
-        background = theme.selection
+        background = isActive ? theme.selection : theme.bgSecondary
         text = theme.textPrimary
         detail = theme.textSecondary
         indicator = isActive ? theme.textPrimary : theme.textSecondary

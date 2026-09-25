@@ -118,6 +118,16 @@ public struct MessageListView: View {
     @FocusState private var listKeyboardFocus: Bool
     #endif
 
+    /// Whether the list pane currently owns the selection tint (focused
+    /// pane on macOS; always on platforms without focus machinery).
+    private var listSelectionIsFocused: Bool {
+        #if os(macOS)
+        listKeyboardFocus
+        #else
+        true
+        #endif
+    }
+
     @AppStorage(MailboxViewPreferenceKey.groupByThread) private var groupByThread = true
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
     @AppStorage(MailboxViewPreferenceKey.showAbsoluteArrivalTime) private var showAbsoluteArrivalTime = false
@@ -807,6 +817,7 @@ public struct MessageListView: View {
             header: header,
             threadCount: threadCount(for: header),
             isSelected: navigation.selectedMessageID == header.id,
+            isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
             isInSelectionMode: !navigation.bulkSelection.isEmpty,
             isPinned: pinnedMessageIDs.contains(header.id),
@@ -1397,6 +1408,7 @@ public struct MessageListView: View {
                 ThreadInlineChildRow(
                     header: child,
                     isSelected: navigation.selectedMessageID == child.id,
+                    isFocusedPane: listSelectionIsFocused,
                     onSelect: {
                         if navigation.bulkSelection.isEmpty {
                             selectMessage(child)
@@ -3570,6 +3582,10 @@ struct MessageListRow: View {
     let header: MessageHeader
     let threadCount: Int
     let isSelected: Bool
+    /// macOS: whether the list column currently holds keyboard focus —
+    /// drives the focused-pane selection tint. iOS and panes without
+    /// keyboard focus machinery stay `true`.
+    let isFocusedPane: Bool
     let isChecked: Bool
     let isInSelectionMode: Bool
     let isPinned: Bool
@@ -3622,6 +3638,7 @@ struct MessageListRow: View {
         header: MessageHeader,
         threadCount: Int,
         isSelected: Bool,
+        isFocusedPane: Bool = true,
         isChecked: Bool,
         isInSelectionMode: Bool,
         isPinned: Bool,
@@ -3645,6 +3662,7 @@ struct MessageListRow: View {
         self.header = header
         self.threadCount = threadCount
         self.isSelected = isSelected
+        self.isFocusedPane = isFocusedPane
         self.isChecked = isChecked
         self.isInSelectionMode = isInSelectionMode
         self.isPinned = isPinned
@@ -3830,7 +3848,12 @@ struct MessageListRow: View {
 
     private var selectionPalette: MailSelectionPalette {
         #if os(macOS)
-        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
+        // Focused-pane selection tint (Apple Mail): the selected row keeps
+        // the full selection fill only while this pane holds keyboard focus.
+        MailSelectionPalette(
+            theme: theme,
+            isActive: controlActiveState != .inactive && isFocusedPane
+        )
         #else
         MailSelectionPalette(theme: theme)
         #endif

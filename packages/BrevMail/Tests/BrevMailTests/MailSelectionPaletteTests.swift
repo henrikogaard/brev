@@ -24,7 +24,9 @@ struct MailSelectionPaletteTests {
         #expect(active.background == theme.selection)
         #expect(active.text == theme.textPrimary)
         #expect(active.detail == theme.textSecondary)
-        #expect(inactive.background == active.background)
+        // Inactive (window inactive or unfocused pane) demotes the fill to the
+        // quiet background — the focused-pane-owns-the-tint cue, ADR-0002.
+        #expect(inactive.background == theme.bgSecondary)
         #expect(inactive.text == active.text)
         #expect(inactive.indicator == theme.textSecondary)
         #expect(overridden == active)

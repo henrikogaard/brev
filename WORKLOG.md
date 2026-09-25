@@ -4823,3 +4823,20 @@ buttons, and package-aware localization.
   pre-warmed at mount as well, so the warm path survives per-store
   mounts, not only the shared process pool.
 - **Skipped**: live-mailbox warm re-measure — needs a real account (#11).
+
+## 2026-09-25 — Agent — Focused-pane selection tint (a11y follow-up)
+
+- **Goal**: restore a visible keyboard-focus indicator after #95 removed the
+  column outline, without reintroducing a drawn ring (Codex P1 on #95:
+  keyboard-only users had no focus signal at all).
+- **Changes**: `BrevSelectionPalette` `isActive: false` now demotes the
+  selected-row fill from `selection` to `bgSecondary` (the Apple Mail
+  focused-pane-owns-the-tint cue, documented in ADR-0002); `MessageListRow`
+  gained `isFocusedPane` fed by `listKeyboardFocus`; the sidebar palette is
+  keyed on `sidebarKeyboardFocus`; the sidebar claims focus on appear so an
+  empty launch still lands arrows on the mailbox column (Mail cold-start).
+- **Verified**: lint + format clean; live app — click list → list accent
+  tint + sidebar muted; arrows move the focused pane's selection; mailbox
+  activation hands focus to the list; no outline anywhere.
+- **Skipped**: none. The 22 pre-existing snapshot env diffs reproduce
+  identically on clean main on this machine — no new failures.

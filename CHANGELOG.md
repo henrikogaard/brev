@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS: the pane holding keyboard focus now owns the selection tint —
+  the selected row in the unfocused column demotes to the quieter
+  background fill and a dimmed indicator (the Apple Mail cue that
+  replaces the drawn focus ring removed earlier), including expanded
+  inline thread children.
 - Sent and saved-draft copies no longer show raw markup: the mock backend
   now stores the draft's `htmlBody` as the `text/html` body plus a stripped
   `text/plain` rendering (matching real multipart/alternative messages), and
