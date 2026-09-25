@@ -8,7 +8,6 @@
   passes on this branch. Verified: `swift test --filter ComposePresentation`
   (57 tests green).
 
-||||||| 3db8a9b
 ## 2026-09-23 — Agent — Round-2 UI/UX + a11y audit @ 4617777
 
 - Rebuilt both apps off `4617777` and ran a recorded full-surface pass
@@ -4785,4 +4784,3 @@ buttons, and package-aware localization.
 **Verification:** `scripts/lint.sh` + `scripts/format.sh` clean; rebuilt `Brev Test (2026-09-24).app` in mock mode and visually verified on device — "Mailboxes", "Smart Views", and both source headers share one flush-left muted header style; folder chevrons, icons, labels, and counts all sit on shared columns.
 
 **Skipped:** iOS — branches untouched (headers already used label-then-chevron); snapshot baselines have pre-existing env drift.
-||||||| 3db8a9b
