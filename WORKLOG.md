@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-09-25 — Agent — Unified inbox keyboard-nav review follow-ups (#99)
+
+- Codex P2: `keyboardNavigableItems` now builds from `dateSections`'s
+  `visibleItems` when date grouping is on — collapsed sections no longer
+  leak hidden rows into arrow-key selection.
+- Codex P2: `selectMessage` gains `clearsBulkSelection` (default true);
+  `selectAdjacentItem` passes false so arrows move the reader without
+  dropping the bulk set, matching MessageListView's contract.
+- Codex P1 (snapshot coverage) deferred: the list populates async from
+  backends so a pixel suite can't capture deterministic content without
+  a data-injection seam, and macOS pixel baselines need the canonical
+  26+ host anyway. Flagged in the PR.
+- Verified: `swift test --filter UnifiedInbox` (37 green),
+  lint.sh + format.sh clean.
+
+
 ## 2026-09-25 — Agent — Unified inbox keyboard navigation (macOS)
 
 - The merged "All Inboxes"/saved-search list had no focus machinery while

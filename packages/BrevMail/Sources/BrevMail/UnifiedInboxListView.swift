@@ -2032,7 +2032,11 @@ struct UnifiedInboxListView: View {
         onOpenInNewWindow?(item)
     }
 
-    private func selectMessage(_ item: UnifiedInboxItem, claimsKeyboardFocus: Bool = true) {
+    private func selectMessage(
+        _ item: UnifiedInboxItem,
+        claimsKeyboardFocus: Bool = true,
+        clearsBulkSelection: Bool = true
+    ) {
         #if os(macOS)
         if claimsKeyboardFocus {
             // Pointer selection claims container focus too: the focused list
@@ -2047,7 +2051,9 @@ struct UnifiedInboxListView: View {
             in: item.sourceID,
             headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header)
         )
-        selectedItemIDs.removeAll()
+        if clearsBulkSelection {
+            selectedItemIDs.removeAll()
+        }
         onSelectMessage?(item.header)
     }
 
@@ -2072,10 +2078,15 @@ struct UnifiedInboxListView: View {
     /// Items in displayed order — parent rows plus expanded thread
     /// children — the sequence arrow-key selection walks. Unlike
     /// `currentFolderHeaders` (per-source), this follows the merged
-    /// timeline the user actually sees.
+    /// timeline the user actually sees. When date grouping is on, the
+    /// sequence comes from the sections' `visibleItems` so rows hidden by
+    /// a collapsed section can't receive keyboard selection.
     private var keyboardNavigableItems: [UnifiedInboxItem] {
+        let parents = groupByDate
+            ? presentationSnapshot.dateSections.flatMap(\.visibleItems)
+            : presentationSnapshot.visibleItems
         var flattened: [UnifiedInboxItem] = []
-        for item in presentationSnapshot.visibleItems {
+        for item in parents {
             flattened.append(item)
             let threadKey = UnifiedInboxThreadGrouping.key(for: item)
             if expandedThreadKeys.contains(threadKey) {
@@ -2097,7 +2108,9 @@ struct UnifiedInboxListView: View {
     }
 
     /// Moves selection to the next/previous row in displayed order —
-    /// across sources, matching the merged timeline.
+    /// across sources, matching the merged timeline. The bulk set is
+    /// preserved (MessageListView's contract) so Return can keep toggling
+    /// rows into a selection after moving.
     private func selectAdjacentItem(forward: Bool) {
         let items = keyboardNavigableItems
         guard !items.isEmpty else { return }
@@ -2105,12 +2118,12 @@ struct UnifiedInboxListView: View {
             $0.header.id == navigation.selectedMessageID
                 && $0.sourceID == navigation.selectedSourceID
         }) else {
-            selectMessage(forward ? items[0] : items[items.count - 1])
+            selectMessage(forward ? items[0] : items[items.count - 1], clearsBulkSelection: false)
             return
         }
         let nextIndex = index + (forward ? 1 : -1)
         if items.indices.contains(nextIndex) {
-            selectMessage(items[nextIndex])
+            selectMessage(items[nextIndex], clearsBulkSelection: false)
         }
     }
 
