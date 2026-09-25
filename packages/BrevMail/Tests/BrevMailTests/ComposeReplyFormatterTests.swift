@@ -20,7 +20,17 @@ struct ComposeReplyFormatterTests {
     @Test("reply subject adds prefix once")
     func subjectAddsPrefixOnce() {
         #expect(ComposeReplyFormatter.subject(for: "Project notes") == "Re: Project notes")
-        #expect(ComposeReplyFormatter.subject(for: " \n re: Project notes \n ") == "re: Project notes")
+        #expect(ComposeReplyFormatter.subject(for: " \n re: Project notes \n ") == "Re: Project notes")
+    }
+
+    @Test("reply subject collapses stacked prefixes")
+    func subjectCollapsesStackedPrefixes() {
+        #expect(ComposeReplyFormatter.subject(for: "Re: Re: weekend plans") == "Re: weekend plans")
+        #expect(ComposeReplyFormatter.subject(for: "RE: re:Re: launch") == "Re: launch")
+        #expect(ComposeReplyFormatter.subject(for: "Re:  ") == "Re: (no subject)")
+        // Non-reply prefixes are left in place.
+        #expect(ComposeReplyFormatter.subject(for: "Fwd: notes") == "Re: Fwd: notes")
+        #expect(ComposeReplyFormatter.subject(for: "Real: estate") == "Re: Real: estate")
     }
 
     @Test("blank reply subject uses a readable fallback")

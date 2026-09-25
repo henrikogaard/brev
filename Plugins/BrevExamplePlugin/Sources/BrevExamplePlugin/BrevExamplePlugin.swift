@@ -50,9 +50,12 @@ public final class BrevExamplePlugin: BrevUIExtension {
 
 private struct ComposeStatusView: View {
     var body: some View {
-        Image(systemName: "puzzlepiece.extension")
-            .foregroundStyle(.secondary)
-            .help(String(localized: "Example plugin active", bundle: .module))
+        Label(
+            String(localized: "Example plugin active", bundle: .module),
+            systemImage: "puzzlepiece.extension"
+        )
+        .foregroundStyle(.secondary)
+        .help(String(localized: "Example plugin active", bundle: .module))
     }
 }
 

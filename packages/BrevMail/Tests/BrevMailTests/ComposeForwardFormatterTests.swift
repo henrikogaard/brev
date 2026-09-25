@@ -20,7 +20,15 @@ struct ComposeForwardFormatterTests {
     @Test("forward subject adds prefix once")
     func forwardSubjectAddsPrefixOnce() {
         #expect(ComposeForwardFormatter.subject(for: "Project notes") == "Fwd: Project notes")
-        #expect(ComposeForwardFormatter.subject(for: "  fwd: Project notes  ") == "fwd: Project notes")
+        #expect(ComposeForwardFormatter.subject(for: "  fwd: Project notes  ") == "Fwd: Project notes")
+    }
+
+    @Test("forward subject collapses stacked prefixes")
+    func forwardSubjectCollapsesStackedPrefixes() {
+        #expect(ComposeForwardFormatter.subject(for: "Fwd: Fwd: weekend plans") == "Fwd: weekend plans")
+        #expect(ComposeForwardFormatter.subject(for: "FW: fwd:Fw: launch") == "Fwd: launch")
+        // Reply prefixes are left in place.
+        #expect(ComposeForwardFormatter.subject(for: "Re: notes") == "Fwd: Re: notes")
     }
 
     @Test("forward body includes original metadata and snippet")

@@ -841,8 +841,8 @@ public struct ComposeView: View {
                     .accessibilityHidden(true)
             }
 
-            // Keep frequent content actions visible; the remaining compose
-            // controls live together in one secondary menu.
+            // Apple Mail-style chrome: one quiet pill groups the action
+            // controls on the left, the circular send button sits right.
             toolbarCluster {
                 toolbarButton(
                     label: ComposeToolbarAction.attach.accessibilityLabel,
@@ -852,11 +852,11 @@ public struct ComposeView: View {
                     isPickingFile = true
                 }
                 formatMenu
+                composeSecondaryActionsMenu
             }
 
             Spacer(minLength: BrevSpacing.sm)
 
-            composeSecondaryActionsMenu
             sendButton
         }
         .padding(.leading, BrevSpacing.sm)
@@ -872,6 +872,8 @@ public struct ComposeView: View {
             HStack(spacing: BrevSpacing.xxs) {
                 content()
             }
+            .padding(.horizontal, BrevSpacing.xxs)
+            .brevQuietSurface(cornerRadius: BrevRadius.pill)
         }
     }
 
@@ -1224,17 +1226,28 @@ public struct ComposeView: View {
                 }
             }
         } label: {
-            HStack(spacing: BrevSpacing.xxs) {
-                #if os(macOS)
+            #if os(macOS)
+            // Apple Mail-style circular send: accent disc with a glyph,
+            // quiet muted disc when there's nothing to send.
+            Group {
                 if isSending {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityHidden(true)
                 } else {
-                    Image(systemName: pendingUndoSendTask != nil ? "xmark.circle" : sendButtonSystemImage)
-                        .symbolRenderingMode(.hierarchical)
+                    Image(systemName: pendingUndoSendTask != nil ? "xmark" : "paperplane.fill")
+                        .font(.system(size: 13, weight: .semibold))
                 }
-                #endif
+            }
+            .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+            .frame(width: toolbarMetrics.buttonSize + 2, height: toolbarMetrics.buttonSize + 2)
+            .background {
+                Circle().fill(isDisabled ? theme.bgTertiary.color : theme.accent.color)
+            }
+            .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+            .contentShape(Circle())
+            #else
+            HStack(spacing: BrevSpacing.xxs) {
                 Text(verbatim: pendingUndoSendTask != nil
                     ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
                     .font(.subheadline.weight(.semibold))
@@ -1244,11 +1257,16 @@ public struct ComposeView: View {
             .padding(.horizontal, BrevSpacing.xs)
             .frame(minHeight: toolbarMetrics.hitTargetSize)
             .contentShape(Rectangle())
+            #endif
         }
+        #if os(macOS)
+        .buttonStyle(.plain)
+        #else
         .buttonStyle(.borderedProminent)
         .tint(theme.accent.color)
-        .disabled(isDisabled)
         .opacity(isDisabled && !isSending ? 0.45 : 1)
+        #endif
+        .disabled(isDisabled)
         // Cmd+Return sends, matching Apple Mail's compose accelerator.
         .keyboardShortcut(.return, modifiers: .command)
         .accessibilityLabel(
@@ -1282,12 +1300,6 @@ public struct ComposeView: View {
         if isSending { return String(localized: "Sending", bundle: .module) }
         if scheduledSendDate != nil { return String(localized: "Schedule send", bundle: .module) }
         return String(localized: "Send", bundle: .module)
-    }
-
-    private var sendButtonSystemImage: String {
-        if isSending { return "paperplane.fill" }
-        if scheduledSendDate != nil { return "paperplane.circle.fill" }
-        return "paperplane"
     }
 
     // Header fields sit directly on the window surface — flat rows with

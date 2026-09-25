@@ -308,6 +308,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
 
         scrollView.documentView = textView
         applyAppearance(to: scrollView, textView: textView)
+        applyQuoteStyling(to: textView)
         applyTextChecking(to: textView)
         context.coordinator.textView = textView
         context.coordinator.updateSelection(from: textView)
@@ -341,6 +342,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         context.coordinator.attachHTMLPublicationFlushBox(htmlPublicationFlushBox)
         textView.onDropFileURLs = onDropFileURLs
         textView.onFileDragTargetChanged = onFileDragTargetChanged
+        applyQuoteStyling(to: textView)
         context.coordinator.isUpdatingFromSwiftUI = false
     }
 
@@ -373,6 +375,23 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.isContinuousSpellCheckingEnabled = textCheckingConfiguration.spellChecking == .native
         textView.isGrammarCheckingEnabled = textCheckingConfiguration.grammarChecking == .native
         textView.isAutomaticSpellingCorrectionEnabled = textCheckingConfiguration.autocorrection == .native
+    }
+
+    /// Mutes the read-only quoted-original region so the quote reads as a
+    /// quote block instead of blending into the reply text.
+    private func applyQuoteStyling(to textView: NSTextView) {
+        guard let quoteProtection,
+              let storage = textView.textStorage,
+              let protected = ComposeQuoteEditGuard.protectedRange(
+                  in: storage.string as NSString,
+                  protection: quoteProtection
+              ),
+              protected.length > 0 else { return }
+        storage.addAttribute(
+            .foregroundColor,
+            value: NSColor(appearance.editorTheme.textTertiary.color),
+            range: protected
+        )
     }
 
     // MARK: - Coordinator
@@ -845,6 +864,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         context.coordinator.quoteProtection = quoteProtection
         context.coordinator.publishRichHTML(from: textView)
         context.coordinator.updateSelection(from: textView)
+        applyQuoteStyling(to: textView)
         return textView
     }
 
@@ -885,6 +905,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         }
         textView.typingAttributes = typing
         applyTextChecking(to: textView)
+        applyQuoteStyling(to: textView)
         context.coordinator.isUpdatingFromSwiftUI = false
     }
 
@@ -897,6 +918,22 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     private func applyTextChecking(to textView: UITextView) {
         textView.spellCheckingType = textCheckingConfiguration.spellChecking == .native ? .default : .no
         textView.autocorrectionType = textCheckingConfiguration.autocorrection == .native ? .default : .no
+    }
+
+    /// Mutes the read-only quoted-original region so the quote reads as a
+    /// quote block instead of blending into the reply text.
+    private func applyQuoteStyling(to textView: UITextView) {
+        guard let quoteProtection,
+              let protected = ComposeQuoteEditGuard.protectedRange(
+                  in: textView.textStorage.string as NSString,
+                  protection: quoteProtection
+              ),
+              protected.length > 0 else { return }
+        textView.textStorage.addAttribute(
+            .foregroundColor,
+            value: UIColor(appearance.editorTheme.textTertiary.color),
+            range: protected
+        )
     }
 
     final class Coordinator: NSObject, UITextViewDelegate, ComposeIOSRichTextTarget {

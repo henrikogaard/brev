@@ -28,11 +28,30 @@ enum ComposeReplyQuotePlacement: String, Sendable {
     }
 }
 
+/// Removes a leading run of reply/forward prefixes so threading doesn't
+/// stack them ("Re: Re: X" replies as "Re: X"). The comparison is
+/// case-insensitive and tolerant of a missing trailing space ("Re:X").
+enum ComposeSubjectPrefixCollapser {
+    static func stripping(_ subject: String, prefixes: [String]) -> String {
+        var rest = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        while let match = prefixes.first(where: { rest.lowercased().hasPrefix($0) }) {
+            rest = String(rest.dropFirst(match.count))
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+        return rest
+    }
+}
+
 enum ComposeReplyFormatter {
     static func subject(for original: String) -> String {
-        let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("re:") { return trimmed }
-        return "Re: \(displaySubject(trimmed))"
+        let rest = ComposeSubjectPrefixCollapser.stripping(original, prefixes: ["re:"])
+        return "Re: \(displaySubject(rest))"
+    }
+
+    /// First line of the quoted original block — also the marker the
+    /// compose quote-edit guard uses to locate the read-only region.
+    static func quoteMarker(for header: MessageHeader) -> String {
+        "On \(format(header.date)), \(format(header.from)) wrote:"
     }
 
     /// First line of the quoted original block — also the marker the

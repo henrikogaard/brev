@@ -19,9 +19,8 @@ enum ComposeForwardFormatter {
     static let quoteMarker = "---------- Forwarded message ----------"
 
     static func subject(for original: String) -> String {
-        let trimmed = original.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.lowercased().hasPrefix("fwd:") { return trimmed }
-        return "Fwd: \(displaySubject(trimmed))"
+        let rest = ComposeSubjectPrefixCollapser.stripping(original, prefixes: ["fwd:", "fw:"])
+        return "Fwd: \(displaySubject(rest))"
     }
 
     static func body(
