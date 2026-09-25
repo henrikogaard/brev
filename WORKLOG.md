@@ -4818,5 +4818,8 @@ buttons, and package-aware localization.
   a web view). New test asserts the warm-up is idempotent.
 - **Verification**: `swift test --filter HTMLBodyDocument` 21/21 pass;
   lint + format clean. Rebuilt the mock app and re-measured
-  `ui.body.visible` end-to-end (see PR description).
+  `ui.body.visible` end-to-end: 242 ms first open / 164 ms second open,
+  vs 1222 ms before (budget 600 ms). The detail view's own store is
+  pre-warmed at mount as well, so the warm path survives per-store
+  mounts, not only the shared process pool.
 - **Skipped**: live-mailbox warm re-measure — needs a real account (#11).
