@@ -26,6 +26,12 @@ All notable changes to Brev are documented here.
   the muted quoted text instead of only raw `>` prefixes.
 - Settings: the "Applies to all mailboxes" note now sits under the pane
   subtitle instead of floating as an orphan banner above the section title.
+- macOS search options now use system segmented controls for search
+  location, folder scope, and field scope instead of custom capsule
+  chips.
+- iPad calendar now opens with the agenda column visible and shows a
+  single empty state instead of stacking "No events" beside "No event
+  selected".
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate
