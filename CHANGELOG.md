@@ -32,6 +32,13 @@ All notable changes to Brev are documented here.
 - iPad calendar now opens with the agenda column visible and shows a
   single empty state instead of stacking "No events" beside "No event
   selected".
+- Calendar, Contacts, and Tasks lists now use the same neutral
+  selection fill as the mail list instead of the system accent
+  highlight.
+- macOS Tasks window now opens at a sensible default size instead of a
+  minimal window with toolbar overflow.
+- Calendar month view gains grid lines, a semibold weekday header,
+  and event chips tinted by their calendar colour.
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate

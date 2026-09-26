@@ -134,11 +134,7 @@ struct CalendarEventChip: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(
                 RoundedRectangle(cornerRadius: BrevRadius.sm)
-                    .fill(
-                        isSelected
-                            ? theme.accentMuted.color
-                            : theme.bgSecondary.color
-                    )
+                    .fill(chipColor.opacity(isSelected ? 0.45 : 0.18))
             )
             .contentShape(Rectangle())
         }

@@ -44,6 +44,9 @@ public struct ContactsListView: View {
                     ForEach(section.contacts) { contact in
                         ContactRowView(contact: contact)
                             .tag(contact.id)
+                            .listRowBackground(PIMSelectionRowBackground(
+                                isSelected: selectedContactID == contact.id
+                            ))
                     }
                 } header: {
                     Text(section.letter)

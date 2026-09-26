@@ -327,6 +327,7 @@ struct BrevApp: App {
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
+        .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
 
         Window("Brev Settings", id: BrevWindowID.settings) {

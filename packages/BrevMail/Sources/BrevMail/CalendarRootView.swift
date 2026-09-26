@@ -87,6 +87,7 @@ public struct CalendarRootView: View {
         } detail: {
             detailColumn
         }
+        .frame(minWidth: 760, minHeight: 480)
         .searchable(
             text: Bindable(model).searchText,
             prompt: String(

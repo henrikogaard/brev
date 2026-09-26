@@ -52,6 +52,9 @@ public struct TasksListView: View {
                             onToggleCompleted: onToggleCompleted
                         )
                         .tag(task.id)
+                        .listRowBackground(PIMSelectionRowBackground(
+                            isSelected: selectedTaskID == task.id
+                        ))
                     }
                 } header: {
                     Text(section.title)

@@ -1,5 +1,40 @@
 # Worklog
 
+## 2026-09-26 — Agent — UI/UX review batch 4 (M5 selection, M6 window sizes, M7 month grid)
+
+- M5: new shared `PIMSelectionRowBackground` (rounded `BrevSelectionPalette`
+  fill, `isActive: true`) applied via `.listRowBackground` in
+  `CalendarAgendaView`, `ContactsListView`, `TasksListView` — the three
+  PIM lists now match the mail list's neutral selection instead of the
+  system accent highlight. No accent text was used for selected rows;
+  text colors untouched.
+- M6: Tasks `Window` gains `.defaultSize(width: 1000, height: 680)`
+  (same as Contacts); `TasksRootView`, `ContactsRootView`, and
+  `CalendarRootView` get `.frame(minWidth: 760, minHeight: 480)` so
+  `contentMinSize` can't collapse them into toolbar overflow. Calendar
+  had no root min — its leading-column min alone allowed <760, so the
+  min was added there too.
+- M7: `CalendarMonthView` — weekday header now footnote/semibold with a
+  bottom hairline; day cells get separator-color top + trailing 1pt
+  rules (was a `bgSecondary` top line only); day number gets leading
+  padding. `CalendarEventChip` background is now the calendar colour at
+  0.18 opacity (0.45 selected) — shared with the day all-day strip and
+  week view by design. Cell min height unchanged (96).
+- Verified on macOS mock with the stub DAV server (three sources:
+  calendar CalDAV, contacts CardDAV, tasks CalDAV — the pre-existing
+  localhost source had `missingCredential` after the restart, so new
+  sources were added through the grouped sheet): `m5-agenda-selection`,
+  `m5-contacts-selection`, `m5-tasks-selection`,
+  `m6-tasks-window-default` (opens at 1000×680, no toolbar overflow —
+  the » item is the designed secondary-actions menu),
+  `m7-month-grid` (two same-day events, tinted chips, grid lines).
+- Tests: `swift test --filter 'Calendar|Contacts|Tasks'` — 159 tests,
+  10 snapshot issues, all reproduced identically on the `brev-main`
+  worktree (env-vs-baseline drift; the month-grid/chip change is inside
+  the already-failing `month-*` baselines, so intended diffs are masked
+  — baselines not re-recorded). lint/format clean.
+
+
 ## 2026-09-26 — Agent — UI/UX review items 1–8 (fix/uiux-top10)
 
 - Merged #97 and #100 onto main via squash (3-way, post-merge

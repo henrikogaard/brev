@@ -53,6 +53,9 @@ public struct CalendarAgendaView: View {
                     ForEach(section.events) { event in
                         eventRow(event)
                             .tag(event.id)
+                            .listRowBackground(PIMSelectionRowBackground(
+                                isSelected: selectedEventID == event.id
+                            ))
                     }
                 } header: {
                     Text(sectionTitle(for: section))

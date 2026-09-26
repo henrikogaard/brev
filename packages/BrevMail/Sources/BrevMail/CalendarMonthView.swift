@@ -86,12 +86,18 @@ public struct CalendarMonthView: View {
         HStack(spacing: 0) {
             ForEach(weekdaySymbols, id: \.self) { symbol in
                 Text(symbol)
-                    .brevFont(.caption)
+                    .brevFont(.footnote)
+                    .fontWeight(.semibold)
                     .foregroundStyle(theme.textSecondary.color)
                     .frame(maxWidth: .infinity)
             }
         }
-        .padding(.vertical, BrevSpacing.xs)
+        .padding(.vertical, BrevSpacing.sm)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(BrevSeparator.color(for: theme))
+                .frame(height: 0.5)
+        }
         .accessibilityHidden(true)
     }
 
@@ -111,6 +117,7 @@ public struct CalendarMonthView: View {
         return VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             Text(cell.day.formatted(.dateTime.day()))
                 .brevFont(.caption)
+                .padding(.leading, BrevSpacing.xs)
                 .foregroundStyle(
                     isToday(cell.day)
                         ? theme.bgPrimary.color
@@ -160,8 +167,13 @@ public struct CalendarMonthView: View {
         }
         .overlay(alignment: .top) {
             Rectangle()
-                .fill(theme.bgSecondary.color)
+                .fill(BrevSeparator.color(for: theme))
                 .frame(height: 1)
+        }
+        .overlay(alignment: .trailing) {
+            Rectangle()
+                .fill(BrevSeparator.color(for: theme))
+                .frame(width: 1)
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(
