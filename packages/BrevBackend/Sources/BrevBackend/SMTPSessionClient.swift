@@ -264,7 +264,7 @@ public struct SMTPSessionClient: Sendable {
     ) async throws {
         switch credential.authentication {
         case .xoauth2:
-            guard Self.replyAdvertisesAUTHXOAuth2(ehloReply) else {
+            guard Self.replyAdvertisesAUTHMechanism(ehloReply, mechanism: "XOAUTH2") else {
                 throw SMTPClientError.authenticationUnavailable("AUTH XOAUTH2")
             }
             let sasl = XOAuth2SASLEncoder.encode(
@@ -285,19 +285,27 @@ public struct SMTPSessionClient: Sendable {
                 )
             }
         case .password, .appPassword, .encryptedPassword, .none:
-            guard Self.replyAdvertisesAUTHPlain(ehloReply) else {
-                throw SMTPClientError.authenticationUnavailable("AUTH PLAIN")
+            if Self.replyAdvertisesAUTHMechanism(ehloReply, mechanism: "PLAIN") {
+                let token = authPlainToken(
+                    username: credential.outgoingUsername,
+                    secret: credential.secret
+                )
+                try await writeCommand("AUTH PLAIN \(token)")
+                _ = try await readReply(expectedCodes: ["235"], commandName: "AUTH PLAIN")
+            } else if Self.replyAdvertisesAUTHMechanism(ehloReply, mechanism: "LOGIN") {
+                try await writeCommand("AUTH LOGIN")
+                _ = try await readReply(expectedCodes: ["334"], commandName: "AUTH LOGIN")
+                try await writeCommand(Data(credential.outgoingUsername.utf8).base64EncodedString())
+                _ = try await readReply(expectedCodes: ["334"], commandName: "AUTH LOGIN")
+                try await writeCommand(Data(credential.secret.utf8).base64EncodedString())
+                _ = try await readReply(expectedCodes: ["235"], commandName: "AUTH LOGIN")
+            } else {
+                throw SMTPClientError.authenticationUnavailable("AUTH PLAIN or AUTH LOGIN")
             }
-            let token = authPlainToken(
-                username: credential.outgoingUsername,
-                secret: credential.secret
-            )
-            try await writeCommand("AUTH PLAIN \(token)")
-            _ = try await readReply(expectedCodes: ["235"], commandName: "AUTH PLAIN")
         }
     }
 
-    private static func replyAdvertisesAUTHXOAuth2(_ lines: [String]) -> Bool {
+    private static func replyAdvertisesAUTHMechanism(_ lines: [String], mechanism: String) -> Bool {
         lines.contains { line in
             guard line.count >= 4 else { return false }
             let extensionText = line.dropFirst(4)
@@ -306,11 +314,11 @@ public struct SMTPSessionClient: Sendable {
             if extensionText.hasPrefix("AUTH=") {
                 return extensionText.dropFirst(5)
                     .split(whereSeparator: \.isWhitespace)
-                    .contains("XOAUTH2")
+                    .contains(Substring(mechanism))
             }
             let tokens = extensionText.split(whereSeparator: \.isWhitespace)
             guard tokens.first == "AUTH" else { return false }
-            return tokens.dropFirst().contains("XOAUTH2")
+            return tokens.dropFirst().contains(Substring(mechanism))
         }
     }
 
@@ -499,25 +507,6 @@ public struct SMTPSessionClient: Sendable {
                 .uppercased()
             return extensionText == "STARTTLS"
                 || extensionText.hasPrefix("STARTTLS ")
-        }
-    }
-
-    private static func replyAdvertisesAUTHPlain(_ lines: [String]) -> Bool {
-        lines.contains { line in
-            guard line.count >= 4 else { return false }
-            let extensionText = line.dropFirst(4)
-                .trimmingCharacters(in: .whitespacesAndNewlines)
-                .uppercased()
-
-            if extensionText.hasPrefix("AUTH=") {
-                return extensionText.dropFirst(5)
-                    .split(whereSeparator: \.isWhitespace)
-                    .contains("PLAIN")
-            }
-
-            let tokens = extensionText.split(whereSeparator: \.isWhitespace)
-            guard tokens.first == "AUTH" else { return false }
-            return tokens.dropFirst().contains("PLAIN")
         }
     }
 

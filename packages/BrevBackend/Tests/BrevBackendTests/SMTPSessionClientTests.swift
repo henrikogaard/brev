@@ -123,7 +123,7 @@ struct SMTPSessionClientTests {
         ])
         let client = SMTPSessionClient(transport: transport)
 
-        await #expect(throws: SMTPClientError.authenticationUnavailable("AUTH PLAIN")) {
+        await #expect(throws: SMTPClientError.authenticationUnavailable("AUTH PLAIN or AUTH LOGIN")) {
             try await client.loginAndValidateCredentials(
                 configuration: Self.configuration(),
                 credential: Self.credential()
@@ -132,6 +132,54 @@ struct SMTPSessionClientTests {
 
         #expect(await transport.sentLines == [
             "EHLO brev.local",
+        ])
+    }
+
+    @Test("client authenticates with AUTH LOGIN on LOGIN-only servers")
+    func clientAuthenticatesWithAUTHLOGINOnLoginOnlyServers() async throws {
+        let transport = ScriptedSMTPTransport(lines: [
+            "220 smtp.example.org ESMTP ready",
+            "250 AUTH LOGIN",
+            "334 VXNlcm5hbWU6",
+            "334 UGFzc3dvcmQ6",
+            "235 2.7.0 Authentication successful",
+            "221 2.0.0 Bye",
+        ])
+        let client = SMTPSessionClient(transport: transport)
+
+        try await client.loginAndValidateCredentials(
+            configuration: Self.configuration(),
+            credential: Self.credential()
+        )
+
+        #expect(await transport.sentLines == [
+            "EHLO brev.local",
+            "AUTH LOGIN",
+            Data("person@example.org".utf8).base64EncodedString(),
+            Data("secret".utf8).base64EncodedString(),
+            "QUIT",
+        ])
+    }
+
+    @Test("client prefers AUTH PLAIN when both PLAIN and LOGIN are advertised")
+    func clientPrefersAUTHPLAINWhenBothAdvertised() async throws {
+        let transport = ScriptedSMTPTransport(lines: [
+            "220 smtp.example.org ESMTP ready",
+            "250 AUTH LOGIN PLAIN",
+            "235 2.7.0 Authentication successful",
+            "221 2.0.0 Bye",
+        ])
+        let client = SMTPSessionClient(transport: transport)
+
+        try await client.loginAndValidateCredentials(
+            configuration: Self.configuration(),
+            credential: Self.credential()
+        )
+
+        #expect(await transport.sentLines == [
+            "EHLO brev.local",
+            "AUTH PLAIN AHBlcnNvbkBleGFtcGxlLm9yZwBzZWNyZXQ=",
+            "QUIT",
         ])
     }
 

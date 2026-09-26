@@ -35,6 +35,37 @@
   — baselines not re-recorded). lint/format clean.
 
 
+## 2026-09-26 — Agent — IMAP/SMTP provider compatibility (D5/D6, #11)
+
+- `fix/imap-smtp-provider-compat`. D5: added
+  `IMAPServerCapabilities.supportsCONDSTORE`; both `select` and
+  `selectCONDSTORE` now omit the modifier when the server didn't
+  advertise CONDSTORE (capability capture already covers greeting,
+  STARTTLS CAPABILITY, LOGIN tagged OK, and XOAUTH2 tagged OK paths —
+  no new round trip). `loginAndCONDSTORESync` callers tolerate nil
+  HIGHESTMODSEQ.
+- D6: `authenticate` prefers `AUTH PLAIN`, falls back to the
+  `AUTH LOGIN` challenge exchange (334 → b64 user → 334 → b64 secret →
+  235), else throws `authenticationUnavailable("AUTH PLAIN or AUTH LOGIN")`.
+  `replyAdvertisesAUTHXOAuth2`/`replyAdvertisesAUTHPlain` merged into
+  `replyAdvertisesAUTHMechanism(_:mechanism:)`.
+- Tests: scripted transports now advertise CONDSTORE where they assert
+  the modifier (capability state is overwritten per parse — atom sets
+  must be complete per site); new tests cover plain SELECT, nil-modseq
+  sync, AUTH LOGIN exchange, PLAIN-over-LOGIN preference, combined
+  error. 162 tests pass; lint/format clean.
+- Live re-verify (mailo.com): `--validate-smtp-setup
+  --send-test-message --exercise-compose-lifecycle` → `imap-smtp-live-smoke:
+  OK`; real message submitted through MailBackend, Drafts
+  save/send/discard pass. Residual, unrelated to this change: multi-word
+  TEXT / non-ASCII server-search guards fail (provider charset/TEXT
+  gap — observation) and IDLE messagesAdded times out (provider emits
+  no same-account APPEND notifications; flagged optional in script).
+- D7 investigated, left design-level: no account persists after a
+  failed manual add (keychain clean); "Reconnect your mailbox" is just
+  `session.signInError != nil` (`LoginView` ~L158) and the sheet
+  correctly stays open on failure — misleading copy, not zombie state.
+
 ## 2026-09-26 — Agent — UI/UX review items 1–8 (fix/uiux-top10)
 
 - Merged #97 and #100 onto main via squash (3-way, post-merge

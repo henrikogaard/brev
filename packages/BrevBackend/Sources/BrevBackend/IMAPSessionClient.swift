@@ -483,6 +483,13 @@ public struct IMAPServerCapabilities: Sendable, Hashable {
         contains("UIDPLUS")
     }
 
+    /// `CONDSTORE`: the RFC 4551 capability for mod-sequence delta sync.
+    /// Servers without it reject `SELECT ... (CONDSTORE)`, so callers must
+    /// omit the modifier.
+    public var supportsCONDSTORE: Bool {
+        contains("CONDSTORE")
+    }
+
     /// Parses one response line. Recognises `* CAPABILITY …`, and the
     /// `[CAPABILITY …]` response code on `* OK` or a tagged `OK`.
     /// Returns nil for any other line.
@@ -3076,11 +3083,11 @@ public actor IMAPSessionClient {
            selectedMailboxState.folderPath == folderPath {
             return selectedMailboxState.mailbox
         }
-        // Always request CONDSTORE; servers that don't support it ignore the modifier.
+        let condstoreModifier = serverCapabilities.supportsCONDSTORE ? " (CONDSTORE)" : ""
         let responses = try await execute(
             tag: nextTag(&tagCounter),
             commandName: "SELECT",
-            command: "SELECT \(Self.quotedMailboxName(folderPath)) (CONDSTORE)"
+            command: "SELECT \(Self.quotedMailboxName(folderPath))\(condstoreModifier)"
         )
         let selectedMailbox = IMAPSelectedMailbox.parse(from: responses)
         if reusesAuthenticatedSession {
@@ -3608,10 +3615,11 @@ public actor IMAPSessionClient {
     }
 
     private func selectCONDSTORE(folderPath: String, tagCounter: inout Int) async throws -> IMAPSelectedMailbox {
+        let condstoreModifier = serverCapabilities.supportsCONDSTORE ? " (CONDSTORE)" : ""
         let responses = try await execute(
             tag: nextTag(&tagCounter),
             commandName: "SELECT",
-            command: "SELECT \(Self.quotedMailboxName(folderPath)) (CONDSTORE)"
+            command: "SELECT \(Self.quotedMailboxName(folderPath))\(condstoreModifier)"
         )
         let selectedMailbox = IMAPSelectedMailbox.parse(from: responses)
         if reusesAuthenticatedSession {

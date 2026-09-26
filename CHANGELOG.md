@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
+  advertise the capability — those servers (e.g. mailo.com) rejected the
+  command outright, so no mailbox could be opened on them.
+- SMTP: accounts on servers that advertise only `AUTH LOGIN` now
+  authenticate and send; `AUTH PLAIN` is still preferred when offered.
 - macOS reader re-measures the message body after the window or pane
   narrows, so text wraps at ~700 pt instead of clipping mid-line.
 - iPhone thread view opens with the latest (or first unread) message

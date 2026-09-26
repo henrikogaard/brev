@@ -618,7 +618,7 @@ struct IMAPAccountProvisioningTests {
         let configurationStore = InMemoryIMAPAccountConfigurationStore()
         let credentialStore = InMemoryMailCredentialStore()
         let imapTransport = ProvisioningScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "* LIST (\\HasNoChildren \\Sent) \"/\" \"Sent\"",

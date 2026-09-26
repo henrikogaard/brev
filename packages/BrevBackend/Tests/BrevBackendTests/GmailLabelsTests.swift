@@ -81,7 +81,7 @@ struct GmailLabelsTests {
     @Test("listing keeps the plain FETCH attribute set without X-GM-EXT-1")
     func listingKeepsPlainFetchWithoutGmailExtension() async throws {
         let transport = ScriptedGmailTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] Gimap ready",
             "A0001 OK LOGIN completed",
             "* 23 EXISTS",
             "A0002 OK [READ-WRITE] SELECT completed",
@@ -152,7 +152,7 @@ struct GmailLabelsTests {
     func clientStoresGmailLabels() async throws {
         let transport = ScriptedGmailTransport(lines: [
             "* OK Gimap ready",
-            "A0001 OK [CAPABILITY IMAP4rev1 X-GM-EXT-1] authenticated",
+            "A0001 OK [CAPABILITY IMAP4rev1 X-GM-EXT-1 CONDSTORE] authenticated",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK STORE completed",
         ])

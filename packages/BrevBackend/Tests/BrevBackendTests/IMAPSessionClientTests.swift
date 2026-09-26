@@ -65,7 +65,7 @@ struct IMAPSessionClientTests {
     @Test("client logs in and lists folders")
     func clientLogsInAndListsFolders() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "* LIST (\\HasNoChildren \\Sent) \"/\" \"Sent\"",
@@ -90,7 +90,7 @@ struct IMAPSessionClientTests {
     @Test("client parses case-insensitive LIST folder responses")
     func clientParsesCaseInsensitiveLISTFolderResponses() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* List (\\HasNoChildren) \"/\" \"INBOX\"",
             "* lIsT (\\HasNoChildren \\Sent) \"/\" \"Sent\"",
@@ -110,7 +110,7 @@ struct IMAPSessionClientTests {
     @Test("client decodes modified UTF-7 folder names")
     func clientDecodesModifiedUTF7FolderNames() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             #"* LIST (\HasNoChildren) "/" "Projects/F&APg-lder""#,
             #"* LIST (\HasNoChildren) "/" "Sent &- Archive""#,
@@ -130,7 +130,7 @@ struct IMAPSessionClientTests {
     @Test("client fetches per-folder unread counts with STATUS when asked")
     func clientFetchesFolderUnreadCountsWithSTATUS() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "* LIST (\\Noselect \\HasChildren) \"/\" \"[Gmail]\"",
@@ -163,7 +163,7 @@ struct IMAPSessionClientTests {
     @Test("a refused STATUS leaves that folder's counts at zero without failing the listing")
     func refusedSTATUSLeavesCountsAtZeroWithoutFailingListing() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "* LIST (\\HasNoChildren \\Sent) \"/\" \"Sent\"",
@@ -237,7 +237,7 @@ struct IMAPSessionClientTests {
     @Test("client encodes modified UTF-7 folder names in commands")
     func clientEncodesModifiedUTF7FolderNamesInCommands() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH",
@@ -390,7 +390,7 @@ struct IMAPSessionClientTests {
         let firstSnippet = "First preview text from the message body."
         let secondSnippet = "Second preview text from the message body."
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 23 EXISTS",
             "* OK [UIDVALIDITY 987654321] UIDs valid",
@@ -447,7 +447,7 @@ struct IMAPSessionClientTests {
     func listingSnippetsDecodeQuotedPrintableBodyTextPeeks() async throws {
         let encodedSnippet = "=0A=0A=0A*|SUBJECT|* Hello from=20Porkbun"
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -487,7 +487,7 @@ struct IMAPSessionClientTests {
             "We weren't able to charge the credit card you provided.",
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -524,7 +524,7 @@ struct IMAPSessionClientTests {
             "Our late summer collection is here.",
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -567,7 +567,7 @@ struct IMAPSessionClientTests {
             "--boundary123",
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -602,7 +602,7 @@ struct IMAPSessionClientTests {
             + "<style type=\"text/css\">.slogan:before { content: \"\"; flex: 1 1; }</style>"
             + "</head><body><p>Your workspace is ready.</p><table><tr><td al"
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -635,7 +635,7 @@ struct IMAPSessionClientTests {
     func listingSnippetsKeepLiteralEqualsValuesThatAreNotQuotedPrintable() async throws {
         let plainSnippet = "Set code=10 and retry=20 before shipping."
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 1 EXISTS",
             "* OK [UIDVALIDITY 1] UIDs valid",
@@ -667,7 +667,7 @@ struct IMAPSessionClientTests {
     @Test("client parses case-insensitive FETCH message attributes")
     func clientParsesCaseInsensitiveFETCHMessageAttributes() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 42",
@@ -698,7 +698,7 @@ struct IMAPSessionClientTests {
     @Test("client parses case-insensitive SEARCH response atoms")
     func clientParsesCaseInsensitiveSEARCHResponseAtoms() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* Search 42",
@@ -728,7 +728,7 @@ struct IMAPSessionClientTests {
     @Test("client lists older message page from page token")
     func clientListsOlderMessagePageFromPageToken() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 41 42 43 44",
@@ -759,7 +759,7 @@ struct IMAPSessionClientTests {
     @Test("client searches attachment candidates through bounded cursor pages")
     func clientSearchesAttachmentCandidatesThroughBoundedCursorPages() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 10 20",
@@ -806,7 +806,7 @@ struct IMAPSessionClientTests {
     @Test("client searches selected folder with IMAP criteria")
     func clientSearchesSelectedFolderWithIMAPCriteria() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 91",
@@ -843,7 +843,7 @@ struct IMAPSessionClientTests {
     @Test("client sends multi-word text search as all-term IMAP criteria")
     func clientSendsMultiWordTextSearchAsAllTermIMAPCriteria() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 91",
@@ -876,7 +876,7 @@ struct IMAPSessionClientTests {
     @Test("client searches recipient filter across to cc and bcc")
     func clientSearchesRecipientFilterAcrossToCcAndBcc() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH",
@@ -906,7 +906,7 @@ struct IMAPSessionClientTests {
     @Test("related-header discovery searches Message-ID, In-Reply-To and References")
     func relatedHeaderDiscoverySearchesReplyFields() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH 91",
@@ -937,7 +937,7 @@ struct IMAPSessionClientTests {
     @Test("related-header discovery with no identifiers sends no search")
     func relatedHeaderDiscoveryWithoutIdentifiersSkipsSearch() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
         ])
         let client = IMAPSessionClient(transport: transport)
 
@@ -959,7 +959,7 @@ struct IMAPSessionClientTests {
     @Test("client sends non-ASCII search terms as UTF-8 literals")
     func clientSendsNonASCIISearchTermsAsLiterals() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "+ Ready for literal data",
@@ -998,7 +998,7 @@ struct IMAPSessionClientTests {
     @Test("client chains multiple non-ASCII search literals")
     func clientChainsMultipleNonASCIISearchLiterals() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "+ Ready for first literal",
@@ -1091,7 +1091,7 @@ struct IMAPSessionClientTests {
         let subject = "Møte med vedlegg"
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* SEARCH 55",
@@ -1125,7 +1125,7 @@ struct IMAPSessionClientTests {
         let subject = "Project update\r\n next steps"
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* SEARCH 56",
@@ -1153,7 +1153,7 @@ struct IMAPSessionClientTests {
     @Test("client skips UID FETCH when folder search returns no messages")
     func clientSkipsUIDFetchWhenSearchReturnsNoMessages() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "* SEARCH",
@@ -1187,7 +1187,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawMessage.utf8.count)}",
@@ -1223,7 +1223,7 @@ struct IMAPSessionClientTests {
         let bodyStructure = #"* 9 FETCH (UID 43 BODYSTRUCTURE ((("TEXT" "PLAIN" ("CHARSET" "UTF-8") NIL NIL "QUOTED-PRINTABLE" 14 1)("TEXT" "HTML" ("CHARSET" "UTF-8") NIL NIL "BASE64" 28 1) "ALTERNATIVE")("APPLICATION" "PDF" ("NAME" "report.pdf") NIL NIL "BASE64" 2048 NIL ("ATTACHMENT" ("FILENAME" "report.pdf"))) "MIXED"))"#
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 bodyStructure,
@@ -1270,7 +1270,7 @@ struct IMAPSessionClientTests {
         let encoded = "SGVsbG8="
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 9 FETCH (UID 43 BODY[2] {\(encoded.utf8.count)}",
@@ -1306,7 +1306,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawMessage.utf8.count)}",
@@ -1339,7 +1339,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawMessage.utf8.count)}",
@@ -1379,7 +1379,8 @@ struct IMAPSessionClientTests {
                     + "Content-Disposition: attachment; filename=bytes.bin\r\n"
                     + "Content-Transfer-Encoding: base64\r\n\r\nAAECAwQ=\r\n--mail--\r\n").utf8)
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready", "A0001 OK LOGIN completed", "A0002 OK [READ-WRITE] SELECT completed",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready", "A0001 OK LOGIN completed",
+            "A0002 OK [READ-WRITE] SELECT completed",
             "* 14 FETCH (UID 43 BODY[] {\(raw.count)}", ")", "A0003 OK FETCH completed"
         ], dataReads: [raw])
         let source = try await IMAPSessionClient(transport: transport).loginAndFetchMessageSource(
@@ -1400,7 +1401,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 RFC822 {\(rawMessage.utf8.count)}",
@@ -1431,7 +1432,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY.PEEK[] {\(rawMessage.utf8.count)}",
@@ -1462,7 +1463,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 Fetch (Uid 43 Body[] {\(rawMessage.utf8.count)}",
@@ -1493,7 +1494,7 @@ struct IMAPSessionClientTests {
         ].joined(separator: "\r\n")
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 430 BODY[] {\(rawMessage.utf8.count)}",
@@ -1566,7 +1567,7 @@ struct IMAPSessionClientTests {
         let rawData = try #require(rawMessage.data(using: .isoLatin1))
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawData.count)}",
@@ -1599,7 +1600,7 @@ struct IMAPSessionClientTests {
         let rawData = try #require(rawMessage.data(using: .windowsCP1252))
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawData.count)}",
@@ -1632,7 +1633,7 @@ struct IMAPSessionClientTests {
         rawData.append(contentsOf: [0xCF, 0xF0, 0xE8, 0xE2, 0xE5, 0xF2])
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* 14 FETCH (UID 43 BODY[] {\(rawData.count)}",
@@ -1656,7 +1657,7 @@ struct IMAPSessionClientTests {
     @Test("client logs in selects folder and stores message flags")
     func clientLogsInSelectsFolderAndStoresMessageFlags() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK STORE completed",
@@ -1683,7 +1684,7 @@ struct IMAPSessionClientTests {
     func clientAppendsSentMessageDataWithSeenFlag() async throws {
         let messageData = Data("Subject: Sent\r\n\r\nHello".utf8)
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "+ Ready for literal data",
             "A0002 OK APPEND completed",
@@ -1710,7 +1711,7 @@ struct IMAPSessionClientTests {
         let messageData = Data("Subject: Sent\n\nHello".utf8)
         let normalized = Data("Subject: Sent\r\n\r\nHello".utf8)
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "+ Ready for literal data",
             "A0002 OK APPEND completed",
@@ -1736,7 +1737,7 @@ struct IMAPSessionClientTests {
     func clientAppendsDraftMessageDataAndReturnsAppendUID() async throws {
         let messageData = Data("Subject: Draft\r\n\r\nHello".utf8)
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "+ Ready for literal data",
             "A0002 OK [APPENDUID 999 42] APPEND completed",
@@ -1762,7 +1763,7 @@ struct IMAPSessionClientTests {
     @Test("move retains COPYUID identities instead of guessing destination IDs")
     func moveRetainsDestinationUIDs() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* OK [UIDVALIDITY 77] valid",
             "A0002 OK [READ-WRITE] SELECT completed",
@@ -1780,7 +1781,7 @@ struct IMAPSessionClientTests {
     @Test("a rejected MOVE is not repeated as COPY because it may have partially moved messages")
     func rejectedMoveDoesNotCopyAgain() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] ready", "A0001 OK LOGIN completed",
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS CONDSTORE] ready", "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed", "A0003 NO MOVE partially failed",
             "A0004 OK COPY completed", "A0005 OK STORE completed", "A0006 OK EXPUNGE completed"
         ])
@@ -1842,7 +1843,7 @@ struct IMAPSessionClientTests {
     @Test("Undo refreshes UIDVALIDITY even when the source mailbox is already selected")
     func undoMoveReselectsMailbox() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 91] valid",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] ready", "A0001 OK LOGIN completed", "* OK [UIDVALIDITY 91] valid",
             "A0002 OK SELECT completed", "A0003 OK MOVE completed",
             "* OK [UIDVALIDITY 92] replaced", "A0004 OK SELECT completed"
         ])
@@ -1861,7 +1862,7 @@ struct IMAPSessionClientTests {
     @Test("client moves messages with UID MOVE")
     func clientMovesMessagesWithUIDMove() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK MOVE completed",
@@ -1886,7 +1887,7 @@ struct IMAPSessionClientTests {
     @Test("client copies messages with UID COPY")
     func clientCopiesMessagesWithUIDCopy() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK COPY completed",
@@ -1911,7 +1912,7 @@ struct IMAPSessionClientTests {
     @Test("client falls back to COPY STORE and UID EXPUNGE when UID MOVE is unsupported")
     func clientFallsBackToCopyStoreAndUIDExpungeWhenUIDMoveIsUnsupported() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 BAD UID MOVE unsupported",
@@ -1942,7 +1943,7 @@ struct IMAPSessionClientTests {
     @Test("client permanently deletes messages with deleted flag and UID EXPUNGE")
     func clientPermanentlyDeletesMessagesWithDeletedFlagAndUIDExpunge() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK STORE completed",
@@ -1968,7 +1969,7 @@ struct IMAPSessionClientTests {
     @Test("permanent delete refuses servers without UIDPLUS before marking a message deleted")
     func permanentDeleteRefusesServersWithoutUIDPlus() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK [CAPABILITY IMAP4rev1] IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
         ])
@@ -1996,7 +1997,7 @@ struct IMAPSessionClientTests {
     @Test("UID EXPUNGE failures never fall back to unscoped EXPUNGE")
     func uidExpungeFailureNeverFallsBackToUnscopedExpunge() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK [CAPABILITY IMAP4rev1 UIDPLUS] IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 UIDPLUS CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "A0002 OK [READ-WRITE] SELECT completed",
             "A0003 OK STORE completed",
@@ -2057,7 +2058,7 @@ struct IMAPSessionClientTests {
     @Test("client upgrades STARTTLS before IMAP login")
     func clientUpgradesSTARTTLSBeforeIMAPLogin() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "* CAPABILITY IMAP4rev1 STARTTLS LOGINDISABLED",
             "A0001 OK CAPABILITY completed",
             "A0002 OK Begin TLS negotiation now",
@@ -2092,11 +2093,11 @@ struct IMAPSessionClientTests {
     func persistentClientReconnectsOnceAfterTransportLoss() async throws {
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
                 "A0002 OK LIST completed",
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "* SEARCH 91",
@@ -2140,7 +2141,7 @@ struct IMAPSessionClientTests {
     func cancelledCommandReadInvalidatesReusedSession() async throws {
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
             ],
@@ -2180,7 +2181,7 @@ struct IMAPSessionClientTests {
         // survived the teardown: it has to reconnect and log in again
         // instead of issuing commands on presumed-live session state.
         await transport.appendLines([
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "A0002 OK LIST completed",
@@ -2198,11 +2199,11 @@ struct IMAPSessionClientTests {
     @Test("persistent client reconnects when the OAuth secret rotates")
     func persistentClientReconnectsWhenOAuthSecretRotates() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "A0002 OK LIST completed",
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* LIST (\\HasNoChildren) \"/\" \"INBOX\"",
             "A0002 OK LIST completed",
@@ -2237,10 +2238,10 @@ struct IMAPSessionClientTests {
     func persistentClientDoesNotReplayAmbiguousCopy() async throws {
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "A0002 OK [READ-WRITE] SELECT completed",
                 "A0003 OK COPY completed",
@@ -2274,7 +2275,7 @@ struct IMAPSessionClientTests {
     @Test("client refuses STARTTLS when the server does not advertise it")
     func clientRefusesSTARTTLSWhenNotAdvertised() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "* CAPABILITY IMAP4rev1 LOGINDISABLED",
             "A0001 OK CAPABILITY completed",
         ])
@@ -2302,7 +2303,7 @@ struct IMAPSessionClientTests {
     @Test("client enters IDLE and leaves with DONE after bounded events")
     func clientEntersIDLEAndLeavesWithDONEAfterBoundedEvents() async throws {
         let transport = ScriptedIMAPTransport(lines: [
-            "* OK IMAP4rev1 ready",
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
             "A0001 OK LOGIN completed",
             "* 23 EXISTS",
             "A0002 OK [READ-WRITE] SELECT completed",
@@ -2340,7 +2341,7 @@ struct IMAPSessionClientTests {
     func idleLifetimeTimeoutClosesTransport() async throws {
         let transport = ScriptedIMAPTransport(
             lines: [
-                "* OK IMAP4rev1 ready",
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
                 "A0001 OK LOGIN completed",
                 "* 23 EXISTS",
                 "A0002 OK [READ-WRITE] SELECT completed",
@@ -2365,6 +2366,73 @@ struct IMAPSessionClientTests {
             _ = try await iterator.next()
         }
         #expect(await transport.disconnectCount >= 1)
+    }
+
+    @Test("client sends plain SELECT when the server does not advertise CONDSTORE")
+    func clientSendsPlainSelectWithoutCondstoreCapability() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK Brev test server ready",
+            "A0001 OK LOGIN completed",
+            "* 23 EXISTS",
+            "* OK [UIDVALIDITY 987654321] UIDs valid",
+            "A0002 OK [READ-WRITE] SELECT completed",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        _ = try await client.loginAndCONDSTORESync(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            since: nil
+        )
+
+        #expect(await transport.sentLines.contains("A0002 SELECT \"INBOX\""))
+    }
+
+    @Test("CONDSTORE sync returns nil modseq without throwing on non-CONDSTORE servers")
+    func condstoreSyncReturnsNilModseqOnNonCondstoreServer() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK Brev test server ready",
+            "A0001 OK LOGIN completed",
+            "* 23 EXISTS",
+            "* OK [UIDVALIDITY 987654321] UIDs valid",
+            "A0002 OK [READ-WRITE] SELECT completed",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        let result = try await client.loginAndCONDSTORESync(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            since: nil
+        )
+
+        #expect(result.highestModSeq == nil)
+        #expect(result.uidValidity == 987_654_321)
+        #expect(result.changes.isEmpty)
+        #expect(await transport.sentLines.contains("A0002 SELECT \"INBOX\""))
+    }
+
+    @Test("client requests CONDSTORE when the server advertises it")
+    func clientRequestsCondstoreWhenAdvertised() async throws {
+        let transport = ScriptedIMAPTransport(lines: [
+            "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
+            "A0001 OK LOGIN completed",
+            "* 23 EXISTS",
+            "A0002 OK [READ-WRITE] SELECT completed",
+            "* SEARCH",
+            "A0003 OK SEARCH completed",
+        ])
+        let client = IMAPSessionClient(transport: transport)
+
+        _ = try await client.loginAndListMessages(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            limit: 1
+        )
+
+        #expect(await transport.sentLines.contains("A0002 SELECT \"INBOX\" (CONDSTORE)"))
     }
 
     @Test("IDLE parser recognizes mailbox count and flag changes")
