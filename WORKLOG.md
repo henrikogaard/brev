@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-09-26 — Agent — UI/UX review top-10 batch 2 (items 9, 10, M9)
+
+- Item 9 (M1): replaced the iOS `sidebarFooter` safe-area pill chips
+  (Calendar/Contacts/Tasks/Settings) with in-scroll `BrevListRow` rows
+  under a "More" section header at the end of the sidebar tree, using
+  the same icon column (`sidebarMetrics.iconWidth`) and
+  `showSidebarIcons` gating as the outbox row — no more overlap over
+  the last mailbox rows on iPhone; iPad sidebar gets the same rows.
+- Item 10 (M2/M3): unified the compose header label column — new shared
+  `ComposeFieldLabel` used by `fieldRow` (From/Subject) and
+  `RecipientChipField` (To/Cc/Bcc), and the chip field's label now uses
+  the same `.firstTextBaseline` alignment instead of `.top` + manual
+  padding. Reply quotes keep their `>` text but gain a 12 pt head
+  indent plus an accent-coloured rounded bar drawn in
+  `ComposeRichTextView.drawBackground` (`quoteBarRange`/`quoteBarColor`
+  fed by `applyQuoteStyling`).
+- M9: "Applies to all mailboxes" moved from an orphan banner in
+  `settingsScope` to a `settingsScopeCaption` environment value
+  rendered under the pane subtitle by `SectionScaffold`.
+
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 
 - Assessed the AI sidebar live on macOS mock (sender card, Actions,

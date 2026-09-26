@@ -60,7 +60,7 @@ struct RecipientChipField: View {
                     fieldContent
                 }
             } else {
-                HStack(alignment: .top, spacing: BrevSpacing.sm) {
+                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                     labelView
                         .frame(width: labelWidth, alignment: .trailing)
                     fieldContent
@@ -73,10 +73,10 @@ struct RecipientChipField: View {
     }
 
     private var labelView: some View {
-        Text(label)
-            .brevFont(.subheadline)
-            .foregroundStyle(theme.textSecondary.color)
-            .padding(.top, dynamicTypeSize.isAccessibilitySize ? 0 : BrevSpacing.xs)
+        // One shared label column with the other compose header rows
+        // (From/Subject via ComposeView.fieldRow): same type, colour,
+        // width, trailing alignment and baseline alignment.
+        ComposeFieldLabel(label)
     }
 
     private var fieldContent: some View {
