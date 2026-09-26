@@ -643,6 +643,13 @@ public struct SettingsView: View {
             settingsScope(for: section)
             detail(for: section)
         }
+        .environment(\.settingsScopeCaption, settingsScopeCaption(for: section))
+    }
+
+    private func settingsScopeCaption(for section: SettingsSection) -> String? {
+        [.appearance, .mailboxView, .compose, .vipAndReminders].contains(section)
+            ? String(localized: "Applies to all mailboxes", bundle: .module)
+            : nil
     }
 
     private var selectedMailbox: SettingsMailbox? {
@@ -688,13 +695,6 @@ public struct SettingsView: View {
             .padding(.vertical, BrevSpacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(theme.bgSecondary.color)
-        } else if [.appearance, .mailboxView, .compose, .vipAndReminders].contains(section) {
-            Text("Applies to all mailboxes", bundle: .module)
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, BrevSpacing.xl)
-                .padding(.top, BrevSpacing.sm)
         }
     }
 

@@ -233,6 +233,9 @@ public struct FolderSidebar: View {
                             outboxButton
                             folderList(folders: folders, sourceID: nil, loadError: loadError)
                         }
+                        #if os(iOS)
+                        appsSection
+                        #endif
                     }
                     .padding(sidebarMetrics.sidebarPadding)
                 }
@@ -297,9 +300,6 @@ public struct FolderSidebar: View {
                         profileSwitcher
                     }
                 }
-            }
-            .safeAreaInset(edge: .bottom, spacing: 0) {
-                sidebarFooter
             }
         #endif
             .onAppear {
@@ -378,69 +378,74 @@ public struct FolderSidebar: View {
 
     /// iOS only. macOS reaches Settings, Calendar, and Contacts from the
     /// app/Window menus; iPhone has no menu bar, and the navigation bar's
-    /// gear is easy to miss, so the sidebar keeps persistent entries at its
-    /// foot — where Spark keeps it.
+    /// gear is easy to miss, so the sidebar keeps persistent entries as
+    /// ordinary in-scroll rows at the end of the mailbox tree — where
+    /// Spark keeps them — instead of floating pills over the last rows.
     #if os(iOS)
     @ViewBuilder
-    private var sidebarFooter: some View {
+    private var appsSection: some View {
         if onOpenSettings != nil || onOpenCalendar != nil
             || onOpenContacts != nil || onOpenTasks != nil {
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                if let onOpenCalendar {
-                    footerButton(
-                        title: String(localized: "Calendar", bundle: .module),
-                        systemImage: "calendar",
-                        action: onOpenCalendar
-                    )
-                }
-                if let onOpenContacts {
-                    footerButton(
-                        title: String(localized: "Contacts", bundle: .module),
-                        systemImage: "person.crop.circle",
-                        action: onOpenContacts
-                    )
-                }
-                if let onOpenTasks {
-                    footerButton(
-                        title: String(localized: "Tasks", bundle: .module),
-                        systemImage: "checklist",
-                        action: onOpenTasks
-                    )
-                }
-                if let onOpenSettings {
-                    footerButton(
-                        title: String(localized: "Settings", bundle: .module),
-                        systemImage: "gearshape",
-                        action: onOpenSettings
-                    )
-                }
+            Text(String(localized: "More", bundle: .module))
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+                .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
+            if let onOpenCalendar {
+                appsRow(
+                    title: String(localized: "Calendar", bundle: .module),
+                    systemImage: "calendar",
+                    action: onOpenCalendar
+                )
             }
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.sm)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            // The footer sits above a scrolling tree. Keep it opaque so account
-            // and folder labels do not show through behind the footer actions.
-            .background(theme.bgPrimary.color)
+            if let onOpenContacts {
+                appsRow(
+                    title: String(localized: "Contacts", bundle: .module),
+                    systemImage: "person.crop.circle",
+                    action: onOpenContacts
+                )
+            }
+            if let onOpenTasks {
+                appsRow(
+                    title: String(localized: "Tasks", bundle: .module),
+                    systemImage: "checklist",
+                    action: onOpenTasks
+                )
+            }
+            if let onOpenSettings {
+                appsRow(
+                    title: String(localized: "Settings", bundle: .module),
+                    systemImage: "gearshape",
+                    action: onOpenSettings
+                )
+            }
         }
     }
 
-    private func footerButton(
+    private func appsRow(
         title: String,
         systemImage: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Label(title, systemImage: systemImage)
-                .brevFont(.footnote)
-                .padding(.horizontal, BrevSpacing.md)
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-                .background(Capsule().fill(theme.bgSecondary.color))
-                .foregroundStyle(theme.textPrimary.color)
+            BrevListRow(
+                title: title,
+                isSelected: false,
+                leading: {
+                    if showSidebarIcons {
+                        Image(systemName: systemImage)
+                            .foregroundStyle(theme.accent.color)
+                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                    }
+                },
+                trailing: {
+                    EmptyView()
+                }
+            )
         }
         .buttonStyle(.plain)
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
-        .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityLabel(title)
     }
     #endif

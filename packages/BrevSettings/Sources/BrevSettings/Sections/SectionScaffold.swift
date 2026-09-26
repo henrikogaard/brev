@@ -19,6 +19,7 @@ import SwiftUI
 struct SectionScaffold<Content: View>: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.settingsSearchTarget) private var searchTarget
+    @Environment(\.settingsScopeCaption) private var scopeCaption
     let title: String
     let subtitle: String?
     let content: Content
@@ -49,6 +50,11 @@ struct SectionScaffold<Content: View>: View {
                                 .brevFont(.subheadline)
                                 .foregroundStyle(theme.textSecondary.color)
                                 .fixedSize(horizontal: false, vertical: true)
+                        }
+                        if let scopeCaption {
+                            Text(scopeCaption)
+                                .brevFont(.footnote)
+                                .foregroundStyle(theme.textSecondary.color)
                         }
                     }
                     content

@@ -18,6 +18,14 @@ All notable changes to Brev are documented here.
   names on iPhone.
 - macOS Window menu gains "Message Viewer" (⌘0), which also reopens the
   main viewer after the last window is closed.
+- iOS: Calendar, Contacts, Tasks and Settings are now real in-scroll
+  sidebar rows under a "More" section at the foot of the mailbox tree
+  instead of floating pill chips that overlapped the last mailbox rows.
+- macOS compose: To/Cc/Bcc labels now share one fixed-width, right-aligned
+  gutter with From/Subject, and reply quotes render an accent bar beside
+  the muted quoted text instead of only raw `>` prefixes.
+- Settings: the "Applies to all mailboxes" note now sits under the pane
+  subtitle instead of floating as an orphan banner above the section title.
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate
