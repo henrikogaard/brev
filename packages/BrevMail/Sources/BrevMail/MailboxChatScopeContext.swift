@@ -69,6 +69,20 @@ struct MailboxChatScopeContext: Equatable, Sendable {
         }
     }
 
+    /// Compact chip caption: full addresses get clipped mid-domain in the
+    /// narrow column, so the sender chip carries the local part while the
+    /// complete address stays on the accessibility label.
+    func chipShortTitle(for kind: MailboxChatScopeChipKind) -> String {
+        switch kind {
+        case .sender:
+            guard let senderEmail else { return chipTitle(for: kind) }
+            return senderEmail.split(separator: "@").first.map(String.init)
+                ?? senderEmail
+        case .folder, .account:
+            return chipTitle(for: kind)
+        }
+    }
+
     func chipAccessibilityLabel(for kind: MailboxChatScopeChipKind) -> String {
         switch kind {
         case .sender, .folder:
@@ -78,6 +92,19 @@ struct MailboxChatScopeContext: Equatable, Sendable {
                 return String(localized: "All folders in \(accountLabel)", bundle: .module)
             }
             return String(localized: "All folders", bundle: .module)
+        }
+    }
+
+    /// Tooltip on a disabled chip explaining what unlocks it — without it the
+    /// dimming reads as broken rather than as "not applicable here".
+    func chipDisabledHelp(for kind: MailboxChatScopeChipKind) -> String {
+        switch kind {
+        case .sender:
+            String(localized: "Select a message to search its sender.", bundle: .module)
+        case .folder:
+            String(localized: "Open a single folder to scope the search.", bundle: .module)
+        case .account:
+            String(localized: "View a single account to search all its folders.", bundle: .module)
         }
     }
 }

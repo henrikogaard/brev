@@ -394,6 +394,7 @@ public struct BrevMailRootView: View {
     @AppStorage("folders.showSpam") private var showSpamFolders = true
     @AppStorage("folders.showTrash") private var showTrashFolders = true
     @AppStorage("folders.showArchive") private var showArchiveFolders = true
+    @AppStorage("folders.showIcons") private var showSidebarIcons = true
     @AppStorage(FetchScheduleSettings.Key.interval) private var fetchIntervalRaw =
         FetchInterval.manual.rawValue
 
@@ -2883,7 +2884,8 @@ public struct BrevMailRootView: View {
             showAllMail: showAllMailFolders,
             showSpam: showSpamFolders,
             showTrash: showTrashFolders,
-            showArchive: showArchiveFolders
+            showArchive: showArchiveFolders,
+            showIcons: showSidebarIcons
         )
     }
 

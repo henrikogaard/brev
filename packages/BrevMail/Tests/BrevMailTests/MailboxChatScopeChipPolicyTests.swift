@@ -29,7 +29,8 @@ struct MailboxChatScopeChipPolicyTests {
         let chips = MailboxChatScopeChipPolicy.chips(context: context, selected: .sender)
 
         #expect(chips.map(\.kind) == [.sender, .folder, .account])
-        #expect(chips[0].title == "ada@example.com")
+        #expect(chips[0].title == "ada")
+        #expect(chips[0].accessibilityLabel == "ada@example.com")
         #expect(chips[0].isEnabled)
         #expect(chips[0].isSelected)
         #expect(chips[1].isEnabled)

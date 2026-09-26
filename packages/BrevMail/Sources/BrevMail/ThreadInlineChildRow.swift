@@ -32,7 +32,12 @@ struct ThreadInlineChildRow: View {
     #endif
     private var selectionPalette: MailSelectionPalette {
         #if os(macOS)
-        MailSelectionPalette(theme: theme, isActive: controlActiveState != .inactive)
+        // Same focused-pane tint contract as the parent MessageListRow —
+        // an expanded child demotes when the list loses keyboard focus.
+        MailSelectionPalette(
+            theme: theme,
+            isActive: controlActiveState != .inactive && isFocusedPane
+        )
         #else
         MailSelectionPalette(theme: theme)
         #endif
@@ -47,6 +52,9 @@ struct ThreadInlineChildRow: View {
 
     let header: MessageHeader
     let isSelected: Bool
+    /// macOS: whether the owning list column holds keyboard focus —
+    /// mirrors `MessageListRow.isFocusedPane`.
+    var isFocusedPane = true
     let onSelect: () -> Void
     /// Mailbox typography preferences, matching `MessageListRow` so expanded
     /// thread children honor the same font family, text size, and density.

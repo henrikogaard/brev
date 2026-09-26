@@ -139,6 +139,9 @@ public struct FolderSidebarVisibilityPreferences: Equatable, Sendable {
     public let showSpam: Bool
     public let showTrash: Bool
     public let showArchive: Bool
+    /// Renders the leading SF-symbol column on sidebar rows. Turning this off
+    /// collapses row labels to the icon column for a denser, text-only rail.
+    public let showIcons: Bool
 
     public static let defaults = FolderSidebarVisibilityPreferences(
         showStarred: true,
@@ -157,7 +160,8 @@ public struct FolderSidebarVisibilityPreferences: Equatable, Sendable {
         showAllMail: Bool,
         showSpam: Bool,
         showTrash: Bool,
-        showArchive: Bool
+        showArchive: Bool,
+        showIcons: Bool = true
     ) {
         self.showStarred = showStarred
         self.showSnoozed = showSnoozed
@@ -166,6 +170,7 @@ public struct FolderSidebarVisibilityPreferences: Equatable, Sendable {
         self.showSpam = showSpam
         self.showTrash = showTrash
         self.showArchive = showArchive
+        self.showIcons = showIcons
     }
 
     public func isVisible(_ role: FolderRole) -> Bool {
@@ -301,7 +306,8 @@ enum FolderSidebarPresentation {
             showAllMail: true,
             showSpam: persisted.showSpam,
             showTrash: persisted.showTrash,
-            showArchive: persisted.showArchive
+            showArchive: persisted.showArchive,
+            showIcons: persisted.showIcons
         )
     }
 
@@ -396,7 +402,7 @@ enum FolderSidebarPresentation {
         sourceHeaderHorizontalPadding: BrevSpacing.xs,
         sourceHeaderVerticalPadding: BrevSpacing.xs,
         folderRowBaseLeadingPadding: BrevSpacing.xs,
-        folderRowDepthIndent: BrevSpacing.lg,
+        folderRowDepthIndent: BrevSpacing.md,
         folderRowTrailingPadding: BrevSpacing.sm,
         folderRowVerticalPadding: BrevSpacing.xs
     )
@@ -408,14 +414,17 @@ enum FolderSidebarPresentation {
         profilePickerMinimumHeight: 28,
         sourceHeaderMinimumHeight: 22,
         folderRowMinimumHeight: 24,
+        // Trailing disclosure controls keep every folder icon on one leading
+        // column while retaining a reliable macOS hit target.
         disclosureHitSize: 16,
         iconWidth: 16,
         unreadBadgeMinimumWidth: 18,
         unreadBadgeMinimumHeight: 16,
         sourceHeaderHorizontalPadding: BrevSpacing.sm,
         sourceHeaderVerticalPadding: BrevSpacing.xxs,
-        folderRowBaseLeadingPadding: BrevSpacing.xs,
-        folderRowDepthIndent: BrevSpacing.md,
+        folderRowBaseLeadingPadding: 0,
+        // Child icons start under their parent's label by one icon column.
+        folderRowDepthIndent: 16,
         folderRowTrailingPadding: BrevSpacing.sm,
         folderRowVerticalPadding: BrevSpacing.xxs
     )
