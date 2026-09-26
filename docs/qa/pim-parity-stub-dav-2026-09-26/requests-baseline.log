@@ -1,0 +1,17 @@
+GET /__control/log depth=- auth=- cond=- -> 200
+GET /__control/log depth=- auth=- cond=- -> 200
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /cal/u/ depth=1 auth=Basic *** cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /card/u/ depth=1 auth=Basic *** cond=- -> 207
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /cal/u/ depth=1 auth=Basic *** cond=- -> 207
+REPORT /card/u/main/ depth=1 auth=Basic *** cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+POST /__control/add depth=- auth=- cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+GET / depth=- auth=- cond=- -> 404

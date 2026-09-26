@@ -1,0 +1,5 @@
+PROPFIND /cal/u/main/ depth=0 auth=- cond=- -> 207
+PROPFIND / depth=0 auth=- cond=- -> 207
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /principals/u/ depth=0 auth=Basic *** cond=- -> 207
+PROPFIND /cal/u/ depth=1 auth=Basic *** cond=- -> 207

@@ -90,6 +90,53 @@
   ComposePresentation'` — 62 green (new tests folded into the existing
   suite in RecipientAddressValidatorTests.swift). lint/format clean.
 
+## 2026-09-26 — Agent — QA live pass round 3 (#2, #11)
+
+- iOS O6 retry succeeded: BrevIOS built with `DEVELOPMENT_TEAM=45AD7E7G5G
+  -allowProvisioningUpdates` (worktree `/Users/devin/repos/brev-imapfix`
+  on fix/imap-smtp-provider-compat) → keychain writes succeed; full
+  iPhone 17 lifecycle pass (add → inbox → self-send → relaunch restore →
+  remove). Ad-hoc `CODE_SIGN_IDENTITY="-"` alone still produces empty
+  entitlements — the unsigned-build -34018 stays recorded as env-only.
+  Recipient field quirk noted: To field committed a "He" chip
+  mid-keystroke; pasting the address worked.
+- §5 gates: VoiceOver reads macOS agenda rows and contact rows/detail
+  (5.1 ✓); `-AppleLanguages '(nb)'` → English fallback only — catalogs
+  ship `en` exclusively (5.3 ✓*); `NSReduceMotionEnabled` — PIM views
+  have no animations (grep-clean), MessageListRefreshArrivalEffect
+  honors the flag (5.4 ✓); macOS 5.2 stays untested (no per-app text
+  size control; app ships MailboxView text-size control for mail only).
+- O4 triaged (no fix): client emits RFC-correct `UID SEARCH TEXT …`
+  (quoted ASCII atoms, CHARSET UTF-8 + literal only for non-ASCII) —
+  mailo.com's TEXT indexing covers envelope headers only, provider
+  limitation; diagnosis in account-lifecycle doc.
+- Docs updated: account-lifecycle (iOS pass, O4), matrix (5.1/5.3/5.4,
+  O6 resolved, Live providers row), no code changes.
+
+## 2026-09-26 — Agent — QA live pass round 2 (#2, #11)
+
+- Apps built from `fix/imap-smtp-provider-compat` (macOS
+  `build_and_run.sh run --live`; iOS via xcodebuild to iPhone 17 sim,
+  OAuth vars passed as build settings).
+- Generic IMAP (mailo.com): **macOS full lifecycle pass** — autodiscovery,
+  test connection, add, inbox load, compose self-send arrived in inbox,
+  reconnect via transport-error Retry, Remove → keychain clean. Live
+  smoke `--validate-smtp-setup --send-test-message
+  --exercise-compose-lifecycle` → `imap-smtp-live-smoke: OK`. Residual:
+  multi-word TEXT/non-ASCII server search fails on provider (O4); IDLE
+  messagesAdded times out (provider emits no APPEND notifications).
+- iOS live add blocked by environment: unsigned sim build → securityd
+  -34018 on every keychain write; hand-signing entitlements breaks
+  launch. Recorded as O6, not an app defect.
+- Google leg: 2FA disabled but sign-in now stops at "Verify it's you"
+  recovery-phone device verification — all paths need the QA phone or a
+  trusted device; leg stopped per runbook (redacted evidence in
+  `docs/qa/live-pass-2026-09-26/`). iOS onboarding lacks the Google row
+  even with client ID baked (O5).
+- Docs updated: account-lifecycle-2026-09-26.md (round-2 results),
+  pim-parity-matrix.md (D5/D6 fixed, D7 reclassified, O4–O6, fixtures +
+  Live providers row). No code changes this session.
+
 ## 2026-09-26 — Agent — UI/UX review items 1–8 (fix/uiux-top10)
 
 - Merged #97 and #100 onto main via squash (3-way, post-merge
@@ -126,6 +173,47 @@
 - M9: "Applies to all mailboxes" moved from an orphan banner in
   `settingsScope` to a `settingsScopeCaption` environment value
   rendered under the pane subtitle by `SectionScaffold`.
+
+## 2026-09-26 — Agent — QA live pass attempt (#2, #11)
+
+- Same branch, docs-only. `imap-smtp-live-smoke.sh` against the disposable
+  mailo.com account: connect/restore/9-folder list/IDLE wiring pass, but
+  `SELECT "INBOX" (CONDSTORE)` → `BAD` (server lacks CONDSTORE; client
+  appends the modifier unconditionally — `IMAPSessionClient.swift` ~L3079)
+  and SMTP advertises only `AUTH LOGIN` (`SMTPSessionClient` supports
+  PLAIN/XOAUTH2 only). All mailbox+send stages blocked → defects D5/D6.
+- macOS live test build: manual-IMAP add surfaces the SMTP error correctly
+  but never completes, and leaves a zombie "Reconnect your mailbox" state
+  (D7); no keychain residue.
+- Google OAuth leg: sign-in launched fine but the QA account demands
+  2-Step Verification (phone code) — leg stopped per runbook; needs
+  Henrik. G matrix columns remain pending.
+- Recorded in `docs/qa/account-lifecycle-2026-09-26.md` +
+  `docs/qa/pim-parity-matrix.md` defects table. No secrets or account
+  addresses committed (evidence is log citations + descriptions; two
+  candidate screenshots were dropped because they contained addresses).
+
+## 2026-09-26 — Agent — QA: stub-DAV PIM matrix + account lifecycle (#11, #2)
+
+- Docs-only pass on `chore/qa-stub-dav-ios-2026-09-26`. Filled the
+  credential-free cells of `docs/qa/pim-parity-matrix.md`: iOS columns for
+  rows 1.6–1.9, 2.1–2.6/2.9/2.10, 3.1–3.8 (n/a where unsupported), 4.1/4.2;
+  macOS cells for 1.7–1.9, 2.2, 2.6, 3.2/3.3/3.6, 4.3/4.4/4.6, 5.2 (iOS XL
+  type), 5.5, 6.2–6.4. Google columns and live rows stay blank — marked
+  "pending live pass" (repo-scoped secrets arrived 2026-09-26).
+- Evidence in `docs/qa/pim-parity-stub-dav-2026-09-26/` (screenshots +
+  stub request logs; synthetic seed content only). New defects/observations
+  recorded at the matrix bottom: D1 iOS wrong-cred sheet shows no error
+  callout, D2 stale seeded-href 412s, D3 dimmed contact-source toggles,
+  D4 ~30 s TLS-error delay, O1–O3 observations.
+- Issue #2: `docs/qa/account-lifecycle-2026-09-26.md` records
+  `imap-smtp-local-smoke.sh` (OK) and `check-imap-oauth-setup.sh`
+  (ready, 2 providers — so the missing-Google-client guidance is not
+  reachable in this build), plus a code-cited list of UI affordances hidden
+  for generic IMAP accounts.
+- Verified: docs review only; no source changes, no tests run (none
+  applicable). macOS mock app, iPhone 17 sim, stub DAV :8643/:8644 left
+  running.
 
 ## 2026-09-26 — Agent — UI/UX review batch 3 (M4 search controls, M8 iPad calendar)
 

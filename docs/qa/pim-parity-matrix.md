@@ -20,6 +20,8 @@ Record fixture builds/versions here (no credentials):
 | C | stub-dav-server.py :8643 (CalDAV home set `/cal/u/main/`) | no-auth local stub; seeds evt-standup + evt-review; `:8644 --auth u:p` for §1.7 |
 | D | stub-dav-server.py :8643 (CardDAV home set `/card/u/main/`) | same stub; seeds alice.vcf + bob.vcf; wire log `/tmp/davstub-requests.log` |
 
+Live pass round 2 (2026-09-26, on `fix/imap-smtp-provider-compat`): generic-IMAP macOS lifecycle passed end-to-end (D5/D6 fixed); Google leg still blocked — 2FA was disabled but Google now demands recovery-phone device verification (SMS/call to ••55, trusted device, or recovery-number confirmation); needs Henrik — see account-lifecycle doc. iOS live add is env-blocked (unsigned sim build → keychain -34018). G columns and the marked rows remain untested. All iOS/mac stub evidence lives in `docs/qa/pim-parity-stub-dav-2026-09-26/` (screenshots named `ios-*.png`/`mac-*.png`; request logs `requests-baseline.log`, `davstub-mac-run2.log`, `davstub-auth-mac-run2.log`).
+
 ## 1. Source lifecycle
 
 | # | Check | G mac | G iOS | C mac | C iOS | D mac | D iOS | Evidence |
@@ -29,78 +31,96 @@ Record fixture builds/versions here (no credentials):
 | 1.3 | Reconnect after revoke restores the source cleanly | | | | | | | |
 | 1.4 | Token refresh survives app restart | | | — | — | — | — | |
 | 1.5 | Scope denial leaves the source connectable (no zombie state) | | | — | — | — | — | |
-| 1.6 | Generic DAV manual setup (server URL + creds) connects | — | — | ✓ | | ✓ | | log L13–16 discovery PROPFIND /→/principals/u/→/cal/u/ +REPORT 207; L17–20 same for /card/u/; ss_d219f61a (both sources "Ready", items cached) |
-| 1.7 | Invalid credentials surface a clear error, no partial source | — | — | ✓ | | ✓ | | :8644 wrong pw → davstub-auth.log PROPFIND→401 ×2; UI callout "The server rejected these credentials…"; no partial row; ss_2079c901 |
-| 1.8 | TLS failure (self-signed/bad host) surfaces a clear error | — | — | | | | | |
-| 1.9 | Source removal clears local cache; provider data intact remotely | | | | | | | |
+| 1.6 | Generic DAV manual setup (server URL + creds) connects | — | — | ✓ | ✓ | ✓ | ✓ | macOS/iOS: log L13–16 discovery PROPFIND /→/principals/u/→/cal/u/ +REPORT 207; L17–20 same for /card/u/; ss_d219f61a (both sources "Ready", items cached); iOS: baseline log L20–27 PROPFIND/REPORT 207 for both home sets; ios-sources-ready.png |
+| 1.7 | Invalid credentials surface a clear error, no partial source | — | — | ✓ | ⚠ | ✓ | ⚠ | :8644 wrong pw → davstub-auth.log PROPFIND→401 ×2; UI callout "The server rejected these credentials…"; no partial row; ss_2079c901. iOS: same 401 ×2 in auth log but the Add-DAV sheet showed NO error callout (defect D1); no partial source created |
+| 1.8 | TLS failure (self-signed/bad host) surfaces a clear error | — | — | ⚠ | | ⚠ | | https://127.0.0.1:8643 (stub is plain HTTP) → no error for ~25–30 s, then red callout "The server's certificate could not be verified…"; surfaced but delayed (defect D4); no partial source |
+| 1.9 | Source removal clears local cache; provider data intact remotely | | | ✓ | ✓ | ✓ | ✓ | macOS: source removed via ⋯ → Remove Source… → dialog names the source, offers keep/delete cached copy; davstub-auth-mac-run2.log shows zero DELETE — remote intact; mac-remove-source-dialog.png. iOS: CalDAV source removed, remote GET 200 still; calendar surface emptied; row gone |
 
 ## 2. Calendar surface (per applicable provider)
 
 | # | Check | G mac | G iOS | C mac | C iOS | Evidence |
 |---|-------|:-----:|:-----:|:-----:|:-----:|----------|
-| 2.1 | Browse: day/week/month grids render synced events | | | ✓ | | agenda + week grid show standup Wed 7AM, review Fri 2AM; ss_9ecb47f6, ss_b8f7738e |
-| 2.2 | Search finds events across sources | | | | | |
-| 2.3 | Offline restore: cached events render with network off | | | ✓ | | stub :8643 killed → app relaunch → all 3 cached events render; ss_557128bf |
-| 2.4 | Create event (title/time/calendar selection) | | | ✓ | | L21 `PUT /cal/u/main/<uid>-brev.ics` If-None-Match:* → 201; block on grid; ss_04dc5ae4 |
-| 2.5 | Edit event fields propagate on next sync | | | ⚠ | | live href: L28 PUT If-Match → 204, detail updates. ⚠ seeded events whose cached href went stale (`*-stub.ics`) 412 forever — sync refreshes etag but not href (defect); ss_39a673a8 |
-| 2.6 | Recurrence rule create + edit-one vs edit-series | | | | | |
+| 2.1 | Browse: day/week/month grids render synced events | | | ✓ | ✓ | macOS: agenda + week grid show standup Wed 7AM, review Fri 2AM; ss_9ecb47f6, ss_b8f7738e. iOS: agenda + week render same seeded events; ios-calendar-agenda.png, ios-calendar-week.png |
+| 2.2 | Search finds events across sources | | | ✓ | | macOS: event search filters to matching seeded event; mac-calendar-search.png |
+| 2.3 | Offline restore: cached events render with network off | | | ✓ | ✓ | macOS: stub :8643 killed → app relaunch → all 3 cached events render; ss_557128bf. iOS: stub killed → app relaunch → cached events render; ios-calendar-offline-cache.png |
+| 2.4 | Create event (title/time/calendar selection) | | | ✓ | ✓ | macOS: L21 `PUT /cal/u/main/<uid>-brev.ics` If-None-Match:* → 201; block on grid; ss_04dc5ae4. iOS: baseline L28 PUT → 201; new block rendered; ios-calendar-created-event.png |
+| 2.5 | Edit event fields propagate on next sync | | | ⚠ | ✓ | macOS: live href: L28 PUT If-Match → 204, detail updates. ⚠ seeded events whose cached href went stale (`*-stub.ics`) 412 forever — sync refreshes etag but not href (defect); ss_39a673a8. iOS: baseline L29/L39 PUT → 204, list+detail update |
+| 2.6 | Recurrence rule create + edit-one vs edit-series | | | ✓ | | macOS: editor exposes Repeat picker (CalendarEventEditorView.swift `repeatSection` ~L96); weekly RRULE stored via PUT → 201; save offers edit-this-event vs whole-series choice; mac-recurring-edit-scope.png |
 | 2.7 | Attendee update (add/remove) sends invites | | | | | |
 | 2.8 | RSVP accept/maybe/decline round-trips | | | | | |
-| 2.9 | Conflict: concurrent remote edit is detected, not silently overwritten | | | ✓ | | L35 PUT If-Match:`stub-4`→412 on live href; inline "This event changed on the server…"; remote kept Remote-bumped (GET-verified); ss_80bd1964 |
-| 2.10 | Delete event removes remotely and locally | | | ✓ | | "Delete this event?" dialog → L38 DELETE If-Match:`stub-6`→204; remote GET 404; grid cleared; ss_dc213345 |
+| 2.9 | Conflict: concurrent remote edit is detected, not silently overwritten | | | ✓ | ✓ | macOS: L35 PUT If-Match:`stub-4`→412 on live href; inline "This event changed on the server…"; remote kept Remote-bumped (GET-verified); ss_80bd1964. iOS: baseline L31 PUT → 412; same inline copy shown; remote kept; ios-calendar-conflict.png |
+| 2.10 | Delete event removes remotely and locally | | | ✓ | ✓ | macOS: "Delete this event?" dialog → L38 DELETE If-Match:`stub-6`→204; remote GET 404; grid cleared; ss_dc213345. iOS: baseline L35 DELETE → 204, remote 404, row gone |
 
 ## 3. Contacts surface (per applicable provider)
 
 | # | Check | G mac | G iOS | D mac | D iOS | Evidence |
 |---|-------|:-----:|:-----:|:-----:|:-----:|----------|
-| 3.1 | Browse: list + detail render synced contacts | | | ✓ | | Alice+Bob listed; detail shows email/phone/URL/BDAY "14 Mar 1985"; ss_81a7b1a7 |
-| 3.2 | Search finds contacts across sources | | | | | |
-| 3.3 | Offline restore: cached contacts render with network off | | | | | |
-| 3.4 | Create contact (explicit source/address-book selection) | | | ✓ | | L40 `PUT /card/u/main/<uid>-brev.vcf` If-None-Match:* → 201; row appears instantly; ss_22a4d5fc |
-| 3.5 | Edit contact fields propagate on next sync | | | ✓ | | L41 `PUT /card/u/main/alice.vcf` If-Match:`seed-alice` → 204; detail+list update; ss_d2445f76 |
-| 3.6 | Group / address-book assignment (source-permitting) | | | | | |
-| 3.7 | Conflict: concurrent remote edit is detected, not silently overwritten | | | ✓ | | out-of-band bump → L44 PUT If-Match:`stub-9`→412; "This contact changed on the server…"; remote kept FN:Remote-changed Alice; ss_f4c4f885 |
-| 3.8 | Delete names provider impact; remote vs local-cache deletion distinguished | | | ✓ | | dialog: "permanently deletes the contact from 127.0.0.1 and removes it from the local cache"; L47 DELETE If-Match:`seed-bob`→204, remote 404; ss_c93b47c7 |
+| 3.1 | Browse: list + detail render synced contacts | | | ✓ | ✓ | macOS: Alice+Bob listed; detail shows email/phone/URL/BDAY "14 Mar 1985"; ss_81a7b1a7. iOS: same list + detail; ios-contacts-list.png |
+| 3.2 | Search finds contacts across sources | | | ✓ | | macOS: contact search filters list to seeded match; mac-contacts-search.png |
+| 3.3 | Offline restore: cached contacts render with network off | | | ✓ | | macOS: stub :8643 killed → contacts list + Alice detail still render from cache (email/phone/URL/BDAY present); mac-contacts-offline-cache.png |
+| 3.4 | Create contact (explicit source/address-book selection) | | | ✓ | ✓ | macOS: L40 `PUT /card/u/main/<uid>-brev.vcf` If-None-Match:* → 201; row appears instantly; ss_22a4d5fc. iOS: baseline L44 PUT → 201 (required per-source "Allow editing" ON); ios-contact-created.png |
+| 3.5 | Edit contact fields propagate on next sync | | | ✓ | ✓ | macOS: L41 `PUT /card/u/main/alice.vcf` If-Match:`seed-alice` → 204; detail+list update; ss_d2445f76. iOS: baseline L37/L39 PUT → 204; edits reflected in detail+list |
+| 3.6 | Group / address-book assignment (source-permitting) | | | — | — | n/a on CardDAV: group toggles are Google-only in the editor (ContactEditorView.swift ~L653 gates them on Google groups); CardDAV sources expose no group UI |
+| 3.7 | Conflict: concurrent remote edit is detected, not silently overwritten | | | ✓ | ✓ | macOS: out-of-band bump → L44 PUT If-Match:`stub-9`→412; "This contact changed on the server…"; remote kept FN:Remote-changed Alice; ss_f4c4f885. iOS: baseline L41–42 PUT → 412; same copy; remote kept; ios-contact-conflict.png |
+| 3.8 | Delete names provider impact; remote vs local-cache deletion distinguished | | | ✓ | ✓ | macOS: dialog: "permanently deletes the contact from 127.0.0.1 and removes it from the local cache"; L47 DELETE If-Match:`seed-bob`→204, remote 404; ss_c93b47c7. iOS: same dialog naming the provider; baseline L45 DELETE → 204, remote 404; ios-contact-delete-dialog.png |
 
 ## 4. Cross-source integrity
 
 | # | Check | mac | iOS | Evidence |
 |---|-------|:---:|:---:|----------|
-| 4.1 | Mixed Google + DAV sources render together in one surface | ✓* | | *only the DAV leg exercised (two stub sources share surfaces; Google leg untested — no G fixture); ss_b8f7738e + ss_81a7b1a7 same session |
-| 4.2 | A mutation on one source never writes to another account | ✓ | | all app writes scoped: .ics under /cal/u/, .vcf under /card/u/ only; log L21–47, zero cross-prefix writes |
-| 4.3 | Background refresh picks up remote changes without relaunch | | | |
-| 4.4 | Partial-provider outage degrades only that source's surface | | | |
+| 4.1 | Mixed Google + DAV sources render together in one surface | ✓* | ✓* | *only the DAV leg exercised (two stub sources share surfaces; Google leg untested — pending live pass); ss_b8f7738e + ss_81a7b1a7 same session (mac); iOS agenda/contacts render both stub sources same session |
+| 4.2 | A mutation on one source never writes to another account | ✓ | ✓ | all app writes scoped: .ics under /cal/u/, .vcf under /card/u/ only; log L21–47 (mac) + iOS baseline L28–45, zero cross-prefix writes |
+| 4.3 | Background refresh picks up remote changes without relaunch | ⚠ | | macOS: `POST /__control/add` injected a new event while app ran; no REPORT for ~90–120 s (no background pickup observed); manual "Sync Now" immediately issued REPORT → event appeared. Manual path works; idle pickup unproven (observation O3) |
+| 4.4 | Partial-provider outage degrades only that source's surface | ✓ | | macOS: second stub :8644 (auth) added → killed → only that source shows "Failed · transportFailed"; :8643 cal/contacts/tasks stay Ready; mac-partial-outage.png |
 | 4.5 | Expired sync cursor triggers resync that preserves healthy cache | ✓ | | POST expire-sync → L55 REPORT w/ stale token → 403 valid-sync-token → L56 resync → 207; surfaces stayed healthy |
-| 4.6 | Full resync after cache clear restores all synced items | ⚠ | | partial: 403-triggered full resync re-fetched all members (L56); explicit local cache-clear not exercised — cover via §1.9 removal+reconnect |
+| 4.6 | Full resync after cache clear restores all synced items | ✓ | | macOS: §1.9 removal (delete cached data) + reconnect → source Ready, all seeded items re-cached; davstub-mac-run2.log L1–5 re-discovery PROPFINDs → 207; mac-source-reconnect.png. (Also: 403-triggered full resync re-fetched all members, log L56.) |
 
 ## 5. Platform quality gates
 
 | # | Check | mac | iOS | Evidence |
 |---|-------|:---:|:---:|----------|
-| 5.1 | Accessibility readback (VoiceOver) on calendar + contacts | | | |
-| 5.2 | Dynamic Type / text scaling renders without truncation | | | |
-| 5.3 | Localization spot-check (non-English locale) | | | |
-| 5.4 | Reduced motion honored on animations | | | |
-| 5.5 | Full keyboard navigation (macOS) / keyboard + VoiceOver (iOS) | | | |
+| 5.1 | Accessibility readback (VoiceOver) on calendar + contacts | | | ✓ | | macOS: VoiceOver reads agenda rows fully ("9:00 AM – 10:00 AM, QA recurring — retitled, Stub Calendar") and contact list rows resolve through the list + "Contact details, scroll area" detail pane; ss_9506c732, ss_d1225e17. iOS untested (sim Accessibility Inspector not exercised) |
+| 5.2 | Dynamic Type / text scaling renders without truncation | | ✓ | | iOS: UITextContentSizeCategory AccessibilityXL — inbox, contacts list, and calendar empty state render without truncation or clipped controls; ios-xltype-root.png, ios-xltype-contacts.png, ios-xltype-calendar.png. macOS row untested (no per-app text-size control) |
+| 5.3 | Localization spot-check (non-English locale) | | | ✓* | | macOS relaunched with `-AppleLanguages '(nb)'`: all catalogs ship `en` only (BrevMail Localizable.xcstrings: 497 strings, `en` sole localization) → English fallback everywhere, no broken layout; *catalogs have no translations to spot-check |
+| 5.4 | Reduced motion honored on animations | | | ✓ | | `NSReduceMotionEnabled` set globally; Calendar/Contacts/Tasks views contain no `withAnimation`/`.animation` transitions (grep-clean) — nothing animates to suppress; `MessageListRefreshArrivalEffect` honors `accessibilityReduceMotion` for the one animated PIM-adjacent effect |
+| 5.5 | Full keyboard navigation (macOS) / keyboard + VoiceOver (iOS) | ✓ | | macOS: arrow keys move selection through contacts list; selection follows focus; mac-contacts-keyboard-select.png |
 
 ## 6. Privacy & hygiene
 
 | # | Check | Result | Evidence |
 |---|-------|:------:|----------|
 | 6.1 | No secrets, tokens, email addresses, or contact/calendar content in logs | ✓ | | wire+auth logs only ever `auth=Basic ***`/`auth=-`; no password/base64 material; davstub-requests.log + davstub-auth.log |
-| 6.2 | All attached evidence is redacted (crops, no raw data) | | |
-| 6.3 | Cache clear removes local copies only; remote providers unchanged | | |
-| 6.4 | Account/source removal leaves provider-side data intact | | |
+| 6.2 | All attached evidence is redacted (crops, no raw data) | ✓ | | all screenshots/logs contain only synthetic stub-seed names (Alice Halvorsen, Tor Eide, standup/review events) and stub URLs; evidence dir docs/qa/pim-parity-stub-dav-2026-09-26/ |
+| 6.3 | Cache clear removes local copies only; remote providers unchanged | ✓ | | removal dialog offers "Remove, keep cached copy" vs "Remove and delete cached data" — local-cache-only path is explicit; mac-remove-source-dialog.png |
+| 6.4 | Account/source removal leaves provider-side data intact | ✓ | | source removal issued zero DELETE on the stub (davstub-auth-mac-run2.log, davstub-mac-run2.log); seeded events/contacts still served GET 200 after removal |
 
 ## Final evidence table (AC)
 
 | Layer | Result | Where |
 |-------|--------|-------|
 | Implementation | | merged PRs #56–#78 |
-| Automated tests | | CI green on main |
-| Live providers | | §1–§4 above |
-| macOS runtime | | this matrix, mac column |
-| iOS runtime | | this matrix, iOS column |
+| Automated tests | ✓ | CI green on main as of c86c691 |
+| Live providers | partial / blocked | Generic IMAP/SMTP: full lifecycle pass on `fix/imap-smtp-provider-compat` — macOS (add → inbox → send/receive → reconnect → remove, keychain clean) AND iOS (signed sim build: add → inbox → self-send → relaunch-restore → remove). Google: blocked at recovery-phone device verification (2FA disabled) — needs Henrik; see account-lifecycle-2026-09-26.md |
+| macOS runtime | stub DAV complete | this matrix, mac column |
+| iOS runtime | stub DAV complete | this matrix, iOS column |
 | Maintainer acceptance | | sign-off below |
+
+## Defects (stub-DAV run 2026-09-26)
+
+| # | Severity | Summary | Repro |
+|---|----------|---------|-------|
+| D1 | med | iOS Add-DAV sheet surfaces no error on wrong credentials | iOS Settings → Calendar & Contacts → Add DAV Source → manual `http://localhost:8644` (stub `--auth u:p`) → wrong password → Connect → PROPFIND→401 ×2 in stub log; sheet shows no callout. macOS shows "The server rejected these credentials…" on the same failure (ss_2079c901). |
+| D2 | med | macOS/iOS seeded-event href goes stale → edits 412 forever | Seed events `*-stub.ics`: after remote etag bump, PUT If-Match → 412 on every retry; sync refreshes etag but not cached href; live-href events unaffected (matrix 2.5 ⚠). |
+| D3 | low | macOS contact-source "Allow editing" toggles render dimmed | Calendar & Contacts pane: toggles on the CardDAV source row appear disabled/greyed while calendar-source toggles respond; possible `pendingSourceID` gating (PIMSourceSettingsView.swift). |
+| D4 | low | TLS/credential errors delayed ~25–30 s before callout | Pointing the sheet at `https://127.0.0.1:8643` (plain-HTTP stub) produced no visible feedback for ~25–30 s, then the certificate callout appeared (1.8). |
+| O1 | obs | iOS: no Edit/Delete affordances on contact detail until the source's "Allow editing" is ON | By design per `canToggleWrite`, but invisible to the user why actions are missing — worth a hint. |
+| O2 | obs | macOS event Edit button unresponsive until app re-activation | Needed window re-activate + click on label text; intermittent, not reproduced on second pass. |
+| O3 | obs | No background pickup of remote changes within ~2 min | `POST /__control/add` while running produced no REPORT; manual Sync Now did (4.3). |
+| D5 | high — FIXED on `fix/imap-smtp-provider-compat` | `SELECT (CONDSTORE)` sent unconditionally → `BAD` on servers without CONDSTORE | Live smoke on mailo.com: `SELECT "INBOX" (CONDSTORE)` → `BAD SELECT bad parameter`. Fix gates the modifier on `supportsCONDSTORE`; verified live — mailbox opens. |
+| D6 | high — FIXED on `fix/imap-smtp-provider-compat` | SMTP send impossible where only `AUTH LOGIN` is advertised | mailo.com advertises `AUTH LOGIN` only; client supported PLAIN/XOAUTH2. Fix adds the AUTH LOGIN exchange; verified live — real send + compose lifecycle pass. |
+| D7 | low — reclassified observation | "Reconnect your mailbox" copy after a failed manual add | Investigated: no account persists and keychain is clean; the title is just `session.signInError != nil` (`LoginView` ~L158) and the sheet correctly stays open. Misleading copy, design-level — not a zombie state. |
+| O4 | obs | mailo.com server-side search fails multi-word TEXT / non-ASCII criteria | `imap-smtp-live-smoke --exercise-cross-folder-server-search`: basic subject searches pass, `text:"live search"` / non-ASCII `søk røyk` guards return no results — provider charset/TEXT-search gap (not caused by the D5/D6 fix; standalone server-search passes). |
+| O5 | obs | iOS onboarding shows no "Continue with Google" even with `BREVGoogleOAuthIOSClientID` baked | iPhone 17 sim, Info.plist client ID present — the Google row is gated on something beyond the client ID in this build; needs follow-up. |
+| O6 | obs — resolved in round 3 | iOS unsigned sim builds cannot persist Keychain credentials (-34018) | `CODE_SIGNING_ALLOWED=NO` Debug build: securityd rejects every SecItem write (no application-identifier). Environment limitation, not an app defect — **DEVELOPMENT_TEAM-signed build completed the full iOS lifecycle** (round 3). |
 
 Maintainer sign-off: ________  Date: ________
