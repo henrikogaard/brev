@@ -33,6 +33,10 @@ All notable changes to Brev are documented here.
 
 ### Performance
 
+- The first rich-HTML message open of a session no longer pays the
+  WebKit process spawn and remote-content rule-list compile on the open
+  path: a hidden renderer is pre-warmed during the background startup
+  phase (skipped when bodies render as plain text).
 - Mail root view no longer re-decodes the VIP sender list and custom
   mail profiles from persisted JSON on every SwiftUI update pass; both
   are decoded once and refreshed when the stored values change.
