@@ -136,38 +136,52 @@ struct FolderSidebarSnapshotTests {
         navigation.selectUnifiedInbox()
 
         let theme = BrevTheme.brevPaper
-        let view = FolderSidebar(
-            navigation: navigation,
-            folders: [],
-            sourceSections: [
-                MailSourceSection(
-                    id: personalSourceID,
-                    account: personal,
-                    mailbox: personalMailbox,
-                    folders: MockBackend.previewFolders
-                ),
-                MailSourceSection(
-                    id: workSourceID,
-                    account: work,
-                    mailbox: workMailbox,
-                    folders: MockBackend.previewFolders
-                ),
-            ]
-        )
-        .frame(width: 240, height: 320)
-        .background(theme.bgPrimary.color)
-        .brevTheme(theme)
-        .defaultAppStorage(defaults)
+        let sections = [
+            MailSourceSection(
+                id: personalSourceID,
+                account: personal,
+                mailbox: personalMailbox,
+                folders: MockBackend.previewFolders
+            ),
+            MailSourceSection(
+                id: workSourceID,
+                account: work,
+                mailbox: workMailbox,
+                folders: MockBackend.previewFolders
+            ),
+        ]
+        for showIcons in [true, false] {
+            let visibility = FolderSidebarVisibilityPreferences(
+                showStarred: true,
+                showSnoozed: true,
+                showScheduled: true,
+                showAllMail: false,
+                showSpam: true,
+                showTrash: true,
+                showArchive: true,
+                showIcons: showIcons
+            )
+            let view = FolderSidebar(
+                navigation: navigation,
+                folders: [],
+                sourceSections: sections,
+                folderVisibility: visibility
+            )
+            .frame(width: 240, height: 320)
+            .background(theme.bgPrimary.color)
+            .brevTheme(theme)
+            .defaultAppStorage(defaults)
 
-        let host = NSHostingController(rootView: view)
-        host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 320)
+            let host = NSHostingController(rootView: view)
+            host.view.frame = CGRect(x: 0, y: 0, width: 240, height: 320)
 
-        assertSnapshot(
-            of: host,
-            as: .image(size: CGSize(width: 240, height: 320)),
-            named: "all-inboxes-global-alignment",
-            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
-        )
+            assertSnapshot(
+                of: host,
+                as: .image(size: CGSize(width: 240, height: 320)),
+                named: "all-inboxes-global-alignment" + (showIcons ? "" : "-no-icons"),
+                record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+            )
+        }
     }
 
     @Test("Gmail-native source shows provider mailbox names and All Mail")

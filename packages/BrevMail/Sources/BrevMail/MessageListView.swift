@@ -3689,7 +3689,7 @@ struct MessageListRow: View {
             isCompactWidth: isCompactWidth,
             requestedPreviewLineCount: previewLineCount
         )
-        HStack(alignment: .top, spacing: BrevSpacing.md) {
+        HStack(alignment: .top, spacing: BrevSpacing.sm) {
             if isInSelectionMode {
                 Button(action: onToggleCheck) {
                     Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
@@ -3698,6 +3698,7 @@ struct MessageListRow: View {
                 }
                 .buttonStyle(.plain)
             }
+            unreadDot
             if showAvatar {
                 BrevAvatarView(
                     email: header.from.email,
@@ -3705,7 +3706,6 @@ struct MessageListRow: View {
                     size: density.avatarSize
                 )
             }
-            unreadDot
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 senderMetadataHeader
                 // Unread subjects carry the weight and primary colour so the row

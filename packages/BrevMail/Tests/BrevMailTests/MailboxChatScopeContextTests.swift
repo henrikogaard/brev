@@ -99,4 +99,34 @@ struct MailboxChatScopeContextTests {
         #expect(!chips[0].isSelected)
         #expect(chips[1].title == "Inbox")
     }
+
+    @Test("sender chip carries the local part and keeps the address for VoiceOver")
+    func senderChipCarriesLocalPartAndKeepsAddressForVoiceOver() {
+        let context = MailboxChatScopeContext(
+            senderEmail: "ada@example.com",
+            folder: nil,
+            accountLabel: nil,
+            sourceID: nil
+        )
+
+        let chips = MailboxChatScopeChipPolicy.chips(context: context, selected: .sender)
+
+        #expect(chips[0].title == "ada")
+        #expect(chips[0].accessibilityLabel == "ada@example.com")
+    }
+
+    @Test("every disabled chip explains what unlocks it")
+    func everyDisabledChipExplainsWhatUnlocksIt() {
+        let context = MailboxChatScopeContext(
+            senderEmail: nil,
+            folder: nil,
+            accountLabel: nil,
+            sourceID: nil
+        )
+
+        for kind in [MailboxChatScopeChipKind.sender, .folder, .account] {
+            #expect(!context.isChipEnabled(kind))
+            #expect(!context.chipDisabledHelp(for: kind).isEmpty)
+        }
+    }
 }

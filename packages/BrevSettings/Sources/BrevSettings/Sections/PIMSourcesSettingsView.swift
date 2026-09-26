@@ -193,7 +193,9 @@ struct PIMSourcesSettingsView: View {
         Binding(
             get: { removalCandidate != nil },
             set: { isPresented in
-                if !isPresented { removalCandidate = nil }
+                if !isPresented {
+                    removalCandidate = nil
+                }
             }
         )
     }
@@ -587,23 +589,43 @@ struct PIMSourceConnectSheet: View {
     let onSubmit: (PIMDAVConnectForm) async -> Bool
 
     @State private var form = PIMDAVConnectForm()
+    @State private var didAttemptSubmit = false
 
     var body: some View {
         NavigationStack {
-            ScrollView {
-                VStack(alignment: .leading, spacing: BrevSpacing.lg) {
-                    if showsEndpointFields {
+            SwiftUI.Form(content: {
+                if showsEndpointFields {
+                    Section(String(localized: "Source", bundle: .module)) {
                         kindPicker
+                    }
+                    Section(
+                        header: Text(String(localized: "Server", bundle: .module)),
+                        footer: Text(endpointFooter)
+                    ) {
                         endpointFields
                     }
+                }
+                Section(
+                    header: Text(String(localized: "Sign in", bundle: .module)),
+                    footer: Text(
+                        String(
+                            localized: "Credentials are stored in Keychain and used only for this source.",
+                            bundle: .module
+                        )
+                    )
+                ) {
                     credentialFields
-                    if showsEndpointFields {
+                }
+                if showsEndpointFields {
+                    Section(String(localized: "Display name", bundle: .module)) {
                         displayNameField
                     }
-                    issueCallouts
                 }
-                .padding(BrevSpacing.lg)
-            }
+                issueCallouts
+            })
+            #if os(macOS)
+            .formStyle(.grouped)
+            #endif
             .navigationTitle(title)
             #if os(iOS)
                 .navigationBarTitleDisplayMode(.inline)
@@ -616,6 +638,7 @@ struct PIMSourceConnectSheet: View {
                     }
                     ToolbarItem(placement: .confirmationAction) {
                         Button(submitTitle) {
+                            didAttemptSubmit = true
                             Task {
                                 if await onSubmit(form) {
                                     dismiss()
@@ -626,7 +649,9 @@ struct PIMSourceConnectSheet: View {
                     }
                 }
         }
-        .frame(minWidth: 420, idealWidth: 460, minHeight: showsEndpointFields ? 520 : 320)
+        #if os(macOS)
+        .frame(minWidth: 440, idealWidth: 480, minHeight: showsEndpointFields ? 480 : 300)
+        #endif
     }
 
     private var canSubmit: Bool {
@@ -637,25 +662,28 @@ struct PIMSourceConnectSheet: View {
     // MARK: - Sections
 
     private var kindPicker: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-            Text(String(localized: "Source type", bundle: .module))
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textPrimary.color)
-            Picker(String(localized: "Source type", bundle: .module), selection: $form.kind) {
-                Text(String(localized: "Calendar (CalDAV)", bundle: .module))
-                    .tag(PIMDAVConnectForm.SourceKind.calendar)
-                Text(String(localized: "Contacts (CardDAV)", bundle: .module))
-                    .tag(PIMDAVConnectForm.SourceKind.contacts)
-                Text(String(localized: "Tasks (CalDAV)", bundle: .module))
-                    .tag(PIMDAVConnectForm.SourceKind.tasks)
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
+        Picker(String(localized: "Type", bundle: .module), selection: $form.kind) {
+            Text(String(localized: "Calendar (CalDAV)", bundle: .module))
+                .tag(PIMDAVConnectForm.SourceKind.calendar)
+            Text(String(localized: "Contacts (CardDAV)", bundle: .module))
+                .tag(PIMDAVConnectForm.SourceKind.contacts)
+            Text(String(localized: "Tasks (CalDAV)", bundle: .module))
+                .tag(PIMDAVConnectForm.SourceKind.tasks)
         }
+        #if os(macOS)
+        .pickerStyle(.segmented)
+        #endif
     }
 
+    private var endpointFooter: String {
+        form.endpointMode == .discover
+            ? String(localized: "Brev discovers the DAV server from the address domain.", bundle: .module)
+            : String(localized: "HTTPS is required. HTTP is allowed only for local development servers.", bundle: .module)
+    }
+
+    @ViewBuilder
     private var endpointFields: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+        Group {
             Picker(
                 String(localized: "Find the server", bundle: .module),
                 selection: $form.endpointMode
@@ -665,8 +693,6 @@ struct PIMSourceConnectSheet: View {
                 Text(String(localized: "Manual server URL", bundle: .module))
                     .tag(PIMDAVConnectForm.EndpointMode.manual)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             TextField(
                 form.endpointMode == .discover
@@ -674,26 +700,17 @@ struct PIMSourceConnectSheet: View {
                     : String(localized: "Server URL", bundle: .module),
                 text: $form.address
             )
-            .textFieldStyle(.roundedBorder)
             #if os(iOS)
-                .keyboardType(form.endpointMode == .discover ? .emailAddress : .URL)
-                .textInputAutocapitalization(.never)
+            .keyboardType(form.endpointMode == .discover ? .emailAddress : .URL)
+            .textInputAutocapitalization(.never)
             #endif
-                .autocorrectionDisabled()
-
-            Text(
-                form.endpointMode == .discover
-                    ? String(localized: "Brev discovers the DAV server from the address domain.", bundle: .module)
-                    : String(localized: "HTTPS is required. HTTP is allowed only for local development servers.", bundle: .module)
-            )
-            .brevFont(.caption)
-            .foregroundStyle(theme.textSecondary.color)
-            .fixedSize(horizontal: false, vertical: true)
+            .autocorrectionDisabled()
         }
     }
 
+    @ViewBuilder
     private var credentialFields: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+        Group {
             Picker(
                 String(localized: "Sign in with", bundle: .module),
                 selection: $form.credentialMode
@@ -703,8 +720,6 @@ struct PIMSourceConnectSheet: View {
                 Text(String(localized: "Access token", bundle: .module))
                     .tag(PIMDAVConnectForm.CredentialMode.bearerToken)
             }
-            .pickerStyle(.segmented)
-            .labelsHidden()
 
             switch form.credentialMode {
             case .appPassword:
@@ -712,57 +727,36 @@ struct PIMSourceConnectSheet: View {
                     String(localized: "Username", bundle: .module),
                     text: $form.username
                 )
-                .textFieldStyle(.roundedBorder)
                 #if os(iOS)
-                    .textInputAutocapitalization(.never)
+                .textInputAutocapitalization(.never)
                 #endif
-                    .autocorrectionDisabled()
+                .autocorrectionDisabled()
 
                 SecureField(
                     String(localized: "App-specific password", bundle: .module),
                     text: $form.password
                 )
-                .textFieldStyle(.roundedBorder)
             case .bearerToken:
                 SecureField(
                     String(localized: "Access token", bundle: .module),
                     text: $form.bearerToken
                 )
-                .textFieldStyle(.roundedBorder)
             }
-
-            Text(String(
-                localized: "Credentials are stored in Keychain and used only for this source.",
-                bundle: .module
-            ))
-            .brevFont(.caption)
-            .foregroundStyle(theme.textSecondary.color)
-            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var displayNameField: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-            Text(String(localized: "Display name (optional)", bundle: .module))
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textPrimary.color)
-            TextField(
-                String(localized: "Shown in the source list", bundle: .module),
-                text: $form.displayName
-            )
-            .textFieldStyle(.roundedBorder)
-        }
+        TextField(
+            String(localized: "Shown in the source list", bundle: .module),
+            text: $form.displayName
+        )
     }
 
     @ViewBuilder
     private var issueCallouts: some View {
-        let issues = showsEndpointFields
-            ? form.issues
-            : form.issues.filter {
-                $0 == .usernameRequired || $0 == .passwordRequired || $0 == .tokenRequired
-            }
+        let issues = visibleIssues
         if !issues.isEmpty {
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            Section {
                 ForEach(issues, id: \.self) { issue in
                     SettingsInfoCallout(
                         symbolName: "exclamationmark.triangle",
@@ -772,5 +766,25 @@ struct PIMSourceConnectSheet: View {
                 }
             }
         }
+    }
+
+    private var visibleIssues: [PIMDAVConnectForm.Issue] {
+        guard didAttemptSubmit || hasAnyInput else { return [] }
+        return showsEndpointFields
+            ? form.issues
+            : form.issues.filter {
+                $0 == .usernameRequired || $0 == .passwordRequired || $0 == .tokenRequired
+            }
+    }
+
+    private var hasAnyInput: Bool {
+        [
+            form.address,
+            form.username,
+            form.password,
+            form.bearerToken,
+            form.displayName
+        ]
+        .contains { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
     }
 }

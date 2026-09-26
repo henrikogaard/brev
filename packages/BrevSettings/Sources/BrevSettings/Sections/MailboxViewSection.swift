@@ -78,7 +78,8 @@ struct MailboxViewSection: View {
             String(localized: "All mail", bundle: .module),
             String(localized: "Spam", bundle: .module),
             String(localized: "Trash", bundle: .module),
-            String(localized: "Archive", bundle: .module)
+            String(localized: "Archive", bundle: .module),
+            String(localized: "Sidebar icons", bundle: .module)
         ].contains(target) { selectedPane = 2; return }
         if [
             String(localized: "Mailbox list", bundle: .module),
@@ -158,6 +159,16 @@ struct MailboxViewSection: View {
                     title: String(localized: "Archive", bundle: .module),
                     subtitle: String(localized: "Show the archive folder.", bundle: .module),
                     isOn: folderBinding(for: \.showArchive)
+                )
+
+                SettingsToggleRow(
+                    symbolName: "sidebar.left",
+                    title: String(localized: "Sidebar icons", bundle: .module),
+                    subtitle: String(
+                        localized: "Show icons next to sidebar rows. Turn off for a denser, text-only rail.",
+                        bundle: .module
+                    ),
+                    isOn: folderBinding(for: \.showIcons)
                 )
             }
         }

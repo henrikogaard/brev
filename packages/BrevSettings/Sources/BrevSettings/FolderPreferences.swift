@@ -21,6 +21,7 @@ struct FolderPreferences: Equatable, Sendable, Codable {
         static let showSpam = "folders.showSpam"
         static let showTrash = "folders.showTrash"
         static let showArchive = "folders.showArchive"
+        static let showIcons = "folders.showIcons"
     }
 
     var showStarred: Bool
@@ -30,6 +31,41 @@ struct FolderPreferences: Equatable, Sendable, Codable {
     var showSpam: Bool
     var showTrash: Bool
     var showArchive: Bool
+    var showIcons: Bool
+
+    init(
+        showStarred: Bool,
+        showSnoozed: Bool,
+        showScheduled: Bool,
+        showAllMail: Bool,
+        showSpam: Bool,
+        showTrash: Bool,
+        showArchive: Bool,
+        showIcons: Bool
+    ) {
+        self.showStarred = showStarred
+        self.showSnoozed = showSnoozed
+        self.showScheduled = showScheduled
+        self.showAllMail = showAllMail
+        self.showSpam = showSpam
+        self.showTrash = showTrash
+        self.showArchive = showArchive
+        self.showIcons = showIcons
+    }
+
+    /// Decodes backups written before a key existed: any absent key falls
+    /// back to its default instead of failing the whole settings payload.
+    init(from decoder: any Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        showStarred = try container.decodeIfPresent(Bool.self, forKey: .showStarred) ?? Self.defaults.showStarred
+        showSnoozed = try container.decodeIfPresent(Bool.self, forKey: .showSnoozed) ?? Self.defaults.showSnoozed
+        showScheduled = try container.decodeIfPresent(Bool.self, forKey: .showScheduled) ?? Self.defaults.showScheduled
+        showAllMail = try container.decodeIfPresent(Bool.self, forKey: .showAllMail) ?? Self.defaults.showAllMail
+        showSpam = try container.decodeIfPresent(Bool.self, forKey: .showSpam) ?? Self.defaults.showSpam
+        showTrash = try container.decodeIfPresent(Bool.self, forKey: .showTrash) ?? Self.defaults.showTrash
+        showArchive = try container.decodeIfPresent(Bool.self, forKey: .showArchive) ?? Self.defaults.showArchive
+        showIcons = try container.decodeIfPresent(Bool.self, forKey: .showIcons) ?? Self.defaults.showIcons
+    }
 
     static let defaults = FolderPreferences(
         showStarred: true,
@@ -38,7 +74,8 @@ struct FolderPreferences: Equatable, Sendable, Codable {
         showAllMail: false,
         showSpam: true,
         showTrash: true,
-        showArchive: true
+        showArchive: true,
+        showIcons: true
     )
 
     static func load(from defaults: UserDefaults = .standard) -> FolderPreferences {
@@ -49,7 +86,8 @@ struct FolderPreferences: Equatable, Sendable, Codable {
             showAllMail: bool(for: Key.showAllMail, default: Self.defaults.showAllMail, defaults: defaults),
             showSpam: bool(for: Key.showSpam, default: Self.defaults.showSpam, defaults: defaults),
             showTrash: bool(for: Key.showTrash, default: Self.defaults.showTrash, defaults: defaults),
-            showArchive: bool(for: Key.showArchive, default: Self.defaults.showArchive, defaults: defaults)
+            showArchive: bool(for: Key.showArchive, default: Self.defaults.showArchive, defaults: defaults),
+            showIcons: bool(for: Key.showIcons, default: Self.defaults.showIcons, defaults: defaults)
         )
     }
 
@@ -61,6 +99,7 @@ struct FolderPreferences: Equatable, Sendable, Codable {
         defaults.set(showSpam, forKey: Key.showSpam)
         defaults.set(showTrash, forKey: Key.showTrash)
         defaults.set(showArchive, forKey: Key.showArchive)
+        defaults.set(showIcons, forKey: Key.showIcons)
     }
 
     private static func bool(for key: String, default defaultValue: Bool, defaults: UserDefaults) -> Bool {

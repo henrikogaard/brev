@@ -42,9 +42,15 @@ enum MailboxChatAvailability {
     static func disabledReason(
         in state: MailboxChatAvailabilityState
     ) -> MailboxChatDisabledReason? {
-        if !state.hasProviderBackend { return .missingBackend }
-        if !state.settings.isEnabled { return .notEnabled }
-        if !state.settings.consentGiven { return .consentRequired }
+        if !state.hasProviderBackend {
+            return .missingBackend
+        }
+        if !state.settings.isEnabled {
+            return .notEnabled
+        }
+        if !state.settings.consentGiven {
+            return .consentRequired
+        }
         return nil
     }
 }
@@ -82,7 +88,9 @@ struct MailboxChatNotice: Equatable, Sendable {
 
     let reason: MailboxChatDisabledReason
 
-    var message: String { reason.title }
+    var message: String {
+        reason.title
+    }
 
     /// A missing provider is something the user has to go and fix; the other two
     /// are a switch they can throw from here.
@@ -344,6 +352,7 @@ struct MailboxChatPanel: View {
             .opacity(chip.isEnabled ? 1 : 0.45)
             .accessibilityAddTraits(chip.isSelected ? .isSelected : [])
             .accessibilityLabel(chip.accessibilityLabel)
+            .help(chip.isEnabled ? "" : scopeContext.chipDisabledHelp(for: chip.kind))
     }
 
     @ViewBuilder
@@ -451,6 +460,17 @@ struct MailboxChatPanel: View {
                 )
         )
         .disabled(isComposerDisabled)
+        // Multi-line field, so Return inserts a newline; ⌘Return sends,
+        // the standard chat shortcut — discoverable via the send button's
+        // keyboard-equivalent hint.
+        .onKeyPress(.return, phases: .down) { press in
+            guard press.modifiers.contains(.command), !isSendDisabled else { return .ignored }
+            Task { await send() }
+            return .handled
+        }
+        .accessibilityHint(
+            String(localized: "Press Command-Return to send.", bundle: .module)
+        )
     }
 
     /// Why the composer is blocked, and the one control that unblocks it.

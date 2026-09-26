@@ -12,6 +12,69 @@
 - Verified: `swift test --filter HTMLBodyDocument` (22 green, incl. new
   prewarmNavigation contract test), lint.sh + format.sh clean.
 
+## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
+
+- Assessed the AI sidebar live on macOS mock (sender card, Actions,
+  scope chips, empty state, no-provider callout, composer). Findings:
+  the panel is structurally solid — privacy line, honest disabled
+  state, notice-with-CTA all present — with three fixable gaps:
+  disabled scope chips silently dimmed, no keyboard send path, and a
+  "no provider" message tripled across callout + placeholder + empty
+  state (the last kept deliberately: callout explains, field previews).
+- Disabled scope chips now carry a `.help` tooltip explaining what
+  unlocks them ("View a single account to search all its folders."),
+  via `chipDisabledHelp` on the scope context — unified inbox disables
+  the account chip (`sourceID == nil`) so the hint resolves the
+  otherwise-unexplained dimming.
+- ⌘Return sends the chat question from the composer (Return keeps
+  inserting newlines in the multi-line field); the field's AX hint
+  advertises the shortcut.
+- Verified: `swift test --filter MailboxChatScopeContext` 6/6 green
+  (new contract test), 74-chat-suite run green, lint/format clean.
+  The 8 MailContextColumn snapshot diffs reproduce identically on the
+  unmodified tree — same env-vs-baseline mismatch documented above.
+- Deferred: hiding the disabled composer entirely when `disabledReason
+  != nil` (arguable — the greyed field previews the unlocked feature);
+  snapshot re-record on the canonical host.
+- Follow-up: `showIcons: false` now also hides the "All Inboxes" tray
+  icon so icons-off is a fully text-only rail; the existing
+  `allInboxesGlobalAlignment` no-icons case covers it (baseline still
+  needs the canonical-host re-record — one new legit diff on top of
+  the 11 env mismatches, verified by stash A/B).
+
+
+## 2026-09-25 — Agent — Sidebar PR review follow-ups (#100)
+
+- `FolderPreferences` gains a custom decoder: absent keys fall back to
+  defaults, so pre-`showIcons` backups decode instead of `keyNotFound`
+  rejecting the whole settings payload (Codex P1). New test covers a
+  pre-icon backup payload.
+- ADR-0056's synced allowlist now lists `folders.showIcons`; CHANGELOG
+  Unreleased records the sidebar alignment + toggle + sender chip.
+- `allInboxesGlobalAlignment` snapshot now covers `showIcons: false`
+  too. Baselines for the new metrics + the no-icons image still need
+  `RECORD_SNAPSHOTS=YES` on the canonical macOS 26+ host — this box's
+  renderer differs from the recorded baselines (the known env diffs).
+- Verified: `swift test --filter FolderPreferences` (5 green),
+  `swift build --build-tests` on BrevMail, lint.sh + format.sh clean.
+
+
+## 2026-09-25 — Agent — Sidebar flush-left + icon toggle + AI-sidebar polish
+
+- Folder rows now flush-left under the section headers: macOS
+  `folderRowBaseLeadingPadding` 4→0 and `folderRowDepthIndent` 12→8;
+  iOS `folderRowDepthIndent` 16→12.
+- New `folders.showIcons` pref (default true, synced) hides sidebar row
+  icons for a compact text-only rail; Settings → Mailbox View →
+  Folders → "Sidebar icons". Wired FolderPreferences → BrevMailRootView
+  (@AppStorage) → FolderSidebarVisibilityPreferences → FolderSidebar
+  guards (action rows, role icons, iOS list-row leadings).
+- AI sidebar: sender scope chip shows the email local part instead of a
+  mid-domain-truncated address; full address stays on the AX label.
+- Verified: macOS device build (icons on/off via defaults), iOS sim
+  (icons on/off), `swift test --filter 'MailboxChatScope|FolderSidebarPresentation'`
+  (42 green), lint.sh + format.sh clean.
+
 
 ## 2026-09-24 — Agent — Fix ComposePresentationTests overflow expectations
 
@@ -4853,3 +4916,84 @@ buttons, and package-aware localization.
   activation hands focus to the list; no outline anywhere.
 - **Skipped**: none. The 22 pre-existing snapshot env diffs reproduce
   identically on clean main on this machine — no new failures.
+
+## 2026-09-25 — Agent — Settings sidebar flush-left + shared icons toggle (#100)
+
+- **Goal**: Henrik asked for the mail-sidebar treatment in Settings too —
+  rows aligned left under their section headers ("App", "Reading &
+  Composing", "Organization") and honoring the same icons on/off toggle,
+  on iOS and macOS.
+- **Changes**: `SettingsView` — macOS sidebar rows `listRowInsets` leading
+  4 → 0 so row content aligns under section headers; `sectionRow` and
+  `pluginSettingsRow` gate their 18pt icon column on the same
+  `folders.showIcons` pref (`@AppStorage`) the mail rail uses, so the
+  Mailbox View → Folders → "Sidebar icons" switch compacts every rail at
+  once. iOS compact + sidebar rows pick both up automatically.
+- **Verified**: lint + format clean; `swift build` green; live app —
+  toggle ON restores icons in settings + mail sidebars (icon column sits
+  under section headers, Apple Mail layout), toggle OFF renders the dense
+  text-only rail in both; A/B test run confirms the 34 BrevSettings
+  snapshot diffs fail identically on clean HEAD (pre-existing macOS
+  baseline env diffs — zero new failures from this change).
+- **Skipped**: none.
+
+## 2026-09-25 — Agent — iOS settings tap fix (found while verifying #100)
+
+- **Goal**: while verifying the settings icons toggle on iOS, every
+  settings row tap was dead — the whole section list was un-navigable.
+- **Root cause**: `compactSettingsRows` wrapped each `NavigationLink` in a
+  `.simultaneousGesture(TapGesture().onEnded { navigation.select(...) })`.
+  The competing gesture suppressed link activation — confirmed via A/B
+  build (dead on the parent commit too, so pre-existing, not from the
+  icons-off change).
+- **Fix**: drop the gesture; call `navigation.select(section)` in the
+  pushed view's `.onAppear` instead — same sync timing, no conflict.
+- **Verified on device**: Mailbox View, Accounts, etc. now navigate; the
+  Folders scope picker, toggles, and the "Sidebar icons" pref all live and
+  govern the iOS rail + settings icons identically to macOS.
+
+## 2026-09-26 — Agent — Sidebar flush-left refinement (PR #100)
+
+**Goal:** Henrik: move mailbox folder rows further left — icons under the mailbox headers, Apple Mail gutter.
+
+**Changes:** `FolderSidebarPresentation.macOSLayoutMetrics` `disclosureHitSize` 16→10 (Mail's leading gutter ≈ 7–10pt); macOS `folderRowControlSpacing` → 0 (the disclosure column carries the visual gap); `sidebarActionRow` leading now derives from the same column (`disclosureHitSize + folderRowControlSpacing`) instead of a hardcoded `xxs`; iOS `.folderContent` action rows drop the stale +44pt leading disclosure offset (`folderRowLeadingPadding(0)`, matching iOS folder rows — iOS disclosure is trailing). `⋯` smart-view menu target pinned at `BrevSpacing.lg` so the metric change does not shrink it.
+
+**Verified:** rebuilt `Brev Test (2026-09-26)` — icons ~10pt right of header text, leaf/parent icons on one column, chevrons at the header edge; `swift test --filter 'FolderSidebarPresentation|MailboxGroupDisclosure|GmailNativeSidebar'` 42/42; lint.sh + format.sh clean.
+
+**Skipped:** pixel snapshot baselines (same env-diff caveat as before).
+
+## 2026-09-26 — Agent — Sidebar icons flush-left + View-menu icons toggle (PR #100)
+
+- Goal: Henrik asked for mailbox folder icons "all the way to the left" and an easy way to turn icons off.
+- macOS leaf rows no longer reserve a disclosure column; leaf icons (and All Inboxes / smart views / plugin rows) sit flush with the section-header text. Parent rows keep the chevron in that edge slot. Child depth indent is now 16pt so child icons start right of the parent icon.
+- Removed the now-identical `SidebarActionRowAlignment` distinction and the dead disclosure placeholder.
+- Added View → "Show Sidebar Icons" toggle bound to `folders.showIcons` (same preference as Settings → Mailbox View → Folders → Sidebar icons).
+- Verification: lint.sh OK, format clean, FolderSidebar/MailCommand/Shortcut unit tests green, rebuilt mock app and checked the result visually. FolderSidebar pixel snapshots differ, as expected from the geometry change (they were already env-divergent on this machine). Re-record the baselines on the maintainer host.
+
+## 2026-09-26 — Agent — Sidebar, DAV form, and compact rows (PR #100)
+
+- **Goal:** Deliver the three Apple Mail-inspired UI polish changes requested
+  for PR #100: shared sidebar folder glyph alignment, a native DAV source
+  connection form, and a compact message-list leading gutter.
+- **Changes:** Sidebar disclosure controls now trail folder content on macOS
+  and iOS; macOS uses a 16pt disclosure hit target and matching 16pt folder
+  depth indent. `PIMSourceConnectSheet` now uses a native grouped Form on
+  macOS (default Form presentation on iOS), native picker/text-field chrome,
+  localized section labels and footers, and validation callouts after input
+  or attempted submission. `MessageListRow` now uses compact spacing and
+  checkbox/unread-dot/avatar/content order; inline child rows already matched
+  that order. Updated only the affected sidebar and message-row snapshot
+  baselines through `RECORD_SNAPSHOTS=YES`.
+- **Verified:** `swift test --filter FolderSidebar` passed (42 tests);
+  `swift test --filter MessageListRow` passed (14 tests); BrevSettings PIM
+  tests passed (35 tests in 3 suites); `scripts/lint.sh` passed; the macOS
+  mock build passed and launched `Brev Test (2026-09-26).app`.
+- **Skipped:** The requested iOS build could not resolve a destination:
+  `xcodebuild` reported `iOS 26.5 is not installed` while the available
+  simulator runtimes were iOS 26.5 and 27.0. The existing iOS simulator app
+  was nevertheless relaunched successfully with mock mode. No visual
+  inspection was performed.
+- **Handoff:** The selected validation visibility variant is
+  `didAttemptSubmit || hasAnyInput`, because `canSubmit` is validity-gated
+  and pristine forms should not show warnings. PR checks were inspected
+  separately and were green at the time of inspection.

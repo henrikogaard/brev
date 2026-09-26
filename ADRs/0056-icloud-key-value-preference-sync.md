@@ -80,7 +80,7 @@ Constraints from earlier ADRs:
    | `messageTemplates.v1` | message templates |
    | `smartMailbox.mailboxes` | smart mailbox definitions |
    | `compose.messageFormat`, `compose.quotePlacement`, `compose.attachmentReminderEnabled`, `compose.externalRecipientWarningEnabled`, `compose.undoSendDelay` | compose preferences |
-   | `folders.showAllMail`, `folders.showArchive`, `folders.showScheduled`, `folders.showSnoozed`, `folders.showSpam`, `folders.showStarred`, `folders.showTrash` | sidebar smart-folder visibility |
+   | `folders.showAllMail`, `folders.showArchive`, `folders.showScheduled`, `folders.showSnoozed`, `folders.showSpam`, `folders.showStarred`, `folders.showTrash`, `folders.showIcons` | sidebar smart-folder visibility and the sidebar icon column |
 
    Message and account identifiers inside these values are stable
    across devices because Brev derives IMAP account IDs from the
