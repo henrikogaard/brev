@@ -6,6 +6,18 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS reader re-measures the message body after the window or pane
+  narrows, so text wraps at ~700 pt instead of clipping mid-line.
+- iPhone thread view opens with the latest (or first unread) message
+  expanded instead of every message collapsed.
+- Add Account: the whole "Advanced setup" row toggles, and Manual
+  IMAP/SMTP shows the server form instead of a dead-end warning; the iOS
+  sheet gains a navigation title and Cancel.
+- Settings → Calendar & Contacts labels the per-source toggles
+  ("Background sync", "Allow editing") and stops truncating collection
+  names on iPhone.
+- macOS Window menu gains "Message Viewer" (⌘0), which also reopens the
+  main viewer after the last window is closed.
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate

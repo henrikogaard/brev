@@ -170,6 +170,19 @@ struct IMAPAccountSetupPresentationTests {
         #expect(manual.requiresManualReview)
     }
 
+    @Test("invalid manual setup leaves server hosts blank for user entry")
+    func invalidManualSetupLeavesServerHostsBlank() {
+        let manual = IMAPAccountSetupPresentation.manualBlankServers(
+            forEmailAddress: ""
+        )
+
+        #expect(manual.source == .manualFallback)
+        #expect(manual.incoming?.host == "")
+        #expect(manual.outgoing?.host == "")
+        #expect(manual.incoming?.port == 993)
+        #expect(manual.outgoing?.port == 587)
+    }
+
     @Test("Google path shows OAuth primary and app-password secondary")
     func googlePathShowsOAuthPrimaryAndAppPasswordSecondary() throws {
         let discovery = try #require(

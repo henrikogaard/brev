@@ -41,7 +41,7 @@ final class HTMLBodyWebViewStore: ObservableObject {
         #if canImport(AppKit)
         let webView = ScrollForwardingWebView(frame: .zero, configuration: Self.configuration())
         #else
-        let webView = WKWebView(frame: .zero, configuration: Self.configuration())
+        let webView = SelfSizingWebView(frame: .zero, configuration: Self.configuration())
         #endif
         Self.prepare(webView)
         storedWebView = webView
@@ -107,6 +107,21 @@ final class HTMLBodyWebViewStore: ObservableObject {
 /// to reach the tail.
 final class ScrollForwardingWebView: WKWebView {
     var forwardsScrollWheel = true
+    var onLayoutWidthChange: ((CGFloat) -> Void)?
+    private var lastLayoutWidth: CGFloat = 0
+
+    override func layout() {
+        super.layout()
+        let width = bounds.width
+        guard HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: lastLayoutWidth,
+            newWidth: width
+        ) else {
+            return
+        }
+        lastLayoutWidth = width
+        onLayoutWidthChange?(width)
+    }
 
     override func scrollWheel(with event: NSEvent) {
         if forwardsScrollWheel {
@@ -117,6 +132,34 @@ final class ScrollForwardingWebView: WKWebView {
     }
 }
 #endif
+
+#if canImport(UIKit)
+final class SelfSizingWebView: WKWebView {
+    var onLayoutWidthChange: ((CGFloat) -> Void)?
+    private var lastLayoutWidth: CGFloat = 0
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        let width = bounds.width
+        guard HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: lastLayoutWidth,
+            newWidth: width
+        ) else {
+            return
+        }
+        lastLayoutWidth = width
+        onLayoutWidthChange?(width)
+    }
+}
+#endif
+
+enum HTMLBodyWidthChangePolicy {
+    static func shouldRemeasure(previousWidth: CGFloat, newWidth: CGFloat) -> Bool {
+        previousWidth > 0
+            && newWidth > 0
+            && abs(previousWidth - newWidth) > .ulpOfOne
+    }
+}
 
 /// Decides who owns wheel events over a self-sized mail body: the enclosing
 /// scroll view (the document fits its frame, nothing to scroll internally)
@@ -256,6 +299,15 @@ private struct WebViewRepresentable {
     fileprivate func configure(_ webView: WKWebView, coordinator: Coordinator) {
         coordinator.parent = self
         webView.navigationDelegate = coordinator
+        #if canImport(AppKit)
+        (webView as? ScrollForwardingWebView)?.onLayoutWidthChange = { [weak coordinator, weak webView] _ in
+            coordinator?.scheduleRemeasure(webView)
+        }
+        #else
+        (webView as? SelfSizingWebView)?.onLayoutWidthChange = { [weak coordinator, weak webView] _ in
+            coordinator?.scheduleRemeasure(webView)
+        }
+        #endif
         store.prepareForContentLoad()
         coordinator.load(
             into: webView,
@@ -316,6 +368,7 @@ extension WebViewRepresentable {
         var lastAllowRemote: Bool?
         var lastStyle: MessageBodyStyle?
         private var loadGeneration = 0
+        private var pendingRemeasure = false
 
         init(parent: WebViewRepresentable) {
             self.parent = parent
@@ -402,6 +455,23 @@ extension WebViewRepresentable {
         static let maxContentHeight: CGFloat = 20000
 
         func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+            remeasure(webView)
+            parent.onDidFinishRendering()
+        }
+
+        func scheduleRemeasure(_ webView: WKWebView?) {
+            guard let webView, lastHTML != nil, !pendingRemeasure else { return }
+            pendingRemeasure = true
+            DispatchQueue.main.async { [weak self, weak webView] in
+                guard let self else { return }
+                pendingRemeasure = false
+                guard let webView, lastHTML != nil else { return }
+                remeasure(webView)
+            }
+        }
+
+        func remeasure(_ webView: WKWebView) {
+            guard lastHTML != nil else { return }
             // Measure the *body* content height, not the documentElement's —
             // `documentElement.scrollHeight` is floored at the web view's own
             // viewport height, so short emails would never shrink below the
@@ -432,7 +502,6 @@ extension WebViewRepresentable {
                     #endif
                 }
             }
-            parent.onDidFinishRendering()
         }
     }
 }

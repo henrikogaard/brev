@@ -1,7 +1,8 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
-
+    "Allow editing" : { "extractionState" : "manual" },
+    "Background sync" : { "extractionState" : "manual" }
   },
   "version" : "1.0"
 }

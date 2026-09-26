@@ -71,6 +71,7 @@ struct MailKeyboardShortcutInventoryTests {
         #expect(entry("Next Message")?.alternates == "⌘]")
         #expect(entry("Focus Search")?.shortcut == "⌘/")
         #expect(entry("Get New Mail")?.shortcut == "⌘⌥R")
+        #expect(entry("Message Viewer")?.shortcut == "⌘0")
 
         // iPad preserves native text Undo/Redo and gives mail Undo a distinct chord.
         #if os(macOS)
@@ -110,5 +111,6 @@ struct MailKeyboardShortcutInventoryTests {
 
         // Settings (⌘,) is registered by the macOS app only.
         #expect(isMacOSOnly("Settings") == expectedPlatformEntry)
+        #expect(isMacOSOnly("Message Viewer") == expectedPlatformEntry)
     }
 }

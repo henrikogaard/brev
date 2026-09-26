@@ -18,6 +18,26 @@ import Testing
 
 @Suite("HTMLBodyDocument")
 struct HTMLBodyDocumentTests {
+    @Test("reader remeasures only after a non-zero width change")
+    func remeasuresAfterWidthChange() {
+        #expect(!HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: 0,
+            newWidth: 700
+        ))
+        #expect(!HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: 700,
+            newWidth: 0
+        ))
+        #expect(!HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: 700,
+            newWidth: 700
+        ))
+        #expect(HTMLBodyWidthChangePolicy.shouldRemeasure(
+            previousWidth: 700,
+            newWidth: 701
+        ))
+    }
+
     #if os(macOS)
     @Test("wheel events forward to the outer scroll view unless the document outgrows the self-size cap")
     func wheelEventsForwardUnlessDocumentOutgrowsCap() {

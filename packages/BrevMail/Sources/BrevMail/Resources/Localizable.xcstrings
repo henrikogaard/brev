@@ -1013,7 +1013,7 @@
     "Encrypted password" : {
       "extractionState" : "manual"
     },
-    "Enter a valid email address before editing IMAP/SMTP settings." : {
+    "Enter a valid email address before adding the account." : {
       "extractionState" : "manual"
     },
     "Enter a valid email address before skipping to %@." : {
@@ -1239,6 +1239,7 @@
     "All Inboxes" : { "extractionState" : "manual" },
     "All Mailboxes" : { "extractionState" : "manual" },
     "Mailboxes" : { "extractionState" : "manual" },
+    "Message Viewer" : { "extractionState" : "manual" },
     "Smart View Actions" : { "extractionState" : "manual" },
     "Attach" : { "extractionState" : "manual" },
     "Compose actions" : { "extractionState" : "manual" },
