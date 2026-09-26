@@ -54,4 +54,30 @@ struct RecipientChipFieldPresentationTests {
         #expect(RecipientChipFieldPresentation.promptText(recipientCount: 1) == nil)
         #expect(RecipientChipFieldPresentation.promptText(recipientCount: 3) == nil)
     }
+
+    @Test("a space does not commit incomplete input")
+    func spaceLeavesIncompleteInput() {
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "he ") == .none)
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "He ") == .none)
+    }
+
+    @Test("a space commits once the text looks like an address")
+    func spaceCommitsValidAddress() {
+        #expect(
+            RecipientChipFieldPresentation.commitAction(afterTyping: "henrik@ex.com ")
+                == .commit("henrik@ex.com")
+        )
+    }
+
+    @Test("comma and semicolon always commit the preceding text")
+    func separatorsCommitAnyText() {
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "he,") == .commit("he"))
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "he;") == .commit("he"))
+    }
+
+    @Test("ordinary keystrokes do nothing")
+    func ordinaryKeystrokesDoNothing() {
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "hen") == .none)
+        #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "") == .none)
+    }
 }

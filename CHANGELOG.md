@@ -11,6 +11,13 @@ All notable changes to Brev are documented here.
   command outright, so no mailbox could be opened on them.
 - SMTP: accounts on servers that advertise only `AUTH LOGIN` now
   authenticate and send; `AUTH PLAIN` is still preferred when offered.
+- iPhone composer: the To field no longer commits partial addresses —
+  iOS autocorrect/autocapitalise appended a space mid-typing and the
+  space separator committed a bogus chip ("He"). Space now commits only
+  once the text already looks like an email address; the field also
+  uses the email keyboard with autocorrection off.
+- iPhone composer: Cc/Bcc stay pinned to the first line of the To row
+  and the suggestion list spans the full field width underneath.
 - macOS reader re-measures the message body after the window or pane
   narrows, so text wraps at ~700 pt instead of clipping mid-line.
 - iPhone thread view opens with the latest (or first unread) message

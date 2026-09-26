@@ -1366,19 +1366,19 @@ public struct ComposeView: View {
                     suggestions: suggestions(for: .to),
                     onInputTextChanged: { query in updateRecipientSuggestions(for: .to, query: query) },
                     onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) }
-                )
-                carbonCopyControls
+                ) {
+                    carbonCopyControls
+                }
             } else {
-                HStack(alignment: .center, spacing: BrevSpacing.sm) {
-                    RecipientChipField(
-                        label: String(localized: "To", bundle: .module),
-                        labelWidth: ComposeLayout.fieldLabelWidth,
-                        recipients: $to,
-                        inputText: $toInputText,
-                        suggestions: suggestions(for: .to),
-                        onInputTextChanged: { query in updateRecipientSuggestions(for: .to, query: query) },
-                        onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) }
-                    )
+                RecipientChipField(
+                    label: String(localized: "To", bundle: .module),
+                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    recipients: $to,
+                    inputText: $toInputText,
+                    suggestions: suggestions(for: .to),
+                    onInputTextChanged: { query in updateRecipientSuggestions(for: .to, query: query) },
+                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) }
+                ) {
                     carbonCopyControls
                 }
             }

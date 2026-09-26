@@ -16,10 +16,14 @@ import SwiftUI
 
 /// A token-based email address input field. Each confirmed address is
 /// rendered as a removable chip; the user types into a trailing text
-/// field and commits with Return, comma, semicolon, space, or by moving
-/// focus away (e.g. clicking Subject or Send). Addresses that don't look
-/// like valid email are tinted so the mistake is visible before sending.
-struct RecipientChipField: View {
+/// field and commits with Return, comma, semicolon, or by moving focus
+/// away (e.g. clicking Subject or Send). A space commits only once the
+/// text already looks like an email address — the iOS keyboard
+/// capitalises/autocorrects partial input (e.g. "He") and appends a
+/// space, which would otherwise commit a bogus chip. Addresses that
+/// don't look like valid email are tinted so the mistake is visible
+/// before sending.
+struct RecipientChipField<Accessory: View>: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
@@ -30,6 +34,7 @@ struct RecipientChipField: View {
     let suggestions: [RecipientAutocompleteSuggestion]
     let onInputTextChanged: (String) -> Void
     let onSuggestionSelected: (RecipientAutocompleteSuggestion) -> Void
+    let trailingAccessory: Accessory
     @FocusState private var isFocused: Bool
     /// Escape hides the suggestion list once; typing again reopens it.
     @State private var suggestionsDismissed = false
@@ -41,13 +46,15 @@ struct RecipientChipField: View {
         inputText: Binding<String>,
         suggestions: [RecipientAutocompleteSuggestion] = [],
         onInputTextChanged: @escaping (String) -> Void = { _ in },
-        onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in }
+        onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in },
+        @ViewBuilder trailingAccessory: () -> Accessory
     ) {
         self.label = label
         self.labelWidth = labelWidth
         self.suggestions = suggestions
         self.onInputTextChanged = onInputTextChanged
         self.onSuggestionSelected = onSuggestionSelected
+        self.trailingAccessory = trailingAccessory()
         _recipients = recipients
         _inputText = inputText
     }
@@ -58,12 +65,14 @@ struct RecipientChipField: View {
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                     labelView
                     fieldContent
+                    trailingAccessory
                 }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                     labelView
                         .frame(width: labelWidth, alignment: .trailing)
                     fieldContent
+                    trailingAccessory
                 }
             }
         }
@@ -91,13 +100,20 @@ struct RecipientChipField: View {
                     .foregroundStyle(theme.textPrimary.color)
                     .focused($isFocused)
                     .frame(minWidth: 120)
+                    .autocorrectionDisabled()
+                #if os(iOS)
+                    .keyboardType(.emailAddress)
+                    .textContentType(.emailAddress)
+                    .textInputAutocapitalization(.never)
+                #endif
                     .onSubmit { commitInput() }
                     .onChange(of: inputText) { _, newValue in
                         suggestionsDismissed = false
-                        if let last = newValue.last, last == "," || last == ";" || last == " " {
-                            inputText = String(newValue.dropLast())
+                        switch RecipientChipFieldPresentation.commitAction(afterTyping: newValue) {
+                        case .commit(let text):
+                            inputText = text
                             commitInput()
-                        } else {
+                        case .none:
                             onInputTextChanged(newValue)
                         }
                     }
@@ -197,6 +213,30 @@ struct RecipientChipField: View {
     }
 }
 
+extension RecipientChipField where Accessory == EmptyView {
+    init(
+        label: String,
+        labelWidth: CGFloat = 48,
+        recipients: Binding<[String]>,
+        inputText: Binding<String>,
+        suggestions: [RecipientAutocompleteSuggestion] = [],
+        onInputTextChanged: @escaping (String) -> Void = { _ in },
+        onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in }
+    ) {
+        self.init(
+            label: label,
+            labelWidth: labelWidth,
+            recipients: recipients,
+            inputText: inputText,
+            suggestions: suggestions,
+            onInputTextChanged: onInputTextChanged,
+            onSuggestionSelected: onSuggestionSelected
+        ) {
+            EmptyView()
+        }
+    }
+}
+
 /// Autocomplete suggestions below a recipient field — full-width rows
 /// matching the mail-client pattern rather than floating chips.
 struct RecipientSuggestionList: View {
@@ -253,9 +293,34 @@ struct RecipientSuggestionList: View {
     }
 }
 
+/// What to do with the last keystroke in a recipient field. `.commit`
+/// carries the input with the separator dropped; `.none` leaves the text
+/// as typed.
+enum RecipientCommitAction: Equatable {
+    case none
+    case commit(String)
+}
+
 enum RecipientChipFieldPresentation {
     static func promptText(recipientCount: Int) -> String? {
         recipientCount == 0 ? "name@example.com" : nil
+    }
+
+    /// Comma and semicolon always commit the preceding text as an
+    /// address. A space commits only when the text already looks like an
+    /// email address — iOS autocorrection appends spaces after partial
+    /// input ("He "), and committing those produced garbage chips.
+    static func commitAction(afterTyping newValue: String) -> RecipientCommitAction {
+        guard let last = newValue.last else { return .none }
+        let text = String(newValue.dropLast())
+        switch last {
+        case ",", ";":
+            return .commit(text)
+        case " ":
+            return RecipientAddressValidator.isLikelyEmailAddress(text) ? .commit(text) : .none
+        default:
+            return .none
+        }
     }
 }
 

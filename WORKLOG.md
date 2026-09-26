@@ -66,6 +66,30 @@
   `session.signInError != nil` (`LoginView` ~L158) and the sheet
   correctly stays open on failure — misleading copy, not zombie state.
 
+## 2026-09-26 — Agent — iPhone composer header polish (fix/ios-composer-header)
+
+- Root cause of Henrik's "He" chip: any trailing space committed the
+  recipient input, and iOS autocorrect appends "He " mid-typing.
+  `RecipientChipFieldPresentation.commitAction` now commits on
+  comma/semicolon always, on space only when the text passes
+  `RecipientAddressValidator.isLikelyEmailAddress`; otherwise untouched.
+  TextField gets `.emailAddress` keyboard type/content type,
+  `autocapitalization(.never)`, `autocorrectionDisabled` (iOS;
+  autocorrectionDisabled unconditional).
+- `RecipientChipField` is now generic over a `trailingAccessory`
+  (default `EmptyView` via convenience init); ComposeView passes
+  `carbonCopyControls` there and drops the outer HStack — Cc/Bcc stay on
+  the To line while the suggestion list spans the field width below.
+- Verified on iPhone 17 sim (mock): typed `henrik.ogard@mailo.com` +
+  space → exactly one valid chip; "he " leaves input untouched with the
+  full-width suggestion list under the Cc/Bcc line; screenshots in
+  /Users/devin/evidence/composer/. macOS compose row visually unchanged.
+- The large black disc in Henrik's screenshot is the iOS pointer-device
+  cursor (host mouse rendered inside the simulator), not a Brev view.
+- Tests: `swift test --filter 'RecipientChipFieldPresentation|
+  ComposePresentation'` — 62 green (new tests folded into the existing
+  suite in RecipientAddressValidatorTests.swift). lint/format clean.
+
 ## 2026-09-26 — Agent — UI/UX review items 1–8 (fix/uiux-top10)
 
 - Merged #97 and #100 onto main via squash (3-way, post-merge
