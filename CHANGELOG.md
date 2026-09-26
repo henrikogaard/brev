@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS search options now use system segmented controls for search
+  location, folder scope, and field scope instead of custom capsule
+  chips.
+- iPad calendar now opens with the agenda column visible and shows a
+  single empty state instead of stacking "No events" beside "No event
+  selected".
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate

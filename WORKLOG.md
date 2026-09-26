@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-09-26 — Agent — UI/UX review batch 3 (M4 search controls, M8 iPad calendar)
+
+- M4: replaced the custom capsule search chips in `MessageListView`
+  (`searchScopeBar`) and `UnifiedInboxListView`
+  (`unifiedSearchExecutionBar`) with macOS-only `.segmented` Pickers —
+  search location (Local/Auto/Server), folder scope (This folder/All
+  mailboxes), and field scope (All/From/Subject/Attachment/Unread),
+  each `.controlSize(.small).fixedSize()` with a localized
+  `accessibilityLabel`. The 1pt separator rectangles between groups
+  are gone; the bottom hairline, NL chip strip, and
+  `ServerSearchSyntaxHint` are unchanged. The execution picker binds
+  through a custom `Binding` so `hasUserSelectedSearchExecution` is
+  still set before the assignment. iOS keeps the chip path (the whole
+  `#else` branch plus the chip helpers under `#if os(iOS)`). Left
+  `MessageListSearchField`'s `.default` focus ring alone — the ring in
+  the review is the system focus ring in the reviewer's accent, which
+  is what Apple Mail shows too.
+- M8: `CalendarRootView.columnVisibility` now starts `.doubleColumn`
+  so iPad portrait keeps the agenda column open (macOS was already
+  two-column; verified the window still opens with both). The detail
+  column renders a blank pane (`bgPrimary`) when
+  `hasSelectableEvents` (`hasSources && !events.isEmpty`) is false, so
+  "No event selected" no longer stacks with the leading column's own
+  empty state.
+- Left alone per scope: the modal "Done" presentation on iOS
+  (presentation architecture).
+- Verified: macOS mock screenshots `m4-search-segmented.png`,
+  `m8-macos-calendar.png`; iPad Pro sim
+  `m8-ipad-calendar-single-empty-state.png`.
+  `swift test --filter 'MessageList|UnifiedInbox|Calendar'` 303 tests —
+  only the 8 snapshot diffs (CalendarGridSnapshotTests,
+  CalendarBrowsingSnapshotTests), all reproduced identically on a
+  pristine origin/main worktree (`brev-main`) — same env-vs-baseline
+  mismatch documented earlier. lint/format clean.
+
+
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 
 - Assessed the AI sidebar live on macOS mock (sender card, Actions,
