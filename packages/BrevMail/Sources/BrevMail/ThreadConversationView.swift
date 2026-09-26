@@ -247,7 +247,7 @@ public struct ThreadConversationView: View {
             .onAppear {
                 let defaultID = ThreadConversationExpansionPolicy.expandedID(
                     selectedID: navigation.selectedMessageID,
-                    in: threadHeaders
+                    in: visibleHeaders
                 )
                 if let defaultID {
                     expandedMessageIDs = [defaultID]
@@ -268,7 +268,7 @@ public struct ThreadConversationView: View {
                 renderPool = ThreadConversationRenderPool()
                 let defaultID = ThreadConversationExpansionPolicy.expandedID(
                     selectedID: navigation.selectedMessageID,
-                    in: threadHeaders
+                    in: visibleHeaders
                 )
                 withAnimation(.easeInOut(duration: 0.15)) {
                     expandedMessageIDs = defaultID.map { [$0] } ?? []
@@ -279,9 +279,21 @@ public struct ThreadConversationView: View {
                     }
                 }
             }
+            .onChange(of: visibleHeaders.map(\.id)) { _, visibleIDs in
+                guard !visibleIDs.isEmpty,
+                      expandedMessageIDs.isDisjoint(with: visibleIDs)
+                else { return }
+                let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                    selectedID: navigation.selectedMessageID,
+                    in: visibleHeaders
+                )
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    expandedMessageIDs = defaultID.map { [$0] } ?? []
+                }
+            }
             .onChange(of: navigation.selectedMessageID) { _, selectedID in
                 guard let selectedID,
-                      threadHeaders.contains(where: { $0.id == selectedID })
+                      visibleHeaders.contains(where: { $0.id == selectedID })
                 else { return }
                 withAnimation(.easeInOut(duration: 0.15)) {
                     expandedMessageIDs.insert(selectedID)
