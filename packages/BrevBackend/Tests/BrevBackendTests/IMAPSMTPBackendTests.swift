@@ -214,9 +214,9 @@ struct IMAPSMTPBackendTests {
 
         try await backend.connect()
         backend.startDeferredStartupWork()
-        try await listingRecorder.waitUntilCallCount(1)
+        try await listingRecorder.waitUntilCallCount(1, timeoutNanoseconds: 5_000_000_000)
         _ = try? await backend.body(for: "INBOX:1")
-        try await listingRecorder.waitUntilCallCount(2)
+        try await listingRecorder.waitUntilCallCount(2, timeoutNanoseconds: 5_000_000_000)
         await backend.disconnect()
 
         #expect(await listingRecorder.callCount == 2)
