@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Sidebar folder rows now keep parent and leaf glyphs in one flush-left
+  column, with trailing disclosure controls and a larger macOS hit target.
+- DAV source connection now uses a native grouped form with platform-appropriate
+  pickers, field chrome, and inline validation after input.
+- Message-list rows now use a compact Apple Mail-style leading order:
+  selection control, unread indicator, avatar, then message content.
 - macOS: the pane holding keyboard focus now owns the selection tint —
   the selected row in the unfocused column demotes to the quieter
   background fill and a dimmed indicator (the Apple Mail cue that
@@ -264,6 +270,19 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Folder rows in the mailbox sidebar align flush under the section headers
+  (a narrower depth indent on both platforms), and a new Settings →
+  Mailbox View → Folders → "Sidebar icons" toggle hides the leading
+  icons for a denser, text-only rail.
+- Settings section rows align flush under their group headers on macOS and
+  honor the same "Sidebar icons" toggle on both platforms; on iOS,
+  section rows are tappable again (a competing gesture that suppressed
+  navigation was dropped).
+- The AI sidebar's sender scope chip shows the address's local part
+  (e.g. `marte.solheim`) instead of a truncated full address; the
+  complete address stays on the accessibility label. Disabled scope
+  chips now explain what unlocks them, and Command-Return sends the
+  chat question (Return still inserts a newline).
 - Desktop sidebar uses compact account headings, aligned top-level folders,
   regular-weight labels, quieter counts and a single rounded selection fill.
   A compact scope menu sits above All Inboxes on Mac and in the navigation

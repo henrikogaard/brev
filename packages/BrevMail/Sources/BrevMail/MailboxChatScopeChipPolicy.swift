@@ -37,7 +37,7 @@ enum MailboxChatScopeChipPolicy {
         MailboxChatScopeChipKind.allCases.map { kind in
             MailboxChatScopeChip(
                 kind: kind,
-                title: context.chipTitle(for: kind),
+                title: context.chipShortTitle(for: kind),
                 accessibilityLabel: context.chipAccessibilityLabel(for: kind),
                 isEnabled: context.isChipEnabled(kind),
                 isSelected: selected == kind

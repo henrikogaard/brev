@@ -80,6 +80,7 @@ public enum PreferenceSyncAllowlist {
         // Sidebar smart-folder visibility.
         "folders.showAllMail",
         "folders.showArchive",
+        "folders.showIcons",
         "folders.showScheduled",
         "folders.showSnoozed",
         "folders.showSpam",

@@ -575,11 +575,13 @@ public struct FolderSidebar: View {
             activateDestination { navigation.selectUnifiedInbox() }
         } label: {
             sidebarActionRow(title: String(localized: "All Inboxes", bundle: .module),
-                             isSelected: navigation.isUnifiedInboxSelected, alignment: .sourceHeader) {
-                Image(systemName: "tray.2")
-                    .foregroundStyle(theme.textSecondary.color)
-                    .font(.body)
-                    .frame(width: sidebarMetrics.iconWidth)
+                             isSelected: navigation.isUnifiedInboxSelected) {
+                if showSidebarIcons {
+                    Image(systemName: "tray.2")
+                        .foregroundStyle(theme.textSecondary.color)
+                        .font(.body)
+                        .frame(width: sidebarMetrics.iconWidth)
+                }
             } trailing: {
                 unreadBadge(unifiedUnreadCount)
             }
@@ -704,9 +706,11 @@ public struct FolderSidebar: View {
                     title: String(localized: "Outbox", bundle: .module),
                     isSelected: false,
                     leading: {
-                        Image(systemName: "arrow.up.circle")
-                            .foregroundStyle(theme.warning.color)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                        if showSidebarIcons {
+                            Image(systemName: "arrow.up.circle")
+                                .foregroundStyle(theme.warning.color)
+                                .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                        }
                     },
                     trailing: {
                         unreadBadge(outboxPendingCount)
@@ -801,7 +805,7 @@ public struct FolderSidebar: View {
             } label: {
                 Image(systemName: "ellipsis")
                     .foregroundStyle(theme.textSecondary.color)
-                    .folderSidebarSquareTouchTarget(size: sidebarMetrics.disclosureHitSize)
+                    .folderSidebarSquareTouchTarget(size: BrevSpacing.lg)
             }
             #if os(macOS)
             .menuStyle(.button)
@@ -862,9 +866,11 @@ public struct FolderSidebar: View {
                 title: smartView.title,
                 isSelected: smartView.isSelected(in: navigation),
                 leading: {
-                    Image(systemName: smartView.symbolName)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                    if showSidebarIcons {
+                        Image(systemName: smartView.symbolName)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                    }
                 }
             )
             #else
@@ -902,9 +908,11 @@ public struct FolderSidebar: View {
                     title: row.title,
                     isSelected: navigation.isSavedSearchSelected(id: row.id),
                     leading: {
-                        Image(systemName: row.symbolName)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                        if showSidebarIcons {
+                            Image(systemName: row.symbolName)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                        }
                     }
                 )
                 #else
@@ -957,9 +965,11 @@ public struct FolderSidebar: View {
                 title: String(localized: "All Attachments", bundle: .module),
                 isSelected: navigation.isAllAttachmentsSelected,
                 leading: {
-                    Image(systemName: "paperclip")
-                        .foregroundStyle(theme.textSecondary.color)
-                        .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                    if showSidebarIcons {
+                        Image(systemName: "paperclip")
+                            .foregroundStyle(theme.textSecondary.color)
+                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
+                    }
                 }
             )
             #else
@@ -1059,26 +1069,18 @@ public struct FolderSidebar: View {
     private func sidebarActionRow<Leading: View, Trailing: View>(
         title: String,
         isSelected: Bool,
-        alignment: SidebarActionRowAlignment = .folderContent,
         @ViewBuilder leading: () -> Leading,
         @ViewBuilder trailing: () -> Trailing
     ) -> some View {
-        let leadingPadding: CGFloat = switch alignment {
-        case .folderContent:
-            sidebarMetrics.folderRowLeadingPadding(depth: 0)
-                + sidebarMetrics.disclosureHitSize
-                + BrevSpacing.xxs
-        case .sourceHeader:
-            #if os(macOS)
-            sidebarMetrics.folderRowLeadingPadding(depth: 0)
-                + sidebarMetrics.disclosureHitSize + BrevSpacing.xxs
-            #else
-            sidebarMetrics.sourceHeaderHorizontalPadding
-            #endif
-        }
+        // Global rows (All Inboxes, smart views, plugin panels) carry no
+        // disclosure control, so their icon/label column sits flush at the
+        // row's leading edge — the same edge the section headers use.
+        let leadingPadding = sidebarMetrics.folderRowLeadingPadding(depth: 0)
 
         return HStack(spacing: BrevSpacing.xs) {
-            leading()
+            if showSidebarIcons {
+                leading()
+            }
             Text(verbatim: title)
             #if os(macOS)
                 .brevFont(.body)
@@ -1118,10 +1120,8 @@ public struct FolderSidebar: View {
         .contentShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
     }
 
-    /// Horizontal hierarchy for global sidebar controls and account folders.
-    private enum SidebarActionRowAlignment {
-        case folderContent
-        case sourceHeader
+    private var showSidebarIcons: Bool {
+        folderVisibility.showIcons
     }
 
     private var globalActionSelectionColor: Color {
@@ -1296,14 +1296,13 @@ public struct FolderSidebar: View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
         return HStack(spacing: folderRowControlSpacing) {
-            #if os(macOS)
-            disclosureControl(for: row, sourceID: sourceID)
-            #endif
             Button {
                 select(folder, in: sourceID)
             } label: {
                 HStack(spacing: BrevSpacing.xs) {
-                    roleIcon(for: folder.role)
+                    if showSidebarIcons {
+                        roleIcon(for: folder.role)
+                    }
                     Text(title)
                     #if os(iOS)
                         .brevFont(.body)
@@ -1321,11 +1320,9 @@ public struct FolderSidebar: View {
             }
             .buttonStyle(.plain)
             .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
-            #if os(iOS)
             if row.hasChildren {
                 disclosureControl(for: row, sourceID: sourceID)
             }
-            #endif
         }
         .padding(.leading, folderRowLeadingPadding(depth: row.depth))
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
@@ -1375,35 +1372,27 @@ public struct FolderSidebar: View {
         for row: FolderSidebarRow,
         sourceID: MailSourceID?
     ) -> some View {
-        if row.hasChildren {
-            let isExpanded = isFolderExpanded(row.folder.id, sourceID: sourceID)
-            let title = displayName(for: row.folder, sourceID: sourceID)
-            Button {
-                toggleFolderDisclosure(row.folder.id, sourceID: sourceID)
-            } label: {
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 11, weight: .semibold))
-                    .foregroundStyle(theme.textTertiary.color)
-                    .frame(
-                        width: sidebarMetrics.disclosureHitSize,
-                        height: sidebarMetrics.disclosureHitSize,
-                        alignment: .center
-                    )
-            }
-            .buttonStyle(.plain)
-            .contentShape(Rectangle())
-            .accessibilityLabel(
-                isExpanded
-                    ? String(localized: "Collapse \(title)", bundle: .module)
-                    : String(localized: "Expand \(title)", bundle: .module)
-            )
-        } else {
-            Color.clear
+        let isExpanded = isFolderExpanded(row.folder.id, sourceID: sourceID)
+        let title = displayName(for: row.folder, sourceID: sourceID)
+        Button {
+            toggleFolderDisclosure(row.folder.id, sourceID: sourceID)
+        } label: {
+            Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(theme.textTertiary.color)
                 .frame(
                     width: sidebarMetrics.disclosureHitSize,
-                    height: sidebarMetrics.disclosureHitSize
+                    height: sidebarMetrics.disclosureHitSize,
+                    alignment: .center
                 )
         }
+        .buttonStyle(.plain)
+        .contentShape(Rectangle())
+        .accessibilityLabel(
+            isExpanded
+                ? String(localized: "Collapse \(title)", bundle: .module)
+                : String(localized: "Expand \(title)", bundle: .module)
+        )
     }
 
     private func select(_ folder: Folder, in sourceID: MailSourceID?) {
@@ -1516,11 +1505,7 @@ public struct FolderSidebar: View {
     }
 
     private var folderRowControlSpacing: CGFloat {
-        #if os(iOS)
         BrevSpacing.xs
-        #else
-        BrevSpacing.xxs
-        #endif
     }
 
     private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {

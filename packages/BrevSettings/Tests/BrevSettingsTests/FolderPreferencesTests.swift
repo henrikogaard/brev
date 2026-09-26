@@ -55,6 +55,28 @@ struct FolderPreferencesTests {
         #expect(prefs.showArchive == FolderPreferences.defaults.showArchive)
     }
 
+    @Test("decodes backups written before a key existed")
+    func decodesPreIconBackups() throws {
+        let json = """
+        {
+            "showStarred": false,
+            "showSnoozed": true,
+            "showScheduled": true,
+            "showAllMail": true,
+            "showSpam": true,
+            "showTrash": true,
+            "showArchive": false
+        }
+        """.data(using: .utf8)!
+
+        let prefs = try JSONDecoder().decode(FolderPreferences.self, from: json)
+
+        #expect(prefs.showStarred == false)
+        #expect(prefs.showAllMail == true)
+        #expect(prefs.showArchive == false)
+        #expect(prefs.showIcons == FolderPreferences.defaults.showIcons)
+    }
+
     @Test("settings store persists hidden folder preferences")
     func settingsStorePersistsHiddenFolderPreferences() throws {
         let defaults = try Self.makeDefaults()

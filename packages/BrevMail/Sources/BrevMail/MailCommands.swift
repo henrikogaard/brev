@@ -29,6 +29,7 @@ public struct MailCommands: Commands {
     @FocusedValue(\.mailPrintExportActions) private var printExportActions
     @FocusedValue(\.mailContextColumnAction) private var mailContextColumnAction
     @FocusedValue(\.mailHelpActions) private var helpActions
+    @AppStorage("folders.showIcons") private var showSidebarIcons = true
 
     /// Creates the cross-platform command set.
     public init() {}
@@ -280,6 +281,8 @@ public struct MailCommands: Commands {
         #if os(macOS)
         SidebarCommands()
         CommandGroup(after: .sidebar) {
+            Toggle(String(localized: "Show Sidebar Icons", bundle: .module), isOn: $showSidebarIcons)
+
             Divider()
 
             Button(mailContextColumnAction?.label ?? MailContextColumnVisibility.toolbarLabel) {

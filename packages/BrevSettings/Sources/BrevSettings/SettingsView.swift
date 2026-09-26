@@ -36,6 +36,9 @@ public struct SettingsView: View {
     @State private var searchText = ""
     @State private var searchTarget: String?
     @State private var selectedSourceID: MailSourceID?
+    /// Mirrors the mail sidebar's icons preference (Settings → Mailbox View →
+    /// Show folder icons) so one toggle compacts every icon rail.
+    @AppStorage(FolderPreferences.Key.showIcons) private var showSidebarIcons = true
     @State private var folderExportController = MailFolderExportController()
     @State private var pimSourceModel: PIMSourceSettingsModel?
     private let mailboxContext: SettingsMailboxContext
@@ -334,14 +337,10 @@ public struct SettingsView: View {
                 #if os(iOS)
                     .toolbar { settingsDismissToolbar }
                 #endif
+                    .onAppear { navigation.select(section) }
             } label: {
                 sectionRow(section)
             }
-            .simultaneousGesture(
-                TapGesture().onEnded {
-                    navigation.select(section)
-                }
-            )
         }
     }
 
@@ -465,7 +464,7 @@ public struct SettingsView: View {
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(navigation.selected == section ? .isSelected : [])
-            .listRowInsets(EdgeInsets(top: 2, leading: 4, bottom: 2, trailing: 4))
+            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 4))
             #endif
         }
     }
@@ -505,10 +504,12 @@ public struct SettingsView: View {
 
     private func pluginSettingsRow(_ contribution: RegisteredContribution) -> some View {
         HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: contribution.sfSymbolName)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.accent.color)
-                .frame(width: 18, alignment: .center)
+            if showSidebarIcons {
+                Image(systemName: contribution.sfSymbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(theme.accent.color)
+                    .frame(width: 18, alignment: .center)
+            }
             Text(contribution.displayName)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
@@ -709,12 +710,14 @@ public struct SettingsView: View {
 
     private func sectionRow(_ section: SettingsSection) -> some View {
         HStack(spacing: BrevSpacing.sm) {
-            // Fixed icon column so wide SF Symbols (paintpalette, calendar.badge…)
-            // don't push labels out of vertical alignment with narrower glyphs.
-            Image(systemName: section.symbolName)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.accent.color)
-                .frame(width: 18, alignment: .center)
+            if showSidebarIcons {
+                // Fixed icon column so wide SF Symbols (paintpalette, calendar.badge…)
+                // don't push labels out of vertical alignment with narrower glyphs.
+                Image(systemName: section.symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(theme.accent.color)
+                    .frame(width: 18, alignment: .center)
+            }
             Text(section.title)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)

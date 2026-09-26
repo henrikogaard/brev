@@ -157,7 +157,8 @@ struct FolderSidebarPresentationTests {
         #expect(macMetrics.folderRowMinimumHeight < touchMetrics.folderRowMinimumHeight)
         #expect(macMetrics.sourceHeaderMinimumHeight < touchMetrics.sourceHeaderMinimumHeight)
         #expect(macMetrics.disclosureHitSize < touchMetrics.disclosureHitSize)
-        #expect(macMetrics.folderRowDepthIndent < touchMetrics.folderRowDepthIndent)
+        #expect(macMetrics.disclosureHitSize >= 16)
+        #expect(macMetrics.folderRowDepthIndent == macMetrics.iconWidth)
     }
 
     @Test("macOS sidebar rows follow the shared density preference")
