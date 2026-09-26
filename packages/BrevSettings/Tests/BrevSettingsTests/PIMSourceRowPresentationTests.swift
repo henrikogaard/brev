@@ -17,6 +17,12 @@ import Testing
 
 @Suite("PIMSourceRowPresentation")
 struct PIMSourceRowPresentationTests {
+    @Test("source toggle titles remain explicit and localized")
+    func sourceToggleTitlesRemainExplicitAndLocalized() {
+        #expect(PIMSourceRowPresentation.syncToggleTitle == "Background sync")
+        #expect(PIMSourceRowPresentation.editingToggleTitle == "Allow editing")
+    }
+
     private static func source(
         status: PIMSourceStatus,
         provider: PIMSourceProvider = .calDAV,

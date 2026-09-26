@@ -22,6 +22,15 @@ import SwiftUI
 /// shared status presenter (ADR-0072). Action availability is decided
 /// here so the view never interprets lifecycle state itself.
 struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
+    static let syncToggleTitle = String(
+        localized: "Background sync",
+        bundle: .module
+    )
+    static let editingToggleTitle = String(
+        localized: "Allow editing",
+        bundle: .module
+    )
+
     let id: PIMSource.ID
     let displayName: String
     /// "Provider · Kind" — e.g. "CalDAV · Calendar".
@@ -203,60 +212,96 @@ struct PIMSourcesSettingsView: View {
     // MARK: - Rows
 
     private func sourceRow(_ row: PIMSourceRowPresentation) -> some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Image(systemName: row.statusSymbolName)
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(statusColor(for: row))
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(row.displayName)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text(row.subtitle + " · " + row.statusTitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                if let detail = row.statusDetail {
-                    Text(detail)
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            HStack(alignment: .top, spacing: BrevSpacing.sm) {
+                Image(systemName: row.statusSymbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(statusColor(for: row))
+                    .frame(width: 18)
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(row.displayName)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textPrimary.color)
+                    Text(row.subtitle + " · " + row.statusTitle)
                         .brevFont(.caption)
-                        .foregroundStyle(theme.warning.color)
-                        .fixedSize(horizontal: false, vertical: true)
+                        .foregroundStyle(theme.textSecondary.color)
+                    if let detail = row.statusDetail {
+                        Text(detail)
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.warning.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                collectionList(for: row)
+                Spacer(minLength: BrevSpacing.sm)
+                if model.pendingSourceID == row.id {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                sourceMenu(row)
             }
-            Spacer(minLength: BrevSpacing.sm)
-            if model.pendingSourceID == row.id {
-                ProgressView()
-                    .controlSize(.small)
-            }
-            if row.canToggleSync {
-                Toggle(
-                    String(localized: "Sync", bundle: .module),
-                    isOn: syncBinding(for: row.id, enabled: row.syncEnabled)
-                )
-                .toggleStyle(.switch)
-                .labelsHidden()
+            sourceToggleControls(row)
+            collectionList(for: row)
+        }
+        .padding(.vertical, BrevSpacing.xxs)
+    }
+
+    @ViewBuilder
+    private func sourceToggleControls(
+        _ row: PIMSourceRowPresentation
+    ) -> some View {
+        #if os(macOS)
+        HStack(spacing: BrevSpacing.md) {
+            sourceSyncToggle(row)
+            sourceEditingToggle(row)
+        }
+        #else
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            sourceSyncToggle(row)
+            sourceEditingToggle(row)
+        }
+        #endif
+    }
+
+    @ViewBuilder
+    private func sourceSyncToggle(
+        _ row: PIMSourceRowPresentation
+    ) -> some View {
+        if row.canToggleSync {
+            Toggle(
+                PIMSourceRowPresentation.syncToggleTitle,
+                isOn: syncBinding(for: row.id, enabled: row.syncEnabled)
+            )
+            .toggleStyle(.switch)
+            #if os(macOS)
+                .controlSize(.small)
+            #endif
                 .accessibilityLabel(String(
                     localized: "Background sync for \(row.displayName)",
                     bundle: .module
                 ))
                 .disabled(model.pendingSourceID == row.id)
-            }
-            if model.canToggleWrite(sourceID: row.id) {
-                Toggle(
-                    String(localized: "Editing", bundle: .module),
-                    isOn: writeBinding(for: row.id)
-                )
-                .toggleStyle(.switch)
-                .labelsHidden()
+        }
+    }
+
+    @ViewBuilder
+    private func sourceEditingToggle(
+        _ row: PIMSourceRowPresentation
+    ) -> some View {
+        if model.canToggleWrite(sourceID: row.id) {
+            Toggle(
+                PIMSourceRowPresentation.editingToggleTitle,
+                isOn: writeBinding(for: row.id)
+            )
+            .toggleStyle(.switch)
+            #if os(macOS)
+                .controlSize(.small)
+            #endif
                 .accessibilityLabel(String(
                     localized: "Editing for \(row.displayName)",
                     bundle: .module
                 ))
                 .disabled(model.pendingSourceID == row.id)
-            }
-            sourceMenu(row)
         }
-        .padding(.vertical, BrevSpacing.xxs)
     }
 
     /// The discovered collections under a source row. Each toggles
@@ -310,23 +355,30 @@ struct PIMSourcesSettingsView: View {
                 .fill(collectionColor(for: collection))
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
-            Text(collection.displayName)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textPrimary.color)
-            if collection.isPrimary {
-                Text(String(localized: "Primary", bundle: .module))
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(collection.displayName)
                     .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: BrevSpacing.xxs) {
+                    if collection.isPrimary {
+                        Text(String(localized: "Primary", bundle: .module))
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                    if collection.isReadOnly {
+                        Image(systemName: "lock")
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .accessibilityLabel(String(
+                                localized: "Read-only",
+                                bundle: .module
+                            ))
+                    }
+                }
             }
-            if collection.isReadOnly {
-                Image(systemName: "lock")
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .accessibilityLabel(String(
-                        localized: "Read-only",
-                        bundle: .module
-                    ))
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
             Spacer(minLength: BrevSpacing.xs)
             Toggle(
                 String(localized: "Visible", bundle: .module),
@@ -339,7 +391,7 @@ struct PIMSourcesSettingsView: View {
             .labelsHidden()
             .controlSize(.mini)
             .accessibilityLabel(String(
-                localized: "Show \\(collection.displayName)",
+                localized: "Show \(collection.displayName)",
                 bundle: .module
             ))
             .disabled(model.pendingSourceID == sourceID)
