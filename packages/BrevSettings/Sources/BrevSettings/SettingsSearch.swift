@@ -262,9 +262,20 @@ private struct SettingsSearchTargetKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }
 
+private struct SettingsScopeCaptionKey: EnvironmentKey {
+    static let defaultValue: String? = nil
+}
+
 extension EnvironmentValues {
     var settingsSearchTarget: String? {
         get { self[SettingsSearchTargetKey.self] }
         set { self[SettingsSearchTargetKey.self] = newValue }
+    }
+
+    /// Optional scope note (e.g. "Applies to all mailboxes") rendered by
+    /// SectionScaffold directly beneath the pane subtitle.
+    var settingsScopeCaption: String? {
+        get { self[SettingsScopeCaptionKey.self] }
+        set { self[SettingsScopeCaptionKey.self] = newValue }
     }
 }
