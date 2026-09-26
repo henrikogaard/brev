@@ -1,5 +1,38 @@
 # Worklog
 
+## 2026-09-25 — Agent — Unified inbox keyboard-nav review follow-ups (#99)
+
+- Codex P2: `keyboardNavigableItems` now builds from `dateSections`'s
+  `visibleItems` when date grouping is on — collapsed sections no longer
+  leak hidden rows into arrow-key selection.
+- Codex P2: `selectMessage` gains `clearsBulkSelection` (default true);
+  `selectAdjacentItem` passes false so arrows move the reader without
+  dropping the bulk set, matching MessageListView's contract.
+- Codex P1 (snapshot coverage) deferred: the list populates async from
+  backends so a pixel suite can't capture deterministic content without
+  a data-injection seam, and macOS pixel baselines need the canonical
+  26+ host anyway. Flagged in the PR.
+- Verified: `swift test --filter UnifiedInbox` (37 green),
+  lint.sh + format.sh clean.
+
+
+## 2026-09-25 — Agent — Unified inbox keyboard navigation (macOS)
+
+- The merged "All Inboxes"/saved-search list had no focus machinery while
+  the folder list did. Adds the MessageListView container contract to
+  `UnifiedInboxListView`: focusSection/focusable/focused + focusEffectDisabled,
+  arrow keys walk the merged displayed order (parents + expanded thread
+  children across sources), Return activates like a click (drafts ->
+  composer, threads expand, bulk toggles), pointer selection claims the
+  key session, automatic selection-restore opts out of focus claiming,
+  and sidebar mailbox activation hands the keyboard over via
+  `messageListFocusRequestID`. ScrollViewReader added for selection
+  scroll-follow (row ids are the composite `source:folder:message` ids).
+- Verified: `swift build` for BrevMail clean; `scripts/format.sh --check`
+  and `scripts/lint.sh` pass.
+
+||||||| 92ffeb5
+
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 
 - Assessed the AI sidebar live on macOS mock (sender card, Actions,

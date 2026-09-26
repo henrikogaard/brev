@@ -48,6 +48,10 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- The unified inbox and saved-search lists now have full keyboard
+  navigation on macOS: arrow keys move the selection through the merged
+  timeline (expanded threads included), Return activates the selected row,
+  and the sidebar hand-off moves the keyboard session to the list.
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source
   records, a serial lifecycle coordinator covering connect / reconnect /
   sync opt-in / removal, and CalDAV/CardDAV setup validation (manual
