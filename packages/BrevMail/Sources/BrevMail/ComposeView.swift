@@ -1766,9 +1766,7 @@ public struct ComposeView: View {
     }
 
     private func fieldLabel(_ label: String) -> some View {
-        Text(label)
-            .brevFont(.subheadline)
-            .foregroundStyle(theme.textSecondary.color)
+        ComposeFieldLabel(label)
     }
 
     @ViewBuilder
@@ -3658,6 +3656,24 @@ private extension ComposeErrorStatus.Tone {
         case .danger:
             return .danger
         }
+    }
+}
+
+/// One shared compose-header label so To/Cc/Bcc (RecipientChipField) and
+/// From/Subject (fieldRow) render in the same fixed-width gutter.
+struct ComposeFieldLabel: View {
+    @Environment(\.brevTheme) private var theme
+
+    let label: String
+
+    init(_ label: String) {
+        self.label = label
+    }
+
+    var body: some View {
+        Text(label)
+            .brevFont(.subheadline)
+            .foregroundStyle(theme.textSecondary.color)
     }
 }
 

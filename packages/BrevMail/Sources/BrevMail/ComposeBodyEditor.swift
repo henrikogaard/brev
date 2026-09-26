@@ -122,6 +122,35 @@ final class ComposeRichTextView: NSTextView, ComposeBodyEditorRichActions {
     var onDropFileURLs: (([URL]) -> Void)?
     /// Reports file-drag hover state so the parent can highlight the drop area.
     var onFileDragTargetChanged: ((Bool) -> Void)?
+    /// Read-only reply-quote character range, set by `applyQuoteStyling`.
+    /// Drawn as an accent vertical bar, Apple Mail style, in `drawBackground`.
+    var quoteBarRange: NSRange? {
+        didSet { needsDisplay = true }
+    }
+
+    var quoteBarColor: NSColor?
+
+    override func drawBackground(in rect: NSRect) {
+        super.drawBackground(in: rect)
+        guard let quoteBarRange,
+              let textStorage,
+              let layoutManager,
+              let container = textContainer,
+              NSMaxRange(quoteBarRange) <= textStorage.length else { return }
+        let glyphRange = layoutManager.glyphRange(
+            forCharacterRange: quoteBarRange,
+            actualCharacterRange: nil
+        )
+        var barRect = layoutManager.boundingRect(
+            forGlyphRange: glyphRange,
+            in: container
+        )
+        barRect.origin.x += textContainerOrigin.x + 2
+        barRect.origin.y += textContainerOrigin.y
+        let bar = NSRect(x: barRect.minX, y: barRect.minY, width: 3, height: barRect.height)
+        (quoteBarColor ?? NSColor.controlAccentColor).setFill()
+        NSBezierPath(roundedRect: bar, xRadius: 1.5, yRadius: 1.5).fill()
+    }
 
     func brevInsertLink(_ sender: Any?) {
         richActionsTarget?.brevInsertLink(sender)
@@ -378,7 +407,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     }
 
     /// Mutes the read-only quoted-original region so the quote reads as a
-    /// quote block instead of blending into the reply text.
+    /// quote block instead of blending into the reply text, and hands the
+    /// range to the text view so it can draw the accent quote bar.
     private func applyQuoteStyling(to textView: NSTextView) {
         guard let quoteProtection,
               let storage = textView.textStorage,
@@ -386,12 +416,27 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
                   in: storage.string as NSString,
                   protection: quoteProtection
               ),
-              protected.length > 0 else { return }
+              protected.length > 0 else {
+            (textView as? ComposeRichTextView)?.quoteBarRange = nil
+            return
+        }
         storage.addAttribute(
             .foregroundColor,
             value: NSColor(appearance.editorTheme.textTertiary.color),
             range: protected
         )
+        let quoteIndent = NSMutableParagraphStyle()
+        quoteIndent.headIndent = 12
+        quoteIndent.firstLineHeadIndent = 12
+        storage.addAttribute(
+            .paragraphStyle,
+            value: quoteIndent,
+            range: protected
+        )
+        if let richTextView = textView as? ComposeRichTextView {
+            richTextView.quoteBarRange = protected
+            richTextView.quoteBarColor = NSColor(appearance.editorTheme.accent.color)
+        }
     }
 
     // MARK: - Coordinator
