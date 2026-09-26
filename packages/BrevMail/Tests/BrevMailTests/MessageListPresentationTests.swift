@@ -344,4 +344,9 @@ struct MessageListPresentationTests {
         #expect(presentation.text == "Inbox · 18 threads shown · 229 total · 15 unread · 2 pinned · 64 loaded")
         #expect(presentation.accessibilityLabel == "Inbox, 18 threads shown, 229 total, 15 unread, 2 pinned, 64 loaded")
     }
+
+    @Test("bottom bar scroll inset reserves the floating pill height")
+    func bottomBarScrollInsetReservesPillHeight() {
+        #expect(MessageListPresentation.bottomBarScrollInset == 76)
+    }
 }

@@ -1420,7 +1420,6 @@ public struct MessageListView: View {
                     textSize: mailboxTextSize,
                     density: mailboxListDensity
                 )
-                .padding(.leading, BrevSpacing.xl)
                 .listRowInsets(EdgeInsets())
                 .listRowSeparator(.hidden)
                 .messageListThemedRowBackground()
@@ -3593,7 +3592,7 @@ private extension View {
     @ViewBuilder
     func brevBottomBarScrollInset() -> some View {
         #if os(iOS)
-        contentMargins(.bottom, 48, for: .scrollContent)
+        contentMargins(.bottom, MessageListPresentation.bottomBarScrollInset, for: .scrollContent)
         #else
         self
         #endif

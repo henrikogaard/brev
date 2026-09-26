@@ -69,19 +69,23 @@ struct ThreadInlineChildRow: View {
         HStack(spacing: BrevSpacing.sm) {
             // Unread indicator — labelled so the combined row element
             // announces the state instead of a bare dot being skipped.
+            // Diameter matches the parent row's dot so children align to
+            // the same dot column; the child indent lives on the avatar.
             Circle()
                 .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-                .frame(width: 7, height: 7)
+                .frame(width: 8, height: 8)
                 .accessibilityLabel(String(localized: "Unread", bundle: .module))
                 .accessibilityHidden(header.isRead)
 
             // Sender avatar — slightly smaller than the top-level row to keep
-            // the subordinate hierarchy, but still density-driven.
+            // the subordinate hierarchy, but still density-driven. The leading
+            // padding is the child indent (HStack spacing already adds .sm).
             BrevAvatarView(
                 email: header.from.email,
                 displayName: header.from.name,
                 size: max(20, density.avatarSize - 8)
             )
+            .padding(.leading, BrevSpacing.xl - BrevSpacing.sm)
 
             // Sender + snippet
             VStack(alignment: .leading, spacing: 2) {

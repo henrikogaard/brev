@@ -39,6 +39,14 @@ All notable changes to Brev are documented here.
   minimal window with toolbar overflow.
 - Calendar month view gains grid lines, a semibold weekday header,
   and event chips tinted by their calendar colour.
+- iPhone Settings → Accounts: per-mailbox rows give the name and email
+  the full width and move the enable switch and default control to a
+  second line; "Add account" is a plain accent row instead of a boxed
+  button.
+- macOS message list: expanded thread children keep their unread dot in
+  the parent's dot column while the child avatar and text stay indented.
+- iPhone mailboxes root shows a text "Inbox ›" back button, and the
+  inbox's last row now scrolls fully clear of the floating bottom bar.
 - Sidebar folder rows now keep parent and leaf glyphs in one flush-left
   column, with trailing disclosure controls and a larger macOS hit target.
 - DAV source connection now uses a native grouped form with platform-appropriate

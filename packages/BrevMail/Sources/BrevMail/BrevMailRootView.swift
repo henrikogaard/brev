@@ -1855,12 +1855,14 @@ public struct BrevMailRootView: View {
                 Button {
                     openSelectedMessagesOnCompact()
                 } label: {
-                    Label(
-                        selectedMessageDestinationTitle,
-                        systemImage: "chevron.forward"
-                    )
-                    .labelStyle(.titleAndIcon)
-                    .lineLimit(1)
+                    // A Label(titleAndIcon) renders icon-only in the leading
+                    // slot, so draw the "Inbox ›" text + chevron explicitly.
+                    HStack(spacing: BrevSpacing.xxs) {
+                        Text(selectedMessageDestinationTitle)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.forward")
+                            .font(.footnote.weight(.semibold))
+                    }
                 }
                 .accessibilityLabel(String(localized: "Show messages", bundle: .module))
                 .accessibilityHint(String(localized: "Return to the selected mailbox.", bundle: .module))

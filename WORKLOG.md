@@ -107,6 +107,39 @@
   pristine origin/main worktree (`brev-main`) — same env-vs-baseline
   mismatch documented earlier. lint/format clean.
 
+## 2026-09-26 — Agent — UI/UX review batch 5 (M10 accounts rows, M11 thread dots, M12 iOS chrome)
+
+- M10: `AccountsSection.mailboxRow` now branches on the existing
+  `AccountRowLayoutKind` — on compact (iOS) the mailbox name/email get
+  the full row width and the enable `Toggle` + "Default mailbox"/
+  "Make default" control move to a second line (the fixed 122 pt
+  control frame is dropped there only). Identity, toggle, and default
+  controls are factored into `mailboxIdentity`/`mailboxToggle`/
+  `mailboxDefaultControl` shared by both branches. The boxed
+  `BrevButton` "Add account" becomes a plain `plus.circle.fill` list-row
+  action on iOS (`#if os(iOS)`); macOS keeps the button.
+- M11: removed the `.padding(.leading, BrevSpacing.xl)` on
+  `ThreadInlineChildRow` in `MessageListView`; inside the row the
+  unread dot is 8 pt (matching the parent's dot column) and the child
+  indent moved onto `BrevAvatarView` (`xl - sm`). Child selection now
+  spans the full row width — intended.
+- M12: iOS Mailboxes-root leading toolbar button now renders
+  `Text(destination) + chevron.forward` in an HStack so it reads
+  "Inbox ›" instead of icon-only. The iOS floating bottom-bar reserve
+  moved to `MessageListPresentation.bottomBarScrollInset = 76` (was a
+  48 literal) — the only `List` in `MessageListView` already gets
+  `.brevBottomBarScrollInset()`, covering search results too. Added a
+  one-line unit test pinning the value.
+- Verified: `swift test --package-path packages/BrevSettings --filter
+  Accounts` 19/19 green; `--package-path packages/BrevMail --filter
+  'ThreadInlineChildRow|MessageListPresentation|MonoMailSelection'`
+  34/35 pass — the same 5 snapshot diffs (MonoMailSelection ×4,
+  ThreadInlineChildRow ×1) reproduce identically on the `brev-main`
+  worktree, so pre-existing env drift; the intended M11 geometry
+  changes are masked inside those already-failing baselines. Screens:
+  `m10-iphone-accounts.png`, `m11-thread-dots.png`,
+  `m12-iphone-root-toolbar.png`, `m12-iphone-inbox-footer.png`.
+
 
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 

@@ -61,6 +61,10 @@ struct MessageListFolderStatsFooterPresentation: Equatable, Sendable {
 enum MessageListPresentation {
     private static let maximumPreviewLength = 240
 
+    /// Bottom scroll-margin the iOS list reserves for the floating bottom
+    /// bar so the last row clears the pill when scrolled to the end.
+    static let bottomBarScrollInset: CGFloat = 76
+
     static let listChrome = MessageListChromePresentation(
         clearsSystemRowBackgrounds: true,
         rendersDateHeadersAsRows: true

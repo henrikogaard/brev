@@ -345,10 +345,22 @@ struct AccountsSection: View {
                 if AccountsSectionPresentation.showsAddAccountAction(
                     isAddAccountAvailable: isAddAccountAvailable
                 ) {
+                    #if os(iOS)
+                    Button {
+                        startAddAccount()
+                    } label: {
+                        Label(addAccountPresentation.title, systemImage: "plus.circle.fill")
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accent.color)
+                    .frame(minHeight: 44)
+                    .disabled(addAccountPresentation.isDisabled)
+                    #else
                     BrevButton(addAccountPresentation.title, style: .secondary) {
                         startAddAccount()
                     }
                     .disabled(addAccountPresentation.isDisabled)
+                    #endif
                 }
             }
         }
@@ -969,47 +981,81 @@ private struct AccountRow: View {
         // own label. A macOS switch hugs its label, so with the name inside
         // the `Toggle` it landed mid-row against the text instead of lining
         // up with the other trailing controls.
-        return HStack(alignment: .center, spacing: BrevSpacing.sm) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(mailbox.displayName)
-                    .brevFont(.body)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(1)
-                Text(mailbox.email)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+        return Group {
+            if layoutKind == .compact {
+                // Compact: name/email get the full row width, and the
+                // toggle + default controls sit on their own line below.
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    mailboxIdentity(mailbox)
+                    HStack(spacing: BrevSpacing.sm) {
+                        mailboxToggle(presentation: presentation, mailbox: mailbox)
+                        mailboxDefaultControl(presentation: presentation, mailbox: mailbox)
+                            .frame(height: 28, alignment: .leading)
+                        Spacer(minLength: 0)
+                    }
+                }
+            } else {
+                HStack(alignment: .center, spacing: BrevSpacing.sm) {
+                    mailboxIdentity(mailbox)
 
-            Spacer(minLength: BrevSpacing.sm)
+                    Spacer(minLength: BrevSpacing.sm)
 
-            Toggle(isOn: Binding(
-                get: { presentation.isEnabled },
-                set: { onToggleMailbox(mailbox, $0) }
-            )) {
-                EmptyView()
-            }
-            .labelsHidden()
-            .toggleStyle(.switch)
-            .tint(theme.accent.color)
-            .disabled(!presentation.canToggle)
-            .opacity(presentation.canToggle ? 1 : 0.65)
-            .accessibilityLabel(String(localized: "Enable mailbox \(mailbox.email)", bundle: .module))
+                    mailboxToggle(presentation: presentation, mailbox: mailbox)
 
-            Group {
-                if presentation.isDefault {
-                    Label(String(localized: "Default mailbox", bundle: .module), systemImage: "checkmark.circle.fill")
-                        .foregroundStyle(theme.textSecondary.color)
-                } else {
-                    Button(String(localized: "Make default", bundle: .module)) { onSetDefaultMailbox(mailbox) }
-                        .buttonStyle(.borderless)
-                        .disabled(presentation.isDefaultActionDisabled)
-                        .accessibilityLabel(String(localized: "Make default mailbox \(mailbox.email)", bundle: .module))
+                    mailboxDefaultControl(presentation: presentation, mailbox: mailbox)
+                        .frame(width: 122, height: 28, alignment: .leading)
                 }
             }
-            .brevFont(.footnote)
-            .frame(width: 122, height: 28, alignment: .leading)
         }
+    }
+
+    private func mailboxIdentity(_ mailbox: Mailbox) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            Text(mailbox.displayName)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+            Text(mailbox.email)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+        }
+    }
+
+    private func mailboxToggle(
+        presentation: AccountMailboxRowPresentation,
+        mailbox: Mailbox
+    ) -> some View {
+        Toggle(isOn: Binding(
+            get: { presentation.isEnabled },
+            set: { onToggleMailbox(mailbox, $0) }
+        )) {
+            EmptyView()
+        }
+        .labelsHidden()
+        .toggleStyle(.switch)
+        .tint(theme.accent.color)
+        .disabled(!presentation.canToggle)
+        .opacity(presentation.canToggle ? 1 : 0.65)
+        .accessibilityLabel(String(localized: "Enable mailbox \(mailbox.email)", bundle: .module))
+    }
+
+    private func mailboxDefaultControl(
+        presentation: AccountMailboxRowPresentation,
+        mailbox: Mailbox
+    ) -> some View {
+        Group {
+            if presentation.isDefault {
+                Label(String(localized: "Default mailbox", bundle: .module), systemImage: "checkmark.circle.fill")
+                    .foregroundStyle(theme.textSecondary.color)
+            } else {
+                Button(String(localized: "Make default", bundle: .module)) { onSetDefaultMailbox(mailbox) }
+                    .buttonStyle(.borderless)
+                    .disabled(presentation.isDefaultActionDisabled)
+                    .accessibilityLabel(String(localized: "Make default mailbox \(mailbox.email)", bundle: .module))
+            }
+        }
+        .brevFont(.footnote)
     }
 }
