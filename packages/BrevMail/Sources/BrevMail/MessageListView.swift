@@ -1516,8 +1516,73 @@ public struct MessageListView: View {
         return parts.joined(separator: " · ")
     }
 
+    private var searchExecutionSelection: Binding<SearchExecution> {
+        Binding {
+            navigation.searchExecution
+        } set: { newValue in
+            navigation.hasUserSelectedSearchExecution = true
+            navigation.searchExecution = newValue
+        }
+    }
+
     @ViewBuilder
     private var searchScopeBar: some View {
+        #if os(macOS)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrevSpacing.md) {
+                Picker("", selection: searchExecutionSelection) {
+                    ForEach(MessageListSearchExecutionPolicy.availableExecutions(
+                        capabilities: backend.capabilities
+                    ), id: \.self) { execution in
+                        Label(execution.messageListTitle, systemImage: execution.messageListSymbolName)
+                            .tag(execution)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(String(localized: "Search location", bundle: .module))
+                Picker("", selection: $searchAllFolders) {
+                    Text(String(localized: "This folder", bundle: .module)).tag(false)
+                    Text(String(localized: "All mailboxes", bundle: .module)).tag(true)
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(String(localized: "Search folder scope", bundle: .module))
+                Picker("", selection: $searchScope) {
+                    ForEach(SearchScope.allCases) { scope in
+                        Text(scope.title).tag(scope)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(String(localized: "Search scope", bundle: .module))
+                if !naturalLanguageSearchChips.isEmpty {
+                    NaturalLanguageSearchChipStrip(
+                        chips: naturalLanguageSearchChips,
+                        onRemove: removeSearchChip
+                    )
+                }
+                if let searchSyntaxDescription,
+                   ServerSearchSyntaxHintPolicy.shouldShow(searchSyntaxDescription) {
+                    ServerSearchSyntaxHint(description: searchSyntaxDescription)
+                }
+            }
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+        }
+        .background(Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(BrevSeparator.color(for: theme))
+                .frame(height: 0.5)
+        }
+        #else
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrevSpacing.xs) {
                 ForEach(MessageListSearchExecutionPolicy.availableExecutions(
@@ -1565,8 +1630,10 @@ public struct MessageListView: View {
                 .fill(BrevSeparator.color(for: theme))
                 .frame(height: 0.5)
         }
+        #endif
     }
 
+    #if os(iOS)
     @ViewBuilder
     private func searchScopeChip(_ scope: SearchScope) -> some View {
         let isActive = searchScope == scope
@@ -1644,6 +1711,7 @@ public struct MessageListView: View {
         .accessibilityLabel(String(localized: "Search location: \(execution.messageListTitle)", bundle: .module))
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
+    #endif
 
     private func reconcileSearchExecutionWithBackendCapabilities() {
         let reconciled = MessageListSearchExecutionPolicy.reconciledExecution(

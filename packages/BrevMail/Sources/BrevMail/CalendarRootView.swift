@@ -36,7 +36,7 @@ public struct CalendarRootView: View {
     /// cover); nil hides the Done affordance.
     private let onDismiss: (() -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
-        .automatic
+        .doubleColumn
     /// Drives iOS push navigation onto the detail column on selection.
     @State private var preferredCompactColumn = NavigationSplitViewColumn
         .sidebar
@@ -234,7 +234,7 @@ public struct CalendarRootView: View {
                 isRecurring: editing?.needsScopeChoice(for: event)
                     ?? false
             )
-        } else {
+        } else if hasSelectableEvents {
             ContentUnavailableView(
                 String(localized: "No event selected", bundle: .module),
                 systemImage: "calendar",
@@ -246,7 +246,15 @@ public struct CalendarRootView: View {
             .foregroundStyle(theme.textSecondary.color)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(theme.bgPrimary.color)
+        } else {
+            // With nothing to pick from, the leading column already
+            // explains the situation — keep the detail pane blank.
+            theme.bgPrimary.color.ignoresSafeArea()
         }
+    }
+
+    private var hasSelectableEvents: Bool {
+        model.hasSources && !model.events.isEmpty
     }
 
     // MARK: - Banners

@@ -816,8 +816,48 @@ struct UnifiedInboxListView: View {
         return parts.joined(separator: " · ")
     }
 
+    private var unifiedSearchExecutionSelection: Binding<SearchExecution> {
+        Binding {
+            navigation.searchExecution
+        } set: { newValue in
+            navigation.hasUserSelectedSearchExecution = true
+            navigation.searchExecution = newValue
+        }
+    }
+
     @ViewBuilder
     private var unifiedSearchExecutionBar: some View {
+        #if os(macOS)
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: BrevSpacing.md) {
+                Picker("", selection: unifiedSearchExecutionSelection) {
+                    ForEach(availableSearchExecutions, id: \.self) { execution in
+                        Label(execution.messageListTitle, systemImage: execution.messageListSymbolName)
+                            .tag(execution)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .labelsHidden()
+                .controlSize(.small)
+                .fixedSize()
+                .accessibilityLabel(String(localized: "Search location", bundle: .module))
+                if !naturalLanguageSearchChips.isEmpty {
+                    NaturalLanguageSearchChipStrip(
+                        chips: naturalLanguageSearchChips,
+                        onRemove: removeSearchChip
+                    )
+                }
+            }
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+        }
+        .background(Color.clear)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(BrevSeparator.color(for: theme))
+                .frame(height: 0.5)
+        }
+        #else
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: BrevSpacing.xs) {
                 ForEach(availableSearchExecutions, id: \.self) { execution in
@@ -843,8 +883,10 @@ struct UnifiedInboxListView: View {
                 .fill(BrevSeparator.color(for: theme))
                 .frame(height: 0.5)
         }
+        #endif
     }
 
+    #if os(iOS)
     @ViewBuilder
     private func unifiedSearchExecutionChip(_ execution: SearchExecution) -> some View {
         let isActive = navigation.searchExecution == execution
@@ -871,6 +913,7 @@ struct UnifiedInboxListView: View {
         .accessibilityLabel(String(localized: "Search location: \(execution.messageListTitle)", bundle: .module))
         .accessibilityAddTraits(isActive ? .isSelected : [])
     }
+    #endif
 
     private var isMutationActionBlocked: Bool {
         isMutating || isWorkBlocked || isMutationWorkBlocked || undoQueue?.isUndoing == true
