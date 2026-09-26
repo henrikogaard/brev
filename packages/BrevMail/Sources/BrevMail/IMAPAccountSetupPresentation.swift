@@ -70,6 +70,43 @@ enum IMAPAccountSetupPresentation {
         }
     }
 
+    /// Returns an editable manual setup seed without guessing server hosts.
+    static func manualBlankServers(
+        forEmailAddress emailAddress: String
+    ) -> MailAccountDiscoveryResult {
+        let fallback = MailAccountAutodiscovery.manualFallback(
+            forEmailAddress: emailAddress
+        )
+        return MailAccountDiscoveryResult(
+            domain: fallback.domain,
+            displayName: fallback.displayName,
+            source: fallback.source,
+            sourceURL: fallback.sourceURL,
+            incoming: fallback.incoming.map { settings in
+                MailServerSettings(
+                    kind: settings.kind,
+                    host: "",
+                    port: settings.port,
+                    tlsMode: settings.tlsMode,
+                    authentication: settings.authentication,
+                    usernameTemplate: settings.usernameTemplate
+                )
+            },
+            outgoing: fallback.outgoing.map { settings in
+                MailServerSettings(
+                    kind: settings.kind,
+                    host: "",
+                    port: settings.port,
+                    tlsMode: settings.tlsMode,
+                    authentication: settings.authentication,
+                    usernameTemplate: settings.usernameTemplate
+                )
+            },
+            manageSieve: fallback.manageSieve,
+            requiresManualReview: true
+        )
+    }
+
     /// Whether password Add account is the primary path (vs Sign in with OAuth).
     static func showsPasswordField(
         path: SetupPath,

@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-09-26 — Agent — UI/UX review items 1–8 (fix/uiux-top10)
+
+- Merged #97 and #100 onto main via squash (3-way, post-merge
+  `git diff origin/main <branch>` empty), rebased `fix/uiux-top10` onto
+  the new main.
+- Verified items 1–8 of `docs/qa/uiux-review-2026-09-26.md` on the macOS
+  mock build (`Brev Test (2026-09-26).app`) and the iPhone 17 / iOS 27.0
+  simulator: DAV grouped form, reader wrap at ~700 pt, iPhone thread
+  expansion, sidebar glyph column + icons-off chevron gap, Advanced
+  setup row + manual IMAP/SMTP form, PIM source toggle labels, Window →
+  Message Viewer (⌘0 — Apple Mail's shortcut, not the doc's ⌥⌘N).
+- Caveat: after an AppleScript window resize the reader body shows one
+  stale clipped frame until the message is re-selected — remeasure fires,
+  repaint lags one step. Functional; polish follow-up.
+- Focused tests green (BrevMail 79, BrevSettings PIMSourceRow 8);
+  lint/format clean. Snapshot suites not run in this pass.
+
 ## 2026-09-25 — Agent — AI sidebar assessment + chip/composer polish (#100)
 
 - Assessed the AI sidebar live on macOS mock (sender card, Actions,

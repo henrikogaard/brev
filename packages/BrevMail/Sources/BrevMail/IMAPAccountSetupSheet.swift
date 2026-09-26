@@ -71,6 +71,26 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     public var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            setupContent
+                .navigationTitle(setupTitle)
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(String(localized: "Cancel", bundle: .module)) {
+                            cancelOAuthSignIn()
+                            onClose()
+                        }
+                    }
+                }
+        }
+        #else
+        setupContent
+        #endif
+    }
+
+    private var setupContent: some View {
         VStack(spacing: BrevSpacing.lg) {
             ScrollView {
                 VStack(alignment: .leading, spacing: BrevSpacing.lg) {
@@ -93,7 +113,7 @@ public struct IMAPAccountSetupSheet: View {
         #if os(iOS)
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         #else
-            .frame(minWidth: 520, idealWidth: 560, minHeight: 560)
+            .frame(minWidth: 520, idealWidth: 560, minHeight: 420)
         #endif
             .background(theme.bgPrimary.color)
             .task {
@@ -116,16 +136,22 @@ public struct IMAPAccountSetupSheet: View {
             }
     }
 
+    private var setupTitle: String {
+        isReauthentication
+            ? String(localized: "Update mail password", bundle: .module)
+            : String(localized: "Add mail account", bundle: .module)
+    }
+
     private var header: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             HStack(alignment: .top, spacing: BrevSpacing.md) {
                 BrevBrandIcon(size: 32, cornerRadius: BrevRadius.sm)
                 VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(verbatim: isReauthentication
-                        ? String(localized: "Update mail password", bundle: .module)
-                        : String(localized: "Add mail account", bundle: .module))
+                    #if os(macOS)
+                    Text(verbatim: setupTitle)
                         .brevFont(.title)
                         .foregroundStyle(theme.textPrimary.color)
+                    #endif
                     Text(verbatim: IMAPAccountSetupPresentation.emailFirstSubtitle)
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
@@ -204,45 +230,68 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     private var advancedSetupSection: some View {
-        DisclosureGroup(isExpanded: $isAdvancedSetupExpanded) {
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                Text(verbatim: IMAPAccountSetupPresentation.advancedSetupCaption)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textTertiary.color)
-
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: BrevSpacing.sm) {
-                        advancedSetupShortcuts
-                    }
-                    VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                        advancedSetupShortcuts
-                    }
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Button {
+                isAdvancedSetupExpanded.toggle()
+            } label: {
+                HStack(spacing: BrevSpacing.sm) {
+                    Label(String(localized: "Advanced setup", bundle: .module), systemImage: "gearshape")
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                    Spacer(minLength: BrevSpacing.sm)
+                    Image(systemName: "chevron.right")
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .rotationEffect(.degrees(isAdvancedSetupExpanded ? 90 : 0))
                 }
-
-                if showsAdvancedServerFields {
-                    serverFields
-                    if serverFieldVisibility == .editable {
-                        manageSieveSection
-                    }
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
             }
-            .padding(.top, BrevSpacing.sm)
-        } label: {
-            Label(String(localized: "Advanced setup", bundle: .module), systemImage: "gearshape")
-                .brevFont(.subheadline)
-                .foregroundStyle(theme.textSecondary.color)
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityValue(
+                String(
+                    localized: isAdvancedSetupExpanded ? "Expanded" : "Collapsed",
+                    bundle: .module
+                )
+            )
+            .imapSetupTouchTarget()
+
+            if isAdvancedSetupExpanded {
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    Text(verbatim: IMAPAccountSetupPresentation.advancedSetupCaption)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textTertiary.color)
+
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: BrevSpacing.sm) {
+                            advancedSetupShortcuts
+                        }
+                        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                            advancedSetupShortcuts
+                        }
+                    }
+
+                    if showsAdvancedServerFields {
+                        serverFields
+                        if serverFieldVisibility == .editable {
+                            manageSieveSection
+                        }
+                    }
+                }
+                .padding(.top, BrevSpacing.sm)
+            }
         }
-        .tint(theme.accent.color)
-        .imapSetupTouchTarget()
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder
     private var advancedSetupShortcuts: some View {
         ForEach(IMAPAccountSetupPresentation.SkipShortcut.allCases) { shortcut in
-            BrevButton(verbatim: shortcut.title, style: .secondary) {
+            Button(shortcut.title) {
                 applySkip(shortcut)
             }
+            .buttonStyle(.bordered)
+            .controlSize(.regular)
             .disabled(isDiscovering || session.isSigningIn)
             .imapSetupTouchTarget()
         }
@@ -508,6 +557,14 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     private var actions: some View {
+        #if os(iOS)
+        VStack(spacing: BrevSpacing.sm) {
+            addAccountButton
+                .frame(maxWidth: .infinity)
+            testConnectionButton
+                .frame(maxWidth: .infinity)
+        }
+        #else
         ViewThatFits(in: .horizontal) {
             HStack(spacing: BrevSpacing.sm) {
                 cancelButton
@@ -525,6 +582,7 @@ public struct IMAPAccountSetupSheet: View {
                     .frame(maxWidth: .infinity)
             }
         }
+        #endif
     }
 
     private var cancelButton: some View {
@@ -962,22 +1020,20 @@ public struct IMAPAccountSetupSheet: View {
                 focusedField = .email
                 return
             }
-        } else if email.isEmpty || !MailAccountAutodiscovery.isValidEmailAddress(email) {
-            // Manual allows opening servers with a placeholder domain if needed.
-            if !MailAccountAutodiscovery.isValidEmailAddress(email) {
-                localStatus = SetupStatus(
-                    message: String(localized: "Enter a valid email address before editing IMAP/SMTP settings.", bundle: .module),
-                    tone: .warning
-                )
-                focusedField = .email
-                return
-            }
         }
 
-        guard let result = IMAPAccountSetupPresentation.skipDiscovery(
+        let result: MailAccountDiscoveryResult
+        if shortcut == .manual,
+           !MailAccountAutodiscovery.isValidEmailAddress(email) {
+            result = IMAPAccountSetupPresentation.manualBlankServers(
+                forEmailAddress: email
+            )
+        } else if let discovered = IMAPAccountSetupPresentation.skipDiscovery(
             for: shortcut,
             emailAddress: email
-        ) else {
+        ) {
+            result = discovered
+        } else {
             localStatus = SetupStatus(
                 message: String(localized: "Could not load \(shortcut.title) settings.", bundle: .module),
                 tone: .warning
@@ -993,6 +1049,7 @@ public struct IMAPAccountSetupSheet: View {
         applyDiscovery(result, path: path)
         if shortcut == .manual {
             showServerFields = true
+            isAdvancedSetupExpanded = true
         }
         localStatus = nil
     }
@@ -1017,6 +1074,14 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     private func addAccount() {
+        guard MailAccountAutodiscovery.isValidEmailAddress(emailAddress) else {
+            localStatus = SetupStatus(
+                message: String(localized: "Enter a valid email address before adding the account.", bundle: .module),
+                tone: .warning
+            )
+            focusedField = .email
+            return
+        }
         guard let discovery = editedDiscovery else {
             localStatus = SetupStatus(
                 message: String(localized: "Review the IMAP and SMTP settings before adding the account.", bundle: .module),

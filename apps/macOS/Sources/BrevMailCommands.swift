@@ -82,6 +82,13 @@ struct BrevMailCommands: Commands {
                 openWindow(id: BrevWindowID.keyboardShortcuts)
             }
         }
+
+        CommandGroup(after: .windowList) {
+            Button(String(localized: "Message Viewer")) {
+                openWindow(id: BrevWindowID.main)
+            }
+            .keyboardShortcut("0", modifiers: .command)
+        }
     }
 
     private var isExportAvailable: Bool {
