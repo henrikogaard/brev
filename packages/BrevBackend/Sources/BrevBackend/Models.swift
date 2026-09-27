@@ -23,6 +23,11 @@ public struct BrevAccount: Sendable, Hashable, Identifiable, Codable {
     public static let imapSMTPBackendDisplayName = "IMAP/SMTP"
     public static let gmailAPIBackendIdentifier = "gmail-api"
     public static let gmailAPIBackendDisplayName = "Gmail"
+    /// Backend identifier of the session-scoped demo/preview mailbox.
+    /// Demo accounts are never persisted to the account store — they
+    /// cannot be restored, and a persisted record surfaces as a permanent
+    /// "account couldn't be restored" error on the next launch.
+    public static let demoBackendIdentifier = "demo"
 
     public let id: String
     public let displayName: String

@@ -5470,3 +5470,21 @@ buttons, and package-aware localization.
 - **Verified:** `xcodebuild -scheme BrevIOS` for iPhone 17 iOS 27 sim —
   BUILD SUCCEEDED; lint+format clean.
 - **Handoff:** device re-verify — landscape reader → tap back chevron.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M2 dangling demo-account record after removal
+
+- **Goal:** UI/UX review M2 — removing the last account left a persisted
+  record that raised "Account error" + a sticky "Saved account settings
+  are incomplete" banner over onboarding on next launch.
+- **Root cause:** `signInWithDemo` ran `install()` → `accountStore.add`,
+  writing the demo preview account (`backendIdentifier: "demo"`) into
+  the persistent store; nothing can restore a demo record, and removal
+  inside a demo session only cleared the in-memory store.
+- **Changes:** `BrevAccount.demoBackendIdentifier` constant; `install()`
+  skips persisting demo-identifier accounts; `restoreAllAccounts()` and
+  `restoreCurrentAccount()` purge stale demo records instead of
+  erroring; `purgeStoredAccountAfterAuthenticationFailure` renamed to
+  `purgeStoredAccount` (same cascade, general use).
+- **Verified:** two new AppSession tests; full suite run below.
+- **Handoff:** device re-verify — sign in demo → remove → relaunch →
+  clean onboarding, no alert/banner.

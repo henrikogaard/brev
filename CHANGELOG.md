@@ -19,6 +19,12 @@ All notable changes to Brev are documented here.
   again — the floating action bar now moves into the top bar in
   compact-height (its hit region covered the back control on iOS 26+).
 
+- Removing the last account no longer leaves a dangling record that
+  raises a permanent "Account couldn't be restored" alert and an
+  "incomplete settings" banner on the next launch. Demo/preview
+  accounts are now session-scoped (never written to the account store),
+  and restore silently purges any stale preview record.
+
 
 
 

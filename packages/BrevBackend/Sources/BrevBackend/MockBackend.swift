@@ -901,7 +901,7 @@ public extension BrevAccount {
         id: "preview-account",
         displayName: "Henrik Øgård",
         emailAddress: "henrik@ogard.example",
-        backendIdentifier: "demo",
+        backendIdentifier: BrevAccount.demoBackendIdentifier,
         backendDisplayName: "Demo"
     )
 }

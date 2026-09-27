@@ -648,6 +648,12 @@ public final class AppSession {
             isRestoringSession = false
             return
         }
+        if account.backendIdentifier == BrevAccount.demoBackendIdentifier {
+            await purgeStoredAccount(account)
+            canRetrySessionRestore = false
+            isRestoringSession = false
+            return
+        }
         guard !signingOutAccountIDs.contains(account.id) else {
             canRetrySessionRestore = false
             isRestoringSession = false
@@ -681,7 +687,7 @@ public final class AppSession {
             guard canApplyRestoreResponse(request) else { return }
             if Self.isAuthenticationRequired(error) {
                 if shouldPurgeStoredAccountAfterAuthenticationFailure(account) {
-                    await purgeStoredAccountAfterAuthenticationFailure(account)
+                    await purgeStoredAccount(account)
                     canRetrySessionRestore = false
                 } else {
                     canRetrySessionRestore = true
@@ -721,12 +727,24 @@ public final class AppSession {
         isRestoringSession = true
 
         let storedAccounts = await accountStore.accounts
-        var toRestore = storedAccounts.filter {
-            backends[$0.id] == nil && !signingOutAccountIDs.contains($0.id)
+        var toRestore: [BrevAccount] = []
+        var restorableCount = 0
+        for account in storedAccounts {
+            if account.backendIdentifier == BrevAccount.demoBackendIdentifier {
+                // Stale preview record (e.g. written by an older build or
+                // left over from a demo-session removal) — purge instead
+                // of surfacing a permanent restore error.
+                await purgeStoredAccount(account)
+            } else {
+                restorableCount += 1
+                if backends[account.id] == nil && !signingOutAccountIDs.contains(account.id) {
+                    toRestore.append(account)
+                }
+            }
         }
 
         guard !toRestore.isEmpty else {
-            if storedAccounts.isEmpty { canRetrySessionRestore = false }
+            if restorableCount == 0 { canRetrySessionRestore = false }
             isRestoringSession = false
             return
         }
@@ -809,7 +827,7 @@ public final class AppSession {
             let message = AppSessionPresentation.restoreErrorMessage(for: error)
             if Self.isAuthenticationRequired(error) {
                 if shouldPurgeStoredAccountAfterAuthenticationFailure(account) {
-                    await purgeStoredAccountAfterAuthenticationFailure(account)
+                    await purgeStoredAccount(account)
                 } else {
                     authFailedIMAPAccountEmail = account.emailAddress
                     accountRestoreErrors[account.id] = message
@@ -855,7 +873,7 @@ public final class AppSession {
             && account.backendIdentifier != BrevAccount.gmailAPIBackendIdentifier
     }
 
-    private func purgeStoredAccountAfterAuthenticationFailure(_ account: BrevAccount) async {
+    private func purgeStoredAccount(_ account: BrevAccount) async {
         await accountDataCleanup(account.id)
         await tokenStore.clearToken(for: account.id)
         await accountStore.remove(account.id)
@@ -1103,7 +1121,12 @@ public final class AppSession {
            (existing as AnyObject) !== (result.backend as AnyObject) {
             await existing.disconnect()
         }
-        await accountStore.add(result.account)
+        // Demo/preview accounts are session-scoped: nothing can restore a
+        // "demo" record on the next launch, and persisting one surfaces a
+        // permanent restore error + "settings are incomplete" banner.
+        if result.account.backendIdentifier != BrevAccount.demoBackendIdentifier {
+            await accountStore.add(result.account)
+        }
         backends[result.account.id] = result.backend
         if let aiBackend = result.aiBackend {
             builtInAIBackends[result.account.id] = aiBackend

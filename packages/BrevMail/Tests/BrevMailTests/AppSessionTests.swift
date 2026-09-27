@@ -387,6 +387,46 @@ struct AppSessionTests {
         #expect(session.backend?.account == demoAccount)
     }
 
+    @Test("demo sign-in does not persist an unrestorable store record")
+    func demoSignInDoesNotPersistStoreRecord() async {
+        let demoAccount = BrevAccount.preview
+        let demoBackend = MockBackend(account: demoAccount)
+        let accountStore = InMemoryAccountStore()
+        let session = AppSession(
+            accountStore: accountStore,
+            tokenStore: InMemoryTokenStore(),
+            demoLoginCoordinator: {
+                AppSession.LoginResult(backend: demoBackend, account: demoAccount)
+            }
+        )
+
+        await session.signInWithDemo()
+
+        #expect(session.backend?.account == demoAccount)
+        #expect(await accountStore.accounts.isEmpty)
+        #expect(await accountStore.current == nil)
+    }
+
+    @Test("restore purges a stale demo record without surfacing an error")
+    func restorePurgesStaleDemoRecord() async {
+        let demoAccount = BrevAccount.preview
+        let accountStore = InMemoryAccountStore(accounts: [demoAccount], current: demoAccount)
+        let session = AppSession(
+            accountStore: accountStore,
+            tokenStore: InMemoryTokenStore(),
+            restoreCoordinator: { _ in
+                Issue.record("demo records must be purged, not restored")
+                return nil
+            }
+        )
+
+        await session.restoreAllAccounts()
+
+        #expect(await accountStore.accounts.isEmpty)
+        #expect(session.accountRestoreErrors.isEmpty)
+        #expect(session.signInError == nil)
+    }
+
     @Test("duplicate interactive sign-in requests do not start another OAuth flow")
     func duplicateInteractiveSignInRequestsAreIgnored() async {
         let account = BrevAccount(
