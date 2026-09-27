@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Add DAV Source / Reconnect sheets now show server-side failures
+  (rejected credentials, TLS errors, unreachable host) as an inline
+  callout after Connect is tapped — previously they only surfaced in the
+  section callout behind the sheet, which is unreachable on iOS.
+
 - IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
   advertise the capability — those servers (e.g. mailo.com) rejected the
   command outright, so no mailbox could be opened on them.

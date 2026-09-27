@@ -5266,3 +5266,21 @@ buttons, and package-aware localization.
   `didAttemptSubmit || hasAnyInput`, because `canSubmit` is validity-gated
   and pristine forms should not show warnings. PR checks were inspected
   separately and were green at the time of inspection.
+
+## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
+
+- **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
+  error on iOS), D4 (TLS-failure callout ~30 s late) and D7 (failed
+  first-time add flips title to "Reconnect your mailbox").
+- **Changes:** `PIMSourceConnectSheet` renders `model.lastError` inline
+  after the first submit (PR #113, BrevSettings + snapshot test);
+  `URLSessionPIMDAVTransport` gains `requestTimeout` and `PIMDAVClient`
+  defaults it to 15 s for setup validation only (PR #114, ADR-0072
+  updated); `LoginView` gates reconnect copy on
+  `authFailedIMAPAccountEmail` (PR #115).
+- **Verified:** lint.sh + format.sh clean on each branch; new
+  `transportHonoursRequestTimeout` passes (dead endpoint fails ~0.6 s);
+  new `davConnectSheetRendersSubmissionError` snapshot recorded and green
+  on iPhone 17 / iOS 27.0.
+- **Device verification:** handed to the UI testing pass (stub DAV
+  wrong-credentials on iOS sim; manual-add failure copy on macOS).

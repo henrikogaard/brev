@@ -127,6 +127,32 @@ struct BrevSettingsSnapshotTests {
         )
     }
 
+    @Test("DAV connect sheet renders a failed submission's server error")
+    @MainActor
+    func davConnectSheetRendersSubmissionError() throws {
+        let view = PIMSourceConnectSheet(
+            title: "Add DAV Source",
+            submitTitle: "Connect",
+            showsEndpointFields: true,
+            isSubmitting: false,
+            connectError: "The server rejected these credentials. Check the username and password.",
+            didAttemptSubmit: true,
+            onSubmit: { _ in true }
+        )
+        .frame(width: 420, height: 760)
+        .background(BrevTheme.brevPaper.bgPrimary.color)
+        .brevTheme(.brevPaper)
+
+        let host = UIHostingController(rootView: view)
+        host.view.backgroundColor = .clear
+
+        assertSnapshot(
+            of: host,
+            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            named: "submission-error"
+        )
+    }
+
     private static func makeDefaults(named name: String) throws -> UserDefaults {
         let suiteName = "BrevSettingsSnapshotTests-\(name)-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

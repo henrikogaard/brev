@@ -163,7 +163,8 @@ struct PIMSourcesSettingsView: View {
                 title: String(localized: "Add DAV Source", bundle: .module),
                 submitTitle: String(localized: "Connect", bundle: .module),
                 showsEndpointFields: true,
-                isSubmitting: model.isConnecting
+                isSubmitting: model.isConnecting,
+                connectError: model.lastError
             ) { form in
                 await model.connectDAV(form)
             }
@@ -173,7 +174,8 @@ struct PIMSourcesSettingsView: View {
                 title: String(localized: "Reconnect Source", bundle: .module),
                 submitTitle: String(localized: "Reconnect", bundle: .module),
                 showsEndpointFields: false,
-                isSubmitting: model.pendingSourceID == source.id
+                isSubmitting: model.pendingSourceID == source.id,
+                connectError: model.lastError
             ) { form in
                 await model.reconnect(sourceID: source.id, form: form)
             }
@@ -637,11 +639,35 @@ struct PIMSourceConnectSheet: View {
     let submitTitle: String
     let showsEndpointFields: Bool
     let isSubmitting: Bool
+    /// Latest connect/reconnect failure from the model, rendered inline
+    /// after the first submit. Server-side failures (rejected credentials,
+    /// TLS errors) must surface inside the sheet: the section's own error
+    /// callout sits behind it and is unreachable on iOS.
+    let connectError: String?
     /// Returns true when the action succeeded and the sheet should close.
     let onSubmit: (PIMDAVConnectForm) async -> Bool
 
     @State private var form = PIMDAVConnectForm()
     @State private var didAttemptSubmit = false
+
+    init(
+        title: String,
+        submitTitle: String,
+        showsEndpointFields: Bool,
+        isSubmitting: Bool,
+        connectError: String?,
+        /// Seeds the post-submit state; only tests and previews pass true.
+        didAttemptSubmit: Bool = false,
+        onSubmit: @escaping (PIMDAVConnectForm) async -> Bool
+    ) {
+        self.title = title
+        self.submitTitle = submitTitle
+        self.showsEndpointFields = showsEndpointFields
+        self.isSubmitting = isSubmitting
+        self.connectError = connectError
+        self.onSubmit = onSubmit
+        _didAttemptSubmit = State(initialValue: didAttemptSubmit)
+    }
 
     var body: some View {
         NavigationStack {
@@ -807,8 +833,16 @@ struct PIMSourceConnectSheet: View {
     @ViewBuilder
     private var issueCallouts: some View {
         let issues = visibleIssues
-        if !issues.isEmpty {
+        let submissionError = didAttemptSubmit ? connectError : nil
+        if submissionError != nil || !issues.isEmpty {
             Section {
+                if let submissionError {
+                    SettingsInfoCallout(
+                        symbolName: "exclamationmark.triangle",
+                        message: submissionError,
+                        tone: .warning
+                    )
+                }
                 ForEach(issues, id: \.self) { issue in
                     SettingsInfoCallout(
                         symbolName: "exclamationmark.triangle",
