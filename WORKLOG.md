@@ -5488,3 +5488,22 @@ buttons, and package-aware localization.
 - **Verified:** two new AppSession tests; full suite run below.
 - **Handoff:** device re-verify — sign in demo → remove → relaunch →
   clean onboarding, no alert/banner.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M3 add-mail sheet hides connect failure
+
+- **Goal:** UI/UX review M3 — a failed IMAP connect (~80 s timeout)
+  re-enabled "Add account" with no in-sheet error; the callout appeared
+  only on the LoginView behind the sheet after Cancel.
+- **Root cause:** `localStatus` rendered only inside the scrollable
+  `statusAndGuidanceSection`, gated on `didStartDiscoveryProbe ||
+  setupPath != .undiscovered` and below the fold on iPhone.
+- **Changes:** `IMAPAccountSetupSheet` now pins an `actionStatus`
+  `BrevInlineStatus` directly above the action buttons — `localStatus`
+  first, else a banner derived from `session.signInError`; removed the
+  duplicate render inside `statusView`. New snapshot
+  `imap-connect-failure` covers the pinned banner.
+- **Verified:** `swift test --filter LoginViewSnapshotTests` — new test
+  green; the 7 onboarding snapshot mismatches reproduce identically on
+  pristine main (pre-existing baseline drift, not re-recorded).
+- **Handoff:** device re-verify — sheet → unreachable host → error
+  inline without dismissing the sheet.

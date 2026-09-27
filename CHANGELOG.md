@@ -25,6 +25,11 @@ All notable changes to Brev are documented here.
   accounts are now session-scoped (never written to the account store),
   and restore silently purges any stale preview record.
 
+- Add mail account sheet: a failed connect now shows its error inline
+  above the action buttons instead of only on the LoginView behind the
+  sheet (the scrollable status section was gated on discovery and below
+  the fold on iPhone).
+
 
 
 

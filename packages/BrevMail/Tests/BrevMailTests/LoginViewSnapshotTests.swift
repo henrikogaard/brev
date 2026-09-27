@@ -210,6 +210,33 @@ struct LoginViewSnapshotTests {
         )
     }
 
+    @Test("manual account setup pins a connect failure above the actions")
+    func manualAccountSetupPinsConnectFailure() {
+        let session = AppSession(
+            initialSignInError: "IMAP transport failed.",
+            accountStore: InMemoryAccountStore(),
+            tokenStore: SnapshotTokenStore(),
+            imapAccountSetupCoordinator: { _ in
+                fatalError("not called by the snapshot")
+            },
+            imapAccountDiscoveryCoordinator: { _ in
+                fatalError("not called by the snapshot")
+            }
+        )
+        let view = IMAPAccountSetupSheet(session: session, onClose: {})
+            .frame(width: 560, height: 680)
+            .brevTheme(BrevTheme.brevMonoLight)
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 560, height: 680)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 560, height: 680)),
+            named: "imap-connect-failure",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("manual account setup starts with email discovery and collapsed advanced controls")
     func manualAccountSetupStartsEmailFirst() {
         let session = AppSession(

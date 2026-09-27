@@ -105,6 +105,18 @@ public struct IMAPAccountSetupSheet: View {
                 .frame(maxWidth: .infinity)
             }
 
+            // Pin the latest status next to the actions: the scrollable
+            // status section is gated on discovery and sits below the fold
+            // on iPhone, so a connect failure must render here to be seen.
+            if let actionStatus {
+                BrevInlineStatus(
+                    message: actionStatus.message,
+                    tone: actionStatus.tone,
+                    lineLimit: nil
+                )
+                .frame(maxWidth: setupContentMaxWidth, alignment: .leading)
+            }
+
             actions
                 .frame(maxWidth: setupContentMaxWidth)
         }
@@ -526,14 +538,6 @@ public struct IMAPAccountSetupSheet: View {
             )
         }
 
-        if let localStatus {
-            BrevInlineStatus(
-                message: localStatus.message,
-                tone: localStatus.tone,
-                lineLimit: nil
-            )
-        }
-
         if session.canUseGoogleIMAPFallback {
             BrevInlineStatus(
                 message: String(
@@ -554,6 +558,21 @@ public struct IMAPAccountSetupSheet: View {
             )
             .imapSetupTouchTarget()
         }
+    }
+
+    /// The status shown directly above the action buttons. Prefers the
+    /// sheet's own `localStatus`; otherwise surfaces an existing
+    /// `session.signInError` (e.g. carried over from a previous attempt or
+    /// the restore banner) so the failure is never invisible in-sheet.
+    private var actionStatus: SetupStatus? {
+        if let localStatus { return localStatus }
+        guard let signInError = session.signInError else { return nil }
+        return SetupStatus(
+            message: IMAPAccountSetupPresentation.setupFailureMessage(
+                forSessionSignInError: signInError
+            ),
+            tone: .danger
+        )
     }
 
     private var actions: some View {
