@@ -5268,6 +5268,7 @@ buttons, and package-aware localization.
   separately and were green at the time of inspection.
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5297,4 +5298,17 @@ buttons, and package-aware localization.
   ADR-0072 contract bullet updated.
 - **Verified:** new `PIMDAVClientTests.transportHonoursRequestTimeout`
   passes (dead endpoint errors in ~0.6 s); lint.sh + format.sh clean.
+
+
+
+## 2026-09-26 — Agent — D7 reconnect-copy gate (PR #115)
+
+- **Goal:** Stop "Reconnect your mailbox" appearing after a failed
+  first-time manual account add (QA D7) — nothing is stored to repair.
+- **Changes:** `LoginView.connectionSectionTitle` and the repair subtitle
+  now gate on `session.authFailedIMAPAccountEmail` (stored-account
+  re-auth marker) instead of `signInError`. The failure callout itself
+  is unchanged.
+- **Verified:** lint.sh + format.sh clean; existing LoginView snapshot
+  tests unaffected (repair state not injectable — `private(set)`).
 

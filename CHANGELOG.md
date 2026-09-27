@@ -6,6 +6,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+
 - Add DAV Source / Reconnect sheets now show server-side failures
   (rejected credentials, TLS errors, unreachable host) as an inline
   callout after Connect is tapped — previously they only surfaced in the
@@ -14,6 +15,13 @@ All notable changes to Brev are documented here.
   15 s, so a dead endpoint or stalled TLS handshake surfaces an error
   callout promptly instead of ~30 s. Steady-state DAV sync keeps the
   previous request timeout.
+
+
+- Onboarding no longer flips to "Reconnect your mailbox" after a failed
+  first-time account add — the repair title and subtitle now appear only
+  when a stored account actually awaits re-authentication. The error
+  callout itself still describes the failure.
+
 
 - IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
   advertise the capability — those servers (e.g. mailo.com) rejected the

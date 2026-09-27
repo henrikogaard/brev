@@ -140,7 +140,7 @@ public struct LoginView: View {
                     .brevFont(.headline)
                     .foregroundStyle(theme.textPrimary.color)
 
-                if session.signInError != nil {
+                if session.authFailedIMAPAccountEmail != nil {
                     Text("Repair the saved account or choose another sign-in method.", bundle: .module)
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
@@ -155,7 +155,12 @@ public struct LoginView: View {
     }
 
     private var connectionSectionTitle: LocalizedStringKey {
-        session.signInError == nil ? "Choose how to connect" : "Reconnect your mailbox"
+        // Only a stored account awaiting re-authentication is a repair
+        // flow; a failed first-time add still presents "Choose how to
+        // connect".
+        session.authFailedIMAPAccountEmail == nil
+            ? "Choose how to connect"
+            : "Reconnect your mailbox"
     }
 
     @ViewBuilder
