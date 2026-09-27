@@ -4,8 +4,8 @@ PRODID:-//Brev//Stub DAV Seed//EN
 BEGIN:VEVENT
 UID:evt-standup-stub@brev.example
 DTSTAMP:20260920T080000Z
-DTSTART:20260924T073000Z
-DTEND:20260924T075000Z
+DTSTART:20260924T093000
+DTEND:20260924T095000
 SUMMARY:Harbour Data — daily standup
 LOCATION:Video call
 DESCRIPTION:Daily sync for the harbour-data migration team.

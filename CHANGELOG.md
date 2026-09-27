@@ -46,6 +46,10 @@ All notable changes to Brev are documented here.
 - Add DAV Source / Reconnect sheets show a Username field labelled
   "Username (usually your email address)" on both platforms.
 
+- Stub-DAV seed data now uses floating local times so the demo events
+  and tasks land at sensible morning hours in the reader's own
+  timezone instead of drifting with UTC offsets.
+
 
 
 

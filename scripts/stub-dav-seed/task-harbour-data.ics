@@ -6,7 +6,7 @@ UID:task-harbour-data-stub@brev.example
 DTSTAMP:20260920T080000Z
 SUMMARY:harbour-data — verify post-merge state
 STATUS:NEEDS-ACTION
-DUE:20260926T120000Z
+DUE:20260926T140000
 DESCRIPTION:Confirm the berth schema migration applied cleanly on staging.
 END:VTODO
 END:VCALENDAR

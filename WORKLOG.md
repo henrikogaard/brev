@@ -30,6 +30,14 @@
 - Verified: ComposeViewMacOSSnapshotTests 2/2 pass; BrevSettings
   PIMDAVConnectFormTests 7/7; lint.sh + format.sh clean.
 
+## 2026-09-27 — Agent — stub DAV seed local times (N-M9)
+
+- `fix/stub-seed-local-times`: evt-standup/evt-review/
+  task-harbour-data .ics switched from UTC 'Z' stamps to floating local
+  times (+2h shift) so seeded demo data renders at the authored clock
+  time in any timezone, matching the QA review screenshots.
+- Data-only change; no code. lint.sh + format.sh unaffected paths.
+
 ## 2026-09-26 — Agent — iPhone composer polish
 
 - `fix/ios-composer-polish`: mobileToolbar title centred via overlay
