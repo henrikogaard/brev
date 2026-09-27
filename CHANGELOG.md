@@ -24,7 +24,6 @@ All notable changes to Brev are documented here.
   callout itself still describes the failure.
 
 
-||||||| 98055a3
 
 - Onboarding: a build generated without a Google OAuth client ID now
   explains that Google sign-in isn't configured and points at adding a

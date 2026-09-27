@@ -5313,7 +5313,6 @@ buttons, and package-aware localization.
 - **Verified:** lint.sh + format.sh clean; existing LoginView snapshot
   tests unaffected (repair state not injectable — `private(set)`).
 
-||||||| 98055a3
 
 
 ## 2026-09-26 — Agent — Issue #2 missing Google config guidance
