@@ -5267,6 +5267,7 @@ buttons, and package-aware localization.
   and pristine forms should not show warnings. PR checks were inspected
   separately and were green at the time of inspection.
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5284,3 +5285,16 @@ buttons, and package-aware localization.
   on iPhone 17 / iOS 27.0.
 - **Device verification:** handed to the UI testing pass (stub DAV
   wrong-credentials on iOS sim; manual-add failure copy on macOS).
+
+
+## 2026-09-26 — Agent — D4 DAV setup timeout (PR #114)
+
+- **Goal:** Bound DAV connect/reconnect validation so dead endpoints and
+  stalled TLS handshakes surface an error inside ~15 s (QA D4).
+- **Changes:** `URLSessionPIMDAVTransport(session:requestTimeout:)` —
+  `timeoutIntervalForRequest`, default 60 s unchanged for the shared
+  sync services; `PIMDAVClient` (setup-validation only) defaults to 15 s.
+  ADR-0072 contract bullet updated.
+- **Verified:** new `PIMDAVClientTests.transportHonoursRequestTimeout`
+  passes (dead endpoint errors in ~0.6 s); lint.sh + format.sh clean.
+

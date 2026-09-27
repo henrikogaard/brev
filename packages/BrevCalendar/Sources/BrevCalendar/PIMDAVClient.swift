@@ -33,13 +33,18 @@ public protocol PIMDAVTransport: Sendable {
 public struct URLSessionPIMDAVTransport: PIMDAVTransport {
     private let session: URLSession
 
-    public init(session: URLSession? = nil) {
-        self.session = session ?? Self.makeSession()
+    /// `requestTimeout` bounds each request's total run time. The default
+    /// stays generous for steady-state sync; interactive setup validation
+    /// passes a tighter bound so dead TLS handshakes surface quickly.
+    public init(session: URLSession? = nil, requestTimeout: TimeInterval = 60) {
+        self.session = session ?? Self.makeSession(requestTimeout: requestTimeout)
     }
 
-    private static func makeSession() -> URLSession {
-        URLSession(
-            configuration: .ephemeral,
+    private static func makeSession(requestTimeout: TimeInterval) -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.timeoutIntervalForRequest = requestTimeout
+        return URLSession(
+            configuration: configuration,
             delegate: RedirectBlocker(),
             delegateQueue: nil
         )
@@ -181,7 +186,9 @@ public struct PIMDAVClient: Sendable {
     /// Maximum redirect hops accepted during well-known discovery.
     private static let maxDiscoveryHops = 3
 
-    public init(transport: any PIMDAVTransport = URLSessionPIMDAVTransport()) {
+    public init(
+        transport: any PIMDAVTransport = URLSessionPIMDAVTransport(requestTimeout: 15)
+    ) {
         self.transport = transport
     }
 

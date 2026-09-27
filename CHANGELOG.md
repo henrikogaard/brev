@@ -10,6 +10,10 @@ All notable changes to Brev are documented here.
   (rejected credentials, TLS errors, unreachable host) as an inline
   callout after Connect is tapped — previously they only surfaced in the
   section callout behind the sheet, which is unreachable on iOS.
+- DAV source connect/reconnect validation now bounds each request at
+  15 s, so a dead endpoint or stalled TLS handshake surfaces an error
+  callout promptly instead of ~30 s. Steady-state DAV sync keeps the
+  previous request timeout.
 
 - IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
   advertise the capability — those servers (e.g. mailo.com) rejected the

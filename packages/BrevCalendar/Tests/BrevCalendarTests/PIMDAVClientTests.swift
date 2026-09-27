@@ -272,4 +272,22 @@ struct PIMDAVClientTests {
         }
         #expect(transport.requests.isEmpty)
     }
+
+    /// A dead endpoint must fail inside the configured request timeout
+    /// rather than URLSession's 60-second default — this is what kept the
+    /// connect sheet's TLS-failure callout invisible for ~30 s.
+    @Test("transport applies the configured request timeout")
+    func transportHonoursRequestTimeout() async throws {
+        let transport = URLSessionPIMDAVTransport(requestTimeout: 0.5)
+        let started = ContinuousClock.now
+        // 10.255.255.1 sits in a non-routable TEST-NET-adjacent range, so
+        // the connection stalls until the request timeout fires.
+        var request = URLRequest(url: URL(string: "http://10.255.255.1/dav/")!)
+        request.httpMethod = "PROPFIND"
+
+        await #expect(throws: URLError.self) {
+            try await transport.send(request)
+        }
+        #expect(started.duration(to: .now) < .seconds(10))
+    }
 }
