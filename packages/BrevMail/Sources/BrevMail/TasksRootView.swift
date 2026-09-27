@@ -84,7 +84,12 @@ public struct TasksRootView: View {
         } detail: {
             detailColumn
         }
+        #if os(macOS)
+        // Window minimum for the macOS host; on iOS the full-screen
+        // cover must fit the phone's bounds, and a min-width wider than
+        // the screen pushes the nav bar offscreen-left.
         .frame(minWidth: 760, minHeight: 480)
+        #endif
         .searchable(
             text: Bindable(model).searchText,
             prompt: String(

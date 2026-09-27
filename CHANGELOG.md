@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iPhone PIM covers (Calendar / Contacts / Tasks opened from Mailboxes →
+  More) no longer lay out wider than the screen in portrait — the macOS
+  window minimum no longer applies on iOS, so row text and the Done
+  button stay on-screen.
+
 
 
 

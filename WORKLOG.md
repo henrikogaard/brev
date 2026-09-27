@@ -5430,3 +5430,16 @@ buttons, and package-aware localization.
   session 82de84bd); D3 re-verified as already-fixed by #101.
 - **Handoff:** D2 (stale-href 412-forever) remains the one open
   calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-H1 iPhone PIM cover width
+
+- **Goal:** UI/UX review N-H1 — Calendar/Contacts/Tasks full-screen
+  covers on iPhone render wider than the screen in portrait, pushing
+  content and the Done affordance offscreen-left.
+- **Changes:** `CalendarRootView`/`ContactsRootView`/`TasksRootView` —
+  the shared `.frame(minWidth: 760, minHeight: 480)` window minimum is
+  now `#if os(macOS)`-gated; new `PIMRootViewSnapshotTests` (iOS
+  snapshot-test allowlist) lock in compact iPhone13Pro rendering.
+- **Verified:** 3 fresh iOS baselines recorded and replayed green on
+  iPhone 17 / iOS 27.0 sim; lint.sh + format.sh clean.
+- **Handoff:** device re-verify on the sim — rotate portrait/landscape,
+  confirm Done is reachable on all three covers.
