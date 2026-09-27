@@ -154,7 +154,7 @@ struct ComposePresentationTests {
 
         #expect(chrome.fieldPanelTreatment == .flatHairline)
         #expect(chrome.toolbarClusterTreatment == .borderless)
-        #expect(chrome.fieldRows == [.recipients, .subject, .sender])
+        #expect(chrome.fieldRows == [.recipients, .sender, .subject])
     }
 
     @Test("compact compose separates primary and utility actions")
@@ -162,7 +162,7 @@ struct ComposePresentationTests {
         let layout = ComposePresentation.toolbarActionLayout(for: .compactIOSAccessibility)
 
         #expect(layout.primaryActions == [.close, .send])
-        #expect(layout.utilityActions == [.attach, .moreActions])
+        #expect(layout.utilityActions == [.attach, .format, .moreActions])
         #expect(layout.overflowActions == [
             .templates,
             .signature,
@@ -192,7 +192,7 @@ struct ComposePresentationTests {
     func regularToolbarFitsNarrowIPadScene() {
         let layout = ComposePresentation.toolbarActionLayout(for: .regularIOS)
         #expect(layout.primaryActions == [.close, .send])
-        #expect(layout.utilityActions == [.attach, .moreActions])
+        #expect(layout.utilityActions == [.attach, .format, .moreActions])
         #expect(layout.overflowActions.contains(.signature))
         #expect(layout.overflowActions.contains(.security))
         #expect(!layout.overflowActions.contains(.attach))

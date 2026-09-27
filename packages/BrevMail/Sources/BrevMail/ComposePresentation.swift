@@ -226,7 +226,7 @@ enum ComposePresentation {
     static let chrome = ComposeChromePresentation(
         toolbarClusterTreatment: .borderless,
         fieldPanelTreatment: .flatHairline,
-        fieldRows: [.recipients, .subject, .sender]
+        fieldRows: [.recipients, .sender, .subject]
     )
 
     static func isInteractionBusy(
@@ -256,7 +256,7 @@ enum ComposePresentation {
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             ComposeToolbarActionLayout(
                 primaryActions: [.close, .send],
-                utilityActions: [.attach, .moreActions],
+                utilityActions: [.attach, .format, .moreActions],
                 overflowActions: [
                     .templates,
                     .signature,

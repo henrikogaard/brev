@@ -887,16 +887,19 @@ public struct ComposeView: View {
             )
             .keyboardShortcut(.cancelAction)
 
+            Spacer(minLength: 0)
+
+            sendButton
+        }
+        // Centre the title like a nav bar: overlaying keeps it visually
+        // centred regardless of the Send label's width.
+        .overlay {
             Text(composeTitle)
                 .font(.headline)
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
-                .layoutPriority(1)
                 .accessibilityAddTraits(.isHeader)
-
-            Spacer(minLength: 0)
-
-            sendButton
+                .allowsHitTesting(false)
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -914,6 +917,7 @@ public struct ComposeView: View {
             ) {
                 isPickingFile = true
             }
+            formatMenu
             composeActionsMenu
             Spacer(minLength: 0)
         }
@@ -1247,24 +1251,27 @@ public struct ComposeView: View {
             .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
             .contentShape(Circle())
             #else
-            HStack(spacing: BrevSpacing.xxs) {
-                Text(verbatim: pendingUndoSendTask != nil
-                    ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
-                    .font(.subheadline.weight(.semibold))
-                    .lineLimit(1)
-                    .dynamicTypeSize(denseChromeDynamicTypeRange)
-            }
-            .padding(.horizontal, BrevSpacing.xs)
-            .frame(minHeight: toolbarMetrics.hitTargetSize)
-            .contentShape(Rectangle())
+            // Apple Mail-style Send: bold accent text in the chrome row
+            // rather than a capsule, keeping the 44pt hit area.
+            Text(verbatim: pendingUndoSendTask != nil
+                ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
+                .font(.subheadline.weight(.semibold))
+                .foregroundStyle(
+                    isDisabled
+                        ? theme.textTertiary.color
+                        : theme.accent.color
+                )
+                .lineLimit(1)
+                .dynamicTypeSize(denseChromeDynamicTypeRange)
+                .padding(.horizontal, BrevSpacing.xs)
+                .frame(minHeight: toolbarMetrics.hitTargetSize)
+                .contentShape(Rectangle())
             #endif
         }
         #if os(macOS)
         .buttonStyle(.plain)
         #else
-        .buttonStyle(.borderedProminent)
-        .tint(theme.accent.color)
-        .opacity(isDisabled && !isSending ? 0.45 : 1)
+        .buttonStyle(.plain)
         #endif
         .disabled(isDisabled)
         // Cmd+Return sends, matching Apple Mail's compose accelerator.
@@ -1644,10 +1651,6 @@ public struct ComposeView: View {
 
     private var fromPickerLabel: some View {
         HStack(spacing: BrevSpacing.xs) {
-            Image(systemName: "person.crop.circle")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.textSecondary.color)
-                .accessibilityHidden(true)
             Text(currentFromEmail)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)

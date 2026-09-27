@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-09-26 — Agent — iPhone composer polish
+
+- `fix/ios-composer-polish`: mobileToolbar title centred via overlay
+  (was left-aligned beside Close); iOS Send is now a bold accent text
+  button (was a 44pt borderedProminent capsule); shared fieldRows order
+  To→From→Subject (was To→Subject→From, applies to macOS/iPad too);
+  From-row label drops the person.crop.circle icon; keyboard utility
+  bar gains the Format (Aa) menu between Attach and the overflow
+  ellipsis. `utilityActions` updated to [.attach, .format, .moreActions].
+- Verified on device: iPhone 17 iOS 27.0 sim (screenshot), iPhone 17
+  iOS 26.5 (AX-driven: Format menu opens with all commands), iPad Pro
+  13" iOS 27.0 (screenshot — sheet + bottom utility bar).
+- lint.sh + format.sh clean; `swift test --filter ComposePresentationTests`
+  23/23 pass. ComposeAccessibilityBoundsTests is iOS-only (UIKit) —
+  exercised via CI/xcodebuild, not host swift test.
+- macOS mock verification pending (build running).
+
 ## 2026-09-26 — Agent — UI/UX review batch 4 (M5 selection, M6 window sizes, M7 month grid)
 
 - M5: new shared `PIMSelectionRowBackground` (rounded `BrevSelectionPalette`
