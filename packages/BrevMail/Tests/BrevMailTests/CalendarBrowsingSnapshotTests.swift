@@ -95,6 +95,36 @@ struct CalendarBrowsingSnapshotTests {
         )
     }
 
+    private static func source(writable: Bool = false) -> PIMSource {
+        PIMSource(
+            id: "s1",
+            kind: .calendar,
+            provider: .calDAV,
+            displayName: "CalDAV",
+            enabledCapabilities: writable ? [.read, .write] : [.read],
+            status: .ready,
+            createdAt: start,
+            updatedAt: start
+        )
+    }
+
+    private static func collection(isReadOnly: Bool = false) -> PIMCollection {
+        PIMCollection(
+            id: "c1",
+            sourceID: "s1",
+            kind: .calendar,
+            displayName: "Work",
+            colorHex: nil,
+            isReadOnly: isReadOnly,
+            isPrimary: true,
+            supportsSyncToken: true,
+            providerKey: "c1",
+            providerVersion: nil,
+            isVisible: true,
+            updatedAt: start
+        )
+    }
+
     @Test("event detail renders all fields", arguments: ["light", "dark"])
     func eventDetail(mode: String) {
         var event = Self.event(
@@ -135,6 +165,34 @@ struct CalendarBrowsingSnapshotTests {
             of: host,
             as: .image(size: CGSize(width: 420, height: 560)),
             named: "detail-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("event detail explains why editing is hidden", arguments: ["light", "dark"])
+    func eventDetailReadOnlyHint(mode: String) {
+        let event = Self.event(
+            id: "e1",
+            summary: "Quarterly planning",
+            location: "Meeting room 3"
+        )
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = CalendarEventDetailView(
+            event: event,
+            collection: Self.collection(),
+            source: Self.source()
+        )
+        .frame(width: 420, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 560)),
+            named: "detail-readonly-\(mode)",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }

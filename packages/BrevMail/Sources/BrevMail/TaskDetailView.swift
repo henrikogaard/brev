@@ -47,6 +47,17 @@ public struct TaskDetailView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
                 header
+                if let hint = PIMDetailEditabilityHint.text(
+                    source: source,
+                    collection: collection,
+                    editActionsAvailable: onEdit != nil || onDelete != nil
+                ) {
+                    BrevInlineStatus(
+                        message: hint,
+                        tone: .info,
+                        lineLimit: nil
+                    )
+                }
                 BrevDivider()
                 fields
                 provenance

@@ -67,6 +67,17 @@ public struct CalendarEventDetailView: View {
                 if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
                 }
+                if let hint = PIMDetailEditabilityHint.text(
+                    source: source,
+                    collection: collection,
+                    editActionsAvailable: onEdit != nil || onDelete != nil
+                ) {
+                    BrevInlineStatus(
+                        message: hint,
+                        tone: .info,
+                        lineLimit: nil
+                    )
+                }
                 if let conference = event.conference {
                     conferenceSection(conference)
                 } else if let conferenceURL = event.conferenceURL,

@@ -82,6 +82,17 @@ public struct ContactDetailView: View {
                 if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
                 }
+                if let hint = PIMDetailEditabilityHint.text(
+                    source: source,
+                    collection: collection,
+                    editActionsAvailable: onEdit != nil || onDelete != nil
+                ) {
+                    BrevInlineStatus(
+                        message: hint,
+                        tone: .info,
+                        lineLimit: nil
+                    )
+                }
                 if !contact.emails.isEmpty {
                     detailSection(
                         title: String(localized: "Email", bundle: .module),

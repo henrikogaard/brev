@@ -5416,6 +5416,28 @@ buttons, and package-aware localization.
   26.5) — both banners at top; suite wired into the macOS<26 skip
   list and snapshot-macos -only-testing list.
 
+## 2026-09-27 — Agent — Read-only hints on PIM detail panes (M4/P1)
+
+- **Goal:** fix docs/qa/uiux-review-2026-09-27.md N-M4 — macOS PIM
+  detail panes show no Edit/Delete on read-only sources with no
+  explanation (also covers P1 "no hint why editing is absent").
+- **Changes:** new `PIMDetailEditabilityHint` text resolver diagnoses
+  the hidden-actions case (server read-only collection vs. missing
+  `.write` capability on the source) and returns a localized
+  explanation; CalendarEventDetailView, ContactDetailView, and
+  TaskDetailView render it as a BrevInlineStatus where the action row
+  would be. iOS inherits the same hint — the views are shared. Gating
+  itself unchanged: the observed bare panes were sources without the
+  "Allow editing" capability, which is working as designed but was
+  invisible.
+- **Verified:** PIMDetailEditabilityHintTests 5/5; new snapshot cases
+  (calendar event detail-readonly light/dark, task detail-readonly
+  light/dark, contact detail baselines now carry the banner).
+  Pre-existing drift left alone: agendaRow/eventDetail/contactRow
+  baselines mismatch identically on pristine main @1422851.
+- **CI:** TaskDetailSnapshotTests wired into the macOS<26 skip regex
+  and the snapshot-macos -only-testing list.
+
 ## 2026-09-26 — Agent — QA matrix + lifecycle doc update (D/O fixes verified)
 
 - **Goal:** Record the D1/D3/D4/D7/O5 verification outcomes on

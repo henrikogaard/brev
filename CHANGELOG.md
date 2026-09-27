@@ -69,6 +69,10 @@ All notable changes to Brev are documented here.
   uses the email keyboard with autocorrection off.
 - iPhone composer: Cc/Bcc stay pinned to the first line of the To row
   and the suggestion list spans the full field width underneath.
+- Event, contact, and task detail panes explain hidden Edit/Delete:
+  a read-only DAV collection says so, and a source without "Allow
+  editing" points at Settings — previously the panes silently showed
+  no actions.
 - iPhone/iPad composer polish: the header now follows Apple Mail — a
   centred title and Send rendered as accent text instead of a heavy
   capsule, and the From row sits above Subject instead of below it. The
