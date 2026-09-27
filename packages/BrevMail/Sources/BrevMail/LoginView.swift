@@ -215,6 +215,16 @@ public struct LoginView: View {
                     }
                 }
             } else {
+                if session.googleOAuthConfigIsInvalid {
+                    Text(
+                        "Google sign-in isn't configured in this build. Provide the OAuth client ID at build time, or add a mail account instead.",
+                        bundle: .module
+                    )
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .fixedSize(horizontal: false, vertical: true)
+                }
+
                 BrevButton("Add mail account", bundle: .module, action: startAccountSetup)
                     .keyboardShortcut(.defaultAction)
                     .disabled(isAuthenticationActionBlocked)

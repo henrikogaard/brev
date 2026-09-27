@@ -186,6 +186,30 @@ struct LoginViewSnapshotTests {
         )
     }
 
+    @Test("compact onboarding explains a missing Google client configuration")
+    func compactGoogleUnconfigured() {
+        let session = AppSession(
+            accountStore: InMemoryAccountStore(),
+            tokenStore: SnapshotTokenStore(),
+            imapAccountSetupCoordinator: { _ in
+                fatalError("not called by the snapshot")
+            },
+            googleOAuthIsConfigured: false
+        )
+        let view = LoginView(session: session)
+            .frame(width: 393, height: 700)
+            .brevTheme(BrevTheme.brevMonoLight)
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 393, height: 700)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 393, height: 700)),
+            named: "compact-google-unconfigured",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("manual account setup starts with email discovery and collapsed advanced controls")
     func manualAccountSetupStartsEmailFirst() {
         let session = AppSession(

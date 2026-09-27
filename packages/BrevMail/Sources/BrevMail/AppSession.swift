@@ -195,6 +195,13 @@ public final class AppSession {
         return googleOAuthLoginCoordinator != nil
     }
 
+    /// True only when the host checked the OAuth configuration and found
+    /// it unusable — the sign-in affordance is then replaced by setup
+    /// guidance instead of disappearing silently (issue #2).
+    public var googleOAuthConfigIsInvalid: Bool {
+        googleOAuthIsConfigured == false
+    }
+
     public var canDiscoverIMAPSettings: Bool {
         imapAccountDiscoveryCoordinator != nil
     }

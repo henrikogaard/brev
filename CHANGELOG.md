@@ -7,6 +7,7 @@ All notable changes to Brev are documented here.
 ### Fixed
 
 
+
 - Add DAV Source / Reconnect sheets now show server-side failures
   (rejected credentials, TLS errors, unreachable host) as an inline
   callout after Connect is tapped — previously they only surfaced in the
@@ -22,6 +23,12 @@ All notable changes to Brev are documented here.
   when a stored account actually awaits re-authentication. The error
   callout itself still describes the failure.
 
+
+||||||| 98055a3
+
+- Onboarding: a build generated without a Google OAuth client ID now
+  explains that Google sign-in isn't configured and points at adding a
+  mail account, instead of silently omitting the Google row.
 
 - IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
   advertise the capability — those servers (e.g. mailo.com) rejected the

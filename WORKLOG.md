@@ -5269,6 +5269,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5311,4 +5312,25 @@ buttons, and package-aware localization.
   is unchanged.
 - **Verified:** lint.sh + format.sh clean; existing LoginView snapshot
   tests unaffected (repair state not injectable — `private(set)`).
+
+||||||| 98055a3
+
+
+## 2026-09-26 — Agent — Issue #2 missing Google config guidance
+
+- **Goal:** Acceptance row — "missing Google client configuration produces
+  actionable setup guidance" — previously the onboarding simply omitted the
+  Google row.
+- **Changes:** `AppSession.googleOAuthConfigIsInvalid` exposes the explicit
+  config-check failure (`googleOAuthIsConfigured == false`); `LoginView`'s
+  no-Google branch now renders a caption explaining the build lacks the
+  client ID before the existing Add-mail-account controls. New compact
+  snapshot `compact-google-unconfigured`.
+- **Verification:** `scripts/lint.sh` + `scripts/format.sh` clean;
+  `swift test --filter LoginViewSnapshotTests.compactGoogleUnconfigured`
+  passes with a fresh macOS baseline (hint + Add mail account visible).
+  iOS rendering shares the same `LoginView`; the iOS leg is covered by the
+  session's O5 verification pass.
+- **Handoff:** Nil (`googleOAuthIsConfigured` unset, e.g. tests/minimal
+  fixtures) keeps the hint hidden — only an explicit check failure shows it.
 
