@@ -670,6 +670,109 @@ struct PIMContactWriteTests {
         #expect(cached.isEmpty)
     }
 
+    @Test("update sends the synced etag when the caller's copy is stale")
+    func serviceUpdateRebasesStaleEtag() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"dav-3\""]),
+        ])
+        let store = InMemoryContactStore()
+        try await store.saveContacts(
+            [Self.contact(etag: "\"dav-2\"")],
+            for: "pim-test"
+        )
+        let service = try await makeService(
+            source: Self.source(),
+            davTransport: transport,
+            contactStore: store
+        )
+        // The caller holds the pre-sync copy — like a draft captured
+        // before a remote bump. The write must carry the synced etag.
+        let saved = try await service.update(
+            Self.contact(etag: "\"dav-1\""),
+            source: Self.source()
+        )
+        #expect(saved.providerVersion == "\"dav-3\"")
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.value(forHTTPHeaderField: "If-Match") == "\"dav-2\""
+        )
+    }
+
+    @Test("update re-keys a draft whose href the server renamed")
+    func serviceUpdateRekeysRenamedHref() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"dav-3\""]),
+        ])
+        let store = InMemoryContactStore()
+        // Sync already merged the rename: the cache holds only the
+        // live href. The caller's copy still points at the dead one.
+        let live = Self.contact(
+            providerItemKey:
+            "https://dav.example.com/contacts/henrik/book/c-1-v2.vcf",
+            etag: "\"dav-2\""
+        )
+        try await store.saveContacts([live], for: "pim-test")
+        let service = try await makeService(
+            source: Self.source(),
+            davTransport: transport,
+            contactStore: store
+        )
+        let stale = Self.contact(
+            providerItemKey:
+            "https://dav.example.com/contacts/henrik/book/c-1.vcf",
+            etag: "\"dav-1\""
+        )
+        let saved = try await service.update(
+            stale,
+            source: Self.source()
+        )
+        #expect(saved.id == live.id)
+        #expect(saved.providerVersion == "\"dav-3\"")
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/contacts/henrik/book/c-1-v2.vcf"
+        )
+        #expect(
+            request.value(forHTTPHeaderField: "If-Match") == "\"dav-2\""
+        )
+        let cached = try await store.contacts(for: "pim-test")
+        #expect(cached.map(\.id) == [live.id])
+    }
+
+    @Test("delete re-targets a renamed href and clears the record")
+    func serviceDeleteRekeysRenamedHref() async throws {
+        let transport = ScriptedTransport(steps: [.response(204)])
+        let store = InMemoryContactStore()
+        let live = Self.contact(
+            providerItemKey:
+            "https://dav.example.com/contacts/henrik/book/c-1-v2.vcf",
+            etag: "\"dav-2\""
+        )
+        try await store.saveContacts([live], for: "pim-test")
+        let service = try await makeService(
+            source: Self.source(),
+            davTransport: transport,
+            contactStore: store
+        )
+        let stale = Self.contact(
+            providerItemKey:
+            "https://dav.example.com/contacts/henrik/book/c-1.vcf",
+            etag: "\"dav-1\""
+        )
+        try await service.delete(stale, source: Self.source())
+        let request = try #require(transport.requests.first)
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/contacts/henrik/book/c-1-v2.vcf"
+        )
+        #expect(
+            request.value(forHTTPHeaderField: "If-Match") == "\"dav-2\""
+        )
+        let cached = try await store.contacts(for: "pim-test")
+        #expect(cached.isEmpty)
+    }
+
     @Test("writes on a read-enabled source throw notWritable")
     func serviceReadOnly() async throws {
         let service = try await makeService(

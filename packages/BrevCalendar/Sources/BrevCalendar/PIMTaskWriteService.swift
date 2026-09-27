@@ -249,6 +249,12 @@ public actor PIMTaskWriteService {
 
     /// Replaces the writable fields of a cached task under its stored
     /// version precondition. Returns the updated cache record.
+    ///
+    /// Callers may hold a copy older than the last sync, so the write
+    /// re-resolves the target through the cache (same contract as
+    /// `PIMEventWriteService`). The etag/href the provider sees always
+    /// comes from the synced record; a remote change sync has not
+    /// merged still conflicts.
     @discardableResult
     public func update(
         _ task: PIMTask,
@@ -259,6 +265,13 @@ public actor PIMTaskWriteService {
             throw WriteError.notWritable
         }
         var updated = task
+        if let stored = try await storedRecord(
+            matching: task,
+            in: collection
+        ) {
+            updated.providerItemKey = stored.providerItemKey
+            updated.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
@@ -299,8 +312,13 @@ public actor PIMTaskWriteService {
             throw WriteError.unsupportedProvider
         }
         updated.syncedAt = now()
-        try await store(updated, in: collection)
-        return updated
+        let record = reanchored(updated, in: collection)
+        try await store(
+            record,
+            in: collection,
+            superseding: task.id
+        )
+        return record
     }
 
     // MARK: - Reorder / reparent
@@ -324,6 +342,13 @@ public actor PIMTaskWriteService {
             throw WriteError.notWritable
         }
         var updated = task
+        if let stored = try await storedRecord(
+            matching: task,
+            in: collection
+        ) {
+            updated.providerItemKey = stored.providerItemKey
+            updated.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
@@ -361,8 +386,13 @@ public actor PIMTaskWriteService {
             throw WriteError.unsupportedProvider
         }
         updated.syncedAt = now()
-        try await store(updated, in: collection)
-        return updated
+        let record = reanchored(updated, in: collection)
+        try await store(
+            record,
+            in: collection,
+            superseding: task.id
+        )
+        return record
     }
 
     // MARK: - Cross-collection move
@@ -420,12 +450,24 @@ public actor PIMTaskWriteService {
         guard canWrite(source: source, collection: collection) else {
             throw WriteError.notWritable
         }
+        // Same staleness contract as update: the remote delete and its
+        // precondition address the synced record, not the caller's
+        // possibly older copy.
+        let stored = try await storedRecord(
+            matching: task,
+            in: collection
+        )
+        var target = task
+        if let stored {
+            target.providerItemKey = stored.providerItemKey
+            target.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
             try await mapGoogleError {
                 try await googleWriter.delete(
-                    task,
+                    target,
                     in: collection,
                     accessToken: token
                 )
@@ -434,7 +476,7 @@ public actor PIMTaskWriteService {
             let credential = try await davCredential(for: source)
             try await mapDAVError {
                 try await davWriter.delete(
-                    task,
+                    target,
                     in: collection,
                     credential: credential
                 )
@@ -446,7 +488,8 @@ public actor PIMTaskWriteService {
             for: source.id,
             collectionID: collection.id
         )
-        remaining.removeAll { $0.id == task.id }
+        let removedIDs = [task.id, stored?.id].compactMap { $0 }
+        remaining.removeAll { removedIDs.contains($0.id) }
         try await taskStore.saveTasks(
             remaining,
             for: source.id,
@@ -458,15 +501,21 @@ public actor PIMTaskWriteService {
 
     /// Inserts or replaces the record inside its collection's cached
     /// task list — the sync engine owns full-generation saves, so the
-    /// write path patches the single record instead.
+    /// write path patches the single record instead. `superseding` names
+    /// the caller's earlier record id when the write re-keyed onto a
+    /// renamed href: that stale row goes away with the patch.
     private func store(
         _ task: PIMTask,
-        in collection: PIMCollection
+        in collection: PIMCollection,
+        superseding staleID: PIMTask.ID? = nil
     ) async throws {
         var tasks = try await taskStore.tasks(
             for: task.sourceID,
             collectionID: collection.id
         )
+        if let staleID, staleID != task.id {
+            tasks.removeAll { $0.id == staleID }
+        }
         if let index = tasks.firstIndex(where: { $0.id == task.id }) {
             tasks[index] = task
         } else {
@@ -476,6 +525,58 @@ public actor PIMTaskWriteService {
             tasks,
             for: task.sourceID,
             collectionID: collection.id
+        )
+    }
+
+    /// The freshest cached record for the item a caller wants to
+    /// write — by record id first, else by uid so an href the server
+    /// renamed still resolves. nil when the cache holds nothing
+    /// matching, e.g. a remote delete sync has not merged.
+    private func storedRecord(
+        matching task: PIMTask,
+        in collection: PIMCollection
+    ) async throws -> PIMTask? {
+        let tasks = try await taskStore.tasks(
+            for: task.sourceID,
+            collectionID: collection.id
+        )
+        if let exact = tasks.first(where: { $0.id == task.id }) {
+            return exact
+        }
+        guard let uid = task.uid else { return nil }
+        return tasks.first { $0.uid == uid }
+    }
+
+    /// Re-anchors the record onto the provider key the write actually
+    /// targeted — the id embeds the href, so a key re-resolution needs
+    /// a rebuilt identity rather than a mutation.
+    private func reanchored(
+        _ task: PIMTask,
+        in collection: PIMCollection
+    ) -> PIMTask {
+        let id = PIMTask.makeID(
+            collectionID: collection.id,
+            providerItemKey: task.providerItemKey
+        )
+        guard id != task.id else { return task }
+        return PIMTask(
+            id: id,
+            sourceID: task.sourceID,
+            collectionID: collection.id,
+            providerItemKey: task.providerItemKey,
+            providerVersion: task.providerVersion,
+            uid: task.uid,
+            title: task.title,
+            notes: task.notes,
+            due: task.due,
+            completedAt: task.completedAt,
+            status: task.status,
+            position: task.position,
+            parentKey: task.parentKey,
+            links: task.links,
+            rawPayload: task.rawPayload,
+            providerUpdatedAt: task.providerUpdatedAt,
+            syncedAt: task.syncedAt
         )
     }
 

@@ -5272,6 +5272,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5370,3 +5371,19 @@ buttons, and package-aware localization.
   extended; CHANGELOG entry added. Contacts/tasks write services share
   the latent shape — not changed here (D2 scope); noted in the PR.
 - **Verified:** pending — BrevCalendar tests + lint/format.
+
+## 2026-09-27 — Agent — D2 follow-up: contact/task write precondition
+
+- **Goal:** Port the #119 stale-precondition fix to the contact and task
+  write services (same latent shape — editor drafts replay the
+  open-time href/etag, so retries after a remote bump 412 forever).
+- **Changes:** `PIMContactWriteService` and `PIMTaskWriteService`
+  update/move/delete re-resolve the target through the cache before
+  writing — by record id, else uid — so a synced rename re-keys the
+  write and the stored record (`store` gained `superseding:`; deletes
+  clear both ids). Contact photo-change lookup also matches the
+  resolved providerItemKey so a re-keyed row is still found. If-Match
+  semantics unchanged; unmerged remote changes still conflict.
+  ADR-0072 bullets for both services extended; CHANGELOG entry added.
+- **Verified:** `swift test --filter 'PIMContactWrite|PIMTaskWrite'` —
+  52/52, including 6 new re-resolution tests.

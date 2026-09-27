@@ -838,6 +838,185 @@ struct PIMTaskWriteTests {
         #expect(cached.isEmpty)
     }
 
+    @Test("update sends the synced etag when the caller's copy is stale")
+    func serviceUpdateRebasesStaleEtag() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let taskStore = InMemoryTaskStore()
+        let credentials = InMemoryCredentialStore()
+        let source = Self.source()
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            CalDAVCredential.bearer(token: "pw"),
+            for: "pim-source-pim-test"
+        )
+        let href =
+            "https://dav.example.com/calendars/henrik/tasks/t1.ics"
+        let synced = Self.task(
+            collectionID: collection.id,
+            providerItemKey: href,
+            etag: "\"e2\"",
+            uid: "t1@brev"
+        )
+        try await taskStore.saveTasks(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let transport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"e3\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            taskStore: taskStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: transport
+        )
+        // The caller holds the pre-sync copy — like a list row opened
+        // before a remote bump. The write must carry the synced etag.
+        var stale = synced
+        stale.providerVersion = "\"e1\""
+        let saved = try await service.update(
+            stale,
+            in: collection,
+            source: source
+        )
+        #expect(saved.providerVersion == "\"e3\"")
+        let request = try #require(transport.requests.first)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"e2\"")
+    }
+
+    @Test("update re-keys a draft whose href the server renamed")
+    func serviceUpdateRekeysRenamedHref() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let taskStore = InMemoryTaskStore()
+        let credentials = InMemoryCredentialStore()
+        let source = Self.source()
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            CalDAVCredential.bearer(token: "pw"),
+            for: "pim-source-pim-test"
+        )
+        // Sync already merged the rename: the cache holds only the
+        // live href. The caller's copy still points at the dead one.
+        let liveHref =
+            "https://dav.example.com/calendars/henrik/tasks/t1-v2.ics"
+        let synced = Self.task(
+            collectionID: collection.id,
+            providerItemKey: liveHref,
+            etag: "\"e2\"",
+            uid: "t1@brev"
+        )
+        try await taskStore.saveTasks(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let transport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"e3\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            taskStore: taskStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: transport
+        )
+        let stale = Self.task(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/tasks/t1.ics",
+            etag: "\"e1\"",
+            uid: "t1@brev"
+        )
+        let saved = try await service.update(
+            stale,
+            in: collection,
+            source: source
+        )
+        #expect(saved.id == synced.id)
+        #expect(saved.providerVersion == "\"e3\"")
+        let request = try #require(transport.requests.first)
+        #expect(request.url?.absoluteString == liveHref)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"e2\"")
+        let cached = try await taskStore.tasks(
+            for: source.id,
+            collectionID: collection.id
+        )
+        #expect(cached.map(\.id) == [synced.id])
+    }
+
+    @Test("delete re-targets a renamed href and clears the record")
+    func serviceDeleteRekeysRenamedHref() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let taskStore = InMemoryTaskStore()
+        let credentials = InMemoryCredentialStore()
+        let source = Self.source()
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            CalDAVCredential.bearer(token: "pw"),
+            for: "pim-source-pim-test"
+        )
+        let liveHref =
+            "https://dav.example.com/calendars/henrik/tasks/t1-v2.ics"
+        let synced = Self.task(
+            collectionID: collection.id,
+            providerItemKey: liveHref,
+            etag: "\"e2\"",
+            uid: "t1@brev"
+        )
+        try await taskStore.saveTasks(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let transport = ScriptedTransport(steps: [.response(204)])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            taskStore: taskStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: transport
+        )
+        let stale = Self.task(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/tasks/t1.ics",
+            etag: "\"e1\"",
+            uid: "t1@brev"
+        )
+        try await service.delete(stale, in: collection, source: source)
+        let request = try #require(transport.requests.first)
+        #expect(request.url?.absoluteString == liveHref)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"e2\"")
+        let cached = try await taskStore.tasks(
+            for: source.id,
+            collectionID: collection.id
+        )
+        #expect(cached.isEmpty)
+    }
+
     // MARK: - Service: cross-collection move
 
     @Test("Cross-collection move creates in the target then deletes the origin")

@@ -787,6 +787,11 @@ grant.
   A Google create lands the chosen contact-group collection as a
   membership (the implicit myContacts group is never sent). The local
   cache patches the single record in place after a successful write.
+  update/delete share the event write path's precondition
+  re-resolution: the href/etag the provider sees comes from the synced
+  record (by record id, else uid), never a stale caller copy — a
+  rename re-keys the write and the stored record, and unmerged remote
+  changes still conflict.
 - Editing opt-in: the settings Editing toggle now covers connected
   Google and CardDAV contacts sources, reusing the slice-1 enablement
   path — Google re-authorizes with the contacts scope before the
@@ -1073,6 +1078,11 @@ grant.
   providers — Google Tasks cannot move between lists — and a delete
   failure after a successful create surfaces as `conflict` so the
   caller re-syncs rather than keeping a silent duplicate.
+  update/delete and the in-list `move` share the event write path's
+  precondition re-resolution: the href/etag the provider sees comes
+  from the synced record (by record id, else uid), never a stale
+  caller copy — a rename re-keys the write and the stored record,
+  and unmerged remote changes still conflict.
 - Editing opt-in: `canToggleWrite` now covers tasks sources
   (Google and CalDAV). Google sources route through the existing
   `enableGooglePIMWriteFeature` path, which re-authorizes with the

@@ -260,6 +260,12 @@ public actor PIMContactWriteService {
     /// properties into the stored raw payload so unknown vCard fields
     /// survive; Google scopes the write to an updatePersonFields mask
     /// for the same guarantee. Returns the updated cache record.
+    ///
+    /// Callers may hold a copy older than the last sync, so the write
+    /// re-resolves the target through the cache (same contract as
+    /// `PIMEventWriteService`). The etag/href the provider sees always
+    /// comes from the synced record; a remote change sync has not
+    /// merged still conflicts.
     @discardableResult
     public func update(
         _ contact: PIMContact,
@@ -269,6 +275,10 @@ public actor PIMContactWriteService {
             throw WriteError.notWritable
         }
         var updated = contact
+        if let stored = try await storedRecord(matching: contact) {
+            updated.providerItemKey = stored.providerItemKey
+            updated.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
@@ -303,8 +313,9 @@ public actor PIMContactWriteService {
             throw WriteError.unsupportedProvider
         }
         updated.syncedAt = now()
-        try await store(updated)
-        return updated
+        let record = reanchored(updated)
+        try await store(record, superseding: contact.id)
+        return record
     }
 
     /// Applies a photo change on Google after the field update: bytes
@@ -331,8 +342,13 @@ public actor PIMContactWriteService {
             return contact
         }
         guard contact.photoURL == nil else { return contact }
+        // The caller's record id may predate a re-keyed write; match
+        // the resolved provider key as well so the live row is found.
         let stored = try await contactStore.contacts(for: source.id)
-            .first { $0.id == contact.id }
+            .first {
+                $0.id == contact.id
+                    || $0.providerItemKey == contact.providerItemKey
+            }
         let storedHadPhoto = stored?.photoURL != nil
             || stored?.photoData != nil
         guard storedHadPhoto else { return contact }
@@ -359,19 +375,28 @@ public actor PIMContactWriteService {
         guard canWrite(source: source, collection: nil) else {
             throw WriteError.notWritable
         }
+        // Same staleness contract as update: the remote delete and its
+        // precondition address the synced record, not the caller's
+        // possibly older copy.
+        let stored = try await storedRecord(matching: contact)
+        var target = contact
+        if let stored {
+            target.providerItemKey = stored.providerItemKey
+            target.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
             try await mapGoogleError {
                 try await googleWriter.delete(
-                    contact,
+                    target,
                     accessToken: token
                 )
             }
         case .cardDAV:
             let credential = try await davCredential(for: source)
             try await mapDAVError {
-                try await davWriter.delete(contact, credential: credential)
+                try await davWriter.delete(target, credential: credential)
             }
         case .calDAV:
             throw WriteError.unsupportedProvider
@@ -379,7 +404,8 @@ public actor PIMContactWriteService {
         var remaining = try await contactStore.contacts(
             for: source.id
         )
-        remaining.removeAll { $0.id == contact.id }
+        let removedIDs = [contact.id, stored?.id].compactMap { $0 }
+        remaining.removeAll { removedIDs.contains($0.id) }
         try await contactStore.saveContacts(remaining, for: source.id)
     }
 
@@ -387,11 +413,19 @@ public actor PIMContactWriteService {
 
     /// Inserts or replaces the record inside the source's cached
     /// contact list — the sync engine owns full-generation saves, so
-    /// the write path patches the single record instead.
-    private func store(_ contact: PIMContact) async throws {
+    /// the write path patches the single record instead. `superseding`
+    /// names the caller's earlier record id when the write re-keyed
+    /// onto a renamed href: that stale row goes away with the patch.
+    private func store(
+        _ contact: PIMContact,
+        superseding staleID: PIMContact.ID? = nil
+    ) async throws {
         var contacts = try await contactStore.contacts(
             for: contact.sourceID
         )
+        if let staleID, staleID != contact.id {
+            contacts.removeAll { $0.id == staleID }
+        }
         if let index = contacts.firstIndex(where: {
             $0.id == contact.id
         }) {
@@ -402,6 +436,60 @@ public actor PIMContactWriteService {
         try await contactStore.saveContacts(
             contacts,
             for: contact.sourceID
+        )
+    }
+
+    /// The freshest cached record for the item a caller wants to
+    /// write — by record id first, else by uid so a resourceName/href
+    /// the provider renamed still resolves. nil when the cache holds
+    /// nothing matching, e.g. a remote delete sync has not merged.
+    private func storedRecord(
+        matching contact: PIMContact
+    ) async throws -> PIMContact? {
+        let contacts = try await contactStore.contacts(
+            for: contact.sourceID
+        )
+        if let exact = contacts.first(where: { $0.id == contact.id }) {
+            return exact
+        }
+        guard let uid = contact.uid else { return nil }
+        return contacts.first { $0.uid == uid }
+    }
+
+    /// Re-anchors the record onto the provider key the write actually
+    /// targeted — the id embeds the key, so a re-resolved key needs a
+    /// rebuilt identity rather than a mutation.
+    private func reanchored(_ contact: PIMContact) -> PIMContact {
+        let id = PIMContact.makeID(
+            sourceID: contact.sourceID,
+            providerItemKey: contact.providerItemKey
+        )
+        guard id != contact.id else { return contact }
+        return PIMContact(
+            id: id,
+            sourceID: contact.sourceID,
+            collectionID: contact.collectionID,
+            providerItemKey: contact.providerItemKey,
+            providerVersion: contact.providerVersion,
+            uid: contact.uid,
+            displayName: contact.displayName,
+            givenName: contact.givenName,
+            familyName: contact.familyName,
+            nickname: contact.nickname,
+            organization: contact.organization,
+            jobTitle: contact.jobTitle,
+            note: contact.note,
+            emails: contact.emails,
+            phones: contact.phones,
+            addresses: contact.addresses,
+            dates: contact.dates,
+            urls: contact.urls,
+            photoURL: contact.photoURL,
+            photoData: contact.photoData,
+            groupKeys: contact.groupKeys,
+            rawPayload: contact.rawPayload,
+            providerUpdatedAt: contact.providerUpdatedAt,
+            syncedAt: contact.syncedAt
         )
     }
 

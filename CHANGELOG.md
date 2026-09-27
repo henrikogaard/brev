@@ -52,6 +52,10 @@ All notable changes to Brev are documented here.
   row drops the redundant person icon.
 - macOS reader re-measures the message body after the window or pane
   narrows, so text wraps at ~700 pt instead of clipping mid-line.
+- Contacts and Tasks editing: retrying a change after "…changed on the
+  server" now lands — the write re-reads the synced record's href/etag
+  instead of replaying the stale `If-Match` the editor captured. Same
+  fix as the calendar write path; deletes re-resolve the same way.
 - iPhone thread view opens with the latest (or first unread) message
   expanded instead of every message collapsed.
 - Calendar editing: retrying an event edit after "This event changed on
