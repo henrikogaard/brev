@@ -15,6 +15,21 @@
   baseline drift (unrecorded baselines from #105/#111 plus simulator
   TZ) — not caused by this change.
 
+## 2026-09-27 — Agent — macOS chrome polish (N-M5/N-M6/P2)
+
+- `fix/macos-chrome-polish`: M5 — search-scope picker switched to
+  `.menu` (was `.segmented`) in the compact toolbar strip. M6 — macOS
+  Send is a text accent action in the chrome row; From row renders its
+  label via `fromPickerLabel` aligned to the field gutter with an
+  invisible Menu overlay for interaction. P2 — app-password credential
+  mode gains a Username TextField with an email-address prompt.
+- New macOS snapshot suite `ComposeViewMacOSSnapshotTests` (light+dark)
+  wired into the macOS<26 skip regex and the `snapshot-macos`
+  `-only-testing` list; `davConnectSheet` baseline re-recorded with the
+  username field.
+- Verified: ComposeViewMacOSSnapshotTests 2/2 pass; BrevSettings
+  PIMDAVConnectFormTests 7/7; lint.sh + format.sh clean.
+
 ## 2026-09-26 — Agent — iPhone composer polish
 
 - `fix/ios-composer-polish`: mobileToolbar title centred via overlay

@@ -802,13 +802,18 @@ struct PIMSourceConnectSheet: View {
             switch form.credentialMode {
             case .appPassword:
                 TextField(
-                    String(localized: "Username", bundle: .module),
-                    text: $form.username
-                )
+                    text: $form.username,
+                    prompt: Text(
+                        String(localized: "Username (usually your email address)", bundle: .module)
+                    )
+                ) {
+                    Label(String(localized: "Username", bundle: .module), systemImage: "person")
+                }
+                .textContentType(.username)
                 #if os(iOS)
-                .textInputAutocapitalization(.never)
+                    .textInputAutocapitalization(.never)
                 #endif
-                .autocorrectionDisabled()
+                    .autocorrectionDisabled()
 
                 SecureField(
                     String(localized: "App-specific password", bundle: .module),

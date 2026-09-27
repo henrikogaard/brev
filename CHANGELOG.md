@@ -38,6 +38,14 @@ All notable changes to Brev are documented here.
 - Sign-in: the Google-not-configured caption no longer stacks under an
   error banner — the error takes priority.
 
+- macOS toolbar: the search-scope picker is now a compact menu instead
+  of heavy segmented chips.
+- macOS composer: Send is a text accent action in the chrome row (was a
+  filled capsule), matching iOS; the From row label aligns with the
+  field gutter.
+- Add DAV Source / Reconnect sheets show a Username field labelled
+  "Username (usually your email address)" on both platforms.
+
 
 
 

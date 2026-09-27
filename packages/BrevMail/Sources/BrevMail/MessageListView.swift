@@ -1551,13 +1551,15 @@ public struct MessageListView: View {
                 .controlSize(.small)
                 .fixedSize()
                 .accessibilityLabel(String(localized: "Search folder scope", bundle: .module))
-                Picker("", selection: $searchScope) {
+                Picker(
+                    String(localized: "Search scope", bundle: .module),
+                    selection: $searchScope
+                ) {
                     ForEach(SearchScope.allCases) { scope in
                         Text(scope.title).tag(scope)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
+                .pickerStyle(.menu)
                 .controlSize(.small)
                 .fixedSize()
                 .accessibilityLabel(String(localized: "Search scope", bundle: .module))

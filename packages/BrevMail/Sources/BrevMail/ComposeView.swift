@@ -1231,25 +1231,24 @@ public struct ComposeView: View {
             }
         } label: {
             #if os(macOS)
-            // Apple Mail-style circular send: accent disc with a glyph,
-            // quiet muted disc when there's nothing to send.
+            // Text Send in the chrome row instead of a filled capsule —
+            // reads as a toolbar action and matches the iOS treatment.
             Group {
                 if isSending {
                     ProgressView()
                         .controlSize(.small)
                         .accessibilityHidden(true)
                 } else {
-                    Image(systemName: pendingUndoSendTask != nil ? "xmark" : "paperplane.fill")
-                        .font(.system(size: 13, weight: .semibold))
+                    Text(verbatim: pendingUndoSendTask != nil
+                        ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
                 }
             }
-            .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
-            .frame(width: toolbarMetrics.buttonSize + 2, height: toolbarMetrics.buttonSize + 2)
-            .background {
-                Circle().fill(isDisabled ? theme.bgTertiary.color : theme.accent.color)
-            }
-            .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
-            .contentShape(Circle())
+            .font(.subheadline.weight(.semibold))
+            .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.accent.color)
+            .lineLimit(1)
+            .padding(.horizontal, BrevSpacing.xs)
+            .frame(minHeight: toolbarMetrics.hitTargetSize)
+            .contentShape(Rectangle())
             #else
             // Apple Mail-style Send: bold accent text in the chrome row
             // rather than a capsule, keeping the 44pt hit area.
@@ -1598,19 +1597,30 @@ public struct ComposeView: View {
     @ViewBuilder
     private var fromSenderControl: some View {
         if shouldShowFromPicker {
-            Menu {
-                fromPickerMenuContent
-            } label: {
-                fromPickerLabel
-            }
-            .menuStyle(.borderlessButton)
-            .accessibilityLabel(String(localized: "From", bundle: .module))
-            .accessibilityValue(currentFromEmail)
-            .help(
-                hasMultipleSenderOptions
-                    ? String(localized: "Choose sender", bundle: .module)
-                    : String(localized: "Send from a different alias", bundle: .module)
-            )
+            // The visible row is a plain label so the address starts on the
+            // same x as To/Subject field text — a borderless Menu paints its
+            // own ~5 pt label inset, which visibly drifted the From row.
+            // An invisible Menu overlay supplies the interaction.
+            fromPickerLabel
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+                .accessibilityHidden(true)
+                .overlay {
+                    Menu {
+                        fromPickerMenuContent
+                    } label: {
+                        Color.clear
+                    }
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
+                    .accessibilityLabel(String(localized: "From", bundle: .module))
+                    .accessibilityValue(currentFromEmail)
+                }
+                .help(
+                    hasMultipleSenderOptions
+                        ? String(localized: "Choose sender", bundle: .module)
+                        : String(localized: "Send from a different alias", bundle: .module)
+                )
         } else {
             Text(currentFromEmail)
                 .brevFont(.body)
