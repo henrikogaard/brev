@@ -92,6 +92,16 @@ public struct ContactEditorView: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                    // Save failures surface at the top of the form so a
+                    // conflict on a long contact is visible without
+                    // scrolling to the notes section.
+                    if let lastError = editing.lastError {
+                        BrevInlineStatus(
+                            message: lastError,
+                            tone: .danger,
+                            lineLimit: nil
+                        )
+                    }
                     photoSection
                     namesSection
                     organizationSection
@@ -148,12 +158,6 @@ public struct ContactEditorView: View {
                     addressesSection
                     groupsSection
                     notesSection
-                    if let lastError = editing.lastError {
-                        Text(lastError)
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.danger.color)
-                            .fixedSize(horizontal: false, vertical: true)
-                    }
                 }
                 .padding(BrevSpacing.lg)
             }

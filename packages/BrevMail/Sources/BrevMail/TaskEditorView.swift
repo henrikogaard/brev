@@ -103,6 +103,11 @@ public struct TaskEditorView: View {
     private var form: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                // Save failures surface at the top of the form so a
+                // conflict is visible without scrolling past Notes.
+                if let lastError = model.lastError {
+                    BrevInlineStatus(message: lastError, tone: .danger)
+                }
                 fieldGroup(String(localized: "Title", bundle: .module)) {
                     TextField(
                         String(localized: "Task title", bundle: .module),
@@ -172,10 +177,6 @@ public struct TaskEditorView: View {
                                 style: .continuous
                             )
                         )
-                }
-
-                if let lastError = model.lastError {
-                    BrevInlineStatus(message: lastError, tone: .danger)
                 }
             }
             .padding(BrevSpacing.md)

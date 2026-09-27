@@ -5273,6 +5273,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5387,3 +5388,29 @@ buttons, and package-aware localization.
   ADR-0072 bullets for both services extended; CHANGELOG entry added.
 - **Verified:** `swift test --filter 'PIMContactWrite|PIMTaskWrite'` —
   52/52, including 6 new re-resolution tests.
+
+## 2026-09-27 — Agent — Editor conflict copy polish
+
+- **Goal:** `CalendarEventEditorView` rendered `editing.lastError` at
+  the bottom of a long form — a save conflict was invisible below the
+  fold (flagged during D2 device verification).
+- **Changes:** error now renders as `BrevInlineStatus` (danger tone)
+  at the top of the form's VStack, replacing the hand-rolled `Text`;
+  consistent with `TaskEditorView` and the codebase's status surfaces.
+- **Verified:** new `CalendarEventEditorSnapshotTests.conflictCalloutRendersAboveFold`
+  (macOS, baseline recorded on macOS 26.5) — conflict copy visible at
+  top of form. Suite added to the macOS<26 skip list and the
+  `snapshot-macos` job's -only-testing list.
+
+## 2026-09-27 — Agent — Editor conflict copy: contact/task editors
+
+- **Goal:** device verification of #121 flagged that ContactEditorView
+  and TaskEditorView have the identical below-the-fold lastError
+  rendering — extend the same top-of-form treatment for one coherent
+  outcome.
+- **Changes:** ContactEditorView hand-rolled Text -> BrevInlineStatus
+  at top of form; TaskEditorView's existing BrevInlineStatus moved
+  from bottom to top.
+- **Verified:** PIMEditorConflictSnapshotTests (2 baselines, macOS
+  26.5) — both banners at top; suite wired into the macOS<26 skip
+  list and snapshot-macos -only-testing list.
