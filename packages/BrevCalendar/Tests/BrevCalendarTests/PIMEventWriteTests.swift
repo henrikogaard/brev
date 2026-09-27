@@ -1266,6 +1266,251 @@ struct PIMEventWriteTests {
         }
     }
 
+    @Test("update sends the synced etag when the caller's copy is stale")
+    func updateRebasesOntoSyncedEtag() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"v3\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "u", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        let href = "https://dav.example.com/calendars/henrik/work/e1.ics"
+        let synced = Self.event(
+            collectionID: collection.id,
+            providerItemKey: href,
+            etag: "\"v2\"",
+            uid: "e1@brev"
+        )
+        try await eventStore.saveEvents(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        // The caller holds the pre-sync copy — a draft opened before a
+        // remote bump. The write must carry the synced etag, not the
+        // frozen one.
+        var stale = synced
+        stale.providerVersion = "\"v1\""
+        let updated = try await service.update(
+            stale,
+            in: collection,
+            source: source
+        )
+        #expect(updated.providerVersion == "\"v3\"")
+        let request = try #require(davTransport.requests.first)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v2\"")
+        #expect(
+            request.url?.absoluteString
+                == "https://dav.example.com/calendars/henrik/work/e1.ics"
+        )
+    }
+
+    @Test("update re-keys a draft whose href the server renamed")
+    func updateRekeysRenamedHref() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"v3\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "u", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        // Sync already merged the rename: the cache holds only the
+        // live href. The caller's copy still points at the dead one.
+        let liveHref =
+            "https://dav.example.com/calendars/henrik/work/e1-v2.ics"
+        let synced = Self.event(
+            collectionID: collection.id,
+            providerItemKey: liveHref,
+            etag: "\"v2\"",
+            uid: "e1@brev"
+        )
+        try await eventStore.saveEvents(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let stale = Self.event(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/e1.ics",
+            etag: "\"v1\"",
+            uid: "e1@brev"
+        )
+        let updated = try await service.update(
+            stale,
+            in: collection,
+            source: source
+        )
+        #expect(updated.id == synced.id)
+        #expect(updated.providerVersion == "\"v3\"")
+        let request = try #require(davTransport.requests.first)
+        #expect(request.url?.absoluteString == liveHref)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v2\"")
+        let cached = try await eventStore.events(
+            for: source.id,
+            collectionID: collection.id
+        )
+        #expect(cached.map(\.id) == [synced.id])
+    }
+
+    @Test("a cached record that is itself stale still surfaces conflict")
+    func conflictWhenCacheIsStale() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(412),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "u", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        // Sync has not seen the remote bump — the re-resolution keeps
+        // the cached (stale) etag, so the 412 still surfaces instead
+        // of silently overwriting.
+        let existing = Self.event(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/e1.ics",
+            etag: "\"v1\"",
+            uid: "e1@brev"
+        )
+        try await eventStore.saveEvents(
+            [existing],
+            for: source.id,
+            collectionID: collection.id
+        )
+        await #expect(
+            throws: PIMEventWriteService.WriteError.conflict
+        ) {
+            try await service.update(
+                existing,
+                in: collection,
+                source: source
+            )
+        }
+        let request = try #require(davTransport.requests.first)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v1\"")
+    }
+
+    @Test("delete re-targets a renamed href and clears both records")
+    func deleteRekeysRenamedHref() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(204),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "u", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        let liveHref =
+            "https://dav.example.com/calendars/henrik/work/e1-v2.ics"
+        let synced = Self.event(
+            collectionID: collection.id,
+            providerItemKey: liveHref,
+            etag: "\"v2\"",
+            uid: "e1@brev"
+        )
+        try await eventStore.saveEvents(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let stale = Self.event(
+            collectionID: collection.id,
+            providerItemKey:
+            "https://dav.example.com/calendars/henrik/work/e1.ics",
+            etag: "\"v1\"",
+            uid: "e1@brev"
+        )
+        try await service.delete(
+            stale,
+            in: collection,
+            source: source
+        )
+        let request = try #require(davTransport.requests.first)
+        #expect(request.url?.absoluteString == liveHref)
+        #expect(request.value(forHTTPHeaderField: "If-Match") == "\"v2\"")
+        let cached = try await eventStore.events(
+            for: source.id,
+            collectionID: collection.id
+        )
+        #expect(cached.isEmpty)
+    }
+
     // MARK: - Coordinator capability
 
     // MARK: - Event attachments (#14)

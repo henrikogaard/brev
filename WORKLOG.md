@@ -5271,6 +5271,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5350,3 +5351,22 @@ buttons, and package-aware localization.
 - **Handoff:** Verified on-device by A/B (bare-401 vs challenge-401
   stubs); the in-sheet text now matches macOS for the stub's real-world
   answer.
+
+## 2026-09-27 — Agent — D2 stale write precondition
+
+- **Goal:** Fix matrix defect D2 — edits to seeded events 412 on every
+  retry after a remote etag bump.
+- **Diagnosis:** `CalendarEventDraft` captures `providerItemKey` /
+  `providerVersion` at editor open; `PIMEventWriteService.update` PUTs
+  them verbatim. Sync refreshes the cached record, but the open draft
+  keeps replaying the stale `If-Match`. Same staleness applied to
+  `delete` and to server-side resource renames (dead href).
+- **Changes:** `PIMEventWriteService` update/delete now re-resolve the
+  target through `eventStore` before writing — by record id, else by
+  the (uid, recurrenceID) identity so a synced rename re-keys the write
+  and the stored record (`store` gained a `superseding:` cleanup for
+  the stale row). `If-Match` still guards: a remote change the cache
+  has not merged still surfaces `conflict`. ADR-0072 write-path bullet
+  extended; CHANGELOG entry added. Contacts/tasks write services share
+  the latent shape — not changed here (D2 scope); noted in the PR.
+- **Verified:** pending — BrevCalendar tests + lint/format.

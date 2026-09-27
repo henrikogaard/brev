@@ -54,6 +54,11 @@ All notable changes to Brev are documented here.
   narrows, so text wraps at ~700 pt instead of clipping mid-line.
 - iPhone thread view opens with the latest (or first unread) message
   expanded instead of every message collapsed.
+- Calendar editing: retrying an event edit after "This event changed on
+  the server" now actually lands — the write re-reads the synced
+  record's href/etag instead of replaying the stale `If-Match` the
+  editor captured at open time, which 412'd on every retry. Deletes
+  re-resolve the same way.
 - Add Account: the whole "Advanced setup" row toggles, and Manual
   IMAP/SMTP shows the server form instead of a dead-end warning; the iOS
   sheet gains a navigation title and Cancel.

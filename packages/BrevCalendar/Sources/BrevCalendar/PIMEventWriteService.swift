@@ -258,6 +258,12 @@ public actor PIMEventWriteService {
 
     /// Replaces the writable fields of a cached event under its stored
     /// version precondition. Returns the updated cache record.
+    ///
+    /// Callers may hold a copy older than the last sync — an editor
+    /// draft captures the href/etag when it opens — so the write
+    /// re-resolves the target through the cache. The `If-Match` the
+    /// provider sees always comes from the synced record; a remote
+    /// change sync has not merged still conflicts.
     @discardableResult
     public func update(
         _ event: PIMEvent,
@@ -268,6 +274,13 @@ public actor PIMEventWriteService {
             throw WriteError.notWritable
         }
         var updated = event
+        if let stored = try await storedRecord(
+            matching: event,
+            in: collection
+        ) {
+            updated.providerItemKey = stored.providerItemKey
+            updated.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
@@ -304,8 +317,13 @@ public actor PIMEventWriteService {
             throw WriteError.unsupportedProvider
         }
         updated.syncedAt = now()
-        try await store(updated, in: collection)
-        return updated
+        let record = reanchored(updated, in: collection)
+        try await store(
+            record,
+            in: collection,
+            superseding: event.id
+        )
+        return record
     }
 
     // MARK: - Delete
@@ -321,12 +339,24 @@ public actor PIMEventWriteService {
         guard canWrite(source: source, collection: collection) else {
             throw WriteError.notWritable
         }
+        // Same staleness contract as update: the remote delete and its
+        // precondition address the synced record, not the caller's
+        // possibly older copy.
+        let stored = try await storedRecord(
+            matching: event,
+            in: collection
+        )
+        var target = event
+        if let stored {
+            target.providerItemKey = stored.providerItemKey
+            target.providerVersion = stored.providerVersion
+        }
         switch source.provider {
         case .google:
             let token = try await googleToken(for: source)
             try await mapGoogleError {
                 try await googleWriter.delete(
-                    event,
+                    target,
                     in: collection,
                     accessToken: token
                 )
@@ -335,7 +365,7 @@ public actor PIMEventWriteService {
             let credential = try await davCredential(for: source)
             try await mapDAVError {
                 try await davWriter.delete(
-                    event,
+                    target,
                     in: collection,
                     credential: credential
                 )
@@ -347,7 +377,11 @@ public actor PIMEventWriteService {
             for: source.id,
             collectionID: collection.id
         )
-        remaining.removeAll { $0.id == event.id }
+        // A re-resolved target may carry a different record id than the
+        // caller's copy (server-side rename); both records are the same
+        // item, so both leave the cache.
+        let removedIDs = [event.id, stored?.id].compactMap { $0 }
+        remaining.removeAll { removedIDs.contains($0.id) }
         try await eventStore.saveEvents(
             remaining,
             for: source.id,
@@ -359,15 +393,21 @@ public actor PIMEventWriteService {
 
     /// Inserts or replaces the record inside its collection's cached
     /// event list — the sync engine owns full-generation saves, so the
-    /// write path patches the single record instead.
+    /// write path patches the single record instead. `superseding` names
+    /// the caller's earlier record id when the write re-keyed onto a
+    /// renamed href: that stale row goes away with the patch.
     private func store(
         _ event: PIMEvent,
-        in collection: PIMCollection
+        in collection: PIMCollection,
+        superseding staleID: PIMEvent.ID? = nil
     ) async throws {
         var events = try await eventStore.events(
             for: event.sourceID,
             collectionID: collection.id
         )
+        if let staleID, staleID != event.id {
+            events.removeAll { $0.id == staleID }
+        }
         if let index = events.firstIndex(where: { $0.id == event.id }) {
             events[index] = event
         } else {
@@ -377,6 +417,70 @@ public actor PIMEventWriteService {
             events,
             for: event.sourceID,
             collectionID: collection.id
+        )
+    }
+
+    /// The freshest cached record for the item a caller wants to
+    /// write — by record id first, else by the (uid, recurrenceID)
+    /// identity so an href the server renamed still resolves. nil when
+    /// the cache holds nothing matching, e.g. a remote delete sync has
+    /// not merged.
+    private func storedRecord(
+        matching event: PIMEvent,
+        in collection: PIMCollection
+    ) async throws -> PIMEvent? {
+        let events = try await eventStore.events(
+            for: event.sourceID,
+            collectionID: collection.id
+        )
+        if let exact = events.first(where: { $0.id == event.id }) {
+            return exact
+        }
+        guard let uid = event.uid else { return nil }
+        return events.first {
+            $0.uid == uid && $0.recurrenceID == event.recurrenceID
+        }
+    }
+
+    /// Re-anchors the record onto the provider key the write actually
+    /// targeted — the id embeds the href, so a key re-resolution needs
+    /// a rebuilt identity rather than a mutation.
+    private func reanchored(
+        _ event: PIMEvent,
+        in collection: PIMCollection
+    ) -> PIMEvent {
+        let id = PIMEvent.makeID(
+            collectionID: collection.id,
+            providerItemKey: event.providerItemKey,
+            recurrenceID: event.recurrenceID
+        )
+        guard id != event.id else { return event }
+        return PIMEvent(
+            id: id,
+            sourceID: event.sourceID,
+            collectionID: collection.id,
+            providerItemKey: event.providerItemKey,
+            providerVersion: event.providerVersion,
+            uid: event.uid,
+            summary: event.summary,
+            eventDescription: event.eventDescription,
+            location: event.location,
+            start: event.start,
+            end: event.end,
+            isAllDay: event.isAllDay,
+            timeZoneIdentifier: event.timeZoneIdentifier,
+            status: event.status,
+            organizer: event.organizer,
+            attendees: event.attendees,
+            reminders: event.reminders,
+            conferenceURL: event.conferenceURL,
+            conference: event.conference,
+            attachments: event.attachments,
+            recurrenceRule: event.recurrenceRule,
+            recurrenceID: event.recurrenceID,
+            rawPayload: event.rawPayload,
+            providerUpdatedAt: event.providerUpdatedAt,
+            syncedAt: event.syncedAt
         )
     }
 

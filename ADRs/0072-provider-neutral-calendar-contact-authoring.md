@@ -693,7 +693,15 @@ grant.
   then patch the single cached record in place — the next sync still
   owns full-generation reconciliation. create generates the UID
   (`UUID@brev`) and re-anchors the record identity onto the
-  provider-assigned item key.
+  provider-assigned item key. update/delete re-resolve the target's
+  href/etag against the cached record before writing (by record id,
+  else by the uid+recurrenceID identity): callers like editor drafts
+  capture the precondition at open time, so replaying it after a sync
+  would resend a stale `If-Match` and conflict on every retry. A
+  server-side rename sync already merged re-keys the write — and the
+  stored record — onto the live href. The guard itself is unchanged:
+  `If-Match` rides every mutation, so a remote change the cache has not
+  merged still surfaces as `conflict`.
 - Editing opt-in: `PIMSourceCoordinator.setWriteEnabled` toggles the
   `.write` capability. Google sources route through
   `AppSession.enableGooglePIMWriteFeature`, which re-authorizes the
