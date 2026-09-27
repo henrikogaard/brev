@@ -3587,12 +3587,15 @@ private extension View {
     }
 
     /// iOS renders the bottom-bar toolbar as a floating pill the List doesn't
-    /// inset for inside a split-view column, so the last row scrolls under it.
-    /// Reserve matching scroll space there; a no-op elsewhere.
+    /// inset for inside a split-view column, so at rest the pill covers the
+    /// last visible row. Reserve real layout space for it — not just extra
+    /// scroll room — so a row is never born underneath the pill.
     @ViewBuilder
     func brevBottomBarScrollInset() -> some View {
         #if os(iOS)
-        contentMargins(.bottom, MessageListPresentation.bottomBarScrollInset, for: .scrollContent)
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            Color.clear.frame(height: MessageListPresentation.bottomBarScrollInset)
+        }
         #else
         self
         #endif

@@ -2085,9 +2085,19 @@ public struct MessageDetailView: View {
                     .foregroundStyle(theme.textSecondary.color)
                     .textSelection(.enabled)
             case .empty:
-                Text("No body content.", bundle: .module)
-                    .font(messageBodyFont)
-                    .foregroundStyle(theme.textTertiary.color)
+                // `.empty` with no body object means the load hasn't
+                // produced one yet — open lands here for a beat before
+                // `loadMessage` flips `isLoading`. Render the skeleton in
+                // that window so the body area never flashes a blank or a
+                // premature "no content" label.
+                if messageBody == nil {
+                    BrevSkeletonText(lineCount: 8)
+                        .padding(.vertical, BrevSpacing.sm)
+                } else {
+                    Text("No body content.", bundle: .module)
+                        .font(messageBodyFont)
+                        .foregroundStyle(theme.textTertiary.color)
+                }
             }
         }
     }

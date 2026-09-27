@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
+
+- `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves
+  bottom layout space equal to the floating toolbar pill on iOS so a
+  row is never born underneath it. P3 — the reader's empty body state
+  shows `BrevSkeletonText` while the body is still loading and a plain
+  "No body content." when it finished empty. P4 — LoginView suppresses
+  the Google-not-configured caption while a sign-in/restore error
+  banner is up.
+- New snapshot: LoginView `compact-error-over-google-caption`.
+- Verified: LoginViewSnapshotTests pass on iPhone 17 sim; lint.sh +
+  format.sh clean. The remaining iOS snapshot failures are pre-existing
+  baseline drift (unrecorded baselines from #105/#111 plus simulator
+  TZ) — not caused by this change.
+
 ## 2026-09-26 — Agent — iPhone composer polish
 
 - `fix/ios-composer-polish`: mobileToolbar title centred via overlay

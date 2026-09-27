@@ -215,7 +215,9 @@ public struct LoginView: View {
                     }
                 }
             } else {
-                if session.googleOAuthConfigIsInvalid {
+                // A sign-in/restore error banner takes priority: don't stack
+                // the configuration caption under it.
+                if session.googleOAuthConfigIsInvalid && session.signInError == nil {
                     Text(
                         "Google sign-in isn't configured in this build. Provide the OAuth client ID at build time, or add a mail account instead.",
                         bundle: .module
