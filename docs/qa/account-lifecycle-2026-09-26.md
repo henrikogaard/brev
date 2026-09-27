@@ -132,6 +132,14 @@ approve the sign-in on a trusted device or provide a fully password-only
 account.
 
 iOS onboarding shows only "Add mail account" — no "Continue with
-Google" row — even with `BREVGoogleOAuthIOSClientID` baked into
-Info.plist (observation: the Google option appears gated on something
-beyond the client ID in this build; needs a follow-up).
+Google" row — **resolved (O5, 2026-09-26):** the iOS OAuth client ID is
+NOT baked by `tuist generate` (the checked-in pbxproj keeps empty
+`BREV_GOOGLE_OAUTH_*` values by design). `script/build_and_run.sh`
+injects them as xcodebuild build-setting overrides; a plain `xcodebuild`
+without those overrides produces a build with no Google row. Verified
+on iPhone 17 sim iOS 27.0: building with the client-ID override yields
+the "Continue with Google" row (Info.plist carries the 72-char ID); the
+same build without it shows the missing-config guidance added in #116.
+Stale builds must be regenerated/rebuilt via `script/build_and_run.sh`
+(or equivalent overrides) — see the blueprint's `ios-oauth` knowledge
+entry.

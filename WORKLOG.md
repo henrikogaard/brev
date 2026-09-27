@@ -5274,6 +5274,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5414,3 +5415,18 @@ buttons, and package-aware localization.
 - **Verified:** PIMEditorConflictSnapshotTests (2 baselines, macOS
   26.5) — both banners at top; suite wired into the macOS<26 skip
   list and snapshot-macos -only-testing list.
+
+## 2026-09-26 — Agent — QA matrix + lifecycle doc update (D/O fixes verified)
+
+- **Goal:** Record the D1/D3/D4/D7/O5 verification outcomes on
+  `docs/qa/pim-parity-matrix.md` and close out the truncated O5
+  paragraph in `account-lifecycle-2026-09-26.md`.
+- **Changes:** 1.7 iOS ✓ (fixed #113; 401+challenge copy #117), 1.8
+  iOS ✓ (~15 s bound, #114; macOS cells kept ⚠ — not re-verified on
+  device), defect table statuses D1/D3/D4/D7/O5 resolved; O5 doc now
+  explains the xcodebuild-override mechanism (`tuist generate` does not
+  bake the client ID).
+- **Verification:** device pass on iPhone 17 sim iOS 27.0 (Devin
+  session 82de84bd); D3 re-verified as already-fixed by #101.
+- **Handoff:** D2 (stale-href 412-forever) remains the one open
+  calendar defect; iOS VoiceOver row 5.1 still untested.
