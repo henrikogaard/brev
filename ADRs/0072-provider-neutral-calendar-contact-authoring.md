@@ -321,10 +321,19 @@ entry names the slice that introduced it; details live in the code.
   endpoints and RFC 6764 well-known discovery, HTTPS enforced (loopback
   excepted for dev), redirects followed hop-by-hop so credentials never
   cross origins unchosen, PROPFIND current-user-principal as the
+<<<<<<< HEAD
   authenticated check, actionable error taxonomy. Setup validation is
   interactive, so `PIMDAVClient` bounds each request at 15 s (dead hosts
   and stalled TLS handshakes surface the callout promptly); steady-state
   sync transports keep the URLSession default.
+||||||| 98055a3
+  authenticated check, actionable error taxonomy.
+=======
+  authenticated check, actionable error taxonomy. Both 401 shapes
+  classify as `authenticationRequired`: a bare response and the
+  challenge-bearing variant URLSession reports as
+  `userCancelledAuthentication`.
+>>>>>>> origin/fix/dav-401-classification
 - `PIMSourceCoordinator`: serial lifecycle owner — connect stages the
   credential before persisting the record and rolls it back on failure;
   reconnect validates the candidate before replacing the stored reference;

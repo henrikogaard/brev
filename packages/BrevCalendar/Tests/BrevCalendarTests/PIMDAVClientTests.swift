@@ -160,6 +160,23 @@ struct PIMDAVClientTests {
         }
     }
 
+    @Test("challenge-bearing 401 surfaces authenticationRequired, not transportFailed")
+    func challengedAuthenticationRequired() async throws {
+        // A 401 carrying WWW-Authenticate enters URLSession's challenge
+        // flow; with no challenge handler it fails the task as
+        // userCancelledAuthentication instead of returning a response.
+        let transport = ScriptedTransport(steps: [
+            .failure(URLError(.userCancelledAuthentication))
+        ])
+        await #expect(throws: PIMDAVConnectError.authenticationRequired) {
+            try await makeClient(transport).validate(
+                endpoint: .manual(URL(string: "https://dav.example.com/")!),
+                kind: .calendar,
+                credential: .basic(username: "u", password: "wrong")
+            )
+        }
+    }
+
     @Test("TLS failures never fall back to insecure transport")
     func tlsFailure() async throws {
         let transport = ScriptedTransport(steps: [

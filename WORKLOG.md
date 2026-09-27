@@ -5270,6 +5270,7 @@ buttons, and package-aware localization.
 
 
 
+
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -5333,3 +5334,19 @@ buttons, and package-aware localization.
 - **Handoff:** Nil (`googleOAuthIsConfigured` unset, e.g. tests/minimal
   fixtures) keeps the hint hidden — only an explicit check failure shows it.
 
+
+## 2026-09-26 — Agent — DAV 401-challenge classification (D1 follow-up)
+
+- **Goal:** Device verification of the D1 in-sheet callout showed real
+  DAV servers answer wrong credentials with `401 + WWW-Authenticate`,
+  which URLSession reports as `.userCancelledAuthentication` —
+  `mapTransportError` classified it `transportFailed`, so the sheet
+  showed "could not be reached" instead of the credentials copy.
+- **Changes:** `PIMDAVClient.mapTransportError` maps
+  `.userCancelledAuthentication` to `.authenticationRequired`; ADR-0072
+  contract bullet documents both 401 shapes.
+- **Verification:** new `challengedAuthenticationRequired` test in
+  `PIMDAVClientTests`; suite 13/13 green; `lint.sh` + `format.sh` clean.
+- **Handoff:** Verified on-device by A/B (bare-401 vs challenge-401
+  stubs); the in-sheet text now matches macOS for the stub's real-world
+  answer.

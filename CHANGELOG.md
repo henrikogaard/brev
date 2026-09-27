@@ -8,6 +8,7 @@ All notable changes to Brev are documented here.
 
 
 
+
 - Add DAV Source / Reconnect sheets now show server-side failures
   (rejected credentials, TLS errors, unreachable host) as an inline
   callout after Connect is tapped — previously they only surfaced in the
@@ -29,7 +30,10 @@ All notable changes to Brev are documented here.
   explains that Google sign-in isn't configured and points at adding a
   mail account, instead of silently omitting the Google row.
 
-- IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
+- DAV setup: a credentials rejection that arrives through
+  URLSession's authentication-challenge path (401/407 carrying
+  `WWW-Authenticate`) now surfaces "The server rejected these
+  credentials…" instead of the misleading "could not be reached" copy.- IMAP: `SELECT` no longer appends `(CONDSTORE)` to servers that don't
   advertise the capability — those servers (e.g. mailo.com) rejected the
   command outright, so no mailbox could be opened on them.
 - SMTP: accounts on servers that advertise only `AUTH LOGIN` now

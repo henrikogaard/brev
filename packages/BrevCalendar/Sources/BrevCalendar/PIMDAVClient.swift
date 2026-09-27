@@ -423,7 +423,12 @@ public struct PIMDAVClient: Sendable {
              .clientCertificateRejected,
              .clientCertificateRequired:
             return .tlsValidationFailed
-        case .userAuthenticationRequired:
+        case .userAuthenticationRequired,
+             // URLSession surfaces a challenge-bearing 401/407 — one that
+             // carries WWW-Authenticate — as userCancelledAuthentication
+             // when no challenge handler answers. It is the same rejection
+             // as a bare 401, which arrives as an HTTP response instead.
+             .userCancelledAuthentication:
             return .authenticationRequired
         default:
             return .transportFailed
