@@ -214,6 +214,7 @@ public struct BrevMailRootView: View {
     #if os(iOS)
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
     @State private var navigation = MailNavigationState()
     @State private var relatedConversation = RelatedConversationController()
@@ -2565,7 +2566,12 @@ public struct BrevMailRootView: View {
         }
 
         if let header = navigation.selectedHeader ?? compactReaderHeader {
-            ToolbarItemGroup(placement: .bottomBar) {
+            // Landscape: the floating `.bottomBar` capsule's hit region covers
+            // the nav-leading Back button on iOS 26+; move the actions into
+            // the top bar when height is compact instead.
+            let placement: ToolbarItemPlacement = verticalSizeClass == .compact
+                ? .topBarTrailing : .bottomBar
+            ToolbarItemGroup(placement: placement) {
                 Button {
                     presentReply(to: header)
                 } label: {

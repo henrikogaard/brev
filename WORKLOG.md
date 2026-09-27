@@ -5458,3 +5458,15 @@ buttons, and package-aware localization.
   toggle/disconnect/remove); BrevCalendar suite green; lint+format.
 - **Handoff:** device re-verify — open Calendar window, connect stub
   source in Settings, expect rows without reopen.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M1 landscape reader back button covered
+
+- **Goal:** UI/UX review M1 — on iPhone landscape the floating
+  Reply/Archive/Delete bar's hit region covered the nav-leading back
+  chevron (AX: centre "covered by button Reply"); taps did nothing.
+- **Changes:** `compactReaderToolbar` places the action group at
+  `.topBarTrailing` when `verticalSizeClass == .compact`, `.bottomBar`
+  otherwise; reads `verticalSizeClass` from the view environment.
+- **Verified:** `xcodebuild -scheme BrevIOS` for iPhone 17 iOS 27 sim —
+  BUILD SUCCEEDED; lint+format clean.
+- **Handoff:** device re-verify — landscape reader → tap back chevron.

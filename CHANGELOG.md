@@ -15,6 +15,10 @@ All notable changes to Brev are documented here.
   connected while the window is open — previously they stayed on
   "No sources connected" until closed and reopened.
 
+- iPhone landscape reader: the "Back to messages" button is tappable
+  again — the floating action bar now moves into the top bar in
+  compact-height (its hit region covered the back control on iOS 26+).
+
 
 
 
