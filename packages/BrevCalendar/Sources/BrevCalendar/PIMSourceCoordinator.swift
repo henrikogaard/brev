@@ -25,6 +25,7 @@ public actor PIMSourceCoordinator {
     private let localData: any PIMSourceLocalDataStore
     private let davClient: PIMDAVClient
     private let now: () -> Date
+    private let changeBroadcaster = PIMSourceChangeBroadcaster()
 
     private var sources: [PIMSource.ID: PIMSource]?
 
@@ -40,6 +41,16 @@ public actor PIMSourceCoordinator {
         self.localData = localData
         self.davClient = davClient
         self.now = now
+    }
+
+    // MARK: - Change observation
+
+    /// Emits once per persisted source mutation — connect, reconnect,
+    /// sync/write toggles, status transitions, removal. Browsing
+    /// surfaces subscribe so a source added while a window is open
+    /// appears without reopening it.
+    public nonisolated func changes() -> AsyncStream<Void> {
+        changeBroadcaster.stream()
     }
 
     // MARK: - Queries
@@ -129,6 +140,7 @@ public actor PIMSourceCoordinator {
             throw error
         }
         sources?[source.id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -168,6 +180,7 @@ public actor PIMSourceCoordinator {
         )
         try await store.save(source)
         sources?[source.id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -202,6 +215,7 @@ public actor PIMSourceCoordinator {
         source.updatedAt = now()
         try await store.save(source)
         sources?[source.id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -219,6 +233,7 @@ public actor PIMSourceCoordinator {
         source.updatedAt = now()
         try await store.save(source)
         sources?[source.id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -244,6 +259,7 @@ public actor PIMSourceCoordinator {
         source.updatedAt = now()
         try await store.save(source)
         sources?[source.id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -290,6 +306,7 @@ public actor PIMSourceCoordinator {
         }
         try await store.deleteSource(id: sourceID)
         sources?[sourceID] = nil
+        changeBroadcaster.emit()
     }
 
     // MARK: - Internals
@@ -320,6 +337,7 @@ public actor PIMSourceCoordinator {
         source.updatedAt = now()
         try await store.save(source)
         sources?[id] = source
+        changeBroadcaster.emit()
         return source
     }
 
@@ -328,6 +346,40 @@ public actor PIMSourceCoordinator {
     /// write-target entry.
     static func credentialAccount(for sourceID: PIMSource.ID) -> String {
         "pim-source-\(sourceID)"
+    }
+}
+
+/// Fan-out of source-mutation ticks to any number of `AsyncStream`
+/// subscribers. Elements carry no payload — observers always re-query.
+private final class PIMSourceChangeBroadcaster: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<Void>.Continuation] = [:]
+
+    func stream() -> AsyncStream<Void> {
+        AsyncStream { continuation in
+            let token = UUID()
+            lock.withLock {
+                continuations[token] = continuation
+            }
+            continuation.onTermination = { [weak self] _ in
+                self?.unregister(token: token)
+            }
+        }
+    }
+
+    func emit() {
+        let snapshot: [AsyncStream<Void>.Continuation] = lock.withLock {
+            Array(continuations.values)
+        }
+        for continuation in snapshot {
+            continuation.yield()
+        }
+    }
+
+    private func unregister(token: UUID) {
+        lock.withLock {
+            _ = continuations.removeValue(forKey: token)
+        }
     }
 }
 

@@ -11,6 +11,10 @@ All notable changes to Brev are documented here.
   window minimum no longer applies on iOS, so row text and the Done
   button stay on-screen.
 
+- macOS Calendar / Contacts / Tasks windows now pick up a DAV source
+  connected while the window is open — previously they stayed on
+  "No sources connected" until closed and reopened.
+
 
 
 

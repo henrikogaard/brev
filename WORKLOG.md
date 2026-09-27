@@ -5443,3 +5443,18 @@ buttons, and package-aware localization.
   iPhone 17 / iOS 27.0 sim; lint.sh + format.sh clean.
 - **Handoff:** device re-verify on the sim — rotate portrait/landscape,
   confirm Done is reachable on all three covers.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-H2 PIM live-refresh on source changes
+
+- **Goal:** UI/UX review N-H2 — macOS Calendar/Contacts/Tasks windows
+  stuck on "No sources connected" when a DAV source is connected while
+  the window is open.
+- **Changes:** `PIMSourceCoordinator.changes()` — AsyncStream tick per
+  persisted mutation (connect/reconnect/sync+write toggles/transitions/
+  removal), broadcast helper mirrors the BrevBackend `Broadcaster`
+  pattern; browsing + editing models gain `observeSourceChanges()`;
+  all three RootViews subscribe via `.task`. ADR-0072 contract bullet.
+- **Verified:** new `changesStreamEmitsOnMutation` (3 ticks across
+  toggle/disconnect/remove); BrevCalendar suite green; lint+format.
+- **Handoff:** device re-verify — open Calendar window, connect stub
+  source in Settings, expect rows without reopen.

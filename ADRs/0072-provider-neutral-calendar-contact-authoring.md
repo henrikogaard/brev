@@ -331,7 +331,9 @@ entry names the slice that introduced it; details live in the code.
   credential before persisting the record and rolls it back on failure;
   reconnect validates the candidate before replacing the stored reference;
   removal never contacts the provider; linkedSources feeds mail-account
-  removal; sync opt-in is a separate explicit flag.
+  removal; sync opt-in is a separate explicit flag. `changes()` emits a
+  tick per persisted mutation so open browsing windows and editors
+  re-load without a reopen.
 - `PIMSourceStatusPresentation` / `PIMSourceStatusPresenter`: the shared
   status presentation model for settings and future browsing surfaces.
 ### #5 slice 2 — settings source surface (2026-09-20, BrevSettings)

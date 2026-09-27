@@ -530,4 +530,30 @@ struct PIMSourceCoordinatorTests {
         #expect(try await coordinator.allSources().isEmpty)
         #expect(await credentials.credentials.isEmpty)
     }
+
+    // MARK: - Change observation
+
+    @Test("changes() emits once per persisted mutation")
+    func changesStreamEmitsOnMutation() async throws {
+        let root = try makeTempDir()
+        let coordinator = makeCoordinator(
+            transport: Self.okTransport(),
+            localDataRoot: root
+        )
+        let source = try await coordinator.connectDAVSource(
+            kind: .contacts,
+            endpoint: .manual(URL(string: "https://dav.example.com/carddav/")!),
+            displayName: "Work contacts",
+            credential: .basic(username: "u", password: "p")
+        )
+
+        var ticks = coordinator.changes().makeAsyncIterator()
+
+        try await coordinator.setSyncEnabled(true, for: source.id)
+        #expect(await ticks.next() != nil)
+        try await coordinator.disconnect(sourceID: source.id)
+        #expect(await ticks.next() != nil)
+        try await coordinator.removeSource(id: source.id, deleteCachedContent: true)
+        #expect(await ticks.next() != nil)
+    }
 }

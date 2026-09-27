@@ -208,6 +208,19 @@ public final class TasksBrowsingModel {
             }
     }
 
+    // MARK: - Change observation
+
+    /// Re-runs `load()` on every coordinator source mutation, so a
+    /// source connected (or removed) while this surface is open appears
+    /// without reopening the window. Runs until the consuming task is
+    /// cancelled; call from `.task`.
+    public func observeSourceChanges() async {
+        guard let coordinator else { return }
+        for await _ in coordinator.changes() {
+            await load()
+        }
+    }
+
     // MARK: - Loading
 
     /// Loads sources, collections, and the cached tasks. Cache-only —

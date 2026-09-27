@@ -140,6 +140,17 @@ public final class CalendarEditingModel {
     /// Whether event authoring is wired in this session.
     public var canAuthor: Bool { writeService != nil }
 
+    /// Re-runs `load()` on every coordinator source mutation, so a
+    /// source's writability change made elsewhere (Settings toggles,
+    /// a newly connected source) is reflected while the surface stays
+    /// open. Runs until the consuming task is cancelled.
+    public func observeSourceChanges() async {
+        guard let coordinator else { return }
+        for await _ in coordinator.changes() {
+            await load()
+        }
+    }
+
     /// Refreshes the writable target list from the coordinator and the
     /// cached collections. Cache-only — never contacts a provider.
     public func load() async {

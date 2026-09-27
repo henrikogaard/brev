@@ -102,6 +102,8 @@ public struct CalendarRootView: View {
         )
         .task { await model.load() }
         .task { await editing?.load() }
+        .task { await model.observeSourceChanges() }
+        .task { await editing?.observeSourceChanges() }
         .onChange(of: model.selectedEventID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail

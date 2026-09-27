@@ -99,6 +99,8 @@ public struct TasksRootView: View {
         )
         .task { await model.load() }
         .task { await editing?.load() }
+        .task { await model.observeSourceChanges() }
+        .task { await editing?.observeSourceChanges() }
         .onChange(of: model.selectedTaskID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
