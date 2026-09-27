@@ -50,6 +50,12 @@ All notable changes to Brev are documented here.
   and tasks land at sensible morning hours in the reader's own
   timezone instead of drifting with UTC offsets.
 
+- iOS: the mailbox search field moved to a floating glass capsule above
+  the bottom bar — the same bottom-search idiom iOS Mail uses — instead
+  of a bordered band at the top of the list. The capsule rides up with
+  the keyboard and renders Liquid Glass where the translucency
+  preference enables it.
+
 
 
 

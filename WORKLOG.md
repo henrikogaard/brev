@@ -38,6 +38,19 @@
   time in any timezone, matching the QA review screenshots.
 - Data-only change; no code. lint.sh + format.sh unaffected paths.
 
+## 2026-09-27 — Agent — iOS bottom glass search
+
+- `fix/ios-bottom-search`: `MessageListSearchBand` moved from the top
+  of the column VStack to `safeAreaInset(edge: .bottom)` in
+  MessageListView and UnifiedInboxListView, lifted by
+  `bottomSearchCapsuleLift` (56) so it clears the floating bottom-bar
+  pill. `MessageListSearchField` restyled to a capsule: brevGlassSurface
+  (Liquid Glass when the glass translucency mode is on) over the card
+  material + hairline border fallback.
+- Verified: `xcodebuild -scheme BrevMail -destination iPhone-17-sim`
+  build clean; lint.sh + format.sh clean. Device check pending with the
+  batch verification run.
+
 ## 2026-09-26 — Agent — iPhone composer polish
 
 - `fix/ios-composer-polish`: mobileToolbar title centred via overlay

@@ -204,9 +204,6 @@ struct UnifiedInboxListView: View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
             LegacyPinNotice()
-            #if os(iOS)
-            MessageListSearchBand(navigation: navigation)
-            #endif
             if !selectedItemIDs.isEmpty {
                 bulkActionBar
             }

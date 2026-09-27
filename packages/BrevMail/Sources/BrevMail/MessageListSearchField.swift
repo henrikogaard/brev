@@ -69,37 +69,17 @@ struct MessageListSearchField: View {
         .padding(.leading, BrevSpacing.md)
         .padding(.trailing, text.isEmpty ? BrevSpacing.md : BrevSpacing.xs)
         .frame(height: chromeHeight)
-        .background(BrevWindowSurfaceBackground(role: .card))
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color, lineWidth: 1)
+        .brevGlassSurface(role: .card, in: Capsule())
+        .background {
+            BrevWindowSurfaceBackground(role: .card)
+                .clipShape(Capsule())
         }
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+        .overlay {
+            Capsule()
+                .strokeBorder(theme.border.color, lineWidth: 1)
+        }
+        .clipShape(Capsule())
         .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
-    }
-}
-
-/// Full-width search band above the message list.
-///
-/// The navigation bar has room for the back button and the mailbox
-/// actions but not a search capsule — the old principal-slot field
-/// clipped its placeholder against the action cluster. Apple Mail gives
-/// search its own row above the list, so the field gets the full column
-/// width and the bar stays calm. Lives inside the list's content stack,
-/// directly under the navigation bar: a `safeAreaInset(edge: .top)`
-/// version collided with the bar's row instead of landing below it.
-struct MessageListSearchBand: View {
-    @Bindable var navigation: MailNavigationState
-
-    var body: some View {
-        MessageListSearchField(
-            text: $navigation.searchText,
-            prompt: String(localized: "Search messages", bundle: .module),
-            focusRequestID: navigation.searchFocusRequestID
-        )
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.top, BrevSpacing.xxs)
-        .background(Color.clear)
     }
 }
 

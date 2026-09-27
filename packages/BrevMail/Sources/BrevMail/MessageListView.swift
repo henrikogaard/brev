@@ -360,9 +360,6 @@ public struct MessageListView: View {
     private func mailboxContent(presentation: MessageListPresentationSnapshot) -> some View {
         VStack(spacing: 0) {
             LegacyPinNotice()
-            #if os(iOS)
-            MessageListSearchBand(navigation: navigation)
-            #endif
             if !navigation.bulkSelection.isEmpty {
                 bulkActionBar(visibleHeaders: presentation.headers)
             }
@@ -428,23 +425,11 @@ public struct MessageListView: View {
             }
             #endif
         }
-        #if os(iOS)
-        .toolbar {
-            mailboxToolbar(presentation: presentation)
-        }
-        #endif
+        // iOS contributes no toolbar items of its own: the bottom bar
+        // carries only the search capsule and Compose (Apple's layout),
+        // so a stats pill would crowd the field (see `toolbarList` in
+        // `BrevMailRootView`).
     }
-
-    #if os(iOS)
-    @ToolbarContentBuilder
-    private func mailboxToolbar(presentation: MessageListPresentationSnapshot) -> some ToolbarContent {
-        if let footer = folderStatsFooterPresentation(presentation: presentation) {
-            ToolbarItem(placement: .bottomBar) {
-                MessageListFolderStatsToolbarLabel(presentation: footer)
-            }
-        }
-    }
-    #endif
 
     private var isSnoozePickerPresented: Binding<Bool> {
         Binding(
@@ -4325,23 +4310,6 @@ struct MessageListFolderStatsFooter: View {
         .accessibilityLabel(presentation.accessibilityLabel)
     }
 }
-
-#if os(iOS)
-struct MessageListFolderStatsToolbarLabel: View {
-    @Environment(\.brevTheme) private var theme
-    let presentation: MessageListFolderStatsFooterPresentation
-
-    var body: some View {
-        Text(presentation.text)
-            .brevFont(.caption)
-            .lineLimit(1)
-            .truncationMode(.middle)
-            .foregroundStyle(theme.textTertiary.color)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(presentation.accessibilityLabel)
-    }
-}
-#endif
 
 extension View {
     @ViewBuilder

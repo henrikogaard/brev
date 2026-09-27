@@ -1745,9 +1745,8 @@ public struct BrevMailRootView: View {
             }
         }
         .brevMailPaneSurface(.content)
-        // iOS gives search its own full-width band above the list (see
-        // `MessageListSearchBand`, rendered by the list views), so the field
-        // gets the whole column and
+        // iOS gives search a capsule inside the bottom bar (see
+        // `toolbarList`), the Apple Mail idiom, so
         // the navigation bar keeps only the back button and the mailbox
         // actions. macOS puts its own `NSSearchField` in this column's toolbar
         // section (see `toolbarList`), not via `.searchable`, whose
@@ -1989,6 +1988,20 @@ public struct BrevMailRootView: View {
             ) {
                 settingsToolbarButton
             }
+        }
+        // The search capsule lives inside the bottom bar — Apple's iOS 26
+        // Mail idiom — expanding to fill the space between the list's
+        // stats label and Compose rather than floating over the rows.
+        ToolbarItem(placement: .bottomBar) {
+            MessageListSearchField(
+                text: $navigation.searchText,
+                prompt: String(localized: "Search messages", bundle: .module),
+                focusRequestID: navigation.searchFocusRequestID
+            )
+            // Toolbar items size to fit, so give the capsule a floor that
+            // fills most of an iPhone bar; wider columns keep it at that
+            // width with Compose pinned right — same as Apple Mail on iPad.
+            .frame(minWidth: 240, maxWidth: .infinity)
         }
         ToolbarItem(placement: .bottomBar) {
             Spacer()
