@@ -99,6 +99,7 @@ struct RecipientChipField<Accessory: View>: View {
                     .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
                     .focused($isFocused)
+                    .accessibilityLabel(label)
                     .frame(minWidth: 120)
                     .autocorrectionDisabled()
                 #if os(iOS)

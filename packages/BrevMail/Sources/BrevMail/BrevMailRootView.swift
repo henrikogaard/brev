@@ -995,10 +995,11 @@ public struct BrevMailRootView: View {
             mailWorkspaceChrome
         }
         #else
+        // iOS mounts the rail inside each pane (`topChromeStatusRailInset`):
+        // a safe-area inset around the whole split view lands inside the
+        // nav-bar band on iOS 26+, covering that column's back button, title
+        // and actions — invisible to VoiceOver and dead to touch.
         mailWorkspaceChrome
-            .safeAreaInset(edge: .top, spacing: 0) {
-                animatedTopChromeStatusRail
-            }
         #endif
     }
 
@@ -1417,6 +1418,13 @@ public struct BrevMailRootView: View {
         #if os(iOS)
             .navigationTitle(Text("Mailboxes", bundle: .module))
             .navigationBarTitleDisplayMode(.inline)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // Compact shows a single column; the message-list copy covers
+                // regular width, so mounting here too would duplicate it.
+                if horizontalSizeClass == .compact {
+                    animatedTopChromeStatusRail
+                }
+            }
         #endif
             .brevMailFallbackToolbar { toolbarSidebar }
             .brevMailPaneScrollEdgeBlur()
@@ -1538,7 +1546,18 @@ public struct BrevMailRootView: View {
         }
         #endif
         .brevMailPaneSurface(.content)
-        .brevMailFallbackToolbar { toolbarDetail }
+        #if os(iOS)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                // A regular-width split view can collapse to detailOnly, which
+                // hides the list column — and its copy of the rail — entirely;
+                // mount one here for exactly that state so auth/offline banners
+                // stay reachable.
+                if horizontalSizeClass == .regular && splitViewVisibility == .detailOnly {
+                    animatedTopChromeStatusRail
+                }
+            }
+        #endif
+            .brevMailFallbackToolbar { toolbarDetail }
     }
 
     @ViewBuilder
@@ -1559,6 +1578,11 @@ public struct BrevMailRootView: View {
         readingPaneContent(fallbackHeader: fallbackHeader)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .brevMailPaneSurface(.content)
+            // The sibling-stack reader is its own navigation context, so it
+            // mounts its own copy of the rail below its nav bar.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                animatedTopChromeStatusRail
+            }
             .brevMailFallbackToolbar { compactReaderToolbar }
     }
     #endif
@@ -1763,6 +1787,12 @@ public struct BrevMailRootView: View {
         #if os(iOS)
             .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
             .navigationBarTitleDisplayMode(.inline)
+            // The rail lives inside the pane so it lays out below this
+            // column's navigation bar; the list column is present in every
+            // presentation, so its copy alone covers regular width.
+            .safeAreaInset(edge: .top, spacing: 0) {
+                animatedTopChromeStatusRail
+            }
         #endif
             .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the

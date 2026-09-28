@@ -331,6 +331,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         )
         textView.autoresizingMask = [.width]
         textView.string = text
+        textView.setAccessibilityLabel(String(localized: "Message body", bundle: .module))
         if bodyFormat == .richTextHTML {
             context.coordinator.publishRichHTML(from: textView)
         }
@@ -898,6 +899,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         textView.textContainer.lineFragmentPadding = 0
         textView.allowsEditingTextAttributes = isRichText
         textView.text = text
+        textView.accessibilityLabel = String(localized: "Message body", bundle: .module)
         applyTextChecking(to: textView)
         context.coordinator.textView = textView
         context.coordinator.isRichText = isRichText
