@@ -309,6 +309,9 @@ struct BrevApp: App {
                 if session.visibleBackends.isEmpty {
                     installUnavailableNotificationReplyHandler()
                 }
+                // An App Intent can enqueue a compose request while the
+                // app was still launching; drain it once accounts exist.
+                consumeIntentHandoff()
                 if AppSessionRestorePresentationPolicy.shouldShowRestoreErrorAlert(
                     accountRestoreErrorCount: session.accountRestoreErrors.count
                 ) {
@@ -329,6 +332,9 @@ struct BrevApp: App {
             }
             .onOpenURL { url in
                 handleIncomingURL(url)
+            }
+            .onChange(of: BrevIntentHandoff.shared.pendingComposePrefill) { _, _ in
+                consumeIntentHandoff()
             }
             .onChange(of: scenePhase) { _, newPhase in
                 switch newPhase {
@@ -409,6 +415,15 @@ struct BrevApp: App {
                 return .handled
             }
             return browserLinkOpener.open(url)
+        }
+    }
+
+    /// Drains a compose request an App Intent left on the in-process
+    /// handoff into the normal compose-prefill presentation path.
+    private func consumeIntentHandoff() {
+        if let prefill = BrevIntentHandoff.shared.pendingComposePrefill {
+            pendingComposePrefill = prefill
+            BrevIntentHandoff.shared.clearComposePrefill()
         }
     }
 

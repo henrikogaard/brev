@@ -209,6 +209,9 @@ struct BrevApp: App {
                 // this view subscribes to the notification below; drain it here.
                 consumePendingMailtoURL()
                 consumePendingBrevURL()
+                // An App Intent can enqueue a compose request while the
+                // app was still launching; drain it once accounts exist.
+                consumeIntentHandoff()
                 await session.restoreAllAccounts()
                 sessionRestoreAttempted = true
                 BrevMacOSAppDelegate.currentSession = session
@@ -233,6 +236,9 @@ struct BrevApp: App {
                 NotificationCenter.default.publisher(for: .brevDidReceiveMailtoURL)
             ) { _ in
                 consumePendingMailtoURL()
+            }
+            .onChange(of: BrevIntentHandoff.shared.pendingComposePrefill) { _, _ in
+                consumeIntentHandoff()
             }
             .onReceive(
                 NotificationCenter.default.publisher(for: .brevDidReceiveDeepLinkURL)
@@ -461,6 +467,15 @@ struct BrevApp: App {
                 return .handled
             }
             return browserLinkOpener.open(url)
+        }
+    }
+
+    /// Drains a compose request an App Intent left on the in-process
+    /// handoff into the normal compose-prefill presentation path.
+    private func consumeIntentHandoff() {
+        if let prefill = BrevIntentHandoff.shared.pendingComposePrefill {
+            pendingComposePrefill = prefill
+            BrevIntentHandoff.shared.clearComposePrefill()
         }
     }
 

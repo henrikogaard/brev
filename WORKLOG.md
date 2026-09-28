@@ -123,6 +123,44 @@ hair-triggering.
 - **Verification:** docs-only; no code changed.
 - **Handoff:** Henrik reviews; implementation (PIMPendingWriteQueue +
   editor offline path + Outbox surfacing) follows on acceptance.
+## 2026-09-28 — Agent — Check Mail intent triggers real refresh (Codex)
+
+- `feature/app-intents`: Codex found "Check Mail" was a no-op when Brev
+  was already foregrounded — `openAppWhenRun` produces no scene-phase
+  transition, so the existing inactive→active `refreshVisibleMail` path
+  never ran. The intent now calls `BrevIntentHandoff.requestRefresh()`,
+  which increments a monotonic `refreshRequestCount`; `BrevMailRootView`
+  watches the counter and calls `refreshVisibleMail()` per increment,
+  so repeated runs refire and cold-launch drains still work.
+- Verified: `swift build --package-path packages/BrevMail` clean;
+  lint.sh + format.sh clean. On-device Shortcuts run still pending
+  (signed install + Shortcuts UI).
+
+## 2026-09-28 — Agent — App Intents (Phase B)
+
+- **Goal:** Phase B — Shortcuts/App Intents support ("Check Mail",
+  "New Message") on both apps.
+- **Changes:** `apps/{iOS,macOS}/Sources/BrevAppIntents.swift` —
+  `CheckMailIntent` (foreground refresh rides the existing
+  scenePhase→refreshVisibleMail path, no new network call per ADR-0006)
+  and `ComposeMessageIntent` (to/subject/body → `BrevIntentHandoff`,
+  drained into `pendingComposePrefill`). New shared
+  `BrevIntentHandoff` (`@Observable`, BrevMail) replaces a first-pass
+  `OpenURLIntent` design — `OpensIntent` needs iOS 18/macOS 15 while the
+  deployment targets are 17/14, and `appintentsmetadataprocessor` can't
+  parse `#available` inside `appShortcuts`. `SharedComposePayload.prefill`
+  now accepts direct `brev://compose?to/subject/body` fields (attachment
+  params ignored on that path — file confinement preserved) and returns
+  an empty prefill for bare `brev://compose`;
+  `MailExternalInputConsumerModifier` retries a pending prefill when
+  `canPresentCompose` flips true (cold-launch ordering).
+- **Verified:** `swift test --filter ComposeDraftBuilderTests` 40/40;
+  both apps build; `appintentsnltrainingprocessor` trained both phrases;
+  lint+format clean.
+- **Skipped:** on-device Shortcuts run (needs a signed install + the
+  Shortcuts UI) — deferred to the Phase A device leg.
+- **Handoff:** watch CI; the `.onChange` handoff drain covers
+  already-foreground launches, `.task` drain covers cold launch.
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves

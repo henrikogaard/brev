@@ -31,6 +31,7 @@
 		914EB2AE074C239C4819310B /* BrevExamplePlugin in Frameworks */ = {isa = PBXBuildFile; productRef = 322642384F9C085D8E97F9DD /* BrevExamplePlugin */; };
 		97E8B9A73CE3C49104E9E480 /* Localizable.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = F9D32B7AF5A8CA2C3491139F /* Localizable.xcstrings */; };
 		9B50D7400765786055C06C4C /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = E2C9F3AD1AA9A3CE9AA027DE /* InfoPlist.xcstrings */; };
+		A837F3710A9902F0D5357D65 /* BrevAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 83F0C7EECBA2A83982634351 /* BrevAppIntents.swift */; };
 		B7B7D2B607BDA976D03F48F5 /* MailboxLayoutTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 715AFE640A39C90D4F2430F5 /* MailboxLayoutTests.swift */; };
 		B83BC6C731F1584C4D2435D2 /* BrevShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5ECBA4DE24AA203E58BBEB53 /* BrevShareExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		C6F98F8E43286F2A18A8E1DA /* ShareViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2E1A991BCC8873E581D0CE28 /* ShareViewController.swift */; };
@@ -140,6 +141,7 @@
 		7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareHandoffURL.swift; sourceTree = "<group>"; };
 		812DC1C3F19A3A27C881635F /* BrevSyncEngine */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSyncEngine; path = ../../packages/BrevSyncEngine; sourceTree = "<group>"; };
 		81713220D56445E2F44C26CF /* TuistBundle+BrevShareExtension.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistBundle+BrevShareExtension.swift"; sourceTree = "<group>"; };
+		83F0C7EECBA2A83982634351 /* BrevAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevAppIntents.swift; sourceTree = "<group>"; };
 		89123FA46611EC9E3C3B1012 /* BrevPlugins */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevPlugins; path = ../../packages/BrevPlugins; sourceTree = "<group>"; };
 		951FE30FC8262E51C6BB1D5F /* OneShotBGCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneShotBGCompletionTests.swift; sourceTree = "<group>"; };
 		9E3220552A118BB097389EF6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -237,6 +239,7 @@
 			isa = PBXGroup;
 			children = (
 				5420FB4291F54876178211F3 /* BrevApp.swift */,
+				83F0C7EECBA2A83982634351 /* BrevAppIntents.swift */,
 			);
 			path = Sources;
 			sourceTree = "<group>";
@@ -535,6 +538,7 @@
 				D168CFA7B2F160033DC6D73B /* TuistAssets+BrevIOS.swift in Sources */,
 				88CE719662746EC1A24F4726 /* TuistBundle+BrevIOS.swift in Sources */,
 				336222E06BE53D4323DB443A /* BrevApp.swift in Sources */,
+				A837F3710A9902F0D5357D65 /* BrevAppIntents.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

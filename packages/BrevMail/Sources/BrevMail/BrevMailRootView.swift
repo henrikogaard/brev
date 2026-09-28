@@ -169,6 +169,10 @@ private enum MailFolderConfirmation: Equatable {
 private struct MailExternalInputConsumerModifier: ViewModifier {
     let pendingComposePrefill: Binding<ComposePrefill?>?
     let pendingNotificationRoute: Binding<NotificationMailRoute?>?
+    /// Whether the view can present the composer right now. A prefill
+    /// arriving while a folder load or sheet is in flight stays pending;
+    /// watching this flag retries it once the busy state settles.
+    let canPresentCompose: Bool
     let onComposePrefill: (ComposePrefill?) -> Void
     let onNotificationRoute: (NotificationMailRoute?) -> Void
 
@@ -176,6 +180,11 @@ private struct MailExternalInputConsumerModifier: ViewModifier {
         content
             .onChange(of: pendingComposePrefill?.wrappedValue) { _, prefill in
                 onComposePrefill(prefill)
+            }
+            .onChange(of: canPresentCompose) { _, canPresent in
+                if canPresent {
+                    onComposePrefill(pendingComposePrefill?.wrappedValue)
+                }
             }
             .onChange(of: pendingNotificationRoute?.wrappedValue) { _, route in
                 onNotificationRoute(route)
@@ -820,6 +829,11 @@ public struct BrevMailRootView: View {
             }
             .onChange(of: scenePhase) { previousPhase, newPhase in
                 handleScenePhaseChange(previousPhase: previousPhase, newPhase: newPhase)
+            }
+            .onChange(of: BrevIntentHandoff.shared.refreshRequestCount) { _, _ in
+                // Check Mail enqueues here because openAppWhenRun fires no
+                // scene-phase transition when the app is already active.
+                Task { await refreshVisibleMail() }
             }
             .onChange(of: navigation.selectedFolderID) { _, selectedFolderID in
                 #if os(iOS)
@@ -2760,6 +2774,7 @@ public struct BrevMailRootView: View {
         MailExternalInputConsumerModifier(
             pendingComposePrefill: pendingComposePrefill,
             pendingNotificationRoute: pendingNotificationRoute,
+            canPresentCompose: canPresentCompose(),
             onComposePrefill: consumePendingComposePrefill,
             onNotificationRoute: consumePendingNotificationRoute
         )
@@ -3317,7 +3332,9 @@ public struct BrevMailRootView: View {
     #endif
 
     private func consumePendingComposePrefill(_ prefill: ComposePrefill?) {
-        guard let prefill, !prefill.isEmpty, canPresentCompose() else { return }
+        // An empty prefill is still an explicit open-composer request
+        // (bare brev://compose from a Shortcut), so present it.
+        guard let prefill, canPresentCompose() else { return }
         navigation.presentNewMessage(prefill: prefill)
         pendingComposePrefill?.wrappedValue = nil
     }

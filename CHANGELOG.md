@@ -222,6 +222,13 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- App Intents / Shortcuts: "Check Mail" (foregrounds Brev and refreshes —
+  also when the app was already active, via an explicit handoff request)
+  and "New Message" (opens the composer with optional To / Subject /
+  Body) on both macOS and iOS, exposed to Shortcuts and Siri phrases.
+- `brev://compose?to=…&subject=…&body=…` accepts direct fields
+  (attachments remain confined to the share handoff), and a bare
+  `brev://compose` opens a blank composer.
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source
   records, a serial lifecycle coordinator covering connect / reconnect /
   sync opt-in / removal, and CalDAV/CardDAV setup validation (manual

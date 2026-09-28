@@ -603,6 +603,41 @@ struct ComposeDraftBuilderTests {
         #expect(prefill.bodyText == "Hello")
     }
 
+    @Test("direct compose URL prefills to, subject, and body")
+    func directComposeURLPrefillsFields() throws {
+        let url = try #require(URL(
+            string: "brev://compose?to=a%40b.example&to=c%40d.example&subject=Hi%20there&body=Line%20one"
+        ))
+
+        let prefill = try #require(SharedComposePayload.prefill(from: url))
+
+        #expect(prefill.to == ["a@b.example", "c@d.example"])
+        #expect(prefill.subject == "Hi there")
+        #expect(prefill.bodyText == "Line one")
+        #expect(prefill.attachmentFileURLs.isEmpty)
+    }
+
+    @Test("direct compose URL ignores attachment params")
+    func directComposeURLIgnoresAttachments() throws {
+        let url = try #require(URL(
+            string: "brev://compose?body=hi&attachment=file:///tmp/evil.txt"
+        ))
+
+        let prefill = try #require(SharedComposePayload.prefill(from: url))
+
+        #expect(prefill.bodyText == "hi")
+        #expect(prefill.attachmentFileURLs.isEmpty)
+    }
+
+    @Test("bare compose URL returns empty prefill")
+    func bareComposeURLReturnsEmptyPrefill() throws {
+        let url = try #require(URL(string: "brev://compose"))
+
+        let prefill = try #require(SharedComposePayload.prefill(from: url))
+
+        #expect(prefill.isEmpty)
+    }
+
     @Test("shared compose payload carries single attachment URL")
     func sharedComposePayloadCarriesSingleAttachmentURL() throws {
         let attachmentURL = FileManager.default.temporaryDirectory

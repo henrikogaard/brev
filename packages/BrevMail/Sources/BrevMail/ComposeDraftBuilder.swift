@@ -75,8 +75,41 @@ public enum SharedComposePayload {
     static func prefill(from url: URL, allowedAttachmentRoot: URL?) -> ComposePrefill? {
         guard url.scheme?.lowercased() == "brev",
               url.host == "compose",
-              let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-              let encodedPayload = components.queryItems?.first(where: { $0.name == "shared" })?.value else {
+              let components = URLComponents(url: url, resolvingAgainstBaseURL: false) else {
+            return nil
+        }
+        let queryItems = components.queryItems ?? []
+
+        // Direct-field form used by App Intents / Shortcuts:
+        // brev://compose?to=a@b&subject=…&body=… — no attachment
+        // params on this path, so the file confinement can't be
+        // bypassed through it. A bare brev://compose still returns a
+        // non-nil (empty) prefill: the URL is an explicit compose
+        // request, so it should open a blank composer.
+        if !queryItems.contains(where: { $0.name == "shared" }) {
+            var to: [String] = []
+            var cc: [String] = []
+            var bcc: [String] = []
+            var subject = ""
+            var bodyText = ""
+            for item in queryItems {
+                guard let value = item.value, !value.isEmpty else { continue }
+                switch item.name {
+                case "to": to.append(value)
+                case "cc": cc.append(value)
+                case "bcc": bcc.append(value)
+                case "subject": subject = value
+                case "body": bodyText = value
+                default: break
+                }
+            }
+            return ComposePrefill(
+                to: to, cc: cc, bcc: bcc,
+                subject: subject, bodyText: bodyText
+            )
+        }
+
+        guard let encodedPayload = queryItems.first(where: { $0.name == "shared" })?.value else {
             return nil
         }
 
