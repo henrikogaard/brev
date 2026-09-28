@@ -1,11 +1,39 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Account error" : { "extractionState" : "manual" },
-    "Message Viewer" : { "extractionState" : "manual" },
-    "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account." : {
-      "extractionState" : "manual"
+  "sourceLanguage": "en",
+  "strings": {
+    "Account error": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Konto­feil"
+          }
+        }
+      }
+    },
+    "Message Viewer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldings­visning"
+          }
+        }
+      }
+    },
+    "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Én eller flere kontoer kunne ikke gjenopprettes. Åpne Innstillinger → Kontoer for å oppdatere legitimasjon eller fjerne den berørte kontoen."
+          }
+        }
+      }
     }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

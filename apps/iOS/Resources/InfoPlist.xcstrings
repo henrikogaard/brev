@@ -31,6 +31,12 @@
             "state": "new",
             "value": "Brev creates calendar events only when you choose Create Meeting from a message."
           }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev trenger full kalender­tilgang for å opprette hendelser fra e-post."
+          }
         }
       }
     },
@@ -42,6 +48,12 @@
             "state": "new",
             "value": "Brev creates calendar events only when you choose Create Meeting from a message."
           }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev bruker kalender­tilgang for å opprette hendelser fra e-post."
+          }
         }
       }
     },
@@ -52,6 +64,12 @@
           "stringUnit": {
             "state": "new",
             "value": "Brev reads your contacts only to show matching recipients and sender details in mail."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev bruker kontakt­tilgang for å vise avsender­detaljer og autoutfylle mottakere."
           }
         }
       }
@@ -75,6 +93,12 @@
             "state": "new",
             "value": "Brev creates reminders only when you choose Create Task from a message."
           }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev trenger full påminnelses­tilgang for å opprette oppgaver fra e-post."
+          }
         }
       }
     },
@@ -85,6 +109,12 @@
           "stringUnit": {
             "state": "new",
             "value": "Brev creates reminders only when you choose Create Task from a message."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev bruker påminnelses­tilgang for å opprette oppgaver fra e-post."
           }
         }
       }

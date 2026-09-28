@@ -239,6 +239,14 @@ All notable changes to Brev are documented here.
 - `brev://compose?to=…&subject=…&body=…` accepts direct fields
   (attachments remain confined to the share handoff), and a bare
   `brev://compose` opens a blank composer.
+
+- Norwegian Bokmål (`nb`) — Brev's first non-English locale (ADR-0058
+  amendment). All shipped string catalogs carry `nb` translations
+  (BrevMail, BrevSettings, BrevBackend, BrevDesign, BrevCalendar,
+  BrevGmail, BrevAI, and both apps' Localizable + InfoPlist strings);
+  terminology follows Apple Mail's Norwegian conventions.
+
+
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source
   records, a serial lifecycle coordinator covering connect / reconnect /
   sync opt-in / removal, and CalDAV/CardDAV setup validation (manual

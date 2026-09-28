@@ -1,7 +1,644 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-
+  "sourceLanguage": "en",
+  "strings": {
+    "Connecting…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kobler til…"
+          }
+        }
+      }
+    },
+    "Couldn't access the CalDAV credential in Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke hente CalDAV-legitimasjonen i Nøkkelringen."
+          }
+        }
+      }
+    },
+    "Disconnected": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frakoblet"
+          }
+        }
+      }
+    },
+    "Editing needs a fresh Google grant. Reconnect the calendar in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redigering krever en ny Google-tillatelse. Koble til kalenderen på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "Editing needs a fresh Google grant. Reconnect the contacts source in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redigering krever en ny Google-tillatelse. Koble til kontaktkilden på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "Editing needs a fresh Google grant. Reconnect the task source in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redigering krever en ny Google-tillatelse. Koble til oppgavekilden på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "Editing needs a fresh grant. Reconnect the source in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redigering krever en ny tillatelse. Koble til kilden på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "Enter a valid email address or server URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en gyldig e-postadresse eller server-URL."
+          }
+        }
+      }
+    },
+    "Failed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mislyktes"
+          }
+        }
+      }
+    },
+    "Google Calendar could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Kalender kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "Google Calendar returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Kalender returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "Google Contacts could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Kontakter kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "Google Contacts returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Kontakter returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "Google Tasks could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Tasks kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "Google Tasks returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Tasks returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "Google authorization is unavailable in this session.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-autorisasjon er ikke tilgjengelig i denne økten."
+          }
+        }
+      }
+    },
+    "Google could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "Google rejected the account's authorization. Reconnect the source to grant access again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google avviste kontoens autorisasjon. Koble til kilden på nytt for å gi tilgang igjen."
+          }
+        }
+      }
+    },
+    "Google returned an unexpected response. Try refreshing again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte et uventet svar. Prøv å oppdatere igjen."
+          }
+        }
+      }
+    },
+    "Limited permissions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Begrensede tillatelser"
+          }
+        }
+      }
+    },
+    "No calendar or contacts service was found at this address. Enter the server URL manually.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fant ingen kalender- eller kontakttjeneste på denne adressen. Skriv inn server-URL-en manuelt."
+          }
+        }
+      }
+    },
+    "Ready": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Klar"
+          }
+        }
+      }
+    },
+    "Reconnect the source before refreshing its collections.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til kilden på nytt før du oppdaterer samlingene."
+          }
+        }
+      }
+    },
+    "Reconnect the source before syncing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til kilden på nytt før du synkroniserer."
+          }
+        }
+      }
+    },
+    "Sign-in required": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innlogging kreves"
+          }
+        }
+      }
+    },
+    "Syncing…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkroniserer…"
+          }
+        }
+      }
+    },
+    "The CalDAV credential stored in Keychain is unreadable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "CalDAV-legitimasjonen lagret i Nøkkelringen er uleselig."
+          }
+        }
+      }
+    },
+    "The collection no longer exists on this source.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samlingen finnes ikke lenger på denne kilden."
+          }
+        }
+      }
+    },
+    "The provider returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverandøren returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "The provider returned an unexpected response. Try syncing again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverandøren returnerte et uventet svar. Prøv å synkronisere igjen."
+          }
+        }
+      }
+    },
+    "The server could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "The server does not support calendar sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren støtter ikke kalendersynkronisering."
+          }
+        }
+      }
+    },
+    "The server does not support contacts sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren støtter ikke kontaktsynkronisering."
+          }
+        }
+      }
+    },
+    "The server does not support task sync.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren støtter ikke oppgavesynkronisering."
+          }
+        }
+      }
+    },
+    "The server redirects to a different host. Enter that server address manually.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren omdirigerer til en annen vert. Skriv inn den serveradressen manuelt."
+          }
+        }
+      }
+    },
+    "The server rejected the stored credential. Reconnect the source in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren avviste den lagrede legitimasjonen. Koble til kilden på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "The server rejected these credentials. Check the username and password or token.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren avviste legitimasjonen. Kontroller brukernavnet og passordet eller tokenet."
+          }
+        }
+      }
+    },
+    "The server returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "The server's certificate could not be verified. The connection was not made.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serverens sertifikat kunne ikke verifiseres. Tilkoblingen ble ikke opprettet."
+          }
+        }
+      }
+    },
+    "The source has no stored credential. Reconnect it first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilden har ingen lagret legitimasjon. Koble den til på nytt først."
+          }
+        }
+      }
+    },
+    "The source no longer exists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilden finnes ikke lenger."
+          }
+        }
+      }
+    },
+    "The source rejected its credential. Reconnect it in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kilden avviste legitimasjonen sin. Koble den til på nytt i Innstillinger."
+          }
+        }
+      }
+    },
+    "The sync checkpoint expired; a full refresh is needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkroniseringskontrollpunktet utløp. En full oppdatering er nødvendig."
+          }
+        }
+      }
+    },
+    "This address book has no writable address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne adresseboken har ingen skrivbar adresse."
+          }
+        }
+      }
+    },
+    "This address book is read-only.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne adresseboken er skrivebeskyttet."
+          }
+        }
+      }
+    },
+    "This calendar has no writable address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kalenderen har ingen skrivbar adresse."
+          }
+        }
+      }
+    },
+    "This calendar is read-only.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kalenderen er skrivebeskyttet."
+          }
+        }
+      }
+    },
+    "This contact changed on the server. Sync, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kontakten endret seg på serveren. Synkroniser, og prøv igjen."
+          }
+        }
+      }
+    },
+    "This event changed on the server. Sync, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne hendelsen endret seg på serveren. Synkroniser, og prøv igjen."
+          }
+        }
+      }
+    },
+    "This server does not support CalDAV or CardDAV.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne serveren støtter ikke CalDAV eller CardDAV."
+          }
+        }
+      }
+    },
+    "This server requires a secure HTTPS connection.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne serveren krever en sikker HTTPS-tilkobling."
+          }
+        }
+      }
+    },
+    "This source does not provide calendars.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kilden tilbyr ikke kalendere."
+          }
+        }
+      }
+    },
+    "This source does not provide contacts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kilden tilbyr ikke kontakter."
+          }
+        }
+      }
+    },
+    "This source does not provide task lists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kilden tilbyr ikke oppgavelister."
+          }
+        }
+      }
+    },
+    "This source does not support editing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kilden støtter ikke redigering."
+          }
+        }
+      }
+    },
+    "This task changed on the server. Sync, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne oppgaven endret seg på serveren. Synkroniser, og prøv igjen."
+          }
+        }
+      }
+    },
+    "This task list has no writable address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne oppgavelisten har ingen skrivbar adresse."
+          }
+        }
+      }
+    },
+    "This task list is read-only.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne oppgavelisten er skrivebeskyttet."
+          }
+        }
+      }
+    }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

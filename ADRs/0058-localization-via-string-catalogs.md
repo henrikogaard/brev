@@ -3,6 +3,13 @@
 - **Status:** Accepted
 - **Date:** 2026-08-16
 - **Deciders:** Henrik
+- **Amended:** 2026-09-28 — first shipped locale added. `nb`
+  (Norwegian Bokmål) joins `en`: Tuist `defaultKnownRegions` in both
+  app projects now declare it, and every non-empty catalog carries an
+  `nb` `stringUnit` per key (497 in BrevMail + shared catalogs).
+  `CFBundleName`/`CFBundleDisplayName`/`NSHumanReadableCopyright`
+  stay untranslated — the product name does not localize. Snapshot
+  lanes keep running `en`, so no baselines move.
 
 ## Context
 

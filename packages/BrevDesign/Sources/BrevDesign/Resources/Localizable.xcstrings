@@ -1,7 +1,897 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-
+  "sourceLanguage": "en",
+  "strings": {
+    "1 line": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 linje"
+          }
+        }
+      }
+    },
+    "2 lines": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "2 linjer"
+          }
+        }
+      }
+    },
+    "3 lines": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "3 linjer"
+          }
+        }
+      }
+    },
+    "Adjusts message readability without changing other panes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Justerer lesbarheten for meldinger uten å endre andre paneler."
+          }
+        }
+      }
+    },
+    "All": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle"
+          }
+        }
+      }
+    },
+    "All windows": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle vinduer"
+          }
+        }
+      }
+    },
+    "Apple San Francisco": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apple San Francisco"
+          }
+        }
+      }
+    },
+    "Attachments first": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vedlegg først"
+          }
+        }
+      }
+    },
+    "Bottom": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nederst"
+          }
+        }
+      }
+    },
+    "Categories": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kategorier"
+          }
+        }
+      }
+    },
+    "Code-like alignment": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kodelignende justering"
+          }
+        }
+      }
+    },
+    "Comfortable": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Komfortabel"
+          }
+        }
+      }
+    },
+    "Compact": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kompakt"
+          }
+        }
+      }
+    },
+    "Custom": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Egendefinert"
+          }
+        }
+      }
+    },
+    "Detailed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Detaljert"
+          }
+        }
+      }
+    },
+    "Dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lukk"
+          }
+        }
+      }
+    },
+    "Editorial message reading": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Redaksjonell lesing av meldinger"
+          }
+        }
+      }
+    },
+    "Flagged first": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flaggede først"
+          }
+        }
+      }
+    },
+    "Follow pane": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Følg panelet"
+          }
+        }
+      }
+    },
+    "Frosted": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frostet"
+          }
+        }
+      }
+    },
+    "Glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Glass"
+          }
+        }
+      }
+    },
+    "Hide preview text for the most compact mailbox list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul forhåndsvisnings­tekst for den mest kompakte postkasselisten."
+          }
+        }
+      }
+    },
+    "Keeps the surface behind message content fully opaque.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Holder flaten bak meldings­innholdet helt ugjennomsiktig."
+          }
+        }
+      }
+    },
+    "Large": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stor"
+          }
+        }
+      }
+    },
+    "Light system material for chrome and sidebars.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lett system­materiale for rammeverk og sidepaneler."
+          }
+        }
+      }
+    },
+    "Liquid Glass where available, with readable fallback.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liquid Glass der det er tilgjengelig, med lesbar reserveløsning."
+          }
+        }
+      }
+    },
+    "Loading": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster"
+          }
+        }
+      }
+    },
+    "Loading message body": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster meldingskropp"
+          }
+        }
+      }
+    },
+    "Loading messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster meldinger"
+          }
+        }
+      }
+    },
+    "Mail and Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post og innstillinger"
+          }
+        }
+      }
+    },
+    "Mail and Settings windows use translucency.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post- og innstillings­vinduer bruker gjennomsiktighet."
+          }
+        }
+      }
+    },
+    "Mail, settings, and secondary windows use translucency.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post-, innstillings- og sekundær­vinduer bruker gjennomsiktighet."
+          }
+        }
+      }
+    },
+    "Medium": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Middels"
+          }
+        }
+      }
+    },
+    "Monospaced": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fast tegnavstand"
+          }
+        }
+      }
+    },
+    "Newest first": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyeste først"
+          }
+        }
+      }
+    },
+    "Newest on top": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nyeste øverst"
+          }
+        }
+      }
+    },
+    "No preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen forhåndsvisning"
+          }
+        }
+      }
+    },
+    "No transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen gjennomsiktighet"
+          }
+        }
+      }
+    },
+    "Off": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Av"
+          }
+        }
+      }
+    },
+    "Oldest first": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eldste først"
+          }
+        }
+      }
+    },
+    "Oldest on top": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eldste øverst"
+          }
+        }
+      }
+    },
+    "Only the folder sidebar uses translucency.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare mappe­sidepanelet bruker gjennomsiktighet."
+          }
+        }
+      }
+    },
+    "Opaque surfaces for maximum readability.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ugjennomsiktige flater for maksimal lesbarhet."
+          }
+        }
+      }
+    },
+    "Other": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Annet"
+          }
+        }
+      }
+    },
+    "Primary": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Primær"
+          }
+        }
+      }
+    },
+    "Promotions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kampanjer"
+          }
+        }
+      }
+    },
+    "Read a conversation top to bottom, oldest reply first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Les en samtale fra topp til bunn, eldste svar først."
+          }
+        }
+      }
+    },
+    "Reading pane below the message list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesepanelet under meldingslisten."
+          }
+        }
+      }
+    },
+    "Reading pane to the right of the message list.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesepanelet til høyre for meldingslisten."
+          }
+        }
+      }
+    },
+    "Rounded": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avrundet"
+          }
+        }
+      }
+    },
+    "Sender": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsender"
+          }
+        }
+      }
+    },
+    "Serif": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serif"
+          }
+        }
+      }
+    },
+    "Show a short total and unread summary.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis et kort sammendrag av totalt antall og uleste."
+          }
+        }
+      }
+    },
+    "Show flagged/starred messages at the top.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis flaggede/stjernemerkede meldinger øverst."
+          }
+        }
+      }
+    },
+    "Show folder, shown, total, unread, pinned, and loaded counts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis antall for mappe, viste, totalt, uleste, festede og lastede."
+          }
+        }
+      }
+    },
+    "Show messages with attachments at the top.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis meldinger med vedlegg øverst."
+          }
+        }
+      }
+    },
+    "Show one normal inbox without classification tabs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis én vanlig innboks uten klassifiserings­faner."
+          }
+        }
+      }
+    },
+    "Show one row of preview text below each subject.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis én rad med forhåndsvisnings­tekst under hvert emne."
+          }
+        }
+      }
+    },
+    "Show the most recent messages at the top.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis de nyeste meldingene øverst."
+          }
+        }
+      }
+    },
+    "Show the most recent reply at the top of the conversation.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis det nyeste svaret øverst i samtalen."
+          }
+        }
+      }
+    },
+    "Show the oldest messages at the top.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis de eldste meldingene øverst."
+          }
+        }
+      }
+    },
+    "Show three rows of preview text below each subject.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis tre rader med forhåndsvisnings­tekst under hvert emne."
+          }
+        }
+      }
+    },
+    "Show two rows of preview text below each subject.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis to rader med forhåndsvisnings­tekst under hvert emne."
+          }
+        }
+      }
+    },
+    "Show unread messages at the top.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis uleste meldinger øverst."
+          }
+        }
+      }
+    },
+    "Side": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Til høyre"
+          }
+        }
+      }
+    },
+    "Sidebar": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidepanel"
+          }
+        }
+      }
+    },
+    "Small": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liten"
+          }
+        }
+      }
+    },
+    "Softer interface text": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mykere grensesnittekst"
+          }
+        }
+      }
+    },
+    "Solid": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Heldekkende"
+          }
+        }
+      }
+    },
+    "Sort alphabetically by sender name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorter alfabetisk etter avsender­navn."
+          }
+        }
+      }
+    },
+    "Sort alphabetically by subject line.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorter alfabetisk etter emnelinje."
+          }
+        }
+      }
+    },
+    "Sort messages locally into Primary, Transactions, Updates, Promotions, and Other.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorter meldinger lokalt i Primær, Transaksjoner, Oppdateringer, Kampanjer og Annet."
+          }
+        }
+      }
+    },
+    "Spacious": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Romslig"
+          }
+        }
+      }
+    },
+    "Stronger blur while reading panes use a themed layer.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sterkere uskarphet mens lesepaneler bruker et temalag."
+          }
+        }
+      }
+    },
+    "Subject": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Emne"
+          }
+        }
+      }
+    },
+    "Subtle": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Subtil"
+          }
+        }
+      }
+    },
+    "System": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "System"
+          }
+        }
+      }
+    },
+    "Transactions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transaksjoner"
+          }
+        }
+      }
+    },
+    "Unread first": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uleste først"
+          }
+        }
+      }
+    },
+    "Updates": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdateringer"
+          }
+        }
+      }
+    },
+    "Uses the pane opacity, matching Brev's default appearance.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruker panelets gjennomsiktighet, tilsvarende Brevs standardutseende."
+          }
+        }
+      }
+    }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

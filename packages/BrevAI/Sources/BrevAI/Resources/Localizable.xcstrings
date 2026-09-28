@@ -1,7 +1,259 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-
+  "sourceLanguage": "en",
+  "strings": {
+    "AI Writer is not enabled. Enable it in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver er ikke aktivert. Aktiver den i Innstillinger."
+          }
+        }
+      }
+    },
+    "AI Writer sends your text to the configured account AI endpoint.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver sender teksten din til kontoens konfigurerte AI-endepunkt."
+          }
+        }
+      }
+    },
+    "AI Writer v1 requires an account backend with server-side AI support.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-skriver v1 krever en kontobackend med AI-støtte på serversiden."
+          }
+        }
+      }
+    },
+    "BYOK/local providers are planned for v2, so this account stays disabled until a provider is configured.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "BYOK og lokale leverandører er planlagt for v2, så denne kontoen forblir deaktivert til en leverandør er konfigurert."
+          }
+        }
+      }
+    },
+    "Brev computes counts locally and requires your exact confirmation before any mutation runs.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev beregner antall lokalt og krever eksakt bekreftelse fra deg før en endring kjøres."
+          }
+        }
+      }
+    },
+    "Couldn't access the provider API key in Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke få tilgang til leverandørens API-nøkkel i Nøkkelringen."
+          }
+        }
+      }
+    },
+    "Enter a model ID.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en modell-ID."
+          }
+        }
+      }
+    },
+    "Enter a provider display name.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn et visningsnavn for leverandøren."
+          }
+        }
+      }
+    },
+    "Enter an http or https endpoint URL.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en http- eller https-endepunkts-URL."
+          }
+        }
+      }
+    },
+    "It does not receive message bodies, attachments, matched message IDs, or mailbox indexes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det mottar ikke meldingstekster, vedlegg, matchede meldings-ID-er eller postkasseindekser."
+          }
+        }
+      }
+    },
+    "It stays hidden until mailbox-action AI is explicitly enabled for a supported account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det forblir skjult til AI for postkassehandlinger er uttrykkelig aktivert for en støttet konto."
+          }
+        }
+      }
+    },
+    "Mailbox Assistant requires an account backend with an available AI provider.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasseassistent krever en kontobackend med en tilgjengelig AI-leverandør."
+          }
+        }
+      }
+    },
+    "Mailbox Assistant sends your typed request to the configured account AI endpoint to plan mailbox actions.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasseassistent sender forespørselen du skriver til kontoens konfigurerte AI-endepunkt for å planlegge postkassehandlinger."
+          }
+        }
+      }
+    },
+    "Network error: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nettverksfeil: %@"
+          }
+        }
+      }
+    },
+    "Only the content generated from your request is shared with the provider endpoint.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare innholdet generert fra forespørselen din deles med leverandørens endepunkt."
+          }
+        }
+      }
+    },
+    "Provider-hosted AI assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverandørhostet AI-assistent"
+          }
+        }
+      }
+    },
+    "Provider-hosted mailbox assistant": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverandørhostet postkasseassistent"
+          }
+        }
+      }
+    },
+    "Sent to: Provider-hosted AI": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt til: Leverandørhostet AI"
+          }
+        }
+      }
+    },
+    "Server error (%@): %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serverfeil (%@): %@"
+          }
+        }
+      }
+    },
+    "The content was filtered by the AI provider.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innholdet ble filtrert av AI-leverandøren."
+          }
+        }
+      }
+    },
+    "The provider API key stored in Keychain is unreadable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leverandørens API-nøkkel lagret i Nøkkelringen er uleselig."
+          }
+        }
+      }
+    },
+    "Too many requests. Please wait a moment and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "For mange forespørsler. Vent litt og prøv igjen."
+          }
+        }
+      }
+    },
+    "Your AI request is processed by the account provider and is not used for model training by default.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "AI-forespørselen din behandles av kontoens leverandør og brukes som standard ikke til modelltrening."
+          }
+        }
+      }
+    }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

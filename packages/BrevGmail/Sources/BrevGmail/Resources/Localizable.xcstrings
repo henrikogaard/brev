@@ -1,43 +1,500 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Gmail search stopped before all results could be loaded. Try searching again." : {
-      "extractionState" : "manual"
+  "sourceLanguage": "en",
+  "strings": {
+    "Gmail search stopped before all results could be loaded. Try searching again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-søket stoppet før alle resultater kunne lastes. Prøv å søke på nytt."
+          }
+        }
+      }
     },
-    "Brev could not reach Gmail." : {},
-    "Gmail draft attachments exceed the local staging limit of %@ bytes." : {},
-    "Gmail authentication is unavailable." : {},
-    "Gmail authorization has expired or was revoked." : {},
-    "Gmail may have saved the draft, but Brev did not receive confirmation." : {},
-    "Gmail has not completed its initial sync yet." : {},
-    "Gmail is temporarily unavailable (HTTP %@)." : {},
-    "Gmail needs a full sync before incremental changes can be applied." : {},
-    "Gmail may have received the message, but Brev did not receive confirmation." : {},
-    "Gmail quota is temporarily unavailable (%@, HTTP 403)." : {},
-    "Gmail rejected the request (HTTP %@)." : {},
-    "Gmail returned data Brev could not read." : {},
-    "Gmail returned an invalid response." : {},
-    "Gmail returned more data than allowed (limit %@ bytes)." : {},
-    "Google Workspace policy prevents Brev from accessing Gmail." : {},
-    "Google did not grant the Gmail permission required by Brev." : {},
-    "Google denied Brev access to Gmail." : {},
-    "The Gmail API is not enabled for Brev's Google project." : {},
-    "The Gmail request could not be created." : {},
-    "The Gmail account identifier is invalid." : {},
-    "The Gmail message identifier is invalid." : {},
-    "The Gmail label identifier is invalid." : {},
-    "The Gmail update belongs to another account." : {},
-    "The Gmail local store could not be opened." : {},
-    "The Gmail local store could not be prepared." : {},
-    "The Gmail local store could not be updated." : {},
-    "The Gmail local store contains unreadable data." : {},
-    "The Gmail draft staging identifier is invalid." : {},
-    "Google did not provide a stable account identity." : {},
-    "Google did not provide a verified email address." : {},
-    "This account is not configured for Gmail API access." : {},
-    "Saved Gmail account metadata does not match this account." : {},
-    "Brev could not remove the Gmail account's local data. Try removing it again." : {},
-    "Brev removed Gmail mail data but could not clear pending changes. Try removing the account again." : {}
+    "Brev could not reach Gmail.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev fikk ikke kontakt med Gmail."
+          }
+        }
+      }
+    },
+    "Gmail authentication is unavailable.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-autentisering er ikke tilgjengelig."
+          }
+        }
+      }
+    },
+    "Gmail authorization has expired or was revoked.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-autorisasjonen er utløpt eller tilbakekalt."
+          }
+        }
+      }
+    },
+    "Gmail may have saved the draft, but Brev did not receive confirmation.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail kan ha lagret utkastet, men Brev fikk ingen bekreftelse."
+          }
+        }
+      }
+    },
+    "Gmail has not completed its initial sync yet.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail har ikke fullført den første synkroniseringen ennå."
+          }
+        }
+      }
+    },
+    "Gmail needs a full sync before incremental changes can be applied.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail trenger en full synkronisering før inkrementelle endringer kan brukes."
+          }
+        }
+      }
+    },
+    "Gmail may have received the message, but Brev did not receive confirmation.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail kan ha mottatt meldingen, men Brev fikk ingen bekreftelse."
+          }
+        }
+      }
+    },
+    "Gmail quota is temporarily unavailable (%@, HTTP 403).": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-kvoten er midlertidig utilgjengelig (%@, HTTP 403)."
+          }
+        }
+      }
+    },
+    "Gmail returned data Brev could not read.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail returnerte data Brev ikke kunne lese."
+          }
+        }
+      }
+    },
+    "Gmail returned an invalid response.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail returnerte et ugyldig svar."
+          }
+        }
+      }
+    },
+    "Google Workspace policy prevents Brev from accessing Gmail.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Workspace-policy hindrer Brev i å få tilgang til Gmail."
+          }
+        }
+      }
+    },
+    "Google did not grant the Gmail permission required by Brev.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google ga ikke Gmail-tillatelsen Brev trenger."
+          }
+        }
+      }
+    },
+    "Google denied Brev access to Gmail.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google nektet Brev tilgang til Gmail."
+          }
+        }
+      }
+    },
+    "The Gmail API is not enabled for Brev's Google project.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-API-et er ikke aktivert for Brevs Google-prosjekt."
+          }
+        }
+      }
+    },
+    "The Gmail request could not be created.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-forespørselen kunne ikke opprettes."
+          }
+        }
+      }
+    },
+    "The Gmail account identifier is invalid.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-konto­identifikatoren er ugyldig."
+          }
+        }
+      }
+    },
+    "The Gmail message identifier is invalid.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-meldings­identifikatoren er ugyldig."
+          }
+        }
+      }
+    },
+    "The Gmail label identifier is invalid.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-etikett­identifikatoren er ugyldig."
+          }
+        }
+      }
+    },
+    "The Gmail update belongs to another account.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-oppdateringen tilhører en annen konto."
+          }
+        }
+      }
+    },
+    "The Gmail local store could not be opened.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-lagringen kunne ikke åpnes."
+          }
+        }
+      }
+    },
+    "The Gmail local store could not be prepared.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-lagringen kunne ikke klargjøres."
+          }
+        }
+      }
+    },
+    "The Gmail local store could not be updated.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-lagringen kunne ikke oppdateres."
+          }
+        }
+      }
+    },
+    "The Gmail local store contains unreadable data.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-lagringen inneholder uleselige data."
+          }
+        }
+      }
+    },
+    "The Gmail draft staging identifier is invalid.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-utkastets klargjørings­identifikator er ugyldig."
+          }
+        }
+      }
+    },
+    "Google did not provide a stable account identity.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google ga ingen stabil konto­identitet."
+          }
+        }
+      }
+    },
+    "Google did not provide a verified email address.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google ga ingen verifisert e-postadresse."
+          }
+        }
+      }
+    },
+    "This account is not configured for Gmail API access.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne kontoen er ikke konfigurert for Gmail API-tilgang."
+          }
+        }
+      }
+    },
+    "Saved Gmail account metadata does not match this account.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret Gmail-konto­metadata samsvarer ikke med denne kontoen."
+          }
+        }
+      }
+    },
+    "Brev could not remove the Gmail account's local data. Try removing it again.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke fjerne Gmail-kontoens lokale data. Prøv å fjerne den igjen."
+          }
+        }
+      }
+    },
+    "Brev removed Gmail mail data but could not clear pending changes. Try removing the account again.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev fjernet Gmail-e-postdata, men kunne ikke tømme ventende endringer. Prøv å fjerne kontoen igjen."
+          }
+        }
+      }
+    },
+    "Gmail draft attachments exceed the local staging limit of %lld bytes.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-utkastets vedlegg overskrider den lokale klargjørings­grensen på %lld byte."
+          }
+        }
+      }
+    },
+    "Gmail is temporarily unavailable (HTTP %lld).": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail er midlertidig utilgjengelig (HTTP %lld)."
+          }
+        }
+      }
+    },
+    "Gmail rejected the request (HTTP %lld).": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail avviste forespørselen (HTTP %lld)."
+          }
+        }
+      }
+    },
+    "Gmail returned more data than allowed (limit %lld bytes).": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail returnerte mer data enn tillatt (grense %lld byte)."
+          }
+        }
+      }
+    },
+    "Choose a valid send date and complete message content.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg et gyldig sendetidspunkt og fullfør meldingsinnholdet."
+          }
+        }
+      }
+    },
+    "This scheduled message is being delivered or needs review in Outbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne planlagte meldingen leveres eller må gjennomgås i Utboks."
+          }
+        }
+      }
+    },
+    "This scheduled message is no longer in Outbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne planlagte meldingen er ikke lenger i Utboks."
+          }
+        }
+      }
+    },
+    "Gmail authorization is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-autorisasjon er ikke tilgjengelig."
+          }
+        }
+      }
+    },
+    "Brev could not restore the previous Gmail sign-in state. Try connecting the account again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke gjenopprette den forrige Gmail-påloggings­tilstanden. Prøv å koble til kontoen igjen."
+          }
+        }
+      }
+    },
+    "The Google account that signed in does not match this account. Your existing sign-in is unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-kontoen som logget på samsvarer ikke med denne kontoen. Den eksisterende påloggingen er uendret."
+          }
+        }
+      }
+    },
+    "Google did not grant the requested access. Your existing sign-in is unchanged.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google ga ikke den forespurte tilgangen. Den eksisterende påloggingen er uendret."
+          }
+        }
+      }
+    },
+    "Gmail confirmed delivery, but local cleanup failed. Check Sent before removing this schedule.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail bekreftet leveringen, men lokal opprydding mislyktes. Sjekk Sendt før du fjerner denne planlagte sendingen."
+          }
+        }
+      }
+    },
+    "This draft is already being updated. Try again when that operation finishes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette utkastet oppdateres allerede. Prøv igjen når operasjonen er ferdig."
+          }
+        }
+      }
+    },
+    "A previous delivery attempt was interrupted. Check Sent before trying again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Et tidligere leveringsforsøk ble avbrutt. Sjekk Sendt før du prøver igjen."
+          }
+        }
+      }
+    },
+    "Gmail returned a repeated history page cursor.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail returnerte samme historikkside­markør igjen."
+          }
+        }
+      }
+    },
+    "Gmail history exceeded the page limit (%lld).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-historikken overskred sidegrensen (%lld)."
+          }
+        }
+      }
+    },
+    "Gmail history exceeded the event limit (%lld).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gmail-historikken overskred hendelsesgrensen (%lld)."
+          }
+        }
+      }
+    }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

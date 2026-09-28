@@ -1,16 +1,1380 @@
 {
-  "sourceLanguage" : "en",
-  "strings" : {
-    "Related messages belong to a different mailbox." : {
-      "extractionState" : "manual"
+  "sourceLanguage": "en",
+  "strings": {
+    "1 queued mail change needs review: \\(firstMessage)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 endring av e-post i kø må gjennomgås: \\(firstMessage)"
+          }
+        }
+      }
     },
-    "The conversation changed. Load related messages again." : {
-      "extractionState" : "manual"
+    "A local folder named “\\(name)” already exists.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En lokal mappe med navnet «\\(name)» finnes allerede."
+          }
+        }
+      }
     },
-    "Some reply headers could not be interpreted safely." : {
-      "extractionState" : "manual"
+    "A scheduled message is being updated or delivered. Try again when it finishes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En planlagt melding blir oppdatert eller levert. Prøv igjen når den er ferdig."
+          }
+        }
+      }
     },
-    "Google rejected the token exchange%@ (HTTP %@)." : {}
+    "Add at least one recipient.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til minst én mottaker."
+          }
+        }
+      }
+    },
+    "An export already exists at this location. Choose another destination.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "En eksport finnes allerede på dette stedet. Velg et annet mål."
+          }
+        }
+      }
+    },
+    "Automatic retries stopped. Review account settings before trying again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatiske nye forsøk er stoppet. Gå gjennom kontoinnstillingene før du prøver igjen."
+          }
+        }
+      }
+    },
+    "Brev cannot add \\(authentication.rawValue) mail accounts yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kan ikke legge til \\(authentication.rawValue)-e-postkontoer ennå."
+          }
+        }
+      }
+    },
+    "Brev could not open the Google sign-in sheet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke åpne Google-innloggingsarket."
+          }
+        }
+      }
+    },
+    "Brev could not open the Microsoft sign-in sheet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke åpne Microsoft-innloggingsarket."
+          }
+        }
+      }
+    },
+    "Cannot open file for writing: \\(name)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kan ikke åpne filen for skriving: \\(name)"
+          }
+        }
+      }
+    },
+    "Cannot open mail import source: \\(name)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kan ikke åpne e-postimportkilden: \\(name)"
+          }
+        }
+      }
+    },
+    "Choose a destination folder for the EML files.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en målmappe for EML-filene."
+          }
+        }
+      }
+    },
+    "Choose a valid scheduled send date.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg et gyldig tidspunkt for planlagt sending."
+          }
+        }
+      }
+    },
+    "Connection closed by server.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilkoblingen ble lukket av serveren."
+          }
+        }
+      }
+    },
+    "Connection failed: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilkobling mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Couldn't encode the saved mail credential.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke kode den lagrede e-postlegitimasjonen."
+          }
+        }
+      }
+    },
+    "Couldn't encode the saved sign-in token.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke kode det lagrede innloggingstokenet."
+          }
+        }
+      }
+    },
+    "Couldn't find \\(id).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fant ikke \\(id)."
+          }
+        }
+      }
+    },
+    "Couldn't read pending mail changes: \\(Self.userFacingDescription(for: error))": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lese ventende e-postendringer: \\(Self.userFacingDescription(for: error))"
+          }
+        }
+      }
+    },
+    "Couldn't read pending mail conflict records: \\(Self.userFacingDescription(for: error))": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lese ventende e-postkonfliktregistreringer: \\(Self.userFacingDescription(for: error))"
+          }
+        }
+      }
+    },
+    "Couldn't read your saved sign-in yet (Keychain is locked). Try again in a moment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lese den lagrede innloggingen ennå (Nøkkelringen er låst). Prøv igjen om et øyeblikk."
+          }
+        }
+      }
+    },
+    "Couldn't save the account password in Keychain. Test connection can work without saving; Add account needs local credential storage.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lagre kontopassordet i Nøkkelringen. Test tilkobling kan fungere uten lagring; Legg til konto krever lokal legitimasjonslagring."
+          }
+        }
+      }
+    },
+    "Couldn't save the mail credential in Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lagre e-postlegitimasjonen i Nøkkelringen."
+          }
+        }
+      }
+    },
+    "Couldn't save the sign-in token in Keychain.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lagre innloggingstokenet i Nøkkelringen."
+          }
+        }
+      }
+    },
+    "Delivery failed. Waiting to retry.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Levering mislyktes. Venter på nytt forsøk."
+          }
+        }
+      }
+    },
+    "Delivery may have been interrupted. Check Sent before retrying.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Leveringen kan ha blitt avbrutt. Sjekk Sendte før du prøver igjen."
+          }
+        }
+      }
+    },
+    "Enter a valid email address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en gyldig e-postadresse."
+          }
+        }
+      }
+    },
+    "Export write failed: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving av eksporten mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Google Drive could not be reached. Check the connection and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive kunne ikke nås. Kontroller tilkoblingen og prøv igjen."
+          }
+        }
+      }
+    },
+    "Google Drive needs a fresh grant. Enable Drive again from the attachment menu.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive trenger en ny tillatelse. Aktiver Drive på nytt fra vedleggsmenyen."
+          }
+        }
+      }
+    },
+    "Google Drive returned a response Brev could not use.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Drive returnerte et svar Brev ikke kunne bruke."
+          }
+        }
+      }
+    },
+    "Google could not verify the signed-in account (HTTP \\(code)).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google kunne ikke verifisere den innloggede kontoen (HTTP \\(code))."
+          }
+        }
+      }
+    },
+    "Google did not return a verified email address.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte ingen verifisert e-postadresse."
+          }
+        }
+      }
+    },
+    "Google did not return an authorization code.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte ingen autorisasjonskode."
+          }
+        }
+      }
+    },
+    "Google rejected sign-in (\\(error))\\(detail)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google avviste innloggingen (\\(error))\\(detail)"
+          }
+        }
+      }
+    },
+    "Google rejected the token exchange%@ (HTTP %@).": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google avviste token-utvekslingen %@ (HTTP %@)."
+          }
+        }
+      }
+    },
+    "Google rejected the token exchange\\(providerDetail) (HTTP \\(code)).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google avviste tokenutvekslingen\\(providerDetail) (HTTP \\(code))."
+          }
+        }
+      }
+    },
+    "Google returned an unreadable account profile: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte en uleselig kontoprofil: \\(reason)"
+          }
+        }
+      }
+    },
+    "Google returned an unreadable token response: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte et uleselig tokensvar: \\(reason)"
+          }
+        }
+      }
+    },
+    "Google returned inconsistent account identity data.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google returnerte inkonsistente kontoidentitetsdata."
+          }
+        }
+      }
+    },
+    "Google sign-in has an invalid callback configuration: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innlogging har en ugyldig tilbakekallskonfigurasjon: \\(reason)"
+          }
+        }
+      }
+    },
+    "Google sign-in is complete. You can close this window and return to Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innloggingen er fullført. Du kan lukke dette vinduet og gå tilbake til Brev."
+          }
+        }
+      }
+    },
+    "Google sign-in is not configured in this build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innlogging er ikke konfigurert i dette bygget."
+          }
+        }
+      }
+    },
+    "Google sign-in returned an unexpected security state.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innlogging returnerte en uventet sikkerhetstilstand."
+          }
+        }
+      }
+    },
+    "Google sign-in was cancelled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innlogging ble avbrutt."
+          }
+        }
+      }
+    },
+    "IMAP authentication failed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-autentisering mislyktes."
+          }
+        }
+      }
+    },
+    "IMAP client received non-IMAP server settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-klienten mottok serverinnstillinger som ikke er for IMAP."
+          }
+        }
+      }
+    },
+    "IMAP command \\(command) failed: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-kommandoen \\(command) mislyktes: \\(response)"
+          }
+        }
+      }
+    },
+    "IMAP command \\(command) is not supported: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-kommandoen \\(command) støttes ikke: \\(response)"
+          }
+        }
+      }
+    },
+    "IMAP connection limit exceeded. Wait a moment and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-tilkoblingsgrensen er overskredet. Vent litt og prøv igjen."
+          }
+        }
+      }
+    },
+    "IMAP search does not support \\(criterion) yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-søk støtter ikke \\(criterion) ennå."
+          }
+        }
+      }
+    },
+    "IMAP server closed the connection: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serveren lukket tilkoblingen: \\(reason)"
+          }
+        }
+      }
+    },
+    "IMAP server does not support IDLE: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serveren støtter ikke IDLE: \\(response)"
+          }
+        }
+      }
+    },
+    "IMAP server rejected the connection: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serveren avviste tilkoblingen: \\(response)"
+          }
+        }
+      }
+    },
+    "IMAP server returned an unreadable response: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serveren returnerte et uleselig svar: \\(response)"
+          }
+        }
+      }
+    },
+    "IMAP server settings are invalid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serverinnstillingene er ugyldige."
+          }
+        }
+      }
+    },
+    "IMAP server settings are missing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-serverinnstillinger mangler."
+          }
+        }
+      }
+    },
+    "IMAP transport does not support \\(mode.rawValue) yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-transport støtter ikke \\(mode.rawValue) ennå."
+          }
+        }
+      }
+    },
+    "IMAP transport failed: \\(message)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "IMAP-transport mislyktes: \\(message)"
+          }
+        }
+      }
+    },
+    "Loading related messages needs your permission for this mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Å laste relaterte meldinger krever tillatelsen din for denne postkassen."
+          }
+        }
+      }
+    },
+    "Local folder \\(id) does not exist.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den lokale mappen \\(id) finnes ikke."
+          }
+        }
+      }
+    },
+    "Local folder names can't be empty.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lokale mappenavn kan ikke være tomme."
+          }
+        }
+      }
+    },
+    "Local message \\(id) does not exist.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den lokale meldingen \\(id) finnes ikke."
+          }
+        }
+      }
+    },
+    "Mail account credentials contain an invalid character.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legitimasjonen for e-postkontoen inneholder et ugyldig tegn."
+          }
+        }
+      }
+    },
+    "Mail backend is not connected.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-postserverdelen er ikke tilkoblet."
+          }
+        }
+      }
+    },
+    "Mail import read failed: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing av e-postimporten mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Mailbox quota exceeded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkassekvoten er overskredet."
+          }
+        }
+      }
+    },
+    "ManageSieve connection error: \\(detail)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ManageSieve-tilkoblingsfeil: \\(detail)"
+          }
+        }
+      }
+    },
+    "Microsoft did not return an authorization code.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft returnerte ingen autorisasjonskode."
+          }
+        }
+      }
+    },
+    "Microsoft did not return the user's email address in the token.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft returnerte ikke brukerens e-postadresse i tokenet."
+          }
+        }
+      }
+    },
+    "Microsoft rejected sign-in (\\(error))\\(detail)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft avviste innloggingen (\\(error))\\(detail)"
+          }
+        }
+      }
+    },
+    "Microsoft rejected the token exchange (HTTP \\(code)).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft avviste tokenutvekslingen (HTTP \\(code))."
+          }
+        }
+      }
+    },
+    "Microsoft returned an unreadable token response: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft returnerte et uleselig tokensvar: \\(reason)"
+          }
+        }
+      }
+    },
+    "Microsoft sign-in is not configured in this build.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft-innlogging er ikke konfigurert i dette bygget."
+          }
+        }
+      }
+    },
+    "Microsoft sign-in returned an unexpected security state.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft-innlogging returnerte en uventet sikkerhetstilstand."
+          }
+        }
+      }
+    },
+    "Microsoft sign-in was cancelled.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Microsoft-innlogging ble avbrutt."
+          }
+        }
+      }
+    },
+    "Network error: \\(underlying)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nettverksfeil: \\(underlying)"
+          }
+        }
+      }
+    },
+    "No refresh token is stored for this account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Inget oppdateringstoken er lagret for denne kontoen."
+          }
+        }
+      }
+    },
+    "No trusted encryption material is available for \\(recipients.joined(separator: \", \")).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Intet betrodd krypteringsmateriale er tilgjengelig for \\(recipients.joined(separator: \", \"))."
+          }
+        }
+      }
+    },
+    "No trusted signing identity is available for \\(senderEmail).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen betrodd signeringsidentitet er tilgjengelig for \\(senderEmail)."
+          }
+        }
+      }
+    },
+    "OAuth2 token refresh failed (HTTP \\(code)).": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdatering av OAuth2-token mislyktes (HTTP \\(code))."
+          }
+        }
+      }
+    },
+    "OAuth2 token refresh returned an unreadable response: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdatering av OAuth2-token returnerte et uleselig svar: \\(reason)"
+          }
+        }
+      }
+    },
+    "On My Mac": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På min Mac"
+          }
+        }
+      }
+    },
+    "On My iPhone": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På min iPhone"
+          }
+        }
+      }
+    },
+    "Rate limited. Try again in \\(Int(retryAfter.rounded())) seconds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grensen for forespørsler er nådd. Prøv igjen om \\(Int(retryAfter.rounded())) sekunder."
+          }
+        }
+      }
+    },
+    "Rate limited. Try again later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Grensen for forespørsler er nådd. Prøv igjen senere."
+          }
+        }
+      }
+    },
+    "Read failed: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Related messages belong to a different mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Relaterte meldinger tilhører en annen postkasse."
+          }
+        }
+      }
+    },
+    "Review the queued mail action.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gå gjennom e-posthandlingen i kø."
+          }
+        }
+      }
+    },
+    "SMTP authentication failed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-autentisering mislyktes."
+          }
+        }
+      }
+    },
+    "SMTP client does not support \\(authentication.rawValue) authentication yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-klienten støtter ikke \\(authentication.rawValue)-autentisering ennå."
+          }
+        }
+      }
+    },
+    "SMTP client received non-SMTP server settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-klienten mottok serverinnstillinger som ikke er for SMTP."
+          }
+        }
+      }
+    },
+    "SMTP command \\(command) failed: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-kommandoen \\(command) mislyktes: \\(response)"
+          }
+        }
+      }
+    },
+    "SMTP server did not advertise \\(mechanism) authentication.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-serveren annonserte ikke \\(mechanism)-autentisering."
+          }
+        }
+      }
+    },
+    "SMTP server rejected the connection: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-serveren avviste tilkoblingen: \\(response)"
+          }
+        }
+      }
+    },
+    "SMTP server returned an unreadable response: \\(response)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-serveren returnerte et uleselig svar: \\(response)"
+          }
+        }
+      }
+    },
+    "SMTP server settings are invalid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-serverinnstillingene er ugyldige."
+          }
+        }
+      }
+    },
+    "SMTP server settings are missing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-serverinnstillinger mangler."
+          }
+        }
+      }
+    },
+    "SMTP transport does not support \\(mode.rawValue) yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-transport støtter ikke \\(mode.rawValue) ennå."
+          }
+        }
+      }
+    },
+    "SMTP transport failed: \\(message)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "SMTP-transport mislyktes: \\(message)"
+          }
+        }
+      }
+    },
+    "Search stopped before all results could be loaded. Narrow your search or try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søket stoppet før alle resultater kunne lastes. Begrens søket eller prøv igjen."
+          }
+        }
+      }
+    },
+    "Settings discovery failed: \\(message)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdaging av innstillinger mislyktes: \\(message)"
+          }
+        }
+      }
+    },
+    "Sign in again to continue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logg inn igjen for å fortsette."
+          }
+        }
+      }
+    },
+    "Some reply headers could not be interpreted safely.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noen svar­hoder kunne ikke tolkes trygt."
+          }
+        }
+      }
+    },
+    "That Drive file is no longer available to Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den Drive-filen er ikke lenger tilgjengelig for Brev."
+          }
+        }
+      }
+    },
+    "The ManageSieve server closed the connection unexpectedly.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ManageSieve-serveren lukket tilkoblingen uventet."
+          }
+        }
+      }
+    },
+    "The ManageSieve server does not offer STARTTLS.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ManageSieve-serveren tilbyr ikke STARTTLS."
+          }
+        }
+      }
+    },
+    "The conversation changed. Load related messages again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samtalen er endret. Last relaterte meldinger på nytt."
+          }
+        }
+      }
+    },
+    "The draft could not be saved locally. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkastet kunne ikke lagres lokalt. Prøv igjen."
+          }
+        }
+      }
+    },
+    "The email address is not valid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-postadressen er ikke gyldig."
+          }
+        }
+      }
+    },
+    "The local draft is unavailable. Restore it before retrying, or cancel the schedule.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Det lokale utkastet er utilgjengelig. Gjenopprett det før du prøver igjen, eller avbryt den planlagte sendingen."
+          }
+        }
+      }
+    },
+    "The mailbox session changed. Start this operation again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasseøkten endret seg. Start denne operasjonen på nytt."
+          }
+        }
+      }
+    },
+    "The message may have been delivered, but SMTP confirmation was unavailable (\\(underlying)). Check Sent before trying again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen kan ha blitt levert, men SMTP-bekreftelse var utilgjengelig (\\(underlying)). Sjekk Sendte før du prøver igjen."
+          }
+        }
+      }
+    },
+    "The message may have been delivered. Check Sent before retrying.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen kan ha blitt levert. Sjekk Sendte før du prøver igjen."
+          }
+        }
+      }
+    },
+    "The server repeated an export page. Refresh the mailbox and try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren gjentok en eksportside. Oppdater postkassen og prøv igjen."
+          }
+        }
+      }
+    },
+    "The server returned an empty message source. Export stopped.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Serveren returnerte en tom meldingskilde. Eksporten ble stoppet."
+          }
+        }
+      }
+    },
+    "This Google file cannot be exported as an attachment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne Google-filen kan ikke eksporteres som vedlegg."
+          }
+        }
+      }
+    },
+    "This build can't sign or encrypt mail yet, so the message was not sent. Turn off message security to send it, or wait for an update that adds encryption.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette bygget kan ikke signere eller kryptere e-post ennå, så meldingen ble ikke sendt. Slå av meldingssikkerhet for å sende den, eller vent på en oppdatering som legger til kryptering."
+          }
+        }
+      }
+    },
+    "This mail backend doesn't support that action.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne e-postserverdelen støtter ikke den handlingen."
+          }
+        }
+      }
+    },
+    "This mailbox changed on the server. Refresh before undoing the move.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne postkassen endret seg på serveren. Oppdater før du angrer flyttingen."
+          }
+        }
+      }
+    },
+    "This scheduled message is no longer available.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne planlagte meldingen er ikke lenger tilgjengelig."
+          }
+        }
+      }
+    },
+    "Unknown error.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ukjent feil."
+          }
+        }
+      }
+    },
+    "Write failed: \\(reason)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Your Google sign-in has expired. Sign in again to continue.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-innloggingen din har utløpt. Logg inn igjen for å fortsette."
+          }
+        }
+      }
+    },
+    "\\(conflicts.count) queued mail changes needs review: \\(firstMessage)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "\\(conflicts.count) e-postendringer i kø må gjennomgås: \\(firstMessage)"
+          }
+        }
+      }
+    }
   },
-  "version" : "1.0"
+  "version": "1.0"
 }

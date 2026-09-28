@@ -25,6 +25,7 @@ import ProjectDescriptionHelpers
 let project = Project(
     name: "BrevMacOS",
     organizationName: "Brev",
+    options: .options(defaultKnownRegions: ["en", "Base", "nb"]),
     packages: [
         .package(path: "../../packages/BrevBackend"),
         .package(path: "../../packages/BrevCalendar"),

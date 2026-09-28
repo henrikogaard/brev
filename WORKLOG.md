@@ -177,6 +177,21 @@ hair-triggering.
   tasks) still map every 403 to authenticationRequired — same copy gap
   on post-discovery syncs; scoped to discovery where failures surface
   first.
+## 2026-09-28 — Agent — l10n(nb): first non-English locale
+
+- **Goal:** Phase E — ship Norwegian Bokmål as Brev's second language.
+- **Adds:** `nb` in Tuist `defaultKnownRegions` for both app projects
+  (knownRegions regenerated); `nb` stringUnits in every non-empty
+  catalog (BrevMail 497/497, BrevGmail 35, BrevBackend 4, BrevSettings
+  2, app targets + InfoPlist usage strings). ADR-0058 amended —
+  it deferred the second-language step until native-speaker review.
+- **Skipped:** CFBundleName/DisplayName/NSHumanReadableCopyright stay
+  untranslated (product name does not localize).
+- **Verification:** catalogs parse (all 14 JSON valid); iOS+macOS
+  builds compile catalogs at build time. Snapshot lanes stay `en`.
+- **Handoff:** native-speaker review pass — Henrik owns the wording;
+  especially mail-domain choices (Kopi til/Blindkopi, Utboks,
+  smartvisning, oppfølgingspåminnelse).
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves
