@@ -106,15 +106,15 @@ public enum CalendarEventPresentation {
         case .weekly:
             frequencyWord = rule.interval > 1
                 ? String(localized: "weeks", bundle: .module)
-                : String(localized: "week", bundle: .module)
+                : String(localized: "week.lower", bundle: .module)
         case .monthly:
             frequencyWord = rule.interval > 1
                 ? String(localized: "months", bundle: .module)
-                : String(localized: "month", bundle: .module)
+                : String(localized: "month.lower", bundle: .module)
         case .yearly:
             frequencyWord = rule.interval > 1
                 ? String(localized: "years", bundle: .module)
-                : String(localized: "year", bundle: .module)
+                : String(localized: "year.lower", bundle: .module)
         }
         if rule.interval > 1 {
             parts.append(

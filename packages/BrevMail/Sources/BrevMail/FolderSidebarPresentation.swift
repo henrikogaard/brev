@@ -585,7 +585,7 @@ enum FolderSidebarPresentation {
             ),
             .init(
                 action: .deleteFolder,
-                title: String(localized: "Delete Folder", bundle: .module),
+                title: String(localized: "deleteFolder.action", bundle: .module),
                 symbolName: "trash",
                 isEnabled: presentation.canDeleteFolder,
                 role: .destructive
@@ -690,7 +690,7 @@ enum FolderSidebarPresentation {
             let trimmedError = loadErrorMessage(loadError.message)
             if folders.isEmpty {
                 return FolderSidebarStatus(
-                    title: String(localized: "Couldn't load folders", bundle: .module),
+                    title: String(localized: "couldntLoadFolders.plain", bundle: .module),
                     icon: "exclamationmark.triangle",
                     subtitle: trimmedError,
                     actionTitle: String(localized: "Try Again", bundle: .module)

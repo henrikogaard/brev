@@ -165,7 +165,7 @@ struct PIMSourcesSettingsView: View {
         }
         .sheet(isPresented: $isShowingConnectSheet) {
             PIMSourceConnectSheet(
-                title: String(localized: "Add DAV Source", bundle: .module),
+                title: String(localized: "addDavSource.action", bundle: .module),
                 submitTitle: String(localized: "Connect", bundle: .module),
                 showsEndpointFields: true,
                 isSubmitting: model.isConnecting,
@@ -177,7 +177,7 @@ struct PIMSourcesSettingsView: View {
         .sheet(item: Bindable(model).credentialSheetSource) { source in
             PIMSourceConnectSheet(
                 title: String(localized: "Reconnect Source", bundle: .module),
-                submitTitle: String(localized: "Reconnect", bundle: .module),
+                submitTitle: String(localized: "reconnect.action", bundle: .module),
                 showsEndpointFields: false,
                 isSubmitting: model.pendingSourceID == source.id,
                 connectError: model.lastError
@@ -475,7 +475,7 @@ struct PIMSourcesSettingsView: View {
                         removalCandidate = source
                     }
                 } label: {
-                    Label(String(localized: "Remove Source…", bundle: .module), systemImage: "trash")
+                    Label(String(localized: "removeSource.menu", bundle: .module), systemImage: "trash")
                 }
             }
         } label: {
@@ -745,7 +745,7 @@ struct PIMSourceConnectSheet: View {
     // MARK: - Sections
 
     private var kindPicker: some View {
-        Picker(String(localized: "Type", bundle: .module), selection: $form.kind) {
+        Picker(String(localized: "form.type", bundle: .module), selection: $form.kind) {
             Text(String(localized: "Calendar (CalDAV)", bundle: .module))
                 .tag(PIMDAVConnectForm.SourceKind.calendar)
             Text(String(localized: "Contacts (CardDAV)", bundle: .module))

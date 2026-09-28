@@ -62,13 +62,13 @@ struct MessageNoteSheet: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text(
                     note == nil
-                        ? String(localized: "Add Note", bundle: .module)
-                        : String(localized: "Edit Note", bundle: .module)
+                        ? String(localized: "addNote.action", bundle: .module)
+                        : String(localized: "editNote.action", bundle: .module)
                 )
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
                 Text(verbatim: header.subject.isEmpty
-                    ? String(localized: "No subject", bundle: .module)
+                    ? String(localized: "noSubject.plain", bundle: .module)
                     : header.subject)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)

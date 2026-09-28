@@ -488,7 +488,7 @@ public struct CalendarRootView: View {
                     Image(systemName: "plus")
                 }
                 .accessibilityLabel(
-                    String(localized: "New event", bundle: .module)
+                    String(localized: "newEvent.lower", bundle: .module)
                 )
             }
             Button {

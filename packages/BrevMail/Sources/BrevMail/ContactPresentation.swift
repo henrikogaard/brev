@@ -35,7 +35,7 @@ public enum ContactPresentation {
         if !words.isEmpty {
             return words.joined()
         }
-        return String(localized: "?", bundle: .module)
+        return String(localized: "contact.unknown", bundle: .module)
     }
 
     /// Secondary line under a contact's name: job title + organization,

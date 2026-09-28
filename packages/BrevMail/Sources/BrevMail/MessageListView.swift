@@ -646,7 +646,7 @@ public struct MessageListView: View {
             }
             .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
             if !moveFolderCandidates.isEmpty {
-                Button(String(localized: "Move…", bundle: .module)) {
+                Button(String(localized: "move.menu", bundle: .module)) {
                     performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .move))
                     navigation.presentedSheet = .moveTo(
                         messageIDs: Array(navigation.bulkSelection),

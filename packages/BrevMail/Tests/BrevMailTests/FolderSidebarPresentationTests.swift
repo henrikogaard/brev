@@ -40,7 +40,7 @@ struct FolderSidebarPresentationTests {
                 isNetworkError: true
             )
         ) == FolderSidebarStatus(
-            title: "Couldn't load folders",
+            title: String(localized: "couldntLoadFolders.plain", bundle: .module),
             icon: "exclamationmark.triangle",
             subtitle: "Network error: offline",
             actionTitle: "Try Again"
@@ -74,7 +74,7 @@ struct FolderSidebarPresentationTests {
                 isNetworkError: false
             )
         ) == FolderSidebarStatus(
-            title: "Couldn't load folders",
+            title: String(localized: "couldntLoadFolders.plain", bundle: .module),
             icon: "exclamationmark.triangle",
             subtitle: "Couldn't load folders.",
             actionTitle: "Try Again"

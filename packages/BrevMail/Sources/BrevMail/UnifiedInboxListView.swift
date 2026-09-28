@@ -400,7 +400,7 @@ struct UnifiedInboxListView: View {
             ))
         }
         .alert(String(localized: "Block Sender?", bundle: .module), isPresented: isBlockSenderAlertPresented) {
-            Button(String(localized: "Block Sender", bundle: .module), role: .destructive) {
+            Button(String(localized: "blockSender.action", bundle: .module), role: .destructive) {
                 Task { await confirmBlockSender() }
             }
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
@@ -1002,7 +1002,7 @@ struct UnifiedInboxListView: View {
                 }
             }
             .disabled(isMutationActionBlocked || selectedItems.isEmpty)
-            Button(String(localized: "Move…", bundle: .module)) {
+            Button(String(localized: "move.menu", bundle: .module)) {
                 navigation.presentedSheet = .moveTo(
                     messageIDs: selectedItems.map(\.header.id),
                     sourceID: moveSourceID,

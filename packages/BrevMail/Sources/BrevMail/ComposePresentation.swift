@@ -327,7 +327,7 @@ enum ComposePresentation {
     static func aiShortcutErrorMessage(for error: any Error) -> String {
         prefixedErrorMessage(
             prefix: String(localized: "Couldn't update with AI Writer:", bundle: .module),
-            fallback: String(localized: "Couldn't update with AI Writer.", bundle: .module),
+            fallback: String(localized: "couldntUpdateAiWriter.period", bundle: .module),
             error: error
         )
     }

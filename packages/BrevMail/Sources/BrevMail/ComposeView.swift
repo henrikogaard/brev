@@ -1640,7 +1640,7 @@ public struct ComposeView: View {
                 signatureMenuContent
             } label: {
                 HStack(spacing: BrevSpacing.xxs) {
-                    Text("Signature:", bundle: .module)
+                    Text("signature.label", bundle: .module)
                         .foregroundStyle(theme.textTertiary.color)
                     Text(verbatim: selectedSignature?.title ?? String(localized: "None", bundle: .module))
                         .foregroundStyle(theme.textSecondary.color)
@@ -2281,7 +2281,7 @@ public struct ComposeView: View {
             Label(providerUnavailableReason.title, systemImage: "exclamationmark.triangle")
             Text(aiUnavailableHelpText(for: providerUnavailableReason))
         } else if !aiWriterSettings.isAvailable {
-            Button(String(localized: "Enable AI Writer…", bundle: .module)) {
+            Button(String(localized: "enableAiWriter.menu", bundle: .module)) {
                 showAIConsent = true
             }
             Text(AIWriterDisclosure.defaultProvider.transparencyLabel)

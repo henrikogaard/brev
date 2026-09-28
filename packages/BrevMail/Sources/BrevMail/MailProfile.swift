@@ -41,7 +41,7 @@ public struct MailProfile: Identifiable, Equatable, Hashable, Codable, Sendable 
     public static func allMailboxes(sourceIDs: [MailSourceID]) -> MailProfile {
         MailProfile(
             id: allMailboxesID,
-            name: "All Mailboxes",
+            name: String(localized: "allMailboxes.title", bundle: .module),
             sourceIDs: sourceIDs,
             isSystem: true
         )

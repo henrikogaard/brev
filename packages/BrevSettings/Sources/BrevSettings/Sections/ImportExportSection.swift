@@ -970,7 +970,7 @@ struct ImportExportSection: View {
         #if os(macOS)
         guard canExport, let request = exportRequest else { return }
         let panel = NSSavePanel()
-        panel.title = String(localized: "Export as MBOX", bundle: .module)
+        panel.title = String(localized: "exportAsMbox.action", bundle: .module)
         panel.message = String(localized: "Export every message from \(request.title).", bundle: .module)
         panel.nameFieldStringValue = MailFolderExporter.suggestedArchiveName(for: request.folder.name)
         panel.allowedContentTypes = [.mboxArchive]

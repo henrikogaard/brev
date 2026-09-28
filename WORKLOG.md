@@ -1,5 +1,55 @@
 # Worklog
 
+## 2026-09-28 — Agent — reconnect sheet title for OAuth reauth
+
+- Goal: the #151 "Sign in again" reconnect sheet titled itself
+  "Update mail password" even when the account re-authenticates via
+  OAuth (Gmail now, Outlook later) — flagged in the continuation review.
+- Changes: `IMAPAccountSetupSheet.setupTitle` now reads "Sign in again"
+  (existing key, nb parity already present) when the resolved setup is
+  OAuth — `setupPath` `.google`/`.outlook` or either server's
+  authentication `.xoauth2` — and keeps "Update mail password" for
+  password/app-password reauth.
+- Verified: `swift build` on BrevMail; lint/format clean.
+- Skipped: device re-verify (tiny conditional; covered by next QA pass).
+- Handoff: none.
+
+## 2026-09-28 — Agent — l10n catalog symbol collisions (Xcode 27 build blocker)
+
+- Goal: restore local builds on Xcode 27.0-RC — `GenerateStringSymbols`
+  rejected the BrevSettings (21 errors) and BrevMail (83 errors)
+  `Localizable.xcstrings` imported by #148.
+- Changes: deleted 9 dead keys with no call sites (`%lld%%`, `%@ → %@`,
+  `%@, %@ theme`, `%@ theme, %@`, `Edit %@`, `Edit "%@"`,
+  `Custom Date & Time`, `Move to Folder`, mojibake `\(nickname)` variants);
+  renamed 45 colliding/un-nameable keys to explicit lookup keys
+  (e.g. `blockSender.menu`, `form.type`, `contact.unknown`) whose entries
+  carry an explicit `en` localization equal to the original key text, so
+  displayed English and Norwegian strings are unchanged; updated the ~60
+  Swift call-site literals in BrevMail/BrevSettings sources, including a
+  few plain-string properties (`MailProfile.name`, command `title:`s,
+  `BrevIconButton` accessibility labels) that resolved through the
+  catalog implicitly. Logic comparisons in `MailtoURL` and
+  `MailboxActionAgentPlanner` deliberately untouched.
+- Verified: `xcstringstool generate-symbols` clean on both catalogs (0
+  errors, all 19 catalogs in the tree clean); `swift build` succeeds for
+  BrevSettings and BrevMail; `scripts/lint.sh` OK.
+- Follow-up (CI `test (BrevSettings)` + `test (BrevMail)` failures):
+  six tests compared localized strings to their old English keys —
+  under `swift test` the catalogs are not compiled, so
+  `String(localized:bundle:.module)` yields the key itself. Assertions
+  now compare against `String(localized:)` of the renamed key
+  (`savedInKeychain.badge`, `enableAiWriter.menu`,
+  `couldntLoadFolders.plain`, `setFollowUpReminder.menu`,
+  `couldntUpdateAiWriter.period`); all fixed suites pass locally.
+  Swept all renamed literals for remaining test references — only
+  unrelated fixtures remain (rule IDs, message subjects, JSON payloads).
+- Skipped: full app xcodebuild + device verification (delegated to the
+  testing agent's next pass); CI build job confirms the app target.
+- Handoff: pattern documented for future catalog imports — keep keys
+  symbol-safe; QA evidence that exposed this is in
+  `docs/qa/continuation-review-2026-09-28.md`.
+
 ## 2026-09-28 — Codex — Microsoft OAuth registration and release wiring
 
 - Goal: configure the existing public-client Exchange Online IMAP/SMTP OAuth

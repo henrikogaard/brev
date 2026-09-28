@@ -212,7 +212,7 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
             // dedicated Keyboard Shortcuts window scene. This config exists
             // for exhaustiveness.
             return Self(
-                title: String(localized: "Keyboard Shortcuts", bundle: .module),
+                title: String(localized: "keyboardShortcuts.action", bundle: .module),
                 defaultSize: CGSize(width: 440, height: 520),
                 minimumSize: CGSize(width: 380, height: 400),
                 frameAutosaveName: "BrevKeyboardShortcutsWindow",

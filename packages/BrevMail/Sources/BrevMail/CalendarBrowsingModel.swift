@@ -52,7 +52,7 @@ public final class CalendarBrowsingModel {
             case .agenda:
                 String(localized: "Agenda", bundle: .module)
             case .day:
-                String(localized: "Day", bundle: .module)
+                String(localized: "day.title", bundle: .module)
             case .week:
                 String(localized: "Week", bundle: .module)
             case .month:

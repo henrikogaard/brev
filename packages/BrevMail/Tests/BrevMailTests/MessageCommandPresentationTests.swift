@@ -213,7 +213,7 @@ struct MessageCommandPresentationTests {
         #expect(menu.action(.createRule)?.title == "Create Rule from Message…")
         #expect(menu.action(.addNote)?.title == "Add Note…")
         #expect(menu.action(.downloadOffline)?.title == "Keep Offline")
-        #expect(menu.action(.followUp)?.title == "Set Follow-Up Reminder…")
+        #expect(menu.action(.followUp)?.title == String(localized: "setFollowUpReminder.menu", bundle: .module))
     }
 
     @Test("Add Note toggles its title when the message already has a local note")

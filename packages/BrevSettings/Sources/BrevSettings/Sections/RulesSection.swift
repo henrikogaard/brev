@@ -347,7 +347,7 @@ private struct ServerRulesPane: View {
             pendingDeleteID = nil
             return
         }
-        let name = rules.first(where: { $0.id == ruleID })?.name ?? String(localized: "rule", bundle: .module)
+        let name = rules.first(where: { $0.id == ruleID })?.name ?? String(localized: "rule.lower", bundle: .module)
         Task {
             do {
                 try await service.deleteServerRule(id: ruleID, sourceID: currentSourceID)
@@ -654,7 +654,7 @@ private struct LocalRulesPane: View {
     }
 
     private func confirmDelete(ruleID: ServerRule.ID) {
-        let name = settings.rules.first(where: { $0.id == ruleID })?.name ?? String(localized: "rule", bundle: .module)
+        let name = settings.rules.first(where: { $0.id == ruleID })?.name ?? String(localized: "rule.lower", bundle: .module)
         settings.remove(id: ruleID)
         persist()
         statusMessage = String(localized: "Deleted \"\(name)\".", bundle: .module)

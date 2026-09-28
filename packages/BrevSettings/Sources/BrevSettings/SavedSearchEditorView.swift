@@ -212,7 +212,7 @@ private struct SmartViewConditionRow: View {
                 HStack {
                     TextField(String(localized: "Number of days", bundle: .module), text: $condition.value)
                         .textFieldStyle(.roundedBorder)
-                    Text("days", bundle: .module)
+                    Text("days.lower", bundle: .module)
                 }
             } else {
                 DatePicker(String(localized: "Date", bundle: .module), selection: $condition.date, displayedComponents: .date)

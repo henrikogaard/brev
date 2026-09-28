@@ -44,7 +44,7 @@ struct MailboxChatNoticeTests {
 
             #expect(notice.tone == .info)
             #expect(notice.action == .showConsent)
-            #expect(notice.actionTitle == "Enable AI Writer…")
+            #expect(notice.actionTitle == String(localized: "enableAiWriter.menu", bundle: .module))
         }
     }
 

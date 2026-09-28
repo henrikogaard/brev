@@ -71,7 +71,7 @@ struct AIProviderSettingsTests {
         )
 
         #expect(draft.apiKeyStatusText == "Saved in Keychain.")
-        #expect(draft.redactedKeyPresentation == "Saved in Keychain")
+        #expect(draft.redactedKeyPresentation == String(localized: "savedInKeychain.badge", bundle: .module))
         #expect(draft.apiKeyStatusText.contains(rawKey) == false)
         #expect(draft.redactedKeyPresentation.contains(rawKey) == false)
     }

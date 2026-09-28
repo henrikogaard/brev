@@ -121,7 +121,7 @@ public struct ServerRuleEditorView: View {
     private func conditionRow(at index: Int) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             HStack {
-                Picker(String(localized: "Type", bundle: .module), selection: conditionKindBinding(at: index)) {
+                Picker(String(localized: "form.type", bundle: .module), selection: conditionKindBinding(at: index)) {
                     ForEach(ServerRuleEditorDraft.ConditionKind.allCases) { kind in
                         Text(kind.title).tag(kind)
                     }
@@ -158,7 +158,7 @@ public struct ServerRuleEditorView: View {
     private func actionRow(at index: Int) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             HStack {
-                Picker(String(localized: "Type", bundle: .module), selection: actionKindBinding(at: index)) {
+                Picker(String(localized: "form.type", bundle: .module), selection: actionKindBinding(at: index)) {
                     ForEach(ServerRuleEditorDraft.ActionKind.allCases) { kind in
                         Text(kind.title).tag(kind)
                     }

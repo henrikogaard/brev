@@ -143,7 +143,7 @@ public struct TaskEditorView: View {
                     #endif
                 }
 
-                fieldGroup(String(localized: "Due Date", bundle: .module)) {
+                fieldGroup(String(localized: "dueDate.title", bundle: .module)) {
                     Toggle(
                         String(localized: "Add due date", bundle: .module),
                         isOn: $includesDueDate

@@ -89,7 +89,7 @@ public struct TaskDetailView: View {
             if let url = PIMDeepLinkPolicy.url(forTaskID: task.id) {
                 BrevIconButton(
                     systemName: "link",
-                    accessibilityLabel: "Copy link",
+                    accessibilityLabel: "copyLink.lower",
                     bundle: .module
                 ) {
                     PIMDeepLinkCopy.copy(url)
@@ -98,7 +98,7 @@ public struct TaskDetailView: View {
             if let onEdit {
                 BrevIconButton(
                     systemName: "pencil",
-                    accessibilityLabel: "Edit task",
+                    accessibilityLabel: "editTask.lower",
                     bundle: .module
                 ) {
                     onEdit()

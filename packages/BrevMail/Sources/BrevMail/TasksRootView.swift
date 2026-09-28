@@ -445,7 +445,7 @@ public struct TasksRootView: View {
                     )
                 }
                 .accessibilityLabel(
-                    String(localized: "New task", bundle: .module)
+                    String(localized: "newTask.lower", bundle: .module)
                 )
             }
         }

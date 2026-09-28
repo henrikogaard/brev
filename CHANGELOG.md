@@ -22,6 +22,17 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The re-authentication sheet titles itself "Sign in again" when the
+  account re-authenticates via OAuth (Google or Microsoft) instead of
+  the password-centric "Update mail password".
+
+- Fixed a build blocker introduced by the Norwegian localization import:
+  Xcode 27's string-symbol generation rejected ~100 colliding catalog
+  keys (case/punctuation variants like `Block Sender`/`Block Sender…`,
+  reserved `Type`, un-nameable `?`). Keys were de-duplicated behind
+  explicit lookup keys with identical English text, so nothing visible
+  changed — builds now succeed on both older and newer toolchains.
+
 - Stable release builds now receive the configured Microsoft OAuth client ID
   during project generation and archiving, enabling the existing Outlook
   IMAP/SMTP sign-in option when the repository secret is set.

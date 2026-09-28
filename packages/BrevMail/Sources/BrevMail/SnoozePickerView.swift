@@ -34,9 +34,9 @@ struct SnoozePickerView: View {
 
         var title: String {
             switch self {
-            case .laterToday: return String(localized: "Later today", bundle: .module)
+            case .laterToday: return String(localized: "laterToday.lower", bundle: .module)
             case .tomorrowMorning: return String(localized: "Tomorrow morning", bundle: .module)
-            case .nextWeek: return String(localized: "Next week", bundle: .module)
+            case .nextWeek: return String(localized: "nextWeek.lower", bundle: .module)
             case .custom: return String(localized: "Custom date & time", bundle: .module)
             }
         }

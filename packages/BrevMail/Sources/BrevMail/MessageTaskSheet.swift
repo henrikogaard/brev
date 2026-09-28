@@ -103,7 +103,7 @@ struct MessageTaskSheet: View {
                     .labelsHidden()
                 }
 
-                fieldGroup("Due Date") {
+                fieldGroup("dueDate.title") {
                     Toggle(String(localized: "Add due date", bundle: .module), isOn: $includesDueDate)
                         .onChange(of: includesDueDate) { _, newValue in
                             draft.dueDate = newValue ? selectedDueDate : nil

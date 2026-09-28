@@ -139,7 +139,7 @@ struct AIProviderSettingsDraft: Equatable, Sendable {
     var redactedKeyPresentation: String {
         guard requiresAPIKey else { return "Not required" }
         if hasSavedAPIKey {
-            return String(localized: "Saved in Keychain", bundle: .module)
+            return String(localized: "savedInKeychain.badge", bundle: .module)
         }
         return String(localized: "Not saved", bundle: .module)
     }

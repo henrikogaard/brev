@@ -166,9 +166,15 @@
         }
       }
     },
-    "?": {
+    "contact.unknown": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "?"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -386,9 +392,15 @@
         }
       }
     },
-    "Add Note": {
+    "addNote.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Note"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -694,9 +706,15 @@
         }
       }
     },
-    "All Mailboxes": {
+    "allMailboxes.title": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Mailboxes"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -1145,9 +1163,15 @@
         }
       }
     },
-    "Block Sender": {
+    "blockSender.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block Sender"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -1167,9 +1191,15 @@
         }
       }
     },
-    "Block Sender…": {
+    "blockSender.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block Sender…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2365,9 +2395,15 @@
         }
       }
     },
-    "Copy link": {
+    "copyLink.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy link"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2398,9 +2434,15 @@
         }
       }
     },
-    "Copy to Local Folder…": {
+    "copyToLocalFolder.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to Local Folder…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2508,9 +2550,15 @@
         }
       }
     },
-    "Couldn't load folders": {
+    "couldntLoadFolders.plain": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load folders"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2728,9 +2776,15 @@
         }
       }
     },
-    "Couldn't update with AI Writer.": {
+    "couldntUpdateAiWriter.period": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't update with AI Writer."
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2838,9 +2892,15 @@
         }
       }
     },
-    "Create Task…": {
+    "createTask.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create Task…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2871,9 +2931,15 @@
         }
       }
     },
-    "Create task": {
+    "createTask.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create task"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -2933,17 +2999,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gjeldende mappe"
-          }
-        }
-      }
-    },
-    "Custom Date & Time": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Egendefinert dato og tid"
           }
         }
       }
@@ -3025,9 +3080,15 @@
         }
       }
     },
-    "Day": {
+    "day.title": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3179,9 +3240,15 @@
         }
       }
     },
-    "Delete Folder": {
+    "deleteFolder.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Folder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3542,9 +3609,15 @@
         }
       }
     },
-    "Due Date": {
+    "dueDate.title": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Due Date"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3619,9 +3692,15 @@
         }
       }
     },
-    "Edit Note": {
+    "editNote.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Note"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3674,9 +3753,15 @@
         }
       }
     },
-    "Edit task": {
+    "editTask.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit task"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3784,9 +3869,15 @@
         }
       }
     },
-    "Enable AI Writer…": {
+    "enableAiWriter.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable AI Writer…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -4895,9 +4986,15 @@
         }
       }
     },
-    "Import Mail": {
+    "importMail.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Mail"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -5115,9 +5212,15 @@
         }
       }
     },
-    "Keyboard Shortcuts": {
+    "keyboardShortcuts.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyboard Shortcuts"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -5258,9 +5361,15 @@
         }
       }
     },
-    "Later today": {
+    "laterToday.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later today"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6050,17 +6159,6 @@
         }
       }
     },
-    "Move to Folder": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Flytt til mappe"
-          }
-        }
-      }
-    },
     "Move to Local Folder": {
       "extractionState": "manual",
       "localizations": {
@@ -6072,9 +6170,15 @@
         }
       }
     },
-    "Move to Local Folder…": {
+    "moveToLocalFolder.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Local Folder…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6149,9 +6253,15 @@
         }
       }
     },
-    "Move…": {
+    "move.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6259,9 +6369,15 @@
         }
       }
     },
-    "New Local Folder": {
+    "newLocalFolder.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Local Folder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6314,9 +6430,15 @@
         }
       }
     },
-    "New Subfolder": {
+    "newSubfolder.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Subfolder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6347,9 +6469,15 @@
         }
       }
     },
-    "New contact": {
+    "newContact.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New contact"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6358,9 +6486,15 @@
         }
       }
     },
-    "New event": {
+    "newEvent.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New event"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6424,9 +6558,15 @@
         }
       }
     },
-    "New task": {
+    "newTask.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New task"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6490,9 +6630,15 @@
         }
       }
     },
-    "Next week": {
+    "nextWeek.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next week"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -6776,9 +6922,15 @@
         }
       }
     },
-    "No subject": {
+    "noSubject.plain": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No subject"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -7689,9 +7841,15 @@
         }
       }
     },
-    "Print": {
+    "print.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Print"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -8052,9 +8210,15 @@
         }
       }
     },
-    "Rename Folder": {
+    "renameFolder.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Folder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -9130,9 +9294,15 @@
         }
       }
     },
-    "Set Follow-Up Reminder…": {
+    "setFollowUpReminder.menu": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Follow-Up Reminder…"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -9141,9 +9311,15 @@
         }
       }
     },
-    "Set Local Name": {
+    "setLocalName.action": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Local Name"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -9526,9 +9702,15 @@
         }
       }
     },
-    "Signature:": {
+    "signature.label": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature:"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11506,9 +11688,15 @@
         }
       }
     },
-    "all folders": {
+    "allFolders.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "all folders"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11539,9 +11727,15 @@
         }
       }
     },
-    "current folder": {
+    "currentFolder.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "current folder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11656,9 +11850,15 @@
         }
       }
     },
-    "month": {
+    "month.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "month"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11733,9 +11933,15 @@
         }
       }
     },
-    "this folder": {
+    "thisFolder.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "this folder"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11777,9 +11983,15 @@
         }
       }
     },
-    "week": {
+    "week.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "week"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11799,9 +12011,15 @@
         }
       }
     },
-    "year": {
+    "year.lower": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "year"
+          }
+        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -11828,17 +12046,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "leverandøren din"
-          }
-        }
-      }
-    },
-    "“\\(nickname)”": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "«\\(nickname)»"
           }
         }
       }

@@ -65,10 +65,10 @@ private enum MailFolderNamePrompt: Equatable {
 
     var title: String {
         switch self {
-        case .createSubfolder: return String(localized: "New Subfolder", bundle: .module)
-        case .renameFolder: return String(localized: "Rename Folder", bundle: .module)
-        case .setLocalName: return String(localized: "Set Local Name", bundle: .module)
-        case .createLocalFolder: return String(localized: "New Local Folder", bundle: .module)
+        case .createSubfolder: return String(localized: "newSubfolder.action", bundle: .module)
+        case .renameFolder: return String(localized: "renameFolder.action", bundle: .module)
+        case .setLocalName: return String(localized: "setLocalName.action", bundle: .module)
+        case .createLocalFolder: return String(localized: "newLocalFolder.action", bundle: .module)
         }
     }
 
@@ -977,7 +977,7 @@ public struct BrevMailRootView: View {
                 }
             }
             .confirmationDialog(
-                String(localized: "Import Mail", bundle: .module),
+                String(localized: "importMail.action", bundle: .module),
                 isPresented: isImportDestinationPromptPresented,
                 titleVisibility: .visible
             ) {
@@ -2543,7 +2543,7 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
                     .accessibilityLabel(String(localized: "Create Task", bundle: .module))
-                    .help(String(localized: "Create task", bundle: .module))
+                    .help(String(localized: "createTask.lower", bundle: .module))
                 }
                 ToolbarItem(placement: .primaryAction) {
                     Button {

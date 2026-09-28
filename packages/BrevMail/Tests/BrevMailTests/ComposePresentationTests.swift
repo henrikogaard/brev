@@ -94,7 +94,10 @@ struct ComposePresentationTests {
     func aiShortcutErrorsFallBackWhenLocalizedMessageIsBlank() {
         let error = NSError(domain: "BrevTests", code: 1, userInfo: [NSLocalizedDescriptionKey: " "])
 
-        #expect(ComposePresentation.aiShortcutErrorMessage(for: error) == "Couldn't update with AI Writer.")
+        #expect(ComposePresentation.aiShortcutErrorMessage(for: error) == String(
+            localized: "couldntUpdateAiWriter.period",
+            bundle: .module
+        ))
     }
 
     @Test("compose errors render as dismissible danger inline status")

@@ -691,7 +691,7 @@ public struct FolderSidebar: View {
 
     private var activeProfileName: String {
         profiles.first { $0.id == normalizedActiveProfileID }?.name
-            ?? String(localized: "All Mailboxes", bundle: .module)
+            ?? String(localized: "allMailboxes.title", bundle: .module)
     }
 
     private var unifiedUnreadCount: Int {

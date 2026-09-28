@@ -173,7 +173,7 @@ public struct MailCommands: Commands {
             // filed under the local account.
             if messageActions?.canFileLocally == true,
                navigation?.selectedSourceID?.accountID != LocalMailBackend.accountID {
-                Button(String(localized: "Copy to Local Folder…", bundle: .module)) {
+                Button(String(localized: "copyToLocalFolder.menu", bundle: .module)) {
                     guard isMessageActionAvailable,
                           let header = navigation?.selectedHeader else { return }
                     navigation?.presentedSheet = .copyToLocal(
@@ -183,7 +183,7 @@ public struct MailCommands: Commands {
                     )
                 }
                 .disabled(!messageCommandState.canMove)
-                Button(String(localized: "Move to Local Folder…", bundle: .module)) {
+                Button(String(localized: "moveToLocalFolder.menu", bundle: .module)) {
                     guard isMessageActionAvailable,
                           let header = navigation?.selectedHeader else { return }
                     navigation?.presentedSheet = .moveToLocal(

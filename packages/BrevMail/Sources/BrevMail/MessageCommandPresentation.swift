@@ -280,7 +280,7 @@ public enum MessageCommandPresentation {
         ),
         .init(
             action: .blockSender,
-            title: "Block Sender",
+            title: String(localized: "blockSender.action", bundle: .module),
             enabledCondition: "backend advertises blockSender capability",
             wiring: .visible(handler: "blockSender", dependency: "MailBackend.blockSender", platforms: "macOS, iOS")
         ),
@@ -292,7 +292,7 @@ public enum MessageCommandPresentation {
         ),
         .init(
             action: .print,
-            title: "Print",
+            title: String(localized: "print.action", bundle: .module),
             enabledCondition: "macOS row printing is available",
             wiring: .visible(handler: "printMessage", dependency: "MessagePrintExportRenderer", platforms: "macOS")
         ),
@@ -676,7 +676,7 @@ public enum MessageCommandPresentation {
         }
         filingActions.append(.init(
             action: .move,
-            title: String(localized: "Move…", bundle: .module),
+            title: String(localized: "move.menu", bundle: .module),
             symbolName: "folder",
             isEnabled: canMove
         ))
@@ -691,12 +691,12 @@ public enum MessageCommandPresentation {
         if canFileLocally {
             filingActions.append(.init(
                 action: .copyToLocalFolder,
-                title: String(localized: "Copy to Local Folder…", bundle: .module),
+                title: String(localized: "copyToLocalFolder.menu", bundle: .module),
                 symbolName: "externaldrive"
             ))
             filingActions.append(.init(
                 action: .moveToLocalFolder,
-                title: String(localized: "Move to Local Folder…", bundle: .module),
+                title: String(localized: "moveToLocalFolder.menu", bundle: .module),
                 symbolName: "externaldrive.fill"
             ))
         }
@@ -706,7 +706,7 @@ public enum MessageCommandPresentation {
         if canBlockSender {
             filingActions.append(.init(
                 action: .blockSender,
-                title: String(localized: "Block Sender…", bundle: .module),
+                title: String(localized: "blockSender.menu", bundle: .module),
                 symbolName: "person.crop.circle.badge.xmark",
                 role: .destructive
             ))
@@ -758,7 +758,7 @@ public enum MessageCommandPresentation {
             actions: [
                 .init(
                     action: .createTask,
-                    title: String(localized: "Create Task…", bundle: .module),
+                    title: String(localized: "createTask.menu", bundle: .module),
                     symbolName: "checklist",
                     isEnabled: canCreateTask
                 ),
@@ -786,7 +786,7 @@ public enum MessageCommandPresentation {
                     action: .followUp,
                     title: hasFollowUp
                         ? String(localized: "Change Follow-Up Reminder…", bundle: .module)
-                        : String(localized: "Set Follow-Up Reminder…", bundle: .module),
+                        : String(localized: "setFollowUpReminder.menu", bundle: .module),
                     symbolName: "flag",
                     isEnabled: canFollowUp
                 ),

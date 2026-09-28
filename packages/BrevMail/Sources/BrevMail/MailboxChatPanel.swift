@@ -105,7 +105,7 @@ struct MailboxChatNotice: Equatable, Sendable {
     var actionTitle: String {
         switch action {
         case .openSettings: String(localized: "Set Up Provider…", bundle: .module)
-        case .showConsent: String(localized: "Enable AI Writer…", bundle: .module)
+        case .showConsent: String(localized: "enableAiWriter.menu", bundle: .module)
         }
     }
 
@@ -867,9 +867,9 @@ struct MailboxChatPanel: View {
         case .sender:
             return String(localized: "this sender", bundle: .module)
         case .folder:
-            return String(localized: "this folder", bundle: .module)
+            return String(localized: "thisFolder.lower", bundle: .module)
         case .account:
-            return String(localized: "all folders", bundle: .module)
+            return String(localized: "allFolders.lower", bundle: .module)
         }
     }
 

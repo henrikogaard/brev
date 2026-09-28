@@ -137,7 +137,7 @@ enum MailboxChatScopeSearchPolicy {
                 bundle: .module
             )
         case .folder:
-            let name = folderName ?? String(localized: "this folder", bundle: .module)
+            let name = folderName ?? String(localized: "thisFolder.lower", bundle: .module)
             return String(
                 localized: "I couldn't find cached messages in \(name) that answer that yet.",
                 bundle: .module
@@ -159,7 +159,7 @@ enum MailboxChatScopeSearchPolicy {
         case .sender(let email):
             email
         case .folder:
-            folderName ?? String(localized: "current folder", bundle: .module)
+            folderName ?? String(localized: "currentFolder.lower", bundle: .module)
         case .account:
             accountLabel.map { String(localized: "all folders in \($0)", bundle: .module) }
                 ?? String(localized: "all folders in the current account", bundle: .module)

@@ -149,9 +149,14 @@ public struct IMAPAccountSetupSheet: View {
     }
 
     private var setupTitle: String {
-        isReauthentication
-            ? String(localized: "Update mail password", bundle: .module)
-            : String(localized: "Add mail account", bundle: .module)
+        guard isReauthentication else {
+            return String(localized: "Add mail account", bundle: .module)
+        }
+        let oauthReauthentication = setupPath == .google || setupPath == .outlook
+            || incomingAuthentication == .xoauth2 || outgoingAuthentication == .xoauth2
+        return oauthReauthentication
+            ? String(localized: "Sign in again", bundle: .module)
+            : String(localized: "Update mail password", bundle: .module)
     }
 
     private var header: some View {

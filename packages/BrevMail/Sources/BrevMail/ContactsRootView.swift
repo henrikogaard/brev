@@ -430,7 +430,7 @@ public struct ContactsRootView: View {
                     )
                 }
                 .accessibilityLabel(
-                    String(localized: "New contact", bundle: .module)
+                    String(localized: "newContact.lower", bundle: .module)
                 )
             }
         }
