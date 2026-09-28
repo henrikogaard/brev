@@ -42,7 +42,8 @@ struct BrevMailRootViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "root-compact"
+            named: "root-compact",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -66,7 +67,8 @@ struct BrevMailRootViewSnapshotTests {
                            .init(displayScale: 2),
                            .init(horizontalSizeClass: .regular)
                        ])),
-            named: "root-wide"
+            named: "root-wide",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 }

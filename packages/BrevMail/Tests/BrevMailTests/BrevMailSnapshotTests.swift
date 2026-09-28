@@ -52,7 +52,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: theme.id
+            named: theme.id,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -150,7 +151,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: theme.id
+            named: theme.id,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -181,7 +183,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(size: CGSize(width: 480, height: 80), traits: .init(displayScale: 2)),
-            named: "collapsed-\(theme.id)"
+            named: "collapsed-\(theme.id)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -217,7 +220,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(size: CGSize(width: 480, height: 160), traits: .init(displayScale: 2)),
-            named: "expanded-\(theme.id)"
+            named: "expanded-\(theme.id)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -255,7 +259,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(size: CGSize(width: 480, height: 120), traits: .init(displayScale: 2)),
-            named: "suggestions-\(theme.id)"
+            named: "suggestions-\(theme.id)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -312,7 +317,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "thread-conversation-deterministic-\(theme.id)"
+            named: "thread-conversation-deterministic-\(theme.id)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -348,7 +354,8 @@ struct BrevMailSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "signature-picker"
+            named: "signature-picker",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 

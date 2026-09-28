@@ -541,7 +541,7 @@ xcodebuild test -scheme BrevMail \
 # Re-record only after reviewing a visual diff and confirming the change is
 # platform rasterization drift, not changed copy/layout/state. See
 # `docs/qa/ios-snapshot-baselines.md` for the required/deferred suite policy.
-RECORD_SNAPSHOTS=YES xcodebuild test ...
+TEST_RUNNER_RECORD_SNAPSHOTS=YES xcodebuild test ...
 ```
 
 Commit the regenerated PNGs alongside the change that produced

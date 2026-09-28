@@ -81,6 +81,20 @@ deferredRemoteDraftDiscoveryRetriesAfterForegroundRead` — pass.
 Skipped: full BrevBackend suite (timing-only change).
 Next: merge before the other open PRs so subsequent CI runs stop
 hair-triggering.
+## 2026-09-28 — Agent — iOS snapshot baseline refresh (Phase A drift)
+
+- **Goal:** clear the 23 iOS snapshot mismatches the release-readiness
+  pass categorized as genuine post-merge UI drift (#105/#111/#126/#133).
+- **Changes:** re-recorded 20 baselines on the CI-exact iPhone lane
+  (iOS 27 sim, en/en_US). Also threaded the `RECORD_SNAPSHOTS=YES`
+  env-flag `record:` argument into the four suites that lacked it
+  (ComposeView, BrevMail, BrevMailRootView, MessageDetailView) —
+  previously only PhoneMailbox/PIM suites could be re-recorded this way.
+- **Verified:** record run wrote baselines; follow-up compare run:
+  23 tests / 7 suites all pass. BrevSettings iOS lane green as-is.
+- **Note:** record flag must reach the sim-hosted runner as
+  `TEST_RUNNER_RECORD_SNAPSHOTS=YES` (xcodebuild strips the prefix into
+  the test process); plain `RECORD_SNAPSHOTS=YES` does not propagate.
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves

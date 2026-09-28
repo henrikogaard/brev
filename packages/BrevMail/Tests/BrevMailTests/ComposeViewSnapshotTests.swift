@@ -80,7 +80,8 @@ struct ComposeViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "empty-compose"
+            named: "empty-compose",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -122,7 +123,8 @@ struct ComposeViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "reply-compose"
+            named: "reply-compose",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 

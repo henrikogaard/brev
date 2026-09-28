@@ -48,7 +48,8 @@ struct MessageDetailViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "no-selection"
+            named: "no-selection",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -88,7 +89,8 @@ struct MessageDetailViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "header-present"
+            named: "header-present",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 
@@ -109,7 +111,8 @@ struct MessageDetailViewSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
-            named: "body-load-error"
+            named: "body-load-error",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 }
