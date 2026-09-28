@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iPhone Google Calendar/Contacts enablement now asks Google for the
+  requested PIM scopes — the iOS sign-in arm dropped `additionalScopes`
+  from the consent URL, so feature-triggered reauthorization ended in
+  "Google did not grant the requested access" (macOS paths were already
+  correct).
+
 - iPhone PIM covers (Calendar / Contacts / Tasks opened from Mailboxes →
   More) no longer lay out wider than the screen in portrait — the macOS
   window minimum no longer applies on iOS, so row text and the Done
