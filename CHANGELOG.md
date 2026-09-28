@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iOS Google sign-in now carries the extra scopes a feature asks for
+  (Calendar, Contacts, Tasks), so enabling a Google PIM feature no
+  longer bounces back with "Google did not grant the requested
+  access." The macOS authorize URL already included them; the iOS
+  arm dropped them.
+
 - iPhone PIM covers (Calendar / Contacts / Tasks opened from Mailboxes →
   More) no longer lay out wider than the screen in portrait — the macOS
   window minimum no longer applies on iOS, so row text and the Done

@@ -312,7 +312,11 @@ public final class GoogleOAuthFlow {
         }
         #else
         effectiveRedirectURI = redirectURI
-        let authURL = buildAuthorizationURL(state: state, pkce: pkce)
+        let authURL = buildAuthorizationURL(
+            state: state,
+            pkce: pkce,
+            additionalScopes: additionalScopes
+        )
         callbackURL = try await runWebAuthSession(
             authorizationURL: authURL,
             callbackURLScheme: callbackScheme,

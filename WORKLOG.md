@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-09-27 — Agent — iOS Google OAuth scopes
+
+- `fix/google-oauth-ios-scopes`: `GoogleOAuthFlow.signIn()`'s iOS
+  (`#else`) arm called `buildAuthorizationURL(state:pkce:)` without
+  `additionalScopes`, so feature-triggered re-auth (e.g. enabling
+  Google Calendar) requested only baseline scopes and the grant check
+  failed with "Google did not grant the requested access." Device-
+  verified by the QA run: authorize page showed no new scope rows and
+  the token came back without the PIM scope, 3/3 attempts. One-line
+  parity fix with the macOS arm.
+- Verified: lint/format clean; device verification is the follow-up on
+  merge — the iOS arm never compiles in SPM tests.
+- Next: re-run the G-column PIM enable legs on a build with the fix.
+
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves
