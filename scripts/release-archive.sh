@@ -20,6 +20,14 @@
 #   BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY
 #                           Nightly Developer ID provisioning profile
 #                           (default "Brev Nightly Developer ID CI Distribution")
+#   BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER
+#                           Stable Developer ID profile for the widget
+#                           extension (default "Brev Stable Widgets
+#                           Developer ID CI Distribution")
+#   BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY
+#                           Nightly widget extension profile (default
+#                           "Brev Nightly Widgets Developer ID CI
+#                           Distribution")
 #   BREV_SPARKLE_FEED_URL   Appcast URL override (defaults to the ring feed)
 #
 # Output:
@@ -58,10 +66,12 @@ case "$RING" in
   stable)
     DEFAULT_FEED_URL="https://henrikogaard.github.io/brev/appcast.xml"
     PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER:-Brev Stable Developer ID CI Distribution}"
+    WIDGET_PROFILE_SPECIFIER="${BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER:-Brev Stable Widgets Developer ID CI Distribution}"
     ;;
   nightly)
     DEFAULT_FEED_URL="https://henrikogaard.github.io/brev/appcast-nightly.xml"
     PROFILE_SPECIFIER="${BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY:-Brev Nightly Developer ID CI Distribution}"
+    WIDGET_PROFILE_SPECIFIER="${BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY:-Brev Nightly Widgets Developer ID CI Distribution}"
     NIGHTLY_OVERRIDES=(
       "BREV_APP_PRODUCT_NAME=Brev Nightly"
       "BREV_APP_BUNDLE_ID=eu.brevmail.brev.nightly"
@@ -126,6 +136,9 @@ XCBUILD_ARGS=(
   # This custom setting is consumed only by the BrevMacOS app target's
   # Release configuration; package targets must not receive a profile.
   BREV_PROVISIONING_PROFILE_SPECIFIER="$PROFILE_SPECIFIER"
+  # Same for the widget extension target — its own bundle id needs its
+  # own Developer ID profile (ADR-0083; app-group entitlement).
+  BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER="$WIDGET_PROFILE_SPECIFIER"
   CURRENT_PROJECT_VERSION="$BREV_BUILD_NUMBER"
   BREV_RELEASE_RING="$RING"
   BREV_SPARKLE_FEED_URL="$BREV_SPARKLE_FEED_URL"
@@ -143,6 +156,7 @@ echo "Version          : ${VERSION:-<unset — keeps BrevConstants.marketingVers
 echo "Signing identity : $BREV_SIGNING_IDENTITY"
 echo "Team ID          : $BREV_TEAM_ID"
 echo "Profile specifier: $PROFILE_SPECIFIER"
+echo "Widget profile   : $WIDGET_PROFILE_SPECIFIER"
 echo "Sparkle feed     : $BREV_SPARKLE_FEED_URL"
 echo "Build number     : $BREV_BUILD_NUMBER"
 echo "Archive path     : $ARCHIVE_PATH"

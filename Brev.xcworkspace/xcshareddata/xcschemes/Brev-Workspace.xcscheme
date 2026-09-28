@@ -56,6 +56,34 @@
             buildForAnalyzing = "YES">
             <BuildableReference
                BuildableIdentifier = "primary"
+               BlueprintIdentifier = "2A4B38E7244CD99CD3B8CE51"
+               BuildableName = "BrevMacWidgets.appex"
+               BlueprintName = "BrevMacWidgets"
+               ReferencedContainer = "container:apps/macOS/BrevMacOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "7238174561A47C740611C319"
+               BuildableName = "BrevMailWidgets.appex"
+               BlueprintName = "BrevMailWidgets"
+               ReferencedContainer = "container:apps/iOS/BrevIOS.xcodeproj">
+            </BuildableReference>
+         </BuildActionEntry>
+         <BuildActionEntry
+            buildForTesting = "YES"
+            buildForRunning = "YES"
+            buildForProfiling = "YES"
+            buildForArchiving = "YES"
+            buildForAnalyzing = "YES">
+            <BuildableReference
+               BuildableIdentifier = "primary"
                BlueprintIdentifier = "CA041A51381AF252E1367B59"
                BuildableName = "BrevNotificationContent.appex"
                BlueprintName = "BrevNotificationContent"

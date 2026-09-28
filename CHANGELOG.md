@@ -6,11 +6,19 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Home Screen widgets (ADR-0083): a "Mail" widget in small and medium
+  sizes on iOS and macOS shows the unified-inbox unread count — the
+  same number as the app badge — plus the three newest senders and
+  subjects. Content updates after each sync via a shared
+  `WidgetSnapshot.json`; the widget performs no network requests and
+  honors Settings → Notifications "Show previews".
+
 - Calendar, Contacts, and Tasks sources now stay fresh on their own:
   sources with sync enabled pick up remote changes on the configured
   fetch interval (the same setting that governs mail), while the app
   is open — no more manual Sync Now to see edits made elsewhere.
   Sync remains strictly opt-in per source.
+
 
 ### Fixed
 

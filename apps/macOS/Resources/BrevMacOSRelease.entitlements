@@ -19,6 +19,12 @@
 	     in Info.plist for recipient and sender suggestions. -->
 	<key>com.apple.security.personal-information.addressbook</key>
 	<true/>
+	<!-- ADR-0083: the app writes WidgetSnapshot.json here for the
+	     widget extension to render. -->
+	<key>com.apple.security.application-groups</key>
+	<array>
+		<string>group.eu.brevmail.brev</string>
+	</array>
 	<!-- Opt-in iCloud Key-Value preference sync (ADR-0056). Requires
 	     iCloud → Key-value storage on the App ID; unsigned local builds
 	     get a store that never leaves the device. -->

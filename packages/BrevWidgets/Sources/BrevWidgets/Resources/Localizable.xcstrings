@@ -1,0 +1,27 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "Mail": {
+      "extractionState": "manual"
+    },
+    "Unread count and latest messages from your unified inbox.": {
+      "extractionState": "manual"
+    },
+    "%lld unread": {
+      "extractionState": "manual"
+    },
+    "Open Brev to see your mail.": {
+      "extractionState": "manual"
+    },
+    "You're all caught up.": {
+      "extractionState": "manual"
+    },
+    "Ina Berg": {
+      "extractionState": "manual"
+    },
+    "Quarterly report": {
+      "extractionState": "manual"
+    }
+  },
+  "version": "1.0"
+}

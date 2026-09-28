@@ -12,10 +12,13 @@
 		150FADA96D1575A302C9FDE9 /* BrevNotificationContent.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 1C149F622479D42ECA8E905D /* BrevNotificationContent.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		17D6EDC88F20C087885678BB /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = 9EAE3C341A8E00F53D4F605B /* BrevMail */; };
 		233F398A6EB49C05039B4DFB /* ShareHandoffURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */; };
+		29FA637841CC44CD8453F338 /* BrevMailWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2C929A89F8235321150CC59 /* BrevMailWidgetsBundle.swift */; };
 		2A450AF6FD23C144902ECC5D /* OneShotBGCompletionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 951FE30FC8262E51C6BB1D5F /* OneShotBGCompletionTests.swift */; };
 		336222E06BE53D4323DB443A /* BrevApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5420FB4291F54876178211F3 /* BrevApp.swift */; };
 		3DCFCFDD37211F29BC7ECB03 /* ShareHandoffURL.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */; };
 		4025EC3E8AB1F033E994E561 /* BackgroundRefreshCoordinatorTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0432D72B495BC2BC468236F5 /* BackgroundRefreshCoordinatorTests.swift */; };
+		47B5CB8B443FB6B52572E6A8 /* BrevMailWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		48BA7020C02CFD24D4EF1B16 /* BrevWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = 88F11F5EF1A7B58F05A95E81 /* BrevWidgets */; };
 		4E19250133F71999A553AF88 /* BrevPlugins in Frameworks */ = {isa = PBXBuildFile; productRef = 9FD372448E5F001093C2A4AE /* BrevPlugins */; };
 		5E49D6F475B1D2DD830B8D45 /* BrevSyncEngine in Frameworks */ = {isa = PBXBuildFile; productRef = 9871D17448C4E98AA8372ECC /* BrevSyncEngine */; };
 		643BA521B97DB2EDE9675FC9 /* BrevCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = 6372421B61EB6DF6BCE5557D /* BrevCalendar */; };
@@ -47,6 +50,13 @@
 			proxyType = 1;
 			remoteGlobalIDString = B9E47609F4D07E2061D02481;
 			remoteInfo = BrevShareExtension;
+		};
+		78A43354C95515ABEFAC407D /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 2FA44AB20DE0B263EE06CD9B /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7238174561A47C740611C319;
+			remoteInfo = BrevMailWidgets;
 		};
 		DE81CD67EB895A8DD6641DC2 /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
@@ -85,6 +95,16 @@
 			name = "Embed Frameworks";
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		09C29AA50121E074074700A4 /* Embed Frameworks */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 10;
+			files = (
+			);
+			name = "Embed Frameworks";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		36F75EA37D957D48B800930B /* Embed Frameworks */ = {
 			isa = PBXCopyFilesBuildPhase;
 			buildActionMask = 2147483647;
@@ -110,6 +130,7 @@
 			buildActionMask = 2147483647;
 			dstSubfolderSpec = 13;
 			files = (
+				47B5CB8B443FB6B52572E6A8 /* BrevMailWidgets.appex in Embed Foundation Extensions */,
 				150FADA96D1575A302C9FDE9 /* BrevNotificationContent.appex in Embed Foundation Extensions */,
 				B83BC6C731F1584C4D2435D2 /* BrevShareExtension.appex in Embed Foundation Extensions */,
 			);
@@ -125,7 +146,9 @@
 		0791E9C1AC925806B7125E8E /* BrevIOSTests-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "BrevIOSTests-Info.plist"; sourceTree = "<group>"; };
 		1C149F622479D42ECA8E905D /* BrevNotificationContent.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrevNotificationContent.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		21BECFDD5FDB1B32607E6AF3 /* BrevMail */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevMail; path = ../../packages/BrevMail; sourceTree = "<group>"; };
+		25AFC6AC1E45B89DDB1F4A91 /* BrevWidgets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevWidgets; path = ../../packages/BrevWidgets; sourceTree = "<group>"; };
 		28F5F05C3FA5A7BF5EAB7787 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrevMailWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		2E1A991BCC8873E581D0CE28 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
 		38E87C1F2E5629870BB9B263 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		47375753181B03AA7742959E /* BrevBackend */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevBackend; path = ../../packages/BrevBackend; sourceTree = "<group>"; };
@@ -136,6 +159,7 @@
 		5F06A8720CE4881145FB09A5 /* BrevIOSTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BrevIOSTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		661BFD8D32960BA9040B4864 /* BrevExamplePlugin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevExamplePlugin; path = ../../Plugins/BrevExamplePlugin; sourceTree = "<group>"; };
 		67F7E688A1B82AEA00A3792D /* BrevDesign */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevDesign; path = ../../packages/BrevDesign; sourceTree = "<group>"; };
+		7094AE9CBB350C6AE3DF3F68 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		715AFE640A39C90D4F2430F5 /* MailboxLayoutTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MailboxLayoutTests.swift; sourceTree = "<group>"; };
 		7580CDEE4A952782F2207EF6 /* BrevShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrevShareExtension.entitlements; sourceTree = "<group>"; };
 		7CF0CFBC97891A5EA572779B /* ShareHandoffURL.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareHandoffURL.swift; sourceTree = "<group>"; };
@@ -146,6 +170,7 @@
 		951FE30FC8262E51C6BB1D5F /* OneShotBGCompletionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OneShotBGCompletionTests.swift; sourceTree = "<group>"; };
 		9E3220552A118BB097389EF6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		9E3FABD452A8040EA6CFBE6B /* BrevSettings */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSettings; path = ../../packages/BrevSettings; sourceTree = "<group>"; };
+		A2C929A89F8235321150CC59 /* BrevMailWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevMailWidgetsBundle.swift; sourceTree = "<group>"; };
 		A48CDDD9668A0F1CAF92EBFA /* BrevGmail */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevGmail; path = ../../packages/BrevGmail; sourceTree = "<group>"; };
 		A956B530854D11D456894175 /* BrevIOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrevIOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B003066EF060E98686AC7133 /* NotificationViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationViewController.swift; sourceTree = "<group>"; };
@@ -153,6 +178,7 @@
 		B6A7C6F4C55B3A4C02989F84 /* TuistBundle+BrevIOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistBundle+BrevIOS.swift"; sourceTree = "<group>"; };
 		B7DCC7ABFA7E1B2EADFBF8D6 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		D1E0ADE0878CE295E0E10751 /* BrevCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevCalendar; path = ../../packages/BrevCalendar; sourceTree = "<group>"; };
+		DC45F622958C083E3821858F /* BrevMailWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrevMailWidgets.entitlements; sourceTree = "<group>"; };
 		E2C9F3AD1AA9A3CE9AA027DE /* InfoPlist.xcstrings */ = {isa = PBXFileReference; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
 		E81E65672F968524853B60D2 /* BrevThemes */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevThemes; path = ../../packages/BrevThemes; sourceTree = "<group>"; };
 		F9D32B7AF5A8CA2C3491139F /* Localizable.xcstrings */ = {isa = PBXFileReference; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -188,6 +214,14 @@
 			buildActionMask = 2147483647;
 			files = (
 				8B6BDAFBD8761D249F089904 /* BrevMail in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		86C3469CF23D49CA8463C74B /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				48BA7020C02CFD24D4EF1B16 /* BrevWidgets in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -249,6 +283,7 @@
 			children = (
 				A956B530854D11D456894175 /* BrevIOS.app */,
 				5F06A8720CE4881145FB09A5 /* BrevIOSTests.xctest */,
+				2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */,
 				1C149F622479D42ECA8E905D /* BrevNotificationContent.appex */,
 				5ECBA4DE24AA203E58BBEB53 /* BrevShareExtension.appex */,
 			);
@@ -258,6 +293,7 @@
 		5A0A78C41BA929208245A5D3 /* Project */ = {
 			isa = PBXGroup;
 			children = (
+				AB4BF2167975CF8FE34456FE /* BrevMailWidgets */,
 				B2AC4BC6A4913FDCDA325E03 /* BrevNotificationContent */,
 				149434B5B11EBC70DC38A03E /* BrevShareExtension */,
 				D1E3A61DB6AE6C7FB0AC6C0C /* Derived */,
@@ -276,6 +312,16 @@
 				81713220D56445E2F44C26CF /* TuistBundle+BrevShareExtension.swift */,
 			);
 			path = Sources;
+			sourceTree = "<group>";
+		};
+		AB4BF2167975CF8FE34456FE /* BrevMailWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				DC45F622958C083E3821858F /* BrevMailWidgets.entitlements */,
+				A2C929A89F8235321150CC59 /* BrevMailWidgetsBundle.swift */,
+				7094AE9CBB350C6AE3DF3F68 /* Info.plist */,
+			);
+			path = BrevMailWidgets;
 			sourceTree = "<group>";
 		};
 		B2AC4BC6A4913FDCDA325E03 /* BrevNotificationContent */ = {
@@ -300,6 +346,7 @@
 				9E3FABD452A8040EA6CFBE6B /* BrevSettings */,
 				812DC1C3F19A3A27C881635F /* BrevSyncEngine */,
 				E81E65672F968524853B60D2 /* BrevThemes */,
+				25AFC6AC1E45B89DDB1F4A91 /* BrevWidgets */,
 			);
 			name = Packages;
 			sourceTree = "<group>";
@@ -357,6 +404,7 @@
 			buildRules = (
 			);
 			dependencies = (
+				6E57343F0A5FEED0301E0883 /* PBXTargetDependency */,
 				63EB697161D1710CC4045E7D /* PBXTargetDependency */,
 				FF0C90DD7D2934EB98141FF6 /* PBXTargetDependency */,
 			);
@@ -398,6 +446,27 @@
 			productName = BrevIOSTests;
 			productReference = 5F06A8720CE4881145FB09A5 /* BrevIOSTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		7238174561A47C740611C319 /* BrevMailWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E4256FD88FA7C1983015567F /* Build configuration list for PBXNativeTarget "BrevMailWidgets" */;
+			buildPhases = (
+				29B17C7119BF71CF0D91B74D /* Sources */,
+				90D0CC816969F3621A2B1A35 /* Resources */,
+				86C3469CF23D49CA8463C74B /* Frameworks */,
+				09C29AA50121E074074700A4 /* Embed Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = BrevMailWidgets;
+			packageProductDependencies = (
+				88F11F5EF1A7B58F05A95E81 /* BrevWidgets */,
+			);
+			productName = BrevMailWidgets;
+			productReference = 2DF7D97D906ACC34010FFE99 /* BrevMailWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 		B9E47609F4D07E2061D02481 /* BrevShareExtension */ = {
 			isa = PBXNativeTarget;
@@ -474,6 +543,7 @@
 				D88CE7617497AD1A1F0ABC7A /* XCLocalSwiftPackageReference "../../packages/BrevSettings" */,
 				23FCF52A647B7D17D99ACD94 /* XCLocalSwiftPackageReference "../../packages/BrevSyncEngine" */,
 				513B3BFF0BD61AD962F88D5B /* XCLocalSwiftPackageReference "../../packages/BrevThemes" */,
+				64E231BAFCF0340A4E26C1F9 /* XCLocalSwiftPackageReference "../../packages/BrevWidgets" */,
 			);
 			productRefGroup = 30FCE24180FCDC99418E5CEE /* Products */;
 			projectDirPath = "";
@@ -481,6 +551,7 @@
 			targets = (
 				321E62F0C3254D3D45A8656D /* BrevIOS */,
 				622E4B2D82365E42D6AAE248 /* BrevIOSTests */,
+				7238174561A47C740611C319 /* BrevMailWidgets */,
 				CA041A51381AF252E1367B59 /* BrevNotificationContent */,
 				B9E47609F4D07E2061D02481 /* BrevShareExtension */,
 			);
@@ -506,6 +577,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		90D0CC816969F3621A2B1A35 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		A2A45274A9716EB4EDDDF528 /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -524,6 +602,14 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		29B17C7119BF71CF0D91B74D /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				29FA637841CC44CD8453F338 /* BrevMailWidgetsBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		4DE73AB670C320FB6804A33A /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -579,6 +665,12 @@
 			name = BrevNotificationContent;
 			target = CA041A51381AF252E1367B59 /* BrevNotificationContent */;
 			targetProxy = DE81CD67EB895A8DD6641DC2 /* PBXContainerItemProxy */;
+		};
+		6E57343F0A5FEED0301E0883 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = BrevMailWidgets;
+			target = 7238174561A47C740611C319 /* BrevMailWidgets */;
+			targetProxy = 78A43354C95515ABEFAC407D /* PBXContainerItemProxy */;
 		};
 		FF0C90DD7D2934EB98141FF6 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
@@ -953,6 +1045,60 @@
 			};
 			name = Debug;
 		};
+		EB5AF41AC0EB36EA8257772E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BrevMailWidgets/BrevMailWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = BrevMailWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "eu.brevmail.brev.ios.mail-widgets";
+				PRODUCT_NAME = BrevMailWidgets;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = (
+					"$(inherited)",
+					DEBUG,
+				);
+				SWIFT_COMPILATION_MODE = singlefile;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		FDC9511395BC07F755DCA069 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_ENTITLEMENTS = BrevMailWidgets/BrevMailWidgets.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				INFOPLIST_FILE = BrevMailWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "eu.brevmail.brev.ios.mail-widgets";
+				PRODUCT_NAME = BrevMailWidgets;
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -992,6 +1138,15 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
+		E4256FD88FA7C1983015567F /* Build configuration list for PBXNativeTarget "BrevMailWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				EB5AF41AC0EB36EA8257772E /* Debug */,
+				FDC9511395BC07F755DCA069 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		E7A5282F0C63C0FE65D735CD /* Build configuration list for PBXNativeTarget "BrevNotificationContent" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
@@ -1023,6 +1178,10 @@
 		63B1FC915664B6941C600716 /* XCLocalSwiftPackageReference "../../packages/BrevPlugins" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = ../../packages/BrevPlugins;
+		};
+		64E231BAFCF0340A4E26C1F9 /* XCLocalSwiftPackageReference "../../packages/BrevWidgets" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../../packages/BrevWidgets;
 		};
 		88699834D8F799520FA38A12 /* XCLocalSwiftPackageReference "../../Plugins/BrevExamplePlugin" */ = {
 			isa = XCLocalSwiftPackageReference;
@@ -1070,6 +1229,10 @@
 		6372421B61EB6DF6BCE5557D /* BrevCalendar */ = {
 			isa = XCSwiftPackageProductDependency;
 			productName = BrevCalendar;
+		};
+		88F11F5EF1A7B58F05A95E81 /* BrevWidgets */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = BrevWidgets;
 		};
 		88F5D6FCE16020B61D8194DF /* BrevSettings */ = {
 			isa = XCSwiftPackageProductDependency;

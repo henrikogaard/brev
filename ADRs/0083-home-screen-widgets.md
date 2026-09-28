@@ -1,6 +1,6 @@
 # ADR-0083: Home-screen widgets share a snapshot file, never the Realm store
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-28
 - **Deciders:** Henrik
 
@@ -90,6 +90,9 @@ The options for feeding a widget:
 
 - `apps/iOS/Project.swift` and `apps/macOS/Project.swift` gain a widget
   extension target each (protected-path change justified by this ADR).
+- `.swiftlint.yml` gains a `packages/BrevWidgets/Sources` source glob so
+  the extension's views are linted under the same rules as app code
+  (protected-path change justified by this ADR).
 - A `BrevWidgets` extension product plus a tiny shared
   `WidgetSnapshotStore` type — the Codable snapshot schema lives in a
   leaf package both the app and extension can see without pulling in

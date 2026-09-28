@@ -1,5 +1,70 @@
 # Worklog
 
+## 2026-09-28 — Agent — ADR-0083 widget snapshot architecture (Phase B)
+
+- **Goal:** satisfy the protected-path requirement before a WidgetKit
+  extension can touch apps/*/Project.swift, and settle how widget data
+  flows without dragging Realm/BrevBackend into an extension process.
+- **Adds:** ADR-0083 (Proposed) — app writes `WidgetSnapshot.json` to an
+  App Group container; the extension renders it only (no network, no
+  Realm); narrow first scope (unread count + 3 previews), previews gated
+  by the same privacy posture as notification previews. ADR index rows
+  for 81/82 (pending PRs) added so numbering stays unambiguous.
+- **Verified:** docs-only — `scripts/lint.sh` + `scripts/format.sh`
+  clean; `adr-required` gate satisfied by the new ADR under `ADRs/`.
+- **Skipped:** unit/UI tests and device verification (no code changed).
+- **Handoff:** Henrik reviews; implementation PR follows acceptance.
+- **Verified:** docs-only — ADR-0083 file added; index rows 0081-0083 all
+  backed by ADR files on main. Lint/format not run (no code touched).
+## 2026-09-28 — Agent — WidgetKit mail widget (Phase B, ADR-0083)
+
+- **Goal:** first glanceable surface — Home Screen / Notification
+  Center widget showing the unified-inbox unread count and newest
+  previews, implemented per ADR-0083 (app-group snapshot, never the
+  Realm store; zero network in the extension).
+- **Adds:** `packages/BrevWidgets` (leaf, Foundation-only): Codable
+  `WidgetSnapshot` + `WidgetSnapshotStore` App Group IO + the
+  WidgetKit provider/views shared by both platform extensions.
+  `WidgetSnapshotPublisher` in BrevMail publishes from the unread-badge
+  choke point so widget and badge numbers can never disagree; previews
+  come only from each backend's cached inbox headers (no I/O) and are
+  gated by the existing `NotificationSettings.showPreviews`. iOS and
+  macOS `BrevMailWidgets` extension targets (bundle stub only) plus the
+  app-group entitlement on macOS.
+- **Privacy:** PRIVACY.md documents the widget data flow; ADR-0006's
+  zero-network posture is unchanged (extension makes no calls).
+- **Skipped:** on-device widget render (extension needs a signed build
+  on sim/device; deferred to device-verify pass).
+
+## 2026-09-28 — Agent — feat/mail-summary-widgets (review fixes)
+
+Goal: address the Codex review on the widget implementation PR.
+
+Changes:
+- macOS widget target bundle id now `$(BREV_APP_BUNDLE_ID).macos.widgets`
+  + `BREV_APP_BUNDLE_ID` base setting → nightly ring keeps a
+  host-prefixed extension id; added Manual/Developer ID Release signing
+  consuming `BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER`.
+- `release-archive.sh` resolves `BREV_MACOS_WIDGET_PROVISIONING_
+  PROFILE_SPECIFIER[_NIGHTLY]` and passes it through; both export-options
+  plists map the extension bundle id to its ring profile.
+- `MailSummaryWidgetView`: `Color.accentColor` → `.tint` shape styles;
+  BrevWidgets added to `no_literal_colors_in_views` coverage.
+- `WidgetSnapshot.sameContent(as:)` — dedup ignores `generatedAt` so
+  unchanged payloads actually skip the write/reload.
+- `WidgetSnapshotPublisher` serializes commits via a task chain so
+  newest publications always commit last.
+- NotificationSection `showPreviews` toggle now posts
+  `.brevNotificationSettingsDidChange`; the mail root observes it and
+  republishes counts-only snapshots immediately when previews turn off.
+- New `MailSummaryWidgetSnapshotTests` (small+medium, light+dark,
+  empty) with recorded baselines; BrevWidgets added to the test matrix,
+  macOS<26 skip list, and the snapshot-macos job.
+
+Verified: `swift test --package-path packages/BrevWidgets` 5/5 pass;
+lint.sh + format.sh clean; `tuist generate` reproduces the committed
+xcodeproj.
+Skipped: on-device widget render (needs signed run; deferred).
 ## 2026-09-28 — Agent — fix/auth-required-banner
 
 - Credential rejections now classify as `authenticationRequired` sync
@@ -132,22 +197,6 @@ hair-triggering.
 - **Note:** record flag must reach the sim-hosted runner as
   `TEST_RUNNER_RECORD_SNAPSHOTS=YES` (xcodebuild strips the prefix into
   the test process); plain `RECORD_SNAPSHOTS=YES` does not propagate.
-## 2026-09-28 — Agent — ADR-0083 widget snapshot architecture (Phase B)
-
-- **Goal:** satisfy the protected-path requirement before a WidgetKit
-  extension can touch apps/*/Project.swift, and settle how widget data
-  flows without dragging Realm/BrevBackend into an extension process.
-- **Adds:** ADR-0083 (Proposed) — app writes `WidgetSnapshot.json` to an
-  App Group container; the extension renders it only (no network, no
-  Realm); narrow first scope (unread count + 3 previews), previews gated
-  by the same privacy posture as notification previews. ADR index rows
-  for 81/82 (pending PRs) added so numbering stays unambiguous.
-- **Verified:** docs-only — `scripts/lint.sh` + `scripts/format.sh`
-  clean; `adr-required` gate satisfied by the new ADR under `ADRs/`.
-- **Skipped:** unit/UI tests and device verification (no code changed).
-- **Handoff:** Henrik reviews; implementation PR follows acceptance.
-- **Verified:** docs-only — ADR-0083 file added; index rows 0081-0083 all
-  backed by ADR files on main. Lint/format not run (no code touched).
 ## 2026-09-28 — Agent — ADR-0084 (offline PIM write queue)
 
 - **Goal:** decide how PIM writes behave offline — the one remaining

@@ -17,6 +17,8 @@
   <dict>
     <key>eu.brevmail.brev</key>
     <string>Brev Stable Developer ID CI Distribution</string>
+    <key>eu.brevmail.brev.macos.widgets</key>
+    <string>Brev Stable Widgets Developer ID CI Distribution</string>
   </dict>
   <key>stripSwiftSymbols</key>
   <true/>

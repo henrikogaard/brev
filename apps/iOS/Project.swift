@@ -33,6 +33,7 @@ let project = Project(
         .package(path: "../../packages/BrevSettings"),
         .package(path: "../../packages/BrevSyncEngine"),
         .package(path: "../../packages/BrevThemes"),
+        .package(path: "../../packages/BrevWidgets"),
         .package(path: "../../Plugins/BrevExamplePlugin")
     ],
     settings: .settings(
@@ -93,7 +94,8 @@ let project = Project(
                 .package(product: "BrevSyncEngine", type: .runtime),
                 .package(product: "BrevThemes", type: .runtime),
                 .target(name: "BrevShareExtension"),
-                .target(name: "BrevNotificationContent")
+                .target(name: "BrevNotificationContent"),
+                .target(name: "BrevMailWidgets")
             ]
         ),
         .target(
@@ -149,6 +151,27 @@ let project = Project(
                 base: [
                     // ADR-0004: compile extensions in the application-extension
                     // context so extension-prohibited APIs are hard errors.
+                    "APPLICATION_EXTENSION_API_ONLY": "YES"
+                ]
+            )
+        ),
+        // ADR-0083: the widget renders an App Group snapshot file and
+        // links only the dependency-free BrevWidgets package — never
+        // BrevBackend, Realm, or the network.
+        .target(
+            name: "BrevMailWidgets",
+            destinations: [.iPhone, .iPad],
+            product: .appExtension,
+            bundleId: "\(BrevConstants.bundleIDPrefix).ios.mail-widgets",
+            deploymentTargets: BrevConstants.iOSDeploymentTarget,
+            infoPlist: .file(path: "BrevMailWidgets/Info.plist"),
+            sources: ["BrevMailWidgets/**"],
+            entitlements: .file(path: "BrevMailWidgets/BrevMailWidgets.entitlements"),
+            dependencies: [
+                .package(product: "BrevWidgets")
+            ],
+            settings: .settings(
+                base: [
                     "APPLICATION_EXTENSION_API_ONLY": "YES"
                 ]
             )

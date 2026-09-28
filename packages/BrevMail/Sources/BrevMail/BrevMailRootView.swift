@@ -369,6 +369,7 @@ public struct BrevMailRootView: View {
     @State private var folderNameDraft = ""
     @State private var notificationCenter = BrevLocalNotificationCenter()
     @State private var badgeUpdater = UnreadBadgeUpdater()
+    @State private var widgetSnapshotPublisher = WidgetSnapshotPublisher()
     @State private var notificationDelegate = BrevNotificationDelegate()
     @State private var isInitialMailboxSelectionPresented = false
     @AppStorage(MailProfileStorage.storageKey) private var customProfileStorage = ""
@@ -827,6 +828,12 @@ public struct BrevMailRootView: View {
                         settings: settingsStore.followUpSettings()
                     )
                 }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .brevNotificationSettingsDidChange)) { _ in
+                // Badge + widget snapshot re-derive from the saved
+                // settings, so a previews-off toggle republishes a
+                // counts-only widget snapshot immediately (ADR-0083).
+                updateUnreadBadge()
             }
             .onChange(of: navigation.selectedSourceID) {
                 handleSelectedSourceChange()
@@ -4901,12 +4908,28 @@ public struct BrevMailRootView: View {
     }
 
     private func updateUnreadBadge() {
+        let settings = NotificationSettings.load()
         badgeUpdater.updateBadge(
             folders: folders,
             sourceSections: visibleSourceSections,
-            settings: NotificationSettings.load()
+            settings: settings
         )
         backgroundMail?.unreadCount = badgeUpdater.lastAppliedCount
+        // Widgets render an App Group snapshot file, never our stores
+        // (ADR-0083); publish from the badge choke point so the widget
+        // and the badge can never disagree.
+        let snapshotFolders = folders
+        let snapshotSections = visibleSourceSections
+        let snapshotBackends = backends
+        let publisher = widgetSnapshotPublisher
+        Task { @MainActor in
+            await publisher.publish(
+                folders: snapshotFolders,
+                sourceSections: snapshotSections,
+                backends: snapshotBackends,
+                settings: settings
+            )
+        }
     }
 
     private func applyMailboxSourcePreferenceUpdate() {

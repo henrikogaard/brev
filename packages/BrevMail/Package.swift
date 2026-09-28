@@ -25,6 +25,7 @@ let package = Package(
         .package(path: "../BrevSettings"),
         .package(path: "../BrevThemes"),
         .package(path: "../BrevAvatars"),
+        .package(path: "../BrevWidgets"),
         .package(path: "../BrevCalendar"),
         .package(path: "../BrevAI"),
         .package(url: "https://github.com/pointfreeco/swift-snapshot-testing", from: "1.17.0")
@@ -40,6 +41,7 @@ let package = Package(
                 "BrevSettings",
                 "BrevThemes",
                 "BrevAvatars",
+                "BrevWidgets",
                 "BrevCalendar",
                 "BrevAI"
             ],

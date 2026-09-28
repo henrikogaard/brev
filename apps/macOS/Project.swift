@@ -36,6 +36,7 @@ let project = Project(
         .package(path: "../../packages/BrevSettings"),
         .package(path: "../../packages/BrevSyncEngine"),
         .package(path: "../../packages/BrevThemes"),
+        .package(path: "../../packages/BrevWidgets"),
         .package(path: "../../Plugins/BrevExamplePlugin")
     ],
     settings: .settings(
@@ -98,7 +99,8 @@ let project = Project(
                 .package(product: "BrevSettings", type: .runtime),
                 .package(product: "BrevSyncEngine", type: .runtime),
                 .package(product: "BrevThemes", type: .runtime),
-                .external(name: "Sparkle")
+                .external(name: "Sparkle"),
+                .target(name: "BrevMacWidgets")
             ],
             settings: .settings(
                 base: [
@@ -123,6 +125,44 @@ let project = Project(
                         "CODE_SIGN_IDENTITY": "Developer ID Application",
                         "DEVELOPMENT_TEAM": .string(BrevConstants.teamID),
                         "PROVISIONING_PROFILE_SPECIFIER": "$(BREV_PROVISIONING_PROFILE_SPECIFIER)"
+                    ])
+                ]
+            )
+        ),
+        // ADR-0083: the widget renders an App Group snapshot file and
+        // links only the dependency-free BrevWidgets package — never
+        // BrevBackend, Realm, or the network.
+        .target(
+            name: "BrevMacWidgets",
+            destinations: .macOS,
+            product: .appExtension,
+            // Ring-aware: the release archive overrides BREV_APP_BUNDLE_ID
+            // (nightly → eu.brevmail.brev.nightly), so the extension id
+            // stays prefixed by whichever host id contains it.
+            bundleId: "$(BREV_APP_BUNDLE_ID).macos.widgets",
+            deploymentTargets: BrevConstants.macOSDeploymentTarget,
+            infoPlist: .file(path: "BrevMacWidgets/Info.plist"),
+            sources: ["BrevMacWidgets/**"],
+            entitlements: .file(path: "BrevMacWidgets/BrevMacWidgets.entitlements"),
+            dependencies: [
+                .package(product: "BrevWidgets")
+            ],
+            settings: .settings(
+                base: [
+                    // ADR-0004: compile extensions in the application-extension
+                    // context so extension-prohibited APIs are hard errors.
+                    "APPLICATION_EXTENSION_API_ONLY": "YES",
+                    "BREV_APP_BUNDLE_ID": .string(BrevConstants.bundleIDPrefix)
+                ],
+                configurations: [
+                    .release(name: "Release", settings: [
+                        // App-group entitlement ⇒ the extension needs its own
+                        // Developer ID profile, not the host's. Same manual
+                        // signing shape as the app target, own specifier env.
+                        "CODE_SIGN_STYLE": "Manual",
+                        "CODE_SIGN_IDENTITY": "Developer ID Application",
+                        "DEVELOPMENT_TEAM": .string(BrevConstants.teamID),
+                        "PROVISIONING_PROFILE_SPECIFIER": "$(BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER)"
                     ])
                 ]
             )

@@ -131,6 +131,7 @@ custom_rules:
       - "packages/BrevDesign/Sources/.*\\.swift"
       - "packages/BrevMail/Sources/.*\\.swift"
       - "packages/BrevSettings/Sources/.*\\.swift"
+      - "packages/BrevWidgets/Sources/.*\\.swift"
       - "Plugins/.*/Sources/.*\\.swift"
 
   no_telemetry_imports:

@@ -102,6 +102,15 @@ local presentation settings.
 **How to disable:** Settings → Notifications → "Enable notifications".
 Defaults to off.
 
+### Home Screen widgets
+
+The mail widget extension renders a `WidgetSnapshot.json` file the app
+writes into the shared App Group container after each sync — unread
+count and, when notification previews are enabled, the newest senders
+and subjects. The extension performs no network requests and never
+opens Brev's databases; stale content is shown with its timestamp.
+Previews follow the Settings → Notifications "Show previews" toggle.
+
 On macOS, "Keep checking mail in the background" (Settings → Notifications)
 keeps Brev running and checking the configured mail servers with no window
 open, shows its status in the menu bar, and can optionally register to open

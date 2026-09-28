@@ -102,6 +102,7 @@ jobs:
           - BrevThemes
           - BrevSyncEngine
           - BrevPlugins
+          - BrevWidgets
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -168,6 +169,12 @@ jobs:
             # suites running on older hosted runners while the dedicated
             # snapshot job below owns compatible-renderer comparisons.
             test_args+=(--skip 'BrevMailTests\.(MonoMailSelectionSnapshotTests|ConversationWorkspaceSnapshotTests|DetachedMessageWindowSnapshotTests|FolderSidebarSnapshotTests|LoginViewSnapshotTests|MailContextColumnSnapshotTests|MailRootStatusRailSnapshotTests|MailUndoToastSnapshotTests|MessageListRowSnapshotTests|SavedSearchEditorViewSnapshotTests|ServerSearchSyntaxHintSnapshotTests|ThreadInlineChildRowSnapshotTests|ScheduledOutboxSnapshotTests|MailSearchStatusSnapshotTests|BackgroundMailStatusViewSnapshotTests|LocalFolderSnapshotTests|RelatedConversationBarSnapshotTests|CalendarBrowsingSnapshotTests|CalendarGridSnapshotTests|CalendarEventEditorSnapshotTests|ContactsBrowsingSnapshotTests|ComposeViewMacOSSnapshotTests|TaskDetailSnapshotTests|PIMEditorConflictSnapshotTests)')
+          fi
+          if [[ '${{ matrix.package }}' == 'BrevWidgets' ]] &&
+              (( $(sw_vers -productVersion | cut -d. -f1) < 26 )); then
+            # Widget pixel baselines are recorded on macOS 26+; the
+            # snapshot-macos job owns renderer comparisons there.
+            test_args+=(--skip 'BrevWidgetsTests\.MailSummaryWidgetSnapshotTests')
           fi
           if [[ '${{ matrix.package }}' == 'BrevSettings' ]] &&
               (( $(sw_vers -productVersion | cut -d. -f1) < 26 )); then
@@ -333,6 +340,19 @@ jobs:
             -only-testing:BrevMailTests/ComposeViewMacOSSnapshotTests \
             '-only-testing:BrevMailTests/ConversationWorkspaceSnapshotTests/composeToolbar()' \
             test || (echo "::error::macOS BrevMail snapshot tests failed"; exit 1)
+
+      - name: Test mail summary widget snapshots
+        if: steps.snapshot-host.outputs.run == 'true'
+        working-directory: packages/BrevWidgets
+        run: |
+          xcodebuild \
+            -scheme BrevWidgets \
+            -destination 'platform=macOS,arch=arm64' \
+            -skipMacroValidation \
+            -testLanguage en \
+            -testRegion en_US \
+            -only-testing:BrevWidgetsTests/MailSummaryWidgetSnapshotTests \
+            test
 
       - name: Test folder export feedback snapshots
         if: steps.snapshot-host.outputs.run == 'true'

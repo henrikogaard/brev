@@ -188,7 +188,7 @@ struct NotificationSection: View {
                     symbolName: "text.bubble",
                     title: String(localized: "Show message previews", bundle: .module),
                     subtitle: String(localized: "Display sender and subject in notifications.", bundle: .module),
-                    isOn: binding(for: \.showPreviews),
+                    isOn: showPreviewsBinding,
                     isEnabled: settings.notificationsEnabled
                 )
 
@@ -501,6 +501,20 @@ struct NotificationSection: View {
         )
     }
     #endif
+
+    /// Persists the flag and signals observers — the widget snapshot
+    /// republishes immediately so stored previews clear without waiting
+    /// for the next badge refresh (ADR-0083).
+    private var showPreviewsBinding: Binding<Bool> {
+        Binding(
+            get: { settings.showPreviews },
+            set: { newValue in
+                settings.showPreviews = newValue
+                settingsStore.save(settings)
+                NotificationCenter.default.post(name: .brevNotificationSettingsDidChange, object: nil)
+            }
+        )
+    }
 
     private var notificationsEnabledBinding: Binding<Bool> {
         Binding(
