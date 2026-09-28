@@ -18,6 +18,9 @@ struct IMAPSyncHealthSnapshot: Sendable {
     let isConnected: Bool
     let lastSuccessfulSyncAt: Date?
     let lastErrorDescription: String?
+    /// True when `lastErrorDescription` came from a rejected credential —
+    /// callers surface re-authentication instead of a futile sync retry.
+    let lastErrorRequiresReauthentication: Bool
     let indexStatus: SearchIndexStatus
     let searchIndexProgress: SearchIndexProgressSnapshot?
     let lastReplayConflictDescription: String?
@@ -40,6 +43,7 @@ actor IMAPSMTPBackendState {
     private var remoteAvailable = false
     private var lastSuccessfulSyncAt: Date?
     private var lastErrorDescription: String?
+    private var lastErrorRequiresReauthentication = false
     private var indexStatus: SearchIndexStatus = .notBuilt
     private var searchIndexProgress: SearchIndexProgressSnapshot?
     private var lastReplayConflictDescription: String?
@@ -65,12 +69,14 @@ actor IMAPSMTPBackendState {
         remoteAvailabilityBroadcaster.emit(true)
         lastSuccessfulSyncAt = Date()
         lastErrorDescription = nil
+        lastErrorRequiresReauthentication = false
     }
 
     func installCached(
         folders: [Folder],
         folderDelimitersByID: [Folder.ID: String],
-        errorDescription: String
+        errorDescription: String,
+        requiresReauthentication: Bool = false
     ) {
         self.folders = folders
         self.folderDelimitersByID = folderDelimitersByID
@@ -78,6 +84,7 @@ actor IMAPSMTPBackendState {
         remoteAvailable = false
         remoteAvailabilityBroadcaster.emit(false)
         lastErrorDescription = errorDescription
+        lastErrorRequiresReauthentication = requiresReauthentication
     }
 
     /// Installs a non-empty persisted folder snapshot before the background
@@ -92,6 +99,7 @@ actor IMAPSMTPBackendState {
         remoteAvailable = false
         remoteAvailabilityBroadcaster.emit(false)
         lastErrorDescription = nil
+        lastErrorRequiresReauthentication = false
     }
 
     func disconnect() {
@@ -108,11 +116,15 @@ actor IMAPSMTPBackendState {
         activeIdleFolderID = nil
     }
 
-    func recordSyncFailure(_ description: String) {
+    func recordSyncFailure(
+        _ description: String,
+        requiresReauthentication: Bool = false
+    ) {
         connected = false
         remoteAvailable = false
         remoteAvailabilityBroadcaster.emit(false)
         lastErrorDescription = description
+        lastErrorRequiresReauthentication = requiresReauthentication
     }
 
     func hasUsableFolders() -> Bool {
@@ -125,13 +137,18 @@ actor IMAPSMTPBackendState {
         connected && remoteAvailable
     }
 
-    func recordBackgroundSyncFailure(_ description: String) {
+    func recordBackgroundSyncFailure(
+        _ description: String,
+        requiresReauthentication: Bool = false
+    ) {
         lastErrorDescription = description
+        lastErrorRequiresReauthentication = requiresReauthentication
     }
 
     /// Clears a prior background failure after a successful folder refresh.
     func clearBackgroundSyncFailure() {
         lastErrorDescription = nil
+        lastErrorRequiresReauthentication = false
     }
 
     func recordBackgroundRefreshSummary(_ summary: BackgroundRefreshSnapshot?) {
@@ -150,6 +167,7 @@ actor IMAPSMTPBackendState {
         indexStatus = .rebuilding(progress: nil)
         searchIndexProgress = nil
         lastErrorDescription = nil
+        lastErrorRequiresReauthentication = false
         return true
     }
 
@@ -179,6 +197,7 @@ actor IMAPSMTPBackendState {
         searchIndexProgress = nil
         lastSuccessfulSyncAt = Date()
         lastErrorDescription = nil
+        lastErrorRequiresReauthentication = false
     }
 
     func recordIndexingCompletedWithBodyFailures(messageCount: Int, failureCount: Int) {
@@ -188,12 +207,14 @@ actor IMAPSMTPBackendState {
         let noun = failureCount == 1 ? "message body" : "message bodies"
         lastErrorDescription =
             "\(failureCount) \(noun) couldn't be cached during the index rebuild."
+        lastErrorRequiresReauthentication = false
     }
 
     func recordIndexingFailed(_ description: String) {
         indexStatus = .failed(description)
         searchIndexProgress = nil
         lastErrorDescription = description
+        lastErrorRequiresReauthentication = false
     }
 
     func resetIndexStatus() {
@@ -255,6 +276,7 @@ actor IMAPSMTPBackendState {
             isConnected: connected,
             lastSuccessfulSyncAt: lastSuccessfulSyncAt,
             lastErrorDescription: lastErrorDescription,
+            lastErrorRequiresReauthentication: lastErrorRequiresReauthentication,
             indexStatus: indexStatus,
             searchIndexProgress: searchIndexProgress,
             lastReplayConflictDescription: lastReplayConflictDescription,

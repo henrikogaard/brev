@@ -14,6 +14,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- A rejected mailbox credential now offers "Sign in again" in the
+  mailbox sync banner instead of a Retry that instantly re-fails —
+  pressing it opens the pre-filled "Reconnect your mailbox" flow on
+  both macOS and iOS. Previously the banner reported a generic sync
+  problem for authentication failures.
+
 - iPhone: a sync warning no longer covers the mailbox navigation bar —
   the status rail now renders inside each column below its nav bar
   instead of over the split view, restoring VoiceOver access to the

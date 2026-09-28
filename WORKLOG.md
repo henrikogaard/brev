@@ -1,5 +1,42 @@
 # Worklog
 
+## 2026-09-28 — Agent — fix/auth-required-banner
+
+- Credential rejections now classify as `authenticationRequired` sync
+  health on both backends instead of being flattened to
+  `providerError`, so the banner actually reaches its Sign-in branch.
+- `GmailAPIBackend` gained `lastSyncRequiresReauthentication`
+  (`isReauthenticationError` matches the provider-neutral
+  `MailBackendError.authenticationRequired`); `IMAPSMTPBackend` /
+  `IMAPSMTPBackendState` thread `requiresReauthentication` through
+  `installCached`/`recordSyncFailure`/`recordBackgroundSyncFailure` and
+  clear it on every success/non-auth error path.
+- `ImportProgressPresentation` `showsRetryAction` →
+  `action: ImportProgressBannerAction?` with `.retry` +
+  `.reauthenticate`; the banner renders "Sign in again" and
+  `BrevMailRootView.runImportBannerAction` forwards it to a new
+  `onRequestReauthentication` callback. Both apps wire it to
+  `session.reauthenticate(account:)` + the add-account sheet (macOS
+  also seeds `addAccountPrefillEmail`), landing the user on the
+  pre-filled "Reconnect your mailbox" flow.
+- New user-visible string "Sign in again" added to the BrevMail
+  catalog with its nb translation.
+- Verified: GmailRuntimeSyncTests 7/7 (new rejected-credential test
+  asserts `.authenticationRequired` health);
+  SyncHealthReauthenticationFlagTests 2/2 (flag set/replaced/cleared);
+  BrevMail ImportProgressPresentation 11/11 (new
+  `authenticationRequiredOffersReauthenticate`); lint.sh + format.sh
+  clean; swift build clean for BrevBackend/BrevGmail/BrevMail.
+- Skipped: on-device re-verify (banner was previously unreachable —
+  dead-path fix; sim OAuth re-challenge is covered by earlier QA).
+- Also hardened `deferredRemoteDraftDiscoveryRetriesAfterForegroundRead`
+  (#110, still flaky after #150's budget bump): the retry is only armed
+  when a foreground read catches discovery in flight — a 1 s injected
+  delay let the task finish naturally on loaded runners, so call 2
+  could never arrive. First-call delay is now 15 s and wait budgets
+  15 s; the test still completes in ~35 ms locally.
+
+
 ## 2026-09-28 — Agent — JMAP ADR + Phase C specs
 
 - `docs/jmap-adr`: ADR-0081 (Proposed) turns the issue-#15 research

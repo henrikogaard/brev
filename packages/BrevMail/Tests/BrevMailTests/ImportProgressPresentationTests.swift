@@ -99,8 +99,27 @@ struct ImportProgressPresentationTests {
         let presentation = ImportProgressPresentation.resolve(health: health, folderSyncProgress: nil)
 
         #expect(presentation?.phase == .recoverableFailure)
-        #expect(presentation?.showsRetryAction == true)
+        #expect(presentation?.action == .retry)
         #expect(presentation?.message == "Provider timed out.")
+    }
+
+    @Test("authentication-required health offers re-sign-in, not a futile retry")
+    func authenticationRequiredOffersReauthenticate() {
+        let health = AccountSyncHealth(
+            sourceID: sourceID,
+            state: .authenticationRequired,
+            lastSuccessfulSyncAt: Date(),
+            lastErrorDescription: "Sign in again to continue.",
+            indexStatus: .ready(messageCount: 8),
+            cacheSizeBytes: 2048,
+            pendingMutationCount: 0
+        )
+
+        let presentation = ImportProgressPresentation.resolve(health: health, folderSyncProgress: nil)
+
+        #expect(presentation?.title == "Sign-in required")
+        #expect(presentation?.action == .reauthenticate)
+        #expect(presentation?.message == "Sign in again to continue.")
     }
 
     @Test("cancellation noise does not surface as sync needs attention")

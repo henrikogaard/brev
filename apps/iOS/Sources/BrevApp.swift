@@ -157,6 +157,10 @@ struct BrevApp: App {
                             readerCommandHandoff = nil
                             showSettings = true
                         },
+                        onRequestReauthentication: { account in
+                            session.reauthenticate(account: account)
+                            isShowingAddAccountSheet = true
+                        },
                         onOpenCalendar: {
                             showCalendar = true
                         },

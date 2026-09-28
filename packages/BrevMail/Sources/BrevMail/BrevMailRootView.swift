@@ -416,6 +416,10 @@ public struct BrevMailRootView: View {
     private let onSignOut: (() async -> Void)?
     private let onChangeTheme: (BrevTheme) -> Void
     private let onOpenSettings: (() -> Void)?
+    /// Asks the host app to run the reconnect flow for an account whose
+    /// credential was rejected — presented from the sync-health banner's
+    /// "Sign in again" action.
+    private let onRequestReauthentication: ((BrevAccount) -> Void)?
     /// Opens the Calendar browsing surface (ADR-0072). Nil hides the
     /// iOS sidebar entry; macOS reaches the surface via the Window menu.
     private let onOpenCalendar: (() -> Void)?
@@ -486,6 +490,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
         onOpenTasks: (() -> Void)? = nil,
@@ -517,6 +522,7 @@ public struct BrevMailRootView: View {
             onSignOut: onSignOut,
             onChangeTheme: onChangeTheme,
             onOpenSettings: onOpenSettings,
+            onRequestReauthentication: onRequestReauthentication,
             onOpenCalendar: onOpenCalendar,
             onOpenContacts: onOpenContacts,
             onOpenTasks: onOpenTasks,
@@ -555,6 +561,7 @@ public struct BrevMailRootView: View {
         onSignOut: (() async -> Void)? = nil,
         onChangeTheme: @escaping (BrevTheme) -> Void = { _ in },
         onOpenSettings: (() -> Void)? = nil,
+        onRequestReauthentication: ((BrevAccount) -> Void)? = nil,
         onOpenCalendar: (() -> Void)? = nil,
         onOpenContacts: (() -> Void)? = nil,
         onOpenTasks: (() -> Void)? = nil,
@@ -592,6 +599,7 @@ public struct BrevMailRootView: View {
         self.onSignOut = onSignOut
         self.onChangeTheme = onChangeTheme
         self.onOpenSettings = onOpenSettings
+        self.onRequestReauthentication = onRequestReauthentication
         self.onOpenCalendar = onOpenCalendar
         self.onOpenContacts = onOpenContacts
         self.onOpenTasks = onOpenTasks
@@ -698,9 +706,9 @@ public struct BrevMailRootView: View {
         case .importProgress(let presentation):
             ImportProgressBanner(
                 presentation: presentation,
-                onRetry: presentation.showsRetryAction
-                    ? { Task { await retryImportSync() } }
-                    : nil
+                onAction: presentation.action.map { action in
+                    { Task { await runImportBannerAction(action) } }
+                }
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         case nil:
@@ -4313,6 +4321,16 @@ public struct BrevMailRootView: View {
     private func stopImportSyncHealthPolling() {
         importSyncHealthPollingTask?.cancel()
         importSyncHealthPollingTask = nil
+    }
+
+    private func runImportBannerAction(_ action: ImportProgressBannerAction) async {
+        switch action {
+        case .retry:
+            await retryImportSync()
+        case .reauthenticate:
+            guard let sourceID = visibleSelectedSourceID else { return }
+            onRequestReauthentication?(backend(for: sourceID).account)
+        }
     }
 
     private func retryImportSync() async {

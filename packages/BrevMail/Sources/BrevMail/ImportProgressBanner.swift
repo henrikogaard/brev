@@ -19,7 +19,7 @@ struct ImportProgressBanner: View {
     @Environment(\.brevTheme) private var theme
 
     let presentation: ImportProgressBannerPresentation
-    let onRetry: (() -> Void)?
+    let onAction: (() -> Void)?
 
     var body: some View {
         Group {
@@ -58,8 +58,8 @@ struct ImportProgressBanner: View {
 
                 Spacer(minLength: 0)
 
-                if presentation.showsRetryAction, let onRetry {
-                    Button(String(localized: "Retry", bundle: .module), action: onRetry)
+                if let action = presentation.action, let onAction {
+                    Button(actionTitle(for: action), action: onAction)
                         .buttonStyle(.borderless)
                         .brevFont(.caption)
                         .foregroundStyle(theme.accent.color)
@@ -116,8 +116,8 @@ struct ImportProgressBanner: View {
 
                     Spacer(minLength: 0)
 
-                    if presentation.showsRetryAction, let onRetry {
-                        Button(String(localized: "Retry", bundle: .module), action: onRetry)
+                    if let action = presentation.action, let onAction {
+                        Button(actionTitle(for: action), action: onAction)
                             .buttonStyle(.borderless)
                             .brevFont(.caption)
                             .foregroundStyle(theme.accent.color)
@@ -145,6 +145,15 @@ struct ImportProgressBanner: View {
             .overlay(alignment: .bottom) {
                 BrevDivider()
             }
+        }
+    }
+
+    private func actionTitle(for action: ImportProgressBannerAction) -> String {
+        switch action {
+        case .retry:
+            return String(localized: "Retry", bundle: .module)
+        case .reauthenticate:
+            return String(localized: "Sign in again", bundle: .module)
         }
     }
 

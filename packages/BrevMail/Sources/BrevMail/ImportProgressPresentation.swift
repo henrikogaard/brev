@@ -27,6 +27,14 @@ enum ImportProgressBannerStyle: Equatable, Sendable {
     case error
 }
 
+/// The repair affordance a banner can offer. `.retry` re-runs sync for
+/// transient failures; `.reauthenticate` opens the account reconnect flow
+/// for a rejected credential.
+enum ImportProgressBannerAction: Equatable, Sendable {
+    case retry
+    case reauthenticate
+}
+
 /// Non-blocking mailbox import/sync banner content derived from backend health.
 struct ImportProgressBannerPresentation: Equatable, Sendable {
     let phase: ImportProgressPhase
@@ -37,7 +45,7 @@ struct ImportProgressBannerPresentation: Equatable, Sendable {
     let progressCompleted: Int?
     let progressTotal: Int?
     let progressFraction: Double?
-    let showsRetryAction: Bool
+    let action: ImportProgressBannerAction?
     let accessibilityLabel: String
 }
 
@@ -59,7 +67,7 @@ enum ImportProgressPresentation {
                 progressCompleted: nil,
                 progressTotal: nil,
                 progressFraction: nil,
-                showsRetryAction: false,
+                action: .reauthenticate,
                 accessibilityLabel: "Sign-in required to continue syncing mail."
             )
         }
@@ -94,7 +102,7 @@ enum ImportProgressPresentation {
                 progressCompleted: nil,
                 progressTotal: nil,
                 progressFraction: nil,
-                showsRetryAction: false,
+                action: nil,
                 accessibilityLabel: "Connecting to your mail account."
             )
         }
@@ -164,7 +172,7 @@ enum ImportProgressPresentation {
             progressCompleted: nil,
             progressTotal: nil,
             progressFraction: nil,
-            showsRetryAction: true,
+            action: .retry,
             accessibilityLabel: "\(title). \(message)"
         )
     }
@@ -187,7 +195,7 @@ enum ImportProgressPresentation {
             progressCompleted: completed,
             progressTotal: total,
             progressFraction: Double(completed) / Double(clampedTotal),
-            showsRetryAction: false,
+            action: nil,
             accessibilityLabel: "Downloading mail. \(completed) of \(total) folders complete."
         )
     }
@@ -209,7 +217,7 @@ enum ImportProgressPresentation {
             progressCompleted: health.searchIndexProgress?.completedFolderCount,
             progressTotal: health.searchIndexProgress?.totalFolderCount,
             progressFraction: fraction,
-            showsRetryAction: false,
+            action: nil,
             accessibilityLabel: "Indexing mail. \(detail)"
         )
     }

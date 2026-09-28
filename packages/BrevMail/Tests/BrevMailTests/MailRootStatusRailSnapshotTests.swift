@@ -35,10 +35,10 @@ struct MailRootStatusRailSnapshotTests {
                     progressCompleted: 2,
                     progressTotal: 5,
                     progressFraction: 0.4,
-                    showsRetryAction: false,
+                    action: nil,
                     accessibilityLabel: "Downloading mail. 2 of 5 folders complete."
                 ),
-                onRetry: nil
+                onAction: nil
             )
 
             NavigationSplitView {

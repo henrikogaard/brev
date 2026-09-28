@@ -80,6 +80,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     private var labelCatalog: [GmailLabel] = []
     private var subscribers: [UUID: AsyncStream<MailEvent>.Continuation] = [:]
     private var lastSyncError: String?
+    /// True when `lastSyncError` came from a rejected credential — drives the
+    /// `.authenticationRequired` sync-health state so the UI offers re-sign-in
+    /// rather than a retry that cannot succeed.
+    private var lastSyncRequiresReauthentication = false
     private var lastSuccessfulSyncAt: Date?
     private var sendAsAliases: [GmailSendAs]?
     private var sendAsProbeCompleted = false
@@ -282,7 +286,9 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         } catch {
             lock.withLock {
                 guard connectionGeneration == generation else { return }
-                lastSyncError = error.localizedDescription
+                let neutral = Self.providerNeutralError(error)
+                lastSyncError = neutral.localizedDescription
+                lastSyncRequiresReauthentication = Self.isReauthenticationError(neutral)
                 isConnected = false
                 cachedFolderRefreshTasks.values.forEach { $0.cancel() }
                 cachedFolderRefreshTasks.removeAll()
@@ -1745,7 +1751,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             ?? state?.lastFullSyncAt
         let pendingCount = await (try? offlineMutationQueue?.pending().count) ?? 0
         let conflicts = await (try? offlineMutationConflictStore?.conflicts().count) ?? 0
-        let healthState: SyncHealthState = error == nil ? .healthy : .providerError
+        let requiresReauthentication = lock.withLock { lastSyncRequiresReauthentication }
+        let healthState: SyncHealthState = if error == nil {
+            .healthy
+        } else if requiresReauthentication {
+            .authenticationRequired
+        } else {
+            .providerError
+        }
         return AccountSyncHealth(
             sourceID: sourceID,
             state: healthState,
@@ -2052,6 +2065,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             labelCatalog = labels
             profile = GmailProfile(emailAddress: state.emailAddress, historyID: state.historyID)
             lastSyncError = nil
+            lastSyncRequiresReauthentication = false
             lastSuccessfulSyncAt = Date()
             isConnected = true
         }
@@ -2060,8 +2074,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
 
     private func recordSyncFailure(_ error: Error) {
         lock.withLock {
-            lastSyncError = Self.providerNeutralError(error).localizedDescription
+            let neutral = Self.providerNeutralError(error)
+            lastSyncError = neutral.localizedDescription
+            lastSyncRequiresReauthentication = Self.isReauthenticationError(neutral)
         }
+    }
+
+    private static func isReauthenticationError(_ error: Error) -> Bool {
+        if case MailBackendError.authenticationRequired = error { return true }
+        return false
     }
 
     private static func providerNeutralError(_ error: Error) -> Error {

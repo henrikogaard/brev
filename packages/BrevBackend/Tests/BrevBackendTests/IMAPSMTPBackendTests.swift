@@ -186,7 +186,13 @@ struct IMAPSMTPBackendTests {
     func deferredRemoteDraftDiscoveryRetriesAfterForegroundRead() async throws {
         let listingRecorder = MessageListingRecorder(
             messages: [],
-            firstCallDelayNanoseconds: 1_000_000_000
+            // The in-flight delay must comfortably outlive the worst
+            // scheduling gap between `waitUntilCallCount(1)` returning and the
+            // foreground `body(for:)` read below. The retry is only armed when
+            // the read catches the discovery task in flight — a 1 s delay let
+            // it finish naturally on loaded runners, so call 2 could never
+            // arrive at any wait budget (issue #110).
+            firstCallDelayNanoseconds: 15_000_000_000
         )
         let backend = IMAPSMTPBackend(
             account: Self.account,
@@ -214,13 +220,11 @@ struct IMAPSMTPBackendTests {
 
         try await backend.connect()
         backend.startDeferredStartupWork()
-        // The injected first-call delay is itself 1 s, so the default 1 s
-        // wait budget leaves no scheduling headroom on loaded CI runners
-        // (issue #110). These waits only bound progress, not semantics —
-        // 5 s keeps the assertion while removing the hair trigger.
-        try await listingRecorder.waitUntilCallCount(1, timeoutNanoseconds: 5_000_000_000)
+        // These waits only bound progress, not semantics — generous budgets
+        // just absorb a starved utility-priority task on loaded CI runners.
+        try await listingRecorder.waitUntilCallCount(1, timeoutNanoseconds: 15_000_000_000)
         _ = try? await backend.body(for: "INBOX:1")
-        try await listingRecorder.waitUntilCallCount(2, timeoutNanoseconds: 5_000_000_000)
+        try await listingRecorder.waitUntilCallCount(2, timeoutNanoseconds: 15_000_000_000)
         await backend.disconnect()
 
         #expect(await listingRecorder.callCount == 2)
@@ -12594,4 +12598,44 @@ private actor MoveIdentityProbe {
 private actor SearchProgressRecorder {
     var updates: [MailSearchUpdate] = []
     func record(_ update: MailSearchUpdate) { updates.append(update) }
+}
+
+@Suite("Sync health reauthentication flag")
+struct SyncHealthReauthenticationFlagTests {
+    @Test("authentication failures surface the reauthentication flag; other failures do not")
+    func recordSyncFailureTracksReauthentication() async {
+        let state = IMAPSMTPBackendState()
+
+        await state.recordSyncFailure(
+            "Session closed by server.",
+            requiresReauthentication: false
+        )
+        #expect(await state.syncHealthSnapshot().lastErrorRequiresReauthentication == false)
+
+        await state.recordSyncFailure(
+            "Sign in again to continue.",
+            requiresReauthentication: true
+        )
+        #expect(await state.syncHealthSnapshot().lastErrorRequiresReauthentication)
+
+        // A later non-auth failure replaces the flag.
+        await state.recordSyncFailure("Server timed out.", requiresReauthentication: false)
+        #expect(await state.syncHealthSnapshot().lastErrorRequiresReauthentication == false)
+    }
+
+    @Test("success paths clear a stale reauthentication flag")
+    func successPathsClearFlag() async {
+        let state = IMAPSMTPBackendState()
+        await state.recordSyncFailure(
+            "Sign in again to continue.",
+            requiresReauthentication: true
+        )
+        #expect(await state.syncHealthSnapshot().lastErrorRequiresReauthentication)
+
+        await state.install(
+            folders: [Folder(id: "f1", name: "INBOX", role: .inbox)],
+            folderDelimitersByID: [:]
+        )
+        #expect(await state.syncHealthSnapshot().lastErrorRequiresReauthentication == false)
+    }
 }

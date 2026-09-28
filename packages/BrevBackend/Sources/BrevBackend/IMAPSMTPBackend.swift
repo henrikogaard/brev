@@ -504,7 +504,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 await state.installCached(
                     folders: cachedSnapshot.folders,
                     folderDelimitersByID: cachedSnapshot.folderDelimitersByID,
-                    errorDescription: Self.userFacingDescription(for: error)
+                    errorDescription: Self.userFacingDescription(for: error),
+                    requiresReauthentication: Self.isAuthenticationFailure(error)
                 )
                 return
             }
@@ -513,10 +514,16 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             // expired OAuth token) so the caller can recover without blanking
             // the inbox.
             if await state.hasUsableFolders() {
-                await state.recordBackgroundSyncFailure(Self.userFacingDescription(for: error))
+                await state.recordBackgroundSyncFailure(
+                    Self.userFacingDescription(for: error),
+                    requiresReauthentication: Self.isAuthenticationFailure(error)
+                )
                 throw error
             }
-            await state.recordSyncFailure(Self.userFacingDescription(for: error))
+            await state.recordSyncFailure(
+                Self.userFacingDescription(for: error),
+                requiresReauthentication: Self.isAuthenticationFailure(error)
+            )
             throw error
         }
     }
@@ -1365,7 +1372,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             } catch is CancellationError {
                 // A newer refresh cancelled this one — not a user-facing failure.
             } catch {
-                await state.recordBackgroundSyncFailure(Self.userFacingDescription(for: error))
+                await state.recordBackgroundSyncFailure(
+                    Self.userFacingDescription(for: error),
+                    requiresReauthentication: Self.isAuthenticationFailure(error)
+                )
             }
         }
         let previous: Task<Void, Never>? = backgroundRefreshLock.withLock {
@@ -2889,6 +2899,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             healthState = .degraded
         } else if sanitizedReplayError != nil {
             healthState = .degraded
+        } else if sanitizedBackgroundError != nil, snapshot.lastErrorRequiresReauthentication {
+            healthState = .authenticationRequired
         } else if case .rebuilding = snapshot.indexStatus {
             healthState = .indexing
         } else if snapshot.isConnected {
@@ -4966,7 +4978,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                         continue idleLoop
                     } catch {
                         streamFailed = true
-                        await state.recordBackgroundSyncFailure(Self.userFacingDescription(for: error))
+                        await state.recordBackgroundSyncFailure(
+                            Self.userFacingDescription(for: error),
+                            requiresReauthentication: Self.isAuthenticationFailure(error)
+                        )
                     }
                 }
                 if case .idleNotSupported = imapError {
@@ -4980,11 +4995,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     continue
                 }
                 streamFailed = true
-                await state.recordBackgroundSyncFailure(Self.userFacingDescription(for: imapError))
+                await state.recordBackgroundSyncFailure(
+                    Self.userFacingDescription(for: imapError),
+                    requiresReauthentication: Self.isAuthenticationFailure(imapError)
+                )
             } catch {
                 guard !Task.isCancelled else { return }
                 streamFailed = true
-                await state.recordBackgroundSyncFailure(Self.userFacingDescription(for: error))
+                await state.recordBackgroundSyncFailure(
+                    Self.userFacingDescription(for: error),
+                    requiresReauthentication: Self.isAuthenticationFailure(error)
+                )
             }
             if !receivedEvent, !streamFailed, !Task.isCancelled {
                 await state.recordBackgroundSyncFailure(

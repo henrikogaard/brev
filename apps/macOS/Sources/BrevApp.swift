@@ -110,6 +110,11 @@ struct BrevApp: App {
                         onOpenSettings: {
                             openWindow(id: BrevWindowID.settings)
                         },
+                        onRequestReauthentication: { account in
+                            session.reauthenticate(account: account)
+                            addAccountPrefillEmail = account.emailAddress
+                            isShowingAddAccountSheet = true
+                        },
                         onSettingsMailboxContextChange: { settingsMailboxContext = $0 },
                         signatureContextProvider: { account in
                             AppSessionFactory.composeSignatureContext(for: account)

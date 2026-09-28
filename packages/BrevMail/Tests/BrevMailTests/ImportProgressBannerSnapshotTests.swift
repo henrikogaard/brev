@@ -36,10 +36,10 @@ struct ImportProgressBannerSnapshotTests {
                 progressCompleted: 2,
                 progressTotal: 5,
                 progressFraction: 0.4,
-                showsRetryAction: false,
+                action: nil,
                 accessibilityLabel: "Downloading mail. 2 of 5 folders complete."
             ),
-            onRetry: nil
+            onAction: nil
         )
         .frame(width: 360)
         .brevTheme(theme)
@@ -54,10 +54,10 @@ struct ImportProgressBannerSnapshotTests {
                 progressCompleted: nil,
                 progressTotal: nil,
                 progressFraction: nil,
-                showsRetryAction: true,
+                action: .retry,
                 accessibilityLabel: "Sync interrupted."
             ),
-            onRetry: {}
+            onAction: {}
         )
         .frame(width: 360)
         .brevTheme(theme)

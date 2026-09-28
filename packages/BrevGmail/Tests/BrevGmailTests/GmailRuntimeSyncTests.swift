@@ -137,6 +137,21 @@ struct GmailRuntimeSyncTests {
         #expect(await health.syncHealth(for: source).state == .healthy)
     }
 
+    @Test("a rejected credential reports authentication-required sync health")
+    func reauthFailureReportsAuthenticationRequiredHealth() async throws {
+        let client = RuntimeClient(failWithReauth: true)
+        let store = InMemoryGmailAccountStore()
+        let backend = Self.backend(client: client, store: store)
+        let source = MailSourceID(accountID: Self.account.id, mailboxID: Self.account.id)
+        let health = try #require(backend.extensionService(SyncHealthReporting.self))
+
+        try? await backend.connect()
+        await backend.initialSyncSettled()
+
+        let snapshot = await health.syncHealth(for: source)
+        #expect(snapshot.state == .authenticationRequired)
+    }
+
     private static let account = BrevAccount(
         id: "gmail-api:runtime-subject",
         displayName: "Runtime User",
@@ -170,12 +185,14 @@ private actor RuntimeClient: GmailAPIClientProtocol, GmailAPITransporting {
     private var deltaMessage: GmailMessage?
     private let historyExpired: Bool
     private let cancelFullSync: Bool
+    private let failWithReauth: Bool
     private var fullCalls = 0
     private var historyCallsValue = 0
 
-    init(historyExpired: Bool = false, cancelFullSync: Bool = false) {
+    init(historyExpired: Bool = false, cancelFullSync: Bool = false, failWithReauth: Bool = false) {
         self.historyExpired = historyExpired
         self.cancelFullSync = cancelFullSync
+        self.failWithReauth = failWithReauth
     }
 
     func setDelta(message: GmailMessage) { deltaMessage = message }
@@ -193,6 +210,7 @@ private actor RuntimeClient: GmailAPIClientProtocol, GmailAPITransporting {
                       includeSpamTrash: Bool) async throws -> GmailMessagePage {
         fullCalls += 1
         if cancelFullSync { throw CancellationError() }
+        if failWithReauth { throw GmailAPIError.reauthenticationRequired }
         return GmailMessagePage(messages: [GmailMessageReference(id: "m1", threadID: "t1")])
     }
 
