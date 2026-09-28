@@ -372,6 +372,7 @@ hair-triggering.
   pristine main (pre-existing baseline drift, not re-recorded).
 - **Handoff:** device re-verify — sheet → unreachable host → error
   inline without dismissing the sheet.
+
 ## 2026-09-27 — Agent — scheduled PIM sync (O3)
 
 - `fix/pim-idle-sync`: O3 — the parity matrix's "does a remote DAV

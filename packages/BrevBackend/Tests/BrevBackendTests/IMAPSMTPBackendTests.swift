@@ -214,9 +214,13 @@ struct IMAPSMTPBackendTests {
 
         try await backend.connect()
         backend.startDeferredStartupWork()
-        try await listingRecorder.waitUntilCallCount(1)
+        // The injected first-call delay is itself 1 s, so the default 1 s
+        // wait budget leaves no scheduling headroom on loaded CI runners
+        // (issue #110). These waits only bound progress, not semantics —
+        // 5 s keeps the assertion while removing the hair trigger.
+        try await listingRecorder.waitUntilCallCount(1, timeoutNanoseconds: 5_000_000_000)
         _ = try? await backend.body(for: "INBOX:1")
-        try await listingRecorder.waitUntilCallCount(2)
+        try await listingRecorder.waitUntilCallCount(2, timeoutNanoseconds: 5_000_000_000)
         await backend.disconnect()
 
         #expect(await listingRecorder.callCount == 2)
