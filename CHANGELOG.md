@@ -260,6 +260,12 @@ All notable changes to Brev are documented here.
   BrevGmail, BrevAI, and both apps' Localizable + InfoPlist strings);
   terminology follows Apple Mail's Norwegian conventions.
 
+- iOS: the on-device store (Realm files, attachments, cached bodies)
+  is now marked `NSFileProtectionCompleteUntilFirstUserAuthentication`
+  at launch — its contents are encrypted at rest and become readable
+  only after the device has been unlocked once since boot (ADR-0082
+  Layer A). macOS is unchanged (FileVault already covers it).
+
 
 - Calendar/Contacts source foundation (ADR-0072): provider-neutral source
   records, a serial lifecycle coordinator covering connect / reconnect /

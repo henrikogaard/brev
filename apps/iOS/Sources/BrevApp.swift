@@ -60,6 +60,9 @@ struct BrevApp: App {
     private let browserLinkOpener = BrowserLinkOpener()
 
     init() {
+        // ADR-0082 Layer A: protect the on-device store before any
+        // store opens it so children inherit the protection class.
+        BrevStoreProtection.applyProtection()
         ContactsAccessPolicy.applyProcessWidePolicy()
         // Opt-in iCloud preference sync (ADR-0056); a no-op until the
         // user enables it in Settings → Privacy.

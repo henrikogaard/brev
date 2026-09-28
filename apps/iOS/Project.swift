@@ -131,7 +131,11 @@ let project = Project(
             deploymentTargets: BrevConstants.iOSDeploymentTarget,
             sources: [
                 "../iOSTests/**",
-                "BrevShareExtension/ShareHandoffURL.swift"
+                "BrevShareExtension/ShareHandoffURL.swift",
+                // Compiled in directly — an extension-safe single file —
+                // so the protection walk can be exercised on iOS where
+                // file-protection classes actually apply (ADR-0082).
+                "../../packages/BrevBackend/Sources/BrevBackend/BrevStoreProtection.swift"
             ],
             dependencies: [
                 .target(name: "BrevIOS"),

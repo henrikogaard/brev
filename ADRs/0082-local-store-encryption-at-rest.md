@@ -1,6 +1,6 @@
 # ADR-0082: Encryption at rest for the local mail store
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-09-28
 - **Deciders:** Henrik
 - **Related:** ADR-0006, ADR-0030, ADR-0076

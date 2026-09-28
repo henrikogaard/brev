@@ -65,6 +65,48 @@ Verified: `swift test --package-path packages/BrevWidgets` 5/5 pass;
 lint.sh + format.sh clean; `tuist generate` reproduces the committed
 xcodeproj.
 Skipped: on-device widget render (needs signed run; deferred).
+## 2026-09-28 — Agent — Store-protection launch cost fix (Codex #145)
+
+- `fix/store-file-protection`: the migration walk over
+  `Application Support/Brev` is now one-time — a successful traversal
+  records `BrevStoreProtection.migrationWalked`, so later launches only
+  re-assert the root class (new files inherit it) instead of
+  re-enumerating a mail store that can hold tens of thousands of
+  entries (Codex P2: avoid walking the full store on every launch).
+  Failures leave the flag unset so the walk retries next launch.
+- `UserDefaults` injectable via a defaulted parameter so tests run in
+  isolated suites; new assertion covers the flag being recorded.
+- Verification: `scripts/lint.sh` + `scripts/format.sh` clean.
+  BrevStoreProtectionTests unchanged in count (3) — sim cannot persist
+  protection classes, so coverage asserts the observable contract
+  (root creation, traversal, flag), same as before.
+- Skipped: device verification (PR held pending Henrik's ADR-0082
+  acceptance).
+
+## 2026-09-28 — Agent — Phase E docs: encryption ADR + l10n + offline audit
+
+- `docs/phase-e-encryption-l10n`: ADR-0082 (Proposed) — at-rest
+  encryption in two layers: file-protection class now (iOS,
+  UntilFirstUserAuthentication so BGAppRefresh keeps working), then
+  SQLCipher behind a per-install Keychain key with a Settings toggle.
+  Local store is raw SQLite3 — no Realm in the tree (AGENTS.md's
+  mention is stale).
+- `docs/dev/localization.md` — the l10n scaffold: catalogs already
+  exist per target (en-only); doc covers adding a locale, string
+  rules, and a community-translation PR flow.
+- `docs/qa/offline-audit-2026-09-28.md` — offline coverage is deep
+  (mutation queue, caches, retention, staged sends); the remaining gap
+  is offline PIM writes, not plumbing.
+- Verification: docs-only change — no code built. Ran
+  `scripts/lint.sh` + `scripts/format.sh` (clean); `adr-required` gate
+  satisfied by the new ADR under `ADRs/`. Audit claims were re-checked
+  against the tree: `OutboxView` and `ConflictReviewSheet` already ship
+  (Codex review) so those gap rows were removed; ADR-0082 Layer B
+  scoped to the SQLite stores only, with the file-backed caches named
+  as a follow-up.
+- Skipped: unit/UI tests (no code changed); device verification not
+  applicable.
+
 ## 2026-09-28 — Agent — fix/auth-required-banner
 
 - Credential rejections now classify as `authenticationRequired` sync
@@ -115,30 +157,6 @@ Skipped: on-device widget render (needs signed run; deferred).
   PRIVACY.md + Settings copy disclose the best-effort posture; no new
   ADR needed there. Graph is spec'd by ADR-0079 (Proposed) and its own
   gate is an Azure app registration — outside repo scope.
-
-## 2026-09-28 — Agent — Phase E docs: encryption ADR + l10n + offline audit
-
-- `docs/phase-e-encryption-l10n`: ADR-0082 (Proposed) — at-rest
-  encryption in two layers: file-protection class now (iOS,
-  UntilFirstUserAuthentication so BGAppRefresh keeps working), then
-  SQLCipher behind a per-install Keychain key with a Settings toggle.
-  Local store is raw SQLite3 — no Realm in the tree (AGENTS.md's
-  mention is stale).
-- `docs/dev/localization.md` — the l10n scaffold: catalogs already
-  exist per target (en-only); doc covers adding a locale, string
-  rules, and a community-translation PR flow.
-- `docs/qa/offline-audit-2026-09-28.md` — offline coverage is deep
-  (mutation queue, caches, retention, staged sends); the remaining gap
-  is offline PIM writes, not plumbing.
-- Verification: docs-only change — no code built. Ran
-  `scripts/lint.sh` + `scripts/format.sh` (clean); `adr-required` gate
-  satisfied by the new ADR under `ADRs/`. Audit claims were re-checked
-  against the tree: `OutboxView` and `ConflictReviewSheet` already ship
-  (Codex review) so those gap rows were removed; ADR-0082 Layer B
-  scoped to the SQLite stores only, with the file-backed caches named
-  as a follow-up.
-- Skipped: unit/UI tests (no code changed); device verification not
-  applicable.
 
 ## 2026-09-28 — Agent — release-readiness report (Phase A legs 1–3)
 
@@ -3617,6 +3635,947 @@ buttons, and package-aware localization.
   a pin, and best-effort availability. Documentation-only exception: no TDD or
   pixel update; privacy audit, lint, formatting and diff-check validate the edit.
 
+## 2026-09-20 — Codex — #4 and backlog sequencing
+
+- Expanded Proposed ADR-0072 against all ten #4 criteria: domain/service
+  contracts, source ownership, native consent constraints, caches, conditional
+  writes, field preservation, recurrence, offline drafts and delivery gates.
+- Reconciled README and ADR-0039/0009/0043 without claiming acceptance or
+  shipped PIM support. Settings replacement copy is specified for acceptance;
+  current UI remains unchanged while the old boundary still applies.
+- Verified official Google and DAV references. Google's installed-app OAuth
+  guidance excludes incremental authorization; #5 must prove feature-triggered
+  native reauthorization and credential preservation before implementation ships.
+- Board: #1/#4 In progress; #3/#5/#6/#7/#8/#11 P0 → P1 so #4 remains the
+  immediate P0 prerequisite. Added #9 as a dependency of #10's writable contact
+  actions. No issues closed or moved to Done.
+- Verification: relative ADR links, lint, format and diff-check pass.
+  Documentation-only TDD/build/snapshot exception; no code, scopes, network
+  traffic, release behavior or permissions changed. README/ADRs/WORKLOG updated;
+  PRIVACY, CHANGELOG, AGENTS and runtime settings need no change for a proposal.
+- #2 preflight: checked configuration contains macOS Google client settings,
+  but no disposable BREV_LIVE_* account values or iOS Google client settings.
+  Requested the secure test-account configuration location; no live mail sent.
+- Handoff: review and accept/narrow ADR-0072 before source/authoring work.
+
+## 2026-09-20 — Codex — PR #48 pre-merge review
+
+- Addressed the OAuth review finding: ADR-0072 now explicitly preserves the
+  required non-confidential macOS Desktop credential from accepted ADR-0067.
+  PKCE remains required; iOS uses its separate secretless native client.
+- Documentation-only correction; TDD/build exception. Checked against ADR-0067
+  and the existing token-exchange contract, with diff-check before commit.
+- Henrik authorized merging the open PRs. The architecture remains Proposed;
+  this correction does not introduce provider implementation or account changes.
+
+## 2026-09-20 — Codex — #1 and iPhone account alignment
+
+- Reproduced account-header indentation from Henrik's screenshot. Moved the
+  iOS disclosure arrow trailing and matched folder-row padding; macOS unchanged.
+- Inspected failing light/dark mailbox renders, updated only their references,
+  and passed all seven phone snapshot cases. This is a visual regression check;
+  no new logic test or test-only layout API was needed.
+- Runtime semantic readback confirms inbox Refresh/Compose/Filter and mailbox
+  Settings/Show messages at all twelve Dynamic Type categories. Settings and
+  Compose open at the largest category. Restored the original large size.
+- Reader AX snapshots did not settle; spoken VoiceOver and the reader back
+  control remain unverified. #1 stays open with explicit partial QA evidence.
+- Filed #49, Ready/P1, for reproduced compose horizontal overflow and missing
+  Close/More at the largest accessibility category. Stored synthetic screenshot
+  and filtered labels only in docs/qa/iphone-accessibility-2026-09-20.
+- #2 preflight reported missing disposable credentials; no live connection or
+  message transmission. The secure configuration location was requested.
+- Verification: simulator build, seven phone snapshot cases, baseline inventory,
+  lint, formatting and diff-check. CHANGELOG, QA and WORKLOG updated; README,
+  ADRs, privacy and workflow contracts are unchanged by this layout correction.
+- Handoff: review the alignment change, verify spoken VoiceOver/reader control,
+  then address #49 before calling the compose accessibility flow accepted.
+
+## 2026-09-20 — Codex — #1 / PR #50 reader hierarchy follow-up
+
+- Reproduced Henrik's oversized account-address screenshot at accessibility5.
+  Applied the existing iOS reader chrome range and middle truncation to account
+  metadata; body text is unchanged. Labelled and reduced the loading indicator.
+- Added standard/accessibility phone conversation snapshots. Inspected the old
+  oversized rendering, observed the expected changed-reference failure, recorded
+  corrected references, and passed nine phone cases across six tests.
+- Simulator build/run, native loading screenshot, lint, zero-change final format,
+  baseline inventory and diff-check pass. Stored synthetic screenshot in QA docs.
+- The sample reader still stalls. A process sample shows repeated main-thread
+  SwiftUI layout work; root cause is not established. Filed #51 Ready/P1 rather
+  than claiming the UI styling fixes delivery. Raw diagnostics remain local.
+- Updated CHANGELOG and QA evidence. No architecture, network, privacy, setup or
+  workflow change: README/ADRs/PRIVACY/AGENTS need no update. No physical-device or
+  spoken VoiceOver signoff. Continue existing PR #50; no merge or release.
+
+
+## 2026-09-20 — Codex — PR #48 review follow-up
+
+- Preserve ADR-0039’s live DAV/OAuth proof prerequisite before browsing; map legacy #121 evidence to #5, with #11 extending parity coverage.
+- Require a separate validated PIM-only grant before retaining sources during mail removal, and clear the removed mail credential.
+- Verification: checked the proposal against ADR-0039 and PRIVACY.md; documentation-only change, no runtime tests required. ADR-0072 remains Proposed.
+
+- Additional PR #48 review: route reads/writes through explicit adapter boundary in the diagram; require validated narrower shared Google grants on PIM removal, with disclosed revoke/reconnect fallback. State DAV privilege-narrowing limits. Checked scenario consistency and diff whitespace; documentation-only.
+
+- Final removal clarification for PR #48: separately delete source-owned unsent editor drafts and staged attachments after warning and confirmation; allow cancellation. Include this lifecycle in removal tests. Documentation-only, checked against the separate-draft invariant.
+
+## 2026-09-20 — Codex — #49 / #51 native UI polish
+
+- Followed the requested merge and polish pass. PR #50 merged; PR #48 review
+  follow-ups preserve live DAV proof and safe removal of combined Google grants.
+- Diagnosed the sample reader freeze as repeated command environment closure
+  invalidation. Added stable routing identity with latest-owner dispatch and a
+  hosting-controller regression; verified rendered body and Reply on simulator.
+- Proved compose flow overflow with a failing width test, bounded measurement
+  and placement, added accessibility form scrolling and standard/AX5 snapshots.
+- Reduced duplicate desktop compose tools and labelled Send; inspected native
+  test-app compose, mailbox and settings. No message sent or daily app replaced.
+- Verification: iOS 9 tests/3 suites; macOS 6 tests/3 suites; native builds,
+  lint, zero-change format, baseline inventory and diff check. All 12 simulator
+  text sizes expose Close/Send/More. QA evidence and limits are in
+  docs/qa/native-polish-2026-09-20/README.md.
+- Initial broad macOS run had an unrelated profile-manager snapshot mismatch;
+  no unrelated baseline changed. Physical VoiceOver, another runtime/device and
+  live-provider coverage remain pending. No new release or version change.
+- Documentation sweep: updated CHANGELOG, QA evidence and WORKLOG. No public
+  architecture, provider, privacy, setup or workflow change; README, PRIVACY,
+  ADRs and AGENTS need no change for this implementation. Hand off in review.
+
+- PR #52 follow-up: native plain-renderer QA exposed joined paragraphs while HTML
+  import was pending. Added a failing fallback regression and preserved the
+  supplied plain alternative; native screenshot now retains paragraph spacing.
+  Restored busy-state disabling on the accessibility toolbar and registered the
+  new desktop snapshot explicitly in CI. Configuration selection needs no TDD;
+  the one-line disable restores the existing header invariant without a new
+  async-send fixture. Focused body, compose policy and snapshot checks rerun.
+
+- Final handoff: PR #48 merged as a72e652e; all six review findings resolved.
+  The final documentation-only head passed local lint/diff checks; hosted rebuild
+  remained queued, with the unchanged runtime tree already green at e316db69.
+  PR #50 is merged as 98e517aa. Integrated main into PR #52, preserving both
+  append-only worklog entries. Final iOS command exits successfully with 37
+  tests/5 suites after disabling stalled diagnostic collection; macOS follow-up
+  exits successfully with 29 tests/3 suites. #49/#51 remain In review.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar polish
+
+- Used Henrik's Brev/Apple Mail comparison to reduce desktop sidebar hierarchy
+  noise: account sections have compact labels and trailing disclosure, folders
+  no longer inherit an extra account indent, All Inboxes aligns with folder icons,
+  labels use regular body type, counts are tertiary, and selection uses one fill.
+  Quieted the desktop profile control while preserving theme tokens and iOS UI.
+- Continued feature/native-ui-polish / PR #52 targeting main; checkout was clean.
+- Visual regression loop: old macOS sidebar suite passed, intentional styling
+  produced 11 reference failures, inspected light/dark/hierarchy renders, refreshed
+  only those references and passed 39 sidebar tests across two suites. All 11
+  existing phone snapshot cases (7 tests) passed without baseline changes.
+- Native dated Brev Test build passed. Inspected both accounts, collapse/expand,
+  nested rows and selecting the second account Inbox. No live mail changes.
+- Lint, format and diff check passed. Updated CHANGELOG and QA documentation;
+  no provider, privacy, public design-token, setup or architectural change, so
+  README/PRIVACY/ADRs/AGENTS need no update. Physical VoiceOver remains unverified.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar top alignment
+
+- Aligned profile, All Inboxes and Smart Views text/icon columns on desktop.
+  Replaced the native borderless menu label with a plain menu button so SwiftUI
+  respects its layout; moved the profile chevron to the trailing edge. Removed
+  the extra profile gap and put Smart Views disclosure in the icon column.
+- Inspected intentional snapshot failures and refined the rendered alignment;
+  refreshed only the 11 sidebar references. Native profile menu opens with All
+  Mailboxes and Manage Profiles. Decorative symbols are hidden from accessibility.
+- Verification: macOS sidebar snapshots and unchanged phone snapshots rerun;
+  dated test-app build, lint/format and diff check. No new provider, privacy,
+  architecture or settings behavior; only CHANGELOG, QA and WORKLOG need updates.
+
+
+## 2026-09-20 — Codex — PR #52 sidebar scope hierarchy
+
+- Continued clean feature/native-ui-polish / open PR #52 to main after approval
+  of the scope/destination proposal. Moved desktop scope selection into a fixed
+  Mailboxes header, preserving custom profile names and management access.
+  All Inboxes stays first; Smart Views consolidates create/manage in one menu.
+- Visual regression loop: 11 expected old-reference failures, inspected renders,
+  fixed safe-area header overlap using a separate stack header, then refreshed
+  references. Four desktop tests/11 cases and seven iOS tests/11 unchanged cases
+  pass. Native dated mock build passes; scope menu, Smart Views expansion,
+  management sheet and unified inbox checked. Lint/format/diff check pass.
+- No business-logic change; used rendered visual regression and native action
+  checks rather than a new unit test. Initial test command from workspace root
+  had no BrevMail scheme; reran successfully from packages/BrevMail.
+- Updated CHANGELOG and QA evidence. README, privacy, ADRs and AGENTS need no
+  change: no setup, architecture, network or workflow changes. Physical spoken
+  VoiceOver and live-provider QA not run. No merge/release/version change.
+
+## 2026-09-20 — Codex / Sol — #53 / PR #52 full native audit follow-up
+
+- Started from clean feature/native-ui-polish at 1a3c6b9b, continuing open PR
+  #52 to main. Created #53 for all nine approved audit findings and moved its
+  project card to In progress. Four Sol agents own isolated sidebar, mail-shell,
+  reader/contrast and compose slices; integration owns settings and QA.
+- Removed duplicate fetch guidance and isolated the accounts pixel selection.
+  Two accounts references were inspected/refreshed; four tests in two suites
+  pass. The broad settings snapshot selection had fourteen pre-existing
+  mismatches on macOS 27; unrelated references were preserved.
+- Original iPhone snapshots pass (seven tests / eleven cases). Strengthened
+  shared fixtures with explicit text-size traits, navigation hosting and a
+  two-account/long-name/nested sidebar case. Integrated all four Sol slices and
+  reviewed follow-ups restoring custom profile names, true folder nesting,
+  active mailbox qualifiers, native menu semantics and narrow row metadata.
+- All nine audit findings are implemented: sidebar hierarchy/alignment,
+  desktop initial columns and narrow rows, Dynamic Type/contrast, primary
+  toolbars, iPhone account/status context, compact reader metadata, compose
+  hierarchy and single fetch guidance. Final render review also fixed a clipped
+  local-folder creation footer and removed the duplicate iPhone thread menu.
+- Behavioral red/green evidence comes from the slice policy/body/contrast tests;
+  cosmetic changes use failed prior-reference comparisons, visual inspection,
+  then updated pixel baselines. No mirror unit tests were added for spacing.
+  Corrected cropped/time-dependent fixtures and a 50 ms async test assumption
+  exposed by the old hosted CI failure. Unrelated snapshot debt is unchanged.
+- Final checks: BrevMail behavior 1,606 tests/247 suites; Mac mail pixel selection
+  37 tests/12 suites; iOS selection 18 tests/5 suites (13 phone renders); themes
+  9 tests; focused settings 4 tests/2 suites. Lint, zero-change format, baseline
+  inventory and diff check pass. Dated Mac mock build/startup verification and
+  iOS build/explicit mock launch pass. Native sidebar, reader, menus and compose
+  inspected on both platforms; no mail sent.
+- Fresh 1440 pt native root probe resolves sidebar/list to 240/420 pt without
+  clearing saved window state. Existing-window divider retention remains an
+  inference; the observed initial split and constraints are recorded in QA.
+- Documentation sweep: CHANGELOG, QA evidence/baseline policy and WORKLOG
+  updated; ADR-0002 documents the protected theme contrast change. README,
+  PRIVACY, ADR-0006 and AGENTS need no updates: setup, network behavior, privacy
+  and repository workflow are unchanged. Physical spoken VoiceOver, live
+  providers, unrelated Settings snapshots and maintainer acceptance remain open.
+- QA scope, commands and limitations are tracked in
+  docs/qa/native-audit-polish-2026-09-20.md. No live mail, daily-driver replacement,
+  version change, merge or release operation was performed.
+- Published the integrated changes in existing PR #52 and moved #53 to
+  In review; #49/#51 remain open/In review. Resolved the obsolete compose-menu
+  review thread after checking the updated overflow policy, tests and native
+  accessibility menu role. Hosted CI then found a stale compact-layout source
+  check requiring the removed content frame. Reproduced that failure, checked
+  the policy and outer split modifier instead, and passed the focused check and
+  complete `scripts/test.sh --self-tests-only` set. No production code changed
+  for this CI correction; hosted checks must rerun on the follow-up head.
+
+## 2026-09-20 — Codex — #5 slice 2 settings source surface
+
+- Built on feature/pim-source-lifecycle (PR #56, stacked on the ADR-0072
+  acceptance PR #55). Moved issue #5 to In progress on the board and posted
+  the slice plan as an issue comment.
+- Settings Sources UI (BrevSettings): PIMSourceSettingsModel view-model
+  wrapping PIMSourceCoordinator; PIMDAVConnectForm pure validation
+  (discovery email, manual HTTPS endpoint with loopback exception,
+  app-password + bearer modes); PIMSourcesSettingsView group with
+  per-source shared status, sync opt-in toggle, disconnect, credential
+  reconnect sheet, and removal confirmation offering keep-cache vs
+  delete-cache (unsent drafts always die, provider data never touched).
+  Google enablement listed as "Not available yet" until reauthorization.
+- CalendarContactsSection copy replaced per ADR-0072: direction summary
+  now describes optional Google/DAV sources; DAV connect joined
+  "Available now"; Google enablement, browsing, unified search and
+  event/contact authoring are "Not available yet" (accepted scope).
+  The ADR-0039 "full PIM editing outside Brev" boundary text removed.
+- Wiring: AppSession.pimSourceCoordinator built by AppSessionFactory
+  (JSON store + per-source data dirs under Application Support/Brev,
+  Keychain credentials); SettingsView passes it to the section; both app
+  targets updated.
+- Verification: 27 new/updated tests in 4 suites pass (form validation,
+  model lifecycle incl. reconnect failure preserving state, row
+  presentation action matrix, scope presentation contract). BrevMail
+  package builds clean. swiftformat + swiftlint --strict clean on all
+  touched files.
+- Skipped: pixel snapshot for the new group — local macOS 27 renderer
+  does not match the macOS-26-recorded baseline (32 pre-existing
+  mismatches in the suite confirm); behavior coverage added instead.
+  iOS/macOS app builds left to CI (tuist graph unchanged, one added
+  SettingsView argument).
+- Next: slice 3 Google feature-triggered reauthorization plus
+  mail-account-removal handling of linked sources (acceptance criteria);
+  live-provider smoke remains the maintainer gate.
+
+## 2026-09-21 — Agent — Issue #8 slice 1 (contact sync engine + cache)
+
+- Goal: give connected contacts sources a real sync pass per ADR-0072 —
+  initial + incremental sync, per-scope failure isolation, durable
+  cache, cursors wiped on removal.
+- Changes: PIMContact/PIMContactField/PIMContactAddress model with
+  adapter-owned rawPayload; JSONPIMContactStore (per-source file under
+  the cache dir) and JSONPIMContactSyncCursorStore (under the wiped
+  cursor dir, scope = collection for CardDAV / source for Google);
+  GooglePeopleContactSync (connections.list paging, syncToken-only
+  incremental, 410/400-expired → full resync); PIMDAVContactSync
+  (sync-collection with multiget fill-in, addressbook-query + ETag-diff
+  fallback); PIMVCardParser covering FN/N/NICKNAME/EMAIL/TEL/ADR/ORG/
+  TITLE/NOTE/CATEGORIES/REV/UID and HTTPS-only PHOTO URIs;
+  PIMContactSyncService (serial, user-initiated, per-scope failure
+  isolation, local-only searchContacts).
+- Settings: Sync Now menu item + cached contact count on contacts
+  source rows; enabling sync runs one immediate pass in the gesture.
+- Wiring: AppSession.pimContactSyncService via AppSessionFactory; both
+  app targets pass it to SettingsView.
+- Verification: 16 new tests pass (CardDAV incremental/multiget/
+  fallback, Google full/incremental/410, hidden-skip, failure
+  isolation, auth stop, kind guard, local search, vCard edge cases).
+  BrevCalendar, BrevSettings, BrevMail packages build clean.
+- Skipped: app builds left to CI (no local signing cert); pixel
+  snapshots unchanged. Local BrevSettings snapshot mismatches are
+  pre-existing macOS-27 renderer drift.
+- Next: #8 slice 2 browsing UI (list/detail/group filter) and
+  compose-autocomplete migration; live-provider evidence stays the
+## 2026-09-21 — Agent — Issue #6 slice 2 (event sync engine + cache)
+
+- Goal: give connected calendar sources a real sync pass per ADR-0072 —
+  initial + incremental sync, per-collection failure isolation, durable
+  cache, cursors wiped on removal.
+- Changes: PIMEvent/PIMEventStatus/PIMEventPerson/PIMEventReminder model
+  with adapter-owned rawPayload; JSONPIMEventStore (per-collection files
+  under the source cache dir) and JSONPIMSyncCursorStore (under the
+  wiped-on-removal cursor dir); GoogleCalendarEventSync (events.list
+  paging, syncToken-only incremental, 410 → full resync); PIMDAVEventSync
+  (RFC 6578 sync-collection with multiget fill-in, bounded
+  calendar-query + ETag-diff fallback); PIMEventSyncService (serial,
+  user-initiated, per-collection failure isolation, cursor committed
+  after the generation). ICSParser gained parseEvents (all VEVENTs),
+  STATUS/PARTSTAT/VALARM/CONFERENCE/LAST-MODIFIED/TZID capture, Codable
+  RecurrenceRule and public parseRecurrenceRule.
+- Settings: Sync Now menu item + cached event count on calendar source
+  rows; enabling sync runs one immediate pass in the same gesture.
+- Wiring: AppSession.pimEventSyncService via AppSessionFactory; both app
+  targets pass it to SettingsView.
+- Verification: 23 new tests pass (DAV incremental/multiget/fallback/501
+  degrade, Google full/incremental/410, hidden-skip, failure isolation,
+  auth stop, kind/status guards, ICS field parsing). BrevCalendar,
+  BrevSettings, BrevMail packages build clean.
+- Skipped: app builds left to CI (no local signing cert); pixel snapshots
+  unchanged — the new row content rides existing snapshot coverage.
+  Local BrevSettings snapshot mismatches are pre-existing macOS-27
+  renderer drift (identical failures on clean main).
+- Next: #6 slice 3 browsing UI (agenda/day/week/month + detail), then
+  search/offline-stale states; live-provider evidence stays the
+  maintainer gate.
+
+## 2026-09-22 — Agent — Issue #12 slice 3 (tasks browsing UI + Create Task)
+
+- Goal: ship the Tasks surface and wire Create Task from Message into
+  provider task lists per ADR-0072 — closing the loop on the slice-1/2
+  sync and write pipelines.
+- Changes: TasksBrowsingModel (cache-only load, collection-grouped
+  sections, hidden/search/list filters, completed toggle, staleness,
+  brev://task deep links); TasksEditingModel + TaskDraft over the
+  TaskWriting seam (PIMTaskWriteService); TasksRootView/TasksListView/
+  TaskDetailView/TaskEditorView mirroring the contacts surface;
+  MessageTaskTarget replacing the Reminders-or-share enum with provider
+  task lists via PIMTaskMessageCreator; macOS Tasks window (Window menu
+  + sidebar footer) and iOS full-screen cover; PIMDeepLink .task case.
+- Fixes during verification: TasksEditingModel guard failures now set
+  lastError (contacts-editor parity) instead of throwing silently.
+- Verification: 24 new Swift Testing cases green
+  (TasksBrowsingModelTests, TasksEditingModelTests) plus the updated
+  MessageTaskPayloadTests; lint.sh and format.sh clean.
+- Skipped: rendered verification of the Tasks window (no signing cert
+  locally); pixel snapshots unchanged — the surface rides existing
+  coverage. Live-provider write smoke tests remain the maintainer gate.
+- Next: #12 stays In progress pending maintainer QA; remaining issue
+  scope is rendered/live verification, not code.
+
+## 2026-09-22 — Agent — Issue #9 slice 3 (photos, dates/URLs, duplicate suggestions)
+
+- Goal: close the three remaining contact gaps on the merged write
+  pipeline + editor (PR #68) — photo set/replace/remove, date and URL
+  fields, and review-first duplicate suggestions.
+- Changes: `PIMContact` gains `photoData`, `dates`, `urls`; vCard
+  writer/parser manage BDAY/ANNIVERSARY/X-ABDATE/URL/PHOTO
+  version-aware and preserve unknown fields; Google People writer adds
+  `:updateContactPhoto`/`:deleteContactPhoto` (bytes never in
+  updatePersonFields) and birthdays/events/urls field mappings; sync
+  parses the same fields so masks never erase unseen provider values;
+  write service diffs stored-vs-draft photo state; editor gains photo
+  (PhotosPicker), URLs, Dates sections; detail pane shows photo/URLs/
+  dates plus a Possible Duplicates section fed by the pure
+  `ContactDuplicateSuggestions` scorer (Review selects only — never
+  merges); ADR-0006 gains CardDAV/Google contact-write rows, PRIVACY.md
+  documents photo uploads, ADR-0072 records the slice.
+- Verification: 26 PIMContactWrite + 19 PIMContactSync cases green
+  (photo set/replace/remove round-trip on both writers, date+URL
+  round-trip, unknown-field preservation with photos); 49 affected
+  BrevMail cases green (draft mapping, duplicate ranking + no-mutation,
+  editor/detail snapshots re-recorded); lint.sh and format.sh clean.
+- Fixes during verification: parser `=\n` quoted-printable unfold
+  swallowed the property after a base64 payload's `=` padding — now
+  joins only when the next line is not itself a property; merge now
+  unfolds raw vCards so folded PHOTO payloads leave no orphan lines;
+  duplicate name matching compares display and split name forms so
+  cross-form twins still match; AppSessionFactory now shares each
+  `JSONPIM*Store` across sync/write services — the write service's
+  private store instance left list/detail stale until relaunch
+  (found by E2E on a stub CardDAV server; affected events/tasks too).
+- Skipped: live-provider evidence (Google Workspace + writable CardDAV
+  photo/date round-trips) — maintainer-gated per the issue; rendered
+  verification of the PhotosPicker sheet itself.
+- Next: maintainer QA on issue #9; remaining issue scope is live
+  evidence and duplicate merge actions (out of "review-first" scope).
+
+## 2026-09-23 — Agent — Sent-copy markup rendering fix (release-validation nit)
+
+- Goal: fix the reader showing literal `<br>`/`&lt;` markup on sent-copy
+  bodies flagged in `docs/qa/release-validation-2026-09-22.md`.
+- Root cause: two layers. `MockBackend` stored `draft.htmlBody` as the
+  sent/draft copy's `plainText` with `html` unset, so plain-text surfaces
+  (reader body, list snippet, reply quotes) rendered raw markup. And the
+  real `MIMEMessageBuilder` built the `text/plain` alternative via a naive
+  tag-strip that never unescaped entities and concatenated paragraphs —
+  `&lt;` leaked into real outbound plain parts too.
+- Changes: `HTMLTextStripper` gains `plainText(from:)` — block/`<br>`/`<hr>`
+  boundaries become newlines, remaining tags spaces, entities unescaped,
+  per-line whitespace collapsed. `MockBackend` sent/draft copies now mirror
+  real mail: `html` = draft markup, `plainText` = stripped rendering,
+  snippets stripped. `MIMEMessageBuilder` delegates its `text/plain` part
+  to the same helper.
+- Verification: 5 new/targeted cases green (sent-copy split + readable
+  plain alternative), full MockBackend/MIMEMessageBuilder/IMAP parser/
+  outbound suites 123/123, BrevMail compose/quote/detail suites 67/67,
+  lint.sh + format.sh clean.
+- Skipped: E2E render pass in the app (plain-text fix is unit-covered;
+  reader path unchanged — it was fed bad data).
+- Next: PR for review; parity-matrix stub-DAV rows continue separately.
+
+## 2026-09-23 — Agent — Issue #11 stub-DAV parity rows (C/D mac)
+
+- Goal: fill the CalDAV (C) and CardDAV (D) macOS cells of
+  `docs/qa/pim-parity-matrix.md` that a localhost stub can honestly
+  cover, ahead of maintainer live fixtures.
+- Changes: `scripts/stub-dav-server.py` — a single-file Python stub
+  speaking enough RFC 4791/6352/6578 for real flows: PROPFIND discovery
+  (principal → home set → collections), sync-collection REPORT with
+  sync-token expiry control, query/multiget REPORTs, GET, conditional
+  PUT (If-None-Match/If-Match → 201/204/412), DELETE, optional Basic
+  auth. Matrix filled for §1.6/1.7, §2.1/2.3/2.4/2.5⚠/2.9/2.10,
+  §3.1/3.4/3.5/3.7/3.8, §4.1*/4.2/4.5/4.6⚠, §6.1 with wire-log line
+  refs; wire logs + two evidence screenshots committed under
+  `docs/qa/pim-parity-stub-dav-2026-09-23/`.
+- Verification: stub smoke-tested with curl (207/401/412/201/204 paths,
+  sync-token expiry); all UI cells driven end-to-end in the mock build
+  via the real "Add DAV Source…" connect sheet.
+- Found during verification (real defect): sync refreshes a cached
+  item's etag but never its href — a server-side rename leaves the
+  record pointing at a dead path and every subsequent write 412s with
+  no self-heal (wire log L22/L27/L31). Also `lastError` callouts are
+  never cleared on fresh editor opens (cosmetic).
+- Skipped: iOS cells, Google fixture (none exists), §2.6–2.8
+  recurrence/invite/RSVP and §3.6 groups (stub lacks multi-collection
+  scheduling surface), §1.8 TLS failure (stub is plain http loopback).
+- Next: maintainer live fixtures; stale-href defect proposed as a
+  follow-up fix.
+
+## 2026-09-23 — Agent — DAV stale-href write defect (found via #11 stub pass)
+
+- Goal: fix the defect the stub-DAV parity pass surfaced — a synced
+  event whose resource lives at a non-`{uid}.ics` href (server-side
+  rename, or a server that never followed the RFC 4791 filename
+  convention) stayed permanently unwritable; every PUT went to a dead
+  path and 412'd as `conflict` with no self-heal.
+- Changes: `PIMDAVEventWriter.update`/`delete` now address the stored
+  `providerItemKey` href (new `hrefURL(for:)`), matching the contact
+  and task writers; `create` keeps the `{sanitized-uid}.ics`
+  convention. Sync merges in `PIMEventSyncService`,
+  `PIMContactSyncService`, and `PIMTaskSyncService` drop a cached
+  record when an incoming item shares its UID (and recurrence-id for
+  exceptions) under a different href — new `PIMSyncItemIdentity`
+  type — so a rename without a tombstone self-heals instead of
+  shadowing the live record.
+- Verification: `swift test` BrevCalendar 241/241 — new
+  `davUpdateTargetsStoredHref` (writer targets stored href for both
+  update and delete) and `davSyncSupersedesStaleHref` (delta sync
+  drops the stale record, keeps the live one + untouched items);
+  existing DAV update/delete/conflict tests updated to pass real hrefs
+  and assert request URLs.
+- Skipped: iOS E2E (writer fix is transport-level; sync merge is
+  platform-independent). `CalDAVEventWriter` (invite-acceptance
+  single-target flow) intentionally unchanged — it only creates.
+- Next: merge; matrix §2.5 can flip to clean ✓ on the next pass.
+
+## 2026-09-24 — Agent — Round-2 verification fixes (PR #93 findings)
+
+- Goal: fix the six findings the recorded round-2 verification pass
+  reported on `a367be9` plus the N1 keyboard-nav remainder.
+- Changes:
+  - Calendar toolbar vanish (release-affecting): `.toolbar` items on
+    the NavigationSplitView sidebar column only propagate to the macOS
+    window titlebar when the column content is a `List` — the
+    grid-mode views (`ScrollView`) silently dropped the layout picker,
+    date navigation, New Event, and Sync. Replaced with a deterministic
+    in-view `navigationHeader` (menu-style picker + date nav + actions)
+    that renders identically in every mode on both platforms.
+  - Compose Discard Draft: the `discardDraft` action existed in
+    presentation + a11y strings but no menu rendered it — closing a
+    compose window still silently saved. Wired a destructive
+    `Discard Draft` item (trash icon) into the macOS overflow and iOS
+    compact menus; `discardDraft()` cancels autosave, calls
+    `backend.discard(draftID:)`/`(draftID:sourceID:)`, and closes
+    without saving.
+  - P5 HTML sent copies: `ComposeHTMLBodyPolicy.html(fromEditorText:)`
+    escaped `>` quote markers to `&gt;` so sent copies showed literal
+    `> ` lines. Consecutive `>`-prefixed runs now emit a real
+    `<blockquote>` (already styled by the reader's blockquote CSS and
+    every recipient client); `editorText(fromStoredHTML:)` round-trips
+    blockquotes back to `>` lines so draft reopen keeps the quote.
+  - P11 Find settings: validation warnings were silent no-ops —
+    `statusAndGuidanceSection` only mounts after
+    `didStartDiscoveryProbe`, but the validation early-return happened
+    before the flag was set. Flag now marks before validation in both
+    `discover` and `applySkip`.
+  - N6 iOS reader overflow: the thread `…` menu held only thread
+    controls — Reply/Reply All/Forward/Snooze were long-press only.
+    iOS menu now leads with the consolidated per-card inventory acting
+    on the thread's latest message.
+  - N1 remainder: `focusSection()` puts sidebar + message list in the
+    macOS Tab key loop, and arrow-key input now claims container focus
+    so the accent focus ring actually appears.
+- Verification: `swift build` clean; `swift test` filtered suites
+  99/99 (ComposeDraftBuilder +2 round-trip tests, ComposePresentation,
+  IMAPAccountSetup); `scripts/lint.sh` OK; swiftformat 0 changes.
+  On-device verification pending on this commit.
+- Skipped: P6 iOS stale calendar data — pending investigation
+  (suspected environment artifact, not code).
+- Next: merge into the stacked composer branch (PR #94); recorded
+  re-verification of the six items.
+
+## 2026-09-24 — Agent — Round-2 verification follow-ups (PR #93 re-verification findings)
+
+**Goal:** Fix the two code-change findings from the `c2ae433` re-verification pass and one minor label wrap.
+
+**Changes:**
+- `MessageListView` — moved the macOS focus machinery (`focusSection`/`focusable`/`focused`/`focusEffectDisabled`/arrow+Return handlers/accent ring) off the `List` onto a wrapping `Group`: a `List`'s AppKit backing never joins the key loop, so the column could never be focused. `selectMessage` now also claims `listKeyboardFocus` so pointer interaction marks the list as the keyboard surface (Apple Mail ring-follows-focus).
+- `MailNavigationState` — added `messageListFocusRequestID` token + `requestMessageListFocus()`; `MessageListView` observes it and claims focus.
+- `FolderSidebar` — `.return` on a highlighted destination and `→` on a leaf call `onOpenMessages` (drill into the list, Finder column-view style); Outbox keeps its own activation on both.
+- `BrevMailRootView` — `onOpenMessages` on macOS bumps `requestMessageListFocus()`, so any mailbox activation hands the keyboard to its list.
+- `MockBackend.removeDraft` — discard now matches the draft's local id *and* its staged folder id (`draft-<id>`/remoteID), matching the local-id contract `IMAPSMTPBackend.discard` exposes. Fixes the iOS Discard leak where an auto-persisted reply draft survived because the composer's `draftID` (local UUID) never matched the `draft-<uuid>` folder key. New `discardByLocalIDRemovesSavedDraft` test covers it (and caught the first incomplete attempt at the fix).
+- `CalendarRootView` — `.fixedSize()` on the layout Picker so "Month" stops wrapping to "Mont h" on iOS.
+- `.agents/skills/testing-brev-ui/SKILL.md` — added sim PIM-source injection, focus-state AX caveat, and the ⌘W-keepalive/`reopen` note from the verification pass.
+
+**Verification:** `swift test --filter discard` — 4/4 green incl. new test; `swift test` BrevMail 1869 tests, 84 issues all in `*SnapshotTests.swift` (pre-existing env baseline drift, zero functional failures); `swift build` macOS clean; `scripts/lint.sh` + `scripts/format.sh` clean.
+
+**Skipped:** Device re-verification (testing agent) — pending.
+
+**Handoff:** P11 (Add-account Find-settings) remains mock-limited — needs `imapAccountDiscoveryCoordinator` wired into the demo session or real-session verification.
+- `AppSessionFactory` — demo session now gets an offline
+  `imapAccountDiscoveryCoordinator` (built-in profile table + manual
+  fallback only, no DNS/autoconfig) so the Find-settings flow — and
+  the P11 validation status surface — is exercisable in mock mode
+  without violating the zero-network default.
+
+## 2026-09-25 — Agent — PR #93
+
+**Goal:** Sidebar header consistency + alignment follow-up (Henrik's Apple Mail comparison screenshots).
+
+**Changes:**
+- `FolderSidebar` — unified all macOS section headers to one Apple Mail-style treatment: `caption` + `semibold` + `textSecondary`, flush-left at the disclosure column (`folderRowBaseLeadingPadding`), disclosure chevron trailing the label (10pt semibold, `textTertiary`) — matches Mail's "Favoritter / Smarte postkasser / Google" edge and the existing iOS text-then-chevron pattern.
+- `profileSwitcher` (macOS): downgraded from `.body`/semibold/`textPrimary` title to the shared header style (was the inconsistent large header in the screenshot); now uses `sourceHeaderMinimumHeight` + `sourceHeaderVerticalPadding`.
+- `mailboxDisclosureHeader` + `smartViewsSection` (macOS): reordered to label-then-chevron so header text sits flush-left at the chevron column instead of the icon column.
+- Removed now-unused `sidebarHeaderLabelLeadingPadding`.
+
+**Verification:** `scripts/lint.sh` + `scripts/format.sh` clean; rebuilt `Brev Test (2026-09-24).app` in mock mode and visually verified on device — "Mailboxes", "Smart Views", and both source headers share one flush-left muted header style; folder chevrons, icons, labels, and counts all sit on shared columns.
+
+**Skipped:** iOS — branches untouched (headers already used label-then-chevron); snapshot baselines have pre-existing env drift.
+
+## 2026-09-25 — Agent — Platform parity + performance smoke pass
+
+- **Goal**: Post-merge iOS/macOS parity assessment + performance benchmark vs
+  #304 budgets (user request).
+- **Changes**: `docs/qa/platform-parity-2026-09-25.md` (parity matrix),
+  `docs/qa/results/performance-mock-2026-09-25.json` (budget JSON),
+  `performance-baseline-2026-09.md` Live-measurements section,
+  `scripts/collect-performance-trace.sh` `--info` fix (export was silently
+  empty — Performance events log at info level).
+- **Verification**: both apps driven on identical mock fixtures; trace
+  collected via fixed collector on macOS and `simctl spawn log show` on iOS;
+  budget gate run and violations recorded in the doc.
+- **Findings**: first rich-HTML thread open 1222 ms (over 600 ms hard limit,
+  n=1, WKWebView first paint — needs warm live re-measure);
+  `cached_inbox_query_ms` not measurable in mock; all other budgets pass or
+  pass-by-proxy; parity confirmed on all user-visible surfaces.
+- **Skipped**: true scroll frame p95 and the full #28 §5 live run — needs
+  Instruments + a real mailbox.
+
+## 2026-09-25 — Agent — Focused-pane selection tint (a11y follow-up)
+
+- **Goal**: restore a visible keyboard-focus indicator after #95 removed the
+  column outline, without reintroducing a drawn ring (Codex P1 on #95:
+  keyboard-only users had no focus signal at all).
+- **Changes**: `BrevSelectionPalette` `isActive: false` now demotes the
+  selected-row fill from `selection` to `bgSecondary` (the Apple Mail
+  focused-pane-owns-the-tint cue, documented in ADR-0002); `MessageListRow`
+  gained `isFocusedPane` fed by `listKeyboardFocus`; the sidebar palette is
+  keyed on `sidebarKeyboardFocus`; the sidebar claims focus on appear so an
+  empty launch still lands arrows on the mailbox column (Mail cold-start).
+- **Verified**: lint + format clean; live app — click list → list accent
+  tint + sidebar muted; arrows move the focused pane's selection; mailbox
+  activation hands focus to the list; no outline anywhere.
+- **Skipped**: none. The 22 pre-existing snapshot env diffs reproduce
+  identically on clean main on this machine — no new failures.
+
+## 2026-09-25 — Agent — Settings sidebar flush-left + shared icons toggle (#100)
+
+- **Goal**: Henrik asked for the mail-sidebar treatment in Settings too —
+  rows aligned left under their section headers ("App", "Reading &
+  Composing", "Organization") and honoring the same icons on/off toggle,
+  on iOS and macOS.
+- **Changes**: `SettingsView` — macOS sidebar rows `listRowInsets` leading
+  4 → 0 so row content aligns under section headers; `sectionRow` and
+  `pluginSettingsRow` gate their 18pt icon column on the same
+  `folders.showIcons` pref (`@AppStorage`) the mail rail uses, so the
+  Mailbox View → Folders → "Sidebar icons" switch compacts every rail at
+  once. iOS compact + sidebar rows pick both up automatically.
+- **Verified**: lint + format clean; `swift build` green; live app —
+  toggle ON restores icons in settings + mail sidebars (icon column sits
+  under section headers, Apple Mail layout), toggle OFF renders the dense
+  text-only rail in both; A/B test run confirms the 34 BrevSettings
+  snapshot diffs fail identically on clean HEAD (pre-existing macOS
+  baseline env diffs — zero new failures from this change).
+- **Skipped**: none.
+
+## 2026-09-25 — Agent — iOS settings tap fix (found while verifying #100)
+
+- **Goal**: while verifying the settings icons toggle on iOS, every
+  settings row tap was dead — the whole section list was un-navigable.
+- **Root cause**: `compactSettingsRows` wrapped each `NavigationLink` in a
+  `.simultaneousGesture(TapGesture().onEnded { navigation.select(...) })`.
+  The competing gesture suppressed link activation — confirmed via A/B
+  build (dead on the parent commit too, so pre-existing, not from the
+  icons-off change).
+- **Fix**: drop the gesture; call `navigation.select(section)` in the
+  pushed view's `.onAppear` instead — same sync timing, no conflict.
+- **Verified on device**: Mailbox View, Accounts, etc. now navigate; the
+  Folders scope picker, toggles, and the "Sidebar icons" pref all live and
+  govern the iOS rail + settings icons identically to macOS.
+
+## 2026-09-26 — Agent — Sidebar flush-left refinement (PR #100)
+
+**Goal:** Henrik: move mailbox folder rows further left — icons under the mailbox headers, Apple Mail gutter.
+
+**Changes:** `FolderSidebarPresentation.macOSLayoutMetrics` `disclosureHitSize` 16→10 (Mail's leading gutter ≈ 7–10pt); macOS `folderRowControlSpacing` → 0 (the disclosure column carries the visual gap); `sidebarActionRow` leading now derives from the same column (`disclosureHitSize + folderRowControlSpacing`) instead of a hardcoded `xxs`; iOS `.folderContent` action rows drop the stale +44pt leading disclosure offset (`folderRowLeadingPadding(0)`, matching iOS folder rows — iOS disclosure is trailing). `⋯` smart-view menu target pinned at `BrevSpacing.lg` so the metric change does not shrink it.
+
+**Verified:** rebuilt `Brev Test (2026-09-26)` — icons ~10pt right of header text, leaf/parent icons on one column, chevrons at the header edge; `swift test --filter 'FolderSidebarPresentation|MailboxGroupDisclosure|GmailNativeSidebar'` 42/42; lint.sh + format.sh clean.
+
+**Skipped:** pixel snapshot baselines (same env-diff caveat as before).
+
+## 2026-09-26 — Agent — Sidebar icons flush-left + View-menu icons toggle (PR #100)
+
+- Goal: Henrik asked for mailbox folder icons "all the way to the left" and an easy way to turn icons off.
+- macOS leaf rows no longer reserve a disclosure column; leaf icons (and All Inboxes / smart views / plugin rows) sit flush with the section-header text. Parent rows keep the chevron in that edge slot. Child depth indent is now 16pt so child icons start right of the parent icon.
+- Removed the now-identical `SidebarActionRowAlignment` distinction and the dead disclosure placeholder.
+- Added View → "Show Sidebar Icons" toggle bound to `folders.showIcons` (same preference as Settings → Mailbox View → Folders → Sidebar icons).
+- Verification: lint.sh OK, format clean, FolderSidebar/MailCommand/Shortcut unit tests green, rebuilt mock app and checked the result visually. FolderSidebar pixel snapshots differ, as expected from the geometry change (they were already env-divergent on this machine). Re-record the baselines on the maintainer host.
+
+## 2026-09-26 — Agent — Sidebar, DAV form, and compact rows (PR #100)
+
+- **Goal:** Deliver the three Apple Mail-inspired UI polish changes requested
+  for PR #100: shared sidebar folder glyph alignment, a native DAV source
+  connection form, and a compact message-list leading gutter.
+- **Changes:** Sidebar disclosure controls now trail folder content on macOS
+  and iOS; macOS uses a 16pt disclosure hit target and matching 16pt folder
+  depth indent. `PIMSourceConnectSheet` now uses a native grouped Form on
+  macOS (default Form presentation on iOS), native picker/text-field chrome,
+  localized section labels and footers, and validation callouts after input
+  or attempted submission. `MessageListRow` now uses compact spacing and
+  checkbox/unread-dot/avatar/content order; inline child rows already matched
+  that order. Updated only the affected sidebar and message-row snapshot
+  baselines through `RECORD_SNAPSHOTS=YES`.
+- **Verified:** `swift test --filter FolderSidebar` passed (42 tests);
+  `swift test --filter MessageListRow` passed (14 tests); BrevSettings PIM
+  tests passed (35 tests in 3 suites); `scripts/lint.sh` passed; the macOS
+  mock build passed and launched `Brev Test (2026-09-26).app`.
+- **Skipped:** The requested iOS build could not resolve a destination:
+  `xcodebuild` reported `iOS 26.5 is not installed` while the available
+  simulator runtimes were iOS 26.5 and 27.0. The existing iOS simulator app
+  was nevertheless relaunched successfully with mock mode. No visual
+  inspection was performed.
+- **Handoff:** The selected validation visibility variant is
+  `didAttemptSubmit || hasAnyInput`, because `canSubmit` is validity-gated
+  and pristine forms should not show warnings. PR checks were inspected
+  separately and were green at the time of inspection.
+
+
+
+
+
+
+
+
+
+## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
+
+- **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
+  error on iOS), D4 (TLS-failure callout ~30 s late) and D7 (failed
+  first-time add flips title to "Reconnect your mailbox").
+- **Changes:** `PIMSourceConnectSheet` renders `model.lastError` inline
+  after the first submit (PR #113, BrevSettings + snapshot test);
+  `URLSessionPIMDAVTransport` gains `requestTimeout` and `PIMDAVClient`
+  defaults it to 15 s for setup validation only (PR #114, ADR-0072
+  updated); `LoginView` gates reconnect copy on
+  `authFailedIMAPAccountEmail` (PR #115).
+- **Verified:** lint.sh + format.sh clean on each branch; new
+  `transportHonoursRequestTimeout` passes (dead endpoint fails ~0.6 s);
+  new `davConnectSheetRendersSubmissionError` snapshot recorded and green
+  on iPhone 17 / iOS 27.0.
+- **Device verification:** handed to the UI testing pass (stub DAV
+  wrong-credentials on iOS sim; manual-add failure copy on macOS).
+
+
+## 2026-09-26 — Agent — D4 DAV setup timeout (PR #114)
+
+- **Goal:** Bound DAV connect/reconnect validation so dead endpoints and
+  stalled TLS handshakes surface an error inside ~15 s (QA D4).
+- **Changes:** `URLSessionPIMDAVTransport(session:requestTimeout:)` —
+  `timeoutIntervalForRequest`, default 60 s unchanged for the shared
+  sync services; `PIMDAVClient` (setup-validation only) defaults to 15 s.
+  ADR-0072 contract bullet updated.
+- **Verified:** new `PIMDAVClientTests.transportHonoursRequestTimeout`
+  passes (dead endpoint errors in ~0.6 s); lint.sh + format.sh clean.
+
+
+
+## 2026-09-26 — Agent — D7 reconnect-copy gate (PR #115)
+
+- **Goal:** Stop "Reconnect your mailbox" appearing after a failed
+  first-time manual account add (QA D7) — nothing is stored to repair.
+- **Changes:** `LoginView.connectionSectionTitle` and the repair subtitle
+  now gate on `session.authFailedIMAPAccountEmail` (stored-account
+  re-auth marker) instead of `signInError`. The failure callout itself
+  is unchanged.
+- **Verified:** lint.sh + format.sh clean; existing LoginView snapshot
+  tests unaffected (repair state not injectable — `private(set)`).
+
+
+
+## 2026-09-26 — Agent — Issue #2 missing Google config guidance
+
+- **Goal:** Acceptance row — "missing Google client configuration produces
+  actionable setup guidance" — previously the onboarding simply omitted the
+  Google row.
+- **Changes:** `AppSession.googleOAuthConfigIsInvalid` exposes the explicit
+  config-check failure (`googleOAuthIsConfigured == false`); `LoginView`'s
+  no-Google branch now renders a caption explaining the build lacks the
+  client ID before the existing Add-mail-account controls. New compact
+  snapshot `compact-google-unconfigured`.
+- **Verification:** `scripts/lint.sh` + `scripts/format.sh` clean;
+  `swift test --filter LoginViewSnapshotTests.compactGoogleUnconfigured`
+  passes with a fresh macOS baseline (hint + Add mail account visible).
+  iOS rendering shares the same `LoginView`; the iOS leg is covered by the
+  session's O5 verification pass.
+- **Handoff:** Nil (`googleOAuthIsConfigured` unset, e.g. tests/minimal
+  fixtures) keeps the hint hidden — only an explicit check failure shows it.
+
+
+## 2026-09-26 — Agent — DAV 401-challenge classification (D1 follow-up)
+
+- **Goal:** Device verification of the D1 in-sheet callout showed real
+  DAV servers answer wrong credentials with `401 + WWW-Authenticate`,
+  which URLSession reports as `.userCancelledAuthentication` —
+  `mapTransportError` classified it `transportFailed`, so the sheet
+  showed "could not be reached" instead of the credentials copy.
+- **Changes:** `PIMDAVClient.mapTransportError` maps
+  `.userCancelledAuthentication` to `.authenticationRequired`; ADR-0072
+  contract bullet documents both 401 shapes.
+- **Verification:** new `challengedAuthenticationRequired` test in
+  `PIMDAVClientTests`; suite 13/13 green; `lint.sh` + `format.sh` clean.
+- **Handoff:** Verified on-device by A/B (bare-401 vs challenge-401
+  stubs); the in-sheet text now matches macOS for the stub's real-world
+  answer.
+
+## 2026-09-27 — Agent — D2 stale write precondition
+
+- **Goal:** Fix matrix defect D2 — edits to seeded events 412 on every
+  retry after a remote etag bump.
+- **Diagnosis:** `CalendarEventDraft` captures `providerItemKey` /
+  `providerVersion` at editor open; `PIMEventWriteService.update` PUTs
+  them verbatim. Sync refreshes the cached record, but the open draft
+  keeps replaying the stale `If-Match`. Same staleness applied to
+  `delete` and to server-side resource renames (dead href).
+- **Changes:** `PIMEventWriteService` update/delete now re-resolve the
+  target through `eventStore` before writing — by record id, else by
+  the (uid, recurrenceID) identity so a synced rename re-keys the write
+  and the stored record (`store` gained a `superseding:` cleanup for
+  the stale row). `If-Match` still guards: a remote change the cache
+  has not merged still surfaces `conflict`. ADR-0072 write-path bullet
+  extended; CHANGELOG entry added. Contacts/tasks write services share
+  the latent shape — not changed here (D2 scope); noted in the PR.
+- **Verified:** pending — BrevCalendar tests + lint/format.
+
+## 2026-09-27 — Agent — D2 follow-up: contact/task write precondition
+
+- **Goal:** Port the #119 stale-precondition fix to the contact and task
+  write services (same latent shape — editor drafts replay the
+  open-time href/etag, so retries after a remote bump 412 forever).
+- **Changes:** `PIMContactWriteService` and `PIMTaskWriteService`
+  update/move/delete re-resolve the target through the cache before
+  writing — by record id, else uid — so a synced rename re-keys the
+  write and the stored record (`store` gained `superseding:`; deletes
+  clear both ids). Contact photo-change lookup also matches the
+  resolved providerItemKey so a re-keyed row is still found. If-Match
+  semantics unchanged; unmerged remote changes still conflict.
+  ADR-0072 bullets for both services extended; CHANGELOG entry added.
+- **Verified:** `swift test --filter 'PIMContactWrite|PIMTaskWrite'` —
+  52/52, including 6 new re-resolution tests.
+
+## 2026-09-27 — Agent — Editor conflict copy polish
+
+- **Goal:** `CalendarEventEditorView` rendered `editing.lastError` at
+  the bottom of a long form — a save conflict was invisible below the
+  fold (flagged during D2 device verification).
+- **Changes:** error now renders as `BrevInlineStatus` (danger tone)
+  at the top of the form's VStack, replacing the hand-rolled `Text`;
+  consistent with `TaskEditorView` and the codebase's status surfaces.
+- **Verified:** new `CalendarEventEditorSnapshotTests.conflictCalloutRendersAboveFold`
+  (macOS, baseline recorded on macOS 26.5) — conflict copy visible at
+  top of form. Suite added to the macOS<26 skip list and the
+  `snapshot-macos` job's -only-testing list.
+
+## 2026-09-27 — Agent — Editor conflict copy: contact/task editors
+
+- **Goal:** device verification of #121 flagged that ContactEditorView
+  and TaskEditorView have the identical below-the-fold lastError
+  rendering — extend the same top-of-form treatment for one coherent
+  outcome.
+- **Changes:** ContactEditorView hand-rolled Text -> BrevInlineStatus
+  at top of form; TaskEditorView's existing BrevInlineStatus moved
+  from bottom to top.
+- **Verified:** PIMEditorConflictSnapshotTests (2 baselines, macOS
+  26.5) — both banners at top; suite wired into the macOS<26 skip
+  list and snapshot-macos -only-testing list.
+
+## 2026-09-27 — Agent — Read-only hints on PIM detail panes (M4/P1)
+
+- **Goal:** fix docs/qa/uiux-review-2026-09-27.md N-M4 — macOS PIM
+  detail panes show no Edit/Delete on read-only sources with no
+  explanation (also covers P1 "no hint why editing is absent").
+- **Changes:** new `PIMDetailEditabilityHint` text resolver diagnoses
+  the hidden-actions case (server read-only collection vs. missing
+  `.write` capability on the source) and returns a localized
+  explanation; CalendarEventDetailView, ContactDetailView, and
+  TaskDetailView render it as a BrevInlineStatus where the action row
+  would be. iOS inherits the same hint — the views are shared. Gating
+  itself unchanged: the observed bare panes were sources without the
+  "Allow editing" capability, which is working as designed but was
+  invisible.
+- **Verified:** PIMDetailEditabilityHintTests 5/5; new snapshot cases
+  (calendar event detail-readonly light/dark, task detail-readonly
+  light/dark, contact detail baselines now carry the banner).
+  Pre-existing drift left alone: agendaRow/eventDetail/contactRow
+  baselines mismatch identically on pristine main @1422851.
+- **CI:** TaskDetailSnapshotTests wired into the macOS<26 skip regex
+  and the snapshot-macos -only-testing list.
+
+## 2026-09-26 — Agent — QA matrix + lifecycle doc update (D/O fixes verified)
+
+- **Goal:** Record the D1/D3/D4/D7/O5 verification outcomes on
+  `docs/qa/pim-parity-matrix.md` and close out the truncated O5
+  paragraph in `account-lifecycle-2026-09-26.md`.
+- **Changes:** 1.7 iOS ✓ (fixed #113; 401+challenge copy #117), 1.8
+  iOS ✓ (~15 s bound, #114; macOS cells kept ⚠ — not re-verified on
+  device), defect table statuses D1/D3/D4/D7/O5 resolved; O5 doc now
+  explains the xcodebuild-override mechanism (`tuist generate` does not
+  bake the client ID).
+- **Verification:** device pass on iPhone 17 sim iOS 27.0 (Devin
+  session 82de84bd); D3 re-verified as already-fixed by #101.
+- **Handoff:** D2 (stale-href 412-forever) remains the one open
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-H1 iPhone PIM cover width
+
+- **Goal:** UI/UX review N-H1 — Calendar/Contacts/Tasks full-screen
+  covers on iPhone render wider than the screen in portrait, pushing
+  content and the Done affordance offscreen-left.
+- **Changes:** `CalendarRootView`/`ContactsRootView`/`TasksRootView` —
+  the shared `.frame(minWidth: 760, minHeight: 480)` window minimum is
+  now `#if os(macOS)`-gated; new `PIMRootViewSnapshotTests` (iOS
+  snapshot-test allowlist) lock in compact iPhone13Pro rendering.
+- **Verified:** 3 fresh iOS baselines recorded and replayed green on
+  iPhone 17 / iOS 27.0 sim; lint.sh + format.sh clean.
+- **Handoff:** device re-verify on the sim — rotate portrait/landscape,
+  confirm Done is reachable on all three covers.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-H2 PIM live-refresh on source changes
+
+- **Goal:** UI/UX review N-H2 — macOS Calendar/Contacts/Tasks windows
+  stuck on "No sources connected" when a DAV source is connected while
+  the window is open.
+- **Changes:** `PIMSourceCoordinator.changes()` — AsyncStream tick per
+  persisted mutation (connect/reconnect/sync+write toggles/transitions/
+  removal), broadcast helper mirrors the BrevBackend `Broadcaster`
+  pattern; browsing + editing models gain `observeSourceChanges()`;
+  all three RootViews subscribe via `.task`. ADR-0072 contract bullet.
+- **Verified:** new `changesStreamEmitsOnMutation` (3 ticks across
+  toggle/disconnect/remove); BrevCalendar suite green; lint+format.
+- **Handoff:** device re-verify — open Calendar window, connect stub
+  source in Settings, expect rows without reopen.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M1 landscape reader back button covered
+
+- **Goal:** UI/UX review M1 — on iPhone landscape the floating
+  Reply/Archive/Delete bar's hit region covered the nav-leading back
+  chevron (AX: centre "covered by button Reply"); taps did nothing.
+- **Changes:** `compactReaderToolbar` places the action group at
+  `.topBarTrailing` when `verticalSizeClass == .compact`, `.bottomBar`
+  otherwise; reads `verticalSizeClass` from the view environment.
+- **Verified:** `xcodebuild -scheme BrevIOS` for iPhone 17 iOS 27 sim —
+  BUILD SUCCEEDED; lint+format clean.
+- **Handoff:** device re-verify — landscape reader → tap back chevron.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M2 dangling demo-account record after removal
+
+- **Goal:** UI/UX review M2 — removing the last account left a persisted
+  record that raised "Account error" + a sticky "Saved account settings
+  are incomplete" banner over onboarding on next launch.
+- **Root cause:** `signInWithDemo` ran `install()` → `accountStore.add`,
+  writing the demo preview account (`backendIdentifier: "demo"`) into
+  the persistent store; nothing can restore a demo record, and removal
+  inside a demo session only cleared the in-memory store.
+- **Changes:** `BrevAccount.demoBackendIdentifier` constant; `install()`
+  skips persisting demo-identifier accounts; `restoreAllAccounts()` and
+  `restoreCurrentAccount()` purge stale demo records instead of
+  erroring; `purgeStoredAccountAfterAuthenticationFailure` renamed to
+  `purgeStoredAccount` (same cascade, general use).
+- **Verified:** two new AppSession tests; full suite run below.
+- **Handoff:** device re-verify — sign in demo → remove → relaunch →
+  clean onboarding, no alert/banner.
+  calendar defect; iOS VoiceOver row 5.1 still untested.
+## 2026-09-27 — Agent — N-M3 add-mail sheet hides connect failure
+
+- **Goal:** UI/UX review M3 — a failed IMAP connect (~80 s timeout)
+  re-enabled "Add account" with no in-sheet error; the callout appeared
+  only on the LoginView behind the sheet after Cancel.
+- **Root cause:** `localStatus` rendered only inside the scrollable
+  `statusAndGuidanceSection`, gated on `didStartDiscoveryProbe ||
+  setupPath != .undiscovered` and below the fold on iPhone.
+- **Changes:** `IMAPAccountSetupSheet` now pins an `actionStatus`
+  `BrevInlineStatus` directly above the action buttons — `localStatus`
+  first, else a banner derived from `session.signInError`; removed the
+  duplicate render inside `statusView`. New snapshot
+  `imap-connect-failure` covers the pinned banner.
+- **Verified:** `swift test --filter LoginViewSnapshotTests` — new test
+  green; the 7 onboarding snapshot mismatches reproduce identically on
+  pristine main (pre-existing baseline drift, not re-recorded).
+- **Handoff:** device re-verify — sheet → unreachable host → error
+  inline without dismissing the sheet.
+
+## 2026-09-28 — Agent — ADR-0082 Layer A (iOS store file protection)
+
+- **Goal:** implement Layer A of the encryption-at-rest ADR: apply
+  `completeUntilFirstUserAuthentication` to the on-device store root
+  and existing contents at launch.
+- **Adds:** `BrevStoreProtection.applyProtection()` (BrevBackend) —
+  creates + protects `Application Support/Brev` and walks existing
+  files; iOS-only, deliberate no-op on macOS (FileVault there).
+  Called at the top of `BrevApp.init()` before `AppSession.makeDefault()`.
+  iOS test exercises the walk on a scratch dir via direct-source
+  compile (ShareHandoffURL pattern).
+- **Why this class:** `.complete` would break BGAppRefresh windows
+  (ADR-0037). Layer B (SQLCipher) remains gated on ADR-0082 acceptance.
+- **Verification:** iOS unit test asserts the protection class on a
+  temp tree; build pending.
 ## 2026-09-18 — Devin — Daily-driver search/index perf fixes (feature/perf-daily-driver)
 
 ### Goal

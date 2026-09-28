@@ -92,8 +92,8 @@ repository checks.
 | 79 | Native Microsoft 365 mail through Microsoft Graph | Proposed |
 | 80 | Stable and Nightly release rings with CI-signed updates | Accepted |
 | 81 | JMAP mail backend | Proposed |
-| 82 | Encryption at rest for the local mail store | Proposed |
-| 83 | Home-screen widgets share a snapshot file, never the Realm store | Proposed |
+| 82 | Encryption at rest for the local mail store | Accepted |
+| 83 | Home-screen widgets share a snapshot file, never the Realm store | Accepted |
 | 84 | Offline PIM writes queue and replay on reconnect | Proposed |
 
 ## Conventions
