@@ -158,19 +158,26 @@ release_env=(
   BREV_GOOGLE_OAUTH_CLIENT_SECRET="test-client-credential"
 )
 
-if "${release_env[@]}" BREV_BUILD_NUMBER=0 "$archive_script" --dry-run >/dev/null 2>&1; then
+# Exercise the real script without loading a developer's .env.local over fixtures.
+archive_fixture="$(mktemp -d "${TMPDIR:-/tmp}/brev-release-config.XXXXXX")"
+trap 'rm -rf "$archive_fixture"' EXIT
+mkdir -p "$archive_fixture/scripts"
+cp "$archive_script" "$archive_fixture/scripts/release-archive.sh"
+fixture_script="$archive_fixture/scripts/release-archive.sh"
+
+if "${release_env[@]}" BREV_BUILD_NUMBER=0 "$fixture_script" --dry-run >/dev/null 2>&1; then
   echo "ERROR: release archive accepted a non-positive build number" >&2
   exit 1
 fi
 
-if ! "${release_env[@]}" BREV_BUILD_NUMBER=5 "$archive_script" --dry-run >/dev/null; then
+if ! "${release_env[@]}" BREV_BUILD_NUMBER=5 "$fixture_script" --dry-run >/dev/null; then
   echo "ERROR: release archive rejected a valid explicit build number" >&2
   exit 1
 fi
 
 microsoft_client_id="11111111-2222-3333-4444-555555555555"
 archive_command="$("${release_env[@]}" BREV_BUILD_NUMBER=5 \
-  BREV_MICROSOFT_OAUTH_CLIENT_ID="$microsoft_client_id" "$archive_script" --dry-run)"
+  BREV_MICROSOFT_OAUTH_CLIENT_ID="$microsoft_client_id" "$fixture_script" --dry-run)"
 if [[ "$archive_command" != *"BREV_MICROSOFT_OAUTH_CLIENT_ID=$microsoft_client_id"* ]]; then
   echo "ERROR: release archive must forward the Microsoft OAuth client ID to xcodebuild" >&2
   exit 1

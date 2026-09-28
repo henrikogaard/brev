@@ -54,9 +54,12 @@ ID. No Microsoft client secret is needed.
 
 Use the same ID for the Devin repository-scoped secret
 `secret:repo:henrikogaard/brev:BREV_MICROSOFT_OAUTH_CLIENT_ID`. Export
-`BREV_MICROSOFT_OAUTH_CLIENT_ID` before direct `tuist generate` and build commands
-for either platform. Local test builds can read it from the ignored `.env.local`
-through `script/build_and_run.sh`; see `.env.example` for the Entra registration
+`BREV_MICROSOFT_OAUTH_CLIENT_ID` before direct `tuist generate` invocations for
+either platform, and pass `BREV_MICROSOFT_OAUTH_CLIENT_ID="$BREV_MICROSOFT_OAUTH_CLIENT_ID"`
+explicitly to `xcodebuild`. The local Tuist generation check produced an empty
+setting despite the exported environment value; do not rely on generation alone.
+Local test builds read it from the ignored `.env.local` and forward the build
+setting through `script/build_and_run.sh`; see `.env.example` for the Entra registration
 settings. Verify `BREVMicrosoftOAuthClientID` in the built app's Info.plist and
 the Microsoft/Outlook option in Add Account. A missing ID hides that option;
 an organization requiring admin consent may show an approval screen at sign-in.
