@@ -197,6 +197,11 @@ remain distinct capabilities rather than required writable fields.
    editable locally, clearly unsent; no automatic durable mutation replay queue
    is promised. Ambiguous network outcomes require reconciliation before retry,
    especially create and invitation operations that could duplicate effects.
+
+   *(Partially superseded by ADR-0084: first-phase PIM writes may now queue
+   durably and replay on reconnect through the write services. The
+   reconciliation-before-retry requirement stands and is made
+   provider-specific there.)*
 7. Recurrence retains series identity, recurrence IDs/exceptions, date-only
    all-day values and time zones. Offer occurrence, future instances or whole
    series only when supported and tested. Never approximate a series edit by

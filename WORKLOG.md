@@ -111,6 +111,18 @@ hair-triggering.
 - **Handoff:** Henrik reviews; implementation PR follows acceptance.
 - **Verified:** docs-only — ADR-0083 file added; index rows 0081-0083 all
   backed by ADR files on main. Lint/format not run (no code touched).
+## 2026-09-28 — Agent — ADR-0084 (offline PIM write queue)
+
+- **Goal:** decide how PIM writes behave offline — the one remaining
+  gap in docs/qa/offline-audit-2026-09-28.md.
+- **Adds:** ADR-0084 (Proposed): durable per-source intent queue for
+  create/update/delete, optimistic cache apply with pending marker,
+  replay through the existing write services (precondition
+  re-resolution from #119/#120 keeps replays from 412-wedging),
+  dedup/collapse rules, conflict review via the existing surface.
+- **Verification:** docs-only; no code changed.
+- **Handoff:** Henrik reviews; implementation (PIMPendingWriteQueue +
+  editor offline path + Outbox surfacing) follows on acceptance.
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves
