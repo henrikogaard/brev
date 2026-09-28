@@ -14,6 +14,7 @@ permissions:
 
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  BREV_MICROSOFT_OAUTH_CLIENT_ID: ${{ secrets.BREV_MICROSOFT_OAUTH_CLIENT_ID }}
 
 jobs:
   stable:

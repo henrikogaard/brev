@@ -22,6 +22,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Stable release builds now receive the configured Microsoft OAuth client ID
+  during project generation and archiving, enabling the existing Outlook
+  IMAP/SMTP sign-in option when the repository secret is set.
+
 - A rejected mailbox credential now offers "Sign in again" in the
   mailbox sync banner instead of a Retry that instantly re-fails —
   pressing it opens the pre-filled "Reconnect your mailbox" flow on

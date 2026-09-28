@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-09-28 — Codex — Microsoft OAuth registration and release wiring
+
+- Goal: configure the existing public-client Exchange Online IMAP/SMTP OAuth
+  flow and supply its client ID to stable releases and local verification.
+- Changes: expose the repository client-ID secret throughout release.yml,
+  forward the ID explicitly to the archive build, and document Entra account
+  types, delegated Exchange permissions, Devin scope, and local configuration.
+- Verification: archive forwarding dry-run failed before the fix and passed
+  after it; scripts/test-developer-id-release-config.sh, actionlint on release.yml,
+  scripts/lint.sh, scripts/format.sh, and git diff --check passed. Formatting
+  changed no files. No Swift or view behavior changed.
+- External setup: registered Brev for organizational and personal Microsoft
+  accounts, with brev://oauth and public-client flows enabled; no client secret.
+  After explicit approval of the portal catalog difference, added delegated
+  IMAP.AccessAsUser.All and SMTP.Send under Microsoft Graph, removed User.Read,
+  and verified tenant admin consent granted for both. Runtime Outlook resource
+  scopes remain unchanged. GitHub repository secret and ignored local env are set.
+- Local verification: tuist install and tuist generate --no-open passed. The
+  generated Microsoft setting was empty despite the exported environment value,
+  confirming the need for the explicit archive/run-script build setting.
+  xcodebuild -showBuildSettings confirmed the explicit ID matches for both
+  BrevMacOS and BrevIOS. After .env.local was populated, isolated archive dry-run
+  fixtures from that file so developer settings cannot replace test values;
+  the forwarding check, actionlint, bash syntax, and diff checks passed again.
+  script/build_and_run.sh --verify --live failed on existing BrevSettings string
+  catalog symbol collisions under Xcode 27 (27A266a). A temporary xcconfig with
+  STRING_CATALOG_GENERATE_SYMBOLS=NO did not resolve it. Native button and live
+  sign-in verification remain blocked; no unrelated localization files changed.
+- Pending: Devin's repository-secret form is marked disabled by the page; asked
+  Henrik to save the public ID there. Publisher verification remains separate;
+  external organizations may require admin consent.
+- Documentation sweep: .env.example and docs/release.md cover setup; CHANGELOG.md
+  records the release configuration fix. No new network behavior, protected
+  paths, or architectural decision requires a privacy or ADR change.
+- Handoff: PR targets main. No release, deployment, merge, or live sign-in run.
+
 ## 2026-09-28 — Agent — ADR-0083 widget snapshot architecture (Phase B)
 
 - **Goal:** satisfy the protected-path requirement before a WidgetKit
@@ -6840,5 +6876,3 @@ platform and test-runtime boundaries.
   ContactsAccessPolicy tests pass in separate processes, eliminating global
   demo-gate state leakage without dropping coverage.
 - BrevDesign CI suites: 35 tests passed.
-
-
