@@ -5580,3 +5580,15 @@ buttons, and package-aware localization.
   pristine main (pre-existing baseline drift, not re-recorded).
 - **Handoff:** device re-verify — sheet → unreachable host → error
   inline without dismissing the sheet.
+
+## 2026-09-28 — Agent — iOS Google PIM scope fix
+
+- **Goal:** fix feature-triggered reauthorization on iOS dropping the
+  requested PIM scopes (device-verified: Enable Calendar denied with
+  grantScopesMissing; consent sheet listed baseline grants only).
+- **Fix:** `GoogleOAuthFlow.signIn` iOS branch now passes
+  `additionalScopes:` to `buildAuthorizationURL` — the macOS branches
+  already did; the iOS call omitted it since #58.
+- **Verification:** iOS build + Enable Calendar/Contacts device re-run.
+- **Handoff:** verify consent sheet lists calendar/contacts grants and
+  the source connects on retry.
