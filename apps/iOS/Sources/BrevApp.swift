@@ -181,6 +181,7 @@ struct BrevApp: App {
                         readerCommandHandoff: readerCommandHandoff,
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
+                        pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
                         calendarEditing: CalendarEditingModel(

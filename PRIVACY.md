@@ -265,8 +265,9 @@ authorization again, requesting the additional read-only scope for that
 feature. The newly granted token replaces the stored one only when it
 belongs to the same Google account and still covers mail access plus the
 requested feature scopes; a declined or partial grant changes nothing.
-Enablement only extends the grant; data syncs only when you choose
-"Sync Now" or enable sync on the source.
+Enablement only extends the grant; a source syncs when you choose
+"Sync Now" and, while its sync is enabled, automatically on the mail
+fetch interval configured in Settings → Fetch Schedule.
 
 Enabling Editing on a calendar source in Settings → Calendar & Contacts
 lets Brev write events to that source: `PUT`/`DELETE` to the collection
@@ -429,8 +430,9 @@ requests to Google. The results are cached on-device so the list stays
 readable offline; hiding a collection is a local choice and never
 contacts the provider.
 
-When you choose "Sync Now" on a calendar source or enable its sync,
-Brev reads events from the visible calendars only: for CalDAV sources,
+When you choose "Sync Now" on a calendar source, enable its sync, or
+its sync is enabled and the fetch interval ticks, Brev reads events
+from the visible calendars only: for CalDAV sources,
 the credential plus `REPORT` requests (`sync-collection`, or a
 bounded `calendar-query` listing plus `calendar-multiget` fetches on
 servers without sync tokens) to the collection URLs; for Google
@@ -442,8 +444,9 @@ refreshes. Sync cursors live separately and are always deleted when the
 source is removed. A failed collection keeps its last snapshot — one
 unhealthy calendar never empties the others.
 
-When you choose "Sync Now" on a contacts source or enable its sync,
-Brev reads contacts from the visible address books only: for CardDAV
+When you choose "Sync Now" on a contacts source, enable its sync, or
+its sync is enabled and the fetch interval ticks, Brev reads contacts
+from the visible address books only: for CardDAV
 sources, the credential plus `REPORT` requests (`sync-collection`,
 or an `addressbook-query` listing plus `addressbook-multiget`
 fetches on servers without sync tokens); for Google sources, the
@@ -457,8 +460,9 @@ separately and are always deleted when the source is removed. A failed
 address book keeps its last snapshot — one unhealthy collection never
 empties the others.
 
-When you choose "Sync Now" on a tasks source or enable its sync,
-Brev reads tasks from the visible task lists only: for CalDAV task
+When you choose "Sync Now" on a tasks source, enable its sync, or
+its sync is enabled and the fetch interval ticks, Brev reads tasks
+from the visible task lists only: for CalDAV task
 sources, the credential plus `REPORT` requests (`sync-collection`,
 or a `calendar-query` listing filtered to VTODO components plus
 `calendar-multiget` fetches on servers without sync tokens) to the

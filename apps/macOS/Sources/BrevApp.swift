@@ -128,6 +128,7 @@ struct BrevApp: App {
                         initialMailboxSelectionAccountID: session.pendingInitialMailboxSelectionAccountID,
                         onFinishInitialMailboxSelection: session.finishInitialMailboxSelection(for:),
                         backgroundMail: session.backgroundMail,
+                        pimSyncScheduler: session.pimSyncScheduler,
                         localBackend: session.localBackend,
                         onLocalFoldersChanged: { session.refreshLocalFolders() },
                         calendarEditing: CalendarEditingModel(
@@ -440,6 +441,13 @@ struct BrevApp: App {
         } else {
             session.backgroundMail.stop()
         }
+        // PIM sources the user enabled sync on ride the same fetch
+        // cadence, independent of the background-mail toggle — the
+        // session-owned scheduler keeps sources fresh even while the
+        // app only lives in the menu bar.
+        session.pimSyncScheduler.start(
+            interval: FetchScheduleSettings.load().interval.intervalSeconds
+        )
     }
 
     private var browserOpenURLAction: OpenURLAction {

@@ -66,6 +66,10 @@ public final class AppSession {
     /// in the background" setting is on (ADR-0075). Inert until the app
     /// target calls `start(interval:)`.
     public let backgroundMail: BackgroundMailCoordinator
+    /// Session-owned periodic sync loop for PIM sources the user opted into
+    /// sync (`PIMSource.syncEnabled`). Inert until a view or the app target
+    /// calls `start(interval:)` with the configured fetch interval.
+    public let pimSyncScheduler: PIMSyncScheduler
     private let themeDefaults: UserDefaults
 
     public struct LoginResult {
@@ -354,7 +358,16 @@ public final class AppSession {
         self.pendingMutationCleanup = pendingMutationCleanup
         self.localBackend = localBackend
         backgroundMail = BackgroundMailCoordinator()
+        pimSyncScheduler = PIMSyncScheduler()
         backgroundMail.backendsProvider = { [weak self] in self?.visibleBackends ?? [] }
+        pimSyncScheduler.sourcesProvider = { [weak self] in
+            guard let coordinator = self?.pimSourceCoordinator else { return [] }
+            let sources = try? await coordinator.allSources()
+            return sources ?? []
+        }
+        pimSyncScheduler.syncSource = { [weak self] source in
+            await self?.syncPIMSource(source)
+        }
         if let backend {
             backends[backend.account.id] = backend
             if let aiBackend {
@@ -366,6 +379,31 @@ public final class AppSession {
             backends[localBackend.account.id] = localBackend
         }
         refreshLocalFolders()
+    }
+
+    /// Runs one sync pass for a PIM source through the service matching its
+    /// kind. Returns a failure summary, or `nil` on success — and `nil` when
+    /// the session has no service for the source's kind (a session wiring
+    /// gap, not a provider failure the user can act on).
+    private func syncPIMSource(_ source: PIMSource) async -> String? {
+        do {
+            switch source.kind {
+            case .calendar:
+                guard let pimEventSyncService else { return nil }
+                return try await pimEventSyncService.syncNow(sourceID: source.id)
+                    .failures.first?.message
+            case .contacts:
+                guard let pimContactSyncService else { return nil }
+                return try await pimContactSyncService.syncNow(sourceID: source.id)
+                    .failures.first?.message
+            case .tasks:
+                guard let pimTaskSyncService else { return nil }
+                return try await pimTaskSyncService.syncNow(sourceID: source.id)
+                    .failures.first?.message
+            }
+        } catch {
+            return error.localizedDescription
+        }
     }
 
     /// Refreshes the cached local-folder list and the visibility flag the

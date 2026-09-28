@@ -431,6 +431,10 @@ public struct BrevMailRootView: View {
     /// the root view pushes the badge unread count into it and, when the
     /// background-mail setting is on, leaves the tick loop to it.
     private let backgroundMail: BackgroundMailCoordinator?
+    /// Session-owned periodic sync for PIM sources the user enabled sync on.
+    /// The root view hands it the fetch interval so its cadence tracks the
+    /// mail schedule; once started it keeps ticking while the session lives.
+    private let pimSyncScheduler: PIMSyncScheduler?
     /// Durable local-mail backend (ADR-0077). May be absent from `backends`
     /// while it has no folders — the session keeps it registered.
     private let localBackend: LocalMailBackend?
@@ -488,6 +492,7 @@ public struct BrevMailRootView: View {
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
+        pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
@@ -518,6 +523,7 @@ public struct BrevMailRootView: View {
             initialMailboxSelectionAccountID: initialMailboxSelectionAccountID,
             onFinishInitialMailboxSelection: onFinishInitialMailboxSelection,
             backgroundMail: backgroundMail,
+            pimSyncScheduler: pimSyncScheduler,
             localBackend: localBackend,
             onLocalFoldersChanged: onLocalFoldersChanged,
             calendarEditing: calendarEditing,
@@ -555,6 +561,7 @@ public struct BrevMailRootView: View {
         initialMailboxSelectionAccountID: BrevAccount.ID? = nil,
         onFinishInitialMailboxSelection: ((BrevAccount.ID) -> Void)? = nil,
         backgroundMail: BackgroundMailCoordinator? = nil,
+        pimSyncScheduler: PIMSyncScheduler? = nil,
         localBackend: LocalMailBackend? = nil,
         onLocalFoldersChanged: (() -> Void)? = nil,
         calendarEditing: CalendarEditingModel? = nil,
@@ -599,6 +606,7 @@ public struct BrevMailRootView: View {
         self.initialMailboxSelectionAccountID = initialMailboxSelectionAccountID
         self.onFinishInitialMailboxSelection = onFinishInitialMailboxSelection
         self.backgroundMail = backgroundMail
+        self.pimSyncScheduler = pimSyncScheduler
         self.localBackend = localBackend
         self.onLocalFoldersChanged = onLocalFoldersChanged
         self.calendarEditing = calendarEditing
@@ -6106,6 +6114,11 @@ public struct BrevMailRootView: View {
     /// interval-change restart.
     private func runPeriodicFetchScheduler() async {
         let interval = FetchInterval(rawValue: fetchIntervalRaw) ?? .manual
+        // Hand the session-owned PIM loop the current interval on every
+        // task restart, including manual (which parks its ticks). The
+        // scheduler keeps running after this view disappears — that is
+        // the point of session ownership.
+        pimSyncScheduler?.start(interval: interval.intervalSeconds)
         guard let baseInterval = interval.intervalSeconds else { return }
         var backoff = MailFetchBackoffSchedule()
         for await _ in MailFetchScheduler.ticks(every: baseInterval) {

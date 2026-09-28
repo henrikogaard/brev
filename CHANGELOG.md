@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Calendar, Contacts, and Tasks sources now stay fresh on their own:
+  sources with sync enabled pick up remote changes on the configured
+  fetch interval (the same setting that governs mail), while the app
+  is open — no more manual Sync Now to see edits made elsewhere.
+  Sync remains strictly opt-in per source.
+
 ### Fixed
 
 - iOS Google sign-in now carries the extra scopes a feature asks for

@@ -17,9 +17,10 @@ import Foundation
 ///
 /// Reads the synced cache only — `load()` never issues provider requests,
 /// so an offline launch renders the last complete snapshot. Provider
-/// traffic happens solely inside `syncNow`, which the user triggers
-/// explicitly. One unreadable source cache never blanks the others; the
-/// failure surfaces inline while healthy sources keep rendering.
+/// traffic happens inside `syncNow` — user-triggered here, or scheduled by
+/// `PIMSyncScheduler` for sources the user enabled sync on. One unreadable
+/// source cache never blanks the others; the failure surfaces inline while
+/// healthy sources keep rendering.
 @Observable
 @MainActor
 public final class CalendarBrowsingModel {
