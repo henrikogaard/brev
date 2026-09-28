@@ -95,6 +95,22 @@ hair-triggering.
 - **Note:** record flag must reach the sim-hosted runner as
   `TEST_RUNNER_RECORD_SNAPSHOTS=YES` (xcodebuild strips the prefix into
   the test process); plain `RECORD_SNAPSHOTS=YES` does not propagate.
+## 2026-09-28 — Agent — ADR-0083 widget snapshot architecture (Phase B)
+
+- **Goal:** satisfy the protected-path requirement before a WidgetKit
+  extension can touch apps/*/Project.swift, and settle how widget data
+  flows without dragging Realm/BrevBackend into an extension process.
+- **Adds:** ADR-0083 (Proposed) — app writes `WidgetSnapshot.json` to an
+  App Group container; the extension renders it only (no network, no
+  Realm); narrow first scope (unread count + 3 previews), previews gated
+  by the same privacy posture as notification previews. ADR index rows
+  for 81/82 (pending PRs) added so numbering stays unambiguous.
+- **Verified:** docs-only — `scripts/lint.sh` + `scripts/format.sh`
+  clean; `adr-required` gate satisfied by the new ADR under `ADRs/`.
+- **Skipped:** unit/UI tests and device verification (no code changed).
+- **Handoff:** Henrik reviews; implementation PR follows acceptance.
+- **Verified:** docs-only — ADR-0083 file added; index rows 0081-0083 all
+  backed by ADR files on main. Lint/format not run (no code touched).
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves

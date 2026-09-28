@@ -93,6 +93,7 @@ repository checks.
 | 80 | Stable and Nightly release rings with CI-signed updates | Accepted |
 | 81 | JMAP mail backend | Proposed |
 | 82 | Encryption at rest for the local mail store | Proposed |
+| 83 | Home-screen widgets share a snapshot file, never the Realm store | Proposed |
 
 ## Conventions
 
