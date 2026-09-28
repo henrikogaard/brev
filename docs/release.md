@@ -46,6 +46,21 @@ call; pass `--ring stable|nightly`, `--version`, and `--build-number`.
 
 ### One-time setup for automated releases
 
+For Microsoft sign-in, store the public Entra application ID in the repository
+secret `BREV_MICROSOFT_OAUTH_CLIENT_ID` on `henrikogaard/brev`. The stable workflow
+exposes it to project generation and archiving. `release-archive.sh` forwards it
+as an Xcode build setting so an earlier generated project cannot retain a stale
+ID. No Microsoft client secret is needed.
+
+Use the same ID for the Devin repository-scoped secret
+`secret:repo:henrikogaard/brev:BREV_MICROSOFT_OAUTH_CLIENT_ID`. Export
+`BREV_MICROSOFT_OAUTH_CLIENT_ID` before direct `tuist generate` and build commands
+for either platform. Local test builds can read it from the ignored `.env.local`
+through `script/build_and_run.sh`; see `.env.example` for the Entra registration
+settings. Verify `BREVMicrosoftOAuthClientID` in the built app's Info.plist and
+the Microsoft/Outlook option in Add Account. A missing ID hides that option;
+an organization requiring admin consent may show an approval screen at sign-in.
+
 Developer portal (once):
 
 1. Create an App ID `eu.brevmail.brev.nightly` with the same capabilities

@@ -168,6 +168,14 @@ if ! "${release_env[@]}" BREV_BUILD_NUMBER=5 "$archive_script" --dry-run >/dev/n
   exit 1
 fi
 
+microsoft_client_id="11111111-2222-3333-4444-555555555555"
+archive_command="$("${release_env[@]}" BREV_BUILD_NUMBER=5 \
+  BREV_MICROSOFT_OAUTH_CLIENT_ID="$microsoft_client_id" "$archive_script" --dry-run)"
+if [[ "$archive_command" != *"BREV_MICROSOFT_OAUTH_CLIENT_ID=$microsoft_client_id"* ]]; then
+  echo "ERROR: release archive must forward the Microsoft OAuth client ID to xcodebuild" >&2
+  exit 1
+fi
+
 if ! grep -Fq 'codesign --force --sign "$BREV_SIGNING_IDENTITY" --timestamp "$DMG_PATH"' "$dmg_script"; then
   echo "ERROR: release packaging must sign the DMG before notarization" >&2
   exit 1

@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-09-28 — Codex — Microsoft OAuth registration and release wiring
+
+- Goal: configure the existing public-client Exchange Online IMAP/SMTP OAuth
+  flow and supply its client ID to stable releases and local verification.
+- Changes: expose the repository client-ID secret throughout release.yml,
+  forward the ID explicitly to the archive build, and document Entra account
+  types, delegated Exchange permissions, Devin scope, and local configuration.
+- Verification: archive forwarding dry-run failed before the fix and passed
+  after it; scripts/test-developer-id-release-config.sh, actionlint on release.yml,
+  scripts/lint.sh, scripts/format.sh, and git diff --check passed. Formatting
+  changed no files. No Swift or view behavior changed.
+- Pending: Azure registration form is prepared in the ogard.no tenant, but
+  submission requires confirmation of Microsoft Platform Policies. No client ID
+  exists yet; GitHub secret, Devin secret, local generation/build, and native
+  account-option verification await registration. Devin is signed out.
+- Documentation sweep: .env.example and docs/release.md cover setup; CHANGELOG.md
+  records the release configuration fix. No new network behavior, protected
+  paths, or architectural decision requires a privacy or ADR change.
+- Handoff: PR targets main. No release, deployment, merge, or live sign-in run.
+
 ## 2026-09-28 — Agent — ADR-0083 widget snapshot architecture (Phase B)
 
 - **Goal:** satisfy the protected-path requirement before a WidgetKit
@@ -6840,5 +6860,4 @@ platform and test-runtime boundaries.
   ContactsAccessPolicy tests pass in separate processes, eliminating global
   demo-gate state leakage without dropping coverage.
 - BrevDesign CI suites: 35 tests passed.
-
 

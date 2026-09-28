@@ -29,6 +29,7 @@
 #                           "Brev Nightly Widgets Developer ID CI
 #                           Distribution")
 #   BREV_SPARKLE_FEED_URL   Appcast URL override (defaults to the ring feed)
+#   BREV_MICROSOFT_OAUTH_CLIENT_ID  Public Entra application ID; empty hides sign-in
 #
 # Output:
 #   build/release/BrevMail.xcarchive
@@ -145,6 +146,7 @@ XCBUILD_ARGS=(
   BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID="$BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID"
   BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI="${BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI:-http://127.0.0.1}"
   BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME="${BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME:-http}"
+  BREV_MICROSOFT_OAUTH_CLIENT_ID="${BREV_MICROSOFT_OAUTH_CLIENT_ID:-}"
   BREV_SPARKLE_PUBLIC_ED_KEY="$BREV_SPARKLE_PUBLIC_ED_KEY"
 )
 [[ -n "$VERSION" ]] && XCBUILD_ARGS+=("MARKETING_VERSION=$VERSION")
