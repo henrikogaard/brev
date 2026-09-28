@@ -86,6 +86,7 @@ public struct SettingsView: View {
         pimTaskSyncService: PIMTaskSyncService? = nil,
         onEnableGooglePIMFeature: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         onEnableGooglePIMWrite: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
+        onReauthorizeGooglePIMSource: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
         isAddAccountAvailable: Bool = true,
         onAddAccount: @escaping () async -> Void = {},
         onSetDefaultAccount: ((BrevAccount) async -> Void)? = nil,
@@ -130,7 +131,8 @@ public struct SettingsView: View {
                     contactSyncService: pimContactSyncService,
                     taskSyncService: pimTaskSyncService,
                     googleFeatureHandler: onEnableGooglePIMFeature,
-                    googleWriteFeatureHandler: onEnableGooglePIMWrite
+                    googleWriteFeatureHandler: onEnableGooglePIMWrite,
+                    googleReauthorizeHandler: onReauthorizeGooglePIMSource
                 )
             }
         )

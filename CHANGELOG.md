@@ -29,6 +29,16 @@ All notable changes to Brev are documented here.
   access." The macOS authorize URL already included them; the iOS
   arm dropped them.
 
+- Calendar & Contacts settings: "Reconnect…" on a Google source now
+  re-runs Google authorization instead of opening the DAV credential
+  form (which could never fix an OAuth failure). The row reads
+  "Re-authorize with Google…".
+
+- A Google source failing because the sign-in project lacks the
+  Calendar/People/Tasks API now says so — "not enabled for Brev's
+  sign-in project" — instead of telling you to reconnect when
+  reconnecting cannot fix it.
+
 - iPhone PIM covers (Calendar / Contacts / Tasks opened from Mailboxes →
   More) no longer lay out wider than the screen in portrait — the macOS
   window minimum no longer applies on iOS, so row text and the Done

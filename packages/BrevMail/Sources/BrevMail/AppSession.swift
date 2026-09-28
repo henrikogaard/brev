@@ -1049,6 +1049,43 @@ public final class AppSession {
         )
     }
 
+    /// Re-authorizes an already-connected Google PIM source (#7).
+    ///
+    /// Unlike `enableGooglePIMFeature` — which returns the existing
+    /// source without touching OAuth — this always runs the
+    /// authorization flow: reconnect is exactly the moment the grant
+    /// must be re-obtained. The requested scope union preserves the
+    /// source's current write grant so reconnect never downgrades
+    /// editing to read-only.
+    @discardableResult
+    public func reauthorizeGooglePIMSource(
+        accountID: BrevAccount.ID,
+        kind: PIMSourceKind
+    ) async throws -> PIMSource {
+        guard let pimSourceCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "PIM sources are unavailable in this session.", bundle: .module)
+            )
+        }
+        guard let source = try await pimSourceCoordinator.googleSource(
+            accountID: accountID,
+            kind: kind
+        ) else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "Connect the source before re-authorizing it.", bundle: .module)
+            )
+        }
+        guard let googlePIMEnablementCoordinator else {
+            throw MailBackendError.backendSpecific(
+                message: String(localized: "Google PIM authorization is unavailable in this session.", bundle: .module)
+            )
+        }
+        try await googlePIMEnablementCoordinator(
+            accountID, kind, source.enabledCapabilities.contains(.write)
+        )
+        return source
+    }
+
     /// Signals that the account needs to re-authenticate.
     ///
     /// Sets `authFailedIMAPAccountEmail` so `LoginView` shows the

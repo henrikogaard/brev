@@ -121,6 +121,9 @@ struct BrevApp: App {
                         onEnableGooglePIMWrite: { accountID, kind in
                             _ = try await session.enableGooglePIMWriteFeature(accountID: accountID, kind: kind)
                         },
+                        onReauthorizeGooglePIMSource: { accountID, kind in
+                            _ = try await session.reauthorizeGooglePIMSource(accountID: accountID, kind: kind)
+                        },
                         onAddAccount: { isShowingAddAccountSheet = true },
                         onSignOut: { account in await session.signOut(account: account) },
                         onRemoveAccount: { account, deleteLinkedSourceCache in

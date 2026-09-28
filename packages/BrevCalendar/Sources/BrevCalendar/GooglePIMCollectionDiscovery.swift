@@ -21,6 +21,9 @@ public enum PIMCollectionDiscoveryError: Error, Sendable, Hashable, LocalizedErr
     /// The access token was rejected or lacks the feature's scope; the
     /// source needs reauthorization.
     case authenticationRequired
+    /// The Google API backing this source is disabled for Brev's OAuth
+    /// project in Google Cloud Console; reauthorization cannot fix it.
+    case serviceDisabled
     /// Connectivity or an unspecified transport failure.
     case transportFailed
     /// The provider answered with a status or body Brev cannot use.
@@ -31,6 +34,11 @@ public enum PIMCollectionDiscoveryError: Error, Sendable, Hashable, LocalizedErr
         case .authenticationRequired:
             return String(
                 localized: "Google rejected the account's authorization. Reconnect the source to grant access again.",
+                bundle: .module
+            )
+        case .serviceDisabled:
+            return String(
+                localized: "The Google API this source uses (Calendar, People, or Tasks) is not enabled for Brev's sign-in project. Enable it in Google Cloud Console — reconnecting cannot fix this.",
                 bundle: .module
             )
         case .transportFailed:
@@ -281,11 +289,32 @@ public struct GooglePIMCollectionDiscovery: Sendable {
         switch response.statusCode {
         case 200 ..< 300:
             return data
-        case 401, 403:
+        case 401:
             throw PIMCollectionDiscoveryError.authenticationRequired
+        case 403:
+            throw Self.forbiddenError(from: data)
         default:
             throw PIMCollectionDiscoveryError.invalidResponse
         }
+    }
+
+    /// Classifies a Google 403 by its JSON error envelope: an
+    /// `accessNotConfigured`/`SERVICE_DISABLED` reason means the API is
+    /// off for Brev's OAuth project — a setup problem, not a grant
+    /// problem. Any other reason (or an unreadable body) stays a grant
+    /// failure.
+    private static func forbiddenError(from data: Data) -> PIMCollectionDiscoveryError {
+        struct Envelope: Decodable {
+            struct Detail: Decodable { let reason: String? }
+            struct ErrorBody: Decodable { let errors: [Detail]? }
+            let error: ErrorBody?
+        }
+        let disabledReasons: Set<String> = ["accessNotConfigured", "SERVICE_DISABLED"]
+        let reasons = (try? JSONDecoder().decode(Envelope.self, from: data))?
+            .error?.errors?.compactMap(\.reason) ?? []
+        return reasons.contains(where: { disabledReasons.contains($0) })
+            ? .serviceDisabled
+            : .authenticationRequired
     }
 
     private func decode<T: Decodable>(_ type: T.Type, from data: Data) throws -> T {

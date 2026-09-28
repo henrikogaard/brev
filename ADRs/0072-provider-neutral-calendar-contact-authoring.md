@@ -1202,6 +1202,24 @@ grant.
   dead record shadowing the live item; tombstoned removals are
   unchanged.
 
+### Google source lifecycle and disabled-API taxonomy (2026-09-28, BrevSettings/BrevCalendar)
+
+- Reconnecting a Google source routes through the linked account's
+  OAuth handler (`PIMSourceSettingsModel.reconnectGoogle` →
+  `enableGoogleFeature`), not the DAV credential sheet — a Google
+  source's credential lives in the account's token store, so only
+  reauthorization can repair it. The row menu reads
+  "Re-authorize with Google…" on google-provider rows.
+- `GooglePIMCollectionDiscovery` reads the JSON error envelope on a
+  403: `accessNotConfigured`/`SERVICE_DISABLED` reasons map to a new
+  `PIMCollectionDiscoveryError.serviceDisabled` — the API is off for
+  the OAuth project in Cloud Console, and copy says reconnecting
+  cannot fix it. Other 403 reasons and unreadable bodies still map to
+  `authenticationRequired`. The Google sync and writer adapters keep
+  the coarser 401/403 → authenticationRequired mapping; the refined
+  taxonomy covers collection discovery where a misconfigured project
+  fails first.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

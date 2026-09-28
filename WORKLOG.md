@@ -161,6 +161,22 @@ hair-triggering.
   Shortcuts UI) — deferred to the Phase A device leg.
 - **Handoff:** watch CI; the `.onChange` handoff drain covers
   already-foreground launches, `.task` drain covers cold launch.
+## 2026-09-28 — Agent — Google PIM source reconnect + 403 copy
+
+- **Goal:** fix two findings from the #147 device verify: "Reconnect…"
+  on a Google source opened the DAV credential form, and a disabled-API
+  403 surfaced "Reconnect to grant access" copy.
+- **Changes:** `reconnectGoogle(sourceID:)` on PIMSourceSettingsModel
+  routes through `enableGoogleFeature` (OAuth reauthorization); the row
+  menu shows "Re-authorize with Google…" for google providers. Google's
+  403 error envelope is now classified — `accessNotConfigured` /
+  `SERVICE_DISABLED` reasons throw `serviceDisabled` with accurate copy.
+- **Tests:** 3 new discovery tests (403 reason matrix) + 2 model tests
+  (OAuth routing, DAV refusal).
+- **Known gap:** the Google sync/writer adapters (events, contacts,
+  tasks) still map every 403 to authenticationRequired — same copy gap
+  on post-discovery syncs; scoped to discovery where failures surface
+  first.
 ## 2026-09-27 — Agent — iOS mail polish (N-M7/P3/P4)
 
 - `fix/ios-mail-polish`: M7 — `brevBottomBarScrollInset()` reserves

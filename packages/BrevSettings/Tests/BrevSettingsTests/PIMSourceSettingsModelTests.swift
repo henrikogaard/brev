@@ -151,7 +151,8 @@ struct PIMSourceSettingsModelTests {
         collectionTransport: StubTransport? = nil,
         coordinator: PIMSourceCoordinator? = nil,
         googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
-        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
+        googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
+        googleReauthorizeHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) -> PIMSourceSettingsModel {
         let client = PIMDAVClient(
             transport: transport ?? StubTransport { request in
@@ -184,7 +185,8 @@ struct PIMSourceSettingsModelTests {
             coordinator: coordinator,
             collectionService: collectionService,
             googleFeatureHandler: googleFeatureHandler,
-            googleWriteFeatureHandler: googleWriteFeatureHandler
+            googleWriteFeatureHandler: googleWriteFeatureHandler,
+            googleReauthorizeHandler: googleReauthorizeHandler
         )
     }
 
@@ -522,10 +524,13 @@ struct PIMSourceSettingsModelTests {
     func googleEnablementForwardsAndReloads() async throws {
         let store = InMemorySourceStore()
         var calls: [(accountID: String, kind: PIMSourceKind)] = []
-        let model = makeModel(store: store) { accountID, kind in
-            calls.append((accountID, kind))
-            try await store.save(Self.source(id: "google-cal", status: .ready))
-        }
+        let model = makeModel(
+            store: store,
+            googleFeatureHandler: { accountID, kind in
+                calls.append((accountID, kind))
+                try await store.save(Self.source(id: "google-cal", status: .ready))
+            }
+        )
 
         let enabled = await model.enableGoogleFeature(accountID: "acct-1", kind: .calendar)
 
@@ -543,15 +548,94 @@ struct PIMSourceSettingsModelTests {
         struct Declined: LocalizedError {
             var errorDescription: String? { "Authorization was declined." }
         }
-        let model = makeModel { _, _ in
-            throw Declined()
-        }
+        let model = makeModel(
+            googleFeatureHandler: { _, _ in throw Declined() }
+        )
 
         let enabled = await model.enableGoogleFeature(accountID: "acct-1", kind: .contacts)
 
         #expect(!enabled)
         #expect(model.lastError == "Authorization was declined.")
         #expect(model.pendingGoogleAccountID == nil)
+    }
+
+    @Test("reconnectGoogle routes a Google source through the OAuth handler")
+    @MainActor
+    func reconnectGoogleUsesOAuthHandler() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(
+            id: "gcal",
+            status: .authenticationRequired,
+            provider: .google
+        ))
+        var calls: [(accountID: String, kind: PIMSourceKind)] = []
+        let model = makeModel(
+            store: store,
+            googleReauthorizeHandler: { accountID, kind in
+                calls.append((accountID, kind))
+            }
+        )
+        await model.load()
+
+        let reconnected = await model.reconnectGoogle(sourceID: "gcal")
+
+        #expect(reconnected)
+        #expect(calls.count == 1)
+        #expect(calls.first?.accountID == "acct-1")
+        #expect(calls.first?.kind == .calendar)
+    }
+
+    @Test("reconnectGoogle refuses a DAV source")
+    @MainActor
+    func reconnectGoogleRejectsDAVSource() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "dav-1", status: .authenticationRequired))
+        var calls = 0
+        let model = makeModel(
+            store: store,
+            googleReauthorizeHandler: { _, _ in calls += 1 }
+        )
+        await model.load()
+
+        let reconnected = await model.reconnectGoogle(sourceID: "dav-1")
+
+        #expect(!reconnected)
+        #expect(calls == 0)
+    }
+
+    @Test("reconnect presents the credential sheet for a DAV source")
+    @MainActor
+    func reconnectPresentsSheetForDAV() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "dav-1", status: .authenticationRequired))
+        let model = makeModel(store: store)
+        await model.load()
+
+        await model.reconnect("dav-1")
+
+        #expect(model.credentialSheetSource?.id == "dav-1")
+    }
+
+    @Test("reconnect runs the OAuth reauthorization for a Google source")
+    @MainActor
+    func reconnectReauthorizesGoogle() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(
+            id: "gcal",
+            status: .authenticationRequired,
+            provider: .google
+        ))
+        var calls = 0
+        let model = makeModel(
+            store: store,
+            googleReauthorizeHandler: { _, _ in calls += 1 }
+        )
+        await model.load()
+
+        await model.reconnect("gcal")
+
+        #expect(calls == 1)
+        #expect(model.credentialSheetSource == nil)
     }
 
     // MARK: - Collections

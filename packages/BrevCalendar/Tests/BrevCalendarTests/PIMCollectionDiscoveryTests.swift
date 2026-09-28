@@ -520,6 +520,54 @@ struct GooglePIMCollectionDiscoveryTests {
         }
     }
 
+    @Test("403 with accessNotConfigured reason surfaces as serviceDisabled")
+    func serviceDisabled() async throws {
+        let body = """
+        {"error":{"errors":[{"reason":"accessNotConfigured"}],\
+        "code":403,"status":"PERMISSION_DENIED"}}
+        """
+        let transport = ScriptedTransport(steps: [(403, body)])
+        let discovery = GooglePIMCollectionDiscovery(transport: transport)
+        await #expect(throws: PIMCollectionDiscoveryError.serviceDisabled) {
+            try await discovery.discoverCollections(
+                kind: .calendar,
+                accessToken: "token-1"
+            )
+        }
+    }
+
+    @Test("403 without a disabled-API reason stays authenticationRequired")
+    func forbiddenOtherReason() async throws {
+        let body = """
+        {"error":{"errors":[{"reason":"insufficientPermissions"}],\
+        "code":403,"status":"PERMISSION_DENIED"}}
+        """
+        let transport = ScriptedTransport(steps: [(403, body)])
+        let discovery = GooglePIMCollectionDiscovery(transport: transport)
+        await #expect(
+            throws: PIMCollectionDiscoveryError.authenticationRequired
+        ) {
+            try await discovery.discoverCollections(
+                kind: .calendar,
+                accessToken: "token-1"
+            )
+        }
+    }
+
+    @Test("403 with a non-JSON body stays authenticationRequired")
+    func forbiddenOpaqueBody() async throws {
+        let transport = ScriptedTransport(steps: [(403, "Forbidden")])
+        let discovery = GooglePIMCollectionDiscovery(transport: transport)
+        await #expect(
+            throws: PIMCollectionDiscoveryError.authenticationRequired
+        ) {
+            try await discovery.discoverCollections(
+                kind: .calendar,
+                accessToken: "token-1"
+            )
+        }
+    }
+
     @Test("Malformed JSON surfaces as invalidResponse")
     func malformed() async throws {
         let transport = ScriptedTransport(steps: [(200, "not json")])

@@ -38,6 +38,10 @@ public final class PIMSourceSettingsModel {
     /// Google account running a feature authorization; drives that row's
     /// spinner and disables its buttons.
     public private(set) var pendingGoogleAccountID: BrevAccount.ID?
+    /// Source the credential sheet is open for. Owned by the model so
+    /// `reconnect(_:)` can pick the mechanism — the view only renders
+    /// whatever the model presents here.
+    public var credentialSheetSource: PIMSource?
 
     private let coordinator: PIMSourceCoordinator
     /// Discovered collections per source, loaded alongside the snapshot.
@@ -66,6 +70,12 @@ public final class PIMSourceSettingsModel {
     /// capability. Nil in sessions without Google wiring.
     private let googleWriteFeatureHandler:
         ((BrevAccount.ID, PIMSourceKind) async throws -> Void)?
+    /// Session-provided Google reauthorization for an already-connected
+    /// source: always runs the OAuth flow (unlike enablement, which
+    /// returns the existing source untouched). Nil in sessions without
+    /// Google wiring — Google's reconnect action is then hidden.
+    private let googleReauthorizeHandler:
+        ((BrevAccount.ID, PIMSourceKind) async throws -> Void)?
 
     /// - Parameters:
     ///   - coordinator: The serial lifecycle owner for all sources.
@@ -77,6 +87,8 @@ public final class PIMSourceSettingsModel {
     ///     account through feature-triggered reauthorization.
     ///   - googleWriteFeatureHandler: Grants editing on a connected
     ///     Google source through write-scope reauthorization (#7).
+    ///   - googleReauthorizeHandler: Re-runs OAuth for a connected Google
+    ///     source when the user picks reconnect.
     public init(
         coordinator: PIMSourceCoordinator,
         collectionService: PIMCollectionService? = nil,
@@ -84,7 +96,8 @@ public final class PIMSourceSettingsModel {
         contactSyncService: PIMContactSyncService? = nil,
         taskSyncService: PIMTaskSyncService? = nil,
         googleFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
-        googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
+        googleWriteFeatureHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil,
+        googleReauthorizeHandler: ((BrevAccount.ID, PIMSourceKind) async throws -> Void)? = nil
     ) {
         self.coordinator = coordinator
         self.collectionService = collectionService
@@ -93,6 +106,7 @@ public final class PIMSourceSettingsModel {
         self.taskSyncService = taskSyncService
         self.googleFeatureHandler = googleFeatureHandler
         self.googleWriteFeatureHandler = googleWriteFeatureHandler
+        self.googleReauthorizeHandler = googleReauthorizeHandler
     }
 
     /// Whether Google feature enablement can run in this session.
@@ -330,6 +344,45 @@ public final class PIMSourceSettingsModel {
                 sourceID: sourceID,
                 credential: credential
             )
+            await load()
+            return true
+        } catch {
+            lastError = Self.errorText(for: error)
+            return false
+        }
+    }
+
+    /// Reconnects a source through its credential's own mechanism.
+    /// Token-backed sources run the linked account's reauthorization
+    /// flow inline; credential-backed sources present the credential
+    /// sheet. The view calls this for every reconnect — it never
+    /// branches on the provider itself.
+    public func reconnect(_ sourceID: PIMSource.ID) async {
+        guard let source = sources.first(where: { $0.id == sourceID }) else { return }
+        if source.provider == .google {
+            await reconnectGoogle(sourceID: sourceID)
+        } else {
+            credentialSheetSource = source
+        }
+    }
+
+    /// Re-authorizes a Google source through its linked mail account's
+    /// OAuth handler. A Google source's credential lives in the account's
+    /// token store, so reconnecting IS reauthorizing — and unlike
+    /// `enableGoogleFeature` the handler must actually run the OAuth
+    /// flow rather than returning the already-connected source.
+    @discardableResult
+    public func reconnectGoogle(sourceID: PIMSource.ID) async -> Bool {
+        guard let source = sources.first(where: { $0.id == sourceID }),
+              source.provider == .google,
+              let accountID = source.linkedAccountID,
+              let googleReauthorizeHandler
+        else { return false }
+        pendingGoogleAccountID = accountID
+        lastError = nil
+        defer { pendingGoogleAccountID = nil }
+        do {
+            try await googleReauthorizeHandler(accountID, source.kind)
             await load()
             return true
         } catch {

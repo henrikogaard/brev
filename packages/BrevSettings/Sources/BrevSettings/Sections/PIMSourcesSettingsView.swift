@@ -35,6 +35,9 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
     let displayName: String
     /// "Provider · Kind" — e.g. "CalDAV · Calendar".
     let subtitle: String
+    /// Menu title for the reconnect action — OAuth-backed sources name
+    /// the grant they re-run, credential-backed ones the sheet they open.
+    let reconnectTitle: String
     let statusTitle: String
     let statusSymbolName: String
     let statusDetail: String?
@@ -55,6 +58,9 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         id = source.id
         displayName = source.displayName
         subtitle = Self.subtitle(provider: source.provider, kind: source.kind)
+        reconnectTitle = source.provider == .google
+            ? String(localized: "Re-authorize with Google…", bundle: .module)
+            : String(localized: "Reconnect…", bundle: .module)
         statusTitle = status.title
         statusSymbolName = status.symbolName
         statusDetail = source.statusDetail
@@ -104,7 +110,6 @@ struct PIMSourcesSettingsView: View {
     let googleAccounts: [BrevAccount]
 
     @State private var isShowingConnectSheet = false
-    @State private var reconnectSource: PIMSource?
     @State private var removalCandidate: PIMSource?
 
     var body: some View {
@@ -169,7 +174,7 @@ struct PIMSourcesSettingsView: View {
                 await model.connectDAV(form)
             }
         }
-        .sheet(item: $reconnectSource) { source in
+        .sheet(item: Bindable(model).credentialSheetSource) { source in
             PIMSourceConnectSheet(
                 title: String(localized: "Reconnect Source", bundle: .module),
                 submitTitle: String(localized: "Reconnect", bundle: .module),
@@ -448,12 +453,12 @@ struct PIMSourcesSettingsView: View {
                 }
             }
             if row.canReconnect {
+                // The model picks the mechanism — OAuth re-run for
+                // token-backed sources, the credential sheet otherwise.
                 Button {
-                    if let source = model.sources.first(where: { $0.id == row.id }) {
-                        reconnectSource = source
-                    }
+                    Task { await model.reconnect(row.id) }
                 } label: {
-                    Label(String(localized: "Reconnect…", bundle: .module), systemImage: "arrow.triangle.2.circlepath")
+                    Label(row.reconnectTitle, systemImage: "arrow.triangle.2.circlepath")
                 }
             }
             if row.canDisconnect {
