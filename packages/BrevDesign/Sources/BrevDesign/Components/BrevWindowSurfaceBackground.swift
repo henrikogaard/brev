@@ -221,29 +221,10 @@ enum WindowTransparentChromePolicy {
         preferences: WindowAppearancePreferences,
         for role: WindowSurfaceRole,
         reduceTransparency: Bool,
-        transparentMainTitlebar: Bool
+        transparentMainTitlebar _: Bool
     ) -> Bool {
-        let effectiveMode = preferences.effectiveMode(reduceTransparency: reduceTransparency)
-        guard effectiveMode.usesTranslucency else { return false }
-
-        if role == .mainWindow {
-            return transparentMainTitlebar
-        }
-
-        if role == .settings {
-            // Require both the title-bar preference and Settings being in scope
-            // (Main window or All windows). Sidebar-only must not clear Settings.
-            return transparentMainTitlebar
-                && preferences.usesTransparentWindowChrome(
-                    for: .settings,
-                    reduceTransparency: reduceTransparency
-                )
-        }
-
-        return preferences.usesTransparentWindowChrome(
-            for: role,
-            reduceTransparency: reduceTransparency
-        )
+        // Title-bar geometry is independent from the chosen background effect.
+        preferences.usesTransparentWindowChrome(for: role, reduceTransparency: reduceTransparency)
     }
 }
 
@@ -669,7 +650,8 @@ public enum BrevWindowChromeApplier {
         let backgroundAlpha = usesTransparentChrome ? 0.0 : 1.0
         window.isOpaque = !usesTransparentChrome
         window.backgroundColor = .windowBackgroundColor.withAlphaComponent(CGFloat(backgroundAlpha))
-        window.titlebarAppearsTransparent = usesUnifiedTitlebar || usesTransparentChrome
+        window.titlebarAppearsTransparent = usesUnifiedTitlebar
+            || (role != .mainWindow && role != .settings && usesTransparentChrome)
         WindowTrafficLightPolicy.apply(to: window, for: role)
         WindowTrafficLightPolicy.reapplyAfterSwiftUISceneSettles(to: window, for: role)
         window.contentView?.wantsLayer = true

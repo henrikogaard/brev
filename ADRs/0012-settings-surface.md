@@ -68,6 +68,25 @@ Deferred to follow-up ADRs:
 - AI Writer section (waits on ADR-0008 implementation).
 - Sync / advanced (waits on ADR-0066 macOS backend).
 
+### Desktop text size and density (2026-09-29)
+
+The existing mailbox text-size preference also controls Brev-owned desktop
+interface text through `brevFont`: mail and settings sidebars, labels,
+metadata, dialogs, and compose chrome update without reopening windows.
+Medium preserves the native typography ramp; Small and Large adjust it by
+-1 and +2 points. Mail body/list typography keeps its existing size ramp.
+The macOS Appearance pane owns Text size and Interface density; iOS keeps
+its mail-content controls and system Dynamic Type behavior. Native window
+toolbars, system-owned menus and dialogs retain macOS sizing. Apply desktop
+sizing to pane content before attaching toolbars: compact control sizes at
+the split-view root can squeeze native toolbar buttons into narrow pills.
+
+Density remains independent from text size and applies to mail rows, reader
+and compose spacing, settings rows/groups, and native control size. Existing
+preference keys and values are preserved. The message font family continues
+to affect mail content only. This extends the existing shared presentation
+preferences without changing package boundaries or privacy behavior.
+
 ### Dependency direction
 
 ```
@@ -187,3 +206,43 @@ Accounts and Appearance share the App group. Advanced is a normal labeled
 section, with the same row alignment and header style as every other group;
 capability availability still controls which destinations are present. Removing
 the special disclosure group also makes the keyboard order match visible rows.
+
+### 2026-09-29 task categories and mobile navigation polish
+
+Settings now exposes eight task categories plus About & Updates. The category
+layer groups stable `SettingsSection` leaf identities, preserving programmatic
+selection and control search. Developer remains capability-gated and plugin
+panels remain conditional. Desktop uses a compact category sidebar and native
+subpage pickers; iPhone uses the same categories with push navigation. Existing
+`SettingsSectionGroup` metadata remains available to callers; it no longer
+controls the main Settings sidebar.
+
+Writing groups compose, signatures, templates, and AI Writer. Send safety comes
+before recipient history, which expands on demand. Privacy owns remote-image
+and avatar-source consent; Reading owns browser choice; Sync & Storage owns
+global iCloud preference sync. No preference key or consent default migrates.
+
+Mobile mail navigation uses inset groups, a consistent icon and text alignment,
+quiet trailing counts, and checkmark selection in the Favourites editor. Rows
+retain a 44-point touch floor; large text wraps, with counts below labels at
+accessibility sizes. Decorative icons stay within their fixed columns. Account
+identity, unread-versus-draft counts, shortcut persistence, and disclosure
+behaviour are unchanged.
+
+### Window transparency controls (2026-09-29)
+
+Appearance offers Off, Sidebars only, and Full windows. These are presentation
+choices over the existing persisted material/scope keys, not a new preference
+schema. Full windows uses `allWindows`; the legacy `mainWindow` value resolves
+to the same full-window coverage, including compose and detached readers.
+Sidebars only applies to the mailbox and Settings sidebars while content and
+utility windows remain solid. Container backing must stay clear for those
+sidebar materials to sample the desktop. Title-bar layout no longer gates
+background transparency. Reduce Transparency still forces opaque surfaces.
+
+Opacity means the themed background layer, with labelled transparent/opaque
+ends and a 100 percent opaque endpoint. Material style and title-bar layout remain under Advanced. The previous
+message-card override is not offered in desktop Settings because the macOS
+reader uses a flat canvas; its stored preference and iPad rendering are retained. A schematic preview shows
+mail/Settings sidebars alongside compose/message windows. No new network
+behaviour or theme schema is introduced.

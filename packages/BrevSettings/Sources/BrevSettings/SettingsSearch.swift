@@ -21,6 +21,27 @@ struct SettingsSearchResult: Identifiable {
 
 extension SettingsSection {
     var searchableControlTitles: [String] {
+        #if os(macOS)
+        switch self {
+        case .appearance:
+            return baseSearchableControlTitles + [
+                String(localized: "Text and spacing", bundle: .module),
+                String(localized: "Text size", bundle: .module),
+                String(localized: "Interface density", bundle: .module)
+            ]
+        case .mailboxView:
+            return baseSearchableControlTitles.filter {
+                $0 != String(localized: "Text size", bundle: .module)
+                    && $0 != String(localized: "List density", bundle: .module)
+            }
+        default: return baseSearchableControlTitles
+        }
+        #else
+        return baseSearchableControlTitles
+        #endif
+    }
+
+    private var baseSearchableControlTitles: [String] {
         switch self {
         case .accounts: return [
                 String(localized: "Remove", bundle: .module),
@@ -31,19 +52,19 @@ extension SettingsSection {
             ]
         case .appearance: return [
                 String(localized: "Appearance", bundle: .module),
-                String(localized: "Window design", bundle: .module),
-                String(localized: "Style", bundle: .module),
-                String(localized: "Apply to", bundle: .module),
+                String(localized: "Window transparency", bundle: .module),
+                String(localized: "Background effect", bundle: .module),
+                String(localized: "Transparency", bundle: .module),
                 String(localized: "Unified title bar", bundle: .module),
                 String(localized: "App icon", bundle: .module),
                 String(localized: "Color and themes", bundle: .module),
                 String(localized: "Mode", bundle: .module),
-                String(localized: "Pane opacity", bundle: .module),
-                String(localized: "Sidebar opacity", bundle: .module),
-                String(localized: "Message content", bundle: .module),
-                String(localized: "Message opacity", bundle: .module),
+                String(localized: "Window background opacity", bundle: .module),
+                String(localized: "Sidebar background opacity", bundle: .module),
             ]
         case .mailboxView: return [
+                String(localized: "Browser", bundle: .module),
+                String(localized: "Open links in", bundle: .module),
                 String(localized: "Mailbox View", bundle: .module),
                 String(localized: "Folders", bundle: .module),
                 String(localized: "Starred", bundle: .module),
@@ -55,7 +76,6 @@ extension SettingsSection {
                 String(localized: "Archive", bundle: .module),
                 String(localized: "Reading", bundle: .module),
                 String(localized: "Use rich HTML renderer", bundle: .module),
-                String(localized: "Always load remote images", bundle: .module),
                 String(localized: "Conversation order", bundle: .module),
                 String(localized: "Message font", bundle: .module),
                 String(localized: "Text size", bundle: .module),
@@ -71,11 +91,6 @@ extension SettingsSection {
                 String(localized: "Show folder stats", bundle: .module),
                 String(localized: "Inbox classification", bundle: .module),
                 String(localized: "Stats detail", bundle: .module),
-                String(localized: "Sender image sources", bundle: .module),
-                String(localized: "Use Contacts photos", bundle: .module),
-                String(localized: "Use Gravatar", bundle: .module),
-                String(localized: "Use BIMI logos", bundle: .module),
-                String(localized: "Use domain favicons", bundle: .module),
             ]
         case .compose: return [
                 String(localized: "Compose", bundle: .module),
@@ -187,18 +202,24 @@ extension SettingsSection {
                 String(localized: "Allow private material in exports", bundle: .module),
                 String(localized: "Replace existing records on import", bundle: .module),
             ]
+        case .preferenceSync: return [
+                String(localized: "iCloud sync", bundle: .module),
+                String(localized: "Sync preferences with iCloud", bundle: .module),
+            ]
         case .privacy: return [
+                String(localized: "Always load remote images", bundle: .module),
+                String(localized: "Sender image sources", bundle: .module),
+                String(localized: "Use Contacts photos", bundle: .module),
+                String(localized: "Use Gravatar", bundle: .module),
+                String(localized: "Use BIMI logos", bundle: .module),
+                String(localized: "Use domain favicons", bundle: .module),
+
                 String(localized: "Privacy", bundle: .module),
                 String(localized: "Defaults", bundle: .module),
                 String(localized: "Remote content starts blocked", bundle: .module),
                 String(localized: "Sender icons are explicit", bundle: .module),
                 String(localized: "AI Writer requires consent", bundle: .module),
-                String(localized: "Browser", bundle: .module),
-                String(localized: "Open links in", bundle: .module),
                 String(localized: "Remote content allowlist", bundle: .module),
-                String(localized: "Current opt-ins", bundle: .module),
-                String(localized: "iCloud sync", bundle: .module),
-                String(localized: "Sync preferences with iCloud", bundle: .module),
             ]
         case .notifications: return [
                 String(localized: "Notifications", bundle: .module),

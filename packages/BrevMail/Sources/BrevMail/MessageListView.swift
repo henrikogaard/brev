@@ -1468,7 +1468,7 @@ public struct MessageListView: View {
                 Task { await toggleRead(for: header) }
             } label: {
                 Label(
-                    header.isRead ? "Unread" : "Read",
+                    header.isRead ? String(localized: "Unread", bundle: .module) : String(localized: "Read", bundle: .module),
                     systemImage: header.isRead ? "envelope.badge" : "envelope.open"
                 )
             }
@@ -1490,12 +1490,15 @@ public struct MessageListView: View {
 
     private var searchOptionsSummary: String {
         var parts: [String] = [navigation.searchExecution.messageListTitle]
-        parts.append(searchAllFolders ? "All mailboxes" : "This folder")
+        parts.append(searchAllFolders ? String(localized: "All mailboxes", bundle: .module) : String(
+            localized: "This folder",
+            bundle: .module
+        ))
         if searchScope != .all {
             parts.append(searchScope.title)
         }
         if !naturalLanguageSearchChips.isEmpty {
-            parts.append("\(naturalLanguageSearchChips.count) filters")
+            parts.append(String(localized: "\(naturalLanguageSearchChips.count) Filters", bundle: .module))
         }
         return parts.joined(separator: " · ")
     }
@@ -1509,195 +1512,37 @@ public struct MessageListView: View {
         }
     }
 
-    @ViewBuilder
     private var searchScopeBar: some View {
-        #if os(macOS)
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrevSpacing.md) {
-                Picker("", selection: searchExecutionSelection) {
-                    ForEach(MessageListSearchExecutionPolicy.availableExecutions(
-                        capabilities: backend.capabilities
-                    ), id: \.self) { execution in
-                        Label(execution.messageListTitle, systemImage: execution.messageListSymbolName)
-                            .tag(execution)
-                    }
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .accessibilityLabel(String(localized: "Search location", bundle: .module))
-                Picker("", selection: $searchAllFolders) {
-                    Text(String(localized: "This folder", bundle: .module)).tag(false)
-                    Text(String(localized: "All mailboxes", bundle: .module)).tag(true)
-                }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .accessibilityLabel(String(localized: "Search folder scope", bundle: .module))
-                Picker(
-                    String(localized: "Search scope", bundle: .module),
-                    selection: $searchScope
-                ) {
-                    ForEach(SearchScope.allCases) { scope in
-                        Text(scope.title).tag(scope)
-                    }
-                }
-                .pickerStyle(.menu)
-                .controlSize(.small)
-                .fixedSize()
-                .accessibilityLabel(String(localized: "Search scope", bundle: .module))
-                if !naturalLanguageSearchChips.isEmpty {
-                    NaturalLanguageSearchChipStrip(
-                        chips: naturalLanguageSearchChips,
-                        onRemove: removeSearchChip
-                    )
-                }
-                if let searchSyntaxDescription,
-                   ServerSearchSyntaxHintPolicy.shouldShow(searchSyntaxDescription) {
-                    ServerSearchSyntaxHint(description: searchSyntaxDescription)
-                }
-            }
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
-        }
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        #else
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrevSpacing.xs) {
-                ForEach(MessageListSearchExecutionPolicy.availableExecutions(
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            MailSearchOptionsBar(
+                execution: searchExecutionSelection,
+                availableExecutions: MessageListSearchExecutionPolicy.availableExecutions(
                     capabilities: backend.capabilities
-                ), id: \.self) { execution in
-                    searchExecutionChip(execution)
-                }
-                Rectangle()
-                    .fill(BrevSeparator.color(for: theme))
-                    .frame(width: 1, height: 18)
-                    .padding(.horizontal, BrevSpacing.xxs)
-                searchFolderScopeChip
-                Rectangle()
-                    .fill(BrevSeparator.color(for: theme))
-                    .frame(width: 1, height: 18)
-                    .padding(.horizontal, BrevSpacing.xxs)
-                ForEach(SearchScope.allCases) { scope in
-                    searchScopeChip(scope)
-                }
-                if !naturalLanguageSearchChips.isEmpty {
-                    Rectangle()
-                        .fill(BrevSeparator.color(for: theme))
-                        .frame(width: 1, height: 18)
-                        .padding(.horizontal, BrevSpacing.xxs)
-                    NaturalLanguageSearchChipStrip(
-                        chips: naturalLanguageSearchChips,
-                        onRemove: removeSearchChip
-                    )
-                }
-                if let searchSyntaxDescription,
-                   ServerSearchSyntaxHintPolicy.shouldShow(searchSyntaxDescription) {
-                    Rectangle()
-                        .fill(BrevSeparator.color(for: theme))
-                        .frame(width: 1, height: 18)
-                        .padding(.horizontal, BrevSpacing.xxs)
-                    ServerSearchSyntaxHint(description: searchSyntaxDescription)
-                }
-            }
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
-        }
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        #endif
-    }
-
-    #if os(iOS)
-    @ViewBuilder
-    private func searchScopeChip(_ scope: SearchScope) -> some View {
-        let isActive = searchScope == scope
-        Button {
-            if searchScope != scope {
-                searchScope = scope
-            }
-        } label: {
-            HStack(spacing: BrevSpacing.xxs) {
-                Image(systemName: scope.symbolName)
-                    .font(.system(size: 11))
-                Text(scope.title)
-                    .brevFont(.caption)
-            }
-            .foregroundStyle(isActive ? theme.bgPrimary.color : theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xxs)
-            .background(
-                Capsule().fill(isActive ? theme.accent.color : theme.bgSecondary.color)
+                ),
+                folderScope: $searchAllFolders,
+                fieldScope: $searchScope
             )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "Search scope: \(scope.title)", bundle: .module))
-        .accessibilityAddTraits(isActive ? .isSelected : [])
-    }
-
-    @ViewBuilder
-    private var searchFolderScopeChip: some View {
-        let isActive = searchAllFolders
-        Button {
-            searchAllFolders.toggle()
-        } label: {
-            HStack(spacing: BrevSpacing.xxs) {
-                Image(systemName: isActive ? "tray.2" : "tray")
-                    .font(.system(size: 11))
-                Text(isActive ? "All mailboxes" : "This folder")
-                    .brevFont(.caption)
+            if !naturalLanguageSearchChips.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: BrevSpacing.xs) {
+                        NaturalLanguageSearchChipStrip(chips: naturalLanguageSearchChips, onRemove: removeSearchChip)
+                    }
+                }
+                #if os(iOS)
+                .frame(height: 44)
+                #else
+                .frame(height: 28)
+                #endif
+                .scrollIndicators(.hidden)
+                .padding(.horizontal, BrevSpacing.md)
             }
-            .foregroundStyle(isActive ? theme.bgPrimary.color : theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xxs)
-            .background(
-                Capsule().fill(isActive ? theme.accent.color : theme.bgSecondary.color)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(isActive ? "Searching all mailboxes" : "Searching this folder")
-        .accessibilityHint(String(localized: "Toggle to search across every folder", bundle: .module))
-        .accessibilityAddTraits(isActive ? .isSelected : [])
-    }
-
-    @ViewBuilder
-    private func searchExecutionChip(_ execution: SearchExecution) -> some View {
-        let isActive = navigation.searchExecution == execution
-        Button {
-            if navigation.searchExecution != execution {
-                navigation.hasUserSelectedSearchExecution = true
-                navigation.searchExecution = execution
+            if let searchSyntaxDescription,
+               ServerSearchSyntaxHintPolicy.shouldShow(searchSyntaxDescription) {
+                ServerSearchSyntaxHint(description: searchSyntaxDescription)
+                    .padding(.horizontal, BrevSpacing.md)
             }
-        } label: {
-            HStack(spacing: BrevSpacing.xxs) {
-                Image(systemName: execution.messageListSymbolName)
-                    .font(.system(size: 11))
-                Text(execution.messageListTitle)
-                    .brevFont(.caption)
-            }
-            .foregroundStyle(isActive ? theme.bgPrimary.color : theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xxs)
-            .background(
-                Capsule().fill(isActive ? theme.accent.color : theme.bgSecondary.color)
-            )
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "Search location: \(execution.messageListTitle)", bundle: .module))
-        .accessibilityAddTraits(isActive ? .isSelected : [])
     }
-    #endif
 
     private func reconcileSearchExecutionWithBackendCapabilities() {
         let reconciled = MessageListSearchExecutionPolicy.reconciledExecution(
@@ -3378,7 +3223,7 @@ struct InboxCategoryBar: View {
                 Image(systemName: category.symbolName)
                     .font(.caption2)
                 Text(category.title)
-                    .font(.caption.weight(.medium))
+                    .brevFont(.caption).fontWeight(.medium)
                     .lineLimit(1)
             }
             .brevChip(selected: isSelected)
@@ -3627,6 +3472,7 @@ private extension View {
 
 struct MessageListRow: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     // Arrival labels are formatted from the environment rather than the process
     // locale so locale/time-zone overrides reach the row and snapshots stay
     // deterministic across machines.
@@ -3670,6 +3516,7 @@ struct MessageListRow: View {
 
     #if os(iOS)
     @ScaledMetric(relativeTo: .body) private var phoneTextScale: CGFloat = 1
+    @ScaledMetric(relativeTo: .caption) private var phoneMetadataScale: CGFloat = 1
     #endif
 
     private var senderPointSize: CGFloat {
@@ -3685,6 +3532,22 @@ struct MessageListRow: View {
         (textSize.listDetailPointSize + 2) * phoneTextScale
         #else
         textSize.listDetailPointSize
+        #endif
+    }
+
+    private var usesAccessibilityLayout: Bool {
+        #if os(iOS)
+        dynamicTypeSize.isAccessibilitySize
+        #else
+        false
+        #endif
+    }
+
+    private var metadataPointSize: CGFloat {
+        #if os(iOS)
+        max(12, textSize.captionPointSize) * phoneMetadataScale
+        #else
+        max(12, textSize.captionPointSize)
         #endif
     }
 
@@ -3756,7 +3619,7 @@ struct MessageListRow: View {
                 .buttonStyle(.plain)
             }
             unreadDot
-            if showAvatar {
+            if showAvatar, !usesAccessibilityLayout {
                 BrevAvatarView(
                     email: header.from.email,
                     displayName: header.from.name,
@@ -3775,7 +3638,7 @@ struct MessageListRow: View {
                     ))
                     .foregroundStyle(isSelected ? selectionPalette.text
                         .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
-                    .lineLimit(isCompactWidth ? 2 : 1)
+                    .lineLimit(usesAccessibilityLayout ? nil : (isCompactWidth ? 2 : 1))
                 if let matchedAttachmentName {
                     HStack(spacing: BrevSpacing.xxs) {
                         Image(systemName: "paperclip")
@@ -3799,7 +3662,8 @@ struct MessageListRow: View {
                     Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
                         .font(fontFamily.font(size: detailPointSize))
                         .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                        .lineLimit(contentPresentation.previewLineCount)
+                        .lineLimit(usesAccessibilityLayout ? max(2, contentPresentation.previewLineCount) : contentPresentation
+                            .previewLineCount)
                 }
             }
             if contentPresentation.showsStatusIcons {
@@ -3861,7 +3725,6 @@ struct MessageListRow: View {
             isThread: threadCount > 1,
             action: onToggleThread
         )
-        .dynamicTypeSize(MailDenseChromeDynamicType.range)
     }
 
     private var compactAccessibilityStatusValue: String {
@@ -3993,7 +3856,9 @@ struct MessageListRow: View {
 
     @ViewBuilder
     private var senderMetadataHeader: some View {
-        if isCompactWidth {
+        if usesAccessibilityLayout {
+            stackedSenderMetadata(dateLabel: compactDateLabel)
+        } else if isCompactWidth {
             ViewThatFits(in: .horizontal) {
                 senderMetadataRow(
                     dateLabel: compactDateLabel,
@@ -4030,7 +3895,7 @@ struct MessageListRow: View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
             metadataDateLabel(dateLabel)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(maxWidth: .infinity, alignment: usesAccessibilityLayout ? .leading : .trailing)
         }
     }
 
@@ -4042,7 +3907,7 @@ struct MessageListRow: View {
                     weight: MessageListSenderPresentation.fontWeight
                 ))
                 .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
+                .lineLimit(usesAccessibilityLayout ? nil : 1)
                 .truncationMode(.tail)
                 .frame(
                     minWidth: senderMinimumWidth,
@@ -4052,7 +3917,7 @@ struct MessageListRow: View {
                 .layoutPriority(1)
             if threadCount > 1 {
                 Text(verbatim: "\(threadCount)")
-                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .font(fontFamily.font(size: metadataPointSize))
                     .foregroundStyle(theme.textSecondary.color)
                     .fixedSize(horizontal: true, vertical: false)
                     .padding(.horizontal, 6)
@@ -4062,9 +3927,9 @@ struct MessageListRow: View {
                 // high-priority tap gesture wins over nested buttons, so the
                 // tap is routed by hit frame instead.
                 Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
-                    .font(fontFamily.font(size: max(12, textSize.captionPointSize), weight: .medium))
+                    .font(fontFamily.font(size: metadataPointSize, weight: .medium))
                     .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                    .frame(width: 18, height: 18)
+                    .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
                     .contentShape(Rectangle())
                     .background {
                         GeometryReader { proxy in
@@ -4080,7 +3945,7 @@ struct MessageListRow: View {
 
     private func metadataDateLabel(_ dateLabel: String) -> some View {
         Text(dateLabel)
-            .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+            .font(fontFamily.font(size: metadataPointSize))
             .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
@@ -4188,8 +4053,8 @@ struct MessageListDateSectionHeader: View {
         .buttonStyle(.plain)
         .accessibilityLabel(
             isCollapsed
-                ? "\(title), \(count) messages, collapsed"
-                : "\(title), \(count) messages, expanded"
+                ? String(localized: "\(title), \(count) messages, collapsed", bundle: .module)
+                : String(localized: "\(title), \(count) messages, expanded", bundle: .module)
         )
         .accessibilityHint(String(
             localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",

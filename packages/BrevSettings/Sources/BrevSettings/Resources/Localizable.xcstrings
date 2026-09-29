@@ -12104,6 +12104,550 @@
           }
         }
       }
+    },
+    "Adjust spacing in sidebars, mail views, and settings independently of text size.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Juster avstanden i sidepaneler, e-postvisninger og innstillinger uavhengig av tekststørrelsen."
+          }
+        }
+      }
+    },
+    "Applies to sidebars, lists, reading, composing, and settings.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjelder sidepaneler, lister, lesing, skriving og innstillinger."
+          }
+        }
+      }
+    },
+    "Customize the whole desktop app without changing message formatting.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilpass hele skrivebordsappen uten å endre meldingsformatering."
+          }
+        }
+      }
+    },
+    "Interface density": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tetthet i grensesnittet"
+          }
+        }
+      }
+    },
+    "Text and spacing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekst og avstand"
+          }
+        }
+      }
+    },
+    "About & Updates": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om og oppdateringer"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Accounts & Connections": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer og tilkoblinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Contacts stay local; external sender image sources require your permission above.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontakter forblir lokale. Eksterne avsenderbilder krever tillatelsen din ovenfor."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Control remote images, sender image sources, and trusted senders.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg eksterne bilder, avsenderbilder og betrodde avsendere."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels are blocked until you allow them.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler er blokkert til du tillater dem."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels remain off unless you allow remote content.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler forblir blokkert med mindre du tillater eksternt innhold."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Mailboxes & Reading": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasser og lesing"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Manage recent recipients": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer nylige mottakere"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Preferences": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innstillinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Reading, list layout, sidebar folders, and links.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing, meldingsliste, mapper og lenker."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Remote content": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt innhold"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Rules & Organisation": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regler og organisering"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Writing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "All window backgrounds are solid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All window backgrounds are solid."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle vindusbakgrunner er ugjennomsiktige."
+          }
+        }
+      }
+    },
+    "Applies to Mail, Settings, compose windows, and messages opened in separate windows.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Applies to Mail, Settings, compose windows, and messages opened in separate windows."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjelder E-post, Innstillinger, skrivevinduer og meldinger åpnet i egne vinduer."
+          }
+        }
+      }
+    },
+    "Background effect": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Background effect"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bakgrunnseffekt"
+          }
+        }
+      }
+    },
+    "Choose the blur style for transparent areas.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose the blur style for transparent areas."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg uskarphet for gjennomsiktige områder."
+          }
+        }
+      }
+    },
+    "Choose where the background shows through.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Choose where the background shows through."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvor bakgrunnen skal skinne gjennom."
+          }
+        }
+      }
+    },
+    "Compose and messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Compose and messages"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving og meldinger"
+          }
+        }
+      }
+    },
+    "Extend content behind the title bar. This does not change transparency.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Extend content behind the title bar. This does not change transparency."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid innholdet bak tittellinjen. Dette endrer ikke gjennomsiktigheten."
+          }
+        }
+      }
+    },
+    "Full windows": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Full windows"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele vinduer"
+          }
+        }
+      }
+    },
+    "Fully opaque": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fully opaque"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Helt ugjennomsiktig"
+          }
+        }
+      }
+    },
+    "Lower opacity shows more of the blurred background. Text and icons stay opaque.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lower opacity shows more of the blurred background. Text and icons stay opaque."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lavere dekning viser mer av den uskarpe bakgrunnen. Tekst og ikoner forblir tydelige."
+          }
+        }
+      }
+    },
+    "More transparent": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More transparent"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mer gjennomsiktig"
+          }
+        }
+      }
+    },
+    "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Only the Mail and Settings sidebars are transparent. Messages and compose windows stay solid."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare sidepanelene i E-post og Innstillinger er gjennomsiktige. Meldinger og skrivevinduer er ugjennomsiktige."
+          }
+        }
+      }
+    },
+    "Sidebar background opacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidebar background opacity"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidepanelets bakgrunnsdekning"
+          }
+        }
+      }
+    },
+    "Sidebars only": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sidebars only"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bare sidepaneler"
+          }
+        }
+      }
+    },
+    "Transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transparency"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjennomsiktighet"
+          }
+        }
+      }
+    },
+    "Transparency preview": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Transparency preview"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forhåndsvisning av gjennomsiktighet"
+          }
+        }
+      }
+    },
+    "Window background opacity": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window background opacity"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vinduets bakgrunnsdekning"
+          }
+        }
+      }
+    },
+    "Window transparency": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Window transparency"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vindusgjennomsiktighet"
+          }
+        }
+      }
+    },
+    "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Reduser gjennomsiktighet er aktivert i macOS. Bakgrunnene forblir ugjennomsiktige til dette slås av i Systeminnstillinger."
+          }
+        }
+      }
+    },
+    "%lld%% opaque": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% opaque"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld%% dekning"
+          }
+        }
+      }
+    },
+    "Mail and Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post og Innstillinger"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

@@ -50,7 +50,7 @@ struct ThemePreferencesTests {
         defer { defaults.removePersistentDomain(forName: suiteName) }
 
         #expect(ThemePreferences.resolvedForLaunch(prefersDark: false, defaults: defaults) == .brevMonoLight)
-        #expect(ThemePreferences.resolvedForLaunch(prefersDark: true, defaults: defaults) == .brevMonoDark)
+        #expect(ThemePreferences.resolvedForLaunch(prefersDark: true, defaults: defaults) == .brevMonoGrey)
         #expect(ThemePreferences.followsSystemAppearance(defaults: defaults))
 
         ThemePreferences.save(.tokyoNight, defaults: defaults)

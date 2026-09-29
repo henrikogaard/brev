@@ -106,7 +106,7 @@ public struct BrevStatusBanner: View {
         HStack(alignment: .top, spacing: BrevSpacing.md) {
             Image(systemName: style.symbolName)
                 .foregroundStyle(style.accentColor(in: theme))
-                .font(BrevFont.subheadline.font)
+                .brevFont(.subheadline)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {

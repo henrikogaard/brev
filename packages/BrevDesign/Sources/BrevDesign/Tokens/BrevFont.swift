@@ -11,6 +11,9 @@
  */
 
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 /// Semantic typography ramp for Brev.
 ///
@@ -54,6 +57,67 @@ public enum BrevFont: Sendable, Hashable, CaseIterable {
 public extension View {
     /// Apply a Brev typography token.
     func brevFont(_ token: BrevFont) -> some View {
-        font(token.font)
+        modifier(BrevFontModifier(token: token))
+    }
+}
+
+private struct BrevFontModifier: ViewModifier {
+    let token: BrevFont
+    @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        let textSize = MailboxTextSize(rawValue: textSizeRaw) ?? .medium
+        content.font(token.desktopFont(textSize: textSize))
+        #else
+        content.font(token.font)
+        #endif
+    }
+}
+
+#if os(macOS)
+extension BrevFont {
+    func desktopFont(textSize: MailboxTextSize) -> Font {
+        guard textSize != .medium else { return font }
+        let style: NSFont.TextStyle = switch self {
+        case .largeTitle: .largeTitle
+        case .title: .title2
+        case .headline: .headline
+        case .body: .body
+        case .callout: .callout
+        case .subheadline: .subheadline
+        case .footnote: .footnote
+        case .caption: .caption1
+        }
+        let weight: Font.Weight = switch self {
+        case .largeTitle, .title, .headline: .semibold
+        case .subheadline: .medium
+        default: .regular
+        }
+        let adjustment: CGFloat = textSize == .small ? -1 : 2
+        return .system(size: NSFont.preferredFont(forTextStyle: style).pointSize + adjustment, weight: weight)
+    }
+}
+#endif
+
+public extension View {
+    /// Applies the saved desktop text size and density to inherited labels and controls.
+    /// System-owned menu bars and dialogs retain their native sizing.
+    func brevDesktopSizing() -> some View {
+        modifier(BrevDesktopSizingModifier())
+    }
+}
+
+private struct BrevDesktopSizingModifier: ViewModifier {
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var densityRaw = MailboxListDensity.comfortable.rawValue
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        let density = MailboxListDensity(rawValue: densityRaw) ?? .comfortable
+        content.brevFont(.body)
+            .controlSize(density == .compact ? .small : density == .spacious ? .large : .regular)
+        #else
+        content
+        #endif
     }
 }

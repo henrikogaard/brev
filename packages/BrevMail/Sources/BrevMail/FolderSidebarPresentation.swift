@@ -35,9 +35,10 @@ enum FolderSidebarPlatform: Equatable, Sendable {
 enum FolderSidebarSourceExpansionPolicy {
     /// Restores local disclosure choices, including hidden profile members and an empty selection.
     static func restoredExpandedSourceIDs(
-        from data: Data, sourceIDs: [MailSourceID], selectedSourceID: MailSourceID?
+        from data: Data, sourceIDs: [MailSourceID], selectedSourceID: MailSourceID?, initiallyCollapsed: Bool = false
     ) -> Set<MailSourceID> {
         if let saved = try? JSONDecoder().decode(Set<MailSourceID>.self, from: data) { return saved }
+        if initiallyCollapsed { return [] }
         return initialExpandedSourceIDs(sourceIDs: sourceIDs, selectedSourceID: selectedSourceID)
     }
 
@@ -336,14 +337,13 @@ enum FolderSidebarPresentation {
         let folderRowVerticalPadding: CGFloat
         switch platform {
         case .iPhone, .iPad:
-            // Density may tighten the visible padding, but a touch surface never
-            // shrinks below the platform's 44-point interaction floor.
+            // The button already owns a 44-point hit region. Do not add another
+            // layer of padding around it in the default mobile folder list.
             folderRowMinimumHeight = 44
             sourceHeaderMinimumHeight = max(base.sourceHeaderMinimumHeight, folderRowMinimumHeight)
             profilePickerMinimumHeight = max(44, folderRowMinimumHeight)
             folderRowVerticalPadding = switch density {
-            case .compact: density.sidebarRowVerticalPadding
-            case .comfortable: BrevSpacing.xs
+            case .compact, .comfortable: 0
             case .spacious: density.sidebarRowVerticalPadding
             }
         case .macOS:
@@ -390,7 +390,7 @@ enum FolderSidebarPresentation {
 
     private static let touchLayoutMetrics = FolderSidebarLayoutMetrics(
         sidebarPadding: BrevSpacing.sm,
-        sectionSpacing: BrevSpacing.xxs,
+        sectionSpacing: 0,
         dividerVerticalPadding: BrevSpacing.xs,
         profilePickerMinimumHeight: 44,
         sourceHeaderMinimumHeight: 44,

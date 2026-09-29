@@ -13,7 +13,7 @@ This document explains the data that *does* leave your device and
 where it goes. A fresh App Store or iOS install does not contact
 external services until you add an account or explicitly enable an
 optional feature. Direct-download macOS builds may check Brev's update
-feed according to Settings -> Updates, using Sparkle's signed appcast.
+feed according to Settings -> About & Updates -> Updates, using Sparkle's signed appcast.
 After account sign-in, Brev contacts your mail provider to sync mail.
 Everything else is off by default unless called out below.
 
@@ -32,7 +32,7 @@ account:
 | IMAP account credentials and mail requests | Your selected mail provider's IMAP server | To authenticate, list folders, sync, search, read, view or export original message source, copy, and manage mail after you add an account |
 | SMTP submission credentials and message payloads | Your selected mail provider's SMTP submission server | To send mail after you add an account |
 | Google OAuth token and Gmail mail requests | `gmail.googleapis.com` | For a Gmail API account: to load Gmail labels, messages, threads, bodies, raw source and attachments; run Gmail search; synchronize mailbox history; save drafts; apply label/read/star/archive/trash actions; and send mail after you add the account |
-| Update check | `henrikogaard.github.io` (appcast and release notes), `github.com` / `objects.githubusercontent.com` (DMG download) | Direct-download macOS builds of either release ring only; checks the signed Sparkle appcast using Settings -> Updates cadence |
+| Update check | `henrikogaard.github.io` (appcast and release notes), `github.com` / `objects.githubusercontent.com` (DMG download) | Direct-download macOS builds of either release ring only; checks the signed Sparkle appcast using Settings -> About & Updates -> Updates cadence |
 
 For standards-first IMAP/SMTP setup, Brev first checks built-in
 provider profiles. If discovery is needed, DNS SRV probes use only the
@@ -56,7 +56,7 @@ trigger and control.
 
 ### Manual GitHub release check
 
-If you choose **Check GitHub Releases** in Settings -> Updates, Brev
+If you choose **Check GitHub Releases** in Settings -> About & Updates -> Updates, Brev
 requests Brev's latest public release metadata from `api.github.com`.
 The request can expose normal HTTPS metadata such as your IP address,
 user agent, and the requested Brev repository to GitHub. Brev does not
@@ -78,7 +78,7 @@ settings, passwords, tokens, and settings that would turn on other
 network features are never included. Apple stores this data subject to
 Apple's iCloud terms; Brev has no server and never sees it.
 
-**How to disable:** Settings → Privacy → "Sync preferences with
+**How to disable:** Settings → Sync & Storage → Preferences → "Sync preferences with
 iCloud". Defaults to off. Turning it off stops reading and writing on
 that device; values already in your iCloud account remain there until
 overwritten by another device that still syncs.
@@ -132,7 +132,7 @@ Brev blocks remote HTML assets by default. You can load remote content
 once for a single message, always allow a sender, always allow a
 domain, or enable "Always load remote images" in Settings.
 
-**How to disable:** Settings → Reading → "Always load remote images",
+**How to disable:** Settings → Privacy & Security → Privacy → "Always load remote images",
 or remove sender/domain allowances from the remote-content policy.
 Defaults to blocked.
 
@@ -156,7 +156,7 @@ itself is passive and local.
 
 If enabled: during IMAP account setup you can enter a ManageSieve
 server endpoint for your mail provider. Brev does not probe it in the
-background. Later, if you choose "Sync to server" in Settings -> Rules,
+background. Later, if you choose "Sync to server" in Settings -> Rules & Organisation -> Rules,
 Brev sends your account credentials and a generated Brev-owned Sieve
 script derived from your compatible local rules to that configured
 provider endpoint.
@@ -166,7 +166,7 @@ Local rules remain the fallback when no ManageSieve endpoint is
 configured or when a local rule cannot be translated safely.
 
 **How to disable:** Leave Server-side filters off during account setup,
-or do not choose the sync action in Settings -> Rules. Defaults to off.
+or do not choose the sync action in Settings -> Rules & Organisation -> Rules. Defaults to off.
 
 ### Related-mail header discovery
 
@@ -287,7 +287,7 @@ that option when removing the account; files you exported remain where you
 saved them.
 
 When you enable Calendar, Contacts, or Tasks on a Google account in
-Settings → Calendar & Contacts, Brev runs the same user-initiated Google
+Settings → Accounts & Connections → Calendar & Contacts, Brev runs the same user-initiated Google
 authorization again, requesting the additional read-only scope for that
 feature. The newly granted token replaces the stored one only when it
 belongs to the same Google account and still covers mail access plus the
@@ -296,7 +296,7 @@ Enablement only extends the grant; a source syncs when you choose
 "Sync Now" and, while its sync is enabled, automatically on the mail
 fetch interval configured in Settings → Fetch Schedule.
 
-Enabling Editing on a calendar source in Settings → Calendar & Contacts
+Enabling Editing on a calendar source in Settings → Accounts & Connections → Calendar & Contacts
 lets Brev write events to that source: `PUT`/`DELETE` to the collection
 URL for CalDAV, `events.insert`/`patch`/`delete` for Google Calendar.
 Google sources re-run the authorization first so the `calendar.events`
@@ -558,7 +558,7 @@ email address. Anyone with a list of email addresses can compute
 their hashes, so a hashed lookup table is not anonymous. Automattic
 sees which senders you receive email from, by IP, over time.
 
-**How to disable:** Settings → Mailbox View → "Use Gravatar".
+**How to disable:** Settings → Privacy & Security → Privacy → "Use Gravatar".
 Defaults to off.
 
 ### BIMI (sender brand logos)
@@ -569,7 +569,7 @@ exists, Brev fetches the linked SVG logo. This means your DNS
 resolver and the logo host can see that you received mail from that
 domain.
 
-**How to disable:** Settings → Mailbox View → "Use BIMI logos".
+**How to disable:** Settings → Privacy & Security → Privacy → "Use BIMI logos".
 Defaults to off.
 
 ### Domain favicons
@@ -582,7 +582,7 @@ Brev fetches favicons during background sync, not when you open a
 message — the sender's server cannot infer the moment you opened
 their email.
 
-**How to disable:** Settings → Mailbox View → "Use domain favicons".
+**How to disable:** Settings → Privacy & Security → Privacy → "Use domain favicons".
 Defaults to off.
 
 ### AI Writer and mailbox chat
@@ -619,7 +619,7 @@ you configure; it does not proxy AI requests, sell credits, meter token usage,
 or silently select another provider. You'll never be in doubt about the
 destination, whether you use compose help, thread summaries, or mailbox chat.
 
-**How to disable:** Settings → AI → "Use AI Writer". Defaults to
+**How to disable:** Settings → Writing → AI Writer → "Use AI Writer". Defaults to
 off. You can also decline the first-use consent prompt in compose or
 mailbox chat.
 
@@ -648,7 +648,7 @@ not test or contact the endpoint in the background.
   Ollama may use `http://localhost`; another plaintext HTTP endpoint can expose
   message content and API keys on its network.
 - BYOK/local providers can be turned off or removed per-account in
-  **Settings → AI**.
+  **Settings → Writing → AI Writer**.
 
 ### API keys and redaction
 
@@ -710,7 +710,7 @@ while disconnected.
 
 ## Brev backups
 
-Settings › Import / Export can write a `.brevbackup` package — a folder
+Settings › Sync & Storage › Import / Export can write a `.brevbackup` package — a folder
 containing a manifest, your settings, and your account setup (names, email
 addresses, and server hostnames/ports) — to a location you choose. Backups
 never include passwords, OAuth tokens, Keychain references, or other
@@ -802,7 +802,7 @@ provider's own synchronization settings apply.
   its readable cached content or retain it disconnected.
 - **Avatar cache:** in-memory cache for the current app session plus
   local SQLite cache in the app's Caches directory. You can clear it
-  from Settings → Mailbox View → "Clear cached avatars."
+  from Settings → Privacy & Security → Privacy → "Clear cached avatars."
 - **Logs:** local file at `~/Library/Logs/Brev/brev.log` (macOS)
   or app container (iOS). Never transmitted automatically.
 - **Files you export:** mail exports and `.brevbackup` packages are

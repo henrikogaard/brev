@@ -16,6 +16,21 @@ import Testing
 
 @Suite("MessageListDatePresentation")
 struct MessageListDatePresentationTests {
+    @Test("Norwegian elapsed dates use the same positive age in parent and reply rows")
+    func norwegianElapsedDatesAreConsistent() {
+        let now = Self.date(year: 2026, month: 9, day: 29, hour: 12, minute: 0)
+        let past = now.addingTimeInterval(-10800)
+        let standard = MessageListDatePresentation.label(for: past, showsAbsoluteArrivalTime: false,
+                                                         referenceDate: now, calendar: Self.calendar,
+                                                         locale: Locale(identifier: "nb_NO"))
+        let compact = MessageListDatePresentation.label(for: past, showsAbsoluteArrivalTime: false,
+                                                        relativeStyle: .compact, referenceDate: now, calendar: Self.calendar,
+                                                        locale: Locale(identifier: "nb_NO"))
+        #expect(standard == compact)
+        #expect(!standard.contains("-"))
+        #expect(!standard.contains("−"))
+    }
+
     @Test("absolute arrival labels show time for messages received today")
     func absoluteArrivalLabelsShowTimeForMessagesReceivedToday() {
         let label = MessageListDatePresentation.label(

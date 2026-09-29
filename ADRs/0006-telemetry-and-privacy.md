@@ -261,3 +261,14 @@ phone-home channel. Users in trouble can attach logs deliberately.
 - ADR-0008: AI Writer (provider transparency)
 - PRIVACY.md (user-facing version)
 - GDPR text: https://gdpr-info.eu/
+
+### 2026-09-29 settings navigation labels
+
+Settings groups existing consent controls under Privacy & Security → Privacy.
+Remote-content and sender-image preferences retain their existing keys and
+explicit opt-ins. Browser choice is in Mailboxes & Reading → Mailbox View →
+Browser; iCloud preference sync is in Sync & Storage → Preferences. AI Writer
+is under Writing. Connections are under Accounts & Connections, rules under
+Rules & Organisation, and updates under About & Updates. These are navigation
+changes only; no endpoint, payload, default, consent requirement, or retention
+policy in the table above changes.

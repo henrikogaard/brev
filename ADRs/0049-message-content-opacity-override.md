@@ -69,3 +69,13 @@ is specific to the reading surface behind untrusted message content.
 - ADR-0002: Theme system architecture
 - ADR-0012: Settings surface
 - ADR-0015: Window materials and translucency preferences
+
+### 2026-09-29 control simplification
+
+The desktop transparency redesign hides this control because the macOS
+reader uses a flat canvas without the bounded message-content card. Stored
+values and iPad card rendering remain intact. The general window/sidebar sliders now also reach 100%
+so their labelled opaque endpoint is accurate. The separate message override
+still supports keeping only reading surfaces solid. The normal preview shows
+Mail/Settings and compose/separate-message coverage; it is a schematic of the
+window background, not the independent message-content override.

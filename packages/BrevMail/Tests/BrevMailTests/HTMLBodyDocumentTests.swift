@@ -39,6 +39,24 @@ struct HTMLBodyDocumentTests {
     }
 
     #if os(macOS)
+    @MainActor
+    @Test("reader requests a new body height when its mounted frame narrows")
+    func mountedReaderRemeasuresAfterResize() throws {
+        let store = HTMLBodyWebViewStore()
+        let webView = try #require(store.webView as? ScrollForwardingWebView)
+        var measuredWidths: [CGFloat] = []
+        webView.onLayoutWidthChange = { measuredWidths.append($0) }
+        webView.setFrameSize(CGSize(width: 700, height: 200))
+        webView.layout()
+        #expect(measuredWidths.isEmpty)
+
+        webView.setFrameSize(CGSize(width: 350, height: 200))
+        webView.layout()
+        webView.layout()
+
+        #expect(measuredWidths == [350])
+    }
+
     @Test("wheel events forward to the outer scroll view unless the document outgrows the self-size cap")
     func wheelEventsForwardUnlessDocumentOutgrowsCap() {
         #expect(HTMLBodyScrollForwardingPolicy.forwardsToEnclosingScrollView(

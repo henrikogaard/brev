@@ -13,6 +13,7 @@
 #if os(iOS)
 import BrevBackend
 @testable import BrevMail
+import BrevSettings
 import BrevThemes
 import SnapshotTesting
 import SwiftUI
@@ -22,6 +23,125 @@ import UIKit
 @Suite("Phone mailbox snapshots", .serialized)
 @MainActor
 struct PhoneMailboxSnapshotTests {
+    @Test("favourites editor distinguishes account inboxes and optional shortcuts")
+    func favoritesEditor() {
+        let account = BrevAccount(id: "account", displayName: "Henrik", emailAddress: "me@example.org")
+        let sections = ["Personal", "Work"].map { name in
+            MailSourceSection(id: MailSourceID(accountID: account.id, mailboxID: name), account: account,
+                              mailbox: Mailbox(id: name, email: "me@example.org", displayName: name),
+                              folders: [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 3),
+                                        Folder(id: "drafts", name: "Drafts", role: .drafts, totalCount: 2),
+                                        Folder(id: "sent", name: "Sent", role: .sent)])
+        }
+        let candidates = MailboxFavorite.candidates(sections: sections)
+        var preferences = MailboxFavorites(data: Data())
+        preferences.setVisible(true, id: candidates[3].id)
+        let view = MailboxFavoritesEditor(data: .constant(preferences.data), candidates: candidates)
+            .brevTheme(.brevMonoLight)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+                       named: "favorites-editor",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("favourites keep long account identities readable at accessibility text sizes")
+    func accessibleFavorites() throws {
+        let defaults = try #require(UserDefaults(suiteName: "AccessibleFavorites-" + UUID().uuidString))
+        let account = BrevAccount(id: "account", displayName: "Harbour Logistics", emailAddress: "team@example.org")
+        let mailbox = Mailbox(id: "operations", email: "team@example.org", displayName: "International Operations")
+        let source = MailSourceID(accountID: account.id, mailboxID: mailbox.id)
+        let sections = [MailSourceSection(id: source, account: account, mailbox: mailbox,
+                                          folders: [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 123),
+                                                    Folder(id: "drafts", name: "Drafts", role: .drafts, totalCount: 3)])]
+        let candidates = MailboxFavorite.candidates(sections: sections)
+        var preferences = MailboxFavorites(data: Data())
+        preferences.setVisible(true, id: candidates[2].id)
+        defaults.set(preferences.data, forKey: MailboxFavorites.storageKey)
+        let view = FolderSidebar(navigation: MailNavigationState(), folders: [], sourceSections: sections)
+            .defaultAppStorage(defaults)
+            .brevTheme(.brevMonoLight)
+            .environment(\.dynamicTypeSize, .accessibility3)
+            .background(BrevTheme.brevMonoLight.bgSecondary.color)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [
+            .init(displayScale: 2),
+            .init(preferredContentSizeCategory: .accessibilityExtraLarge)
+        ])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits), named: "accessible-favorites",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("phone settings uses compact task categories with readable large text", arguments: [false, true])
+    func settingsCategories(accessibility: Bool) throws {
+        let defaults = try #require(UserDefaults(suiteName: "PhoneSettings-" + UUID().uuidString))
+        let view = SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(.brevMonoLight),
+                                settingsStore: SettingsPersistenceStore(defaults: defaults))
+            .brevTheme(.brevMonoLight)
+            .environment(\.horizontalSizeClass, .compact)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility3 : .large)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [.init(displayScale: 2),
+                                                    .init(preferredContentSizeCategory: accessibility ? .accessibilityExtraLarge :
+                                                        .large)])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits),
+                       named: accessibility ? "accessibility" : "standard",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("expanded inbox keeps parent and reply typography coherent", arguments: [false, true])
+    func expandedInbox(accessibility: Bool) {
+        let header = MessageHeader(id: "parent", threadID: "thread", folderID: "inbox",
+                                   from: Correspondent(name: "Marte Solheim", email: "marte@example.org"),
+                                   subject: "Stavanger rollout — terminal go-live window",
+                                   snippet: "We can take the terminal offline Tuesday morning.", date: .distantPast,
+                                   isRead: false)
+        let reply = MessageHeader(id: "reply", threadID: "thread", folderID: "inbox",
+                                  from: Correspondent(name: "Ingrid Halvorsen", email: "ingrid@example.org"),
+                                  subject: header.subject, snippet: "Tuesday works. I'll have the rollback plan signed off.",
+                                  date: .distantPast, isRead: false)
+        let view = ScrollView {
+            VStack(spacing: 0) {
+                MessageListRow(header: header, threadCount: 2, isSelected: true, isChecked: false,
+                               isInSelectionMode: false, isPinned: false, isThreadExpanded: true, showAvatar: true,
+                               previewLineCount: 1, isCompactWidth: true, fontFamily: .system, textSize: .medium,
+                               density: .comfortable, showsAbsoluteArrivalTime: false, sourceContext: nil,
+                               isBlockedSender: false, hasFollowUp: false, onActivate: {}, onToggleCheck: {}, onToggleThread: {})
+                ThreadInlineChildRow(header: reply, isSelected: false, onSelect: {})
+            }
+        }
+        .brevTheme(.brevMonoLight)
+        .environment(\.dynamicTypeSize, accessibility ? .accessibility3 : .large)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [.init(displayScale: 2),
+                                                    .init(preferredContentSizeCategory: accessibility ? .accessibilityExtraLarge :
+                                                        .large)])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits),
+                       named: accessibility ? "expanded-accessibility" : "expanded-standard",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("search scope and filters fit a compact phone")
+    func compactSearchOptions() {
+        let view = MailSearchOptionsBar(execution: .constant(.cacheThenServer),
+                                        availableExecutions: [.cacheOnly, .cacheThenServer, .serverOnly],
+                                        folderScope: .constant(false), fieldScope: .constant(.all))
+            .brevTheme(.brevMonoLight)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 320, height: 100), traits: .init(displayScale: 2)),
+                       named: "compact-search-options",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("invalid recipient shows a visible correction")
+    func invalidRecipient() {
+        let view = RecipientChipField(label: "To", recipients: .constant(["not-an-email"]), inputText: .constant(""))
+            .padding(12).brevTheme(.brevMonoLight)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 320, height: 170), traits: .init(displayScale: 2)),
+                       named: "invalid-recipient",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
     @Test("detached reader controls have touch-sized layout")
     func detachedReader() {
         let header = MessageHeader(id: "message", threadID: "thread", folderID: "inbox",

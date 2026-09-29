@@ -10,6 +10,8 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import Foundation
+
 /// Where compose completion feedback should appear in the mail chrome.
 enum ComposeCompletionFeedback: Equatable, Sendable {
     /// Sticky/actionable top rail via `MailRootStatus`.
@@ -23,29 +25,35 @@ enum ComposeCompletionPresentation {
     static func feedback(for completion: ComposeCompletion) -> ComposeCompletionFeedback? {
         switch completion {
         case .savedDraft:
-            return .toast(message: "Draft saved.", tone: .success)
+            return .toast(message: String(localized: "Draft saved.", bundle: .module), tone: .success)
         case .sentMessage(_, let result, _):
             if result.warnings.contains(.sentCopyAppendFailed) {
                 return .topStatus(MailRootStatus(
-                    message: "Message sent, but Brev couldn't save a copy to Sent.",
+                    message: String(localized: "Message sent, but Brev couldn't save a copy to Sent.", bundle: .module),
                     tone: .warning
                 ))
             }
             if result.warnings.contains(.remoteDraftCleanupFailed) {
                 return .topStatus(MailRootStatus(
-                    message: "Message sent, but Brev couldn't remove the saved draft.",
+                    message: String(localized: "Message sent, but Brev couldn't remove the saved draft.", bundle: .module),
                     tone: .warning
                 ))
             }
             if result.warnings.contains(.queuedForRetry) {
                 return .topStatus(MailRootStatus(
-                    message: "Message queued in Outbox and will retry when the account is online.",
+                    message: String(
+                        localized: "Message queued in Outbox and will retry when the account is online.",
+                        bundle: .module
+                    ),
                     tone: .warning
                 ))
             }
             guard let scheduledFor = result.scheduledFor else { return nil }
             return .toast(
-                message: "Message scheduled for \(ScheduleSendDateResolver.formattedScheduleDate(scheduledFor)).",
+                message: String(
+                    localized: "Message scheduled for \(ScheduleSendDateResolver.formattedScheduleDate(scheduledFor)).",
+                    bundle: .module
+                ),
                 tone: .success
             )
         }

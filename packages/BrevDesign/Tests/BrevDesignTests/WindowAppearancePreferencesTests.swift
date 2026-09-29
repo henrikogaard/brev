@@ -59,6 +59,19 @@ struct WindowAppearancePreferencesTests {
         #expect(defaults.double(forKey: WindowAppearancePreferenceKey.messageContentOpacity) == 0.76)
     }
 
+    @Test("sidebar-only clears window backing while keeping all reading and compose surfaces solid")
+    func sidebarOnlyDoesNotHideItsOwnBackdrop() {
+        let preferences = WindowAppearancePreferences(mode: .subtle, scope: .sidebarOnly)
+        for role in [WindowSurfaceRole.mainWindow, .settings] {
+            #expect(preferences.surfaceFillOpacity(for: role, reduceTransparency: false) == nil)
+            #expect(preferences.usesTransparentWindowChrome(for: role, reduceTransparency: false))
+        }
+        for role in [WindowSurfaceRole.content, .messageContent, .utility, .card] {
+            #expect(preferences.surfaceFillOpacity(for: role, reduceTransparency: false) == 1)
+        }
+        #expect(!preferences.usesTransparentWindowChrome(for: .utility, reduceTransparency: false))
+    }
+
     @Test("sidebar scope only applies material to sidebar surfaces")
     func sidebarScopeOnlyAppliesMaterialToSidebarSurfaces() {
         let preferences = WindowAppearancePreferences(
@@ -70,7 +83,7 @@ struct WindowAppearancePreferencesTests {
         #expect(preferences.usesMaterial(for: .content, reduceTransparency: false) == false)
         #expect(preferences.usesMaterial(for: .settings, reduceTransparency: false) == false)
         #expect(preferences.usesTransparentWindowChrome(for: .mainWindow, reduceTransparency: false) == true)
-        #expect(preferences.usesTransparentWindowChrome(for: .settings, reduceTransparency: false) == false)
+        #expect(preferences.usesTransparentWindowChrome(for: .settings, reduceTransparency: false) == true)
     }
 
     @Test("window chrome follows the selected scope")
@@ -88,7 +101,7 @@ struct WindowAppearancePreferencesTests {
         // Settings follows Main window scope so Appearance → Window design is
         // visible in the Settings window without requiring All windows.
         #expect(mainWindowOnly.usesTransparentWindowChrome(for: .settings, reduceTransparency: false) == true)
-        #expect(mainWindowOnly.usesTransparentWindowChrome(for: .utility, reduceTransparency: false) == false)
+        #expect(mainWindowOnly.usesTransparentWindowChrome(for: .utility, reduceTransparency: false) == true)
         #expect(allWindows.usesTransparentWindowChrome(for: .settings, reduceTransparency: false) == true)
         #expect(allWindows.usesTransparentWindowChrome(for: .utility, reduceTransparency: false) == true)
     }
@@ -109,7 +122,7 @@ struct WindowAppearancePreferencesTests {
         #expect(preferences.usesMaterial(for: .settings, reduceTransparency: true) == false)
     }
 
-    @Test("main and settings window transparent chrome follows the title bar preference toggle")
+    @Test("main and settings window transparent chrome is independent of title bar layout")
     func mainAndSettingsWindowTransparentChromeFollowTitlebarPreferenceToggle() {
         let preferences = WindowAppearancePreferences(
             mode: .frosted,
@@ -128,7 +141,7 @@ struct WindowAppearancePreferencesTests {
             for: .mainWindow,
             reduceTransparency: false,
             transparentMainTitlebar: false
-        ) == false)
+        ) == true)
 
         #expect(WindowTransparentChromePolicy.usesTransparentChrome(
             preferences: preferences,
@@ -142,7 +155,7 @@ struct WindowAppearancePreferencesTests {
             for: .settings,
             reduceTransparency: false,
             transparentMainTitlebar: false
-        ) == false)
+        ) == true)
     }
 
     @Test("utility windows keep scoped transparent chrome regardless of title bar toggle")
@@ -474,8 +487,8 @@ struct WindowAppearancePreferencesTests {
 
         #expect(WindowAppearancePreferences.load(from: lowDefaults).surfaceOpacity == 0.25)
         #expect(WindowAppearancePreferences.load(from: lowDefaults).sidebarOpacity == 0.1)
-        #expect(WindowAppearancePreferences.load(from: highDefaults).surfaceOpacity == 0.95)
-        #expect(WindowAppearancePreferences.load(from: highDefaults).sidebarOpacity == 0.95)
+        #expect(WindowAppearancePreferences.load(from: highDefaults).surfaceOpacity == 1)
+        #expect(WindowAppearancePreferences.load(from: highDefaults).sidebarOpacity == 1)
     }
 
     @Test("persisted custom message opacity is clamped to its accessibility bounds")

@@ -23,6 +23,7 @@ struct ComposeSection: View {
     @State private var settings: ComposeSettings
     @State private var recipientSuggestionSettings: RecipientSuggestionSettings
     @State private var recentRecipients: [RecentRecipient]
+    @State private var showsRecentRecipients = false
 
     private let settingsStore: SettingsPersistenceStore
     private let recentRecipientStore: RecentRecipientStore
@@ -43,8 +44,8 @@ struct ComposeSection: View {
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 defaultsGroup
-                recipientSuggestionsGroup
                 safetyGroup
+                recipientSuggestionsGroup
             }
             .onAppear { refreshRecentRecipients() }
         }
@@ -182,17 +183,25 @@ struct ComposeSection: View {
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
-                        ForEach(recentRecipients) { recipient in
-                            recentRecipientRow(recipient)
+                    DisclosureGroup(isExpanded: $showsRecentRecipients) {
+                        VStack(spacing: BrevSpacing.xs) {
+                            ForEach(recentRecipients) { recipient in
+                                recentRecipientRow(recipient)
+                            }
+                        }
+                        Button(String(localized: "Clear recent recipients", bundle: .module), role: .destructive) {
+                            recentRecipientStore.removeAll()
+                            refreshRecentRecipients()
+                        }
+                        .buttonStyle(.borderless)
+                    } label: {
+                        HStack {
+                            Text("Manage recent recipients", bundle: .module).brevFont(.body)
+                            Spacer()
+                            Text(verbatim: "\(recentRecipients.count)").brevFont(.caption)
+                                .foregroundStyle(theme.textSecondary.color).monospacedDigit()
                         }
                     }
-
-                    Button(String(localized: "Clear recent recipients", bundle: .module), role: .destructive) {
-                        recentRecipientStore.removeAll()
-                        refreshRecentRecipients()
-                    }
-                    .buttonStyle(.borderless)
                 }
 
                 SettingsInfoCallout(

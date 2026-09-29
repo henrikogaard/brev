@@ -49,6 +49,13 @@ Message body rendering, compose body editing, and user-configurable
 mailbox reading text are not governed by this cap. They continue to use
 their own content-oriented scaling behavior.
 
+The 2026-09-29 UI audit adds adaptive layouts for iPhone message identity:
+parent and inline reply rows scale together, and accessibility sizes stack
+sender and date while allowing subjects to wrap. Conversation cards place
+sender name, address, recipients, and timestamp on separate lines. These
+mail-content surfaces no longer depend on the compact chrome cap; navigation
+and compact command controls retain the shared bounds.
+
 ## Rationale
 
 **Alternative: let every mail UI string scale to the largest system

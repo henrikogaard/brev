@@ -62,7 +62,7 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
     public static let defaults = AppearanceThemeSettings(
         mode: .followSystem,
         lightThemeID: "brev-mono-light",
-        darkThemeID: "brev-mono-dark",
+        darkThemeID: "brev-mono-grey",
         accentHex: nil
     )
 

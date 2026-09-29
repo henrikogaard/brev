@@ -60,6 +60,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     case mailStorage
     /// Local mail import/export tools.
     case importExport
+    /// Global preference sync, separate from account storage.
+    case preferenceSync
     // Group: privacy & security
     case privacy
     /// Message encryption, certificates, and key management.
@@ -86,6 +88,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .folderSync: return String(localized: "Folder Sync", bundle: .module)
         case .mailStorage: return String(localized: "Mail Storage", bundle: .module)
         case .calendarContacts: return String(localized: "Calendar & Contacts", bundle: .module)
+        case .preferenceSync: return String(localized: "Preferences", bundle: .module)
         case .importExport: return String(localized: "Import / Export", bundle: .module)
         case .security: return String(localized: "Security", bundle: .module)
         case .privacy: return String(localized: "Privacy", bundle: .module)
@@ -112,6 +115,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .folderSync: return "folder.badge.gearshape"
         case .mailStorage: return "internaldrive"
         case .calendarContacts: return "calendar"
+        case .preferenceSync: return "icloud"
         case .importExport: return "square.and.arrow.up.on.square"
         case .security: return "lock.shield"
         case .privacy: return "hand.raised"
@@ -131,7 +135,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
             return .shipped
         case .accounts, .appearance, .mailboxView, .signature, .compose,
              .templates, .vipAndReminders, .smartViews, .rules, .autoReply,
-             .folderSync, .mailStorage, .calendarContacts, .importExport, .privacy,
+             .folderSync, .mailStorage, .calendarContacts, .importExport, .preferenceSync, .privacy,
              .notifications, .aiWriter, .about:
             return .shipped
         }
@@ -150,7 +154,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
             return .readingComposing
         case .vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts:
             return .organization
-        case .folderSync, .mailStorage, .importExport: return .syncStorage
+        case .folderSync, .mailStorage, .importExport, .preferenceSync: return .syncStorage
         case .privacy, .security: return .privacySecurity
         case .developer, .updates, .about: return .advanced
         }
@@ -161,9 +165,19 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     public var searchKeywords: [String] {
         switch self {
         case .accounts: return ["email", "mail account", "provider", "gmail", "google workspace", "imap"]
-        case .appearance: return ["theme", "dark mode", "light mode", "color", "icon"]
+        case .appearance:
+            #if os(macOS)
+            return ["theme", "dark mode", "light mode", "color", "icon", "text size", "density", "compact"]
+            #else
+            return ["theme", "dark mode", "light mode", "color", "icon"]
+            #endif
         case .notifications: return ["alerts", "badges", "sounds"]
-        case .mailboxView: return ["inbox", "message list", "reading pane", "density", "sidebar"]
+        case .mailboxView:
+            #if os(macOS)
+            return ["inbox", "message list", "reading pane", "sidebar"]
+            #else
+            return ["inbox", "message list", "reading pane", "density", "sidebar"]
+            #endif
         case .compose: return ["new message", "sending", "editor", "formatting"]
         case .signature: return ["sign-off", "footer"]
         case .templates: return ["snippets", "canned replies"]
@@ -176,7 +190,8 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
         case .folderSync: return ["folders", "download", "offline", "retention"]
         case .mailStorage: return ["cache", "disk", "index", "download", "reset"]
         case .importExport: return ["backup", "archive", "move mail"]
-        case .privacy: return ["remote images", "tracking", "avatars"]
+        case .preferenceSync: return ["icloud", "sync preferences", "settings sync"]
+        case .privacy: return ["remote images", "tracking", "avatars", "sender images"]
         case .security: return ["encryption", "certificates", "keys", "smime"]
         case .developer: return ["debug", "diagnostics"]
         case .updates: return ["version", "download"]
@@ -188,7 +203,7 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     public func matches(searchQuery query: String) -> Bool {
         let normalizedQuery = Self.normalizedSearchText(query)
         guard !normalizedQuery.isEmpty else { return true }
-        let terms = [title, group.headerLabel ?? ""] + searchKeywords + searchableControlTitles
+        let terms = [title, category.title, group.headerLabel ?? ""] + searchKeywords + searchableControlTitles
         return terms.contains { Self.normalizedSearchText($0).contains(normalizedQuery) }
     }
 

@@ -306,7 +306,8 @@ enum ComposeDraftBuilder {
     }
 
     static func canSend(to: [String], cc: [String] = [], bcc: [String] = []) -> Bool {
-        !recipientAddresses(from: to + cc + bcc).isEmpty
+        let recipients = recipientAddresses(from: to + cc + bcc)
+        return !recipients.isEmpty && recipients.allSatisfy(RecipientAddressValidator.isLikelyEmailAddress)
     }
 
     static func recipientAddresses(from values: [String]) -> [String] {

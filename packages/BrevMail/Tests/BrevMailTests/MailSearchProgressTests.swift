@@ -20,6 +20,16 @@ struct MailSearchProgressTests {
     let source = MailSourceID(accountID: "a", mailboxID: "a")
     let other = MailSourceID(accountID: "b", mailboxID: "b")
 
+    @Test("unverified results offer retry only after the search has finished")
+    func unverifiedResultsOfferRecovery() {
+        var state = MailSearchProgressState()
+        let request = state.begin(sources: [source])
+        state.apply(MailSearchUpdate(headers: [], coverage: .unverified), source: source, request: request)
+        #expect(!state.canRetry)
+        state.apply(MailSearchUpdate(headers: [], coverage: .unverified, isComplete: true), source: source, request: request)
+        #expect(state.canRetry)
+    }
+
     @MainActor
     @Test("a new search worker cancels and replaces the previous request")
     func workerReplacementCancelsPrevious() async {

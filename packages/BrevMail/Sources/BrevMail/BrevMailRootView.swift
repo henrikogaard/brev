@@ -648,12 +648,14 @@ public struct BrevMailRootView: View {
             }
         )
         #else
+        // Size each pane's content before attaching its toolbar. Inheriting
+        // compact controls at the split-view root squeezes native toolbar pills.
         mailRootContent
         #endif
     }
 
     private var mailRootContent: some View {
-        mailRootCommandContextContent
+        MailRootRenderStage { mailRootCommandContextContent }
             .task(id: ObjectIdentifier(selectedBackend)) {
                 outboxPendingCount = 0
                 await refreshOutboxCount()
@@ -729,7 +731,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootCacheContent: some View {
-        mailRootStatusLayout
+        MailRootRenderStage { mailRootStatusLayout }
             .task(id: visibleSelectedSourceID) {
                 await observeImportSyncHealth()
                 await loadSelectedSearchSyntax()
@@ -768,7 +770,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootLoadingContent: some View {
-        mailRootCacheContent
+        MailRootRenderStage { mailRootCacheContent }
             .task { monitor.start() }
             .onChange(of: backendSessionIDs) { previous, _ in handleBackendSessionChange(previousIDs: previous) }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
@@ -833,7 +835,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootObservedContent: some View {
-        mailRootLoadingContent
+        MailRootRenderStage { mailRootLoadingContent }
             .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
                 onSettingsMailboxContextChange?(settingsMailboxContext)
             }
@@ -888,7 +890,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootPresentationContent: some View {
-        mailRootObservedContent
+        MailRootRenderStage { mailRootObservedContent }
             .accessibilityHidden(isMailBackgroundAccessibilityHidden)
             .modifier(
                 MailAuxiliaryPresentationModifier(sheet: sheetBinding) { sheet, close in
@@ -1058,7 +1060,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootCommandContextContent: some View {
-        mailRootPresentationContent
+        MailRootRenderStage { mailRootPresentationContent }
             .focusedSceneValue(\.mailNavigation, navigation)
             .focusedSceneValue(\.mailBackend, selectedBackend)
             .focusedSceneValue(\.mailFolders, folders)
@@ -1480,6 +1482,7 @@ public struct BrevMailRootView: View {
                 }
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarSidebar }
             .brevMailPaneScrollEdgeBlur()
             // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
@@ -1611,6 +1614,7 @@ public struct BrevMailRootView: View {
                 }
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarDetail }
     }
 
@@ -1848,6 +1852,7 @@ public struct BrevMailRootView: View {
                 animatedTopChromeStatusRail
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the
         // band on its own scroll viewport (see MessageListView), which sits
@@ -1953,7 +1958,7 @@ public struct BrevMailRootView: View {
                         Text(selectedMessageDestinationTitle)
                             .lineLimit(1)
                         Image(systemName: "chevron.forward")
-                            .font(.footnote.weight(.semibold))
+                            .brevFont(.footnote).fontWeight(.semibold)
                     }
                 }
                 .accessibilityLabel(String(localized: "Show messages", bundle: .module))
@@ -2051,11 +2056,11 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
                 Text(verbatim: selectedMessageDestinationTitle)
-                    .font(.headline)
+                    .brevFont(.headline)
                     .lineLimit(1)
                 if let selectedMessageDestinationContext {
                     Text(verbatim: selectedMessageDestinationContext)
-                        .font(.caption)
+                        .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 }
@@ -2128,7 +2133,7 @@ public struct BrevMailRootView: View {
         if isSearchFieldToggledOpen {
             MessageListSearchField(
                 text: $navigation.searchText,
-                prompt: "Search messages",
+                prompt: String(localized: "Search messages", bundle: .module),
                 focusRequestID: navigation.searchFocusRequestID,
                 onEndEditing: { isSearchFieldToggledOpen = false }
             )
@@ -2147,8 +2152,12 @@ public struct BrevMailRootView: View {
                         : "magnifyingglass"
                 )
             }
-            .accessibilityLabel(showsRetainedSearchQuery ? "Search messages, filter active" : "Search messages")
-            .help(showsRetainedSearchQuery ? "Search Mail (filter active)" : "Search Mail")
+            .accessibilityLabel(showsRetainedSearchQuery
+                ? String(localized: "Search messages, filter active", bundle: .module)
+                : String(localized: "Search messages", bundle: .module))
+            .help(showsRetainedSearchQuery
+                ? String(localized: "Search Mail (filter active)", bundle: .module)
+                : String(localized: "Search Mail", bundle: .module))
         }
     }
 

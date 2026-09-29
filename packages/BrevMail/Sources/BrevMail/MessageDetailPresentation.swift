@@ -215,7 +215,9 @@ enum MessageDetailPresentation {
         if recipients.isEmpty { return "" }
         let lead = recipients.prefix(3).map { $0.displayName }.joined(separator: ", ")
         let extra = recipients.count - 3
-        return extra > 0 ? "to \(lead) + \(extra) more" : "to \(lead)"
+        return extra > 0
+            ? String(localized: "to \(lead) + \(extra) more", bundle: .module)
+            : String(localized: "to \(lead)", bundle: .module)
     }
 
     static func attachmentDisplayName(_ filename: String) -> String {

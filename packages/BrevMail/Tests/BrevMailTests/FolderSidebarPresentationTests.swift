@@ -31,6 +31,18 @@ struct FolderSidebarPresentationTests {
         #expect(activationCount == 1)
     }
 
+    @Test("arrow navigation changes the mailbox without moving focus into messages")
+    func arrowSelectionKeepsSidebarFocus() {
+        var selectedFolderID = "inbox"
+        var activationCount = 0
+        FolderSidebarDestinationActivation.activate(
+            selection: { selectedFolderID = "drafts" },
+            onActivated: { activationCount += 1 }, opensMessages: false
+        )
+        #expect(selectedFolderID == "drafts")
+        #expect(activationCount == 0)
+    }
+
     @Test("load errors render an error status")
     func loadErrorsRenderErrorStatus() {
         #expect(FolderSidebarPresentation.status(
@@ -189,7 +201,14 @@ struct FolderSidebarPresentationTests {
         // Density may reduce the visible padding, but never the iOS hit region.
         #expect(compact.folderRowMinimumHeight >= 44)
         #expect(compact.folderRowMinimumHeight == FolderSidebarPresentation.layoutMetrics(for: .iPhone).folderRowMinimumHeight)
-        #expect(compact.folderRowVerticalPadding == MailboxListDensity.compact.sidebarRowVerticalPadding)
+        #expect(compact.folderRowVerticalPadding == 0)
+    }
+
+    @Test("phone folders use compact 44 point rows without stacked padding")
+    func phoneFoldersAvoidStackedPadding() {
+        let metrics = FolderSidebarPresentation.layoutMetrics(for: .iPhone)
+        #expect(metrics.folderRowMinimumHeight + 2 * metrics.folderRowVerticalPadding == 44)
+        #expect(metrics.sectionSpacing == 0)
     }
 
     @Test("source disclosure initially expands the selected account")

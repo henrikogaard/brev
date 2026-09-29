@@ -179,7 +179,7 @@ struct BrevApp: App {
             .brevRestoresWindowFrame(named: "BrevMainWindow")
             .background(BrevWindowSurfaceBackground(role: .mainWindow).ignoresSafeArea())
             .brevWindowTranslucency(windowRole: .mainWindow)
-            .brevTransparentWindowToolbarBackground()
+            .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .alert(
                 String(localized: "Account error"),
@@ -299,7 +299,7 @@ struct BrevApp: App {
             )
             .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
-            .brevTransparentWindowToolbarBackground()
+            .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
@@ -317,7 +317,7 @@ struct BrevApp: App {
             )
             .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
-            .brevTransparentWindowToolbarBackground()
+            .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
@@ -335,7 +335,7 @@ struct BrevApp: App {
             )
             .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
-            .brevTransparentWindowToolbarBackground()
+            .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
@@ -392,7 +392,7 @@ struct BrevApp: App {
             )
             .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
-            .brevTransparentWindowToolbarBackground()
+            .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
         }
@@ -806,13 +806,8 @@ private func applyMacOSAppIcon(_ variant: AppIconVariant) {
 }
 
 private extension View {
-    @ViewBuilder
-    func brevTransparentWindowToolbarBackground() -> some View {
-        if #available(macOS 15.0, *) {
-            toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        } else {
-            toolbarBackground(.hidden, for: .windowToolbar)
-        }
+    func brevTransparentWindowToolbarBackground(theme: BrevTheme) -> some View {
+        modifier(BrevWindowToolbarBackgroundModifier(theme: theme))
     }
 
     @ViewBuilder
@@ -943,4 +938,24 @@ extension AppSession {
 
 private var applicationSupportURL: URL {
     FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+}
+
+private struct BrevWindowToolbarBackgroundModifier: ViewModifier {
+    let theme: BrevTheme
+    @AppStorage("window.transparentMainTitlebar") private var unifiedTitlebar = true
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        // A separate title bar needs its native backdrop; hiding it exposes
+        // the clear window backing outside the SwiftUI content bounds.
+        if #available(macOS 15.0, *) {
+            content
+                .toolbarBackground(theme.bgPrimary.color, for: .windowToolbar)
+                .toolbarBackgroundVisibility(unifiedTitlebar ? .hidden : .visible, for: .windowToolbar)
+        } else {
+            content
+                .toolbarBackground(theme.bgPrimary.color, for: .windowToolbar)
+                .toolbarBackground(unifiedTitlebar ? .hidden : .visible, for: .windowToolbar)
+        }
+    }
 }

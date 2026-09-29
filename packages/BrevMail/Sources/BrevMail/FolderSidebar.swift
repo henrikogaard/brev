@@ -24,10 +24,11 @@ enum FolderSidebarDestinationActivation {
     /// activated even when the selected identifier did not change.
     static func activate(
         selection: () -> Void,
-        onActivated: (() -> Void)?
+        onActivated: (() -> Void)?,
+        opensMessages: Bool = true
     ) {
         selection()
-        onActivated?()
+        if opensMessages { onActivated?() }
     }
 }
 
@@ -37,6 +38,7 @@ enum FolderSidebarDestinationActivation {
 /// icon and unread count. Selection writes back to the shared
 /// navigation state; the parent observes that to update the list pane.
 public struct FolderSidebar: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(macOS)
     @Environment(\.controlActiveState) private var controlActiveState
     #endif
@@ -55,6 +57,11 @@ public struct FolderSidebar: View {
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
     @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxFavorites.storageKey) private var favoritesData = Data()
+    @State private var showsFavoritesEditor = false
+    #if os(macOS)
+    @State private var selectedFavoriteID: MailboxFavoriteID?
+    #endif
     /// In-memory copy of the disclosure state used for rendering. Decoding the
     /// stored JSON on every render (once per source section) made expand/collapse
     /// feel sluggish; the cache is seeded on appear and updated in place on toggle,
@@ -238,6 +245,9 @@ public struct FolderSidebar: View {
                         #endif
                     }
                     .padding(sidebarMetrics.sidebarPadding)
+                    #if os(iOS)
+                        .padding(.horizontal, BrevSpacing.xs)
+                    #endif
                 }
                 #if os(macOS)
                 // focusSection puts the sidebar in the Tab key loop so the
@@ -321,11 +331,14 @@ public struct FolderSidebar: View {
                 }
             }
             .onChange(of: navigation.selectedSourceID) { _, selectedSourceID in
-                guard let selectedSourceID, navigation.browsingFolderID == nil else { return }
+                #if os(macOS)
+                guard let selectedSourceID, navigation.browsingFolderID == nil,
+                      activeDesktopFavoriteID == nil else { return }
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.expandingSelection(
                     selectedSourceID,
                     in: expandedSourceIDs
                 )
+                #endif
             }
             .onChange(of: smartMailboxData) {
                 let settings = smartViewSettings
@@ -336,6 +349,9 @@ public struct FolderSidebar: View {
                         selectedID: navigation.selectedSavedSearchID, mailboxes: settings.mailboxes
                     )
                 leaveHiddenSmartViewIfNeeded(isSelected: selectedHidden)
+            }
+            .sheet(isPresented: $showsFavoritesEditor) {
+                MailboxFavoritesEditor(data: $favoritesData, candidates: favoriteCandidates)
             }
             .sheet(isPresented: $showsSmartViewSettings) {
                 VStack(spacing: 0) {
@@ -386,40 +402,44 @@ public struct FolderSidebar: View {
     private var appsSection: some View {
         if onOpenSettings != nil || onOpenCalendar != nil
             || onOpenContacts != nil || onOpenTasks != nil {
-            Text(String(localized: "More", bundle: .module))
-                .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
-                .lineLimit(1)
-                .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
-                .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
-            if let onOpenCalendar {
-                appsRow(
-                    title: String(localized: "Calendar", bundle: .module),
-                    systemImage: "calendar",
-                    action: onOpenCalendar
-                )
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                Text("More", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .padding(.horizontal, BrevSpacing.md)
+                VStack(spacing: 0) {
+                    if let onOpenCalendar {
+                        appsRow(
+                            title: String(localized: "Calendar", bundle: .module),
+                            systemImage: "calendar",
+                            action: onOpenCalendar
+                        )
+                    }
+                    if let onOpenContacts {
+                        appsRow(
+                            title: String(localized: "Contacts", bundle: .module),
+                            systemImage: "person.crop.circle",
+                            action: onOpenContacts
+                        )
+                    }
+                    if let onOpenTasks {
+                        appsRow(
+                            title: String(localized: "Tasks", bundle: .module),
+                            systemImage: "checklist",
+                            action: onOpenTasks
+                        )
+                    }
+                    if let onOpenSettings {
+                        appsRow(
+                            title: String(localized: "Settings", bundle: .module),
+                            systemImage: "gearshape",
+                            action: onOpenSettings
+                        )
+                    }
+                }
+                .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
             }
-            if let onOpenContacts {
-                appsRow(
-                    title: String(localized: "Contacts", bundle: .module),
-                    systemImage: "person.crop.circle",
-                    action: onOpenContacts
-                )
-            }
-            if let onOpenTasks {
-                appsRow(
-                    title: String(localized: "Tasks", bundle: .module),
-                    systemImage: "checklist",
-                    action: onOpenTasks
-                )
-            }
-            if let onOpenSettings {
-                appsRow(
-                    title: String(localized: "Settings", bundle: .module),
-                    systemImage: "gearshape",
-                    action: onOpenSettings
-                )
-            }
+            .padding(.top, BrevSpacing.md)
         }
     }
 
@@ -429,20 +449,24 @@ public struct FolderSidebar: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            BrevListRow(
-                title: title,
-                isSelected: false,
-                leading: {
-                    if showSidebarIcons {
-                        Image(systemName: systemImage)
-                            .foregroundStyle(theme.accent.color)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                    }
-                },
-                trailing: {
-                    EmptyView()
+            HStack(spacing: BrevSpacing.sm) {
+                if showSidebarIcons {
+                    Image(systemName: systemImage)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                        .frame(width: sidebarMetrics.iconWidth)
+                        .foregroundStyle(theme.textSecondary.color)
                 }
-            )
+                Text(verbatim: title).foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.xs)
+                Image(systemName: "chevron.right").brevFont(.caption)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                    .foregroundStyle(theme.textTertiary.color)
+            }
+            .brevFont(.body)
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
@@ -453,9 +477,11 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var sourceTree: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if sourceSections.count > 1 {
-                unifiedInboxShortcut
-            }
+            #if os(iOS)
+            if !sourceSections.isEmpty { favoritesSection }
+            #else
+            if !sourceSections.isEmpty { desktopFavoritesSection }
+            #endif
             if showsSmartViews, smartViewSettings.showInSidebar {
                 VStack(alignment: .leading, spacing: 0) {
                     smartViewsSection
@@ -484,16 +510,40 @@ public struct FolderSidebar: View {
             }
         }
 
+        #if os(iOS)
+        VStack(spacing: 0) {
+            ForEach(sourceSections) { section in
+                VStack(spacing: 0) {
+                    if section.id != sourceSections.first?.id { phoneRowSeparator }
+                    mailboxDisclosureHeader(section)
+                    if expandedSourceIDs.contains(section.id) {
+                        VStack(spacing: 0) {
+                            folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                        }
+                        .padding(.horizontal, BrevSpacing.sm)
+                        .padding(.bottom, BrevSpacing.xs)
+                    }
+                }
+            }
+        }
+        .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
+        #else
+        if !sourceSections.isEmpty {
+            Text("Mailboxes", bundle: .module)
+                .brevFont(.caption).fontWeight(.semibold)
+                .foregroundStyle(theme.textSecondary.color)
+                .padding(.top, BrevSpacing.sm)
+                .padding(.bottom, BrevSpacing.xs)
+        }
         ForEach(sourceSections) { section in
-            Section {
+            VStack(alignment: .leading, spacing: 0) {
+                mailboxDisclosureHeader(section)
                 if expandedSourceIDs.contains(section.id) {
                     folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
                 }
-            } header: {
-                mailboxDisclosureHeader(section)
-                    .padding(.top, sidebarMetrics.sectionSpacing)
             }
         }
+        #endif
         // Plugin-contributed sidebar panels live at the bottom, after the user's
         // own mailboxes and folders, so third-party extensions never sit above
         // real accounts.
@@ -575,27 +625,188 @@ public struct FolderSidebar: View {
         .help(String(localized: "Choose which mailboxes are visible", bundle: .module))
     }
 
-    private var unifiedInboxShortcut: some View {
-        Button {
-            activateDestination { navigation.selectUnifiedInbox() }
-        } label: {
-            sidebarActionRow(title: String(localized: "All Inboxes", bundle: .module),
-                             isSelected: navigation.isUnifiedInboxSelected) {
-                if showSidebarIcons {
-                    Image(systemName: "tray.2")
-                        .foregroundStyle(theme.textSecondary.color)
-                        .font(.body)
-                        .frame(width: sidebarMetrics.iconWidth)
+    private var favoriteCandidates: [MailboxFavorite] {
+        MailboxFavorite.candidates(sections: sourceSections)
+    }
+
+    private var visibleFavorites: [MailboxFavorite] {
+        MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)
+    }
+
+    #if os(iOS)
+    private var phoneRowSeparator: some View {
+        Rectangle().fill(theme.border.color).frame(height: 0.5)
+            .padding(.leading, BrevSpacing.md + (showSidebarIcons ? sidebarMetrics.iconWidth + BrevSpacing.sm : 0))
+    }
+
+    private var favoritesSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Favourites", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                Spacer()
+                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
+                    .brevFont(.subheadline)
+                    .tint(theme.accent.color)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+            }
+            .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+            let favorites = MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)
+            VStack(spacing: 0) {
+                ForEach(favorites) { favorite in
+                    if favorite.id != favorites.first?.id { phoneRowSeparator }
+                    Button {
+                        activateDestination {
+                            switch favorite.id {
+                            case .allInboxes: navigation.selectUnifiedInbox()
+                            case .folder(let destination):
+                                navigation.selectFolder(destination.folderID, in: destination.sourceID)
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: BrevSpacing.sm) {
+                            if showSidebarIcons {
+                                Image(systemName: favorite.symbol)
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .frame(width: sidebarMetrics.iconWidth)
+                                    .foregroundStyle(theme.textSecondary.color)
+                            }
+                            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                                Text(verbatim: favorite.title).brevFont(.body)
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                if let subtitle = favorite.subtitle {
+                                    Text(verbatim: subtitle).brevFont(.caption)
+                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                                if dynamicTypeSize.isAccessibilitySize, favorite.count > 0 {
+                                    Text(verbatim: favorite.countDescription).brevFont(.caption)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                            }
+                            Spacer(minLength: BrevSpacing.xs)
+                            if !dynamicTypeSize.isAccessibilitySize { unreadBadge(favorite.count) }
+                            Image(systemName: "chevron.right").brevFont(.caption)
+                                .dynamicTypeSize(...DynamicTypeSize.large)
+                                .foregroundStyle(theme.textTertiary.color)
+                        }
+                        .padding(.horizontal, BrevSpacing.md)
+                        .padding(.vertical, favorite.subtitle == nil ? BrevSpacing.xs : BrevSpacing.sm)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(isFavoriteSelected(favorite.id) ? folderSelectionColor : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
+                    .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
+                    .accessibilityAddTraits(isFavoriteSelected(favorite.id) ? .isSelected : [])
                 }
-            } trailing: {
-                unreadBadge(unifiedUnreadCount)
+            }
+            .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
+        }
+    }
+
+    #endif
+
+    private func isFavoriteSelected(_ id: MailboxFavoriteID) -> Bool {
+        switch id {
+        case .allInboxes: navigation.isUnifiedInboxSelected
+        case .folder(let destination): navigation.browsingFolderID == nil && navigation.selectedSourceFolderID == destination
+        }
+    }
+
+    #if os(macOS)
+    /// Keep selection attached to the row used, even when the account repeats an inbox.
+    private var activeDesktopFavoriteID: MailboxFavoriteID? {
+        visibleFavorites.first { favorite in
+            guard isFavoriteSelected(favorite.id) else { return false }
+            switch favorite.id {
+            case .allInboxes: return true
+            case .folder(let destination):
+                return selectedFavoriteID == favorite.id || !expandedSourceIDs.contains(destination.sourceID)
+            }
+        }?.id
+    }
+
+    private func selectFavorite(_ id: MailboxFavoriteID, opensMessages: Bool = true) {
+        selectedFavoriteID = id
+        activateDestination(opensMessages: opensMessages) {
+            switch id {
+            case .allInboxes: navigation.selectUnifiedInbox()
+            case .folder(let destination):
+                navigation.selectFolder(destination.folderID, in: destination.sourceID)
             }
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
-            .id(SidebarKeyboardItem.unifiedInbox)
-        #endif
     }
+
+    private func favoriteFolder(_ id: MailboxFavoriteID) -> (folder: Folder, sourceID: MailSourceID)? {
+        guard case .folder(let destination) = id,
+              let folder = sourceSections.first(where: { $0.id == destination.sourceID })?
+              .folders.first(where: { $0.id == destination.folderID }) else { return nil }
+        return (folder, destination.sourceID)
+    }
+
+    private var desktopFavoritesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Favourites", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                Spacer()
+                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
+                    .buttonStyle(.plain)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+            }
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .frame(minHeight: sidebarMetrics.sourceHeaderMinimumHeight)
+            ForEach(visibleFavorites) { favorite in
+                Button { selectFavorite(favorite.id) } label: {
+                    sidebarActionRow(
+                        title: [favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: " · "),
+                        isSelected: activeDesktopFavoriteID == favorite.id
+                    ) {
+                        if showSidebarIcons {
+                            Image(systemName: favorite.symbol)
+                                .brevFont(.body)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .frame(width: sidebarMetrics.iconWidth)
+                        }
+                    } trailing: {
+                        unreadBadge(favorite.count)
+                    }
+                }
+                .buttonStyle(.plain)
+                .id(SidebarKeyboardItem.favorite(favorite.id))
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
+                .accessibilityAddTraits(activeDesktopFavoriteID == favorite.id ? .isSelected : [])
+                .help([favorite.title, favorite.subtitle, favorite.count > 0 ? favorite.countDescription : nil]
+                    .compactMap { $0 }.joined(separator: "\n"))
+                .dropDestination(for: String.self) { representations, _ in
+                    guard let destination = favoriteFolder(favorite.id) else { return false }
+                    return handleDrop(representations, on: destination.folder, sourceID: destination.sourceID)
+                }
+                .contextMenu {
+                    Button(String(localized: "Edit favourites", bundle: .module)) { showsFavoritesEditor = true }
+                    if let destination = favoriteFolder(favorite.id) {
+                        Divider()
+                        folderContextMenu(folder: destination.folder, sourceID: destination.sourceID)
+                    }
+                }
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func menuChoice(_ title: String, isSelected: Bool) -> some View {
@@ -614,14 +825,10 @@ public struct FolderSidebar: View {
             #if os(iOS)
             HStack(spacing: BrevSpacing.xs) {
                 Text(verbatim: section.title)
-                    .brevFont(.caption)
+                    .brevFont(.subheadline)
                     .fontWeight(.medium)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .truncationMode(.tail)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: sidebarMetrics.disclosureHitSize)
-                    .accessibilityHidden(true)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
@@ -629,10 +836,12 @@ public struct FolderSidebar: View {
                 } else if !isExpanded {
                     unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .brevFont(.caption)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(theme.textSecondary.color)
-            .padding(.leading, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
@@ -643,17 +852,15 @@ public struct FolderSidebar: View {
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(theme.textTertiary.color)
-                    .accessibilityHidden(true)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(theme.warning.color)
-                } else if !isExpanded {
-                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textTertiary.color)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(theme.textSecondary.color)
             .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
@@ -1141,9 +1348,12 @@ public struct FolderSidebar: View {
         expandedSourceIDs = FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
             from: mailboxDisclosureData,
             sourceIDs: sourceSections.map(\.id),
-            selectedSourceID: navigation.selectedSourceID
+            selectedSourceID: navigation.selectedSourceID,
+            initiallyCollapsed: sidebarStartsCollapsed
         )
     }
+
+    private var sidebarStartsCollapsed: Bool { true }
 
     @ViewBuilder
     private var mailboxHeader: some View {
@@ -1294,6 +1504,14 @@ public struct FolderSidebar: View {
     }
     #endif
 
+    private var folderLabelSpacing: CGFloat {
+        #if os(iOS)
+        BrevSpacing.sm
+        #else
+        BrevSpacing.xs
+        #endif
+    }
+
     private func folderRow(
         _ row: FolderSidebarRow,
         sourceID: MailSourceID?
@@ -1304,7 +1522,7 @@ public struct FolderSidebar: View {
             Button {
                 select(folder, in: sourceID)
             } label: {
-                HStack(spacing: BrevSpacing.xs) {
+                HStack(spacing: folderLabelSpacing) {
                     if showSidebarIcons {
                         roleIcon(for: folder.role)
                     }
@@ -1316,7 +1534,11 @@ public struct FolderSidebar: View {
                         .fontWeight(.regular)
                     #endif
                         .foregroundStyle(theme.textPrimary.color)
+                    #if os(iOS)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    #else
                         .lineLimit(1)
+                    #endif
                     Spacer(minLength: BrevSpacing.sm)
                     unreadBadge(folder.unreadCount)
                 }
@@ -1400,8 +1622,11 @@ public struct FolderSidebar: View {
         )
     }
 
-    private func select(_ folder: Folder, in sourceID: MailSourceID?) {
-        activateDestination {
+    private func select(_ folder: Folder, in sourceID: MailSourceID?, opensMessages: Bool = true) {
+        #if os(macOS)
+        selectedFavoriteID = nil
+        #endif
+        activateDestination(opensMessages: opensMessages) {
             if let sourceID {
                 navigation.selectFolder(folder.id, in: sourceID)
             } else {
@@ -1411,10 +1636,11 @@ public struct FolderSidebar: View {
         }
     }
 
-    private func activateDestination(_ selection: () -> Void) {
+    private func activateDestination(opensMessages: Bool = true, _ selection: () -> Void) {
         FolderSidebarDestinationActivation.activate(
             selection: selection,
-            onActivated: onOpenMessages
+            onActivated: onOpenMessages,
+            opensMessages: opensMessages
         )
     }
 
@@ -1514,7 +1740,10 @@ public struct FolderSidebar: View {
     }
 
     private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {
-        navigation.selectedCollectionFolderID == nil
+        #if os(macOS)
+        if activeDesktopFavoriteID != nil { return false }
+        #endif
+        return navigation.selectedCollectionFolderID == nil
             && navigation.selectedFolderID == folder.id
             && navigation.selectedSourceID == sourceID
     }
@@ -1715,12 +1944,13 @@ public struct FolderSidebar: View {
     private func roleIcon(for role: FolderRole) -> some View {
         #if os(iOS)
         Image(systemName: systemImage(for: role))
+            .dynamicTypeSize(...DynamicTypeSize.large)
             .foregroundStyle(theme.textSecondary.color)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
         #else
         Image(systemName: systemImage(for: role))
             .foregroundStyle(theme.textSecondary.color)
-            .font(.body)
+            .brevFont(.body)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
         #endif
     }
@@ -1738,8 +1968,7 @@ public struct FolderSidebar: View {
                     minWidth: sidebarMetrics.unreadBadgeMinimumWidth,
                     minHeight: sidebarMetrics.unreadBadgeMinimumHeight
                 )
-                .background(theme.bgTertiary.color)
-                .clipShape(Capsule())
+
             #else
             Text(verbatim: "\(count)")
                 .brevFont(.caption)
@@ -1778,7 +2007,7 @@ public struct FolderSidebar: View {
     /// and disclosure controls are skipped — arrows move between the
     /// destinations themselves, like Mail.app's mailbox list.
     private enum SidebarKeyboardItem: Hashable {
-        case unifiedInbox
+        case favorite(MailboxFavoriteID)
         case smartView(String)
         case allAttachments
         case savedSearch(SmartMailbox.ID)
@@ -1799,10 +2028,8 @@ public struct FolderSidebar: View {
     /// lays out so arrow keys walk the same sequence the eye scans.
     private var sidebarKeyboardTargets: [SidebarKeyboardTarget] {
         var targets: [SidebarKeyboardTarget] = []
-        if sourceSections.count > 1 {
-            targets.append(
-                SidebarKeyboardTarget(item: .unifiedInbox, row: nil, sourceID: nil)
-            )
+        targets += visibleFavorites.map {
+            SidebarKeyboardTarget(item: .favorite($0.id), row: nil, sourceID: nil)
         }
         if showsSmartViews, smartViewSettings.showInSidebar,
            FolderSidebarSmartViewPresentation.isExpanded(
@@ -1884,7 +2111,7 @@ public struct FolderSidebar: View {
     /// The keyboard item matching the current navigation selection, when
     /// the selection is one of the reachable destinations.
     private var sidebarKeyboardSelectionItem: SidebarKeyboardItem? {
-        if navigation.isUnifiedInboxSelected { return .unifiedInbox }
+        if let id = activeDesktopFavoriteID { return .favorite(id) }
         if navigation.isAllAttachmentsSelected { return .allAttachments }
         if let searchID = navigation.selectedSavedSearchID {
             return .savedSearch(searchID)
@@ -1979,17 +2206,17 @@ public struct FolderSidebar: View {
 
     private func activateSidebarKeyboardItem(_ item: SidebarKeyboardItem) {
         switch item {
-        case .unifiedInbox:
-            activateDestination { navigation.selectUnifiedInbox() }
+        case .favorite(let id):
+            selectFavorite(id, opensMessages: false)
         case .smartView(let builtInID):
             if let smartView = MailboxSmartView.builtIns
                 .first(where: { $0.id == builtInID }) {
-                activateDestination { smartView.select(in: navigation) }
+                activateDestination(opensMessages: false) { smartView.select(in: navigation) }
             }
         case .allAttachments:
-            activateDestination { navigation.selectAllAttachmentsSmartView() }
+            activateDestination(opensMessages: false) { navigation.selectAllAttachmentsSmartView() }
         case .savedSearch(let id):
-            activateDestination { navigation.selectSavedSearch(id: id) }
+            activateDestination(opensMessages: false) { navigation.selectSavedSearch(id: id) }
         case .outbox:
             onOpenOutbox?()
         case .folder, .rootFolder:
@@ -1997,7 +2224,7 @@ public struct FolderSidebar: View {
                 where: { $0.item == item }
             ),
                 let folder = target.row?.folder {
-                select(folder, in: target.sourceID)
+                select(folder, in: target.sourceID, opensMessages: false)
             }
         }
     }

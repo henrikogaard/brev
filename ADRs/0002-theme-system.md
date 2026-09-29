@@ -178,7 +178,15 @@ Three modes in settings:
 - **Always light.** Single chosen light theme, ignores system.
 - **Always dark.** Single chosen dark theme, ignores system.
 
-Default pair: Brev Paper (light) + Brev Slate (dark).
+Default pair: Brev Mono Light (light) + Brev Mono Grey (dark).
+
+Brev Mono Grey is the softer neutral dark default: charcoal primary surfaces,
+lighter secondary/tertiary surfaces, and a distinct neutral selection fill.
+Small primary, secondary, and tertiary text must retain at least 4.5:1 contrast
+on normal, hover, and selected surfaces. Brev Mono Dark remains selectable.
+The new default applies to unsaved or invalid theme choices; existing saved
+light/dark choices and accent overrides remain intact. This adds a built-in
+palette using the existing token schema, with no migration or new token.
 
 ## Rationale
 

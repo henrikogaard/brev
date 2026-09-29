@@ -258,6 +258,50 @@ import Testing
 @Suite("AI Writer macOS snapshots")
 @MainActor
 struct AIWriterSectionMacSnapshotTests {
+    @Test("reorganised settings preserve compact task navigation", arguments: ["light", "dark"])
+    func navigationPolish(_ mode: String) throws {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let suite = "NavigationPolish-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(MailboxListDensity.compact.rawValue, forKey: MailboxViewPreferenceKey.listDensity)
+        let store = SettingsPersistenceStore(defaults: defaults)
+        for section in [SettingsSection.compose, .signature, .privacy, .preferenceSync] {
+            let view = SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                                    sectionAvailability: .macOSDirectDownload, initialSection: section, settingsStore: store)
+            capture(view, theme: theme, name: section.rawValue + "-" + mode, size: CGSize(width: 960, height: 700))
+        }
+    }
+
+    @Test("Transparency choices explain window coverage", arguments: [WindowTransparencySelection.off, .sidebars, .fullWindows])
+    func windowTransparency(selection: WindowTransparencySelection) {
+        var preferences = WindowAppearancePreferences.defaults
+        selection.apply(to: &preferences)
+        let theme = BrevTheme.brevMonoGrey
+        let view = WindowAppearanceControls(preferences: .constant(preferences), unifiedTitlebar: .constant(true),
+                                            showsAdvanced: .constant(false), onChange: {})
+            .padding(24).frame(width: 680, height: 470, alignment: .topLeading)
+            .background(theme.bgPrimary.color).brevTheme(theme)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: .darkAqua)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 680, height: 470)), named: String(describing: selection),
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("Desktop sizing updates settings navigation and controls", arguments: [false, true])
+    func desktopSizing(large: Bool) throws {
+        let suite = "DesktopSizingSnapshot-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set((large ? MailboxTextSize.large : .small).rawValue, forKey: MailboxViewPreferenceKey.textSize)
+        defaults.set((large ? MailboxListDensity.spacious : .compact).rawValue, forKey: MailboxViewPreferenceKey.listDensity)
+        let theme = BrevTheme.brevMonoLight
+        let view = SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                                initialSection: .appearance, settingsStore: SettingsPersistenceStore(defaults: defaults))
+        capture(view, theme: theme, name: large ? "desktop-large-spacious" : "desktop-small-compact",
+                size: CGSize(width: 960, height: 640))
+    }
+
     @Test("Settings surfaces share readable light and dark layout", arguments: ["light", "dark"])
     func settingsSurfaces(_ mode: String) {
         guard #available(macOS 26.0, *) else { return }

@@ -46,8 +46,7 @@ struct DraggableMessageID: Transferable, Codable, Sendable, Hashable {
 
 /// Scope filter applied on top of the free-text search query.
 ///
-/// Displayed as horizontally-scrolling chip buttons below the search
-/// field when the user has entered search text.
+/// Selected in the search Filters menu when the user has entered search text.
 enum SearchScope: String, CaseIterable, Identifiable {
     case all
     case from
@@ -59,11 +58,11 @@ enum SearchScope: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .all: return "All"
-        case .from: return "From"
-        case .subject: return "Subject"
-        case .hasAttachment: return "Attachment"
-        case .unread: return "Unread"
+        case .all: return String(localized: "All", bundle: .module)
+        case .from: return String(localized: "From", bundle: .module)
+        case .subject: return String(localized: "Subject", bundle: .module)
+        case .hasAttachment: return String(localized: "Attachment", bundle: .module)
+        case .unread: return String(localized: "Unread", bundle: .module)
         }
     }
 
@@ -82,11 +81,11 @@ extension SearchExecution {
     var messageListTitle: String {
         switch self {
         case .cacheOnly:
-            return "Local"
+            return String(localized: "Local", bundle: .module)
         case .cacheThenServer:
-            return "Auto"
+            return String(localized: "Auto", bundle: .module)
         case .serverOnly:
-            return "Server"
+            return String(localized: "Server", bundle: .module)
         }
     }
 

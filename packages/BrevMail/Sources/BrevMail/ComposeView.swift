@@ -291,6 +291,7 @@ public struct ComposeView: View {
     @AppStorage("compose.messageFormat") private var composeMessageFormatRaw = "automatic"
     @AppStorage(ComposeTextCheckingPolicy.storageKey) private var textCheckingEnabled = ComposeTextCheckingPolicy.defaultIsEnabled
     @AppStorage(MailboxViewPreferenceKey.fontFamily) private var mailboxFontFamilyRaw = MailboxFontFamily.system.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var mailboxTextSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false
@@ -544,6 +545,7 @@ public struct ComposeView: View {
 
     public var body: some View {
         let content = composeContent
+            .brevDesktopSizing()
             .overlay { dropHighlight }
             .onDrop(of: ComposeAttachmentDrop.acceptedContentTypes, isTargeted: $isDropTargeted) { providers in
                 handleDrop(providers)
@@ -895,7 +897,7 @@ public struct ComposeView: View {
         // centred regardless of the Send label's width.
         .overlay {
             Text(composeTitle)
-                .font(.headline)
+                .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
                 .lineLimit(1)
                 .accessibilityAddTraits(.isHeader)
@@ -1243,7 +1245,7 @@ public struct ComposeView: View {
                         ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
                 }
             }
-            .font(.subheadline.weight(.semibold))
+            .brevFont(.subheadline).fontWeight(.semibold)
             .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.accent.color)
             .lineLimit(1)
             .padding(.horizontal, BrevSpacing.xs)
@@ -1254,7 +1256,7 @@ public struct ComposeView: View {
             // rather than a capsule, keeping the 44pt hit area.
             Text(verbatim: pendingUndoSendTask != nil
                 ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
-                .font(.subheadline.weight(.semibold))
+                .brevFont(.subheadline).fontWeight(.semibold)
                 .foregroundStyle(
                     isDisabled
                         ? theme.textTertiary.color
@@ -1340,9 +1342,7 @@ public struct ComposeView: View {
 
     private var fieldVerticalPadding: CGFloat {
         #if os(macOS)
-        // Generous row height for the header fields, closer to Apple Mail's
-        // compose rhythm.
-        return BrevSpacing.md
+        return (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.md)
         #else
         return BrevSpacing.md
         #endif
@@ -1730,7 +1730,7 @@ public struct ComposeView: View {
                 VStack(alignment: .leading, spacing: 0) {
                     Text(title)
                     Text(subtitle)
-                        .font(.caption)
+                        .brevFont(.caption)
                         .foregroundStyle(.secondary)
                 }
             } else {
@@ -2839,6 +2839,7 @@ public struct ComposeView: View {
     }
 
     private func send(bypassingSendGuard: Bool = false) async {
+        guard canSend else { return }
         guard !ComposeQuotedBodyUpgradePolicy.blocksSending(
             isUpgradePending: isQuotedBodyUpgradePending
         ) else { return }

@@ -44,6 +44,44 @@ struct ThreadInlineChildRow: View {
     }
 
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    #if os(iOS)
+    @ScaledMetric(relativeTo: .body) private var textScale: CGFloat = 1
+    @ScaledMetric(relativeTo: .caption) private var metadataScale: CGFloat = 1
+    #endif
+
+    private var usesAccessibilityLayout: Bool {
+        #if os(iOS)
+        dynamicTypeSize.isAccessibilitySize
+        #else
+        false
+        #endif
+    }
+
+    private var senderPointSize: CGFloat {
+        #if os(iOS)
+        (textSize.listTitlePointSize + 3) * textScale
+        #else
+        textSize.listTitlePointSize
+        #endif
+    }
+
+    private var previewPointSize: CGFloat {
+        #if os(iOS)
+        (textSize.listDetailPointSize + 2) * textScale
+        #else
+        max(12, textSize.captionPointSize)
+        #endif
+    }
+
+    private var datePointSize: CGFloat {
+        #if os(iOS)
+        max(12, textSize.captionPointSize) * metadataScale
+        #else
+        max(12, textSize.captionPointSize)
+        #endif
+    }
+
     // Read from the environment so locale/time-zone overrides reach the row
     // and snapshots stay deterministic, matching MessageListRow.
     @Environment(\.locale) private var locale
@@ -66,7 +104,7 @@ struct ThreadInlineChildRow: View {
     var referenceDate = Date()
 
     var body: some View {
-        HStack(spacing: BrevSpacing.sm) {
+        HStack(alignment: usesAccessibilityLayout ? .top : .center, spacing: BrevSpacing.sm) {
             // Unread indicator — labelled so the combined row element
             // announces the state instead of a bare dot being skipped.
             // Diameter matches the parent row's dot so children align to
@@ -80,38 +118,43 @@ struct ThreadInlineChildRow: View {
             // Sender avatar — slightly smaller than the top-level row to keep
             // the subordinate hierarchy, but still density-driven. The leading
             // padding is the child indent (HStack spacing already adds .sm).
-            BrevAvatarView(
-                email: header.from.email,
-                displayName: header.from.name,
-                size: max(20, density.avatarSize - 8)
-            )
-            .padding(.leading, BrevSpacing.xl - BrevSpacing.sm)
+            if !usesAccessibilityLayout {
+                BrevAvatarView(
+                    email: header.from.email,
+                    displayName: header.from.name,
+                    size: max(20, density.avatarSize - 8)
+                )
+                .padding(.leading, BrevSpacing.xl - BrevSpacing.sm)
+            }
 
             // Sender + snippet
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
+                let identityLayout = usesAccessibilityLayout
+                    ? AnyLayout(VStackLayout(alignment: .leading, spacing: BrevSpacing.xxs))
+                    : AnyLayout(HStackLayout())
+                identityLayout {
                     Text(header.from.name ?? header.from.email)
                         .font(fontFamily.font(
-                            size: textSize.listTitlePointSize,
+                            size: senderPointSize,
                             weight: MessageListSenderPresentation.fontWeight
                         ))
                         .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
+                        .lineLimit(usesAccessibilityLayout ? nil : 1)
 
-                    Spacer()
+                    if !usesAccessibilityLayout { Spacer() }
 
                     Text(dateLabel)
-                        .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                        .font(fontFamily.font(size: datePointSize))
                         .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                 }
 
                 Text(MessageListPresentation.previewText(from: header.snippet, subject: header.subject))
-                    .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
+                    .font(fontFamily.font(size: previewPointSize))
                     .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
+                    .lineLimit(usesAccessibilityLayout ? 2 : 1)
             }
         }
-        .padding(.vertical, density.verticalPadding * 0.75)
+        .padding(.vertical, usesAccessibilityLayout ? BrevSpacing.md : density.verticalPadding * 0.75)
         .padding(.horizontal, BrevSpacing.md)
         .background(rowBackground)
         .overlay(alignment: .leading) {

@@ -10,48 +10,46 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevAvatars
 import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
 
+#if canImport(Contacts)
+import Contacts
+#endif
+
 struct PrivacySection: View {
     @Environment(\.brevTheme) private var theme
     @State private var avatarSettings: AvatarPrivacySettings
-    @State private var browserSettings: BrowserSettings
     @State private var mailboxSettings: MailboxViewSettings
     @State private var remoteContentPolicy: RemoteContentPolicy
-    @State private var preferenceSyncSettings: PreferenceSyncSettings
 
     private let settingsStore: SettingsPersistenceStore
 
     init(settingsStore: SettingsPersistenceStore = .standard) {
         self.settingsStore = settingsStore
         _avatarSettings = State(initialValue: settingsStore.avatarPrivacySettings())
-        _browserSettings = State(initialValue: settingsStore.browserSettings())
         _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
         _remoteContentPolicy = State(initialValue: settingsStore.remoteContentPolicy())
-        _preferenceSyncSettings = State(initialValue: settingsStore.preferenceSyncSettings())
     }
 
     var body: some View {
         SectionScaffold(
             title: String(localized: "Privacy", bundle: .module),
-            subtitle: String(localized: "A quick view of Brev's network and data boundaries.", bundle: .module)
+            subtitle: String(localized: "Control remote images, sender image sources, and trusted senders.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
-                privacyDefaults
-                browserGroup
-                optInStatus
-                preferenceSyncGroup
+                remoteImagesGroup
+                senderIconGroup
                 remoteContentAllowlist
+                privacyDefaults
             }
             .onAppear {
                 avatarSettings = settingsStore.avatarPrivacySettings()
-                browserSettings = settingsStore.browserSettings()
                 mailboxSettings = settingsStore.mailboxViewSettings()
                 remoteContentPolicy = settingsStore.remoteContentPolicy()
-                preferenceSyncSettings = settingsStore.preferenceSyncSettings()
             }
         }
     }
@@ -67,7 +65,7 @@ struct PrivacySection: View {
                     symbolName: "eye.slash",
                     title: String(localized: "Remote content starts blocked", bundle: .module),
                     subtitle: String(
-                        localized: "Images, web fonts, and tracking pixels remain off unless enabled in Mailbox View.",
+                        localized: "Images, web fonts, and tracking pixels remain off unless you allow remote content.",
                         bundle: .module
                     )
                 )
@@ -75,7 +73,7 @@ struct PrivacySection: View {
                     symbolName: "person.crop.circle",
                     title: String(localized: "Sender icons are explicit", bundle: .module),
                     subtitle: String(
-                        localized: "Contacts stay local; Gravatar, BIMI, and favicons are controlled from Mailbox View.",
+                        localized: "Contacts stay local; external sender image sources require your permission above.",
                         bundle: .module
                     )
                 )
@@ -86,33 +84,6 @@ struct PrivacySection: View {
                         localized: "Draft text is only sent when you enable AI Writer and choose an AI action.",
                         bundle: .module
                     )
-                )
-            }
-        }
-    }
-
-    private var browserGroup: some View {
-        SettingsGroup(
-            title: String(localized: "Browser", bundle: .module),
-            subtitle: String(localized: "Choose where Brev opens links from messages and settings.", bundle: .module),
-            symbolName: "safari"
-        ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsPickerRow(
-                    symbolName: "link",
-                    title: String(localized: "Open links in", bundle: .module),
-                    subtitle: browserSettings.preferredBrowser.subtitle,
-                    selection: browserBinding(for: \.preferredBrowser)
-                ) {
-                    ForEach(BrowserChoice.availableChoices) { browser in
-                        Text(browser.title).tag(browser)
-                    }
-                }
-
-                SettingsInfoCallout(
-                    symbolName: "arrow.up.right.square",
-                    message: browserOpeningMessage,
-                    tone: .info
                 )
             }
         }
@@ -157,101 +128,11 @@ struct PrivacySection: View {
         }
     }
 
-    private var optInStatus: some View {
-        SettingsGroup(
-            title: String(localized: "Current opt-ins", bundle: .module),
-            subtitle: String(localized: "Status pulled from your saved settings.", bundle: .module),
-            symbolName: "checklist"
-        ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsInfoCallout(
-                    symbolName: mailboxSettings.allowRemoteContent ? "network" : "checkmark.shield",
-                    message: remoteContentStatus,
-                    tone: mailboxSettings.allowRemoteContent ? .warning : .success
-                )
-                SettingsInfoCallout(
-                    symbolName: avatarSettings.usesExternalSources ? "network" : "checkmark.shield",
-                    message: avatarStatus,
-                    tone: avatarSettings.usesExternalSources ? .warning : .success
-                )
-            }
-        }
-    }
-
-    private var preferenceSyncGroup: some View {
-        SettingsGroup(
-            title: String(localized: "iCloud sync", bundle: .module),
-            subtitle: String(
-                localized: "Mirror a small set of preferences between your devices through your own iCloud account.",
-                bundle: .module
-            ),
-            symbolName: "icloud"
-        ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsToggleRow(
-                    symbolName: "arrow.triangle.2.circlepath.icloud",
-                    title: String(localized: "Sync preferences with iCloud", bundle: .module),
-                    subtitle: String(
-                        localized: "Snoozes, VIPs, inbox category choices, pinned messages, blocked senders, reminders, signatures, templates, smart mailboxes, compose, and sidebar preferences. Never mail, accounts, or passwords.",
-                        bundle: .module
-                    ),
-                    isOn: preferenceSyncBinding
-                )
-                SettingsInfoCallout(
-                    symbolName: preferenceSyncSettings.isICloudSyncEnabled ? "icloud.fill" : "icloud.slash",
-                    message: preferenceSyncStatus,
-                    tone: preferenceSyncSettings.isICloudSyncEnabled ? .info : .success
-                )
-            }
-        }
-    }
-
-    private var preferenceSyncStatus: String {
-        if preferenceSyncSettings.isICloudSyncEnabled {
-            return "Preferences are stored in Apple iCloud Key-Value Storage under your Apple ID and may take a moment to reach other devices. Turning this off stops syncing on this device only."
-        }
-        return String(localized: "Preferences stay on this device.", bundle: .module)
-    }
-
-    private var preferenceSyncBinding: Binding<Bool> {
-        Binding(
-            get: { preferenceSyncSettings.isICloudSyncEnabled },
-            set: { newValue in
-                preferenceSyncSettings.isICloudSyncEnabled = newValue
-                settingsStore.save(preferenceSyncSettings)
-            }
-        )
-    }
-
     private var remoteContentStatus: String {
         if mailboxSettings.useRichRenderer, mailboxSettings.allowRemoteContent {
             return String(localized: "Remote images are allowed by default for rich HTML messages.", bundle: .module)
         }
         return String(localized: "Remote images are not loaded by default.", bundle: .module)
-    }
-
-    private var avatarStatus: String {
-        if avatarSettings.usesExternalSources {
-            return String(localized: "At least one external sender icon source is enabled.", bundle: .module)
-        }
-        if avatarSettings.useContacts {
-            return String(localized: "Sender icons use local Contacts photos and generated initials.", bundle: .module)
-        }
-        return String(localized: "Sender icons use generated initials only.", bundle: .module)
-    }
-
-    private var browserOpeningMessage: String {
-        switch browserSettings.preferredBrowser {
-        case .systemDefault:
-            return String(localized: "Brev asks the operating system to open links in your default browser.", bundle: .module)
-        case .safari:
-            return String(localized: "Brev targets Safari directly on macOS.", bundle: .module)
-        default:
-            return String(
-                localized: "Brev will try to open links in the selected browser and fall back if it is unavailable.",
-                bundle: .module
-            )
-        }
     }
 
     private func privacyRow(
@@ -315,14 +196,178 @@ struct PrivacySection: View {
         settingsStore.save(remoteContentPolicy)
     }
 
-    private func browserBinding<Value>(
-        for keyPath: WritableKeyPath<BrowserSettings, Value>
+    private var remoteImagesGroup: some View {
+        SettingsGroup(title: String(localized: "Remote content", bundle: .module),
+                      subtitle: String(
+                          localized: "Images, web fonts, and tracking pixels are blocked until you allow them.",
+                          bundle: .module
+                      ),
+                      symbolName: "photo") {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                SettingsToggleRow(
+                    symbolName: "photo",
+                    title: String(localized: "Always load remote images", bundle: .module),
+                    subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
+                    isOn: mailboxBinding(for: \.allowRemoteContent),
+                    isEnabled: mailboxSettings.useRichRenderer
+                )
+
+                SettingsInfoCallout(symbolName: "checkmark.shield", message: remoteContentStatus, tone: .info)
+            }
+        }
+    }
+
+    private var senderIconGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Sender image sources", bundle: .module),
+            subtitle: String(
+                localized: "Choose which avatar sources Brev may use when sender images are visible.",
+                bundle: .module
+            ),
+            symbolName: "person.crop.circle.badge.checkmark"
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                SettingsToggleRow(
+                    symbolName: "person.crop.square",
+                    title: String(localized: "Use Contacts photos", bundle: .module),
+                    subtitle: String(localized: "Looks up sender photos locally on this device.", bundle: .module),
+                    isOn: avatarBinding(for: \.useContacts),
+                    isEnabled: mailboxSettings.showSenderAvatars
+                )
+
+                SettingsToggleRow(
+                    symbolName: "number.circle",
+                    title: String(localized: "Use Gravatar", bundle: .module),
+                    subtitle: String(localized: "Sends a SHA-256 hash of the sender address to gravatar.com.", bundle: .module),
+                    isOn: avatarBinding(for: \.useGravatar),
+                    isEnabled: mailboxSettings.showSenderAvatars
+                )
+
+                SettingsToggleRow(
+                    symbolName: "checkmark.seal",
+                    title: String(localized: "Use BIMI logos", bundle: .module),
+                    subtitle: String(localized: "Allows DNS lookups for sender-domain BIMI records.", bundle: .module),
+                    isOn: avatarBinding(for: \.useBIMI),
+                    isEnabled: mailboxSettings.showSenderAvatars
+                )
+
+                SettingsToggleRow(
+                    symbolName: "globe",
+                    title: String(localized: "Use domain favicons", bundle: .module),
+                    subtitle: String(localized: "Allows fetching icons from sender domains during sync.", bundle: .module),
+                    isOn: avatarBinding(for: \.useFavicon),
+                    isEnabled: mailboxSettings.showSenderAvatars
+                )
+
+                HStack(spacing: BrevSpacing.sm) {
+                    BrevButton(String(localized: "Initials only", bundle: .module), style: .secondary) {
+                        updateAvatarSettings { $0.useInitialsOnly() }
+                    }
+                    BrevButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
+                        Task { await AvatarResolver.shared.clearCache() }
+                    }
+                    Spacer(minLength: BrevSpacing.md)
+                }
+                .disabled(!mailboxSettings.showSenderAvatars)
+                .opacity(mailboxSettings.showSenderAvatars ? 1 : 0.55)
+
+                SettingsInfoCallout(
+                    symbolName: avatarFooterSymbolName,
+                    message: avatarFooterText,
+                    tone: avatarFooterTone
+                )
+            }
+        }
+    }
+
+    private var avatarFooterText: String {
+        if !mailboxSettings.showSenderAvatars {
+            return String(
+                localized: "Sender images are hidden, so mailbox rows and message headers stay more compact.",
+                bundle: .module
+            )
+        }
+        if avatarSettings.usesExternalSources {
+            return String(localized: "External sender icon lookups are enabled for at least one source.", bundle: .module)
+        }
+        if avatarSettings.useContacts {
+            return String(
+                localized: "External sender icon lookups are off. Brev uses Contacts photos and generated initials.",
+                bundle: .module
+            )
+        }
+        return String(localized: "All sender icon sources are off. Brev uses generated initials only.", bundle: .module)
+    }
+
+    private var avatarFooterSymbolName: String {
+        if !mailboxSettings.showSenderAvatars {
+            return "eye.slash"
+        }
+        if avatarSettings.usesExternalSources {
+            return "network"
+        }
+        if avatarSettings.useContacts {
+            return "checkmark.shield"
+        }
+        return "person.crop.circle"
+    }
+
+    private var avatarFooterTone: SettingsCalloutTone {
+        if !mailboxSettings.showSenderAvatars {
+            return .info
+        }
+        if avatarSettings.usesExternalSources {
+            return .warning
+        }
+        if avatarSettings.useContacts {
+            return .success
+        }
+        return .info
+    }
+
+    private func avatarBinding(
+        for keyPath: WritableKeyPath<AvatarPrivacySettings, Bool>
+    ) -> Binding<Bool> {
+        Binding(
+            get: { avatarSettings[keyPath: keyPath] },
+            set: { newValue in
+                updateAvatarSettings { $0[keyPath: keyPath] = newValue }
+            }
+        )
+    }
+
+    private func updateAvatarSettings(
+        _ mutate: (inout AvatarPrivacySettings) -> Void
+    ) {
+        let previouslyUsedContacts = avatarSettings.useContacts
+        mutate(&avatarSettings)
+        settingsStore.save(avatarSettings)
+        if !previouslyUsedContacts, avatarSettings.useContacts {
+            requestContactsAccessFromExplicitSettingsAction()
+        }
+        let preferences = avatarSettings.avatarPreferences
+        Task {
+            await AvatarResolver.shared.updatePreferences(preferences)
+        }
+    }
+
+    private func requestContactsAccessFromExplicitSettingsAction() {
+        #if canImport(Contacts)
+        guard CNContactStore.authorizationStatus(for: .contacts) == .notDetermined else { return }
+        Task {
+            _ = try? await CNContactStore().requestAccess(for: .contacts)
+        }
+        #endif
+    }
+
+    private func mailboxBinding<Value>(
+        for keyPath: WritableKeyPath<MailboxViewSettings, Value>
     ) -> Binding<Value> {
         Binding(
-            get: { browserSettings[keyPath: keyPath] },
+            get: { mailboxSettings[keyPath: keyPath] },
             set: { newValue in
-                browserSettings[keyPath: keyPath] = newValue
-                settingsStore.save(browserSettings)
+                mailboxSettings[keyPath: keyPath] = newValue
+                settingsStore.save(mailboxSettings)
             }
         )
     }

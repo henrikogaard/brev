@@ -139,6 +139,12 @@ struct RecipientChipField<Accessory: View>: View {
                     }
                 #endif
             }
+            if recipients.contains(where: { !RecipientAddressValidator.isLikelyEmailAddress($0) }) {
+                Text("Correct or remove the highlighted address before sending.", bundle: .module)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.danger.color)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if isFocused, !suggestions.isEmpty, !suggestionsDismissed {
                 RecipientSuggestionList(suggestions: suggestions) { suggestion in
                     selectSuggestion(suggestion)

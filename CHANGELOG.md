@@ -6,6 +6,30 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Desktop Favourites puts All Inboxes and each account inbox above collapsible
+  accounts, with editable Drafts/Sent shortcuts and saved order/visibility.
+  Compact rows follow desktop sizing; arrow navigation stays in the sidebar
+  until Return or Right opens the mailbox.
+- Brev Mono Grey is the new default dark theme, with softer charcoal surfaces
+  and readable text contrast. Existing saved themes and accents are preserved.
+- Appearance now offers Off, Sidebars only, and Full windows transparency,
+  with labelled opacity sliders and a preview of Mail/Settings and
+  Compose/message windows. Full windows covers all of these surfaces;
+  Sidebars only keeps content and auxiliary windows opaque.
+
+- Settings now uses eight task categories plus About & Updates on both
+  platforms, with subpages for Writing, mailboxes, privacy, and storage.
+  Send safety precedes expandable recipient history; remote-image and avatar
+  permissions live in Privacy, browser choice in Reading, and preference sync
+  in Sync & Storage. Existing settings and search destinations are preserved.
+- iPhone mailbox navigation uses inset Favourites, account, and utility groups,
+  aligned counts, and a checkmark-based shortcut editor. Large text wraps
+  without icon overlap and keeps the unread/draft count meaning visible.
+
+- iOS mailbox Favourites show All Inboxes and each account inbox first, with
+  editable Drafts/Sent shortcuts and saved ordering, visibility, and account
+  expansion. Inbox counts use unread mail; Drafts uses the total draft count.
+
 - The nightly release workflow now ships the newest commit with a
   passing Build run (instead of refusing when main's head only has
   cancelled runs), runs at 23:47 UTC to avoid the busiest GitHub
@@ -31,6 +55,37 @@ All notable changes to Brev are documented here.
 
 
 ### Fixed
+
+- Fixed an immediate iPhone launch crash caused by mailbox view construction
+  exhausting the main-thread stack in Release builds.
+
+- Transparent Mail and Settings sidebars are no longer covered by opaque root
+  backgrounds. Window opacity reaches 100%; the desktop's inactive message-card
+  opacity control has been removed from its flat reader layout.
+
+- Compact desktop sizing preserves native toolbar button proportions while
+  keeping sidebar, message-list and reader content at the selected density.
+
+- Desktop Settings responds to arrow keys when its sidebar has keyboard focus,
+  and search results can be activated across the full row.
+
+- Desktop Appearance now controls shared text size and interface density,
+  including sidebars, mail views, settings, and auxiliary editors. Existing
+  size/density preferences are preserved; Settings search routes to Appearance.
+
+- iPhone and iPad mailbox rows remove excess outer padding, retaining
+  44-point touch targets while showing more folders on screen.
+- iPhone message rows, inline replies, and conversation identity now scale
+  coherently with Dynamic Type and stack at accessibility sizes. Sender
+  addresses remain readable at ordinary phone widths.
+- Rich message bodies recalculate their height when a reader is resized,
+  preserving the final lines without reopening the message.
+- Invalid To, Cc, or Bcc recipients prevent sending and display a visible
+  correction message; unfinished drafts can still be saved.
+- Search keeps mailbox scope visible and groups secondary controls in a
+  Filters menu. Unverified result coverage includes an explanation and Retry.
+- Mail search controls, message counts, and compose feedback use Norwegian
+  translations; elapsed message ages use consistent positive durations.
 
 - Google Drive Picker configuration now reaches both app bundles and the local,
   nightly, and release builds. Local configuration reports presence only and
