@@ -16,6 +16,12 @@ This is a navigation and presentation assessment, not functional acceptance of
 every integration. iOS uses the shared sections but has not received a complete
 settings navigation walkthrough in this pass.
 
+The subsequent [unlocked desktop follow-up](../navigation-polish-2026-09-29/README.md#unlocked-desktop-follow-up)
+verified the reorganised category/subpage navigation, control search, all four
+Mailbox View tabs, About/Updates presentation, and live desktop sizing in Compose.
+It also fixed sidebar arrow-key handling and search-result hit areas. The table
+and captured journey below retain the original assessment's evidence boundaries.
+
 ## Findings and priorities
 
 | Priority | Finding | Evidence and consequence | Recommendation |

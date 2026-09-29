@@ -45,6 +45,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Compact desktop sizing preserves native toolbar button proportions while
+  keeping sidebar, message-list and reader content at the selected density.
+
+- Desktop Settings responds to arrow keys when its sidebar has keyboard focus,
+  and search results can be activated across the full row.
+
 - Desktop Appearance now controls shared text size and interface density,
   including sidebars, mail views, settings, and auxiliary editors. Existing
   size/density preferences are preserved; Settings search routes to Appearance.

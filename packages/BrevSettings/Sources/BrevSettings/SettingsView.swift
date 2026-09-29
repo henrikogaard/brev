@@ -380,6 +380,8 @@ public struct SettingsView: View {
                                     .foregroundStyle(theme.textSecondary.color)
                             }
                             .padding(.vertical, BrevSpacing.xs)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
                     }
@@ -407,15 +409,17 @@ public struct SettingsView: View {
         .background(BrevWindowSurfaceBackground(role: .sidebar).ignoresSafeArea())
         #if os(macOS)
             .background(BrevSplitViewColumnTransparencyFixer())
-            .onMoveCommand { direction in
-                guard normalizedSearchText.isEmpty, direction == .up || direction == .down else { return }
+            // Handle arrows when the native sidebar list itself holds keyboard focus.
+            .onKeyPress(keys: [.upArrow, .downArrow]) { press in
+                guard normalizedSearchText.isEmpty else { return .ignored }
                 let categories = navigation.availability.visibleCategories
-                guard let index = categories.firstIndex(of: navigation.selected.category) else { return }
-                let offset = direction == .down ? 1 : direction == .up ? -1 : 0
+                guard let index = categories.firstIndex(of: navigation.selected.category) else { return .ignored }
+                let offset = press.key == .downArrow ? 1 : -1
                 let next = min(max(index + offset, 0), categories.count - 1)
                 selectedPluginContribution = nil
                 searchTarget = nil
                 selectCategory(categories[next])
+                return .handled
             }
         #endif
     }

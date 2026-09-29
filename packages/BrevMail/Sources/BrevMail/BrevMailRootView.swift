@@ -648,8 +648,9 @@ public struct BrevMailRootView: View {
             }
         )
         #else
+        // Size each pane's content before attaching its toolbar. Inheriting
+        // compact controls at the split-view root squeezes native toolbar pills.
         mailRootContent
-            .brevDesktopSizing()
         #endif
     }
 
@@ -1481,6 +1482,7 @@ public struct BrevMailRootView: View {
                 }
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarSidebar }
             .brevMailPaneScrollEdgeBlur()
             // Outermost, after the surface wrapper. `navigationSplitViewColumnWidth`
@@ -1612,6 +1614,7 @@ public struct BrevMailRootView: View {
                 }
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarDetail }
     }
 
@@ -1849,6 +1852,7 @@ public struct BrevMailRootView: View {
                 animatedTopChromeStatusRail
             }
         #endif
+            .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarList }
         // No pane-level scroll edge blur here: the message list mounts the
         // band on its own scroll viewport (see MessageListView), which sits
