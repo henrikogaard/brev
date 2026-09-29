@@ -6,6 +6,13 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- The nightly release workflow now ships the newest commit with a
+  passing Build run (instead of refusing when main's head only has
+  cancelled runs), runs at 23:47 UTC to avoid the busiest GitHub
+  runner-provisioning window, and a bounded watchdog re-runs failed
+  jobs when the macOS runner was never acquired — up to three total
+  attempts, never masking genuine build failures.
+
 - Manual runner startup diagnostics compare macOS runner pools and release
   environment access without building or publishing an app.
 
