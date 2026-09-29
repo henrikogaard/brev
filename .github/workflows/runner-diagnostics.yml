@@ -1,0 +1,84 @@
+name: Runner startup diagnostics
+
+# Run on main so release environment branch rules match the nightly job.
+# No checkout, secret references, signing, or release commands.
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  macos-15-plain:
+    runs-on: macos-15
+    timeout-minutes: 5
+    steps:
+      - name: Report runner and toolchain
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+          DIAGNOSTIC_RUNNER_OS: ${{ runner.os }}
+          DIAGNOSTIC_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME"
+            printf 'Runner OS: %s\n' "$DIAGNOSTIC_RUNNER_OS"
+            printf 'Runner architecture: %s\n' "$DIAGNOSTIC_RUNNER_ARCH"
+            printf 'Image: %s\n' "${ImageOS:-unknown}"
+            printf 'Image version: %s\n' "${ImageVersion:-unknown}"
+            sw_vers
+            uname -m
+            xcode-select -p
+            xcodebuild -version
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  macos-15-release:
+    runs-on: macos-15
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - name: Report runner and toolchain
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+          DIAGNOSTIC_RUNNER_OS: ${{ runner.os }}
+          DIAGNOSTIC_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME"
+            printf 'Runner OS: %s\n' "$DIAGNOSTIC_RUNNER_OS"
+            printf 'Runner architecture: %s\n' "$DIAGNOSTIC_RUNNER_ARCH"
+            printf 'Image: %s\n' "${ImageOS:-unknown}"
+            printf 'Image version: %s\n' "${ImageVersion:-unknown}"
+            sw_vers
+            uname -m
+            xcode-select -p
+            xcodebuild -version
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+  macos-26-release:
+    runs-on: macos-26
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - name: Report runner and toolchain
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+          DIAGNOSTIC_RUNNER_OS: ${{ runner.os }}
+          DIAGNOSTIC_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          set -euo pipefail
+          {
+            printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME"
+            printf 'Runner OS: %s\n' "$DIAGNOSTIC_RUNNER_OS"
+            printf 'Runner architecture: %s\n' "$DIAGNOSTIC_RUNNER_ARCH"
+            printf 'Image: %s\n' "${ImageOS:-unknown}"
+            printf 'Image version: %s\n' "${ImageVersion:-unknown}"
+            sw_vers
+            uname -m
+            xcode-select -p
+            xcodebuild -version
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+

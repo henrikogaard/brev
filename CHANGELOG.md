@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Manual runner startup diagnostics compare macOS runner pools and release
+  environment access without building or publishing an app.
+
 - Home Screen widgets (ADR-0083): a "Mail" widget in small and medium
   sizes on iOS and macOS shows the unified-inbox unread count — the
   same number as the app badge — plus the three newest senders and

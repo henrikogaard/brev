@@ -4507,3 +4507,10 @@ buttons, and package-aware localization.
   `didAttemptSubmit || hasAnyInput`, because `canSubmit` is validity-gated
   and pristine forms should not show warnings. PR checks were inspected
   separately and were green at the time of inspection.
+
+## 2026-09-29 — Agent — Runner startup diagnostics
+
+- Goal: distinguish nightly runner-pool failures from release-environment startup failures.
+- Added three independent manual startup probes for macos-15 without an environment, macos-15 with release, and macos-26 with release. No checkout, secret references, signing, or publishing; token permissions are empty. Added a QA runbook including annotation retrieval when logs do not exist.
+- Verification: actionlint, git diff --check, and scripts/lint.sh passed; scripts/format.sh changed 0 of 1,194 files. Hosted probes require the workflow on main and remain pending maintainer merge approval.
+- TDD omitted for diagnostic workflow configuration; validate YAML/actions and embedded shell instead. No app builds or snapshots needed because application behavior is unchanged. README, privacy, and ADR changes are unnecessary; this uses existing hosted CI and changes no product or release policy.
