@@ -169,9 +169,15 @@ require_pattern "toolbar\\(removing: \\.title\\)" \
 require_pattern "titleVisibility = \\.hidden" \
   "$SOURCE_FILE" \
   "expected macOS 14 to hide the title through the narrow AppKit window bridge"
-require_multiline_pattern "\\.brevWindowTranslucency\\(windowRole: \\.settings\\)[[:space:]]*\\n[[:space:]]*\\.brevTransparentWindowToolbarBackground\\(\\)[[:space:]]*\\n[[:space:]]*\\.brevHiddenWindowTitle\\(\\)" \
+require_multiline_pattern "\\.brevWindowTranslucency\\(windowRole: \\.settings\\)[[:space:]]*\\n[[:space:]]*\\.brevTransparentWindowToolbarBackground\\(theme: session\\.theme\\)[[:space:]]*\\n[[:space:]]*\\.brevHiddenWindowTitle\\(\\)" \
   "$SOURCE_FILE" \
   "expected Settings to use the shared transparent, title-free window chrome"
+require_pattern "toolbarBackground\\(theme\\.bgPrimary\\.color, for: \\.windowToolbar\\)" \
+  "$SOURCE_FILE" \
+  "expected the separate toolbar background to use the active theme"
+require_pattern "unifiedTitlebar \\? \\.hidden : \\.visible" \
+  "$SOURCE_FILE" \
+  "expected toolbar background visibility to follow the titlebar setting"
 echo "    OK (native title removal with macOS 14 fallback)"
 
 echo "==> mail root pane contract"
