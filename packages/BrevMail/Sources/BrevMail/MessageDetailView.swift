@@ -212,6 +212,15 @@ public struct MessageDetailView: View {
             }
         }
         .task(id: reloadKey) { await reload() }
+        .task {
+            // This view sits in the detail column from launch on macOS /
+            // iPadOS, so its web view can warm before the first open rather
+            // than at it — leaving only document load + paint on the
+            // measured `ui.body.visible` path.
+            if usesRichHTMLBodyRenderer {
+                htmlWebViewStore.prewarm()
+            }
+        }
         .focusedSceneValue(\.mailPrintExportActions, printExportActions)
         .sheet(item: $pendingDriveSave) { pending in
             if let driveFeature {
