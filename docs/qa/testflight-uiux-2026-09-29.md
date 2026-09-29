@@ -68,5 +68,38 @@ The correction introduces fixed-size, deferred rendering boundaries between
 the root's existing construction stages. State, tasks, environment values
 and navigation remain owned by the mailbox root. CI now runs the dedicated
 Release launch regression independently of the iOS 27 pixel baseline gate.
-Validation and replacement-build availability will be recorded below once
-completed. Physical-device acceptance is still required.
+Validation and replacement-build availability are recorded below.
+Physical-device acceptance is still required.
+
+
+## Replacement 0.2.3 (7)
+
+Verified on 2026-09-29 after the immediate-launch report:
+
+| Check | Result |
+| --- | --- |
+| Source | `08c129299b48e8c41ebb6d9aae5cfe400519006e`, same feature branch and PR #162 |
+| CI | All 21 checks passed on the archive source; [Build run](https://github.com/henrikogaard/brev/actions/runs/36623579498) |
+| Crash regression | Unmodified Release mailbox root crashed with signal 11 under the phone stack budget; the corrected root passed one executed test, no skips, on local iOS 27.0 and hosted iOS 26.2 |
+| Rendering and navigation | 15 Release iOS rendering tests and 40 macOS navigation/reader-retention tests passed; no pixel baselines changed. Hosted iOS pixel comparisons remain deferred on its 26.2 runtime |
+| Simulator interactions | Real serve-sim frame verified; message open/return, Favourites/account switching, and Compose open/dismiss passed. No message sent. Original work inbox restored; temporary mirror cleaned up |
+| Release guard | Optimised `AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest` passed |
+| Archive | Release arm64 archive succeeded; app and all three extensions report 0.2.3 (7). Bundle/team, encryption declaration, privacy manifest, provider configuration parity with build 6 and strict deep signature verification passed |
+| Upload | Export/upload exited 0 at 22:23:43 CEST; Apple upload `30deaf61-a8be-46be-a720-d959919eb5a2` is COMPLETE with empty errors/warnings |
+| Distribution | Build is VALID, INTERNAL_ONLY, IN_BETA_TESTING. Explicitly added to Henrik Internal QA; read-back confirms the group contains build 7. English TestFlight notes describe the fix and cold-launch check |
+| Remaining | Physical iPhone was unavailable to CoreDevice. User cold-launch confirmation, live-provider acceptance and maintainer PR review remain pending; no merge or public release |
+
+Local transient evidence remains outside Git:
+
+- `/tmp/BrevIOS-0.2.3-7.xcarchive`
+- `/tmp/brev-testflight-7-archive.log`
+- `/tmp/brev-testflight-7-upload.log`
+- `/tmp/brev-release-stack-red.log` and `/tmp/brev-release-stack-green.log`
+- `/tmp/brev-release-rendering-checks.log`
+- `/tmp/brev-ci-release-launch.log`
+
+The initial red run's diagnostic collection timed out after the runner crash;
+Xcode still reported TEST FAILED. The corrected stack regression and rendering
+run both exited successfully. Signature validation required host trust-service
+access; the restricted sandbox's trust error did not recur on the host.
+No physical-phone success is inferred from simulator or distribution evidence.
