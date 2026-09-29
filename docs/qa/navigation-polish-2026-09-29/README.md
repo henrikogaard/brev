@@ -141,9 +141,10 @@ handler's implementation. Existing navigation and pixel coverage was rerun:
 **40 tests in two suites passed, including eleven image comparisons**, with no
 snapshot reference changes. The dated macOS build/launch, lint, format and diff
 checks passed. The keyboard change is macOS-only; the shared search-result hit
-area also applies to regular-width iPad Settings. No fresh iPad interaction or
-iOS build was performed in this follow-up; the earlier iPhone evidence remains
-applicable to its separate compact navigation.
+area also applies to regular-width iPad Settings. No fresh iPad interaction was
+performed in this follow-up. The subsequent
+[iOS Release archive](../testflight-uiux-2026-09-29.md) built successfully; the
+earlier iPhone evidence remains applicable to its separate compact navigation.
 
 | Native scenario | Result and evidence |
 | --- | --- |
@@ -174,3 +175,5 @@ investigate the empty folder-scope selector, and reduce repeated explanatory cop
 Those are outside this navigation pass. No matching issue exists; PR #162 carries
 the scope, verification and remaining checks. The user separately authorised an
 internal TestFlight deployment. PR merge and issue closure remain unauthorised.
+
+Internal TestFlight delivery is tracked in the [deployment record](../testflight-uiux-2026-09-29.md).

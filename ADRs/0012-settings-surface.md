@@ -76,8 +76,10 @@ metadata, dialogs, and compose chrome update without reopening windows.
 Medium preserves the native typography ramp; Small and Large adjust it by
 -1 and +2 points. Mail body/list typography keeps its existing size ramp.
 The macOS Appearance pane owns Text size and Interface density; iOS keeps
-its mail-content controls and system Dynamic Type behavior. System-owned
-menus and dialogs retain macOS sizing.
+its mail-content controls and system Dynamic Type behavior. Native window
+toolbars, system-owned menus and dialogs retain macOS sizing. Apply desktop
+sizing to pane content before attaching toolbars: compact control sizes at
+the split-view root can squeeze native toolbar buttons into narrow pills.
 
 Density remains independent from text size and applies to mail rows, reader
 and compose spacing, settings rows/groups, and native control size. Existing

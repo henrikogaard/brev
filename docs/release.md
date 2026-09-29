@@ -229,6 +229,18 @@ mise exec -- tuist generate
 
 Create the signed archive with automatic provisioning:
 
+Record the source commit and confirm the latest version/build in App Store
+Connect first. Pass explicit `MARKETING_VERSION` and `CURRENT_PROJECT_VERSION`
+overrides; the repository's fallback values are not a release counter.
+Supply the existing iOS provider settings through a private `-xcconfig` file:
+`BREV_GOOGLE_OAUTH_IOS_CLIENT_ID`, `BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME`,
+`BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI`, and `BREV_MICROSOFT_OAUTH_CLIENT_ID`, plus
+the Google Drive API key/app ID when configured. Exporting these before Tuist
+generation alone does not prove they reach the archive. Use the iOS Google
+client registered for `eu.brevmail.brev.ios`; do not include the macOS client
+secret. Verify configured presence and callback consistency in the archived
+app's Info.plist without printing credentials.
+
 ```bash
 mkdir -p build/testflight
 xcodebuild archive \
