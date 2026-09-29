@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-09-29 — Agent — Keyboard-nav sequence coverage (Codex #99)
+
+- Goal: cover the changed navigation behavior the P1 review asked for —
+  a pixel suite for the 2200-line container would be brittle, so the
+  sequence derivation is extracted and unit-tested instead.
+- Changes: `UnifiedInboxListView.keyboardNavigableSequence` lifted to a
+  static pure helper (parents + expanded thread children interleaved);
+  new `UnifiedInboxKeyboardNavTests` covers splice order, collapsed
+  threads contributing only their parent, and no parent duplication.
+- Verified: `swift test --filter UnifiedInboxKeyboardNav` 3/3 green.
+- Handoff: collapsed date-section exclusion lives at the presentation
+  snapshot layer and is already covered by
+  `UnifiedInboxPresentationSnapshotTests`.
+
+
 ## 2026-09-28 — Agent — iPhone status banner inset card
 
 - Goal: stop the top status banner (auth-required / offline) from
@@ -18,6 +33,7 @@
   agent's next pass on the iPhone 17 sim.
 - Handoff: banner-bearing snapshot fixtures are rare; if `snapshot-test`
   red on CI it's this change (expected visual delta, re-record then).
+
 
 ## 2026-09-28 — Agent — reconnect sheet title for OAuth reauth
 
@@ -652,6 +668,38 @@ hair-triggering.
   submitting Google OAuth branding; publishing remains separate.
 
 
+## 2026-09-25 — Agent — Unified inbox keyboard-nav review follow-ups (#99)
+
+- Codex P2: `keyboardNavigableItems` now builds from `dateSections`'s
+  `visibleItems` when date grouping is on — collapsed sections no longer
+  leak hidden rows into arrow-key selection.
+- Codex P2: `selectMessage` gains `clearsBulkSelection` (default true);
+  `selectAdjacentItem` passes false so arrows move the reader without
+  dropping the bulk set, matching MessageListView's contract.
+- Codex P1 (snapshot coverage) deferred: the list populates async from
+  backends so a pixel suite can't capture deterministic content without
+  a data-injection seam, and macOS pixel baselines need the canonical
+  26+ host anyway. Flagged in the PR.
+- Verified: `swift test --filter UnifiedInbox` (37 green),
+  lint.sh + format.sh clean.
+
+
+## 2026-09-25 — Agent — Unified inbox keyboard navigation (macOS)
+
+- The merged "All Inboxes"/saved-search list had no focus machinery while
+  the folder list did. Adds the MessageListView container contract to
+  `UnifiedInboxListView`: focusSection/focusable/focused + focusEffectDisabled,
+  arrow keys walk the merged displayed order (parents + expanded thread
+  children across sources), Return activates like a click (drafts ->
+  composer, threads expand, bulk toggles), pointer selection claims the
+  key session, automatic selection-restore opts out of focus claiming,
+  and sidebar mailbox activation hands the keyboard over via
+  `messageListFocusRequestID`. ScrollViewReader added for selection
+  scroll-follow (row ids are the composite `source:folder:message` ids).
+- Verified: `swift build` for BrevMail clean; `scripts/format.sh --check`
+  and `scripts/lint.sh` pass.
+
+
 ## 2026-09-25 — Agent — Prewarm navigation no longer reports as body-visible (#98)
 
 - Codex P1 on #98: `MessageDetailView`'s prewarm `.task` races the mounted
@@ -1013,13 +1061,6 @@ hair-triggering.
   separately and were green at the time of inspection.
 
 
-
-
-
-
-
-
-
 ## 2026-09-26 — Agent — D1/D4/D7 error-surfacing fixes (PRs #113, #114, #115)
 
 - **Goal:** Fix QA matrix findings D1 (DAV connect sheet shows no server
@@ -1051,7 +1092,6 @@ hair-triggering.
   passes (dead endpoint errors in ~0.6 s); lint.sh + format.sh clean.
 
 
-
 ## 2026-09-26 — Agent — D7 reconnect-copy gate (PR #115)
 
 - **Goal:** Stop "Reconnect your mailbox" appearing after a failed
@@ -1062,7 +1102,6 @@ hair-triggering.
   is unchanged.
 - **Verified:** lint.sh + format.sh clean; existing LoginView snapshot
   tests unaffected (repair state not injectable — `private(set)`).
-
 
 
 ## 2026-09-26 — Agent — Issue #2 missing Google config guidance
