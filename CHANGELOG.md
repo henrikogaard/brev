@@ -32,6 +32,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Google Drive Picker configuration now reaches both app bundles and the local,
+  nightly, and release builds. Local configuration reports presence only and
+  passes the API key through a protected temporary xcconfig.
+
 - The reader's related-conversation bar no longer overflows at
   accessibility Dynamic Type sizes: its Retry / Load / Spam-and-Trash
   chips now stack full-width beneath the status message instead of

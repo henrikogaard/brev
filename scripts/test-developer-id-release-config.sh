@@ -58,6 +58,15 @@ if ! grep -Fq -- 'gh run list' "$nightly_workflow" ||
   exit 1
 fi
 
+for workflow in "$release_workflow" "$nightly_workflow"; do
+  for key in BREV_GOOGLE_API_KEY BREV_GOOGLE_APP_ID; do
+    if ! grep -Fq "$key: \${{ secrets.$key }}" "$workflow"; then
+      echo "ERROR: archive workflow must receive $key" >&2
+      exit 1
+    fi
+  done
+done
+
 plutil -lint "$plist" >/dev/null
 
 require_value() {
@@ -196,6 +205,14 @@ fi
 if ! grep -Fq 'DMG asset: \`$ASSET_NAME\`' scripts/release-draft-fill.sh ||
     ! grep -Fq 'SHA-256: \`$CHECKSUM_DIGEST\`' scripts/release-draft-fill.sh; then
   echo "ERROR: release draft fill must cross-check asset naming and checksum readback" >&2
+  exit 1
+fi
+
+picker_command="$("${release_env[@]}" BREV_BUILD_NUMBER=5 \
+  BREV_GOOGLE_API_KEY="picker-should-not-print" BREV_GOOGLE_APP_ID="123456789" \
+  "$fixture_script" --dry-run)"
+if [[ "$picker_command" != *"BREV_GOOGLE_APP_ID=123456789"* || "$picker_command" == *"picker-should-not-print"* ]]; then
+  echo "ERROR: archive must forward the project number without printing the Picker key" >&2
   exit 1
 fi
 

@@ -43,6 +43,7 @@ allowed_env_key() {
     BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID|BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI|\
     BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME|BREV_GOOGLE_OAUTH_IOS_CLIENT_ID|\
     BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI|BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME|\
+    BREV_GOOGLE_API_KEY|BREV_GOOGLE_APP_ID|\
     BREV_MICROSOFT_OAUTH_CLIENT_ID|BREV_SPARKLE_PUBLIC_ED_KEY)
       return 0
       ;;
@@ -111,6 +112,8 @@ load_local_env() {
   local preserve_brev_google_oauth_ios_client_id="${BREV_GOOGLE_OAUTH_IOS_CLIENT_ID+x}"
   local preserve_brev_google_oauth_ios_redirect_uri="${BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI+x}"
   local preserve_brev_google_oauth_ios_callback_scheme="${BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME+x}"
+  local preserve_brev_google_api_key="${BREV_GOOGLE_API_KEY+x}"
+  local preserve_brev_google_app_id="${BREV_GOOGLE_APP_ID+x}"
   local preserve_brev_microsoft_oauth_client_id="${BREV_MICROSOFT_OAUTH_CLIENT_ID+x}"
   local preserve_brev_sparkle_public_ed_key="${BREV_SPARKLE_PUBLIC_ED_KEY+x}"
   local line key value
@@ -188,6 +191,12 @@ load_local_env() {
         preserve_exported_value \
           "$preserve_brev_google_oauth_ios_callback_scheme" \
           BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME && continue
+        ;;
+      BREV_GOOGLE_API_KEY)
+        preserve_exported_value "$preserve_brev_google_api_key" BREV_GOOGLE_API_KEY && continue
+        ;;
+      BREV_GOOGLE_APP_ID)
+        preserve_exported_value "$preserve_brev_google_app_id" BREV_GOOGLE_APP_ID && continue
         ;;
       BREV_MICROSOFT_OAUTH_CLIENT_ID)
         preserve_exported_value "$preserve_brev_microsoft_oauth_client_id" BREV_MICROSOFT_OAUTH_CLIENT_ID && continue
@@ -290,7 +299,7 @@ reverse_client_id() {
 
 oauth_build_args() {
   local mac_client_id mac_redirect_uri mac_callback_scheme
-  local ios_client_id ios_redirect_uri ios_callback_scheme microsoft_client_id
+  local ios_client_id ios_redirect_uri ios_callback_scheme microsoft_client_id google_app_id
 
   mac_client_id="$(environment_build_value BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID)"
   mac_redirect_uri="$(environment_build_value BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI)"
@@ -299,6 +308,7 @@ oauth_build_args() {
   ios_callback_scheme="$(environment_build_value BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME)"
   ios_redirect_uri="$(environment_build_value BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI)"
   microsoft_client_id="$(environment_build_value BREV_MICROSOFT_OAUTH_CLIENT_ID)"
+  google_app_id="$(environment_build_value BREV_GOOGLE_APP_ID)"
 
   # These defaults mirror BrevConstants and are passed explicitly so an old
   # generated project cannot keep a stale OAuth value after `.env.local`
@@ -320,14 +330,19 @@ oauth_build_args() {
     "BREV_GOOGLE_OAUTH_IOS_CLIENT_ID=$ios_client_id" \
     "BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI=$ios_redirect_uri" \
     "BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME=$ios_callback_scheme" \
+    "BREV_GOOGLE_APP_ID=$google_app_id" \
     "BREV_MICROSOFT_OAUTH_CLIENT_ID=$microsoft_client_id"
 }
 
 oauth_secret_xcconfig() {
-  local google_client_secret
+  local google_client_secret google_api_key
   google_client_secret="$(environment_build_value BREV_GOOGLE_OAUTH_CLIENT_SECRET)"
-  [[ -n "$google_client_secret" ]] || return 0
-  if [[ ! "$google_client_secret" =~ ^[A-Za-z0-9._~-]+$ ]]; then
+  google_api_key="$(environment_build_value BREV_GOOGLE_API_KEY)"
+  if [[ -n "$google_api_key" && ! "$google_api_key" =~ ^[A-Za-z0-9_-]+$ ]]; then
+    echo "error: BREV_GOOGLE_API_KEY contains unsupported characters" >&2
+    return 1
+  fi
+  if [[ -n "$google_client_secret" && ! "$google_client_secret" =~ ^[A-Za-z0-9._~-]+$ ]]; then
     echo "error: BREV_GOOGLE_OAUTH_CLIENT_SECRET contains unsupported characters" >&2
     return 1
   fi
@@ -336,6 +351,7 @@ oauth_secret_xcconfig() {
   oauth_xcconfig="$(mktemp "${TMPDIR:-/tmp}/brev-google-oauth.XXXXXX")"
   chmod 600 "$oauth_xcconfig"
   printf 'BREV_GOOGLE_OAUTH_CLIENT_SECRET = %s\n' "$google_client_secret" >"$oauth_xcconfig"
+  printf 'BREV_GOOGLE_API_KEY = %s\n' "$google_api_key" >>"$oauth_xcconfig"
   printf '%s' "$oauth_xcconfig"
 }
 
@@ -861,6 +877,8 @@ print_config() {
     BREV_GOOGLE_OAUTH_IOS_CLIENT_ID \
     BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI \
     BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME \
+    BREV_GOOGLE_API_KEY \
+    BREV_GOOGLE_APP_ID \
     BREV_MICROSOFT_OAUTH_CLIENT_ID; do
     if configured_value "${!oauth_key:-}"; then
       echo "$oauth_key=set"
