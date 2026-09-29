@@ -30,6 +30,10 @@
 	<string>$(BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI)</string>
 	<key>BREVGoogleOAuthIOSCallbackScheme</key>
 	<string>$(BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME)</string>
+	<key>BREV_GOOGLE_API_KEY</key>
+	<string>$(BREV_GOOGLE_API_KEY)</string>
+	<key>BREV_GOOGLE_APP_ID</key>
+	<string>$(BREV_GOOGLE_APP_ID)</string>
 	<key>BREVMicrosoftOAuthClientID</key>
 	<string>$(BREV_MICROSOFT_OAUTH_CLIENT_ID)</string>
 	<key>CFBundleIcons</key>

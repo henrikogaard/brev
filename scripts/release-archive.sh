@@ -146,6 +146,7 @@ XCBUILD_ARGS=(
   BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID="$BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID"
   BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI="${BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI:-http://127.0.0.1}"
   BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME="${BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME:-http}"
+  BREV_GOOGLE_APP_ID="${BREV_GOOGLE_APP_ID:-}"
   BREV_MICROSOFT_OAUTH_CLIENT_ID="${BREV_MICROSOFT_OAUTH_CLIENT_ID:-}"
   BREV_SPARKLE_PUBLIC_ED_KEY="$BREV_SPARKLE_PUBLIC_ED_KEY"
 )
@@ -176,10 +177,16 @@ if [[ ! "$BREV_GOOGLE_OAUTH_CLIENT_SECRET" =~ ^[A-Za-z0-9._~-]+$ ]]; then
   exit 1
 fi
 
+if [[ -n "${BREV_GOOGLE_API_KEY:-}" && ! "$BREV_GOOGLE_API_KEY" =~ ^[A-Za-z0-9_-]+$ ]]; then
+  echo "ERROR: BREV_GOOGLE_API_KEY contains unsupported characters." >&2
+  exit 1
+fi
+
 oauth_xcconfig="$(mktemp "${TMPDIR:-/tmp}/brev-google-oauth.XXXXXX")"
 chmod 600 "$oauth_xcconfig"
 printf 'BREV_GOOGLE_OAUTH_CLIENT_SECRET = %s\n' \
   "$BREV_GOOGLE_OAUTH_CLIENT_SECRET" >"$oauth_xcconfig"
+printf 'BREV_GOOGLE_API_KEY = %s\n' "${BREV_GOOGLE_API_KEY:-}" >>"$oauth_xcconfig"
 trap 'rm -f "$oauth_xcconfig"' EXIT
 
 # ── Run archive through Tuist xcodebuild passthrough ─────────────────────────

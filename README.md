@@ -382,6 +382,9 @@ module maps; if those are stale or missing, builds can fail with
 missing module map errors and then a cascade of unresolved package
 modules.
 
+Google Calendar, Contacts, Tasks, and Drive setup is documented in
+[Google integration configuration](docs/qa/google-integration-setup.md).
+
 ### Running the macOS app locally
 
 The Codex app Run action is wired to:

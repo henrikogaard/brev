@@ -8,11 +8,45 @@ TMP_APP_BUNDLE="$(mktemp -d)"
 TMP_ISSUE_120_TEMPLATE=""
 trap 'rm -f "$TMP_ENV" "$TMP_SETUP_ENV" "$TMP_ISSUE_120_TEMPLATE"; rm -rf "$TMP_APP_BUNDLE"' EXIT
 
-unset BREV_USE_MOCK BREV_TEST_DATE
+unset BREV_USE_MOCK BREV_TEST_DATE BREV_GOOGLE_API_KEY BREV_GOOGLE_APP_ID
 unset BREV_GOOGLE_OAUTH_MACOS_CLIENT_ID BREV_GOOGLE_OAUTH_MACOS_REDIRECT_URI BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME
 unset BREV_GOOGLE_OAUTH_IOS_CLIENT_ID BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME
 unset BREV_GOOGLE_OAUTH_CLIENT_ID BREV_GOOGLE_OAUTH_CLIENT_SECRET BREV_GOOGLE_OAUTH_ALLOW_LEGACY_FALLBACK BREV_LOCAL_QA BREV_MICROSOFT_OAUTH_CLIENT_ID
 unset BREV_LIVE_MAIL_EMAIL BREV_LIVE_MAIL_PASSWORD BREV_LIVE_IMAP_HOST BREV_LIVE_SMTP_HOST BREV_LIVE_SMOKE_SEND_TO
+
+# Both app runtimes read the Picker configuration from their bundle.
+for platform in macOS iOS; do
+  for key in BREV_GOOGLE_API_KEY BREV_GOOGLE_APP_ID; do
+    actual="$(/usr/libexec/PlistBuddy -c "Print :$key" "$ROOT/apps/$platform/Resources/Info.plist" 2>/dev/null || true)"
+    if [[ "$actual" != "\$($key)" ]]; then
+      echo "expected $platform Info.plist to expand $key" >&2
+      exit 1
+    fi
+  done
+done
+
+# Exercise the same protected xcconfig writer used by real local builds.
+(
+  for function_name in trim_whitespace configured_value environment_build_value oauth_secret_xcconfig; do
+    function_body="$(sed -n '/^'"$function_name"'() {/,/^}/p' "$ROOT/script/build_and_run.sh")"
+    eval "$function_body"
+  done
+  unset BREV_GOOGLE_OAUTH_CLIENT_SECRET
+  export BREV_GOOGLE_API_KEY="picker-only-test-key"
+  picker_config="$(oauth_secret_xcconfig)"
+  trap 'rm -f "$picker_config"' EXIT
+  [[ "$(stat -f '%Lp' "$picker_config")" == 600 ]]
+  grep -Fxq 'BREV_GOOGLE_API_KEY = picker-only-test-key' "$picker_config"
+  rm -f "$picker_config"
+  unset BREV_GOOGLE_API_KEY
+  picker_config="$(oauth_secret_xcconfig)"
+  grep -Fxq 'BREV_GOOGLE_API_KEY = ' "$picker_config"
+  export BREV_GOOGLE_API_KEY=$'bad-key\nINJECTED = YES'
+  if oauth_secret_xcconfig >/dev/null 2>&1; then
+    echo "expected malformed Picker key to be rejected" >&2
+    exit 1
+  fi
+)
 
 if [[ ! -x "$ROOT/script/build_and_run.sh" ]]; then
   echo "expected desktop run script to be executable" >&2
@@ -221,6 +255,8 @@ BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME = "com.googleusercontent.apps.123"
 BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI = "com.googleusercontent.apps.123:/oauth2redirect"
 BREV_MICROSOFT_OAUTH_CLIENT_ID = "microsoft-client-id"
 BREV_GOOGLE_OAUTH_CLIENT_SECRET = "must-not-be-printed"
+BREV_GOOGLE_API_KEY = "picker-must-not-be-printed"
+BREV_GOOGLE_APP_ID = "123456789"
 EOF
 
 output="$(
@@ -260,6 +296,8 @@ for oauth_status in \
   'BREV_GOOGLE_OAUTH_IOS_CLIENT_ID=set' \
   'BREV_GOOGLE_OAUTH_IOS_REDIRECT_URI=set' \
   'BREV_GOOGLE_OAUTH_IOS_CALLBACK_SCHEME=set' \
+  'BREV_GOOGLE_API_KEY=set' \
+  'BREV_GOOGLE_APP_ID=set' \
   'BREV_MICROSOFT_OAUTH_CLIENT_ID=set'; do
   if [[ "$output" != *"$oauth_status"* ]]; then
     echo "expected .env.local OAuth assignment to be loaded: $oauth_status" >&2

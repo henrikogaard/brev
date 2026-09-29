@@ -44,6 +44,10 @@
 	<string>$(BREV_GOOGLE_OAUTH_MACOS_CALLBACK_SCHEME)</string>
 	<key>BREVGoogleOAuthClientSecret</key>
 	<string>$(BREV_GOOGLE_OAUTH_CLIENT_SECRET)</string>
+	<key>BREV_GOOGLE_API_KEY</key>
+	<string>$(BREV_GOOGLE_API_KEY)</string>
+	<key>BREV_GOOGLE_APP_ID</key>
+	<string>$(BREV_GOOGLE_APP_ID)</string>
 	<key>BREVMicrosoftOAuthClientID</key>
 	<string>$(BREV_MICROSOFT_OAUTH_CLIENT_ID)</string>
 	<key>NSSupportsAutomaticTermination</key>
