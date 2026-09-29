@@ -1,0 +1,91 @@
+name: Nightly runner retry
+
+# Watchdog for macOS runner-acquisition failures (ADR-0080 §4).
+# GitHub-hosted macOS runners can exhaust their 5-acquisition-attempt
+# window under fleet capacity pressure; the nightly build job then
+# fails with zero executed steps. This watchdog re-runs only that
+# failure class, bounded to two retries, so genuine build/test/signing
+# failures are never masked.
+on:
+  schedule:
+    # +40m and +80m after the nightly's 23:47 UTC start
+    - cron: '27 0 * * *'
+    - cron: '7 1 * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+
+concurrency:
+  group: nightly-retry
+  cancel-in-progress: false
+
+jobs:
+  retry-acquisition-failures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Re-run nightly only when the macOS job never acquired a runner
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+
+          LATEST_RUN_ID="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow Nightly \
+            --limit 1 \
+            --json databaseId \
+            --jq '.[0].databaseId')"
+          if [[ -z "$LATEST_RUN_ID" || "$LATEST_RUN_ID" == "null" ]]; then
+            echo "No nightly run found; nothing to retry."
+            exit 0
+          fi
+
+          STATUS="$(gh run view "$LATEST_RUN_ID" \
+            --repo "$GITHUB_REPOSITORY" \
+            --json status,conclusion \
+            --jq '.status + "/" + (.conclusion // "none")')"
+          if [[ "$STATUS" != "completed/failure" ]]; then
+            echo "Latest nightly run $LATEST_RUN_ID is $STATUS; nothing to retry."
+            exit 0
+          fi
+
+          # Acquisition failure signature: the build job failed with
+          # zero executed steps and no runner assigned.
+          BUILD_JOB_ID="$(gh api \
+            "repos/$GITHUB_REPOSITORY/actions/runs/$LATEST_RUN_ID/jobs" \
+            --jq '.jobs[] | select(.name == "build") | .id')"
+          if [[ -z "$BUILD_JOB_ID" || "$BUILD_JOB_ID" == "null" ]]; then
+            echo "No build job on run $LATEST_RUN_ID (plan failed); not retrying."
+            exit 0
+          fi
+
+          # A skipped build job (plan refused the ship) is not a
+          # runner failure; only a failed job can be an acquisition
+          # failure.
+          JOB_CONCLUSION="$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$BUILD_JOB_ID" \
+            --jq .conclusion)"
+          if [[ "$JOB_CONCLUSION" != "failure" ]]; then
+            echo "Build job $BUILD_JOB_ID concluded $JOB_CONCLUSION; not a failure, not retrying."
+            exit 0
+          fi
+
+          STEPS="$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$BUILD_JOB_ID" \
+            --jq '.steps | length')"
+          RUNNER_ID="$(gh api "repos/$GITHUB_REPOSITORY/actions/jobs/$BUILD_JOB_ID" \
+            --jq .runner_id)"
+          if [[ "$STEPS" != "0" || ( -n "$RUNNER_ID" && "$RUNNER_ID" != "null" && "$RUNNER_ID" != "0" ) ]]; then
+            echo "Build job $BUILD_JOB_ID ran steps or had a runner (steps=$STEPS, runner=$RUNNER_ID); not an acquisition failure."
+            exit 0
+          fi
+
+          ATTEMPTS="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$LATEST_RUN_ID" \
+            --jq .run_attempt)"
+          if (( ATTEMPTS >= 3 )); then
+            echo "Nightly run $LATEST_RUN_ID already has $ATTEMPTS attempts; retry budget exhausted."
+            exit 0
+          fi
+
+          echo "Nightly run $LATEST_RUN_ID failed on runner acquisition; re-running failed jobs (attempt $((ATTEMPTS + 1)) of 3)."
+          gh run rerun "$LATEST_RUN_ID" --repo "$GITHUB_REPOSITORY" --failed

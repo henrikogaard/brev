@@ -6,7 +6,9 @@ name: Nightly
 # accepted, the feed caps at 14 items.
 on:
   schedule:
-    - cron: '30 23 * * *'
+    # Off the :00/:30 cron clusters to reduce macOS runner queueing
+    # (ADR-0080 §4). 23:47 UTC = 00:47 CET / 01:47 CEST.
+    - cron: '47 23 * * *'
   workflow_dispatch:
 
 concurrency:
@@ -38,7 +40,24 @@ jobs:
             echo "::error::Nightly builds main only; refusing $GITHUB_REF"
             exit 1
           fi
-          SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+
+          # Ship the newest commit on main whose Build workflow run
+          # succeeded. With build.yml's cancel-in-progress, main's head
+          # may only have cancelled runs; the newest green commit is
+          # still a safe, CI-verified ship point.
+          GREEN_SHA="$(gh run list \
+            --repo "$GITHUB_REPOSITORY" \
+            --workflow Build \
+            --branch main \
+            --status success \
+            --limit 1 \
+            --json headSha \
+            --jq '.[0].headSha')"
+          if [[ -z "$GREEN_SHA" || "$GREEN_SHA" == "null" ]]; then
+            echo "::error::No successful Build run found on main; not shipping a nightly."
+            exit 1
+          fi
+          SHA="$GREEN_SHA"
           echo "sha=$SHA" >> "$GITHUB_OUTPUT"
 
           PREV=""
@@ -65,6 +84,11 @@ jobs:
           if [[ "$RUNS" == "0" && "$PREV" != "$SHA" ]]; then
             echo "::error::Build workflow has not passed on $SHA; not shipping a nightly."
             exit 1
+          fi
+
+          HEAD_SHA="$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)"
+          if [[ "$HEAD_SHA" != "$SHA" ]]; then
+            echo "::notice::Shipping $SHA (newest green Build); main head is $HEAD_SHA."
           fi
 
   build:

@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-09-29 — Agent — Nightly runner resilience (ADR-0080 §4)
+
+- Goal: stop the nightly ring from failing on GitHub-hosted macOS
+  runner-acquisition errors and from refusing to ship when main's head
+  only has cancelled Build runs.
+- Changes: `nightly.yml` `plan` now selects the newest `main` commit
+  with a successful Build run and moves the cron to `47 23 * * *`
+  UTC; new `nightly-retry.yml` watchdog re-runs only acquisition-class
+  failures (build job with zero steps and no runner) at +40/+80
+  minutes, bounded to three total attempts. ADR-0080 §4,
+  `docs/release.md`, and CHANGELOG updated to match.
+- Verified: actionlint + shellcheck on both workflows; green-SHA
+  resolution and watchdog detection logic exercised against live run
+  data (Sep 25/26/29 acquisition runs vs. Sep 23 green run; Sep 27
+  plan-gate run correctly not retried). Full CI proof runs on the PR.
+- Handoff: none. Watchdog schedules become active only after merge to
+  `main`.
+
 ## 2026-09-29 — Agent — deterministic extraction timeout (#112)
 
 - Goal: kill the 1 ms deadline race in `AttachmentTextExtractorTests.timeout`

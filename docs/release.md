@@ -19,16 +19,21 @@ material now lives in GitHub Actions repository secrets scoped to the
   and staples `Brev-X.Y.Z.dmg`, creates the GitHub Release for the tag
   (fails rather than clobbering an existing release), and merges the new
   item into `appcast.xml` on the `gh-pages` branch.
-- **Nightly** — `.github/workflows/nightly.yml` runs at `30 23 * * *`
-  UTC (00:30 CET / 01:30 CEST) plus manual dispatch. A `plan` job refuses
-  non-`main` refs, skips the run when `main` has not moved since the
-  commit recorded in the `nightly` pre-release body
-  (`<!-- brev-nightly-commit: SHA -->`), and requires the Build workflow
-  to have passed on that commit. The build produces `Brev Nightly.app`
+- **Nightly** — `.github/workflows/nightly.yml` runs at `47 23 * * *`
+  UTC (00:47 CET / 01:47 CEST) plus manual dispatch. A `plan` job refuses
+  non-`main` refs, selects the newest commit on `main` with a successful
+  Build run (main's head can carry only cancelled runs when `build.yml`'s
+  cancel-in-progress fires), skips the run when that commit matches the
+  one recorded in the `nightly` pre-release body
+  (`<!-- brev-nightly-commit: SHA -->`), and requires the selected
+  commit's Build run to exist. The build produces `Brev Nightly.app`
   (`eu.brevmail.brev.nightly`, version `X.Y.Z-nightly.YYYYMMDD`), force-moves
   the `nightly` tag, replaces the assets on the rolling `nightly`
   pre-release, and merges the item into `appcast-nightly.xml` (capped at
-  14 items). Because the dated DMG asset is deleted each night, older
+  14 items). A `nightly-retry.yml` watchdog re-runs the nightly's failed
+  jobs at +40/+80 minutes when the macOS build job failed without ever
+  acquiring a runner (zero steps, no runner ID), bounded to three total
+  attempts. Because the dated DMG asset is deleted each night, older
   appcast items point at dead URLs — accepted; only the newest item's
   download works.
 

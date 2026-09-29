@@ -139,14 +139,24 @@ newest item, so this is accepted.
 
 ### 4. Nightly schedule and skip rule
 
-- Cron `30 23 * * *` UTC (00:30 CET / 01:30 CEST) plus
-  `workflow_dispatch`. GitHub cron may start late; the window is best
-  effort.
+- Cron `47 23 * * *` UTC (00:47 CET / 01:47 CEST) plus
+  `workflow_dispatch`, chosen off the `:00`/`:30` global cron clusters
+  that concentrate GitHub-hosted macOS runner demand. GitHub cron may
+  start late; the window is best effort.
+- A bounded watchdog (`nightly-retry.yml`) re-runs the nightly's failed
+  jobs at +40 and +80 minutes when the macOS job failed on runner
+  acquisition (zero steps, no runner assigned), up to three total
+  attempts. Genuine build, test, or signing failures are never
+  retried.
 - Before building, the job compares `main`'s head to the commit recorded
   on the current `nightly` pre-release. If they match, the job exits
   successfully without building or publishing.
 - Nightly builds `main` only. The workflow refuses any other ref.
-- Nightly requires the Build workflow to have passed on that commit.
+- Nightly ships the newest commit on `main` whose Build workflow run
+  succeeded. Main's head can carry only cancelled Build runs when
+  `build.yml`'s cancel-in-progress fires; the newest green commit is
+  the ship point, and the recorded commit may briefly trail main's
+  head.
 
 ### 5. Privacy and network behavior
 
