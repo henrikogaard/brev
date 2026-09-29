@@ -43,4 +43,30 @@ group mutation was needed. Internal TestFlight availability is verified.
 
 This build predates the subsequent desktop Favourites, Mono Grey, and window
 transparency pass. Those later changes are in PR #162 and are not in build 6.
-Physical-device installation and user acceptance remain unverified.
+Physical-device launch was subsequently reported to fail immediately. See the
+crash investigation below; processing success did not prove launch success.
+
+
+## Immediate launch crash investigation
+
+App Store Connect supplied crash reports for internal builds 6 and 5 on
+an iPhone 17 Pro Max running iOS 27.0. Both terminate before the first
+mailbox frame, approximately 0.2 seconds after launch. Build 6 reports
+EXC_BAD_ACCESS in a stack guard while constructing `BrevMailRootView`;
+build 5 explicitly reports that the thread stack size was exceeded in
+the same computed-view construction chain. Downgrading to build 5 is
+therefore not a verified workaround.
+
+A Release simulator regression, `BrevMailRootLaunchTests`, renders the
+actual mailbox root with a temporary guard page at the physical iPhone's
+1 MiB main-thread stack limit. The unmodified root crashed with signal 11.
+Ordinary simulator tests have a larger stack, and Debug builds can erase
+opaque SwiftUI types, hiding this failure mode. Raw Apple reports and
+simulator diagnostics stay in temporary local storage, outside Git.
+
+The correction introduces fixed-size, deferred rendering boundaries between
+the root's existing construction stages. State, tasks, environment values
+and navigation remain owned by the mailbox root. CI now runs the dedicated
+Release launch regression independently of the iOS 27 pixel baseline gate.
+Validation and replacement-build availability will be recorded below once
+completed. Physical-device acceptance is still required.

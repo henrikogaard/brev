@@ -56,6 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Fixed an immediate iPhone launch crash caused by mailbox view construction
+  exhausting the main-thread stack in Release builds.
+
 - Transparent Mail and Settings sidebars are no longer covered by opaque root
   backgrounds. Window opacity reaches 100%; the desktop's inactive message-card
   opacity control has been removed from its flat reader layout.

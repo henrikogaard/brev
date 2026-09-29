@@ -655,7 +655,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootContent: some View {
-        mailRootCommandContextContent
+        MailRootRenderStage { mailRootCommandContextContent }
             .task(id: ObjectIdentifier(selectedBackend)) {
                 outboxPendingCount = 0
                 await refreshOutboxCount()
@@ -731,7 +731,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootCacheContent: some View {
-        mailRootStatusLayout
+        MailRootRenderStage { mailRootStatusLayout }
             .task(id: visibleSelectedSourceID) {
                 await observeImportSyncHealth()
                 await loadSelectedSearchSyntax()
@@ -770,7 +770,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootLoadingContent: some View {
-        mailRootCacheContent
+        MailRootRenderStage { mailRootCacheContent }
             .task { monitor.start() }
             .onChange(of: backendSessionIDs) { previous, _ in handleBackendSessionChange(previousIDs: previous) }
             .task(id: backendSessionIDs) { await loadWorkspace(supersedingActiveLoads: true) }
@@ -835,7 +835,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootObservedContent: some View {
-        mailRootLoadingContent
+        MailRootRenderStage { mailRootLoadingContent }
             .onChange(of: sourceSectionsRevision, initial: true) { _, _ in
                 onSettingsMailboxContextChange?(settingsMailboxContext)
             }
@@ -890,7 +890,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootPresentationContent: some View {
-        mailRootObservedContent
+        MailRootRenderStage { mailRootObservedContent }
             .accessibilityHidden(isMailBackgroundAccessibilityHidden)
             .modifier(
                 MailAuxiliaryPresentationModifier(sheet: sheetBinding) { sheet, close in
@@ -1060,7 +1060,7 @@ public struct BrevMailRootView: View {
     }
 
     private var mailRootCommandContextContent: some View {
-        mailRootPresentationContent
+        MailRootRenderStage { mailRootPresentationContent }
             .focusedSceneValue(\.mailNavigation, navigation)
             .focusedSceneValue(\.mailBackend, selectedBackend)
             .focusedSceneValue(\.mailFolders, folders)

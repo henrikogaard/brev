@@ -227,6 +227,21 @@ scripts/test-testflight-export-options.sh
 mise exec -- tuist generate
 ```
 
+Before archiving an iOS build, run the Release mailbox launch regression.
+It constrains the simulator's main-thread stack to the phone's 1 MiB budget;
+Debug builds and the normal simulator stack missed the launch crash in
+internal builds 5 and 6. A passing simulator check does not replace a cold
+launch on a physical phone after TestFlight processing.
+
+```bash
+destination="$(scripts/ios-simulator-destination.sh)"
+(cd packages/BrevMail && xcodebuild -scheme BrevMail \
+  -configuration Release ENABLE_TESTABILITY=YES \
+  -destination "$destination" -skipMacroValidation \
+  -parallel-testing-enabled NO \
+  -only-testing:BrevMailTests/BrevMailRootLaunchTests test)
+```
+
 Create the signed archive with automatic provisioning:
 
 Record the source commit and confirm the latest version/build in App Store

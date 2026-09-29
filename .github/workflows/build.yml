@@ -232,6 +232,22 @@ jobs:
             echo "iOS pixel snapshots deferred: baselines require iOS 27+, runner has iOS $runtime"
           fi
 
+      # Debug opaque-view erasure and the simulator's larger stack can hide
+      # release-only phone launch crashes. This non-pixel test runs on every
+      # supported iOS runtime, independently of the snapshot baseline gate.
+      - name: Test Release mailbox launch with the iPhone stack budget
+        working-directory: packages/BrevMail
+        run: |
+          xcodebuild \
+            -scheme BrevMail \
+            -configuration Release \
+            ENABLE_TESTABILITY=YES \
+            -destination '${{ steps.snapshot-runtime.outputs.destination }}' \
+            -skipMacroValidation \
+            -parallel-testing-enabled NO \
+            -only-testing:BrevMailTests/BrevMailRootLaunchTests \
+            test
+
       - name: Test stable non-WebKit BrevMail snapshots on iOS Simulator
         if: steps.snapshot-runtime.outputs.run == 'true'
         working-directory: packages/BrevMail
