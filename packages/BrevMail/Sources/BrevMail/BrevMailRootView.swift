@@ -681,6 +681,14 @@ public struct BrevMailRootView: View {
             importHealth: importSyncHealth,
             folderSyncProgress: syncProgress
         )
+        // iOS presents the rail as an inset card so the banner doesn't read
+        // as part of the navigation bar it sits directly beneath; macOS keeps
+        // the full-width band inside the workspace chrome.
+        #if os(iOS)
+        let isInsetBanner = true
+        #else
+        let isInsetBanner = false
+        #endif
         switch chrome {
         case .rootStatus(let status):
             BrevInlineStatus(
@@ -692,7 +700,8 @@ public struct BrevMailRootView: View {
                 },
                 onDismiss: {
                     clearRootStatus()
-                }
+                },
+                inset: isInsetBanner
             )
         case .offline:
             BrevInlineStatus(
@@ -702,14 +711,16 @@ public struct BrevMailRootView: View {
                 onAction: {
                     Task { await refreshVisibleMail() }
                 },
-                onDismiss: nil
+                onDismiss: nil,
+                inset: isInsetBanner
             )
         case .importProgress(let presentation):
             ImportProgressBanner(
                 presentation: presentation,
                 onAction: presentation.action.map { action in
                     { Task { await runImportBannerAction(action) } }
-                }
+                },
+                inset: isInsetBanner
             )
             .transition(.move(edge: .top).combined(with: .opacity))
         case nil:

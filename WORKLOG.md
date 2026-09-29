@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-09-28 — Agent — iPhone status banner inset card
+
+- Goal: stop the top status banner (auth-required / offline) from
+  reading as part of the navigation bar on iPhone — a full-width band
+  flush under the title crowded the nav chrome (QA follow-up).
+- Changes: `BrevInlineStatus` gains an `inset` presentation (rounded
+  `bgSecondary` card with horizontal inset, no bottom hairline);
+  `BrevMailRootView.topChromeStatusRail` opts in on iOS only — including
+  the `.importProgress` case, which carries the auth-required banner
+  (`ImportProgressBanner` gained a matching `inset` param applied to its
+  iOS `standardBody` only). macOS keeps the full-width band; every other
+  `BrevInlineStatus`/`ImportProgressBanner` call site unchanged.
+  ADR-0013 updated to record the inset variant.
+- Verified: `swift build` BrevMail + BrevDesign; lint/format clean.
+- Skipped: device re-verify — visual delta delegated to the testing
+  agent's next pass on the iPhone 17 sim.
+- Handoff: banner-bearing snapshot fixtures are rare; if `snapshot-test`
+  red on CI it's this change (expected visual delta, re-record then).
+
 ## 2026-09-28 — Agent — reconnect sheet title for OAuth reauth
 
 - Goal: the #151 "Sign in again" reconnect sheet titled itself

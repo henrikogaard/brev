@@ -22,6 +22,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The top status banner on iPhone — including the sign-in-required
+  banner — now presents as an inset rounded card below the navigation
+  bar instead of a full-width band flush against it.
+
 - The re-authentication sheet titles itself "Sign in again" when the
   account re-authenticates via OAuth (Google or Microsoft) instead of
   the password-centric "Update mail password".

@@ -58,6 +58,7 @@ public struct BrevInlineStatus: View {
     private let onAction: (() -> Void)?
     private let onDismiss: (() -> Void)?
     private let lineLimit: Int?
+    private let inset: Bool
     private let combinesInteractiveAccessibilityChildren = false
 
     public init(
@@ -66,7 +67,8 @@ public struct BrevInlineStatus: View {
         actionTitle: String? = nil,
         onAction: (() -> Void)? = nil,
         onDismiss: (() -> Void)? = nil,
-        lineLimit: Int? = 2
+        lineLimit: Int? = 2,
+        inset: Bool = false
     ) {
         self.message = message
         self.tone = tone
@@ -74,9 +76,34 @@ public struct BrevInlineStatus: View {
         self.onAction = onAction
         self.onDismiss = onDismiss
         self.lineLimit = lineLimit
+        self.inset = inset
     }
 
     public var body: some View {
+        content
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+            .background {
+                if inset {
+                    RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
+                        .fill(theme.bgSecondary.color)
+                } else {
+                    Rectangle().fill(theme.bgSecondary.color)
+                }
+            }
+            .overlay(alignment: .bottom) {
+                if !inset {
+                    Rectangle()
+                        .fill(BrevSeparator.color(for: theme))
+                        .frame(height: 0.5)
+                }
+            }
+            .padding(.horizontal, inset ? BrevSpacing.sm : 0)
+            .padding(.top, inset ? BrevSpacing.xxs : 0)
+            .accessibilityElement(children: combinesInteractiveAccessibilityChildren ? .combine : .contain)
+    }
+
+    private var content: some View {
         HStack(spacing: BrevSpacing.sm) {
             Image(systemName: tone.symbolName)
                 .foregroundStyle(tone.color(in: theme))
@@ -115,14 +142,5 @@ public struct BrevInlineStatus: View {
                 .accessibilityLabel(Text("Dismiss", bundle: .module))
             }
         }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-        .background(theme.bgSecondary.color)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        .accessibilityElement(children: combinesInteractiveAccessibilityChildren ? .combine : .contain)
     }
 }

@@ -6,6 +6,8 @@
 - **Implementation:** 2026-06-07 — `BrevStatusBanner`, `BrevEmptyState`, and
   `BrevProgressSurface` added to `packages/BrevDesign/Sources/BrevDesign/Components/`;
   smoke tests in `packages/BrevDesign/Tests/BrevDesignTests/StatusSurfaceSmokeTests.swift`.
+  2026-09-29 — `BrevInlineStatus` gains an `inset` presentation variant and the
+  mailbox top chrome rail adopts it on iOS.
 
 ## Context
 
@@ -37,6 +39,14 @@ Add a small public inline status component to `BrevDesign`:
 - The component is intentionally inline. It can be placed in
   `safeAreaInset`, list footers, settings panels, or other existing
   layout slots without introducing a global overlay coordinator.
+- `BrevInlineStatus(inset:)` switches the banner from a flush full-width
+  band (background + bottom hairline) to a rounded card inset by
+  `BrevSpacing.sm` horizontally. Use it where the status surface sits
+  directly beneath floating navigation chrome (the iPhone mailbox top
+  rail) so the banner reads as workspace content rather than as part of
+  the navigation bar. macOS chrome and standalone placements keep the
+  default band. Feature-level banners that occupy the same rail
+  (`ImportProgressBanner`) mirror the same inset treatment.
 
 ## Rationale
 

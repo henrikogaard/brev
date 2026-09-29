@@ -20,6 +20,8 @@ struct ImportProgressBanner: View {
 
     let presentation: ImportProgressBannerPresentation
     let onAction: (() -> Void)?
+    /// Inset card chrome for placements beneath floating navigation bars.
+    var inset = false
 
     var body: some View {
         Group {
@@ -141,10 +143,21 @@ struct ImportProgressBanner: View {
             }
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.xs)
-            .background(backgroundColor)
-            .overlay(alignment: .bottom) {
-                BrevDivider()
+            .background {
+                if inset {
+                    RoundedRectangle(cornerRadius: BrevRadius.md, style: .continuous)
+                        .fill(backgroundColor)
+                } else {
+                    Rectangle().fill(backgroundColor)
+                }
             }
+            .overlay(alignment: .bottom) {
+                if !inset {
+                    BrevDivider()
+                }
+            }
+            .padding(.horizontal, inset ? BrevSpacing.sm : 0)
+            .padding(.top, inset ? BrevSpacing.xxs : 0)
         }
     }
 
