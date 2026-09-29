@@ -18,7 +18,6 @@ struct AppearanceSection: View {
     @State private var showsWindowDetails = false
     @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.brevTheme) private var theme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     @Environment(\.colorScheme) private var colorScheme
     @AppStorage(AppearancePreferenceKey.transparentMainTitlebar)
     private var transparentMainTitlebar = true
@@ -66,62 +65,12 @@ struct AppearanceSection: View {
                 SettingsMailPreview(settings: mailboxSettings)
                 #endif
                 if appearanceControls.showsWindowTranslucencyControls {
-                    SettingsGroup(
-                        title: String(localized: "Window design", bundle: .module),
-                        subtitle: String(localized: "Choose how transparent Brev's window surfaces feel.", bundle: .module),
-                        symbolName: "macwindow"
-                    ) {
-                        VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                            SettingsSegmentedRow(
-                                symbolName: "circle.lefthalf.filled",
-                                title: String(localized: "Style", bundle: .module),
-                                subtitle: windowAppearance.mode.subtitle,
-                                selection: windowAppearanceBinding(for: \.mode)
-                            ) {
-                                ForEach(WindowTranslucencyMode.allCases) { mode in
-                                    Text(mode.title).tag(mode)
-                                }
-                            }
-
-                            DisclosureGroup(
-                                String(localized: "Window details", bundle: .module),
-                                isExpanded: $showsWindowDetails
-                            ) {
-                                SettingsPickerRow(
-                                    symbolName: "rectangle.3.group",
-                                    title: String(localized: "Apply to", bundle: .module),
-                                    subtitle: windowAppearance.scope.subtitle,
-                                    selection: windowAppearanceBinding(for: \.scope)
-                                ) {
-                                    ForEach(WindowTranslucencyScope.allCases) { scope in
-                                        Text(scope.title).tag(scope)
-                                    }
-                                }
-
-                                if appearanceControls.showsTransparentTitleBarToggle {
-                                    SettingsToggleRow(
-                                        symbolName: "macwindow.on.rectangle",
-                                        title: String(localized: "Unified title bar", bundle: .module),
-                                        subtitle: String(
-                                            localized: "Extends the current surface styling into the main and Settings title bars.",
-                                            bundle: .module
-                                        ),
-                                        isOn: $transparentMainTitlebar,
-                                        isEnabled: true
-                                    )
-                                }
-
-                                if windowAppearance.mode != .solid { windowOpacityControls }
-                            }
-                            WindowMaterialPreview(preferences: windowAppearance)
-
-                            SettingsInfoCallout(
-                                symbolName: reduceTransparency ? "accessibility" : "sparkles",
-                                message: windowDesignStatusText,
-                                tone: reduceTransparency ? .warning : .info
-                            )
-                        }
-                    }
+                    WindowAppearanceControls(
+                        preferences: $windowAppearance,
+                        unifiedTitlebar: $transparentMainTitlebar,
+                        showsAdvanced: $showsWindowDetails,
+                        onChange: { settingsStore.save(windowAppearance) }
+                    )
                 }
 
                 SettingsGroup(
@@ -316,145 +265,6 @@ struct AppearanceSection: View {
         .accessibilityLabel(String(localized: "Choose light and dark themes", bundle: .module))
     }
 
-    private var windowDesignStatusText: String {
-        if reduceTransparency {
-            return String(
-                localized: "macOS Reduce Transparency is enabled, so Brev keeps the selected window layout with opaque surfaces.",
-                bundle: .module
-            )
-        }
-        #if os(macOS)
-        if !transparentMainTitlebar {
-            return String(
-                localized: "Main and Settings windows use standard title bars until Unified title bar is enabled.",
-                bundle: .module
-            )
-        }
-        #endif
-        if windowAppearance.mode == .solid {
-            return String(
-                localized: "Solid keeps Subtle's unified window structure with fully opaque themed surfaces.",
-                bundle: .module
-            )
-        }
-        if windowAppearance.mode == .glass {
-            return String(
-                localized: "Glass uses Liquid Glass where available with separate pane and sidebar opacity layers for readability.",
-                bundle: .module
-            )
-        }
-        return String(
-            localized: "Material effects apply to mail and Settings chrome; pane and sidebar opacity keep content readable.",
-            bundle: .module
-        )
-    }
-
-    private var windowOpacityControls: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.md) {
-            opacityControl(
-                title: String(localized: "Pane opacity", bundle: .module),
-                subtitle: String(localized: "Controls mail, settings, cards, and reading surfaces.", bundle: .module),
-                symbolName: "rectangle.split.3x1",
-                value: windowAppearanceBinding(for: \.surfaceOpacity),
-                range: WindowAppearancePreferences.surfaceOpacityRange
-            )
-
-            opacityControl(
-                title: String(localized: "Sidebar opacity", bundle: .module),
-                subtitle: String(localized: "Controls folder and settings sidebars separately.", bundle: .module),
-                symbolName: "sidebar.leading",
-                value: windowAppearanceBinding(for: \.sidebarOpacity),
-                range: WindowAppearancePreferences.sidebarOpacityRange
-            )
-
-            SettingsPickerRow(
-                symbolName: "doc.richtext",
-                title: String(localized: "Message content", bundle: .module),
-                subtitle: windowAppearance.messageContentOpacityMode.subtitle,
-                selection: windowAppearanceBinding(for: \.messageContentOpacityMode),
-                selectionTitle: windowAppearance.messageContentOpacityMode.title
-            ) {
-                ForEach(MessageContentOpacityMode.allCases) { mode in
-                    Text(mode.title).tag(mode)
-                }
-            }
-
-            if windowAppearance.messageContentOpacityMode == .custom {
-                opacityControl(
-                    title: String(localized: "Message opacity", bundle: .module),
-                    subtitle: String(localized: "Controls only the surface directly behind a message.", bundle: .module),
-                    symbolName: "text.document",
-                    value: windowAppearanceBinding(for: \.messageContentOpacity),
-                    range: WindowAppearancePreferences.messageContentOpacityRange
-                )
-            }
-        }
-        .disabled(windowAppearance.mode == .solid || reduceTransparency)
-        .opacity(windowAppearance.mode == .solid || reduceTransparency ? 0.55 : 1)
-    }
-
-    private func opacityControl(
-        title: String,
-        subtitle: String,
-        symbolName: String,
-        value: Binding<Double>,
-        range: ClosedRange<Double>
-    ) -> some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack(alignment: .top, spacing: BrevSpacing.sm) {
-                Image(systemName: symbolName)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(theme.accent.color)
-                    .frame(width: 18)
-
-                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(title)
-                        .brevFont(.subheadline)
-                        .foregroundStyle(theme.textPrimary.color)
-                    Text(subtitle)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-
-                Spacer(minLength: BrevSpacing.md)
-
-                Text(opacityValueLabel(value.wrappedValue))
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .monospacedDigit()
-            }
-
-            Slider(
-                value: value,
-                in: range,
-                step: 0.01
-            )
-            .tint(theme.accent.color)
-            .accessibilityLabel(title)
-            .accessibilityValue(opacityValueLabel(value.wrappedValue))
-        }
-    }
-
-    private func opacityValueLabel(_ value: Double) -> String {
-        value >= 1 ? String(localized: "Opaque", bundle: .module) : String(
-            localized: "\(Int((value * 100).rounded()))%",
-            bundle: .module
-        )
-    }
-
-    private func windowAppearanceBinding<Value>(
-        for keyPath: WritableKeyPath<WindowAppearancePreferences, Value>
-    ) -> Binding<Value> {
-        Binding(
-            get: { windowAppearance[keyPath: keyPath] },
-            set: { newValue in
-                windowAppearance[keyPath: keyPath] = newValue
-                settingsStore.save(windowAppearance)
-            }
-        )
-    }
-
     private func themeSettingsBinding<Value>(
         for keyPath: WritableKeyPath<AppearanceThemeSettings, Value>
     ) -> Binding<Value> {
@@ -610,52 +420,6 @@ private struct ThemePickerSheet: View {
 
 private enum AppearancePreferenceKey {
     static let transparentMainTitlebar = "window.transparentMainTitlebar"
-}
-
-private struct WindowMaterialPreview: View {
-    @Environment(\.brevTheme) private var theme
-    let preferences: WindowAppearancePreferences
-
-    var body: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            previewSwatch(role: .sidebar, label: String(localized: "Sidebar", bundle: .module))
-            previewSwatch(role: .content, label: String(localized: "Pane", bundle: .module))
-            previewSwatch(role: .messageContent, label: String(localized: "Message", bundle: .module))
-            previewSwatch(role: .settings, label: String(localized: "Settings", bundle: .module))
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func previewSwatch(role: WindowSurfaceRole, label: String) -> some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-            RoundedRectangle(cornerRadius: BrevRadius.sm)
-                .fill(previewFill(for: role))
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.sm)
-                        .stroke(theme.border.color, lineWidth: 1)
-                }
-                .frame(width: 56, height: 34)
-            Text(label)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
-        }
-    }
-
-    private func previewFill(for role: WindowSurfaceRole) -> Color {
-        let baseColor = switch role {
-        case .sidebar, .messageContent, .card:
-            theme.bgSecondary.color
-        case .mainWindow, .content, .settings, .utility:
-            theme.bgPrimary.color
-        }
-        guard let opacity = preferences.surfaceFillOpacity(
-            for: role,
-            reduceTransparency: false
-        ) else {
-            return Color.clear
-        }
-        return baseColor.opacity(opacity)
-    }
 }
 
 private struct AppIconVariantButton: View {

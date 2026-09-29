@@ -273,6 +273,21 @@ struct AIWriterSectionMacSnapshotTests {
         }
     }
 
+    @Test("Transparency choices explain window coverage", arguments: [WindowTransparencySelection.off, .sidebars, .fullWindows])
+    func windowTransparency(selection: WindowTransparencySelection) {
+        var preferences = WindowAppearancePreferences.defaults
+        selection.apply(to: &preferences)
+        let theme = BrevTheme.brevMonoGrey
+        let view = WindowAppearanceControls(preferences: .constant(preferences), unifiedTitlebar: .constant(true),
+                                            showsAdvanced: .constant(false), onChange: {})
+            .padding(24).frame(width: 680, height: 470, alignment: .topLeading)
+            .background(theme.bgPrimary.color).brevTheme(theme)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: .darkAqua)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 680, height: 470)), named: String(describing: selection),
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
     @Test("Desktop sizing updates settings navigation and controls", arguments: [false, true])
     func desktopSizing(large: Bool) throws {
         let suite = "DesktopSizingSnapshot-" + UUID().uuidString

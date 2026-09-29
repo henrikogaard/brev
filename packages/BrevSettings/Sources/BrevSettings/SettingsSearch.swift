@@ -52,17 +52,15 @@ extension SettingsSection {
             ]
         case .appearance: return [
                 String(localized: "Appearance", bundle: .module),
-                String(localized: "Window design", bundle: .module),
-                String(localized: "Style", bundle: .module),
-                String(localized: "Apply to", bundle: .module),
+                String(localized: "Window transparency", bundle: .module),
+                String(localized: "Background effect", bundle: .module),
+                String(localized: "Transparency", bundle: .module),
                 String(localized: "Unified title bar", bundle: .module),
                 String(localized: "App icon", bundle: .module),
                 String(localized: "Color and themes", bundle: .module),
                 String(localized: "Mode", bundle: .module),
-                String(localized: "Pane opacity", bundle: .module),
-                String(localized: "Sidebar opacity", bundle: .module),
-                String(localized: "Message content", bundle: .module),
-                String(localized: "Message opacity", bundle: .module),
+                String(localized: "Window background opacity", bundle: .module),
+                String(localized: "Sidebar background opacity", bundle: .module),
             ]
         case .mailboxView: return [
                 String(localized: "Browser", bundle: .module),

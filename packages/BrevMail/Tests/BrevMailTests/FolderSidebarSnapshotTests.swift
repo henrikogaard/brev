@@ -13,6 +13,7 @@
 #if os(macOS)
 import AppKit
 import BrevBackend
+import BrevDesign
 @testable import BrevMail
 import BrevThemes
 import SnapshotTesting
@@ -65,6 +66,57 @@ struct FolderSidebarSnapshotTests {
                            named: scope + "-" + mode,
                            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
         }
+    }
+
+    @Test("Desktop favourites and editor support both sizing extremes", arguments: [false, true], [false, true])
+    func desktopFavorites(large: Bool, dark: Bool) throws {
+        let suite = "DesktopFavorites-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set((large ? MailboxTextSize.large : .small).rawValue, forKey: MailboxViewPreferenceKey.textSize)
+        defaults.set((large ? MailboxListDensity.spacious : .compact).rawValue, forKey: MailboxViewPreferenceKey.listDensity)
+        let account = BrevAccount(id: "account", displayName: "Demo", emailAddress: "me@example.org")
+        let sections = ["Private", "Work"].map { name in
+            MailSourceSection(id: MailSourceID(accountID: account.id, mailboxID: name), account: account,
+                              mailbox: Mailbox(id: name, email: "me@example.org", displayName: name),
+                              folders: [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 123),
+                                        Folder(id: "drafts", name: "Drafts", role: .drafts, totalCount: 2),
+                                        Folder(id: "sent", name: "Sent", role: .sent)])
+        }
+        let candidates = MailboxFavorite.candidates(sections: sections)
+        var preferences = MailboxFavorites(data: Data())
+        preferences.setVisible(true, id: candidates[3].id)
+        defaults.set(preferences.data, forKey: MailboxFavorites.storageKey)
+        let navigation = MailNavigationState()
+        navigation.selectFolder("inbox", in: sections[1].id)
+        let theme = dark ? BrevTheme.brevMonoGrey : .brevMonoLight
+        let name = (large ? "large-spacious" : "small-compact") + (dark ? "-dark" : "-light")
+        let view = FolderSidebar(navigation: navigation, folders: [], sourceSections: sections)
+            .brevDesktopSizing()
+            .frame(width: 260, height: 480)
+            .background(theme.bgSecondary.color)
+            .brevTheme(theme)
+            .environment(\.colorScheme, theme.mode.colorScheme)
+            .defaultAppStorage(defaults)
+        let host = NSHostingController(rootView: view)
+        host.view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 260, height: 480)), named: name,
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+        let editor = MailboxFavoritesEditor(data: .constant(preferences.data), candidates: candidates)
+            .brevTheme(theme)
+            .environment(\.colorScheme, theme.mode.colorScheme)
+            .defaultAppStorage(defaults)
+        let editorHost = NSHostingController(rootView: editor)
+        editorHost.view.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 520, height: 440),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.isReleasedWhenClosed = false
+        window.contentViewController = editorHost
+        window.layoutIfNeeded()
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        defer { window.contentViewController = nil; window.close() }
+        assertSnapshot(of: editorHost, as: .image(size: CGSize(width: 520, height: 440)), named: "editor-" + name,
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
     @Test("Smart Views expose Today plus create and manage controls")
@@ -203,6 +255,7 @@ struct FolderSidebarSnapshotTests {
             isPrimary: true
         )
         let sourceID = MailSourceID(accountID: account.id, mailboxID: mailbox.id)
+        try defaults.set(JSONEncoder().encode(Set([sourceID])), forKey: "mailbox.disclosureState")
         let navigation = MailNavigationState()
         navigation.selectedSourceID = sourceID
         navigation.selectedFolderID = "INBOX"

@@ -369,6 +369,7 @@ jobs:
             -only-testing:BrevSettingsTests/MailStorageSectionSnapshotTests \
             '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/accountsSurface(_:)' \
             '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/desktopSizing(large:)' \
+            '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/windowTransparency(selection:)' \
             '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/navigationPolish(_:)' \
             test
 

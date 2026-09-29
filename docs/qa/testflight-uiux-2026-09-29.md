@@ -15,7 +15,7 @@ publish an App Store release.
 | Source CI | All 21 checks passed on `8b3ffbd9`, including both app builds, package tests and snapshot jobs; [Build run](https://github.com/henrikogaard/brev/actions/runs/36604062471) |
 | Release gates | Apple team, iOS privacy manifest and TestFlight export-policy scripts passed; `AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest` passed compiled in Release |
 | Archive | Completed successfully; app and share/widget/notification extensions all report `0.2.3 (6)`; correct team, bundled privacy manifest, non-exempt encryption flag false and strict deep code-signature verification passed |
-| Distribution | Repository internal-only export policy, preserving build number; upload succeeded; processing/group availability pending below |
+| Distribution | Repository internal-only export policy, preserving build number; upload completed; build VALID and IN_BETA_TESTING in Henrik Internal QA |
 
 Native UI evidence is in [navigation polish](navigation-polish-2026-09-29/README.md).
 The iPhone interaction and snapshot checks used the simulator. The new archive
@@ -34,6 +34,13 @@ Local transient artifacts (not committed):
 
 The export/upload command exited 0 and reported `EXPORT SUCCEEDED` at
 19:25:02 CEST (17:25:02 UTC). Apple accepted the package and started processing.
-Apple upload resource `4f7b85df-535a-442e-b764-598d2244a262` reports
-`PROCESSING`, with empty error and warning lists. The processed build resource
-and internal group membership remain pending.
+A later App Store Connect API verification on 2026-09-29 confirmed upload
+`4f7b85df-535a-442e-b764-598d2244a262` is `COMPLETE`, with empty errors/warnings.
+The build resource reports version `6`, prerelease `0.2.3`, `VALID`,
+`INTERNAL_ONLY`, and `IN_BETA_TESTING`. The existing Henrik Internal QA group
+(`5668fbb5-06ce-49b6-9493-1aee32eee12e`) already includes the build; no additional
+group mutation was needed. Internal TestFlight availability is verified.
+
+This build predates the subsequent desktop Favourites, Mono Grey, and window
+transparency pass. Those later changes are in PR #162 and are not in build 6.
+Physical-device installation and user acceptance remain unverified.

@@ -14,7 +14,7 @@ with:
 - A real Mac app (not iPad-on-Mac via Catalyst): three-column layout,
   menu bar, keyboard shortcuts, hover states, translucent sidebar.
 - An iOS app rebuilt with modern SwiftUI.
-- Thirty-four IDE-inspired themes out of the box (Nord, Nordic, Gruvbox, Solarized,
+- Thirty-seven built-in themes out of the box (Nord, Nordic, Gruvbox, Solarized,
   Catppuccin, Tokyo Night, Rosé Pine, Brev's own Paper / Forest /
   Slate, and a developer-tool theme pack), plus user themes via JSON.
 - Sender avatars with a cascading resolution chain: Contacts →
@@ -119,21 +119,27 @@ Anything not listed is roadmap, not release-blocker.
   rejected before render so an opt-in logo fetch can't trigger
   hidden follow-up loads.
 
+Desktop mailbox navigation puts editable Favourites above collapsible accounts,
+using the same shortcut model as iPhone with compact, keyboard-navigable rows.
+
 ### Theming & appearance
 
-- 34 built-in themes: Nord, Nordic, Gruvbox Light/Dark, Solarized
+- 37 built-in themes: Nord, Nordic, Gruvbox Light/Dark, Solarized
   Light/Dark, Catppuccin Latte/Mocha, Tokyo Night, Rosé Pine, Brev
-  Paper / Forest / Slate, plus the developer-tool and
+  Mono Light / Mono Grey / Mono Dark / Paper / Forest / Slate, plus the developer-tool and
   terminal-classic packs (One Dark Pro, Tomorrow Day/Night,
   Synthwave Dusk, Cobalt Night, Amber Terminal, and others).
 - Light/dark pairing modes: follow system, always light, always
   dark — with independent light and dark theme choices.
+- Brev Mono Light and the softer Brev Mono Grey are the default light/dark
+  pair; saved theme selections and custom accents are preserved.
 - User themes via JSON files in `themes/`.
-- Window material modes: solid, subtle, frosted, glass-style,
-  scoped to sidebar, mail window, or all Brev windows.
-- Independent pane and sidebar opacity sliders, a message-content override
-  with an opaque accessibility option, transparent titlebar toggle, and
-  material-aware compose/Settings windows.
+- Desktop window transparency: Off, Sidebars only, or Full windows.
+  Sidebars only affects Mail and Settings sidebars; Full windows also covers
+  reading panes, compose windows and separately opened messages.
+- Independent sidebar/window background opacity, labelled from More transparent
+  to Fully opaque, with a live schematic preview. Advanced controls hold the
+  material style and unified title bar; Reduce Transparency keeps surfaces solid.
 - Twenty selectable Brev app icon variants; macOS Dock icon switching
   and iOS alternate icons.
 

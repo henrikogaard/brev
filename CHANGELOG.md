@@ -6,6 +6,17 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Desktop Favourites puts All Inboxes and each account inbox above collapsible
+  accounts, with editable Drafts/Sent shortcuts and saved order/visibility.
+  Compact rows follow desktop sizing; arrow navigation stays in the sidebar
+  until Return or Right opens the mailbox.
+- Brev Mono Grey is the new default dark theme, with softer charcoal surfaces
+  and readable text contrast. Existing saved themes and accents are preserved.
+- Appearance now offers Off, Sidebars only, and Full windows transparency,
+  with labelled opacity sliders and a preview of Mail/Settings and
+  Compose/message windows. Full windows covers all of these surfaces;
+  Sidebars only keeps content and auxiliary windows opaque.
+
 - Settings now uses eight task categories plus About & Updates on both
   platforms, with subpages for Writing, mailboxes, privacy, and storage.
   Send safety precedes expandable recipient history; remote-image and avatar
@@ -44,6 +55,10 @@ All notable changes to Brev are documented here.
 
 
 ### Fixed
+
+- Transparent Mail and Settings sidebars are no longer covered by opaque root
+  backgrounds. Window opacity reaches 100%; the desktop's inactive message-card
+  opacity control has been removed from its flat reader layout.
 
 - Compact desktop sizing preserves native toolbar button proportions while
   keeping sidebar, message-list and reader content at the selected density.

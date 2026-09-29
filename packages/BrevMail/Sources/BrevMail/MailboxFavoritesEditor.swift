@@ -10,7 +10,6 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-#if os(iOS)
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -25,6 +24,9 @@ struct MailboxFavoritesEditor: View {
     private var ordered: [MailboxFavorite] { preferences.ordered(candidates) }
 
     var body: some View {
+        #if os(macOS)
+        desktopEditor
+        #else
         NavigationStack {
             List {
                 Section {
@@ -96,7 +98,81 @@ struct MailboxFavoritesEditor: View {
             }
         }
         .tint(theme.accent.color)
+        #endif
     }
+
+    #if os(macOS)
+    private var desktopEditor: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            Text("Favourites", bundle: .module).brevFont(.title).fontWeight(.semibold)
+            Text(
+                "Choose your shortcuts and drag to reorder. Inbox counts show unread mail; Drafts counts show all drafts.",
+                bundle: .module
+            )
+            .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
+            List {
+                ForEach(ordered) { favorite in
+                    HStack(spacing: BrevSpacing.sm) {
+                        Toggle(isOn: Binding(
+                            get: { preferences.isVisible(favorite) },
+                            set: { visible in
+                                var updated = preferences
+                                updated.setVisible(visible, id: favorite.id)
+                                data = updated.data
+                            }
+                        )) {
+                            Label {
+                                Text(verbatim: [favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: " · "))
+                                    .lineLimit(1)
+                            } icon: {
+                                Image(systemName: favorite.symbol).frame(width: 18)
+                                    .foregroundStyle(theme.textSecondary.color)
+                            }
+                        }
+                        .toggleStyle(.checkbox)
+                        Spacer(minLength: BrevSpacing.sm)
+                        Button { move(favorite, by: -1) } label: { Image(systemName: "chevron.up") }
+                            .buttonStyle(.borderless)
+                            .help(String(localized: "Move up", bundle: .module))
+                            .accessibilityLabel(String(localized: "Move up", bundle: .module))
+                            .disabled(favorite.id == ordered.first?.id)
+                        Button { move(favorite, by: 1) } label: { Image(systemName: "chevron.down") }
+                            .buttonStyle(.borderless)
+                            .help(String(localized: "Move down", bundle: .module))
+                            .accessibilityLabel(String(localized: "Move down", bundle: .module))
+                            .disabled(favorite.id == ordered.last?.id)
+                    }
+                    .brevFont(.body)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .listRowBackground(theme.bgPrimary.color)
+                    .accessibilityAction(named: String(localized: "Move up", bundle: .module)) { move(favorite, by: -1) }
+                    .accessibilityAction(named: String(localized: "Move down", bundle: .module)) { move(favorite, by: 1) }
+                }
+                .onMove { offsets, destination in
+                    var ids = ordered.map(\.id)
+                    ids.move(fromOffsets: offsets, toOffset: destination)
+                    var updated = preferences
+                    updated.reorder(ids)
+                    data = updated.data
+                }
+            }
+            .listStyle(.plain)
+            .scrollContentBackground(.hidden)
+            .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.md))
+            HStack {
+                Spacer()
+                Button(String(localized: "Done", bundle: .module)) { dismiss() }
+                    .keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(BrevSpacing.lg)
+        .foregroundStyle(theme.textPrimary.color)
+        .background(theme.bgSecondary.color)
+        .tint(theme.accent.color)
+        .brevDesktopSizing()
+        .frame(width: 520, height: 440)
+    }
+    #endif
 
     private func move(_ favorite: MailboxFavorite, by offset: Int) {
         var ids = ordered.map(\.id)
@@ -107,4 +183,3 @@ struct MailboxFavoritesEditor: View {
         data = updated.data
     }
 }
-#endif

@@ -228,3 +228,21 @@ retain a 44-point touch floor; large text wraps, with counts below labels at
 accessibility sizes. Decorative icons stay within their fixed columns. Account
 identity, unread-versus-draft counts, shortcut persistence, and disclosure
 behaviour are unchanged.
+
+### Window transparency controls (2026-09-29)
+
+Appearance offers Off, Sidebars only, and Full windows. These are presentation
+choices over the existing persisted material/scope keys, not a new preference
+schema. Full windows uses `allWindows`; the legacy `mainWindow` value resolves
+to the same full-window coverage, including compose and detached readers.
+Sidebars only applies to the mailbox and Settings sidebars while content and
+utility windows remain solid. Container backing must stay clear for those
+sidebar materials to sample the desktop. Title-bar layout no longer gates
+background transparency. Reduce Transparency still forces opaque surfaces.
+
+Opacity means the themed background layer, with labelled transparent/opaque
+ends and a 100 percent opaque endpoint. Material style and title-bar layout remain under Advanced. The previous
+message-card override is not offered in desktop Settings because the macOS
+reader uses a flat canvas; its stored preference and iPad rendering are retained. A schematic preview shows
+mail/Settings sidebars alongside compose/message windows. No new network
+behaviour or theme schema is introduced.

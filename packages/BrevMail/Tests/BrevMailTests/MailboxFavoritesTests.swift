@@ -15,7 +15,7 @@ import BrevBackend
 import Foundation
 import Testing
 
-@Suite("Mobile mailbox favorites")
+@Suite("Mailbox favorites")
 struct MailboxFavoritesTests {
     private func section(_ id: String) -> MailSourceSection {
         MailSourceSection(id: MailSourceID(accountID: "account", mailboxID: id),

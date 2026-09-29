@@ -17,7 +17,7 @@ import Testing
 @Suite("Built-in themes")
 struct BuiltInThemeTests {
     @Test("default themes keep small text readable across normal, hover, and selected surfaces",
-          arguments: [BrevTheme.brevMonoLight, BrevTheme.brevMonoDark])
+          arguments: [BrevTheme.brevMonoLight, BrevTheme.brevMonoGrey, BrevTheme.brevMonoDark])
     func defaultContrast(theme: BrevTheme) {
         for background in [theme.bgPrimary, theme.bgSecondary, theme.bgTertiary, theme.selection] {
             for foreground in [theme.textPrimary, theme.textSecondary, theme.textTertiary] {
@@ -105,9 +105,9 @@ struct BuiltInThemeTests {
 
     @Test("built-in themes cover light and dark choices")
     func builtInThemesCoverLightAndDarkChoices() {
-        #expect(BrevTheme.brevBuiltIns.count == 36)
+        #expect(BrevTheme.brevBuiltIns.count == 37)
         #expect(BrevTheme.brevBuiltIns.filter { $0.mode == .light }.count == 10)
-        #expect(BrevTheme.brevBuiltIns.filter { $0.mode == .dark }.count == 26)
+        #expect(BrevTheme.brevBuiltIns.filter { $0.mode == .dark }.count == 27)
     }
 
     @Test("built-in themes define complete avatar palettes")
@@ -134,7 +134,7 @@ struct BuiltInThemeTests {
         #expect(BrevTheme.brevMonoLight.bgPrimary.hex == "#FFFFFF")
         #expect(BrevTheme.brevMonoLight.accent.hex == "#1F1F1F")
         #expect(BrevTheme.brevMonoLight.success.hex == "#3B6B4C")
-        #expect(BrevTheme.brevMonoDark.bgPrimary.hex == "#101010")
-        #expect(BrevTheme.brevMonoDark.accent.hex == "#E6E6E6")
+        #expect(BrevTheme.brevMonoGrey.bgPrimary.hex == "#292929")
+        #expect(BrevTheme.brevMonoGrey.accent.hex == "#E6E6E6")
     }
 }

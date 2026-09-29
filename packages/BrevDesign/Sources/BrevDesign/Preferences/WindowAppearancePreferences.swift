@@ -115,8 +115,8 @@ public enum WindowSurfaceRole: Sendable, Hashable, CaseIterable {
 }
 
 public struct WindowAppearancePreferences: Equatable, Sendable, Codable {
-    public static let surfaceOpacityRange: ClosedRange<Double> = 0.25 ... 0.95
-    public static let sidebarOpacityRange: ClosedRange<Double> = 0.1 ... 0.95
+    public static let surfaceOpacityRange: ClosedRange<Double> = 0.25 ... 1
+    public static let sidebarOpacityRange: ClosedRange<Double> = 0.1 ... 1
     public static let messageContentOpacityRange: ClosedRange<Double> = 0.25 ... 1
     public static let defaultSurfaceOpacity = 0.82
     public static let defaultSidebarOpacity = 0.59
@@ -238,9 +238,10 @@ public struct WindowAppearancePreferences: Equatable, Sendable, Codable {
         guard effectiveMode(reduceTransparency: reduceTransparency).usesTranslucency else {
             return 1
         }
-        guard scope.applies(to: role) else { return 1 }
-        // Avoid compounding the pane opacity underneath every child surface.
+        // Clear container backing even in sidebar-only mode, or it hides the
+        // sidebar backdrop. The content panes still provide opaque fills.
         guard role != .mainWindow, role != .settings else { return nil }
+        guard scope.applies(to: role) else { return 1 }
         guard role != .sidebar else { return sidebarOpacity }
         guard role != .messageContent else {
             return switch messageContentOpacityMode {
@@ -271,11 +272,9 @@ public struct WindowAppearancePreferences: Equatable, Sendable, Codable {
         case .mainWindow:
             return true
         case .settings:
-            // Settings chrome clears whenever Main window or All windows scope
-            // applies — matching `applies(to: .settings)`.
-            return scope == .mainWindow || scope == .allWindows
+            return true
         case .utility:
-            return scope == .allWindows
+            return scope != .sidebarOnly
         case .sidebar, .content, .messageContent, .card:
             return scope.applies(to: role)
         }

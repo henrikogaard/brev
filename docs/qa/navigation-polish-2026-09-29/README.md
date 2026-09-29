@@ -166,8 +166,8 @@ blocker is resolved for this scoped Settings and sizing walkthrough.
 No physical device, VoiceOver audio, live-provider sending, import/export,
 update installation or consent-changing integration test was performed. The
 iPhone's existing shortcut choices and order were restored after interaction
-checks. Desktop Favourites and a revised main-window sidebar are still proposed
-polish, not part of the implemented phone Favourites grouping.
+checks. Desktop Favourites and the revised main-window sidebar were subsequently
+implemented; see the [desktop sidebar and transparency pass](../desktop-sidebar-2026-09-29/README.md).
 
 The earlier [full settings assessment](../settings-assessment-2026-09-29/README.md)
 remains the record of deeper follow-ups: simplify certificate/source setup,

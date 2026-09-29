@@ -24,10 +24,11 @@ enum FolderSidebarDestinationActivation {
     /// activated even when the selected identifier did not change.
     static func activate(
         selection: () -> Void,
-        onActivated: (() -> Void)?
+        onActivated: (() -> Void)?,
+        opensMessages: Bool = true
     ) {
         selection()
-        onActivated?()
+        if opensMessages { onActivated?() }
     }
 }
 
@@ -56,9 +57,10 @@ public struct FolderSidebar: View {
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
     @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
-    #if os(iOS)
     @AppStorage(MailboxFavorites.storageKey) private var favoritesData = Data()
     @State private var showsFavoritesEditor = false
+    #if os(macOS)
+    @State private var selectedFavoriteID: MailboxFavoriteID?
     #endif
     /// In-memory copy of the disclosure state used for rendering. Decoding the
     /// stored JSON on every render (once per source section) made expand/collapse
@@ -330,7 +332,8 @@ public struct FolderSidebar: View {
             }
             .onChange(of: navigation.selectedSourceID) { _, selectedSourceID in
                 #if os(macOS)
-                guard let selectedSourceID, navigation.browsingFolderID == nil else { return }
+                guard let selectedSourceID, navigation.browsingFolderID == nil,
+                      activeDesktopFavoriteID == nil else { return }
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.expandingSelection(
                     selectedSourceID,
                     in: expandedSourceIDs
@@ -347,11 +350,9 @@ public struct FolderSidebar: View {
                     )
                 leaveHiddenSmartViewIfNeeded(isSelected: selectedHidden)
             }
-        #if os(iOS)
             .sheet(isPresented: $showsFavoritesEditor) {
                 MailboxFavoritesEditor(data: $favoritesData, candidates: favoriteCandidates)
             }
-        #endif
             .sheet(isPresented: $showsSmartViewSettings) {
                 VStack(spacing: 0) {
                     SmartViewsSection(mailboxes: smartViewMailboxes)
@@ -479,7 +480,7 @@ public struct FolderSidebar: View {
             #if os(iOS)
             if !sourceSections.isEmpty { favoritesSection }
             #else
-            if sourceSections.count > 1 { unifiedInboxShortcut }
+            if !sourceSections.isEmpty { desktopFavoritesSection }
             #endif
             if showsSmartViews, smartViewSettings.showInSidebar {
                 VStack(alignment: .leading, spacing: 0) {
@@ -527,14 +528,19 @@ public struct FolderSidebar: View {
         }
         .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
         #else
+        if !sourceSections.isEmpty {
+            Text("Mailboxes", bundle: .module)
+                .brevFont(.caption).fontWeight(.semibold)
+                .foregroundStyle(theme.textSecondary.color)
+                .padding(.top, BrevSpacing.sm)
+                .padding(.bottom, BrevSpacing.xs)
+        }
         ForEach(sourceSections) { section in
-            Section {
+            VStack(alignment: .leading, spacing: 0) {
+                mailboxDisclosureHeader(section)
                 if expandedSourceIDs.contains(section.id) {
                     folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
                 }
-            } header: {
-                mailboxDisclosureHeader(section)
-                    .padding(.top, sidebarMetrics.sectionSpacing)
             }
         }
         #endif
@@ -619,11 +625,15 @@ public struct FolderSidebar: View {
         .help(String(localized: "Choose which mailboxes are visible", bundle: .module))
     }
 
-    #if os(iOS)
     private var favoriteCandidates: [MailboxFavorite] {
         MailboxFavorite.candidates(sections: sourceSections)
     }
 
+    private var visibleFavorites: [MailboxFavorite] {
+        MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)
+    }
+
+    #if os(iOS)
     private var phoneRowSeparator: some View {
         Rectangle().fill(theme.border.color).frame(height: 0.5)
             .padding(.leading, BrevSpacing.md + (showSidebarIcons ? sidebarMetrics.iconWidth + BrevSpacing.sm : 0))
@@ -702,35 +712,101 @@ public struct FolderSidebar: View {
         }
     }
 
+    #endif
+
     private func isFavoriteSelected(_ id: MailboxFavoriteID) -> Bool {
         switch id {
         case .allInboxes: navigation.isUnifiedInboxSelected
         case .folder(let destination): navigation.browsingFolderID == nil && navigation.selectedSourceFolderID == destination
         }
     }
-    #endif
 
-    private var unifiedInboxShortcut: some View {
-        Button {
-            activateDestination { navigation.selectUnifiedInbox() }
-        } label: {
-            sidebarActionRow(title: String(localized: "All Inboxes", bundle: .module),
-                             isSelected: navigation.isUnifiedInboxSelected) {
-                if showSidebarIcons {
-                    Image(systemName: "tray.2")
-                        .foregroundStyle(theme.textSecondary.color)
-                        .brevFont(.body)
-                        .frame(width: sidebarMetrics.iconWidth)
-                }
-            } trailing: {
-                unreadBadge(unifiedUnreadCount)
+    #if os(macOS)
+    /// Keep selection attached to the row used, even when the account repeats an inbox.
+    private var activeDesktopFavoriteID: MailboxFavoriteID? {
+        visibleFavorites.first { favorite in
+            guard isFavoriteSelected(favorite.id) else { return false }
+            switch favorite.id {
+            case .allInboxes: return true
+            case .folder(let destination):
+                return selectedFavoriteID == favorite.id || !expandedSourceIDs.contains(destination.sourceID)
+            }
+        }?.id
+    }
+
+    private func selectFavorite(_ id: MailboxFavoriteID, opensMessages: Bool = true) {
+        selectedFavoriteID = id
+        activateDestination(opensMessages: opensMessages) {
+            switch id {
+            case .allInboxes: navigation.selectUnifiedInbox()
+            case .folder(let destination):
+                navigation.selectFolder(destination.folderID, in: destination.sourceID)
             }
         }
-        .buttonStyle(.plain)
-        #if os(macOS)
-            .id(SidebarKeyboardItem.unifiedInbox)
-        #endif
     }
+
+    private func favoriteFolder(_ id: MailboxFavoriteID) -> (folder: Folder, sourceID: MailSourceID)? {
+        guard case .folder(let destination) = id,
+              let folder = sourceSections.first(where: { $0.id == destination.sourceID })?
+              .folders.first(where: { $0.id == destination.folderID }) else { return nil }
+        return (folder, destination.sourceID)
+    }
+
+    private var desktopFavoritesSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("Favourites", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                Spacer()
+                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
+                    .buttonStyle(.plain)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+            }
+            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .frame(minHeight: sidebarMetrics.sourceHeaderMinimumHeight)
+            ForEach(visibleFavorites) { favorite in
+                Button { selectFavorite(favorite.id) } label: {
+                    sidebarActionRow(
+                        title: [favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: " · "),
+                        isSelected: activeDesktopFavoriteID == favorite.id
+                    ) {
+                        if showSidebarIcons {
+                            Image(systemName: favorite.symbol)
+                                .brevFont(.body)
+                                .foregroundStyle(theme.textSecondary.color)
+                                .frame(width: sidebarMetrics.iconWidth)
+                        }
+                    } trailing: {
+                        unreadBadge(favorite.count)
+                    }
+                }
+                .buttonStyle(.plain)
+                .id(SidebarKeyboardItem.favorite(favorite.id))
+                .accessibilityElement(children: .ignore)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
+                .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
+                .accessibilityAddTraits(activeDesktopFavoriteID == favorite.id ? .isSelected : [])
+                .help([favorite.title, favorite.subtitle, favorite.count > 0 ? favorite.countDescription : nil]
+                    .compactMap { $0 }.joined(separator: "\n"))
+                .dropDestination(for: String.self) { representations, _ in
+                    guard let destination = favoriteFolder(favorite.id) else { return false }
+                    return handleDrop(representations, on: destination.folder, sourceID: destination.sourceID)
+                }
+                .contextMenu {
+                    Button(String(localized: "Edit favourites", bundle: .module)) { showsFavoritesEditor = true }
+                    if let destination = favoriteFolder(favorite.id) {
+                        Divider()
+                        folderContextMenu(folder: destination.folder, sourceID: destination.sourceID)
+                    }
+                }
+            }
+        }
+    }
+    #endif
 
     @ViewBuilder
     private func menuChoice(_ title: String, isSelected: Bool) -> some View {
@@ -776,17 +852,15 @@ public struct FolderSidebar: View {
                     .fontWeight(.semibold)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundStyle(theme.textTertiary.color)
-                    .accessibilityHidden(true)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(theme.warning.color)
-                } else if !isExpanded {
-                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textTertiary.color)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(theme.textSecondary.color)
             .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
@@ -1279,13 +1353,7 @@ public struct FolderSidebar: View {
         )
     }
 
-    private var sidebarStartsCollapsed: Bool {
-        #if os(iOS)
-        true
-        #else
-        false
-        #endif
-    }
+    private var sidebarStartsCollapsed: Bool { true }
 
     @ViewBuilder
     private var mailboxHeader: some View {
@@ -1554,8 +1622,11 @@ public struct FolderSidebar: View {
         )
     }
 
-    private func select(_ folder: Folder, in sourceID: MailSourceID?) {
-        activateDestination {
+    private func select(_ folder: Folder, in sourceID: MailSourceID?, opensMessages: Bool = true) {
+        #if os(macOS)
+        selectedFavoriteID = nil
+        #endif
+        activateDestination(opensMessages: opensMessages) {
             if let sourceID {
                 navigation.selectFolder(folder.id, in: sourceID)
             } else {
@@ -1565,10 +1636,11 @@ public struct FolderSidebar: View {
         }
     }
 
-    private func activateDestination(_ selection: () -> Void) {
+    private func activateDestination(opensMessages: Bool = true, _ selection: () -> Void) {
         FolderSidebarDestinationActivation.activate(
             selection: selection,
-            onActivated: onOpenMessages
+            onActivated: onOpenMessages,
+            opensMessages: opensMessages
         )
     }
 
@@ -1668,7 +1740,10 @@ public struct FolderSidebar: View {
     }
 
     private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {
-        navigation.selectedCollectionFolderID == nil
+        #if os(macOS)
+        if activeDesktopFavoriteID != nil { return false }
+        #endif
+        return navigation.selectedCollectionFolderID == nil
             && navigation.selectedFolderID == folder.id
             && navigation.selectedSourceID == sourceID
     }
@@ -1932,7 +2007,7 @@ public struct FolderSidebar: View {
     /// and disclosure controls are skipped — arrows move between the
     /// destinations themselves, like Mail.app's mailbox list.
     private enum SidebarKeyboardItem: Hashable {
-        case unifiedInbox
+        case favorite(MailboxFavoriteID)
         case smartView(String)
         case allAttachments
         case savedSearch(SmartMailbox.ID)
@@ -1953,10 +2028,8 @@ public struct FolderSidebar: View {
     /// lays out so arrow keys walk the same sequence the eye scans.
     private var sidebarKeyboardTargets: [SidebarKeyboardTarget] {
         var targets: [SidebarKeyboardTarget] = []
-        if sourceSections.count > 1 {
-            targets.append(
-                SidebarKeyboardTarget(item: .unifiedInbox, row: nil, sourceID: nil)
-            )
+        targets += visibleFavorites.map {
+            SidebarKeyboardTarget(item: .favorite($0.id), row: nil, sourceID: nil)
         }
         if showsSmartViews, smartViewSettings.showInSidebar,
            FolderSidebarSmartViewPresentation.isExpanded(
@@ -2038,7 +2111,7 @@ public struct FolderSidebar: View {
     /// The keyboard item matching the current navigation selection, when
     /// the selection is one of the reachable destinations.
     private var sidebarKeyboardSelectionItem: SidebarKeyboardItem? {
-        if navigation.isUnifiedInboxSelected { return .unifiedInbox }
+        if let id = activeDesktopFavoriteID { return .favorite(id) }
         if navigation.isAllAttachmentsSelected { return .allAttachments }
         if let searchID = navigation.selectedSavedSearchID {
             return .savedSearch(searchID)
@@ -2133,17 +2206,17 @@ public struct FolderSidebar: View {
 
     private func activateSidebarKeyboardItem(_ item: SidebarKeyboardItem) {
         switch item {
-        case .unifiedInbox:
-            activateDestination { navigation.selectUnifiedInbox() }
+        case .favorite(let id):
+            selectFavorite(id, opensMessages: false)
         case .smartView(let builtInID):
             if let smartView = MailboxSmartView.builtIns
                 .first(where: { $0.id == builtInID }) {
-                activateDestination { smartView.select(in: navigation) }
+                activateDestination(opensMessages: false) { smartView.select(in: navigation) }
             }
         case .allAttachments:
-            activateDestination { navigation.selectAllAttachmentsSmartView() }
+            activateDestination(opensMessages: false) { navigation.selectAllAttachmentsSmartView() }
         case .savedSearch(let id):
-            activateDestination { navigation.selectSavedSearch(id: id) }
+            activateDestination(opensMessages: false) { navigation.selectSavedSearch(id: id) }
         case .outbox:
             onOpenOutbox?()
         case .folder, .rootFolder:
@@ -2151,7 +2224,7 @@ public struct FolderSidebar: View {
                 where: { $0.item == item }
             ),
                 let folder = target.row?.folder {
-                select(folder, in: target.sourceID)
+                select(folder, in: target.sourceID, opensMessages: false)
             }
         }
     }

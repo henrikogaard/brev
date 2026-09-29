@@ -56,9 +56,41 @@ public extension BrevTheme {
         ]
     )
 
+    // MARK: - Brev Mono Grey
+
+    /// Soft charcoal monochrome theme. Default system-dark variant.
+    static let brevMonoGrey = BrevTheme(
+        id: "brev-mono-grey",
+        name: "Brev Mono Grey",
+        mode: .dark,
+        author: "Brev contributors",
+        license: "MIT",
+        bgPrimary: BrevColor("#292929"),
+        bgSecondary: BrevColor("#323232"),
+        bgTertiary: BrevColor("#3B3B3B"),
+        textPrimary: BrevColor("#EEEEEE"),
+        textSecondary: BrevColor("#CECECE"),
+        textTertiary: BrevColor("#BDBDBD"),
+        accent: BrevColor("#E6E6E6"),
+        accentMuted: BrevColor("#ABABAB"),
+        success: BrevColor("#94C392"),
+        warning: BrevColor("#E0B566"),
+        danger: BrevColor("#E49788"),
+        info: BrevColor("#ADC2D4"),
+        border: BrevColor("#535353"),
+        separator: BrevColor("#414141"),
+        selection: BrevColor("#484848"),
+        avatarPalette: [
+            BrevColor("#CFCFCF"), BrevColor("#BBBBBB"),
+            BrevColor("#A7A7A7"), BrevColor("#939393"),
+            BrevColor("#7F7F7F"), BrevColor("#D9D9D9"),
+            BrevColor("#B1B1B1"), BrevColor("#999999")
+        ]
+    )
+
     // MARK: - Brev Mono Dark
 
-    /// Neutral monochrome dark theme. Default system-dark variant.
+    /// Neutral near-black monochrome dark theme.
     static let brevMonoDark = BrevTheme(
         id: "brev-mono-dark",
         name: "Brev Mono Dark",
@@ -204,7 +236,7 @@ public extension BrevTheme {
     /// Stable list of built-in themes, in the order they appear in the
     /// settings picker.
     static let brevBuiltIns: [BrevTheme] = [
-        .brevMonoLight, .brevMonoDark,
+        .brevMonoLight, .brevMonoGrey, .brevMonoDark,
         .brevPaper, .brevForest, .brevSlate,
         .nord, .nordic,
         .gruvboxLight, .gruvboxDark,

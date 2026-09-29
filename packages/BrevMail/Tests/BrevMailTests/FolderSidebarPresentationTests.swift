@@ -31,6 +31,18 @@ struct FolderSidebarPresentationTests {
         #expect(activationCount == 1)
     }
 
+    @Test("arrow navigation changes the mailbox without moving focus into messages")
+    func arrowSelectionKeepsSidebarFocus() {
+        var selectedFolderID = "inbox"
+        var activationCount = 0
+        FolderSidebarDestinationActivation.activate(
+            selection: { selectedFolderID = "drafts" },
+            onActivated: { activationCount += 1 }, opensMessages: false
+        )
+        #expect(selectedFolderID == "drafts")
+        #expect(activationCount == 0)
+    }
+
     @Test("load errors render an error status")
     func loadErrorsRenderErrorStatus() {
         #expect(FolderSidebarPresentation.status(

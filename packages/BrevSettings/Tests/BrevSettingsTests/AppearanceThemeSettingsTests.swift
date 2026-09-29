@@ -25,9 +25,9 @@ struct AppearanceThemeSettingsTests {
 
         #expect(settings.mode == .followSystem)
         #expect(settings.lightThemeID == "brev-mono-light")
-        #expect(settings.darkThemeID == "brev-mono-dark")
+        #expect(settings.darkThemeID == "brev-mono-grey")
         #expect(settings.resolvedThemeID(prefersDark: false) == "brev-mono-light")
-        #expect(settings.resolvedThemeID(prefersDark: true) == "brev-mono-dark")
+        #expect(settings.resolvedThemeID(prefersDark: true) == "brev-mono-grey")
         #expect(settings.followsSystemAppearance)
     }
 
@@ -49,6 +49,15 @@ struct AppearanceThemeSettingsTests {
         #expect(AppearanceThemeSettings.hasSavedValue(in: defaults))
     }
 
+    @Test("saved Mono Dark remains selected after the default changes")
+    func preservesSavedDarkTheme() throws {
+        let defaults = try Self.makeDefaults()
+        defaults.set("brev-mono-dark", forKey: AppearanceThemeSettings.Key.darkThemeID)
+        let settings = AppearanceThemeSettings.load(from: defaults)
+        #expect(settings.resolvedTheme(prefersDark: true) == .brevMonoDark)
+        #expect(settings.resolvedTheme(prefersDark: false) == .brevMonoLight)
+    }
+
     @Test("saving and resolving preserves a custom accent override")
     func savingAndResolvingPreservesCustomAccentOverride() throws {
         let defaults = try Self.makeDefaults()
@@ -64,7 +73,7 @@ struct AppearanceThemeSettingsTests {
 
         #expect(restored.accentHex == "#E85D75")
         #expect(resolved.accent.hex == "#E85D75")
-        #expect(resolved.bgPrimary == BrevTheme.brevMonoDark.bgPrimary)
+        #expect(resolved.bgPrimary == BrevTheme.brevMonoGrey.bgPrimary)
 
         var reset = restored
         reset.accentHex = nil
@@ -74,7 +83,7 @@ struct AppearanceThemeSettingsTests {
         #expect(
             AppearanceThemeSettings.load(from: defaults)
                 .resolvedTheme(in: BrevTheme.brevBuiltIns, prefersDark: true)
-                .accent == BrevTheme.brevMonoDark.accent
+                .accent == BrevTheme.brevMonoGrey.accent
         )
     }
 
@@ -144,7 +153,7 @@ struct AppearanceThemeSettingsTests {
         )
 
         #expect(settings.resolvedTheme(in: BrevTheme.brevBuiltIns, prefersDark: false) == .brevMonoLight)
-        #expect(settings.resolvedTheme(in: BrevTheme.brevBuiltIns, prefersDark: true) == .brevMonoDark)
+        #expect(settings.resolvedTheme(in: BrevTheme.brevBuiltIns, prefersDark: true) == .brevMonoGrey)
     }
 
     @Test("unsaved appearance theme settings are distinguishable from defaults")

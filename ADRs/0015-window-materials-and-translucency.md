@@ -50,9 +50,10 @@ Feature packages consume the model rather than choosing raw materials
 locally. On macOS, material rendering uses system materials and a
 narrow AppKit bridge where SwiftUI alone cannot express the desired
 window background. Behind-window transparency follows the selected
-scope independently of title-bar layout. Settings follows the Main
-window scope (and All windows); other secondary utility windows stay
-opaque unless users choose All windows.
+scope independently of title-bar layout. Settings sidebar follows Sidebars
+only. Full windows applies to main, Settings, compose, and detached-message
+windows. The legacy `mainWindow`
+scope has the same full-window coverage as `allWindows`.
 
 Live material is limited to window chrome, sidebar, Settings window
 containers, and utility roles that opt into live material. Dense reading and editing
@@ -70,11 +71,11 @@ when macOS Reduce Transparency is enabled, the effective mode is solid.
 Translucency-capable surfaces render a theme-colored readability layer
 above live material when material is present, or as the pane backing
 when live material is intentionally withheld. Users can tune that layer
-with a `surfaceOpacity` preference clamped to `0.25...0.95`; the
+with a `surfaceOpacity` preference clamped to `0.25...1.0`; the
 default `0.82` keeps wallpaper visible while preventing bright or
 saturated desktop images from overpowering mail panes, settings, and
 cards. Sidebar roles use a separate `sidebarOpacity` preference
-clamped to `0.10...0.95`; the default `0.59` keeps sidebars visibly
+clamped to `0.10...1.0`; the default `0.59` keeps sidebars visibly
 more translucent than dense panes. When the sidebar-specific key is
 missing, it initializes from the previous derived sidebar value so
 existing installs keep their current visual balance.
@@ -116,8 +117,10 @@ must be availability-gated. When newer Liquid Glass APIs are not
 available, Brev falls back to the strongest supported system material
 instead of failing to render.
 
-Settings exposes this under Appearance as "Window design" so users can
-choose style, scope, pane opacity, and sidebar opacity.
+Settings exposes Off, Sidebars only, and Full windows under Appearance ->
+Window transparency. Opacity sliders have explicit transparent/opaque endpoints;
+Advanced contains material style and title-bar layout. See ADR-0012 for the
+2026-09-29 control simplification.
 
 ## Rationale
 
