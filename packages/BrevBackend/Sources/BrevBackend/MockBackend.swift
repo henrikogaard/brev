@@ -2659,7 +2659,7 @@ private actor Store {
         // Drafts carry their markup in `htmlBody`; sent/draft copies mirror a
         // real message's multipart/alternative split, so snippets need the
         // markup stripped to stay readable in the message list.
-        let trimmed = HTMLTextStripper.visibleText(from: Data(body.utf8))
+        let trimmed = ((try? HTMLTextStripper.visibleText(from: Data(body.utf8))) ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count > 160 else { return trimmed }
         return String(trimmed.prefix(157)) + "..."

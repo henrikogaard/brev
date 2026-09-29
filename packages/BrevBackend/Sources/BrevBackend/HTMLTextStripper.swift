@@ -103,13 +103,28 @@ enum HTMLTextStripper {
     /// Decodes untrusted HTML bytes (UTF-8, then the declared `<meta>` charset,
     /// then Latin-1) and returns the visible text: markup, style and script
     /// content removed, entities unescaped, whitespace collapsed.
-    static func visibleText(from data: Data) -> String {
+    /// `deadline` bounds the work cooperatively between stages — a long regex
+    /// pass over a multi-megabyte document cannot notice task cancellation,
+    /// so the extraction timeout relies on these checks to stay honest.
+    static func visibleText(
+        from data: Data,
+        deadline: ContinuousClock.Instant? = nil
+    ) throws -> String {
         let decoded = decodeHTML(data)
+        try checkDeadline(deadline)
         let stripped = stripMarkup(decoded)
+        try checkDeadline(deadline)
         let unescaped = unescapingEntities(stripped)
+        try checkDeadline(deadline)
         return unescaped
             .replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
             .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func checkDeadline(_ deadline: ContinuousClock.Instant?) throws {
+        if let deadline, ContinuousClock.now >= deadline {
+            throw AttachmentTextExtractionError.timedOut
+        }
     }
 
     private static func decodeHTML(_ data: Data) -> String {

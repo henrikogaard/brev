@@ -57,6 +57,15 @@ public enum AttachmentTextExtractor {
         mimeType: String,
         fileName: String
     ) async throws -> String? {
+        try await extract(data: data, mimeType: mimeType, fileName: fileName, deadline: nil)
+    }
+
+    static func extract(
+        data: Data,
+        mimeType: String,
+        fileName: String,
+        deadline: ContinuousClock.Instant?
+    ) async throws -> String? {
         guard data.count <= maxInputBytes else { return nil }
         try Task.checkCancellation()
         let kind = Kind(mimeType: mimeType, fileName: fileName)
@@ -71,7 +80,7 @@ public enum AttachmentTextExtractor {
         case .html:
             // NSAttributedString's HTML importer resolves remote subresources;
             // indexing untrusted bytes must never touch the network.
-            text = HTMLTextStripper.visibleText(from: data)
+            text = try HTMLTextStripper.visibleText(from: data, deadline: deadline)
         case .officeOpenXML:
             text = nil
         case .unsupported:
@@ -93,9 +102,15 @@ public enum AttachmentTextExtractor {
         fileName: String,
         timeout: Duration
     ) async throws -> String? {
-        try await withThrowingTaskGroup(of: String?.self) { group in
+        let deadline = ContinuousClock.now + timeout
+        return try await withThrowingTaskGroup(of: String?.self) { group in
             group.addTask {
-                try await extract(data: data, mimeType: mimeType, fileName: fileName)
+                try await extract(
+                    data: data,
+                    mimeType: mimeType,
+                    fileName: fileName,
+                    deadline: deadline
+                )
             }
             group.addTask {
                 try await Task.sleep(for: timeout)

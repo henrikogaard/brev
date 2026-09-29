@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-09-29 — Agent — deterministic extraction timeout (#112)
+
+- Goal: kill the 1 ms deadline race in `AttachmentTextExtractorTests.timeout`
+  (issue #112) — the task-group sleep branch could lose the scheduling race
+  and the work branch had no way to notice the budget on its own.
+- Changes: `extract(data:mimeType:fileName:timeout:)` now derives a
+  `ContinuousClock` deadline and threads it into the work task;
+  `HTMLTextStripper.visibleText` gained an optional `deadline` checked
+  between its decode/strip/unescape/collapse stages and throws
+  `AttachmentTextExtractionError.timedOut` directly. Long regex passes can
+  no longer outlive the caller's timeout unnoticed (the task group
+  implicitly awaits cancelled children, so sync work previously escaped the
+  bound entirely). MockBackend's call site updated for the new `throws`.
+- Verified: `swift test --filter "AttachmentTextExtractorTests|AttachmentIndexing"`
+  19/19 green; `scripts/lint.sh` + `scripts/format.sh` clean.
+- Handoff: deadline checks sit between strip stages, so the residual
+  overrun is bounded by one regex pass, not the whole pipeline.
+
 ## 2026-09-29 — Agent — Keyboard-nav sequence coverage (Codex #99)
 
 - Goal: cover the changed navigation behavior the P1 review asked for —
