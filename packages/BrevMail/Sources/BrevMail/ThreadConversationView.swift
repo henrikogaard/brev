@@ -181,13 +181,15 @@ public struct ThreadConversationView: View {
                     // Thread subject header
                     if let subject = threadHeaders.last?.subject {
                         Text(subject)
-                            .font(.system(.title2, design: .default, weight: .semibold))
+                            .brevFont(.title)
                             .foregroundStyle(theme.textPrimary.color)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, BrevSpacing.md)
                             .padding(.top, BrevSpacing.lg)
                             .padding(.bottom, BrevSpacing.sm)
+                        #if os(macOS)
                             .dynamicTypeSize(denseChromeDynamicTypeRange)
+                        #endif
                     }
 
                     conversationMetadataRow

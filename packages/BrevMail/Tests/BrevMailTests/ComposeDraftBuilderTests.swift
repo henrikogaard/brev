@@ -184,7 +184,7 @@ struct ComposeDraftBuilderTests {
         ))
     }
 
-    @Test("can send only requires at least one recipient")
+    @Test("can send accepts a recipient in any addressing field")
     func canSendOnlyRequiresAtLeastOneRecipient() {
         #expect(ComposeDraftBuilder.canSend(to: [], cc: [], bcc: []) == false)
         #expect(ComposeDraftBuilder.canSend(to: ["  "], cc: [], bcc: []) == false)
@@ -196,6 +196,16 @@ struct ComposeDraftBuilderTests {
             cc: [],
             bcc: []
         ))
+    }
+
+    @Test("send rejects invalid recipients even alongside valid To, Cc or Bcc addresses")
+    func invalidRecipientsBlockSending() {
+        #expect(!ComposeDraftBuilder.canSend(to: ["not-an-email"]))
+        #expect(!ComposeDraftBuilder.canSend(to: ["ada@example.org; broken"]))
+        #expect(!ComposeDraftBuilder.canSend(to: ["ada@example.org"], cc: ["team@"]))
+        #expect(!ComposeDraftBuilder.canSend(to: ["ada@example.org"], bcc: ["hidden@example"]))
+        #expect(ComposeDraftBuilder.canSave(to: ["not-an-email"], cc: [], bcc: [],
+                                            subject: "", bodyText: "", hasAttachments: false))
     }
 
     @Test("signature is injected into new draft body")

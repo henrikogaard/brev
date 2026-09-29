@@ -852,7 +852,7 @@ struct UnifiedInboxListView: View {
     private var unifiedSearchOptionsSummary: String {
         var parts: [String] = [navigation.searchExecution.messageListTitle]
         if !naturalLanguageSearchChips.isEmpty {
-            parts.append("\(naturalLanguageSearchChips.count) filters")
+            parts.append(String(localized: "\(naturalLanguageSearchChips.count) Filters", bundle: .module))
         }
         return parts.joined(separator: " · ")
     }
@@ -866,95 +866,28 @@ struct UnifiedInboxListView: View {
         }
     }
 
-    @ViewBuilder
     private var unifiedSearchExecutionBar: some View {
-        #if os(macOS)
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrevSpacing.md) {
-                Picker("", selection: unifiedSearchExecutionSelection) {
-                    ForEach(availableSearchExecutions, id: \.self) { execution in
-                        Label(execution.messageListTitle, systemImage: execution.messageListSymbolName)
-                            .tag(execution)
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            MailSearchOptionsBar(
+                execution: unifiedSearchExecutionSelection,
+                availableExecutions: availableSearchExecutions
+            )
+            if !naturalLanguageSearchChips.isEmpty {
+                ScrollView(.horizontal) {
+                    HStack(spacing: BrevSpacing.xs) {
+                        NaturalLanguageSearchChipStrip(chips: naturalLanguageSearchChips, onRemove: removeSearchChip)
                     }
                 }
-                .pickerStyle(.segmented)
-                .labelsHidden()
-                .controlSize(.small)
-                .fixedSize()
-                .accessibilityLabel(String(localized: "Search location", bundle: .module))
-                if !naturalLanguageSearchChips.isEmpty {
-                    NaturalLanguageSearchChipStrip(
-                        chips: naturalLanguageSearchChips,
-                        onRemove: removeSearchChip
-                    )
-                }
+                #if os(iOS)
+                .frame(height: 44)
+                #else
+                .frame(height: 28)
+                #endif
+                .scrollIndicators(.hidden)
+                .padding(.horizontal, BrevSpacing.md)
             }
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
         }
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        #else
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: BrevSpacing.xs) {
-                ForEach(availableSearchExecutions, id: \.self) { execution in
-                    unifiedSearchExecutionChip(execution)
-                }
-                if !naturalLanguageSearchChips.isEmpty {
-                    Rectangle()
-                        .fill(BrevSeparator.color(for: theme))
-                        .frame(width: 1, height: 18)
-                        .padding(.horizontal, BrevSpacing.xxs)
-                    NaturalLanguageSearchChipStrip(
-                        chips: naturalLanguageSearchChips,
-                        onRemove: removeSearchChip
-                    )
-                }
-            }
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.xs)
-        }
-        .background(Color.clear)
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        #endif
     }
-
-    #if os(iOS)
-    @ViewBuilder
-    private func unifiedSearchExecutionChip(_ execution: SearchExecution) -> some View {
-        let isActive = navigation.searchExecution == execution
-        Button {
-            if navigation.searchExecution != execution {
-                navigation.hasUserSelectedSearchExecution = true
-                navigation.searchExecution = execution
-            }
-        } label: {
-            HStack(spacing: BrevSpacing.xxs) {
-                Image(systemName: execution.messageListSymbolName)
-                    .font(.system(size: 11))
-                Text(execution.messageListTitle)
-                    .brevFont(.caption)
-            }
-            .foregroundStyle(isActive ? theme.bgPrimary.color : theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xxs)
-            .background(
-                Capsule().fill(isActive ? theme.accent.color : theme.bgSecondary.color)
-            )
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(String(localized: "Search location: \(execution.messageListTitle)", bundle: .module))
-        .accessibilityAddTraits(isActive ? .isSelected : [])
-    }
-    #endif
 
     private var isMutationActionBlocked: Bool {
         isMutating || isWorkBlocked || isMutationWorkBlocked || undoQueue?.isUndoing == true
@@ -1594,7 +1527,10 @@ struct UnifiedInboxListView: View {
                 Task { await setRead(!item.header.isRead, for: [item]) }
             } label: {
                 Label(
-                    item.header.isRead ? "Unread" : "Read",
+                    item.header.isRead ? String(localized: "Unread", bundle: .module) : String(
+                        localized: "Read",
+                        bundle: .module
+                    ),
                     systemImage: item.header.isRead ? "envelope.badge" : "envelope.open"
                 )
             }

@@ -221,6 +221,7 @@ struct MailboxViewSection: View {
                     }
                 }
 
+                #if os(iOS)
                 SettingsSegmentedRow(
                     symbolName: "textformat.size",
                     title: String(localized: "Text size", bundle: .module),
@@ -231,6 +232,7 @@ struct MailboxViewSection: View {
                         Text(textSize.title).tag(textSize)
                     }
                 }
+                #endif
 
                 fontPreview
 
@@ -306,6 +308,7 @@ struct MailboxViewSection: View {
                     }
                 }
 
+                #if os(iOS)
                 SettingsSegmentedRow(
                     symbolName: "rectangle.compress.vertical",
                     title: String(localized: "List density", bundle: .module),
@@ -316,6 +319,7 @@ struct MailboxViewSection: View {
                         Text(density.title).tag(density)
                     }
                 }
+                #endif
 
                 SettingsPickerRow(
                     symbolName: "rectangle.split.2x1",

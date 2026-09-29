@@ -122,7 +122,7 @@ struct MessageTaskSheet: View {
 
                 fieldGroup("Notes") {
                     TextEditor(text: $draft.notes)
-                        .font(.body)
+                        .brevFont(.body)
                         .foregroundStyle(theme.textPrimary.color)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 150)

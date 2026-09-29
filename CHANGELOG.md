@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- iOS mailbox Favourites show All Inboxes and each account inbox first, with
+  editable Drafts/Sent shortcuts and saved ordering, visibility, and account
+  expansion. Inbox counts use unread mail; Drafts uses the total draft count.
+
 - The nightly release workflow now ships the newest commit with a
   passing Build run (instead of refusing when main's head only has
   cancelled runs), runs at 23:47 UTC to avoid the busiest GitHub
@@ -31,6 +35,24 @@ All notable changes to Brev are documented here.
 
 
 ### Fixed
+
+- Desktop Appearance now controls shared text size and interface density,
+  including sidebars, mail views, settings, and auxiliary editors. Existing
+  size/density preferences are preserved; Settings search routes to Appearance.
+
+- iPhone and iPad mailbox rows remove excess outer padding, retaining
+  44-point touch targets while showing more folders on screen.
+- iPhone message rows, inline replies, and conversation identity now scale
+  coherently with Dynamic Type and stack at accessibility sizes. Sender
+  addresses remain readable at ordinary phone widths.
+- Rich message bodies recalculate their height when a reader is resized,
+  preserving the final lines without reopening the message.
+- Invalid To, Cc, or Bcc recipients prevent sending and display a visible
+  correction message; unfinished drafts can still be saved.
+- Search keeps mailbox scope visible and groups secondary controls in a
+  Filters menu. Unverified result coverage includes an explanation and Retry.
+- Mail search controls, message counts, and compose feedback use Norwegian
+  translations; elapsed message ages use consistent positive durations.
 
 - Google Drive Picker configuration now reaches both app bundles and the local,
   nightly, and release builds. Local configuration reports presence only and

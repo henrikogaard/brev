@@ -17,6 +17,18 @@ import Testing
 
 @Suite("Independent mailbox groups")
 struct MailboxGroupDisclosureTests {
+    @Test("mobile favorites keep account folders collapsed until explicitly expanded")
+    func mobileInitialExpansion() throws {
+        let source = MailSourceID(accountID: "account", mailboxID: "work")
+        #expect(FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
+            from: Data(), sourceIDs: [source], selectedSourceID: source, initiallyCollapsed: true
+        ).isEmpty)
+        let savedExpansion = try JSONEncoder().encode(Set([source]))
+        #expect(FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
+            from: savedExpansion, sourceIDs: [source], selectedSourceID: source, initiallyCollapsed: true
+        ) == [source])
+    }
+
     @Test("saved expansion keeps multiple mailboxes open across profile changes")
     func restoresMultipleGroups() throws {
         let work = MailSourceID(accountID: "account", mailboxID: "work")

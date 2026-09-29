@@ -33,6 +33,7 @@ public struct SettingsView: View {
     @State private var selectedPluginContribution: RegisteredContribution?
     @State private var accounts: [BrevAccount] = []
     @State private var currentAccountID: BrevAccount.ID?
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
     @State private var searchText = ""
     @State private var searchTarget: String?
     @State private var selectedSourceID: MailSourceID?
@@ -101,6 +102,8 @@ public struct SettingsView: View {
         self.mailboxContext = mailboxContext
         _selectedSourceID = State(initialValue: mailboxContext.selectedSourceID)
         self.settingsStore = settingsStore
+        _interfaceDensityRaw = AppStorage(wrappedValue: MailboxListDensity.comfortable.rawValue,
+                                          MailboxViewPreferenceKey.listDensity, store: settingsStore.defaults)
         self.updateActions = updateActions
         self.updateRing = updateRing
         self.developerActions = developerActions
@@ -153,6 +156,8 @@ public struct SettingsView: View {
 
     public var body: some View {
         settingsContent
+            .brevDesktopSizing()
+            .defaultAppStorage(settingsStore.defaults)
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if folderExportController.state != .idle {
                     MailFolderExportStatusView(
@@ -452,7 +457,10 @@ public struct SettingsView: View {
             } label: {
                 sectionRow(section)
                     .padding(.horizontal, BrevSpacing.sm)
-                    .padding(.vertical, BrevSpacing.xxs)
+                    .padding(
+                        .vertical,
+                        (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.xxs)
+                    )
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .background(navigation.selected == section ? theme.selection.color : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))

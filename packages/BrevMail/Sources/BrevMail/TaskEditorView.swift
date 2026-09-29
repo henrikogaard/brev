@@ -165,7 +165,7 @@ public struct TaskEditorView: View {
 
                 fieldGroup(String(localized: "Notes", bundle: .module)) {
                     TextEditor(text: $draft.notes)
-                        .font(.body)
+                        .brevFont(.body)
                         .foregroundStyle(theme.textPrimary.color)
                         .scrollContentBackground(.hidden)
                         .frame(minHeight: 120)

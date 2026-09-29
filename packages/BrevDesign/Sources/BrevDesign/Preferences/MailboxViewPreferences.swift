@@ -346,6 +346,21 @@ public enum MailboxListDensity: String, Sendable, Hashable, CaseIterable, Identi
         }
     }
 
+    /// Adjusts Brev-owned desktop spacing while preserving iOS touch targets.
+    /// - Parameter points: The default spacing for the surface.
+    public func desktopSpacing(_ points: CGFloat) -> CGFloat {
+        #if os(macOS)
+        let scale: CGFloat = switch self {
+        case .compact: 0.65
+        case .comfortable: 1
+        case .spacious: 1.25
+        }
+        return (points * scale).rounded()
+        #else
+        return points
+        #endif
+    }
+
     public var verticalPadding: CGFloat {
         switch self {
         case .compact: return 4

@@ -12104,6 +12104,56 @@
           }
         }
       }
+    },
+    "Adjust spacing in sidebars, mail views, and settings independently of text size.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Juster avstanden i sidepaneler, e-postvisninger og innstillinger uavhengig av tekststørrelsen."
+          }
+        }
+      }
+    },
+    "Applies to sidebars, lists, reading, composing, and settings.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjelder sidepaneler, lister, lesing, skriving og innstillinger."
+          }
+        }
+      }
+    },
+    "Customize the whole desktop app without changing message formatting.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilpass hele skrivebordsappen uten å endre meldingsformatering."
+          }
+        }
+      }
+    },
+    "Interface density": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tetthet i grensesnittet"
+          }
+        }
+      }
+    },
+    "Text and spacing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tekst og avstand"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

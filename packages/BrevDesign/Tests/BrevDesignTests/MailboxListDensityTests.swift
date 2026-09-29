@@ -12,9 +12,40 @@
 
 @testable import BrevDesign
 import Testing
+#if os(macOS)
+import AppKit
+import SwiftUI
+#endif
 
 @Suite("Mailbox list density")
 struct MailboxListDensityTests {
+    #if os(macOS)
+    @Test("desktop text size updates an already mounted interface label")
+    @MainActor
+    func desktopTextSizeUpdatesMountedLabel() throws {
+        let suite = "BrevDesktopSizingTests.\(UUID().uuidString)"
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(MailboxTextSize.small.rawValue, forKey: MailboxViewPreferenceKey.textSize)
+        let host = NSHostingView(rootView: Text("Mailbox settings")
+            .brevFont(.body)
+            .fixedSize()
+            .defaultAppStorage(defaults))
+        let window = NSWindow(contentRect: NSRect(x: 0, y: 0, width: 400, height: 100),
+                              styleMask: [.borderless], backing: .buffered, defer: false)
+        window.contentView = host
+        host.layoutSubtreeIfNeeded()
+        let small = host.fittingSize
+        defaults.set(MailboxTextSize.large.rawValue, forKey: MailboxViewPreferenceKey.textSize)
+        RunLoop.main.run(until: Date().addingTimeInterval(0.1))
+        host.layoutSubtreeIfNeeded()
+        let large = host.fittingSize
+        #expect(large.width > small.width)
+        #expect(large.height > small.height)
+        window.contentView = nil
+    }
+    #endif
+
     @Test("density controls shared workspace chrome without changing its three-mode contract")
     func densityControlsSharedWorkspaceChrome() {
         #expect(MailboxListDensity.allCases == [.compact, .comfortable, .spacious])

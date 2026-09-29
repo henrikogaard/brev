@@ -29,7 +29,16 @@ struct SettingsNavigationStateTests {
     @Test("search finds actual controls instead of only section titles")
     func searchFindsControls() {
         #expect(SettingsSection.mailboxView.matches(searchQuery: "font"))
+        #if os(macOS)
+        #expect(SettingsSection.appearance.matches(searchQuery: "text size"))
+        #expect(!SettingsSection.mailboxView.matches(searchQuery: "text size"))
+        let density = SettingsSearchResult.results(for: "density", sections: SettingsSection.allCases)
+        #expect(density.count == 1)
+        #expect(density.first?.section == .appearance)
+        #expect(density.first?.target == "Interface density")
+        #else
         #expect(SettingsSection.mailboxView.matches(searchQuery: "text size"))
+        #endif
         #expect(SettingsSection.mailboxView.matches(searchQuery: "remote images"))
         #expect(SettingsSection.accounts.matches(searchQuery: "fetch schedule"))
     }

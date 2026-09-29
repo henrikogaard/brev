@@ -18,7 +18,7 @@ enum MessageListDatePresentation {
         case compact
     }
 
-    static let unknownDateLabel = "Unknown date"
+    static var unknownDateLabel: String { String(localized: "Unknown date", bundle: .module) }
 
     static func label(
         for date: Date,
@@ -33,10 +33,9 @@ enum MessageListDatePresentation {
 
         guard showsAbsoluteArrivalTime else {
             switch relativeStyle {
-            case .standard:
-                return relativeFormatter(locale: locale, calendar: calendar)
-                    .localizedString(for: date, relativeTo: referenceDate)
-            case .compact:
+            case .standard, .compact:
+                // Both parent and reply rows show an elapsed age. Foundation's
+                // abbreviated directional formatter emits "-3 t" in Norwegian.
                 return compactRelativeLabel(
                     for: date,
                     referenceDate: referenceDate,
@@ -97,10 +96,11 @@ enum MessageListDatePresentation {
         // Arrival timestamps should be in the past. Keep the directional
         // formatter for clock skew or scheduled test data so a future value
         // never looks like elapsed time.
-        guard elapsed >= 60 else {
+        guard elapsed >= 0 else {
             return relativeFormatter(locale: locale, calendar: calendar)
                 .localizedString(for: date, relativeTo: referenceDate)
         }
+        if elapsed < 1 { return String(localized: "Now", bundle: .module) }
         return compactElapsedFormatter(locale: locale, calendar: calendar)
             .string(from: elapsed)
             ?? relativeFormatter(locale: locale, calendar: calendar)
@@ -145,7 +145,7 @@ enum MessageListDatePresentation {
         defer { formatterLock.unlock() }
         if let cached = relativeFormatterCache[key] { return cached }
         let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
+        formatter.unitsStyle = .full
         formatter.locale = locale
         formatter.calendar = calendar
         relativeFormatterCache[key] = formatter
@@ -164,7 +164,7 @@ enum MessageListDatePresentation {
         var localizedCalendar = calendar
         localizedCalendar.locale = locale
         formatter.calendar = localizedCalendar
-        formatter.allowedUnits = [.year, .month, .weekOfMonth, .day, .hour, .minute]
+        formatter.allowedUnits = [.year, .month, .weekOfMonth, .day, .hour, .minute, .second]
         formatter.unitsStyle = .abbreviated
         formatter.maximumUnitCount = 1
         compactElapsedFormatterCache[key] = formatter

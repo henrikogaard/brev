@@ -258,6 +258,20 @@ import Testing
 @Suite("AI Writer macOS snapshots")
 @MainActor
 struct AIWriterSectionMacSnapshotTests {
+    @Test("Desktop sizing updates settings navigation and controls", arguments: [false, true])
+    func desktopSizing(large: Bool) throws {
+        let suite = "DesktopSizingSnapshot-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set((large ? MailboxTextSize.large : .small).rawValue, forKey: MailboxViewPreferenceKey.textSize)
+        defaults.set((large ? MailboxListDensity.spacious : .compact).rawValue, forKey: MailboxViewPreferenceKey.listDensity)
+        let theme = BrevTheme.brevMonoLight
+        let view = SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(theme),
+                                initialSection: .appearance, settingsStore: SettingsPersistenceStore(defaults: defaults))
+        capture(view, theme: theme, name: large ? "desktop-large-spacious" : "desktop-small-compact",
+                size: CGSize(width: 960, height: 640))
+    }
+
     @Test("Settings surfaces share readable light and dark layout", arguments: ["light", "dark"])
     func settingsSurfaces(_ mode: String) {
         guard #available(macOS 26.0, *) else { return }

@@ -22,8 +22,10 @@ import SwiftUI
 /// Body is loaded lazily on first expansion and cached for the view's lifetime.
 /// Tapping the collapsed header toggles expansion by calling `onToggle`.
 struct ThreadMessageCard: View {
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let header: MessageHeader
     let isExpanded: Bool
@@ -115,13 +117,19 @@ struct ThreadMessageCard: View {
         _htmlWebViewStore = StateObject(wrappedValue: pooledStore)
     }
 
+    private var interfaceDensity: MailboxListDensity {
+        MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable
+    }
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 0) {
                 Button(action: onToggle) {
                     cardHeader
-                        .dynamicTypeSize(denseChromeDynamicTypeRange)
-                        .contentShape(Rectangle())
+                    #if os(macOS)
+                    .dynamicTypeSize(denseChromeDynamicTypeRange)
+                    #endif
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(header.from.displayName)
@@ -152,7 +160,7 @@ struct ThreadMessageCard: View {
             if isExpanded {
                 cardBody
                     .padding(.horizontal, BrevSpacing.lg)
-                    .padding(.bottom, BrevSpacing.lg)
+                    .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.lg))
                     .padding(.top, BrevSpacing.xxs)
             }
         }
@@ -160,7 +168,7 @@ struct ThreadMessageCard: View {
             Rectangle().fill(theme.textPrimary.color.opacity(0.10)).frame(height: 0.5)
         }
         .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
+        .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.xs))
         .task(id: isExpanded) {
             guard isExpanded else {
                 // Collapsed cards must not hold a WebKit renderer; the pool
@@ -215,7 +223,63 @@ struct ThreadMessageCard: View {
 
     // MARK: - Subviews
 
+    @ViewBuilder
     private var cardHeader: some View {
+        #if os(iOS)
+        phoneCardHeader
+        #else
+        desktopCardHeader
+        #endif
+    }
+
+    #if os(iOS)
+    private var phoneCardHeader: some View {
+        HStack(alignment: .top, spacing: BrevSpacing.sm) {
+            if showsAvatar, !dynamicTypeSize.isAccessibilitySize {
+                BrevAvatarView(email: header.from.email, displayName: header.from.name, size: 32)
+            }
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                Text(header.from.displayName)
+                    .font(mailboxFontFamily.font(
+                        size: (mailboxTextSize.listTitlePointSize + 3) * scaledBodyMetric / 100,
+                        weight: .semibold
+                    ))
+                    .foregroundStyle(theme.textPrimary.color)
+                if isExpanded {
+                    Text(verbatim: header.from.email)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                    recipientSummary
+                } else {
+                    Text(header.snippet)
+                        .font(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                }
+                Text(dateTextOverride ?? MessageListDatePresentation.label(
+                    for: header.date, showsAbsoluteArrivalTime: true
+                ))
+                .font(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+            }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+                .font(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+                .frame(minHeight: 44)
+        }
+        .padding(.horizontal, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.sm)
+        .overlay(alignment: .leading) {
+            if isSelected {
+                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2)
+            }
+        }
+    }
+    #endif
+
+    private var desktopCardHeader: some View {
         HStack(spacing: BrevSpacing.sm) {
             if showsAvatar {
                 BrevAvatarView(
@@ -244,7 +308,7 @@ struct ThreadMessageCard: View {
                             .lineLimit(1)
                     } else {
                         Text(header.from.name ?? header.from.email)
-                            .font(.subheadline)
+                            .brevFont(.subheadline)
                             .fontWeight(.semibold)
                             .foregroundStyle(theme.textPrimary.color)
                             .lineLimit(1)
@@ -254,18 +318,18 @@ struct ThreadMessageCard: View {
 
                     if let dateTextOverride {
                         Text(dateTextOverride)
-                            .font(.footnote)
+                            .brevFont(.footnote)
                             .foregroundStyle(theme.textTertiary.color)
                     } else {
                         Text(MessageListDatePresentation.label(for: header.date, showsAbsoluteArrivalTime: true))
-                            .font(.footnote)
+                            .brevFont(.footnote)
                             .foregroundStyle(theme.textTertiary.color)
                     }
                 }
 
                 if !isExpanded {
                     Text(header.snippet)
-                        .font(.footnote)
+                        .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 } else {
@@ -278,7 +342,7 @@ struct ThreadMessageCard: View {
                 .foregroundStyle(theme.textTertiary.color)
         }
         .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.sm)
+        .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.sm))
         .overlay(alignment: .leading) {
             if isSelected {
                 RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2, height: 24)
@@ -291,9 +355,13 @@ struct ThreadMessageCard: View {
         let toText = MessageDetailPresentation.collapsedRecipientLine(header.to)
         if !toText.isEmpty {
             Text(toText)
+            #if os(iOS)
+                .font(.subheadline)
+            #else
                 .font(mailboxFontFamily.font(size: mailboxTextSize.captionPointSize))
-                .foregroundStyle(theme.textSecondary.color)
                 .lineLimit(1)
+            #endif
+                .foregroundStyle(theme.textSecondary.color)
         }
     }
 
@@ -336,7 +404,7 @@ struct ThreadMessageCard: View {
                     .controlSize(.small)
                     .tint(theme.accent.color)
                 Text("Loading message…", bundle: .module)
-                    .font(.footnote)
+                    .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
             }
             .dynamicTypeSize(denseChromeDynamicTypeRange)
@@ -345,7 +413,7 @@ struct ThreadMessageCard: View {
 
         case .error(let errorMessage):
             Text(errorMessage)
-                .font(.footnote)
+                .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .padding(BrevSpacing.md)
 

@@ -58,7 +58,7 @@ enum NaturalLanguageSearchPlanner {
             workingText = removing(dateParse.matchedText, from: workingText)
             parsedChips.append(.init(
                 kind: .date,
-                label: "Date: \(dateParse.label)",
+                label: String(format: String(localized: "Date: %@", bundle: .module), dateParse.label),
                 value: dateParse.label
             ))
         }
@@ -68,7 +68,7 @@ enum NaturalLanguageSearchPlanner {
             workingText = senderParse.remainingText
             parsedChips.append(.init(
                 kind: .sender,
-                label: "From: \(senderParse.email)",
+                label: String(format: String(localized: "From: %@", bundle: .module), senderParse.email),
                 value: senderParse.email
             ))
         }
@@ -81,7 +81,7 @@ enum NaturalLanguageSearchPlanner {
             workingText = removingPattern(#"\b(is unread|unread)\b"#, from: workingText)
             parsedChips.append(.init(
                 kind: .unread,
-                label: "Unread",
+                label: String(localized: "Unread", bundle: .module),
                 value: "true"
             ))
         }
@@ -94,7 +94,7 @@ enum NaturalLanguageSearchPlanner {
             workingText = removingPattern(#"\b(with|has) attachments?\b"#, from: workingText)
             parsedChips.append(.init(
                 kind: .attachment,
-                label: "Has attachments",
+                label: String(localized: "Has attachments", bundle: .module),
                 value: "true"
             ))
         }
@@ -108,7 +108,7 @@ enum NaturalLanguageSearchPlanner {
             workingText = removingPattern(#"\b(is flagged|flagged|starred)\b"#, from: workingText)
             parsedChips.append(.init(
                 kind: .flagged,
-                label: "Flagged",
+                label: String(localized: "Flagged", bundle: .module),
                 value: "true"
             ))
         }
@@ -119,7 +119,7 @@ enum NaturalLanguageSearchPlanner {
         if !query.text.isEmpty {
             chips.append(.init(
                 kind: .keyword,
-                label: "Keyword: \(query.text)",
+                label: String(format: String(localized: "Keyword: %@", bundle: .module), query.text),
                 value: query.text
             ))
         }
@@ -392,7 +392,11 @@ enum MessageListSearchQueryPolicy {
             query.text = ""
             chips.removeAll { $0.kind == .keyword || $0.kind == .sender }
             if !sender.isEmpty {
-                chips.insert(.init(kind: .sender, label: "From: \(sender)", value: sender), at: 0)
+                chips.insert(
+                    .init(kind: .sender, label: String(format: String(localized: "From: %@", bundle: .module), sender),
+                          value: sender),
+                    at: 0
+                )
             }
         case .subject:
             let subject = query.text
@@ -400,17 +404,25 @@ enum MessageListSearchQueryPolicy {
             query.text = ""
             chips.removeAll { $0.kind == .keyword || $0.kind == .subject }
             if !subject.isEmpty {
-                chips.insert(.init(kind: .subject, label: "Subject: \(subject)", value: subject), at: 0)
+                chips.insert(
+                    .init(kind: .subject, label: String(format: String(localized: "Subject: %@", bundle: .module), subject),
+                          value: subject),
+                    at: 0
+                )
             }
         case .hasAttachment:
             query.hasAttachments = true
             if !chips.contains(where: { $0.kind == .attachment }) {
-                chips.append(.init(kind: .attachment, label: "Has attachments", value: "true"))
+                chips.append(.init(
+                    kind: .attachment,
+                    label: String(localized: "Has attachments", bundle: .module),
+                    value: "true"
+                ))
             }
         case .unread:
             query.isUnread = true
             if !chips.contains(where: { $0.kind == .unread }) {
-                chips.append(.init(kind: .unread, label: "Unread", value: "true"))
+                chips.append(.init(kind: .unread, label: String(localized: "Unread", bundle: .module), value: "true"))
             }
         }
 

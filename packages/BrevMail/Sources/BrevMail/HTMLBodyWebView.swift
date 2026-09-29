@@ -150,13 +150,14 @@ final class ScrollForwardingWebView: WKWebView {
     override func layout() {
         super.layout()
         let width = bounds.width
+        let previousWidth = lastLayoutWidth
+        if width > 0 { lastLayoutWidth = width }
         guard HTMLBodyWidthChangePolicy.shouldRemeasure(
-            previousWidth: lastLayoutWidth,
+            previousWidth: previousWidth,
             newWidth: width
         ) else {
             return
         }
-        lastLayoutWidth = width
         onLayoutWidthChange?(width)
     }
 
@@ -178,13 +179,14 @@ final class SelfSizingWebView: WKWebView {
     override func layoutSubviews() {
         super.layoutSubviews()
         let width = bounds.width
+        let previousWidth = lastLayoutWidth
+        if width > 0 { lastLayoutWidth = width }
         guard HTMLBodyWidthChangePolicy.shouldRemeasure(
-            previousWidth: lastLayoutWidth,
+            previousWidth: previousWidth,
             newWidth: width
         ) else {
             return
         }
-        lastLayoutWidth = width
         onLayoutWidthChange?(width)
     }
 }

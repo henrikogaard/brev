@@ -368,6 +368,7 @@ jobs:
             -only-testing:BrevSettingsTests/BackupPreviewSheetSnapshotTests \
             -only-testing:BrevSettingsTests/MailStorageSectionSnapshotTests \
             '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/accountsSurface(_:)' \
+            '-only-testing:BrevSettingsTests/AIWriterSectionMacSnapshotTests/desktopSizing(large:)' \
             test
 
       - name: Report deferred macOS snapshot comparison

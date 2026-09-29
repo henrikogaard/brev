@@ -126,7 +126,7 @@ struct TemplatePickerView: View {
                     if template.isPinned {
                         Image(systemName: "pin.fill")
                             .foregroundStyle(theme.accent.color)
-                            .font(.caption)
+                            .brevFont(.caption)
                     }
                 }
             }

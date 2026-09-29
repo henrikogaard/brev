@@ -34,6 +34,8 @@ enum SettingsCalloutTone {
 /// and the spacing scale express the group without wrapping every section in
 /// another rounded card.
 struct SettingsGroup<Content: View>: View {
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @Environment(\.brevTheme) private var theme
     let title: String
     let subtitle: String
@@ -58,14 +60,14 @@ struct SettingsGroup<Content: View>: View {
 
             // Settings is a continuous task surface. Proximity and alignment
             // carry the grouping so every section does not become another card.
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.md)) {
                 content
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.leading, BrevSpacing.xl)
             .padding(.top, BrevSpacing.xs)
         }
-        .padding(.bottom, BrevSpacing.sm)
+        .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.sm))
     }
 }
 

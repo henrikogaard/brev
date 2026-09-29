@@ -17,6 +17,8 @@ import SwiftUI
 /// Shared chrome for a settings detail pane: title at the top, scroll
 /// region beneath, padded by the standard rhythm.
 struct SectionScaffold<Content: View>: View {
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @Environment(\.brevTheme) private var theme
     @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.settingsScopeCaption) private var scopeCaption
@@ -40,7 +42,7 @@ struct SectionScaffold<Content: View>: View {
                 // Pane title, then groups. The gap below the title is wider
                 // than the gap between groups so the pane reads as titled
                 // content rather than as one more group in the stack.
-                VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.xl)) {
                     VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                         Text(title)
                             .brevFont(.headline)
@@ -78,7 +80,7 @@ struct SectionScaffold<Content: View>: View {
         #if os(iOS)
         BrevSpacing.lg
         #else
-        BrevSpacing.xxl
+        interfaceDensity.desktopSpacing(BrevSpacing.xxl)
         #endif
     }
 
@@ -86,7 +88,7 @@ struct SectionScaffold<Content: View>: View {
         #if os(iOS)
         BrevSpacing.xl
         #else
-        BrevSpacing.xxl
+        interfaceDensity.desktopSpacing(BrevSpacing.xxl)
         #endif
     }
 }

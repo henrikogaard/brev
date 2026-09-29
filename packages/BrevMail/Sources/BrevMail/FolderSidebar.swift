@@ -55,6 +55,10 @@ public struct FolderSidebar: View {
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
     @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    #if os(iOS)
+    @AppStorage(MailboxFavorites.storageKey) private var favoritesData = Data()
+    @State private var showsFavoritesEditor = false
+    #endif
     /// In-memory copy of the disclosure state used for rendering. Decoding the
     /// stored JSON on every render (once per source section) made expand/collapse
     /// feel sluggish; the cache is seeded on appear and updated in place on toggle,
@@ -321,11 +325,13 @@ public struct FolderSidebar: View {
                 }
             }
             .onChange(of: navigation.selectedSourceID) { _, selectedSourceID in
+                #if os(macOS)
                 guard let selectedSourceID, navigation.browsingFolderID == nil else { return }
                 expandedSourceIDs = FolderSidebarSourceExpansionPolicy.expandingSelection(
                     selectedSourceID,
                     in: expandedSourceIDs
                 )
+                #endif
             }
             .onChange(of: smartMailboxData) {
                 let settings = smartViewSettings
@@ -337,6 +343,11 @@ public struct FolderSidebar: View {
                     )
                 leaveHiddenSmartViewIfNeeded(isSelected: selectedHidden)
             }
+        #if os(iOS)
+            .sheet(isPresented: $showsFavoritesEditor) {
+                MailboxFavoritesEditor(data: $favoritesData, candidates: favoriteCandidates)
+            }
+        #endif
             .sheet(isPresented: $showsSmartViewSettings) {
                 VStack(spacing: 0) {
                     SmartViewsSection(mailboxes: smartViewMailboxes)
@@ -453,9 +464,11 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var sourceTree: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if sourceSections.count > 1 {
-                unifiedInboxShortcut
-            }
+            #if os(iOS)
+            if !sourceSections.isEmpty { favoritesSection }
+            #else
+            if sourceSections.count > 1 { unifiedInboxShortcut }
+            #endif
             if showsSmartViews, smartViewSettings.showInSidebar {
                 VStack(alignment: .leading, spacing: 0) {
                     smartViewsSection
@@ -575,6 +588,73 @@ public struct FolderSidebar: View {
         .help(String(localized: "Choose which mailboxes are visible", bundle: .module))
     }
 
+    #if os(iOS)
+    private var favoriteCandidates: [MailboxFavorite] {
+        MailboxFavorite.candidates(sections: sourceSections)
+    }
+
+    private var favoritesSection: some View {
+        VStack(spacing: 0) {
+            HStack {
+                Text("Favourites", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                Spacer()
+                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
+                    .brevFont(.subheadline)
+                    .frame(minWidth: 44, minHeight: 44)
+                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+            }
+            .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+            ForEach(MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)) { favorite in
+                Button {
+                    activateDestination {
+                        switch favorite.id {
+                        case .allInboxes: navigation.selectUnifiedInbox()
+                        case .folder(let destination):
+                            navigation.selectFolder(destination.folderID, in: destination.sourceID)
+                        }
+                    }
+                } label: {
+                    HStack(spacing: BrevSpacing.sm) {
+                        if showSidebarIcons {
+                            Image(systemName: favorite.symbol)
+                                .frame(width: sidebarMetrics.iconWidth)
+                                .foregroundStyle(theme.textSecondary.color)
+                        }
+                        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                            Text(verbatim: favorite.title).brevFont(.body).lineLimit(1)
+                                .foregroundStyle(theme.textPrimary.color)
+                            if let subtitle = favorite.subtitle {
+                                Text(verbatim: subtitle).brevFont(.caption).lineLimit(1)
+                                    .foregroundStyle(theme.textSecondary.color)
+                            }
+                        }
+                        Spacer(minLength: BrevSpacing.xs)
+                        unreadBadge(favorite.count)
+                        Image(systemName: "chevron.right").brevFont(.caption)
+                            .foregroundStyle(theme.textTertiary.color)
+                    }
+                    .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                    .background(isFavoriteSelected(favorite.id) ? folderSelectionColor : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(isFavoriteSelected(favorite.id) ? .isSelected : [])
+            }
+        }
+    }
+
+    private func isFavoriteSelected(_ id: MailboxFavoriteID) -> Bool {
+        switch id {
+        case .allInboxes: navigation.isUnifiedInboxSelected
+        case .folder(let destination): navigation.browsingFolderID == nil && navigation.selectedSourceFolderID == destination
+        }
+    }
+    #endif
+
     private var unifiedInboxShortcut: some View {
         Button {
             activateDestination { navigation.selectUnifiedInbox() }
@@ -584,7 +664,7 @@ public struct FolderSidebar: View {
                 if showSidebarIcons {
                     Image(systemName: "tray.2")
                         .foregroundStyle(theme.textSecondary.color)
-                        .font(.body)
+                        .brevFont(.body)
                         .frame(width: sidebarMetrics.iconWidth)
                 }
             } trailing: {
@@ -1141,8 +1221,17 @@ public struct FolderSidebar: View {
         expandedSourceIDs = FolderSidebarSourceExpansionPolicy.restoredExpandedSourceIDs(
             from: mailboxDisclosureData,
             sourceIDs: sourceSections.map(\.id),
-            selectedSourceID: navigation.selectedSourceID
+            selectedSourceID: navigation.selectedSourceID,
+            initiallyCollapsed: sidebarStartsCollapsed
         )
+    }
+
+    private var sidebarStartsCollapsed: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
     }
 
     @ViewBuilder
@@ -1720,7 +1809,7 @@ public struct FolderSidebar: View {
         #else
         Image(systemName: systemImage(for: role))
             .foregroundStyle(theme.textSecondary.color)
-            .font(.body)
+            .brevFont(.body)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
         #endif
     }

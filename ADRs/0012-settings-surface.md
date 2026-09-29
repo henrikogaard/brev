@@ -68,6 +68,23 @@ Deferred to follow-up ADRs:
 - AI Writer section (waits on ADR-0008 implementation).
 - Sync / advanced (waits on ADR-0066 macOS backend).
 
+### Desktop text size and density (2026-09-29)
+
+The existing mailbox text-size preference also controls Brev-owned desktop
+interface text through `brevFont`: mail and settings sidebars, labels,
+metadata, dialogs, and compose chrome update without reopening windows.
+Medium preserves the native typography ramp; Small and Large adjust it by
+-1 and +2 points. Mail body/list typography keeps its existing size ramp.
+The macOS Appearance pane owns Text size and Interface density; iOS keeps
+its mail-content controls and system Dynamic Type behavior. System-owned
+menus and dialogs retain macOS sizing.
+
+Density remains independent from text size and applies to mail rows, reader
+and compose spacing, settings rows/groups, and native control size. Existing
+preference keys and values are preserved. The message font family continues
+to affect mail content only. This extends the existing shared presentation
+preferences without changing package boundaries or privacy behavior.
+
 ### Dependency direction
 
 ```

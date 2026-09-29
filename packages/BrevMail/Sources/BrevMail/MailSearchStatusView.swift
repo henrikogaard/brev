@@ -55,6 +55,12 @@ struct MailSearchStatusView: View {
                 )
                 : String(localized: "Some results could not be loaded. Try searching again.", bundle: .module)
         }
+        if !progress.isSearching, progress.unverifiedSourceCount > 0 {
+            return String(
+                localized: "Brev could not verify that all matching messages were searched. Try again or narrow your search.",
+                bundle: .module
+            )
+        }
         if !progress.isSearching, progress.cachedSourceCount > 0 {
             return String(localized: "Cached results include only mail stored on this device.", bundle: .module)
         }
@@ -71,8 +77,7 @@ struct MailSearchStatusView: View {
                 if let detail { Text(detail).foregroundStyle(theme.textSecondary.color) }
             }
             .brevFont(.caption)
-            .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 0)
+            .frame(maxWidth: .infinity, alignment: .leading)
             if progress.canRetry {
                 Button(action: retry) {
                     Text("Retry", bundle: .module)
@@ -82,6 +87,9 @@ struct MailSearchStatusView: View {
                     #endif
                 }
                 .buttonStyle(.borderless)
+                // Preserve the action's width when the split view probes a
+                // narrow layout; the explanation wraps in the remaining space.
+                .fixedSize()
                 .foregroundStyle(theme.accent.color)
                 .accessibilityLabel(String(localized: "Retry search", bundle: .module))
             }

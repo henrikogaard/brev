@@ -58,8 +58,13 @@ struct AppearanceSection: View {
             subtitle: String(localized: "Choose Brev's colors, window style, and Dock icon.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+                #if os(macOS)
+                DesktopInterfaceSettings(settingsStore: settingsStore)
+                #endif
                 themeGroup
+                #if os(iOS)
                 SettingsMailPreview(settings: mailboxSettings)
+                #endif
                 if appearanceControls.showsWindowTranslucencyControls {
                     SettingsGroup(
                         title: String(localized: "Window design", bundle: .module),
@@ -137,6 +142,8 @@ struct AppearanceSection: View {
                 }
             }
         }
+        .defaultAppStorage(settingsStore.defaults)
+        .brevDesktopSizing()
         .onChange(of: searchTarget, initial: true) { _, target in
             if target != nil { showsWindowDetails = true }
         }
@@ -758,3 +765,60 @@ private struct ThemeSwatch: View {
         }
     }
 }
+
+#if os(macOS)
+/// One control pair for desktop content and interface sizing, backed by existing preferences.
+struct DesktopInterfaceSettings: View {
+    @AppStorage private var textSizeRaw: String
+    @AppStorage private var densityRaw: String
+    private let settingsStore: SettingsPersistenceStore
+
+    init(settingsStore: SettingsPersistenceStore = .standard) {
+        self.settingsStore = settingsStore
+        _textSizeRaw = AppStorage(wrappedValue: MailboxTextSize.medium.rawValue,
+                                  MailboxViewPreferenceKey.textSize, store: settingsStore.defaults)
+        _densityRaw = AppStorage(wrappedValue: MailboxListDensity.comfortable.rawValue,
+                                 MailboxViewPreferenceKey.listDensity, store: settingsStore.defaults)
+    }
+
+    var body: some View {
+        SettingsGroup(
+            title: String(localized: "Text and spacing", bundle: .module),
+            subtitle: String(localized: "Customize the whole desktop app without changing message formatting.", bundle: .module),
+            symbolName: "textformat.size"
+        ) {
+            SettingsSegmentedRow(
+                symbolName: "textformat.size",
+                title: String(localized: "Text size", bundle: .module),
+                subtitle: String(localized: "Applies to sidebars, lists, reading, composing, and settings.", bundle: .module),
+                selection: $textSizeRaw
+            ) {
+                ForEach(MailboxTextSize.allCases) { size in
+                    Text(size.title).tag(size.rawValue)
+                }
+            }
+            SettingsSegmentedRow(
+                symbolName: "rectangle.compress.vertical",
+                title: String(localized: "Interface density", bundle: .module),
+                subtitle: String(
+                    localized: "Adjust spacing in sidebars, mail views, and settings independently of text size.",
+                    bundle: .module
+                ),
+                selection: $densityRaw
+            ) {
+                ForEach(MailboxListDensity.allCases) { density in
+                    Text(density.title).tag(density.rawValue)
+                }
+            }
+            SettingsMailPreview(settings: previewSettings)
+        }
+    }
+
+    private var previewSettings: MailboxViewSettings {
+        var settings = settingsStore.mailboxViewSettings()
+        settings.textSize = MailboxTextSize(rawValue: textSizeRaw) ?? .medium
+        settings.listDensity = MailboxListDensity(rawValue: densityRaw) ?? .comfortable
+        return settings
+    }
+}
+#endif

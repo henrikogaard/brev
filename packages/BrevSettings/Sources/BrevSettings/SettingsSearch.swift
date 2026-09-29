@@ -21,6 +21,27 @@ struct SettingsSearchResult: Identifiable {
 
 extension SettingsSection {
     var searchableControlTitles: [String] {
+        #if os(macOS)
+        switch self {
+        case .appearance:
+            return baseSearchableControlTitles + [
+                String(localized: "Text and spacing", bundle: .module),
+                String(localized: "Text size", bundle: .module),
+                String(localized: "Interface density", bundle: .module)
+            ]
+        case .mailboxView:
+            return baseSearchableControlTitles.filter {
+                $0 != String(localized: "Text size", bundle: .module)
+                    && $0 != String(localized: "List density", bundle: .module)
+            }
+        default: return baseSearchableControlTitles
+        }
+        #else
+        return baseSearchableControlTitles
+        #endif
+    }
+
+    private var baseSearchableControlTitles: [String] {
         switch self {
         case .accounts: return [
                 String(localized: "Remove", bundle: .module),

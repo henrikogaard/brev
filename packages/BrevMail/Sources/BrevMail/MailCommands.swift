@@ -75,7 +75,7 @@ public struct MailCommands: Commands {
 
         // MARK: - Message menu
 
-        CommandMenu("Message") {
+        CommandMenu(String(localized: "message", bundle: .module).localizedCapitalized) {
             Button(String(localized: "Previous Message", bundle: .module)) {
                 navigation?.selectPreviousHeader()
             }

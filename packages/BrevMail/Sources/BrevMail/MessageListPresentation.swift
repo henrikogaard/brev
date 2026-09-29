@@ -405,14 +405,16 @@ enum MessageListPresentation {
     private static func compactFolderStatsParts(_ stats: MessageListFolderStats) -> [String] {
         if stats.isConstrained {
             return [
-                "\(stats.visibleCount) shown",
-                "\(stats.totalCount) total",
-                countPhrase(stats.unreadCount, singular: "unread", plural: "unread")
+                String(localized: "\(stats.visibleCount) shown", bundle: .module),
+                String(localized: "\(stats.totalCount) total", bundle: .module),
+                String(localized: "\(stats.unreadCount) unread", bundle: .module)
             ]
         }
         return [
-            countPhrase(stats.totalCount, singular: "message", plural: "messages"),
-            countPhrase(stats.unreadCount, singular: "unread", plural: "unread")
+            stats.totalCount == 1
+                ? String(localized: "\(stats.totalCount) message", bundle: .module)
+                : String(localized: "\(stats.totalCount) messages", bundle: .module),
+            String(localized: "\(stats.unreadCount) unread", bundle: .module)
         ]
     }
 
@@ -420,24 +422,21 @@ enum MessageListPresentation {
         [
             stats.folderName,
             shownPhrase(stats),
-            "\(stats.totalCount) total",
-            countPhrase(stats.unreadCount, singular: "unread", plural: "unread"),
-            countPhrase(stats.pinnedCount, singular: "pinned", plural: "pinned"),
-            "\(stats.loadedCount) loaded"
+            String(localized: "\(stats.totalCount) total", bundle: .module),
+            String(localized: "\(stats.unreadCount) unread", bundle: .module),
+            String(localized: "\(stats.pinnedCount) pinned", bundle: .module),
+            String(localized: "\(stats.loadedCount) loaded", bundle: .module)
         ]
     }
 
     private static func shownPhrase(_ stats: MessageListFolderStats) -> String {
-        let noun = stats.isThreaded ? "thread" : "message"
-        let plural = stats.isThreaded ? "threads" : "messages"
-        return "\(stats.visibleCount) \(stats.visibleCount == 1 ? noun : plural) shown"
-    }
-
-    private static func countPhrase(
-        _ count: Int,
-        singular: String,
-        plural: String
-    ) -> String {
-        "\(count) \(count == 1 ? singular : plural)"
+        if stats.isThreaded {
+            return stats.visibleCount == 1
+                ? String(localized: "\(stats.visibleCount) thread shown", bundle: .module)
+                : String(localized: "\(stats.visibleCount) threads shown", bundle: .module)
+        }
+        return stats.visibleCount == 1
+            ? String(localized: "\(stats.visibleCount) message shown", bundle: .module)
+            : String(localized: "\(stats.visibleCount) messages shown", bundle: .module)
     }
 }

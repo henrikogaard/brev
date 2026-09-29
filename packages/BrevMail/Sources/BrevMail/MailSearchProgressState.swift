@@ -63,7 +63,7 @@ struct MailSearchProgressState {
     var sourceCount: Int { sources.count }
     var isSearching: Bool { sources.values.contains { !$0.complete } }
     var hasFailure: Bool { sources.values.contains(where: \.failed) }
-    var canRetry: Bool { hasFailure && !isSearching }
+    var canRetry: Bool { (hasFailure || unverifiedSourceCount > 0) && !isSearching }
     var cachedSourceCount: Int { sources.values.filter { $0.coverage == .cached }.count }
     var unverifiedSourceCount: Int { sources.values.filter { $0.coverage == .unverified }.count }
 

@@ -95,7 +95,7 @@ struct MessageNoteSheet: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.textSecondary.color)
             TextEditor(text: $bodyText)
-                .font(.body)
+                .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
                 .scrollContentBackground(.hidden)
                 .frame(minHeight: 180)

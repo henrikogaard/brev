@@ -649,6 +649,7 @@ public struct BrevMailRootView: View {
         )
         #else
         mailRootContent
+            .brevDesktopSizing()
         #endif
     }
 
@@ -1953,7 +1954,7 @@ public struct BrevMailRootView: View {
                         Text(selectedMessageDestinationTitle)
                             .lineLimit(1)
                         Image(systemName: "chevron.forward")
-                            .font(.footnote.weight(.semibold))
+                            .brevFont(.footnote).fontWeight(.semibold)
                     }
                 }
                 .accessibilityLabel(String(localized: "Show messages", bundle: .module))
@@ -2051,11 +2052,11 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
                 Text(verbatim: selectedMessageDestinationTitle)
-                    .font(.headline)
+                    .brevFont(.headline)
                     .lineLimit(1)
                 if let selectedMessageDestinationContext {
                     Text(verbatim: selectedMessageDestinationContext)
-                        .font(.caption)
+                        .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(1)
                 }
@@ -2128,7 +2129,7 @@ public struct BrevMailRootView: View {
         if isSearchFieldToggledOpen {
             MessageListSearchField(
                 text: $navigation.searchText,
-                prompt: "Search messages",
+                prompt: String(localized: "Search messages", bundle: .module),
                 focusRequestID: navigation.searchFocusRequestID,
                 onEndEditing: { isSearchFieldToggledOpen = false }
             )
@@ -2147,8 +2148,12 @@ public struct BrevMailRootView: View {
                         : "magnifyingglass"
                 )
             }
-            .accessibilityLabel(showsRetainedSearchQuery ? "Search messages, filter active" : "Search messages")
-            .help(showsRetainedSearchQuery ? "Search Mail (filter active)" : "Search Mail")
+            .accessibilityLabel(showsRetainedSearchQuery
+                ? String(localized: "Search messages, filter active", bundle: .module)
+                : String(localized: "Search messages", bundle: .module))
+            .help(showsRetainedSearchQuery
+                ? String(localized: "Search Mail (filter active)", bundle: .module)
+                : String(localized: "Search Mail", bundle: .module))
         }
     }
 

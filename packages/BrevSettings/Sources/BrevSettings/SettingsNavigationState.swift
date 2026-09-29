@@ -161,9 +161,19 @@ public enum SettingsSection: String, Sendable, Hashable, CaseIterable, Identifia
     public var searchKeywords: [String] {
         switch self {
         case .accounts: return ["email", "mail account", "provider", "gmail", "google workspace", "imap"]
-        case .appearance: return ["theme", "dark mode", "light mode", "color", "icon"]
+        case .appearance:
+            #if os(macOS)
+            return ["theme", "dark mode", "light mode", "color", "icon", "text size", "density", "compact"]
+            #else
+            return ["theme", "dark mode", "light mode", "color", "icon"]
+            #endif
         case .notifications: return ["alerts", "badges", "sounds"]
-        case .mailboxView: return ["inbox", "message list", "reading pane", "density", "sidebar"]
+        case .mailboxView:
+            #if os(macOS)
+            return ["inbox", "message list", "reading pane", "sidebar"]
+            #else
+            return ["inbox", "message list", "reading pane", "density", "sidebar"]
+            #endif
         case .compose: return ["new message", "sending", "editor", "formatting"]
         case .signature: return ["sign-off", "footer"]
         case .templates: return ["snippets", "canned replies"]

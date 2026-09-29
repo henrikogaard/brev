@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+#if os(macOS)
 import BrevBackend
 @testable import BrevMail
 import Foundation
@@ -87,3 +88,4 @@ struct UnifiedInboxKeyboardNavTests {
         )
     }
 }
+#endif
