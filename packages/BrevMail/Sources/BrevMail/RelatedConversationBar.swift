@@ -22,9 +22,32 @@ import SwiftUI
 /// partial/complete-for-scope results with Retry and Spam/Trash inclusion.
 struct RelatedConversationBar: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let controller: RelatedConversationController
 
     var body: some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    statusRow
+                    actions
+                }
+            } else {
+                HStack(spacing: BrevSpacing.sm) {
+                    statusRow
+                    Spacer(minLength: BrevSpacing.sm)
+                    actions
+                }
+            }
+        }
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(theme.bgSecondary.color)
+        .accessibilityElement(children: .combine)
+    }
+
+    private var statusRow: some View {
         HStack(spacing: BrevSpacing.sm) {
             Image(systemName: presentation.symbol)
                 .symbolRenderingMode(.hierarchical)
@@ -33,14 +56,7 @@ struct RelatedConversationBar: View {
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: BrevSpacing.sm)
-            actions
         }
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.bgSecondary.color)
-        .accessibilityElement(children: .combine)
     }
 
     /// One dispatch over the controller's state keeps the symbol, tint and

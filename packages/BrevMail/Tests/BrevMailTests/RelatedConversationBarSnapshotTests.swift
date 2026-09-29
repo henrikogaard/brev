@@ -89,6 +89,33 @@ struct RelatedConversationBarSnapshotTests {
         assertBar(controller: controller, named: "partial-coverage")
     }
 
+    /// At accessibility text sizes the actions stack beneath the message
+    /// instead of squeezing into hyphenated columns (Dynamic Type defect
+    /// found in the 2026-09-29 main verification pass).
+    @Test("accessibility text stacks the actions below the message")
+    func accessibilitySizeStacksActions() async throws {
+        let backend = MockBackend(
+            account: Self.account,
+            extendedCapabilities: [.cachedConversations, .relatedConversationLoading]
+        )
+        backend.cachedConversationHandler = { anchor, _ in
+            try Self.snapshot(
+                anchor: anchor,
+                members: [anchor],
+                coverage: .partial,
+                excludedFolderIDs: ["Junk"]
+            )
+        }
+        let controller = try makeController()
+        controller.updateAnchor(
+            header: Self.header(id: "inbox-1"),
+            sourceID: Self.source,
+            backend: backend
+        )
+        await controller.awaitSettled()
+        assertBarAccessibility(controller: controller, named: "accessibility-stacked")
+    }
+
     /// A failed remote lookup swaps the message for the failure copy and
     /// keeps Retry available.
     @Test("failed remote lookup shows retry")
@@ -143,6 +170,30 @@ struct RelatedConversationBarSnapshotTests {
         assertSnapshot(
             of: host,
             as: .image(size: CGSize(width: 560, height: 44)),
+            named: name,
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    /// Accessibility-size variant with its own snapshot prefix so the
+    /// 44 pt baselines above stay byte-stable.
+    private func assertBarAccessibility(
+        controller: RelatedConversationController,
+        named name: String
+    ) {
+        let theme = BrevTheme.brevSlate
+        let view = RelatedConversationBar(controller: controller)
+            .environment(\.dynamicTypeSize, .accessibility3)
+            .frame(width: 560)
+            .background(theme.bgPrimary.color)
+            .brevTheme(theme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 560, height: 220)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 560, height: 220)),
             named: name,
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
