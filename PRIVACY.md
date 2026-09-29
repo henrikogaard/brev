@@ -1,9 +1,13 @@
 # Privacy
 
-Brev is designed so that **no data about you reaches us, ever.** We
-collect no analytics, no crash reports, no usage statistics. The app
+Brev does not send your account or mailbox data to Ogard Labs. We
+collect no app analytics, automatic crash reports, or usage statistics. The app
 contains no telemetry call paths or telemetry SDK artifacts in the
 generated app dependency graph.
+
+If you email us or submit a GitHub issue, you choose what information
+to share with us. Your mail provider, optional services you enable,
+and the platform distributing Brev process data under their own policies.
 
 This document explains the data that *does* leave your device and
 where it goes. A fresh App Store or iOS install does not contact
@@ -46,8 +50,9 @@ you access through IMAP/SMTP.
 
 ## What data leaves your device only if you opt in
 
-Each is disabled by default. Brev makes none of these calls until
-you explicitly enable them in Settings.
+These calls are off until you enable the relevant setting, connect a
+source, or choose the described action. Each section explains its own
+trigger and control.
 
 ### Manual GitHub release check
 
@@ -267,6 +272,19 @@ and derives `<reversed-client-ID>:/oauth2redirect` when callback values are
 empty. The non-ephemeral session may reuse system browser cookies for SSO, but
 Brev cannot read those cookies. Cancelling stops the web session on both
 platforms; only macOS also stops the loopback listener.
+
+**How Brev uses Google data:** Brev requests Google access to provide the
+Gmail, Calendar, Contacts, Tasks, and Drive features you choose. Requests
+go directly from the app to Google's APIs; account data is stored on your
+device as described below and in "Where Brev stores data." Ogard Labs does
+not receive a copy of your Google account content, sell it, or use it for
+advertising. If you explicitly invoke an AI feature on selected mail,
+that content goes directly to the AI endpoint you configured, subject to
+that provider's policy; see "AI Writer and mailbox chat" below. Removing
+the Google account clears its token and Brev-owned mail cache. Linked
+calendar, contacts, and tasks caches may be kept disconnected if you choose
+that option when removing the account; files you exported remain where you
+saved them.
 
 When you enable Calendar, Contacts, or Tasks on a Google account in
 Settings → Calendar & Contacts, Brev runs the same user-initiated Google
@@ -759,31 +777,60 @@ provider's own synchronization settings apply.
 
 ## Where Brev stores data
 
-- **Account credentials:** macOS or iOS Keychain. Encrypted by the
-  system. Never in logs.
-- **Mail cache, drafts, settings:** local SQLite/Realm databases in
-  the app's container, governed by macOS/iOS file protection.
-- **Legacy provider cache snapshots:** quarantined provider adapters may
-  keep local JSON cache files in Application Support while they remain
-  in the repository as reference code. These caches contain mailbox
-  metadata and previously fetched message content only; they do not
-  store OAuth secrets, passwords, refresh tokens, or API keys.
+- **Credentials and secrets:** account passwords, OAuth tokens, DAV
+  credentials, and configured AI API keys are kept in the macOS or iOS
+  Keychain, not in mail caches, settings, or logs.
+- **Account and source settings:** account names and email addresses,
+  selected account, server and provider configuration, PIM source
+  endpoints and credential references, and feature preferences are
+  stored locally in UserDefaults or JSON files in Application Support.
+  Credential references are not the credentials themselves.
+- **Mail and drafts:** local SQLite databases and files in Application
+  Support hold synchronized message and folder identifiers, headers,
+  bodies, raw source, attachments, search indexes and sync cursors.
+  Drafts and staged attachment bytes are stored separately from
+  evictable cache content; submitted Send Later messages can also keep
+  frozen MIME content and delivery state until resolved or removed.
+  Local Maildir folders are persistent user data, not a disposable cache.
+- **Calendar, contacts, and tasks:** when you connect and sync a source,
+  its collection metadata, event/contact/task fields, provider payloads,
+  and sync cursors are saved in the app's Application Support directory
+  for offline use. Cached contacts can include addresses, notes, dates,
+  group membership, and photo bytes when the provider supplied an inline
+  photo or you selected one. Removing a source always clears its
+  credentials, cursors, and unsent drafts; you choose whether to delete
+  its readable cached content or retain it disconnected.
 - **Avatar cache:** in-memory cache for the current app session plus
   local SQLite cache in the app's Caches directory. You can clear it
   from Settings → Mailbox View → "Clear cached avatars."
 - **Logs:** local file at `~/Library/Logs/Brev/brev.log` (macOS)
-  or app container (iOS). Never transmitted.
+  or app container (iOS). Never transmitted automatically.
+- **Files you export:** mail exports and `.brevbackup` packages are
+  written to a location you choose. They can contain full messages and
+  attachments; deleting Brev does not delete copies you saved elsewhere.
+  Optional iCloud preference sync is described above and uses your own
+  Apple account.
 
 ## Your rights under GDPR
 
-- **Right of access / portability:** Brev stores no data about you
-  server-side. Your mail data is held by your selected mail provider
-  under their policy. Your local data is in the app's container and is
-  exported on request to `privacy@brevmail.eu`.
-- **Right to erasure:** Uninstall Brev. Your local data is removed.
-  Mail on your provider's servers is subject to their policy.
-- **Right to rectification:** Settings allows editing all locally-
-  stored data. For mail-server data, contact your mail provider.
+- **Right of access / portability:** Ogard Labs has no central copy of
+  your mailbox or app storage and cannot retrieve it from your device.
+  You can view your data in Brev and use its mail export and settings
+  backup features where supported. Your mail provider holds its own
+  server-side copy under its policy. Contact us about information you
+  deliberately sent us, such as a privacy email or bug report.
+- **Right to erasure:** Remove accounts and connected sources in Brev,
+  and delete local folders or saved exports/backups you no longer want.
+  The Mail Storage reset action deletes and then re-downloads a connected
+  account's cache; it is not an erasure control. A removed PIM
+  source may retain a disconnected readable cache if you choose that
+  option. On macOS, uninstalling the app alone may leave Application
+  Support files behind. Mail on your provider's servers and optional
+  iCloud preferences must be managed through those providers.
+- **Right to rectification:** You can edit account settings and many
+  preferences in Brev. Correct provider-held mail, contacts, calendar
+  events, or tasks through the supported app actions or your provider;
+  Brev's local copy is then updated by sync.
 - **Right to lodge a complaint:** With your national data
   protection authority. In Norway, the Datatilsynet.
 
@@ -818,6 +865,6 @@ notes. The current version of this document lives at
 
 ---
 
-**Data controller:** Henrik Ø. Gaard, Stavanger, Norway.
+**Data controller:** Ogard Labs.
 **Contact:** `privacy@brevmail.eu`.
-**Effective from:** the date of the first public Brev release.
+**Last updated:** 27 September 2026.

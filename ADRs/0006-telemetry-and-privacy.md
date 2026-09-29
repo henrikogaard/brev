@@ -16,13 +16,15 @@ Firebase Analytics, Mixpanel, and Amplitude are absent and mechanically banned.
 
 GDPR-wise, Brev's posture is:
 
-- **Controller:** Henrik (sole controller, no DPO required at this
-  scale).
-- **Processor relationships:** the user's selected mail provider (mail
-  data), optionally Gravatar/Automattic (avatar hashes if user opts
-  in), optionally sender domains (favicon fetches if user opts in),
-  optionally the user's chosen AI endpoint (provider-hosted AI or BYOK).
-- **Data Brev itself collects from users:** zero.
+- **Controller:** Ogard Labs. Privacy requests go to
+  `privacy@brevmail.eu`.
+- **Other services the app may contact:** the user's selected mail
+  provider, and optionally Gravatar/Automattic, sender domains, or a
+  user-configured AI endpoint. These are direct app connections; this
+  list does not assert that those services process data for Ogard Labs.
+- **Data Brev itself collects from users:** no app telemetry or hosted
+  mailbox copy. Users may voluntarily send information to the project
+  by email or in public GitHub issues.
 
 ## Decision
 
