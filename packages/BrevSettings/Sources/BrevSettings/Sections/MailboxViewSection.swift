@@ -10,15 +10,10 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevAvatars
 import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
-
-#if canImport(Contacts)
-import Contacts
-#endif
 
 struct MailboxViewSection: View {
     @State private var selectedPane = 0
@@ -26,7 +21,6 @@ struct MailboxViewSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var mailboxSettings: MailboxViewSettings
     @State private var inboxClassificationSettings: InboxClassificationSettings
-    @State private var avatarSettings: AvatarPrivacySettings
     @State private var folderPreferences: FolderPreferences
 
     private let settingsStore: SettingsPersistenceStore
@@ -35,21 +29,20 @@ struct MailboxViewSection: View {
         self.settingsStore = settingsStore
         _mailboxSettings = State(initialValue: settingsStore.mailboxViewSettings())
         _inboxClassificationSettings = State(initialValue: settingsStore.inboxClassificationSettings())
-        _avatarSettings = State(initialValue: settingsStore.avatarPrivacySettings())
         _folderPreferences = State(initialValue: settingsStore.folderPreferences())
     }
 
     var body: some View {
         SectionScaffold(
             title: String(localized: "Mailbox View", bundle: .module),
-            subtitle: String(localized: "Reading, list layout, sender icons, and message rendering.", bundle: .module)
+            subtitle: String(localized: "Reading, list layout, sidebar folders, and links.", bundle: .module)
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 Picker(String(localized: "Mailbox preferences", bundle: .module), selection: $selectedPane) {
                     Text("Reading", bundle: .module).tag(0)
                     Text("Message list", bundle: .module).tag(1)
                     Text("Folders", bundle: .module).tag(2)
-                    Text("Sender images", bundle: .module).tag(3)
+                    Text("Browser", bundle: .module).tag(3)
                 }
                 .pickerStyle(.segmented)
                 switch selectedPane {
@@ -57,7 +50,7 @@ struct MailboxViewSection: View {
                     SettingsMailPreview(settings: mailboxSettings)
                     listGroup
                 case 2: folderVisibilityGroup
-                case 3: senderIconGroup
+                case 3: BrowserSettingsGroup(settingsStore: settingsStore)
                 default:
                     readingGroup
                 }
@@ -95,13 +88,8 @@ struct MailboxViewSection: View {
             String(localized: "Inbox classification", bundle: .module),
             String(localized: "Stats detail", bundle: .module)
         ].contains(target) { selectedPane = 1; return }
-        if [
-            String(localized: "Sender image sources", bundle: .module),
-            String(localized: "Use Contacts photos", bundle: .module),
-            String(localized: "Use Gravatar", bundle: .module),
-            String(localized: "Use BIMI logos", bundle: .module),
-            String(localized: "Use domain favicons", bundle: .module)
-        ].contains(target) { selectedPane = 3; return }
+        if [String(localized: "Browser", bundle: .module), String(localized: "Open links in", bundle: .module)]
+            .contains(target) { selectedPane = 3; return }
         selectedPane = 0
     }
 
@@ -189,14 +177,6 @@ struct MailboxViewSection: View {
                         bundle: .module
                     ),
                     isOn: mailboxBinding(for: \.useRichRenderer)
-                )
-
-                SettingsToggleRow(
-                    symbolName: "photo",
-                    title: String(localized: "Always load remote images", bundle: .module),
-                    subtitle: String(localized: "Allows remote images after rich HTML rendering is enabled.", bundle: .module),
-                    isOn: mailboxBinding(for: \.allowRemoteContent),
-                    isEnabled: mailboxSettings.useRichRenderer
                 )
 
                 SettingsPickerRow(
@@ -378,69 +358,6 @@ struct MailboxViewSection: View {
         )
     }
 
-    private var senderIconGroup: some View {
-        SettingsGroup(
-            title: String(localized: "Sender image sources", bundle: .module),
-            subtitle: String(
-                localized: "Choose which avatar sources Brev may use when sender images are visible.",
-                bundle: .module
-            ),
-            symbolName: "person.crop.circle.badge.checkmark"
-        ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                SettingsToggleRow(
-                    symbolName: "person.crop.square",
-                    title: String(localized: "Use Contacts photos", bundle: .module),
-                    subtitle: String(localized: "Looks up sender photos locally on this device.", bundle: .module),
-                    isOn: avatarBinding(for: \.useContacts),
-                    isEnabled: mailboxSettings.showSenderAvatars
-                )
-
-                SettingsToggleRow(
-                    symbolName: "number.circle",
-                    title: String(localized: "Use Gravatar", bundle: .module),
-                    subtitle: String(localized: "Sends a SHA-256 hash of the sender address to gravatar.com.", bundle: .module),
-                    isOn: avatarBinding(for: \.useGravatar),
-                    isEnabled: mailboxSettings.showSenderAvatars
-                )
-
-                SettingsToggleRow(
-                    symbolName: "checkmark.seal",
-                    title: String(localized: "Use BIMI logos", bundle: .module),
-                    subtitle: String(localized: "Allows DNS lookups for sender-domain BIMI records.", bundle: .module),
-                    isOn: avatarBinding(for: \.useBIMI),
-                    isEnabled: mailboxSettings.showSenderAvatars
-                )
-
-                SettingsToggleRow(
-                    symbolName: "globe",
-                    title: String(localized: "Use domain favicons", bundle: .module),
-                    subtitle: String(localized: "Allows fetching icons from sender domains during sync.", bundle: .module),
-                    isOn: avatarBinding(for: \.useFavicon),
-                    isEnabled: mailboxSettings.showSenderAvatars
-                )
-
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Initials only", bundle: .module), style: .secondary) {
-                        updateAvatarSettings { $0.useInitialsOnly() }
-                    }
-                    BrevButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
-                        Task { await AvatarResolver.shared.clearCache() }
-                    }
-                    Spacer(minLength: BrevSpacing.md)
-                }
-                .disabled(!mailboxSettings.showSenderAvatars)
-                .opacity(mailboxSettings.showSenderAvatars ? 1 : 0.55)
-
-                SettingsInfoCallout(
-                    symbolName: avatarFooterSymbolName,
-                    message: avatarFooterText,
-                    tone: avatarFooterTone
-                )
-            }
-        }
-    }
-
     private var fontPreview: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             Text("Preview", bundle: .module)
@@ -454,51 +371,6 @@ struct MailboxViewSection: View {
         .padding(BrevSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
         .brevQuietSurface(cornerRadius: BrevRadius.sm)
-    }
-
-    private var avatarFooterText: String {
-        if !mailboxSettings.showSenderAvatars {
-            return String(
-                localized: "Sender images are hidden, so mailbox rows and message headers stay more compact.",
-                bundle: .module
-            )
-        }
-        if avatarSettings.usesExternalSources {
-            return String(localized: "External sender icon lookups are enabled for at least one source.", bundle: .module)
-        }
-        if avatarSettings.useContacts {
-            return String(
-                localized: "External sender icon lookups are off. Brev uses Contacts photos and generated initials.",
-                bundle: .module
-            )
-        }
-        return String(localized: "All sender icon sources are off. Brev uses generated initials only.", bundle: .module)
-    }
-
-    private var avatarFooterSymbolName: String {
-        if !mailboxSettings.showSenderAvatars {
-            return "eye.slash"
-        }
-        if avatarSettings.usesExternalSources {
-            return "network"
-        }
-        if avatarSettings.useContacts {
-            return "checkmark.shield"
-        }
-        return "person.crop.circle"
-    }
-
-    private var avatarFooterTone: SettingsCalloutTone {
-        if !mailboxSettings.showSenderAvatars {
-            return .info
-        }
-        if avatarSettings.usesExternalSources {
-            return .warning
-        }
-        if avatarSettings.useContacts {
-            return .success
-        }
-        return .info
     }
 
     private func mailboxBinding<Value>(
@@ -529,40 +401,5 @@ struct MailboxViewSection: View {
                 settingsStore.save(folderPreferences)
             }
         )
-    }
-
-    private func avatarBinding(
-        for keyPath: WritableKeyPath<AvatarPrivacySettings, Bool>
-    ) -> Binding<Bool> {
-        Binding(
-            get: { avatarSettings[keyPath: keyPath] },
-            set: { newValue in
-                updateAvatarSettings { $0[keyPath: keyPath] = newValue }
-            }
-        )
-    }
-
-    private func updateAvatarSettings(
-        _ mutate: (inout AvatarPrivacySettings) -> Void
-    ) {
-        let previouslyUsedContacts = avatarSettings.useContacts
-        mutate(&avatarSettings)
-        settingsStore.save(avatarSettings)
-        if !previouslyUsedContacts, avatarSettings.useContacts {
-            requestContactsAccessFromExplicitSettingsAction()
-        }
-        let preferences = avatarSettings.avatarPreferences
-        Task {
-            await AvatarResolver.shared.updatePreferences(preferences)
-        }
-    }
-
-    private func requestContactsAccessFromExplicitSettingsAction() {
-        #if canImport(Contacts)
-        guard CNContactStore.authorizationStatus(for: .contacts) == .notDetermined else { return }
-        Task {
-            _ = try? await CNContactStore().requestAccess(for: .contacts)
-        }
-        #endif
     }
 }

@@ -13,6 +13,7 @@
 #if os(iOS)
 import BrevBackend
 @testable import BrevMail
+import BrevSettings
 import BrevThemes
 import SnapshotTesting
 import SwiftUI
@@ -40,6 +41,50 @@ struct PhoneMailboxSnapshotTests {
         let host = UIHostingController(rootView: view)
         assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
                        named: "favorites-editor",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("favourites keep long account identities readable at accessibility text sizes")
+    func accessibleFavorites() throws {
+        let defaults = try #require(UserDefaults(suiteName: "AccessibleFavorites-" + UUID().uuidString))
+        let account = BrevAccount(id: "account", displayName: "Harbour Logistics", emailAddress: "team@example.org")
+        let mailbox = Mailbox(id: "operations", email: "team@example.org", displayName: "International Operations")
+        let source = MailSourceID(accountID: account.id, mailboxID: mailbox.id)
+        let sections = [MailSourceSection(id: source, account: account, mailbox: mailbox,
+                                          folders: [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 123),
+                                                    Folder(id: "drafts", name: "Drafts", role: .drafts, totalCount: 3)])]
+        let candidates = MailboxFavorite.candidates(sections: sections)
+        var preferences = MailboxFavorites(data: Data())
+        preferences.setVisible(true, id: candidates[2].id)
+        defaults.set(preferences.data, forKey: MailboxFavorites.storageKey)
+        let view = FolderSidebar(navigation: MailNavigationState(), folders: [], sourceSections: sections)
+            .defaultAppStorage(defaults)
+            .brevTheme(.brevMonoLight)
+            .environment(\.dynamicTypeSize, .accessibility3)
+            .background(BrevTheme.brevMonoLight.bgSecondary.color)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [
+            .init(displayScale: 2),
+            .init(preferredContentSizeCategory: .accessibilityExtraLarge)
+        ])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits), named: "accessible-favorites",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("phone settings uses compact task categories with readable large text", arguments: [false, true])
+    func settingsCategories(accessibility: Bool) throws {
+        let defaults = try #require(UserDefaults(suiteName: "PhoneSettings-" + UUID().uuidString))
+        let view = SettingsView(accountStore: InMemoryAccountStore(), activeTheme: .constant(.brevMonoLight),
+                                settingsStore: SettingsPersistenceStore(defaults: defaults))
+            .brevTheme(.brevMonoLight)
+            .environment(\.horizontalSizeClass, .compact)
+            .environment(\.dynamicTypeSize, accessibility ? .accessibility3 : .large)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [.init(displayScale: 2),
+                                                    .init(preferredContentSizeCategory: accessibility ? .accessibilityExtraLarge :
+                                                        .large)])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits),
+                       named: accessibility ? "accessibility" : "standard",
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 

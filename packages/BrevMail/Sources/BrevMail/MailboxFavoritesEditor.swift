@@ -29,16 +29,20 @@ struct MailboxFavoritesEditor: View {
             List {
                 Section {
                     ForEach(ordered) { favorite in
-                        Toggle(isOn: Binding(
-                            get: { preferences.isVisible(favorite) },
-                            set: { visible in
-                                var updated = preferences
-                                updated.setVisible(visible, id: favorite.id)
-                                data = updated.data
-                            }
-                        )) {
-                            HStack(spacing: BrevSpacing.sm) {
+                        Button {
+                            var updated = preferences
+                            updated.setVisible(!preferences.isVisible(favorite), id: favorite.id)
+                            data = updated.data
+                        } label: {
+                            HStack(spacing: BrevSpacing.md) {
+                                Image(systemName: preferences.isVisible(favorite) ? "checkmark.circle.fill" : "circle")
+                                    .foregroundStyle(preferences.isVisible(favorite) ? theme.accent.color : theme.textTertiary
+                                        .color)
+                                    .frame(width: 22)
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .accessibilityHidden(true)
                                 Image(systemName: favorite.symbol).frame(width: 22)
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
                                     .foregroundStyle(theme.textSecondary.color)
                                 VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                                     Text(verbatim: favorite.title).foregroundStyle(theme.textPrimary.color)
@@ -47,10 +51,18 @@ struct MailboxFavoritesEditor: View {
                                             .foregroundStyle(theme.textSecondary.color)
                                     }
                                 }
+                                Spacer(minLength: 0)
                             }
+                            .brevFont(.body)
+                            .padding(.vertical, BrevSpacing.xs)
+                            .frame(minHeight: 44)
+                            .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(preferences.isVisible(favorite) ? .isSelected : [])
                         .tint(theme.accent.color)
                         .listRowBackground(theme.bgPrimary.color)
+                        .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.lg, bottom: 0, trailing: BrevSpacing.md))
                         .accessibilityAction(named: String(localized: "Move up", bundle: .module)) {
                             move(favorite, by: -1)
                         }

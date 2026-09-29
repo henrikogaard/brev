@@ -6,6 +6,15 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Settings now uses eight task categories plus About & Updates on both
+  platforms, with subpages for Writing, mailboxes, privacy, and storage.
+  Send safety precedes expandable recipient history; remote-image and avatar
+  permissions live in Privacy, browser choice in Reading, and preference sync
+  in Sync & Storage. Existing settings and search destinations are preserved.
+- iPhone mailbox navigation uses inset Favourites, account, and utility groups,
+  aligned counts, and a checkmark-based shortcut editor. Large text wraps
+  without icon overlap and keeps the unread/draft count meaning visible.
+
 - iOS mailbox Favourites show All Inboxes and each account inbox first, with
   editable Drafts/Sent shortcuts and saved ordering, visibility, and account
   expansion. Inbox counts use unread mail; Drafts uses the total draft count.

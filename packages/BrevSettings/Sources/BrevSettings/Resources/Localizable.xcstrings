@@ -12154,6 +12154,149 @@
           }
         }
       }
+    },
+    "About & Updates": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Om og oppdateringer"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Accounts & Connections": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer og tilkoblinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Contacts stay local; external sender image sources require your permission above.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontakter forblir lokale. Eksterne avsenderbilder krever tillatelsen din ovenfor."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Control remote images, sender image sources, and trusted senders.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg eksterne bilder, avsenderbilder og betrodde avsendere."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels are blocked until you allow them.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler er blokkert til du tillater dem."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Images, web fonts, and tracking pixels remain off unless you allow remote content.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bilder, webfonter og sporingspiksler forblir blokkert med mindre du tillater eksternt innhold."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Mailboxes & Reading": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Postkasser og lesing"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Manage recent recipients": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer nylige mottakere"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Preferences": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innstillinger"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Reading, list layout, sidebar folders, and links.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing, meldingsliste, mapper og lenker."
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Remote content": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt innhold"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Rules & Organisation": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Regler og organisering"
+          }
+        }
+      },
+      "extractionState": "manual"
+    },
+    "Writing": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriving"
+          }
+        }
+      },
+      "extractionState": "manual"
     }
   },
   "version": "1.0"

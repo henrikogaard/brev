@@ -32,10 +32,11 @@ settings navigation walkthrough in this pass.
 | Low | Notifications is grouped under Reading & Composing | App badges, sounds, quiet hours, and background behaviour span the app | Make Notifications an independent destination. Link fetch/background settings to Accounts or Sync without duplicating ownership. |
 | Low | Repeated headings and technical explanation compete with controls | Many pages repeat destination, group title, and multi-line subtitle. Updates source labels the mechanism “Sparkle” | One page title, concise group headings, short help text, and details on demand. Updates should present installed version, channel, availability, and one primary check action. |
 
-## Proposed grouping
+## Proposed grouping (subsequently accepted)
 
-This table is a proposal, not a claim that the full settings navigation has
-already been rewritten. The current branch moves only desktop sizing controls.
+This table records the original proposal. The user subsequently approved the
+category regrouping and control ownership moves; the [navigation polish pass](../navigation-polish-2026-09-29/README.md) records implementation and fresh evidence.
+The remaining deeper source/certificate-page simplifications are follow-ups.
 
 | Destination | Contents and subpages | Existing sections absorbed |
 | --- | --- | --- |

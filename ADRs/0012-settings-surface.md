@@ -204,3 +204,25 @@ Accounts and Appearance share the App group. Advanced is a normal labeled
 section, with the same row alignment and header style as every other group;
 capability availability still controls which destinations are present. Removing
 the special disclosure group also makes the keyboard order match visible rows.
+
+### 2026-09-29 task categories and mobile navigation polish
+
+Settings now exposes eight task categories plus About & Updates. The category
+layer groups stable `SettingsSection` leaf identities, preserving programmatic
+selection and control search. Developer remains capability-gated and plugin
+panels remain conditional. Desktop uses a compact category sidebar and native
+subpage pickers; iPhone uses the same categories with push navigation. Existing
+`SettingsSectionGroup` metadata remains available to callers; it no longer
+controls the main Settings sidebar.
+
+Writing groups compose, signatures, templates, and AI Writer. Send safety comes
+before recipient history, which expands on demand. Privacy owns remote-image
+and avatar-source consent; Reading owns browser choice; Sync & Storage owns
+global iCloud preference sync. No preference key or consent default migrates.
+
+Mobile mail navigation uses inset groups, a consistent icon and text alignment,
+quiet trailing counts, and checkmark selection in the Favourites editor. Rows
+retain a 44-point touch floor; large text wraps, with counts below labels at
+accessibility sizes. Decorative icons stay within their fixed columns. Account
+identity, unread-versus-draft counts, shortcut persistence, and disclosure
+behaviour are unchanged.

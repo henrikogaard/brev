@@ -37,6 +37,7 @@ enum FolderSidebarDestinationActivation {
 /// icon and unread count. Selection writes back to the shared
 /// navigation state; the parent observes that to update the list pane.
 public struct FolderSidebar: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(macOS)
     @Environment(\.controlActiveState) private var controlActiveState
     #endif
@@ -242,6 +243,9 @@ public struct FolderSidebar: View {
                         #endif
                     }
                     .padding(sidebarMetrics.sidebarPadding)
+                    #if os(iOS)
+                        .padding(.horizontal, BrevSpacing.xs)
+                    #endif
                 }
                 #if os(macOS)
                 // focusSection puts the sidebar in the Tab key loop so the
@@ -397,40 +401,44 @@ public struct FolderSidebar: View {
     private var appsSection: some View {
         if onOpenSettings != nil || onOpenCalendar != nil
             || onOpenContacts != nil || onOpenTasks != nil {
-            Text(String(localized: "More", bundle: .module))
-                .brevFont(.caption)
-                .foregroundStyle(theme.textSecondary.color)
-                .lineLimit(1)
-                .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
-                .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
-            if let onOpenCalendar {
-                appsRow(
-                    title: String(localized: "Calendar", bundle: .module),
-                    systemImage: "calendar",
-                    action: onOpenCalendar
-                )
+            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                Text("More", bundle: .module)
+                    .brevFont(.caption).fontWeight(.semibold)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .padding(.horizontal, BrevSpacing.md)
+                VStack(spacing: 0) {
+                    if let onOpenCalendar {
+                        appsRow(
+                            title: String(localized: "Calendar", bundle: .module),
+                            systemImage: "calendar",
+                            action: onOpenCalendar
+                        )
+                    }
+                    if let onOpenContacts {
+                        appsRow(
+                            title: String(localized: "Contacts", bundle: .module),
+                            systemImage: "person.crop.circle",
+                            action: onOpenContacts
+                        )
+                    }
+                    if let onOpenTasks {
+                        appsRow(
+                            title: String(localized: "Tasks", bundle: .module),
+                            systemImage: "checklist",
+                            action: onOpenTasks
+                        )
+                    }
+                    if let onOpenSettings {
+                        appsRow(
+                            title: String(localized: "Settings", bundle: .module),
+                            systemImage: "gearshape",
+                            action: onOpenSettings
+                        )
+                    }
+                }
+                .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
             }
-            if let onOpenContacts {
-                appsRow(
-                    title: String(localized: "Contacts", bundle: .module),
-                    systemImage: "person.crop.circle",
-                    action: onOpenContacts
-                )
-            }
-            if let onOpenTasks {
-                appsRow(
-                    title: String(localized: "Tasks", bundle: .module),
-                    systemImage: "checklist",
-                    action: onOpenTasks
-                )
-            }
-            if let onOpenSettings {
-                appsRow(
-                    title: String(localized: "Settings", bundle: .module),
-                    systemImage: "gearshape",
-                    action: onOpenSettings
-                )
-            }
+            .padding(.top, BrevSpacing.md)
         }
     }
 
@@ -440,20 +448,24 @@ public struct FolderSidebar: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            BrevListRow(
-                title: title,
-                isSelected: false,
-                leading: {
-                    if showSidebarIcons {
-                        Image(systemName: systemImage)
-                            .foregroundStyle(theme.accent.color)
-                            .frame(width: sidebarMetrics.iconWidth, alignment: .center)
-                    }
-                },
-                trailing: {
-                    EmptyView()
+            HStack(spacing: BrevSpacing.sm) {
+                if showSidebarIcons {
+                    Image(systemName: systemImage)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                        .frame(width: sidebarMetrics.iconWidth)
+                        .foregroundStyle(theme.textSecondary.color)
                 }
-            )
+                Text(verbatim: title).foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.xs)
+                Image(systemName: "chevron.right").brevFont(.caption)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                    .foregroundStyle(theme.textTertiary.color)
+            }
+            .brevFont(.body)
+            .padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.xs)
+            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .folderSidebarTouchTarget(minHeight: sidebarMetrics.folderRowMinimumHeight)
@@ -497,6 +509,24 @@ public struct FolderSidebar: View {
             }
         }
 
+        #if os(iOS)
+        VStack(spacing: 0) {
+            ForEach(sourceSections) { section in
+                VStack(spacing: 0) {
+                    if section.id != sourceSections.first?.id { phoneRowSeparator }
+                    mailboxDisclosureHeader(section)
+                    if expandedSourceIDs.contains(section.id) {
+                        VStack(spacing: 0) {
+                            folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                        }
+                        .padding(.horizontal, BrevSpacing.sm)
+                        .padding(.bottom, BrevSpacing.xs)
+                    }
+                }
+            }
+        }
+        .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
+        #else
         ForEach(sourceSections) { section in
             Section {
                 if expandedSourceIDs.contains(section.id) {
@@ -507,6 +537,7 @@ public struct FolderSidebar: View {
                     .padding(.top, sidebarMetrics.sectionSpacing)
             }
         }
+        #endif
         // Plugin-contributed sidebar panels live at the bottom, after the user's
         // own mailboxes and folders, so third-party extensions never sit above
         // real accounts.
@@ -593,6 +624,11 @@ public struct FolderSidebar: View {
         MailboxFavorite.candidates(sections: sourceSections)
     }
 
+    private var phoneRowSeparator: some View {
+        Rectangle().fill(theme.border.color).frame(height: 0.5)
+            .padding(.leading, BrevSpacing.md + (showSidebarIcons ? sidebarMetrics.iconWidth + BrevSpacing.sm : 0))
+    }
+
     private var favoritesSection: some View {
         VStack(spacing: 0) {
             HStack {
@@ -602,48 +638,67 @@ public struct FolderSidebar: View {
                 Spacer()
                 Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
                     .brevFont(.subheadline)
+                    .tint(theme.accent.color)
                     .frame(minWidth: 44, minHeight: 44)
                     .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
             }
             .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
-            ForEach(MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)) { favorite in
-                Button {
-                    activateDestination {
-                        switch favorite.id {
-                        case .allInboxes: navigation.selectUnifiedInbox()
-                        case .folder(let destination):
-                            navigation.selectFolder(destination.folderID, in: destination.sourceID)
-                        }
-                    }
-                } label: {
-                    HStack(spacing: BrevSpacing.sm) {
-                        if showSidebarIcons {
-                            Image(systemName: favorite.symbol)
-                                .frame(width: sidebarMetrics.iconWidth)
-                                .foregroundStyle(theme.textSecondary.color)
-                        }
-                        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                            Text(verbatim: favorite.title).brevFont(.body).lineLimit(1)
-                                .foregroundStyle(theme.textPrimary.color)
-                            if let subtitle = favorite.subtitle {
-                                Text(verbatim: subtitle).brevFont(.caption).lineLimit(1)
-                                    .foregroundStyle(theme.textSecondary.color)
+            let favorites = MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)
+            VStack(spacing: 0) {
+                ForEach(favorites) { favorite in
+                    if favorite.id != favorites.first?.id { phoneRowSeparator }
+                    Button {
+                        activateDestination {
+                            switch favorite.id {
+                            case .allInboxes: navigation.selectUnifiedInbox()
+                            case .folder(let destination):
+                                navigation.selectFolder(destination.folderID, in: destination.sourceID)
                             }
                         }
-                        Spacer(minLength: BrevSpacing.xs)
-                        unreadBadge(favorite.count)
-                        Image(systemName: "chevron.right").brevFont(.caption)
-                            .foregroundStyle(theme.textTertiary.color)
+                    } label: {
+                        HStack(spacing: BrevSpacing.sm) {
+                            if showSidebarIcons {
+                                Image(systemName: favorite.symbol)
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .frame(width: sidebarMetrics.iconWidth)
+                                    .foregroundStyle(theme.textSecondary.color)
+                            }
+                            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                                Text(verbatim: favorite.title).brevFont(.body)
+                                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                if let subtitle = favorite.subtitle {
+                                    Text(verbatim: subtitle).brevFont(.caption)
+                                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                                if dynamicTypeSize.isAccessibilitySize, favorite.count > 0 {
+                                    Text(verbatim: favorite.countDescription).brevFont(.caption)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                            }
+                            Spacer(minLength: BrevSpacing.xs)
+                            if !dynamicTypeSize.isAccessibilitySize { unreadBadge(favorite.count) }
+                            Image(systemName: "chevron.right").brevFont(.caption)
+                                .dynamicTypeSize(...DynamicTypeSize.large)
+                                .foregroundStyle(theme.textTertiary.color)
+                        }
+                        .padding(.horizontal, BrevSpacing.md)
+                        .padding(.vertical, favorite.subtitle == nil ? BrevSpacing.xs : BrevSpacing.sm)
+                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .background(isFavoriteSelected(favorite.id) ? folderSelectionColor : Color.clear)
+                        .clipShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
+                        .contentShape(Rectangle())
                     }
-                    .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
-                    .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                    .background(isFavoriteSelected(favorite.id) ? folderSelectionColor : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius))
-                    .contentShape(Rectangle())
+                    .buttonStyle(.plain)
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
+                    .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
+                    .accessibilityAddTraits(isFavoriteSelected(favorite.id) ? .isSelected : [])
                 }
-                .buttonStyle(.plain)
-                .accessibilityAddTraits(isFavoriteSelected(favorite.id) ? .isSelected : [])
             }
+            .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
         }
     }
 
@@ -694,14 +749,10 @@ public struct FolderSidebar: View {
             #if os(iOS)
             HStack(spacing: BrevSpacing.xs) {
                 Text(verbatim: section.title)
-                    .brevFont(.caption)
+                    .brevFont(.subheadline)
                     .fontWeight(.medium)
-                    .lineLimit(1)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
                     .truncationMode(.tail)
-                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
-                    .font(.system(size: 10, weight: .semibold))
-                    .frame(width: sidebarMetrics.disclosureHitSize)
-                    .accessibilityHidden(true)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
@@ -709,10 +760,12 @@ public struct FolderSidebar: View {
                 } else if !isExpanded {
                     unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
+                Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
+                    .brevFont(.caption)
+                    .accessibilityHidden(true)
             }
             .foregroundStyle(theme.textSecondary.color)
-            .padding(.leading, sidebarMetrics.sourceHeaderHorizontalPadding)
-            .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
@@ -1383,6 +1436,14 @@ public struct FolderSidebar: View {
     }
     #endif
 
+    private var folderLabelSpacing: CGFloat {
+        #if os(iOS)
+        BrevSpacing.sm
+        #else
+        BrevSpacing.xs
+        #endif
+    }
+
     private func folderRow(
         _ row: FolderSidebarRow,
         sourceID: MailSourceID?
@@ -1393,7 +1454,7 @@ public struct FolderSidebar: View {
             Button {
                 select(folder, in: sourceID)
             } label: {
-                HStack(spacing: BrevSpacing.xs) {
+                HStack(spacing: folderLabelSpacing) {
                     if showSidebarIcons {
                         roleIcon(for: folder.role)
                     }
@@ -1405,7 +1466,11 @@ public struct FolderSidebar: View {
                         .fontWeight(.regular)
                     #endif
                         .foregroundStyle(theme.textPrimary.color)
+                    #if os(iOS)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    #else
                         .lineLimit(1)
+                    #endif
                     Spacer(minLength: BrevSpacing.sm)
                     unreadBadge(folder.unreadCount)
                 }
@@ -1804,6 +1869,7 @@ public struct FolderSidebar: View {
     private func roleIcon(for role: FolderRole) -> some View {
         #if os(iOS)
         Image(systemName: systemImage(for: role))
+            .dynamicTypeSize(...DynamicTypeSize.large)
             .foregroundStyle(theme.textSecondary.color)
             .frame(width: sidebarMetrics.iconWidth, alignment: .center)
         #else
@@ -1827,8 +1893,7 @@ public struct FolderSidebar: View {
                     minWidth: sidebarMetrics.unreadBadgeMinimumWidth,
                     minHeight: sidebarMetrics.unreadBadgeMinimumHeight
                 )
-                .background(theme.bgTertiary.color)
-                .clipShape(Capsule())
+
             #else
             Text(verbatim: "\(count)")
                 .brevFont(.caption)

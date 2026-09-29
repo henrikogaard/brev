@@ -65,6 +65,8 @@ extension SettingsSection {
                 String(localized: "Message opacity", bundle: .module),
             ]
         case .mailboxView: return [
+                String(localized: "Browser", bundle: .module),
+                String(localized: "Open links in", bundle: .module),
                 String(localized: "Mailbox View", bundle: .module),
                 String(localized: "Folders", bundle: .module),
                 String(localized: "Starred", bundle: .module),
@@ -76,7 +78,6 @@ extension SettingsSection {
                 String(localized: "Archive", bundle: .module),
                 String(localized: "Reading", bundle: .module),
                 String(localized: "Use rich HTML renderer", bundle: .module),
-                String(localized: "Always load remote images", bundle: .module),
                 String(localized: "Conversation order", bundle: .module),
                 String(localized: "Message font", bundle: .module),
                 String(localized: "Text size", bundle: .module),
@@ -92,11 +93,6 @@ extension SettingsSection {
                 String(localized: "Show folder stats", bundle: .module),
                 String(localized: "Inbox classification", bundle: .module),
                 String(localized: "Stats detail", bundle: .module),
-                String(localized: "Sender image sources", bundle: .module),
-                String(localized: "Use Contacts photos", bundle: .module),
-                String(localized: "Use Gravatar", bundle: .module),
-                String(localized: "Use BIMI logos", bundle: .module),
-                String(localized: "Use domain favicons", bundle: .module),
             ]
         case .compose: return [
                 String(localized: "Compose", bundle: .module),
@@ -208,18 +204,24 @@ extension SettingsSection {
                 String(localized: "Allow private material in exports", bundle: .module),
                 String(localized: "Replace existing records on import", bundle: .module),
             ]
+        case .preferenceSync: return [
+                String(localized: "iCloud sync", bundle: .module),
+                String(localized: "Sync preferences with iCloud", bundle: .module),
+            ]
         case .privacy: return [
+                String(localized: "Always load remote images", bundle: .module),
+                String(localized: "Sender image sources", bundle: .module),
+                String(localized: "Use Contacts photos", bundle: .module),
+                String(localized: "Use Gravatar", bundle: .module),
+                String(localized: "Use BIMI logos", bundle: .module),
+                String(localized: "Use domain favicons", bundle: .module),
+
                 String(localized: "Privacy", bundle: .module),
                 String(localized: "Defaults", bundle: .module),
                 String(localized: "Remote content starts blocked", bundle: .module),
                 String(localized: "Sender icons are explicit", bundle: .module),
                 String(localized: "AI Writer requires consent", bundle: .module),
-                String(localized: "Browser", bundle: .module),
-                String(localized: "Open links in", bundle: .module),
                 String(localized: "Remote content allowlist", bundle: .module),
-                String(localized: "Current opt-ins", bundle: .module),
-                String(localized: "iCloud sync", bundle: .module),
-                String(localized: "Sync preferences with iCloud", bundle: .module),
             ]
         case .notifications: return [
                 String(localized: "Notifications", bundle: .module),

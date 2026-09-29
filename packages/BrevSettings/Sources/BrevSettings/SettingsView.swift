@@ -280,16 +280,23 @@ public struct SettingsView: View {
                             scopedDetail(for: result.section)
                                 .environment(\.settingsSearchTarget, result.target)
                                 .navigationTitle(result.section.title)
+                                .onAppear { navigation.select(result.section) }
+                            #if os(iOS)
+                                .toolbar { settingsDismissToolbar }
+                            #endif
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(result.title)
-                                Text(result.section.title).brevFont(.footnote)
+                                Text(result.section.category.title + " › " + result.section.title).brevFont(.footnote)
                             }
                         }
                     }
                 } else {
-                    ForEach(filteredSettingsGroups, id: \.group) { entry in
-                        compactSettingsGroup(entry.group, sections: entry.sections)
+                    Section {
+                        compactCategoryRows(supplementary: false)
+                    }
+                    Section {
+                        compactCategoryRows(supplementary: true)
                     }
                 }
                 if filteredSettingsGroups.isEmpty {
@@ -314,40 +321,43 @@ public struct SettingsView: View {
             .listStyle(.plain)
             #endif
             .scrollContentBackground(.hidden)
-            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
-        }
-    }
-
-    /// Mirrors sidebar grouping so iPhone list headers match split layout.
-    @ViewBuilder
-    private func compactSettingsGroup(
-        _ group: SettingsSectionGroup,
-        sections: [SettingsSection]
-    ) -> some View {
-        if let header = group.headerLabel {
-            Section(header) {
-                compactSettingsRows(for: sections)
-            }
-        } else {
-            Section {
-                compactSettingsRows(for: sections)
-            }
+            .background(theme.bgSecondary.color.ignoresSafeArea())
         }
     }
 
     @ViewBuilder
-    private func compactSettingsRows(for sections: [SettingsSection]) -> some View {
-        ForEach(sections) { section in
+    private func compactCategoryRows(supplementary: Bool) -> some View {
+        ForEach(navigation.availability.visibleCategories.filter { $0.isSupplementary == supplementary }) { category in
             NavigationLink {
-                scopedDetail(for: section)
-                    .navigationTitle(section.title)
-                #if os(iOS)
-                    .toolbar { settingsDismissToolbar }
-                #endif
-                    .onAppear { navigation.select(section) }
-            } label: {
-                sectionRow(section)
-            }
+                if category.sections(in: navigation.availability).count == 1,
+                   let section = category.sections(in: navigation.availability).first {
+                    scopedDetail(for: section).navigationTitle(category.title)
+                        .onAppear { navigation.select(section) }
+                    #if os(iOS)
+                        .toolbar { settingsDismissToolbar }
+                    #endif
+                } else {
+                    List(category.sections(in: navigation.availability)) { section in
+                        NavigationLink {
+                            scopedDetail(for: section).navigationTitle(section.title)
+                                .onAppear { navigation.select(section) }
+                            #if os(iOS)
+                                .toolbar { settingsDismissToolbar }
+                            #endif
+                        } label: { sectionRow(section) }
+                            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
+                            .listRowBackground(theme.bgPrimary.color)
+                    }
+                    .scrollContentBackground(.hidden)
+                    .background(theme.bgSecondary.color.ignoresSafeArea())
+                    .navigationTitle(category.title)
+                    #if os(iOS)
+                        .toolbar { settingsDismissToolbar }
+                    #endif
+                }
+            } label: { categoryRow(category) }
+                .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
+                .listRowBackground(theme.bgPrimary.color)
         }
     }
 
@@ -365,7 +375,7 @@ public struct SettingsView: View {
                         } label: {
                             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                                 Text(result.title).foregroundStyle(theme.textPrimary.color)
-                                Text(result.section.title)
+                                Text(result.section.category.title + " › " + result.section.title)
                                     .brevFont(.footnote)
                                     .foregroundStyle(theme.textSecondary.color)
                             }
@@ -376,9 +386,8 @@ public struct SettingsView: View {
                 }
             } else {
                 List {
-                    ForEach(filteredSettingsGroups, id: \.group) { entry in
-                        sidebarGroup(entry.group, sections: entry.sections)
-                    }
+                    Section { sidebarCategoryRows(supplementary: false) }
+                    Section { sidebarCategoryRows(supplementary: true) }
                     if filteredSettingsGroups.isEmpty {
                         settingsSearchEmptyState
                     }
@@ -400,82 +409,62 @@ public struct SettingsView: View {
             .background(BrevSplitViewColumnTransparencyFixer())
             .onMoveCommand { direction in
                 guard normalizedSearchText.isEmpty, direction == .up || direction == .down else { return }
-                let sections = filteredSettingsGroups
-                    .flatMap(\.sections)
-                guard let index = sections.firstIndex(of: navigation.selected) else { return }
+                let categories = navigation.availability.visibleCategories
+                guard let index = categories.firstIndex(of: navigation.selected.category) else { return }
                 let offset = direction == .down ? 1 : direction == .up ? -1 : 0
-                let next = min(max(index + offset, 0), sections.count - 1)
+                let next = min(max(index + offset, 0), categories.count - 1)
                 selectedPluginContribution = nil
                 searchTarget = nil
-                navigation.select(sections[next])
+                selectCategory(categories[next])
             }
         #endif
     }
 
-    /// Renders one sidebar group: an optional header label (per
-    /// `SettingsSectionGroup.headerLabel`) followed by its section rows.
-    /// Every named group shares the same heading and row alignment.
-    @ViewBuilder
-    private func sidebarGroup(
-        _ group: SettingsSectionGroup,
-        sections: [SettingsSection]
-    ) -> some View {
-        if let header = group.headerLabel {
-            Section {
-                sidebarRows(for: sections)
-            } header: {
-                Text(header)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-            }
-        } else {
-            sidebarRows(for: sections)
-        }
+    private func selectCategory(_ category: SettingsCategory) {
+        guard let section = category.sections(in: navigation.availability).first else { return }
+        selectedPluginContribution = nil
+        searchTarget = nil
+        navigation.select(section)
     }
 
-    @ViewBuilder
-    private func sidebarRows(for sections: [SettingsSection]) -> some View {
-        ForEach(sections) { section in
-            #if os(iOS)
-            Button {
-                selectedPluginContribution = nil
-                navigation.select(section)
-            } label: {
-                sectionRow(section)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .contentShape(Rectangle())
+    private func categoryRow(_ category: SettingsCategory) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            if showSidebarIcons {
+                Image(systemName: category.symbolName)
+                    .brevFont(.body)
+                #if os(iOS)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                #endif
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: 20)
             }
-            .buttonStyle(.plain)
-            .listRowBackground(
-                navigation.selected == section ? theme.selection.color : Color.clear
-            )
-            #else
-            Button {
-                selectedPluginContribution = nil
-                searchTarget = nil
-                navigation.select(section)
-            } label: {
-                sectionRow(section)
+            Text(category.title)
+                .lineLimit(nil)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .settingsTouchTarget()
+    }
+
+    private func sidebarCategoryRows(supplementary: Bool) -> some View {
+        ForEach(navigation.availability.visibleCategories.filter { $0.isSupplementary == supplementary }) { category in
+            let selected = selectedPluginContribution == nil && navigation.selected.category == category
+            Button { selectCategory(category) } label: {
+                categoryRow(category)
                     .padding(.horizontal, BrevSpacing.sm)
                     .padding(
                         .vertical,
-                        (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.xxs)
+                        (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.xs)
                     )
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(navigation.selected == section ? theme.selection.color : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-                    .overlay(alignment: .leading) {
-                        if navigation.selected == section {
-                            RoundedRectangle(cornerRadius: 1)
-                                .fill(BrevSelectionPalette(theme: theme).indicator.color)
-                                .frame(width: 2, height: 18)
-                        }
-                    }
+                    .background(selected ? theme.selection.color : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityAddTraits(navigation.selected == section ? .isSelected : [])
-            .listRowInsets(EdgeInsets(top: 2, leading: 0, bottom: 2, trailing: 4))
-            #endif
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
         }
     }
 
@@ -613,6 +602,8 @@ public struct SettingsView: View {
             )
         case .security:
             SecuritySection(settingsStore: settingsStore)
+        case .preferenceSync:
+            PreferenceSyncSection(settingsStore: settingsStore)
         case .privacy:
             PrivacySection(settingsStore: settingsStore)
         case .notifications:
@@ -643,8 +634,29 @@ public struct SettingsView: View {
             view
                 .environment(\.brevTheme, theme)
         } else {
-            scopedDetail(for: navigation.selected)
-                .environment(\.settingsSearchTarget, searchTarget)
+            VStack(alignment: .leading, spacing: 0) {
+                let category = navigation.selected.category
+                let sections = category.sections(in: navigation.availability)
+                if sections.count > 1 {
+                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                        Text(category.title).brevFont(.headline)
+                            .foregroundStyle(theme.textPrimary.color)
+                        Picker(category.title, selection: Binding(
+                            get: { navigation.selected },
+                            set: { section in searchTarget = nil; navigation.select(section) }
+                        )) {
+                            ForEach(sections) { section in Text(section.title).tag(section) }
+                        }
+                        .labelsHidden()
+                        .pickerStyle(.segmented)
+                    }
+                    .padding(.horizontal, BrevSpacing.xl)
+                    .padding(.vertical, BrevSpacing.lg)
+                    Divider().overlay(theme.border.color)
+                }
+                scopedDetail(for: navigation.selected)
+                    .environment(\.settingsSearchTarget, searchTarget)
+            }
         }
     }
 
@@ -657,7 +669,7 @@ public struct SettingsView: View {
     }
 
     private func settingsScopeCaption(for section: SettingsSection) -> String? {
-        [.appearance, .mailboxView, .compose, .vipAndReminders].contains(section)
+        [.appearance, .mailboxView, .compose, .vipAndReminders, .privacy, .preferenceSync].contains(section)
             ? String(localized: "Applies to all mailboxes", bundle: .module)
             : nil
     }

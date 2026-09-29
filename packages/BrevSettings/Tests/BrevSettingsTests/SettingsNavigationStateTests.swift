@@ -17,6 +17,31 @@ import Testing
 @Suite("SettingsNavigationState")
 @MainActor
 struct SettingsNavigationStateTests {
+    @Test("task navigation exposes eight categories plus About without losing leaf destinations")
+    func taskCategories() {
+        let availability = SettingsSectionAvailability.macOSDirectDownload
+        let categories = availability.visibleCategories
+        #expect(categories.count == 9)
+        #expect(categories.last == .aboutUpdates)
+        let leaves = categories.flatMap { $0.sections(in: availability) }
+        #expect(Set(leaves) == Set(availability.visibleSections))
+        #expect(leaves.count == Set(leaves).count)
+        #expect(SettingsCategory.writing.sections(in: availability) == [.compose, .signature, .templates, .aiWriter])
+    }
+
+    @Test("search and deep links retain their leaf destination inside the new category")
+    func categoryDeepLinks() throws {
+        let nav = SettingsNavigationState(selected: .signature)
+        #expect(nav.selected.category == .writing)
+        let match = try #require(SettingsSearchResult.results(for: "Undo send", sections: nav.visibleSections).first)
+        nav.select(match.section)
+        #expect(nav.selected == .compose)
+        #expect(nav.selected.category == .writing)
+        #expect(match.target == "Undo send delay")
+        #expect(SettingsSectionAvailability.v1Default.visibleCategories.contains(.developer) == false)
+        #expect(SettingsSectionAvailability.allVisible.visibleCategories.contains(.developer))
+    }
+
     @Test("search results name the matching control and its scroll target")
     func searchDestinations() throws {
         let results = SettingsSearchResult.results(for: "font", sections: [.accounts, .mailboxView])
@@ -39,8 +64,20 @@ struct SettingsNavigationStateTests {
         #else
         #expect(SettingsSection.mailboxView.matches(searchQuery: "text size"))
         #endif
-        #expect(SettingsSection.mailboxView.matches(searchQuery: "remote images"))
+        #expect(SettingsSection.privacy.matches(searchQuery: "remote images"))
         #expect(SettingsSection.accounts.matches(searchQuery: "fetch schedule"))
+    }
+
+    @Test("relocated controls have one searchable owner")
+    func relocatedControls() {
+        for (query, section) in [("Always load remote images", SettingsSection.privacy),
+                                 ("Use Gravatar", .privacy), ("Open links in", .mailboxView),
+                                 ("Sync preferences with iCloud", .preferenceSync)] {
+            let results = SettingsSearchResult.results(for: query, sections: SettingsSection.allCases)
+            #expect(results.count == 1)
+            #expect(results.first?.section == section)
+            #expect(results.first?.target == query)
+        }
     }
 
     @Test("Default section is Accounts")
@@ -278,7 +315,7 @@ struct SettingsNavigationStateTests {
     @Test("Sync & Storage group contains folder sync, mail storage, and import/export")
     func syncStorageGroupOrder() {
         let syncSections = SettingsSection.allCases.filter { $0.group == .syncStorage }
-        #expect(syncSections == [.folderSync, .mailStorage, .importExport])
+        #expect(syncSections == [.folderSync, .mailStorage, .importExport, .preferenceSync])
     }
 
     @Test("Privacy & Security group contains privacy and security")
@@ -313,7 +350,7 @@ struct SettingsNavigationStateTests {
         #expect(organization == [.vipAndReminders, .smartViews, .rules, .autoReply, .calendarContacts])
 
         let sync = grouped.first { $0.group == .syncStorage }?.sections
-        #expect(sync == [.folderSync, .mailStorage, .importExport])
+        #expect(sync == [.folderSync, .mailStorage, .importExport, .preferenceSync])
 
         let privacy = grouped.first { $0.group == .privacySecurity }?.sections
         #expect(privacy == [.privacy, .security])

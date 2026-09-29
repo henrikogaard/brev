@@ -176,13 +176,14 @@ Anything not listed is roadmap, not release-blocker.
 - Native macOS Settings window, iOS Settings screen, and an
   in-window settings sheet on macOS, all driven by a shared typed
   persistence boundary.
-- Sections: Appearance (theme mode, themes, materials, opacity,
-  app icon), Mailbox View (renderer, remote images, grouping,
-  avatars, preview lines, font, density), Compose (signatures,
-  quoted-text placement, Cc/Bcc defaults), Privacy (avatar sources,
-  remote-content allowlist, iCloud preference sync), AI Writer (consent, provider editor),
-  Accounts (add, sign out, per-account backend badge), Browser
-  (external-link app preference), Updates (macOS Sparkle).
+- Eight task categories: Accounts & Connections, Appearance, Mailboxes &
+  Reading, Writing, Notifications, Rules & Organisation, Privacy & Security,
+  and Sync & Storage; About & Updates sits separately below them. Desktop
+  uses a compact sidebar with subpage tabs; iPhone uses grouped push navigation.
+- Writing brings Compose, Signature, Templates, and AI Writer together, with
+  Send safety before expandable recipient history. Privacy owns remote-content
+  and sender-image consent; Reading owns browser choice; Sync & Storage owns
+  iCloud preference sync. Search opens the relevant control and subpage.
 - Section availability is gated by an explicit feature-flag model
   so roadmap-only panels stay hidden by default.
 

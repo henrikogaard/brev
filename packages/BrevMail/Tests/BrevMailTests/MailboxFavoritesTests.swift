@@ -33,7 +33,9 @@ struct MailboxFavoritesTests {
         #expect(visible.map(\.title) == ["All Inboxes", "private", "work"])
         #expect(Set(candidates.map(\.id)).count == 7)
         #expect(visible.first?.count == 6)
+        #expect(visible.first?.countDescription == "6 unread")
         #expect(candidates.first { $0.title == "Drafts" }?.count == 2)
+        #expect(candidates.first { $0.title == "Drafts" }?.countDescription == "2 drafts")
     }
 
     @Test("editing persists order and visibility without losing filtered account preferences")

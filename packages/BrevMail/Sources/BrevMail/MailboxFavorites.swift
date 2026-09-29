@@ -24,13 +24,18 @@ struct MailboxFavorite: Identifiable, Equatable, Sendable {
     let subtitle: String?
     let symbol: String
     let count: Int
+    let countDescription: String
     let isDefault: Bool
 
     static func candidates(sections: [MailSourceSection]) -> [Self] {
         guard !sections.isEmpty else { return [] }
         let inboxes = sections.flatMap { $0.folders.filter { $0.role == .inbox } }
+        let unread = inboxes.reduce(0) { $0 + $1.unreadCount }
         var result = [Self(id: .allInboxes, title: String(localized: "All Inboxes", bundle: .module),
-                           subtitle: nil, symbol: "tray.2", count: inboxes.reduce(0) { $0 + $1.unreadCount }, isDefault: true)]
+                           subtitle: nil, symbol: "tray.2", count: unread, countDescription: String(
+                               localized: "\(unread) unread",
+                               bundle: .module
+                           ), isDefault: true)]
         for role in [FolderRole.inbox, .drafts, .sent] {
             for section in sections {
                 guard let folder = section.folders.first(where: { $0.role == role }) else { continue }
@@ -39,10 +44,14 @@ struct MailboxFavorite: Identifiable, Equatable, Sendable {
                 case .sent: String(localized: "Sent", bundle: .module)
                 default: section.title
                 }
+                let count = role == .drafts ? folder.totalCount : role == .inbox ? folder.unreadCount : 0
+                let countDescription = role == .drafts
+                    ? String(localized: "\(count) drafts", bundle: .module)
+                    : String(localized: "\(count) unread", bundle: .module)
                 result.append(Self(id: .folder(SourceFolderID(sourceID: section.id, folderID: folder.id)),
                                    title: title, subtitle: role == .inbox ? nil : section.title,
                                    symbol: role == .drafts ? "doc" : role == .sent ? "paperplane" : "tray",
-                                   count: role == .drafts ? folder.totalCount : role == .inbox ? folder.unreadCount : 0,
+                                   count: count, countDescription: countDescription,
                                    isDefault: role == .inbox))
             }
         }
