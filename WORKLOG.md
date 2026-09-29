@@ -18,6 +18,24 @@
 - Handoff: none. Watchdog schedules become active only after merge to
   `main`.
 
+## 2026-09-29 — Agent — Related-conversation bar Dynamic Type overflow
+
+- Goal: fix the one new defect from the 2026-09-29 main verification
+  pass — at ~73%+ text size the bar's action chips overflowed and
+  hyphenated mid-word.
+- Changes: `RelatedConversationBar` now reads `dynamicTypeSize`; at
+  `isAccessibilitySize` it renders the status row above a full-width
+  stacked `actions` column instead of a trailing HStack group. New
+  `assertBarAccessibility` snapshot case (`accessibility3`, 560x220)
+  covers the stacked layout.
+- Verified: `swift test --filter RelatedConversationBarSnapshotTests`
+  records the new baseline; lint + format clean. The four pre-existing
+  baselines mismatch identically on clean main — host baseline drift,
+  unchanged by this diff.
+- Handoff: snapshot baselines for this suite need a host-fresh re-record
+  pass (pre-existing, tracked alongside the iOS baseline drift).
+
+
 ## 2026-09-29 — Agent — deterministic extraction timeout (#112)
 
 - Goal: kill the 1 ms deadline race in `AttachmentTextExtractorTests.timeout`

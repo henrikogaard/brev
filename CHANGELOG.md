@@ -32,6 +32,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The reader's related-conversation bar no longer overflows at
+  accessibility Dynamic Type sizes: its Retry / Load / Spam-and-Trash
+  chips now stack full-width beneath the status message instead of
+  squeezing into hyphenated columns.
+
 - The top status banner on iPhone — including the sign-in-required
   banner — now presents as an inset rounded card below the navigation
   bar instead of a full-width band flush against it.
