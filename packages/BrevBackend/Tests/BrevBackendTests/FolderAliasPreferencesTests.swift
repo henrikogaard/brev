@@ -139,4 +139,61 @@ struct FolderAliasPreferencesTests {
         defaults.removePersistentDomain(forName: suiteName)
         return defaults
     }
+
+    @Test("standard folder names carry Norwegian translations")
+    func standardFolderNamesCarryNorwegianTranslations() throws {
+        let strings = try Self.loadBackendCatalogStrings()
+        let roles: [(FolderRole, String)] = [
+            (.inbox, "Inbox"),
+            (.sent, "Sent"),
+            (.drafts, "Drafts"),
+            (.trash, "Trash"),
+            (.spam, "Spam"),
+            (.archive, "Archive"),
+            (.snoozed, "Snoozed"),
+            (.scheduled, "Scheduled"),
+            (.starred, "Flagged"),
+            (.allMail, "All Mail")
+        ]
+
+        for (role, name) in roles {
+            #expect(FolderAliasPreferencesPolicy.standardDisplayName(for: role) != nil)
+
+            let entry = strings[name] as? [String: Any]
+            let localization = (entry?["localizations"] as? [String: Any])?["nb"] as? [String: Any]
+            let unit = localization?["stringUnit"] as? [String: Any]
+            let value = unit?["value"] as? String
+
+            #expect(unit?["state"] as? String == "translated", "missing nb translation for \(name)")
+            #expect(value?.isEmpty == false && value != name, "\(name) still falls back to English")
+        }
+    }
+
+    private static func loadBackendCatalogStrings() throws -> [String: Any] {
+        // Resolve from the source file so the check works from any runner
+        // working directory, with the repository root as a fallback.
+        let relativePath = "packages/BrevBackend/Sources/BrevBackend/Resources/Localizable.xcstrings"
+        var candidates: [URL] = []
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0 ..< 7 {
+            candidates.append(directory.appendingPathComponent(relativePath))
+            directory.deleteLastPathComponent()
+        }
+        directory = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+        for _ in 0 ..< 7 {
+            candidates.append(directory.appendingPathComponent(relativePath))
+            directory.deleteLastPathComponent()
+        }
+
+        guard let catalogURL = candidates.first(where: { FileManager.default.fileExists(atPath: $0.path) }) else {
+            throw CatalogLookupError.notFound
+        }
+        let data = try Data(contentsOf: catalogURL)
+        let root = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        return try #require(root?["strings"] as? [String: Any])
+    }
+
+    private enum CatalogLookupError: Error {
+        case notFound
+    }
 }

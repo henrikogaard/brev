@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-09-30 — Agent — Standard folder-name localization
+
+- Goal: the mailbox sidebar showed English standard folder names inside
+  the otherwise Norwegian UI (iPhone screenshot: Inbox/Drafts/Sent/Trash/
+  Spam). `FolderAliasPreferencesPolicy.standardDisplayName(for:)` returned
+  hardcoded English strings for all ten standard roles, and the
+  message-list header used the raw server folder name.
+- Changes: the ten names now resolve through
+  `String(localized:bundle:.module)` and the BrevBackend catalog gained
+  Norwegian (`nb`) translations (Innboks, Sendt, Utkast, Søppel,
+  Søppelpost, Arkiver, Utsatt, Planlagt, Flagget, All e-post). The
+  message-list header now resolves through
+  `MailRootMessageListTitlePolicy.folderTitle` — the same alias → standard
+  name → server name path as the sidebar. New `FolderAliasPreferencesTests`
+  case asserts every standard role name has a translated `nb` value in the
+  catalog; a new `MailRootComposePresentationPolicyTests` case pins the
+  header path.
+- Verified: red first (20 catalog issues before the entries; the header
+  test failed to compile before `folderTitle` existed). Focused
+  `swift test --filter FolderAliasPreferences` 6/6 green; full BrevBackend
+  suite (1152 tests / 114 suites) green; focused BrevMail run (27 tests /
+  5 suites) green; `scripts/format.sh` and `scripts/lint.sh` clean (no ADR
+  required). Rendered simulator (iPhone 17 Pro, iOS 27, mock backend,
+  `-AppleLanguages '(nb)'`, via `serve-sim`): the mailbox list shows
+  Innboks, Utkast, Sendt, Søppelpost, Søppel and Arkiver with the custom
+  "Clients" tree intact, and the message-list header shows "Innboks"
+  (before: "Inbox"). Evidence: `docs/qa/folder-localization-2026-09-30/`.
+- Skipped: physical-iPhone acceptance remains pending (handoff item 1).
+  The macOS pixel-snapshot suites (`LocalFolderSnapshotTests` light+dark,
+  `CalendarGridSnapshotTests`; 4 issues in the focused comparison) fail on
+  this macOS 27 host and reproduce identically on a pristine `origin/main`
+  checkout (`git archive d96fd4d9` → `/private/tmp/brev-main-clean`), so
+  they are pre-existing environment-versus-baseline drift, not this branch.
+- Handoff: provider-native labels (for example Gmail "STARRED") and custom
+  provider folders intentionally keep their provider names.
+
 ## 2026-09-29 — Agent — Nightly runner resilience (ADR-0080 §4)
 
 - Goal: stop the nightly ring from failing on GitHub-hosted macOS

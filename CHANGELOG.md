@@ -87,6 +87,13 @@ All notable changes to Brev are documented here.
 - Mail search controls, message counts, and compose feedback use Norwegian
   translations; elapsed message ages use consistent positive durations.
 
+- Standard mailbox names — Inbox, Sent, Drafts, Trash, Spam, Archive,
+  Snoozed, Scheduled, Flagged, and All Mail — now follow the app language
+  instead of always showing English, so a Norwegian interface shows
+  Innboks, Sendt, Utkast, Søppel, Søppelpost, Arkiver, Utsatt, Planlagt,
+  Flagget, and All e-post. The message-list header uses the same name as
+  the mailbox sidebar instead of the raw server folder name.
+
 - Google Drive Picker configuration now reaches both app bundles and the local,
   nightly, and release builds. Local configuration reports presence only and
   passes the API key through a protected temporary xcconfig.
