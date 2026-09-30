@@ -136,6 +136,48 @@ struct GmailSyncReconcilerTests {
         #expect(try await store.accountState(accountID: "acct")?.historyID == "23")
     }
 
+    @Test("delta sync drops a changed message that no longer exists instead of failing")
+    func deltaSyncToleratesMissingDetail() async throws {
+        let client = FakeGmailClient(
+            profile: GmailProfile(emailAddress: "user@example.com", historyID: "30"),
+            historyPages: [GmailHistoryPage(history: [
+                GmailHistory(id: "21", messagesAdded: [.init(message: .init(id: "kept"))]),
+                GmailHistory(id: "22", labelsAdded: [.init(message: .init(id: "gone"), labelIDs: ["STARRED"])])
+            ], historyID: "22")],
+            messages: ["kept": GmailMessage(id: "kept", labelIDs: ["INBOX"])],
+            detailErrors: ["gone": .httpFailure(statusCode: 404)]
+        )
+        let store = InMemoryGmailAccountStore()
+        try await store.replaceSnapshot(GmailAccountSnapshot(
+            accountID: "acct",
+            state: GmailAccountState(accountID: "acct", emailAddress: "user@example.com", historyID: "20"),
+            labels: [GmailLabel(id: "INBOX", name: "Inbox")],
+            messages: [GmailMessage(id: "gone", labelIDs: ["INBOX"])]
+        ))
+        let reconciler = GmailSyncReconciler(client: client, store: store, accountID: "acct")
+
+        _ = try await reconciler.deltaSync()
+
+        #expect(try await store.messages(accountID: "acct").map(\.id) == ["kept"])
+        #expect(try await store.accountState(accountID: "acct")?.historyID == "22")
+    }
+
+    @Test("full sync skips a message reference that no longer exists instead of failing")
+    func fullSyncToleratesMissingDetail() async throws {
+        let client = FakeGmailClient(
+            profile: GmailProfile(emailAddress: "user@example.com", historyID: "30"),
+            messagePages: [GmailMessagePage(messages: [.init(id: "m1"), .init(id: "m2")])],
+            messages: ["m1": GmailMessage(id: "m1")],
+            detailErrors: ["m2": .httpFailure(statusCode: 404)]
+        )
+        let store = InMemoryGmailAccountStore()
+
+        _ = try await GmailSyncReconciler(client: client, store: store, accountID: "acct").fullSync()
+
+        #expect(try await store.messages(accountID: "acct").map(\.id) == ["m1"])
+        #expect(try await store.accountState(accountID: "acct")?.historyID == "30")
+    }
+
     @Test("delta sync refreshes the label catalog and removes stale label joins")
     func deltaSyncRefreshesLabels() async throws {
         let client = FakeGmailClient(
@@ -279,6 +321,7 @@ private final class FakeGmailClient: GmailAPIClientProtocol, @unchecked Sendable
     let historyPagesValue: [GmailHistoryPage]
     let messagesValue: [String: GmailMessage]
     let historyError: GmailAPIError?
+    let detailErrors: [String: GmailAPIError]
     private let lock = NSLock()
     private var ids: [String] = []
     private var active = 0
@@ -292,7 +335,8 @@ private final class FakeGmailClient: GmailAPIClientProtocol, @unchecked Sendable
         messagePages: [GmailMessagePage] = [GmailMessagePage()],
         historyPages: [GmailHistoryPage] = [GmailHistoryPage()],
         messages: [String: GmailMessage] = [:],
-        historyError: GmailAPIError? = nil
+        historyError: GmailAPIError? = nil,
+        detailErrors: [String: GmailAPIError] = [:]
     ) {
         profileValue = profile
         labelsValue = labels
@@ -300,6 +344,7 @@ private final class FakeGmailClient: GmailAPIClientProtocol, @unchecked Sendable
         historyPagesValue = historyPages
         messagesValue = messages
         self.historyError = historyError
+        self.detailErrors = detailErrors
     }
 
     func getProfile() async throws -> GmailProfile { profileValue }
@@ -313,6 +358,7 @@ private final class FakeGmailClient: GmailAPIClientProtocol, @unchecked Sendable
     }
 
     func getMessage(id: String, format: GmailMessageFormat, metadataHeaders: [String]) async throws -> GmailMessage {
+        if let error = detailErrors[id] { throw error }
         lock.withLock { metadataHeaderValues.append(metadataHeaders) }
         recordStart(id)
         defer { recordEnd() }

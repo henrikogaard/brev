@@ -107,7 +107,7 @@ public final class GmailSyncReconciler: @unchecked Sendable {
         let profile = try await api { try await client.getProfile() }
         let labels = try await api { try await client.listLabels() }
         let references = try await collectMessageReferences()
-        let messages = try await fetchDetails(for: references.map(\.id))
+        let details = try await fetchDetails(for: references.map(\.id))
         try Task.checkCancellation()
 
         let state = GmailAccountState(
@@ -118,7 +118,7 @@ public final class GmailSyncReconciler: @unchecked Sendable {
         )
         do {
             try await store.replaceSnapshot(
-                GmailAccountSnapshot(accountID: accountID, state: state, labels: labels, messages: messages)
+                GmailAccountSnapshot(accountID: accountID, state: state, labels: labels, messages: details.messages)
             )
             return state
         } catch let error as GmailAccountStoreError {
@@ -177,7 +177,7 @@ public final class GmailSyncReconciler: @unchecked Sendable {
 
         let changedIDs = finalActions.compactMap { $0.value ? $0.key : nil }.sorted()
         let deletedIDs = finalActions.compactMap { $0.value ? nil : $0.key }.sorted()
-        let messages = try await fetchDetails(for: changedIDs)
+        let details = try await fetchDetails(for: changedIDs)
         let currentLabels = try await store.labels(accountID: accountID)
         let labels = try await api { try await client.listLabels() }
         let currentLabelIDs = Set(currentLabels.map(\.id))
@@ -187,8 +187,10 @@ public final class GmailSyncReconciler: @unchecked Sendable {
             accountID: accountID,
             upsertedLabels: labels,
             removedLabelIDs: labels.isEmpty ? [] : currentLabelIDs.subtracting(nextLabelIDs).sorted(),
-            upsertedMessages: messages,
-            removedMessageIDs: deletedIDs,
+            upsertedMessages: details.messages,
+            // A changed message whose detail fetch returns 404 no longer exists
+            // server-side, so it is removed locally instead of aborting the delta.
+            removedMessageIDs: (deletedIDs + details.missingIDs).sorted(),
             historyID: finalHistoryID,
             lastDeltaSyncAt: Date()
         )
@@ -275,35 +277,60 @@ public final class GmailSyncReconciler: @unchecked Sendable {
         return pages
     }
 
-    private func fetchDetails(for ids: [String]) async throws -> [GmailMessage] {
-        guard !ids.isEmpty else { return [] }
+    /// Fetches message details, treating a 404 for an individual message as a
+    /// missing message instead of failing the whole sync. Any other API error
+    /// still propagates.
+    private func fetchDetails(for ids: [String]) async throws -> (messages: [GmailMessage], missingIDs: [String]) {
+        guard !ids.isEmpty else { return ([], []) }
         var details: [GmailMessage] = []
+        var missingIDs: [String] = []
         for start in stride(from: 0, to: ids.count, by: configuration.maxConcurrentDetailFetches) {
             try Task.checkCancellation()
             let end = min(start + configuration.maxConcurrentDetailFetches, ids.count)
             let chunk = Array(ids[start ..< end])
-            let fetched = try await withThrowingTaskGroup(of: GmailMessage.self, returning: [GmailMessage].self) { group in
+            let fetched = try await withThrowingTaskGroup(of: FetchedDetail.self, returning: [FetchedDetail].self) { group in
                 for id in chunk {
                     group.addTask {
                         try Task.checkCancellation()
-                        return try await self.api {
-                            try await self.client.getMessage(
-                                id: id,
-                                format: .metadata,
-                                metadataHeaders: GmailAPIClient.requiredMetadataHeaders
-                            )
+                        do {
+                            let message = try await self.api {
+                                try await self.client.getMessage(
+                                    id: id,
+                                    format: .metadata,
+                                    metadataHeaders: GmailAPIClient.requiredMetadataHeaders
+                                )
+                            }
+                            return .message(message)
+                        } catch let error as GmailSyncError {
+                            if case .api(.httpFailure(statusCode: 404)) = error {
+                                return .missing(id: id)
+                            }
+                            throw error
                         }
                     }
                 }
-                var result: [GmailMessage] = []
-                for try await message in group {
-                    result.append(message)
+                var result: [FetchedDetail] = []
+                for try await item in group {
+                    result.append(item)
                 }
                 return result
             }
-            details.append(contentsOf: fetched)
+            for item in fetched {
+                switch item {
+                case .message(let message):
+                    details.append(message)
+                case .missing(let id):
+                    missingIDs.append(id)
+                }
+            }
         }
-        return details.sorted { $0.id < $1.id }
+        return (details.sorted { $0.id < $1.id }, missingIDs.sorted())
+    }
+
+    /// Outcome of a single message detail request.
+    private enum FetchedDetail: Sendable {
+        case message(GmailMessage)
+        case missing(id: String)
     }
 
     private func api<T>(_ operation: () async throws -> T) async throws -> T {
