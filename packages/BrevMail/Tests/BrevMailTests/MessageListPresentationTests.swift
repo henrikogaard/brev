@@ -117,7 +117,7 @@ struct MessageListPresentationTests {
             title: "No matching messages",
             icon: "line.3.horizontal.decrease.circle",
             subtitle: "No messages match the current filters.",
-            actionTitle: "Clear filters"
+            actionTitle: "Clear Filters"
         ))
     }
 
@@ -179,7 +179,7 @@ struct MessageListPresentationTests {
             title: "No matching messages",
             icon: "line.3.horizontal.decrease.circle",
             subtitle: "No messages match the current filters.",
-            actionTitle: "Clear filters"
+            actionTitle: "Clear Filters"
         ))
     }
 

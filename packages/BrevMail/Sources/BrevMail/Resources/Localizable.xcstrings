@@ -1307,6 +1307,17 @@
         }
       }
     },
+    "Brev couldn't parse \"%@\" as a calendar invite.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke tolke «%@» som en kalenderinvitasjon."
+          }
+        }
+      }
+    },
     "Brev does not have permission to create calendar events.": {
       "extractionState": "manual",
       "localizations": {
@@ -1797,6 +1808,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Velg en samtale fra listen for å lese den her."
+          }
+        }
+      }
+    },
+    "Choose a folder from the sidebar.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en mappe i sidepanelet."
           }
         }
       }
@@ -2528,6 +2550,17 @@
         }
       }
     },
+    "Couldn't download \"%@\": %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste ned «%@»: %@"
+          }
+        }
+      }
+    },
     "Couldn't find settings automatically. Open Advanced setup to enter IMAP and SMTP details.": {
       "extractionState": "manual",
       "localizations": {
@@ -2563,6 +2596,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke laste mapper"
+          }
+        }
+      }
+    },
+    "Couldn't load calendar invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste kalenderinvitasjonen"
           }
         }
       }
@@ -2644,6 +2688,61 @@
         }
       }
     },
+    "Couldn't load message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste meldingen"
+          }
+        }
+      }
+    },
+    "Couldn't load message body.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste meldingsteksten."
+          }
+        }
+      }
+    },
+    "Couldn't load more messages.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste flere meldinger."
+          }
+        }
+      }
+    },
+    "Couldn't load messages.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste meldinger."
+          }
+        }
+      }
+    },
+    "Couldn't load mailboxes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste postkasser."
+          }
+        }
+      }
+    },
     "Couldn't load one mailbox account.": {
       "extractionState": "manual",
       "localizations": {
@@ -2677,6 +2776,50 @@
         }
       }
     },
+    "Couldn't read calendar invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lese kalenderinvitasjonen"
+          }
+        }
+      }
+    },
+    "Couldn't load the calendar invite.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste kalenderinvitasjonen."
+          }
+        }
+      }
+    },
+    "Couldn't mark this message as read.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke merke denne meldingen som lest."
+          }
+        }
+      }
+    },
+    "Couldn't mark as read": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke merke som lest"
+          }
+        }
+      }
+    },
     "Couldn't read the cache for \\(failedSources.formatted(.list(type: .and))).": {
       "extractionState": "manual",
       "localizations": {
@@ -2684,6 +2827,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke lese bufferen for \\(failedSources.formatted(.list(type: .and)))."
+          }
+        }
+      }
+    },
+    "Couldn't respond to invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke svare på invitasjonen"
+          }
+        }
+      }
+    },
+    "Couldn't refresh folders.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke oppdatere mapper."
+          }
+        }
+      }
+    },
+    "Couldn't refresh mail.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke oppdatere e-post."
           }
         }
       }
@@ -2710,6 +2886,17 @@
         }
       }
     },
+    "Couldn't run search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke kjøre søket."
+          }
+        }
+      }
+    },
     "Couldn't save draft:": {
       "extractionState": "manual",
       "localizations": {
@@ -2728,6 +2915,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke lagre utkastet ditt."
+          }
+        }
+      }
+    },
+    "Couldn't send your invite response.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke sende svaret på invitasjonen."
           }
         }
       }
@@ -2765,6 +2963,17 @@
         }
       }
     },
+    "Couldn't switch mailboxes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke bytte postkasse."
+          }
+        }
+      }
+    },
     "Couldn't update folder.": {
       "extractionState": "manual",
       "localizations": {
@@ -2789,6 +2998,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke oppdatere med AI-skriver."
+          }
+        }
+      }
+    },
+    "Couldn't update message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke oppdatere meldingen."
           }
         }
       }
@@ -4366,6 +4586,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Flagget"
+          }
+        }
+      }
+    },
+    "Flagged messages will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flaggede meldinger vises her."
           }
         }
       }
@@ -6016,6 +6247,50 @@
         }
       }
     },
+    "Messages from your VIP senders will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger fra VIP-avsendere vises her."
+          }
+        }
+      }
+    },
+    "Messages marked done will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger merket som utført vises her."
+          }
+        }
+      }
+    },
+    "Messages received today will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger mottatt i dag vises her."
+          }
+        }
+      }
+    },
+    "Messages you receive will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger du mottar, vises her."
+          }
+        }
+      }
+    },
     "Microsoft sign-in not available": {
       "extractionState": "manual",
       "localizations": {
@@ -6812,6 +7087,17 @@
         }
       }
     },
+    "No folder selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen mappe valgt"
+          }
+        }
+      }
+    },
     "No folders available": {
       "extractionState": "manual",
       "localizations": {
@@ -6845,6 +7131,17 @@
         }
       }
     },
+    "No matches": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen treff"
+          }
+        }
+      }
+    },
     "No matching folders": {
       "extractionState": "manual",
       "localizations": {
@@ -6856,6 +7153,17 @@
         }
       }
     },
+    "No matching messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen samsvarende meldinger"
+          }
+        }
+      }
+    },
     "No message selected": {
       "extractionState": "manual",
       "localizations": {
@@ -6863,6 +7171,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ingen melding valgt"
+          }
+        }
+      }
+    },
+    "No messages match this saved search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen meldinger samsvarer med dette lagrede søket."
+          }
+        }
+      }
+    },
+    "No messages match the current filters.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen meldinger samsvarer med gjeldende filtre."
+          }
+        }
+      }
+    },
+    "No messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen meldinger"
           }
         }
       }
@@ -6896,6 +7237,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ikke svart"
+          }
+        }
+      }
+    },
+    "No results for \"%@\".": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen treff på «%@»."
           }
         }
       }
@@ -9548,6 +9900,17 @@
         }
       }
     },
+    "Showing a preview only": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser bare forhåndsvisning"
+          }
+        }
+      }
+    },
     "Showing cached conversation.": {
       "extractionState": "manual",
       "localizations": {
@@ -9807,6 +10170,17 @@
         }
       }
     },
+    "Snoozed messages will appear here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utsatte meldinger vises her."
+          }
+        }
+      }
+    },
     "Snooze…": {
       "extractionState": "manual",
       "localizations": {
@@ -9825,6 +10199,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Noen postkasser tar lengre tid enn forventet. Tilgjengelig e-post kan fortsatt brukes."
+          }
+        }
+      }
+    },
+    "Some mailboxes couldn't load. %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noen postkasser kunne ikke lastes. %@"
           }
         }
       }
@@ -9869,6 +10254,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sorter etter"
+          }
+        }
+      }
+    },
+    "Something went wrong": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Noe gikk galt"
           }
         }
       }
@@ -10346,6 +10742,17 @@
         }
       }
     },
+    "That action is taking too long. The view has been unblocked — refresh to confirm the result.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Handlingen tar for lang tid. Visningen er låst opp – oppdater for å bekrefte resultatet."
+          }
+        }
+      }
+    },
     "That contact is no longer synced. It may have been deleted or its contacts source removed.": {
       "extractionState": "manual",
       "localizations": {
@@ -10375,6 +10782,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Den oppgaven er ikke lenger synkronisert. Den kan ha blitt slettet, eller oppgavekilden er fjernet."
+          }
+        }
+      }
+    },
+    "The full message couldn't be downloaded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele meldingen kunne ikke lastes ned."
           }
         }
       }
@@ -10925,6 +11343,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ikke flagget"
+          }
+        }
+      }
+    },
+    "Unknown error.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ukjent feil."
           }
         }
       }
@@ -12057,6 +12486,47 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld lastet inn"
+          }
+        }
+      }
+    },
+    "%lld mailboxes skipped because server search is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mailbox skipped because server search is unavailable."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mailboxes skipped because server search is unavailable."
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld postkasse hoppet over fordi serversøk ikke er tilgjengelig."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld postkasser hoppet over fordi serversøk ikke er tilgjengelig."
+                }
+              }
+            }
           }
         }
       }

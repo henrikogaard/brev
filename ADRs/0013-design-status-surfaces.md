@@ -8,6 +8,10 @@
   smoke tests in `packages/BrevDesign/Tests/BrevDesignTests/StatusSurfaceSmokeTests.swift`.
   2026-09-29 — `BrevInlineStatus` gains an `inset` presentation variant and the
   mailbox top chrome rail adopts it on iOS.
+  2026-09-30 — `BrevStatusBanner` gains an optional `bundle:` parameter so
+  Swift-package call sites resolve their labels against the owning package's
+  String Catalog instead of the main bundle. Mirrors `BrevButton` and follows
+  ADR-0058; app-target call sites keep the default lookup path.
 
 ## Context
 

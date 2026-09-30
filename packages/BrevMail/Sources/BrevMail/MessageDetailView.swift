@@ -1998,7 +1998,8 @@ public struct MessageDetailView: View {
                 style: .warning,
                 title: "Showing a preview only",
                 message: "The full message couldn't be downloaded.",
-                action: (label: "Try Again", handler: { Task { await reload() } })
+                action: (label: "Try Again", handler: { Task { await reload() } }),
+                bundle: .module
             )
         }
     }
