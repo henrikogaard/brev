@@ -360,10 +360,13 @@ public struct LoginView: View {
         switch LoginViewPresentation.recoveryAction(
             failedEmail: session.authFailedIMAPAccountEmail,
             canRetry: session.canRetrySessionRestore,
-            canUseGoogleIMAPFallback: session.canUseGoogleIMAPFallback
+            canUseGoogleIMAPFallback: session.canUseGoogleIMAPFallback,
+            googleReauthentication: session.canStartGoogleReauthentication
         ) {
         case .googleIMAPFallback:
             return String(localized: "Use Google IMAP/SMTP instead", bundle: .module)
+        case .googleReauthentication:
+            return String(localized: "Sign in with Google again", bundle: .module)
         case .updatePassword:
             return String(localized: "Update password", bundle: .module)
         case .retry:
@@ -377,12 +380,19 @@ public struct LoginView: View {
         switch LoginViewPresentation.recoveryAction(
             failedEmail: session.authFailedIMAPAccountEmail,
             canRetry: session.canRetrySessionRestore,
-            canUseGoogleIMAPFallback: session.canUseGoogleIMAPFallback
+            canUseGoogleIMAPFallback: session.canUseGoogleIMAPFallback,
+            googleReauthentication: session.canStartGoogleReauthentication
         ) {
         case .googleIMAPFallback:
             return {
                 startAuthentication {
                     await session.signInWithGoogleIMAPFallback()
+                }
+            }
+        case .googleReauthentication:
+            return {
+                startAuthentication {
+                    await session.signInWithIMAPOAuthProvider(.google)
                 }
             }
         case .updatePassword:
@@ -457,6 +467,7 @@ public enum LoginViewPresentation {
     /// The single repair action shown for a failed session restore.
     public enum RecoveryAction: Equatable, Sendable {
         case googleIMAPFallback
+        case googleReauthentication
         case updatePassword
         case retry
     }
@@ -468,14 +479,19 @@ public enum LoginViewPresentation {
     }
 
     /// Chooses one recovery action so a failed restore never presents duplicate
-    /// retry/update controls.
+    /// retry/update controls. A native Gmail account is repaired through Google
+    /// sign-in because a password cannot restore its OAuth grant.
     public static func recoveryAction(
         failedEmail: String?,
         canRetry: Bool,
-        canUseGoogleIMAPFallback: Bool = false
+        canUseGoogleIMAPFallback: Bool = false,
+        googleReauthentication: Bool = false
     ) -> RecoveryAction? {
         if canUseGoogleIMAPFallback {
             return .googleIMAPFallback
+        }
+        if failedEmail != nil, googleReauthentication {
+            return .googleReauthentication
         }
         if failedEmail != nil {
             return .updatePassword

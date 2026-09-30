@@ -262,49 +262,64 @@ enum MessageListPresentation {
     }
 
     static func loadErrorMessage(for error: any Error) -> String {
-        localizedMessage(for: error, fallback: "Couldn't load messages.")
+        localizedMessage(
+            for: error,
+            fallback: String(localized: "Couldn't load messages.", bundle: .module)
+        )
     }
 
     static func searchErrorMessage(for error: any Error) -> String {
-        localizedMessage(for: error, fallback: "Couldn't run search.")
+        localizedMessage(
+            for: error,
+            fallback: String(localized: "Couldn't run search.", bundle: .module)
+        )
     }
 
     static func loadMoreErrorStatus(for error: any Error) -> MessageListFooterStatus {
         MessageListFooterStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't load more messages."),
-            actionTitle: "Try Again"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't load more messages.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func partialLoadErrorStatus(for error: any Error) -> MessageListFooterStatus {
         MessageListFooterStatus(
-            message: "Some mailboxes couldn't load. \(loadErrorMessage(for: error))",
-            actionTitle: "Try Again"
+            message: String(
+                localized: "Some mailboxes couldn't load. \(loadErrorMessage(for: error))",
+                bundle: .module
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func mutationErrorStatus(for error: any Error) -> MessageListFooterStatus {
         MessageListFooterStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't update message."),
-            actionTitle: "Refresh"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't update message.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Refresh", bundle: .module)
         )
     }
 
     static func noFolderStatus() -> MessageListStatus {
         MessageListStatus(
-            title: "No folder selected",
+            title: String(localized: "No folder selected", bundle: .module),
             icon: "folder",
-            subtitle: "Choose a folder from the sidebar.",
+            subtitle: String(localized: "Choose a folder from the sidebar.", bundle: .module),
             actionTitle: nil
         )
     }
 
     static func errorStatus(_ message: String) -> MessageListStatus {
         MessageListStatus(
-            title: "Something went wrong",
+            title: String(localized: "Something went wrong", bundle: .module),
             icon: "exclamationmark.triangle",
             subtitle: message,
-            actionTitle: "Try Again"
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
@@ -317,18 +332,18 @@ enum MessageListPresentation {
         let query = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         if !query.isEmpty {
             return MessageListStatus(
-                title: "No messages",
+                title: String(localized: "No messages", bundle: .module),
                 icon: "magnifyingglass",
-                subtitle: "No results for \"\(query)\".",
-                actionTitle: "Clear search"
+                subtitle: String(localized: "No results for \"\(query)\".", bundle: .module),
+                actionTitle: String(localized: "Clear search", bundle: .module)
             )
         }
         if filtersActive {
             return MessageListStatus(
-                title: "No matching messages",
+                title: String(localized: "No matching messages", bundle: .module),
                 icon: "line.3.horizontal.decrease.circle",
-                subtitle: "No messages match the current filters.",
-                actionTitle: "Clear filters"
+                subtitle: String(localized: "No messages match the current filters.", bundle: .module),
+                actionTitle: String(localized: "Clear Filters", bundle: .module)
             )
         }
         if let smartView {
@@ -336,16 +351,16 @@ enum MessageListPresentation {
         }
         if isSavedSearch {
             return MessageListStatus(
-                title: "No matches",
+                title: String(localized: "No matches", bundle: .module),
                 icon: "magnifyingglass",
-                subtitle: "No messages match this saved search.",
+                subtitle: String(localized: "No messages match this saved search.", bundle: .module),
                 actionTitle: nil
             )
         }
         return MessageListStatus(
-            title: "No messages",
+            title: String(localized: "No messages", bundle: .module),
             icon: "tray",
-            subtitle: "Messages you receive will appear here.",
+            subtitle: String(localized: "Messages you receive will appear here.", bundle: .module),
             actionTitle: nil
         )
     }
@@ -357,20 +372,20 @@ enum MessageListPresentation {
         let subtitle: String
         switch smartView.id {
         case MailboxSmartView.today.id:
-            subtitle = "Messages received today will appear here."
+            subtitle = String(localized: "Messages received today will appear here.", bundle: .module)
         case MailboxSmartView.flagged.id:
-            subtitle = "Flagged messages will appear here."
+            subtitle = String(localized: "Flagged messages will appear here.", bundle: .module)
         case MailboxSmartView.snoozed.id:
-            subtitle = "Snoozed messages will appear here."
+            subtitle = String(localized: "Snoozed messages will appear here.", bundle: .module)
         case MailboxSmartView.done.id:
-            subtitle = "Messages marked done will appear here."
+            subtitle = String(localized: "Messages marked done will appear here.", bundle: .module)
         case MailboxSmartView.vip.id:
-            subtitle = "Messages from your VIP senders will appear here."
+            subtitle = String(localized: "Messages from your VIP senders will appear here.", bundle: .module)
         default:
-            subtitle = "Messages you receive will appear here."
+            subtitle = String(localized: "Messages you receive will appear here.", bundle: .module)
         }
         return MessageListStatus(
-            title: "No messages",
+            title: String(localized: "No messages", bundle: .module),
             icon: smartView.symbolName,
             subtitle: subtitle,
             actionTitle: nil

@@ -56,6 +56,10 @@ public final class AppSession {
     /// due to an authentication error. Used by `LoginView` to surface an
     /// "Update password" affordance pre-filled with the account's email.
     public private(set) var authFailedIMAPAccountEmail: String?
+    /// Backend identifier of the account recorded in
+    /// `authFailedIMAPAccountEmail`. Lets the recovery UI offer Google sign-in
+    /// for native Gmail accounts instead of the IMAP password sheet.
+    public private(set) var authFailedAccountBackendIdentifier: String?
     /// Per-account restore error messages for accounts that failed to restore
     /// while at least one other account connected successfully.
     public private(set) var accountRestoreErrors: [BrevAccount.ID: String] = [:]
@@ -197,6 +201,21 @@ public final class AppSession {
     public var canStartNativeGoogleSignIn: Bool {
         guard googleOAuthIsConfigured != false else { return false }
         return googleOAuthLoginCoordinator != nil
+    }
+
+    /// Whether the account awaiting re-authentication uses the native Gmail
+    /// API backend, whose grant is repaired through Google sign-in rather than
+    /// a password update.
+    public var authFailureRequiresGoogleSignIn: Bool {
+        authFailedAccountBackendIdentifier == BrevAccount.gmailAPIBackendIdentifier
+    }
+
+    /// Whether the re-authentication repair action can start Google sign-in
+    /// that provisions the native Gmail backend again. Without the native
+    /// connector, Google sign-in would create a sibling IMAP account instead
+    /// of repairing the failed one.
+    public var canStartGoogleReauthentication: Bool {
+        authFailureRequiresGoogleSignIn && canStartNativeGoogleSignIn
     }
 
     /// True only when the host checked the OAuth configuration and found
@@ -730,6 +749,7 @@ public final class AppSession {
                 } else {
                     canRetrySessionRestore = true
                     authFailedIMAPAccountEmail = account.emailAddress
+                    authFailedAccountBackendIdentifier = account.backendIdentifier
                 }
             } else {
                 canRetrySessionRestore = true
@@ -868,6 +888,7 @@ public final class AppSession {
                     await purgeStoredAccount(account)
                 } else {
                     authFailedIMAPAccountEmail = account.emailAddress
+                    authFailedAccountBackendIdentifier = account.backendIdentifier
                     accountRestoreErrors[account.id] = message
                     canRetrySessionRestore = true
                 }
@@ -1086,12 +1107,29 @@ public final class AppSession {
         return source
     }
 
-    /// Signals that the account needs to re-authenticate.
+    /// How the host completes re-authentication for a rejected credential.
+    public enum ReauthenticationRecovery: Equatable, Sendable {
+        /// Google sign-in was started for a native Gmail account; the host
+        /// presents no credential sheet.
+        case googleSignInStarted
+        /// The host presents the IMAP/password setup sheet.
+        case credentialsRequired
+    }
+
+    /// Signals that the account needs to re-authenticate without
+    /// disconnecting or removing it.
     ///
-    /// Sets `authFailedIMAPAccountEmail` so `LoginView` shows the
-    /// "Update password" prompt without disconnecting or removing the account.
-    public func reauthenticate(account: BrevAccount) {
+    /// Native Gmail API accounts start Google sign-in because a password
+    /// cannot repair their OAuth grant; every other account is recorded in
+    /// `authFailedIMAPAccountEmail` for the caller's "Update password" sheet.
+    /// - Returns: the repair surface the caller must present.
+    @discardableResult
+    public func reauthenticate(account: BrevAccount) -> ReauthenticationRecovery {
         authFailedIMAPAccountEmail = account.emailAddress
+        authFailedAccountBackendIdentifier = account.backendIdentifier
+        guard canStartGoogleReauthentication else { return .credentialsRequired }
+        Task { await signInWithIMAPOAuthProvider(.google) }
+        return .googleSignInStarted
     }
 
     /// Removes every PIM source linked to a removed mail account. Removal is
@@ -1222,6 +1260,7 @@ public final class AppSession {
         accountRestoreErrors[result.account.id] = nil
         if authFailedIMAPAccountEmail == result.account.emailAddress {
             authFailedIMAPAccountEmail = nil
+            authFailedAccountBackendIdentifier = nil
         }
         injectCardDAVContactSync(result.backend)
     }

@@ -15,8 +15,11 @@ import Foundation
 enum MailboxLoadPresentation {
     static func loadErrorStatus(for error: any Error) -> MailRootStatus {
         MailRootStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't load mailboxes."),
-            actionTitle: "Try Again"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't load mailboxes.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 

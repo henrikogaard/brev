@@ -50,4 +50,39 @@ struct LoginViewPresentationTests {
             ) == nil
         )
     }
+
+    @Test("recovery repairs a native Gmail account with Google sign-in")
+    func recoveryRepairsNativeGmailAccountWithGoogleSignIn() {
+        #expect(
+            LoginViewPresentation.recoveryAction(
+                failedEmail: "person@gmail.com",
+                canRetry: true,
+                googleReauthentication: true
+            ) == .googleReauthentication
+        )
+        // The explicit IMAP fallback offer still wins over a fresh Google sign-in.
+        #expect(
+            LoginViewPresentation.recoveryAction(
+                failedEmail: "person@gmail.com",
+                canRetry: true,
+                canUseGoogleIMAPFallback: true,
+                googleReauthentication: true
+            ) == .googleIMAPFallback
+        )
+        // Without a failed account the flag cannot fabricate a repair action.
+        #expect(
+            LoginViewPresentation.recoveryAction(
+                failedEmail: nil,
+                canRetry: true,
+                googleReauthentication: true
+            ) == .retry
+        )
+        #expect(
+            LoginViewPresentation.recoveryAction(
+                failedEmail: "person@example.org",
+                canRetry: true,
+                googleReauthentication: false
+            ) == .updatePassword
+        )
+    }
 }

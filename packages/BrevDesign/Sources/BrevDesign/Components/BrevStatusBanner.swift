@@ -80,6 +80,10 @@ public enum BrevStatusBannerStyle: Sendable, Hashable, CaseIterable {
 ///   - title: Primary status label.
 ///   - message: Optional supplementary description shown below the title.
 ///   - action: Optional inline action button with a label and handler.
+///   - bundle: Bundle that holds the String Catalog for the labels. Pass the
+///     owning package's `Bundle.module` when the labels are declared in a
+///     Swift package; the default keeps app-target call sites on the normal
+///     main-bundle lookup path.
 public struct BrevStatusBanner: View {
     @Environment(\.brevTheme) private var theme
 
@@ -88,16 +92,19 @@ public struct BrevStatusBanner: View {
     private let message: LocalizedStringKey?
     private let actionLabel: LocalizedStringKey?
     private let actionHandler: (() -> Void)?
+    private let bundle: Bundle?
 
     public init(
         style: BrevStatusBannerStyle = .info,
         title: LocalizedStringKey,
         message: LocalizedStringKey? = nil,
-        action: (label: LocalizedStringKey, handler: () -> Void)? = nil
+        action: (label: LocalizedStringKey, handler: () -> Void)? = nil,
+        bundle: Bundle? = nil
     ) {
         self.style = style
         self.title = title
         self.message = message
+        self.bundle = bundle
         actionLabel = action?.label
         actionHandler = action?.handler
     }
@@ -110,19 +117,19 @@ public struct BrevStatusBanner: View {
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(title)
+                Text(title, bundle: bundle)
                     .brevFont(.subheadline)
                     .foregroundStyle(theme.textPrimary.color)
 
                 if let message {
-                    Text(message)
+                    Text(message, bundle: bundle)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
 
                 if let actionLabel, let actionHandler {
-                    Button(actionLabel, action: actionHandler)
+                    Button(action: actionHandler) { Text(actionLabel, bundle: bundle) }
                         .buttonStyle(.borderless)
                         .brevFont(.footnote)
                         .foregroundStyle(style.accentColor(in: theme))

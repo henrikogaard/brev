@@ -15,8 +15,11 @@ import Foundation
 enum MailboxSwitchPresentation {
     static func switchErrorStatus(for error: any Error) -> MailRootStatus {
         MailRootStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't switch mailboxes."),
-            actionTitle: "Try Again"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't switch mailboxes.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 

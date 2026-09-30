@@ -2021,7 +2021,15 @@ public struct BrevMailRootView: View {
         if let selectedSavedSearch {
             return selectedSavedSearch.name
         }
-        return selectedFolder?.name ?? String(localized: "Messages", bundle: .module)
+        if let folder = selectedFolder {
+            return MailRootMessageListTitlePolicy.folderTitle(
+                folder: folder,
+                sourceID: navigation.selectedSourceID,
+                aliasPreferences: folderAliasPreferences,
+                capabilities: backend(for: navigation.selectedSourceID).capabilities
+            )
+        }
+        return String(localized: "Messages", bundle: .module)
     }
 
     private var selectedMessageDestinationContext: String? {
@@ -3239,7 +3247,10 @@ public struct BrevMailRootView: View {
 
     private var settingsMailboxContext: SettingsMailboxContext {
         SettingsMailboxContext(
-            selectedSourceID: navigation.selectedSourceID,
+            selectedSourceID: MailRootSettingsScopePolicy.effectiveSourceID(
+                selectedSourceID: navigation.selectedSourceID,
+                defaultSectionID: preferredDefaultSection(in: visibleSourceSections)?.id
+            ),
             mailboxes: sourceSections.map {
                 SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders)
             }
