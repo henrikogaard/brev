@@ -1,5 +1,82 @@
 # Worklog
 
+## 2026-09-30 — Agent — Standard folder-name localization (PR #165)
+
+- Goal: the mailbox sidebar showed English standard folder names inside
+  the otherwise Norwegian UI (iPhone screenshot: Inbox/Drafts/Sent/Trash/
+  Spam). `FolderAliasPreferencesPolicy.standardDisplayName(for:)` returned
+  hardcoded English strings for all ten standard roles, and the
+  message-list header used the raw server folder name.
+- Changes: the ten names now resolve through
+  `String(localized:bundle:.module)` and the BrevBackend catalog gained
+  Norwegian (`nb`) translations (Innboks, Sendt, Utkast, Søppel,
+  Søppelpost, Arkiver, Utsatt, Planlagt, Flagget, All e-post). The
+  message-list header now resolves through
+  `MailRootMessageListTitlePolicy.folderTitle` — the same alias → standard
+  name → server name path as the sidebar. New `FolderAliasPreferencesTests`
+  case asserts every standard role name has a translated `nb` value in the
+  catalog; a new `MailRootComposePresentationPolicyTests` case pins the
+  header path.
+- Verified: red first (20 catalog issues before the entries; the header
+  test failed to compile before `folderTitle` existed). Focused
+  `swift test --filter FolderAliasPreferences` 6/6 green; full BrevBackend
+  suite (1152 tests / 114 suites) green; focused BrevMail run (27 tests /
+  5 suites) green; `scripts/format.sh` and `scripts/lint.sh` clean (no ADR
+  required). Rendered simulator (iPhone 17 Pro, iOS 27, mock backend,
+  `-AppleLanguages '(nb)'`, via `serve-sim`): the mailbox list shows
+  Innboks, Utkast, Sendt, Søppelpost, Søppel and Arkiver with the custom
+  "Clients" tree intact, and the message-list header shows "Innboks"
+  (before: "Inbox"). Evidence: `docs/qa/folder-localization-2026-09-30/`.
+- Skipped: physical-iPhone acceptance remains pending (handoff item 1).
+  The macOS pixel-snapshot suites (`LocalFolderSnapshotTests` light+dark,
+  `CalendarGridSnapshotTests`; 4 issues in the focused comparison) fail on
+  this macOS 27 host and reproduce identically on a pristine `origin/main`
+  checkout (`git archive d96fd4d9` → `/private/tmp/brev-main-clean`), so
+  they are pre-existing environment-versus-baseline drift, not this branch.
+- Handoff: provider-native labels (for example Gmail "STARRED") and custom
+  provider folders intentionally keep their provider names.
+## 2026-09-30 — Codex — fix/gmail-reauth-recovery
+
+- Goal: stop a native Gmail (gmail-api) account from being sent to the IMAP
+  password sheet when its sign-in is rejected. Reported from the phone as
+  being "logged out after a while" with no way to stay signed in; the only
+  offered repair could not fix an OAuth failure.
+- Root cause: `AppSession.reauthenticate(account:)` recorded only
+  `authFailedIMAPAccountEmail`, and `LoginViewPresentation.recoveryAction`
+  returned `.updatePassword` for any failed email. That opens
+  `MailAccountSetupSheet`, which wraps `IMAPAccountSetupSheet` — a password
+  form. `GmailAPIError.reauthenticationRequired` already maps to
+  `MailBackendError.authenticationRequired`, so a rejected Gmail grant did
+  reach the recovery surface, with the wrong repair.
+- Changed: `AppSession` records the failed account's backend identifier and
+  exposes `authFailureRequiresGoogleSignIn` / `canStartGoogleReauthentication`;
+  `reauthenticate(account:)` now returns `.googleSignInStarted` or
+  `.credentialsRequired` and starts Google sign-in for a native Gmail
+  account. `LoginViewPresentation.recoveryAction` gained
+  `.googleReauthentication`, and `LoginView` shows "Sign in with Google
+  again" for it. Both app hosts open the add-account sheet only for
+  `.credentialsRequired`. Repair requires the native Google connector, so a
+  build with only the IMAP browser route does not start a sign-in that would
+  create a sibling IMAP account instead of repairing the failed one. The new
+  string has a Norwegian catalog entry.
+- Verified: red first — the new tests failed to compile with the missing
+  `googleReauthentication` argument before the change. Green after: 6/6
+  focused tests (`LoginViewPresentationTests` plus the three new
+  `AppSessionTests`). Full BrevMail package run: 1928 tests in 299 suites,
+  zero functional failures; all 54 issues are the documented local pixel-drift
+  baseline inside
+  `*SnapshotTests.swift` (16 suites). The LoginView snapshot scenarios set no
+  backend identifier, so their rendering path is unchanged by this diff.
+  `scripts/format.sh` 0/1205 files changed; `swiftformat --lint`, `swiftlint
+  --strict`, the SwiftLint coverage self-test and `check-adr-required.sh`
+  all exit 0.
+- Limits: no live Google account, physical iPhone, or provider revocation
+  test was available, so the refresh-failure versus revoked-grant split behind
+  "logs me out after a while" is not reproduced. Snapshot baselines were not
+  re-recorded. No merge, release, or version change.
+- Documentation sweep: CHANGELOG Unreleased `### Fixed` entry and the String
+  Catalog updated. No architecture, network, consent, preference-key, or
+  agent-workflow change, so no ADR, README, PRIVACY, or AGENTS update.
 ## 2026-09-30 — Codex — fix/gmail-delta-tolerate-deleted-message (PR #163)
 
 - Goal: stop Gmail delta sync from wedging permanently when a changed message

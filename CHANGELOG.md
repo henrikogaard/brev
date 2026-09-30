@@ -95,6 +95,13 @@ All notable changes to Brev are documented here.
 - Mail search controls, message counts, and compose feedback use Norwegian
   translations; elapsed message ages use consistent positive durations.
 
+- Standard mailbox names — Inbox, Sent, Drafts, Trash, Spam, Archive,
+  Snoozed, Scheduled, Flagged, and All Mail — now follow the app language
+  instead of always showing English, so a Norwegian interface shows
+  Innboks, Sendt, Utkast, Søppel, Søppelpost, Arkiver, Utsatt, Planlagt,
+  Flagget, and All e-post. The message-list header uses the same name as
+  the mailbox sidebar instead of the raw server folder name.
+
 - Google Drive Picker configuration now reaches both app bundles and the local,
   nightly, and release builds. Local configuration reports presence only and
   passes the API key through a protected temporary xcconfig.
@@ -128,6 +135,12 @@ All notable changes to Brev are documented here.
   pressing it opens the pre-filled "Reconnect your mailbox" flow on
   both macOS and iOS. Previously the banner reported a generic sync
   problem for authentication failures.
+
+- A native Gmail account whose sign-in is rejected now repairs through
+  Google sign-in ("Sign in with Google again") instead of the IMAP
+  password sheet, which could never fix an OAuth grant. The mailbox sync
+  banner's "Sign in again" action takes the same route on both platforms;
+  other accounts keep the pre-filled reconnect flow.
 
 - iPhone: a sync warning no longer covers the mailbox navigation bar —
   the status rail now renders inside each column below its nav bar

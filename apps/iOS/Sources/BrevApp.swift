@@ -161,7 +161,9 @@ struct BrevApp: App {
                             showSettings = true
                         },
                         onRequestReauthentication: { account in
-                            session.reauthenticate(account: account)
+                            guard session.reauthenticate(account: account) == .credentialsRequired else {
+                                return
+                            }
                             isShowingAddAccountSheet = true
                         },
                         onOpenCalendar: {

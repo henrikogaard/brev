@@ -109,6 +109,25 @@ enum MailRootToolbarPlatform: Sendable, Equatable {
 }
 
 enum MailRootMessageListTitlePolicy {
+    /// Message-list title for a selected folder.
+    ///
+    /// Resolves through the same path as the mailbox sidebar — Brev-local
+    /// alias, then the localized standard name, then the server name — so the
+    /// list header and the sidebar row never disagree about a mailbox.
+    static func folderTitle(
+        folder: Folder,
+        sourceID: MailSourceID?,
+        aliasPreferences: FolderAliasPreferences,
+        capabilities: BackendCapabilities = []
+    ) -> String {
+        FolderSidebarPresentation.displayName(
+            for: folder,
+            sourceID: sourceID,
+            aliasPreferences: aliasPreferences,
+            capabilities: capabilities
+        )
+    }
+
     static func accountContext(
         mailboxDisplayName: String,
         accountDisplayName: String,
