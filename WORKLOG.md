@@ -1,5 +1,35 @@
 # Worklog
 
+## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
+
+- Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the
+  Privacy & Security and Calendar & Contacts detail panes lead with the
+  controls people change, keep reference material behind one disclosure
+  each, keep every relocated control reachable from settings search, and
+  correct the Calendar/Contacts/Tasks status documentation.
+- Changes: `SecuritySection` hides the key-material record list, draft
+  editor, and destructive actions behind "Manage key material" and the
+  import/export toggles behind "Advanced"; `CalendarContactsSection` moves
+  the capability lists into a "Capabilities and roadmap" disclosure,
+  promotes browsing and authoring rows to available, and reuses the Sources
+  label "Google Calendar & Contacts"; `SettingsSearch` adds the Sources,
+  DAV, and capability vocabulary and expands the owning disclosure on
+  arrival; the README Calendar and Contacts status matches shipped scope.
+- Verified: `swift test --package-path packages/BrevSettings` — 434 tests /
+  66 suites; the 29 remaining issues are the pre-existing macOS 26+ snapshot
+  baselines failing on this macOS 27.0 host, byte-identical on `main`
+  (`/tmp/brev-main-settings-test.log` vs
+  `/tmp/brev-branch-settings-final.log`). Focused suites green (55/55).
+  `scripts/lint.sh` and `scripts/format.sh` clean. Rendered macOS QA on
+  `Brev Test (2026-09-30)` with AX-verified disclosure expansion, search
+  navigation, and persistence across restart; iOS simulator QA through the
+  `serve-sim` mirror.
+- Skipped: CI (runs on the PR); macOS snapshot suites on this host (see
+  above); physical iPhone cold launch (no device); live-provider checks
+  (no provider behavior changed).
+- Handoff: PR to `main` for review; no merge, release, or issue closeout
+  without Henrik's authorization.
+
 ## 2026-09-29 — Agent — Nightly runner resilience (ADR-0080 §4)
 
 - Goal: stop the nightly ring from failing on GitHub-hosted macOS
