@@ -1,6 +1,6 @@
 # Worklog
 
-## 2026-09-30 — Agent — Standard folder-name localization
+## 2026-09-30 — Agent — Standard folder-name localization (PR #165)
 
 - Goal: the mailbox sidebar showed English standard folder names inside
   the otherwise Norwegian UI (iPhone screenshot: Inbox/Drafts/Sent/Trash/
