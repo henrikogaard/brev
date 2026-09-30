@@ -381,4 +381,36 @@ struct MailboxFilterControlPolicyTests {
             mailboxEmail: "henrik@example.org"
         ) == "henrik@example.org")
     }
+
+    @Test("message-list folder title matches the mailbox sidebar display name")
+    func messageListFolderTitleMatchesMailboxSidebarDisplayName() {
+        let sourceID = MailSourceID(accountID: "account", mailboxID: "primary")
+        let drafts = Folder(id: "drafts", name: "Entwürfe", role: .drafts)
+
+        // Role folders read as the standard name rather than the server name.
+        #expect(MailRootMessageListTitlePolicy.folderTitle(
+            folder: drafts,
+            sourceID: sourceID,
+            aliasPreferences: .defaults
+        ) == "Drafts")
+
+        // A Brev-local alias outranks the standard name.
+        #expect(MailRootMessageListTitlePolicy.folderTitle(
+            folder: drafts,
+            sourceID: sourceID,
+            aliasPreferences: FolderAliasPreferences(aliases: [
+                FolderAliasPreference(
+                    folderID: SourceFolderID(sourceID: sourceID, folderID: "drafts"),
+                    name: "Kladder"
+                )
+            ])
+        ) == "Kladder")
+
+        // Custom folders keep the name the server gave them.
+        #expect(MailRootMessageListTitlePolicy.folderTitle(
+            folder: Folder(id: "projects", name: "Projects", role: .custom),
+            sourceID: sourceID,
+            aliasPreferences: .defaults
+        ) == "Projects")
+    }
 }

@@ -16,12 +16,12 @@ enum FolderMetadataRefreshPresentation {
     static func refreshErrorStatus(for error: any Error) -> MailRootStatus {
         MailRootStatus(
             message: localizedMessage(for: error),
-            actionTitle: "Try Again"
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     private static func localizedMessage(for error: any Error) -> String {
         let message = error.localizedDescription.trimmingCharacters(in: .whitespacesAndNewlines)
-        return message.isEmpty ? "Couldn't refresh folders." : message
+        return message.isEmpty ? String(localized: "Couldn't refresh folders.", bundle: .module) : message
     }
 }

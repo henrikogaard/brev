@@ -2021,7 +2021,15 @@ public struct BrevMailRootView: View {
         if let selectedSavedSearch {
             return selectedSavedSearch.name
         }
-        return selectedFolder?.name ?? String(localized: "Messages", bundle: .module)
+        if let folder = selectedFolder {
+            return MailRootMessageListTitlePolicy.folderTitle(
+                folder: folder,
+                sourceID: navigation.selectedSourceID,
+                aliasPreferences: folderAliasPreferences,
+                capabilities: backend(for: navigation.selectedSourceID).capabilities
+            )
+        }
+        return String(localized: "Messages", bundle: .module)
     }
 
     private var selectedMessageDestinationContext: String? {

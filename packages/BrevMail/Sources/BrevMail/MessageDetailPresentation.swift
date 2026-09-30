@@ -191,7 +191,10 @@ enum MessageDetailPresentation {
     }
 
     static func bodyLoadErrorMessage(for error: any Error) -> String {
-        localizedMessage(for: error, fallback: "Couldn't load message body.")
+        localizedMessage(
+            for: error,
+            fallback: String(localized: "Couldn't load message body.", bundle: .module)
+        )
     }
 
     /// Decides how a failed body load is surfaced. A failure with no displayed
@@ -225,7 +228,14 @@ enum MessageDetailPresentation {
     }
 
     static func attachmentDownloadErrorMessage(filename: String, error: any Error) -> String {
-        "Couldn't download \"\(attachmentDisplayName(filename))\": \(localizedMessage(for: error, fallback: "Unknown error."))"
+        let reason = localizedMessage(
+            for: error,
+            fallback: String(localized: "Unknown error.", bundle: .module)
+        )
+        return String(
+            localized: "Couldn't download \"\(attachmentDisplayName(filename))\": \(reason)",
+            bundle: .module
+        )
     }
 
     static func attachmentDownloadErrorStatus(filename: String, error: any Error) -> MessageDetailInlineStatus {
@@ -239,46 +249,58 @@ enum MessageDetailPresentation {
 
     static func bodyLoadErrorStatus(_ message: String) -> MessageDetailStatus {
         MessageDetailStatus(
-            title: "Couldn't load message",
+            title: String(localized: "Couldn't load message", bundle: .module),
             icon: "exclamationmark.triangle",
             subtitle: message,
-            actionTitle: "Try Again"
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func markReadErrorStatus(for error: any Error) -> MessageDetailStatus {
         MessageDetailStatus(
-            title: "Couldn't mark as read",
+            title: String(localized: "Couldn't mark as read", bundle: .module),
             icon: "exclamationmark.triangle",
-            subtitle: localizedMessage(for: error, fallback: "Couldn't mark this message as read."),
-            actionTitle: "Try Again"
+            subtitle: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't mark this message as read.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func inviteResponseErrorStatus(for error: any Error) -> MessageDetailStatus {
         MessageDetailStatus(
-            title: "Couldn't respond to invite",
+            title: String(localized: "Couldn't respond to invite", bundle: .module),
             icon: "exclamationmark.triangle",
-            subtitle: localizedMessage(for: error, fallback: "Couldn't send your invite response."),
-            actionTitle: "Try Again"
+            subtitle: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't send your invite response.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func inviteLoadErrorStatus(for error: any Error) -> MessageDetailStatus {
         MessageDetailStatus(
-            title: "Couldn't load calendar invite",
+            title: String(localized: "Couldn't load calendar invite", bundle: .module),
             icon: "exclamationmark.triangle",
-            subtitle: localizedMessage(for: error, fallback: "Couldn't load the calendar invite."),
-            actionTitle: "Try Again"
+            subtitle: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't load the calendar invite.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 
     static func inviteParseErrorStatus(filename: String) -> MessageDetailStatus {
         MessageDetailStatus(
-            title: "Couldn't read calendar invite",
+            title: String(localized: "Couldn't read calendar invite", bundle: .module),
             icon: "exclamationmark.triangle",
-            subtitle: "Brev couldn't parse \"\(attachmentDisplayName(filename))\" as a calendar invite.",
-            actionTitle: "Try Again"
+            subtitle: String(
+                localized: "Brev couldn't parse \"\(attachmentDisplayName(filename))\" as a calendar invite.",
+                bundle: .module
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 

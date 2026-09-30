@@ -1334,6 +1334,107 @@ struct AppSessionTests {
         #expect(session.canRetrySessionRestore)
     }
 
+    @Test("restoreAllAccounts marks native Gmail authentication failures for Google sign-in")
+    func restoreAllAccountsMarksNativeGmailAuthenticationFailuresForGoogleSignIn() async {
+        let account = BrevAccount(
+            id: "gmail-api:1122334455",
+            displayName: "Person",
+            emailAddress: "person@gmail.com",
+            backendIdentifier: BrevAccount.gmailAPIBackendIdentifier,
+            backendDisplayName: BrevAccount.gmailAPIBackendDisplayName
+        )
+        let accountStore = InMemoryAccountStore(accounts: [account], current: account)
+        let session = AppSession(
+            accountStore: accountStore,
+            tokenStore: InMemoryTokenStore(),
+            googleOAuthLoginCoordinator: {
+                Issue.record("Google sign-in should only start from an explicit repair action")
+                return AppSession.LoginResult(backend: MockBackend(account: account), account: account)
+            },
+            restoreCoordinator: { _ in
+                throw MailBackendError.authenticationRequired
+            }
+        )
+
+        await session.restoreAllAccounts()
+
+        #expect(session.visibleBackends.isEmpty)
+        #expect(session.authFailedIMAPAccountEmail == account.emailAddress)
+        #expect(session.authFailureRequiresGoogleSignIn)
+        #expect(session.canStartGoogleReauthentication)
+        #expect(await accountStore.accounts == [account])
+        #expect(session.canRetrySessionRestore)
+    }
+
+    @Test("reauthenticate repairs a native Gmail account through Google sign-in")
+    func reauthenticateRepairsNativeGmailAccountThroughGoogleSignIn() async {
+        let gmailAccount = BrevAccount(
+            id: "gmail-api:1122334455",
+            displayName: "Person",
+            emailAddress: "person@gmail.com",
+            backendIdentifier: BrevAccount.gmailAPIBackendIdentifier,
+            backendDisplayName: BrevAccount.gmailAPIBackendDisplayName
+        )
+        let gmailBackend = MockBackend(account: gmailAccount)
+        let imapAccount = BrevAccount(
+            id: "imap-smtp:person@example.org",
+            displayName: "Person",
+            emailAddress: "person@example.org"
+        )
+        var googleSignInAttempts = 0
+        let session = AppSession(
+            accountStore: InMemoryAccountStore(),
+            tokenStore: InMemoryTokenStore(),
+            googleOAuthLoginCoordinator: {
+                googleSignInAttempts += 1
+                return AppSession.LoginResult(backend: gmailBackend, account: gmailAccount)
+            }
+        )
+
+        #expect(session.reauthenticate(account: imapAccount) == .credentialsRequired)
+        #expect(session.authFailedIMAPAccountEmail == imapAccount.emailAddress)
+        #expect(!session.authFailureRequiresGoogleSignIn)
+        #expect(googleSignInAttempts == 0)
+
+        #expect(session.reauthenticate(account: gmailAccount) == .googleSignInStarted)
+        #expect(session.authFailureRequiresGoogleSignIn)
+        #expect(session.authFailedIMAPAccountEmail == gmailAccount.emailAddress)
+
+        var waits = 0
+        while session.backend == nil, waits < 200 {
+            await Task.yield()
+            waits += 1
+        }
+
+        #expect(googleSignInAttempts == 1)
+        #expect(session.backend?.account == gmailAccount)
+        #expect(session.authFailedIMAPAccountEmail == nil)
+        #expect(!session.authFailureRequiresGoogleSignIn)
+    }
+
+    @Test("a native Gmail failure without the native connector keeps the credential sheet")
+    func nativeGmailFailureWithoutNativeConnectorRequiresCredentials() async {
+        let account = BrevAccount(
+            id: "gmail-api:1122334455",
+            displayName: "Person",
+            emailAddress: "person@gmail.com",
+            backendIdentifier: BrevAccount.gmailAPIBackendIdentifier,
+            backendDisplayName: BrevAccount.gmailAPIBackendDisplayName
+        )
+        let session = AppSession(
+            accountStore: InMemoryAccountStore(),
+            tokenStore: InMemoryTokenStore(),
+            imapOAuthBrowserCoordinator: { _ in
+                Issue.record("Google sign-in must not provision a sibling IMAP account")
+                return AppSession.LoginResult(backend: MockBackend(account: account), account: account)
+            }
+        )
+
+        #expect(session.reauthenticate(account: account) == .credentialsRequired)
+        #expect(session.authFailureRequiresGoogleSignIn)
+        #expect(!session.canStartGoogleReauthentication)
+    }
+
     @Test("restoreAllAccounts restores password and OAuth IMAP accounts into workspace")
     func restoreAllAccountsRestoresPasswordAndOAuthIMAPAccountsIntoWorkspace() async {
         let passwordAccount = BrevAccount(

@@ -1863,8 +1863,11 @@ struct UnifiedInboxListView: View {
             )
         } else if skippedCount > 0 {
             partialLoadErrorStatus = MessageListFooterStatus(
-                message: "\(skippedCount) mailbox\(skippedCount == 1 ? "" : "es") skipped because server search is unavailable.",
-                actionTitle: "Refresh"
+                message: String(
+                    localized: "\(skippedCount) mailboxes skipped because server search is unavailable.",
+                    bundle: .module
+                ),
+                actionTitle: String(localized: "Refresh", bundle: .module)
             )
             MailUIPerformanceDiagnostics.logListSearchFinished(
                 surface: .unifiedInbox,
