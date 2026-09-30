@@ -56,6 +56,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Settings → Folder Sync now resolves the mailbox Mail is effectively showing
+  when the mailbox list is open, instead of an empty "Choose mailbox" scope
+  with no folders. An explicit mailbox selection still wins; the zero-account
+  empty state is unchanged.
 - Mail status banners, error messages, and empty states now follow the app
   language: refresh/load/search failures, message and folder actions, and the
   "no messages" states for search, filters, smart views, and empty folders
