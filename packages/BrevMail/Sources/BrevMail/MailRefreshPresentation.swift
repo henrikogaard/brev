@@ -15,8 +15,11 @@ import Foundation
 enum MailRefreshPresentation {
     static func refreshErrorStatus(for error: any Error) -> MailRootStatus {
         MailRootStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't refresh mail."),
-            actionTitle: "Try Again"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't refresh mail.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Try Again", bundle: .module)
         )
     }
 

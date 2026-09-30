@@ -855,8 +855,11 @@ public enum MessageCommandPresentation {
 
     static func mutationErrorStatus(for error: any Error) -> MailRootStatus {
         MailRootStatus(
-            message: localizedMessage(for: error, fallback: "Couldn't update message."),
-            actionTitle: "Refresh"
+            message: localizedMessage(
+                for: error,
+                fallback: String(localized: "Couldn't update message.", bundle: .module)
+            ),
+            actionTitle: String(localized: "Refresh", bundle: .module)
         )
     }
 
@@ -865,9 +868,12 @@ public enum MessageCommandPresentation {
     /// list reflects whatever the server actually applied.
     static func mutationTimeoutStatus() -> MailRootStatus {
         MailRootStatus(
-            message: "That action is taking too long. The view has been unblocked — refresh to confirm the result.",
+            message: String(
+                localized: "That action is taking too long. The view has been unblocked — refresh to confirm the result.",
+                bundle: .module
+            ),
             tone: .warning,
-            actionTitle: "Refresh"
+            actionTitle: String(localized: "Refresh", bundle: .module)
         )
     }
 

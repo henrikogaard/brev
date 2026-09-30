@@ -56,6 +56,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Mail status banners, error messages, and empty states now follow the app
+  language: refresh/load/search failures, message and folder actions, and the
+  "no messages" states for search, filters, smart views, and empty folders
+  resolve through the BrevMail String Catalog instead of hardcoded English.
 - Gmail delta sync no longer aborts when a changed message was permanently
   deleted server-side. A missing message detail removes the local copy instead
   of failing the whole sync with an HTTP 404 error and stalling new mail.
