@@ -132,6 +132,12 @@ All notable changes to Brev are documented here.
   both macOS and iOS. Previously the banner reported a generic sync
   problem for authentication failures.
 
+- A native Gmail account whose sign-in is rejected now repairs through
+  Google sign-in ("Sign in with Google again") instead of the IMAP
+  password sheet, which could never fix an OAuth grant. The mailbox sync
+  banner's "Sign in again" action takes the same route on both platforms;
+  other accounts keep the pre-filled reconnect flow.
+
 - iPhone: a sync warning no longer covers the mailbox navigation bar —
   the status rail now renders inside each column below its nav bar
   instead of over the split view, restoring VoiceOver access to the

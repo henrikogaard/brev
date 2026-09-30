@@ -9669,6 +9669,17 @@
         }
       }
     },
+    "Sign in with Google again": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logg inn med Google igjen"
+          }
+        }
+      }
+    },
     "Sign in with Microsoft": {
       "extractionState": "manual",
       "localizations": {
