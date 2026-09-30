@@ -111,7 +111,9 @@ struct BrevApp: App {
                             openWindow(id: BrevWindowID.settings)
                         },
                         onRequestReauthentication: { account in
-                            session.reauthenticate(account: account)
+                            guard session.reauthenticate(account: account) == .credentialsRequired else {
+                                return
+                            }
                             addAccountPrefillEmail = account.emailAddress
                             isShowingAddAccountSheet = true
                         },
