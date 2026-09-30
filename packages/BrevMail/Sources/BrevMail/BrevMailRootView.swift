@@ -3239,7 +3239,10 @@ public struct BrevMailRootView: View {
 
     private var settingsMailboxContext: SettingsMailboxContext {
         SettingsMailboxContext(
-            selectedSourceID: navigation.selectedSourceID,
+            selectedSourceID: MailRootSettingsScopePolicy.effectiveSourceID(
+                selectedSourceID: navigation.selectedSourceID,
+                defaultSectionID: preferredDefaultSection(in: visibleSourceSections)?.id
+            ),
             mailboxes: sourceSections.map {
                 SettingsMailbox(account: $0.account, mailbox: $0.mailbox, folders: $0.folders)
             }

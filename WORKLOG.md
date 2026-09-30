@@ -1,5 +1,26 @@
 # Worklog
 
+## 2026-09-30 — Agent — Folder Sync empty scope (follow-up handoff item 2)
+
+- Goal: reproduce and fix the settings-assessment observation that Folder Sync
+  showed an empty mailbox selector despite an active mail window.
+- Changes: new `MailRootSettingsScopePolicy.effectiveSourceID` in BrevMail and
+  a call-site change in `BrevMailRootView.settingsMailboxContext` — the
+  settings scope now falls back to Mail's
+  `preferredDefaultSection(in: visibleSourceSections)` when
+  `navigation.selectedSourceID` is nil (unified inbox, reader reconciliation,
+  mailbox switches). New `MailRootSettingsScopePolicyTests` (red before the
+  call-site change, 3/3 green after). QA evidence:
+  `docs/qa/folder-sync-scope-2026-09-30/`.
+- Verified: focused BrevMail tests; iOS 27 simulator with mock fixtures —
+  reopen from the mailbox list, two-account scope switch, per-account choice
+  retention, and persistence across a Settings reopen; lint and format clean.
+  Full BrevMail suite baseline: 54 pre-existing pixel-snapshot issues,
+  reproduced identically with the change reverted.
+- Handoff: macOS native re-check and the zero-account UI state remain
+  unexercised natively (the mock backend always has accounts). No tracking
+  issue existed for this observation.
+
 ## 2026-09-29 — Agent — Nightly runner resilience (ADR-0080 §4)
 
 - Goal: stop the nightly ring from failing on GitHub-hosted macOS

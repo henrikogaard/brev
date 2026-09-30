@@ -56,6 +56,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Settings → Folder Sync now resolves the mailbox Mail is effectively showing
+  when the mailbox list is open, instead of an empty "Choose mailbox" scope
+  with no folders. An explicit mailbox selection still wins; the zero-account
+  empty state is unchanged.
+
 - Fixed an immediate iPhone launch crash caused by mailbox view construction
   exhausting the main-thread stack in Release builds.
 
