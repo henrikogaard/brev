@@ -242,6 +242,37 @@ struct SettingsNavigationStateTests {
         #expect(SettingsSectionAvailability.v1Default.visibleSections.contains(.calendarContacts))
     }
 
+    @Test("controls behind settings disclosures stay reachable through search")
+    func disclosureControlsStaySearchable() {
+        // These toggles moved behind the Security pane's "Advanced"
+        // disclosure; search must still name them as its target so the
+        // owning disclosure can expand.
+        for title in ["Allow private material in exports", "Replace existing records on import"] {
+            let results = SettingsSearchResult.results(for: title, sections: [.security])
+            #expect(results.contains { $0.section == .security && $0.target == title })
+        }
+    }
+
+    @Test("every capability row is searchable so the roadmap disclosure opens for it")
+    func capabilityRowsStaySearchable() {
+        let summary = CalendarContactsScopePresentation.summary
+        let capabilityTitles = summary.currentCapabilities.map(\.title)
+            + summary.unavailableCapabilities.map(\.title)
+
+        #expect(!capabilityTitles.isEmpty)
+        for title in capabilityTitles {
+            let results = SettingsSearchResult.results(for: title, sections: [.calendarContacts])
+            #expect(results.contains { $0.section == .calendarContacts && $0.target == title })
+        }
+
+        // The disclosure headings and the source-setup actions are search
+        // vocabulary too, so "Add DAV Source" reaches the section.
+        for query in ["Available now", "Not available yet", "Add DAV Source", "Enable Tasks"] {
+            let results = SettingsSearchResult.results(for: query, sections: [.calendarContacts])
+            #expect(results.contains { $0.section == .calendarContacts })
+        }
+    }
+
     @Test("Mailbox View section is available from settings navigation")
     func mailboxViewSectionIsAvailable() {
         let section = SettingsSection(rawValue: "mailboxView")

@@ -22,7 +22,7 @@ struct CalendarContactsScopePresentationTests {
         #expect(summary.direction == .optionalConnectedSources)
     }
 
-    @Test("available capabilities cover shipping workflows, DAV connect and Google enablement")
+    @Test("available capabilities cover browsing, authoring, DAV connect and Google enablement")
     func availableCapabilitiesCoverShippingWorkflows() {
         let summary = CalendarContactsScopePresentation.summary
 
@@ -31,7 +31,13 @@ struct CalendarContactsScopePresentationTests {
             .caldavInviteWrite,
             .carddavComposeAutocomplete,
             .davSourceConnect,
-            .googleSourceEnablement
+            .googleSourceEnablement,
+            .readOnlyCalendarBrowsing,
+            .readOnlyContactsBrowsing,
+            .tasksBrowsing,
+            .eventAuthoring,
+            .contactAuthoring,
+            .tasksAuthoring
         ])
         #expect(summary.currentCapabilities.allSatisfy { $0.status == .available })
     }
@@ -40,24 +46,24 @@ struct CalendarContactsScopePresentationTests {
     func unshippedCapabilitiesAreNotAvailableYet() {
         let summary = CalendarContactsScopePresentation.summary
 
-        #expect(summary.unavailableCapabilities.map(\.kind) == [
-            .readOnlyCalendarBrowsing,
-            .readOnlyContactsBrowsing,
-            .unifiedPIMSearch,
-            .eventAuthoring,
-            .contactAuthoring
-        ])
+        // Unified calendar/contact search result groups are the only
+        // remaining unshipped capability; browsing and authoring ship.
+        #expect(summary.unavailableCapabilities.map(\.kind) == [.unifiedPIMSearch])
         #expect(summary.unavailableCapabilities.allSatisfy { $0.status == .notAvailableYet })
     }
 
-    @Test("authoring is accepted scope, not permanently out of scope")
+    @Test("authoring ships under ADR-0072 instead of staying out of scope")
     func authoringIsAcceptedScopeNotOutOfScope() {
         let summary = CalendarContactsScopePresentation.summary
         let all = summary.currentCapabilities + summary.unavailableCapabilities
 
-        // ADR-0072 superseded ADR-0039's authoring boundary: event and
-        // contact authoring ship as #7/#9, so nothing here is out of scope.
+        // ADR-0072 superseded ADR-0039's authoring boundary: event, contact
+        // and task authoring ship with their browsing surfaces, so nothing
+        // here is out of scope.
         #expect(all.allSatisfy { $0.status != .outOfScope })
         #expect(!all.contains { $0.detail.contains("outside Brev") })
+        #expect(summary.currentCapabilities.contains { $0.kind == .eventAuthoring })
+        #expect(summary.currentCapabilities.contains { $0.kind == .contactAuthoring })
+        #expect(summary.currentCapabilities.contains { $0.kind == .tasksAuthoring })
     }
 }

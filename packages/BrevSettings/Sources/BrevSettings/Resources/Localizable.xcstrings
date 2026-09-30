@@ -584,6 +584,105 @@
         }
       }
     },
+    "Backed by your connected sources.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Støttes av de tilkoblede kildene dine."
+          }
+        }
+      }
+    },
+    "Capabilities and roadmap": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Funksjoner og veikart"
+          }
+        }
+      }
+    },
+    "Certificates Brev can use for signing and encryption.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sertifikater Brev kan bruke til signering og kryptering."
+          }
+        }
+      }
+    },
+    "Connect optional Google or DAV sources; available actions depend on the source.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til valgfrie Google- eller DAV-kilder; tilgjengelige handlinger avhenger av kilden."
+          }
+        }
+      }
+    },
+    "Create, complete, and manage tasks on writable task sources.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett, fullfør og administrer oppgaver på skrivbare oppgavekilder."
+          }
+        }
+      }
+    },
+    "Manage key material": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Administrer nøkkelmateriale"
+          }
+        }
+      }
+    },
+    "Task editing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgaveredigering"
+          }
+        }
+      }
+    },
+    "Task lists from connected sources, grouped by collection with completion state.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister fra tilkoblede kilder, gruppert etter samling med fullføringsstatus."
+          }
+        }
+      }
+    },
+    "Tasks browsing": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgaveblæddring"
+          }
+        }
+      }
+    },
     "addDavSource.action": {
       "extractionState": "manual",
       "localizations": {
@@ -4909,17 +5008,6 @@
       }
     },
     "Google Calendar & Contacts": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Google Kalender og Kontakter"
-          }
-        }
-      }
-    },
-    "Google Calendar and Contacts": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
