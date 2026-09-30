@@ -22,7 +22,7 @@ Branch `feature/settings-detail-simplification`, based on `main` at `d96fd4d9`.
 | State | Status | Evidence |
 | --- | --- | --- |
 | Implemented locally | Done | `swift test --package-path packages/BrevSettings` — 434 tests / 66 suites; the 29 remaining issues are pre-existing snapshot-renderer mismatches that reproduce identically on `main` (see the snapshot note). |
-| CI-verified | Pending | The PR for this branch runs the required checks; no CI result is claimed here. |
+| CI-verified | Done | All 21 required checks pass on PR #168 (run [36765681298](https://github.com/henrikogaard/brev/actions/runs/36765681298), head `a477a9cd`); the docs-only commit carrying this note re-runs the same set. |
 | Native-tested (macOS) | Done | Rendered QA on `Brev Test (2026-09-30)`, AX-verified, plus a real app restart for persistence. |
 | Native-tested (iOS simulator) | Done | Brev QA iPhone 17 Pro (iOS 27.0): default state, search-expansion, and Security no-regression checks below. |
 | Physical-device-tested | Not done | No physical iPhone is available in this environment. |
@@ -68,7 +68,6 @@ search query used "Tilgjengelig" (the result title is "Tilgjengelig nå").
 
 | Check | Reason |
 | --- | --- |
-| CI | Runs on the PR; not claimable before the branch is pushed. |
 | macOS snapshot suites on this host | Pre-existing renderer mismatch: baselines are macOS 26+; this host is macOS 27.0. Failure set is byte-identical on `main`. |
 | Physical iPhone cold launch | No physical device in this environment. |
 | Live provider round-trip | No provider behavior changed; the QA record was metadata-only. |
