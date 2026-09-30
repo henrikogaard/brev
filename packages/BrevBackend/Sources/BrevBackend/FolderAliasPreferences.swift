@@ -98,16 +98,16 @@ public enum FolderAliasPreferencesPolicy {
 
     public static func standardDisplayName(for role: FolderRole) -> String? {
         switch role {
-        case .inbox: return "Inbox"
-        case .sent: return "Sent"
-        case .drafts: return "Drafts"
-        case .trash: return "Trash"
-        case .spam: return "Spam"
-        case .archive: return "Archive"
-        case .snoozed: return "Snoozed"
-        case .scheduled: return "Scheduled"
-        case .starred: return "Flagged"
-        case .allMail: return "All Mail"
+        case .inbox: return String(localized: "Inbox", bundle: .module)
+        case .sent: return String(localized: "Sent", bundle: .module)
+        case .drafts: return String(localized: "Drafts", bundle: .module)
+        case .trash: return String(localized: "Trash", bundle: .module)
+        case .spam: return String(localized: "Spam", bundle: .module)
+        case .archive: return String(localized: "Archive", bundle: .module)
+        case .snoozed: return String(localized: "Snoozed", bundle: .module)
+        case .scheduled: return String(localized: "Scheduled", bundle: .module)
+        case .starred: return String(localized: "Flagged", bundle: .module)
+        case .allMail: return String(localized: "All Mail", bundle: .module)
         case .custom: return nil
         }
     }

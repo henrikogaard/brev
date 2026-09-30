@@ -45,6 +45,17 @@
         }
       }
     },
+    "All Mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All e-post"
+          }
+        }
+      }
+    },
     "An export already exists at this location. Choose another destination.": {
       "extractionState": "manual",
       "localizations": {
@@ -52,6 +63,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "En eksport finnes allerede på dette stedet. Velg et annet mål."
+          }
+        }
+      }
+    },
+    "Archive": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Arkiver"
           }
         }
       }
@@ -287,6 +309,17 @@
         }
       }
     },
+    "Drafts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkast"
+          }
+        }
+      }
+    },
     "Enter a valid email address.": {
       "extractionState": "manual",
       "localizations": {
@@ -305,6 +338,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skriving av eksporten mislyktes: \\(reason)"
+          }
+        }
+      }
+    },
+    "Flagged": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flagget"
           }
         }
       }
@@ -645,6 +689,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "IMAP-transport mislyktes: \\(message)"
+          }
+        }
+      }
+    },
+    "Inbox": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innboks"
           }
         }
       }
@@ -1100,6 +1155,17 @@
         }
       }
     },
+    "Scheduled": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Planlagt"
+          }
+        }
+      }
+    },
     "Search stopped before all results could be loaded. Narrow your search or try again.": {
       "extractionState": "manual",
       "localizations": {
@@ -1107,6 +1173,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Søket stoppet før alle resultater kunne lastes. Begrens søket eller prøv igjen."
+          }
+        }
+      }
+    },
+    "Sent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt"
           }
         }
       }
@@ -1133,6 +1210,17 @@
         }
       }
     },
+    "Snoozed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utsatt"
+          }
+        }
+      }
+    },
     "Some reply headers could not be interpreted safely.": {
       "extractionState": "manual",
       "localizations": {
@@ -1140,6 +1228,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Noen svar­hoder kunne ikke tolkes trygt."
+          }
+        }
+      }
+    },
+    "Spam": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søppelpost"
           }
         }
       }
@@ -1327,6 +1426,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Denne planlagte meldingen er ikke lenger tilgjengelig."
+          }
+        }
+      }
+    },
+    "Trash": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søppel"
           }
         }
       }
