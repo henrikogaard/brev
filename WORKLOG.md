@@ -29,6 +29,32 @@
   (no provider behavior changed).
 - Handoff: PR to `main` for review; no merge, release, or issue closeout
   without Henrik's authorization.
+## 2026-09-30 — Codex — fix/gmail-delta-tolerate-deleted-message (PR #163)
+
+- Goal: stop Gmail delta sync from wedging permanently when a changed message
+  was permanently deleted server-side. Reported from the phone as a persistent
+  "Gmail avviste forespørselen (HTTP 404)" banner for henrik@ogard.no with no
+  new mail appearing.
+- Root cause: `GmailSyncReconciler.fetchDetails` fetched every changed message
+  with `messages.get`; a permanently deleted id answers 404, which aborted the
+  whole delta before the history cursor advanced. A `history.list` 404 already
+  fell back to full sync; a per-message 404 did not. Device evidence:
+  `gmail.sqlite` held history_id=1288802 with last_delta_sync_at 2026-09-29
+  21:20:45 (cursor not advancing).
+- Changed: `fetchDetails` now returns fetched messages plus missing ids; only
+  `GmailAPIError.httpFailure(statusCode: 404)` is tolerated and every other API
+  error still propagates. Delta sync removes missing ids locally, full sync
+  skips them.
+- Verified: red first — both new tests failed with the 404 before the change,
+  green after. 12/12 Gmail sync reconciler tests and 163/163 BrevGmail tests
+  pass. `scripts/lint.sh` gates: swiftformat 0/1205 files, swiftlint --strict
+  clean (custom cache path because the default cache directory is outside the
+  sandbox).
+- Skipped: no physical-device or live-provider run; nothing is deployed. The
+  separate "logs me out after a while" report is not proven fixed by this
+  change and is tracked on its own.
+- Handoff: PR #163 targets `main`. No merge, release, version change, or issue
+  closure.
 
 ## 2026-09-29 — Agent — Nightly runner resilience (ADR-0080 §4)
 
