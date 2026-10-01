@@ -14,6 +14,13 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
+/// Trailing slot shared by settings popups. Popups used to take an
+/// up-to-220-point frame that centred the control, so a narrow popup ("Av")
+/// and a wide one ("Automatisk") ended at different right edges inside rows
+/// that otherwise share one column. A fixed slot lines every popup up with
+/// the switches above and below it.
+private let settingsTrailingControlWidth: CGFloat = 220
+
 enum SettingsCalloutTone {
     case info
     case success
@@ -136,7 +143,7 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
                 )
                 Spacer(minLength: BrevSpacing.md)
                 picker
-                    .frame(maxWidth: 220)
+                    .frame(width: settingsTrailingControlWidth, alignment: .trailing)
             }
 
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {

@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-10-01 — Agent — Settings popup alignment
+
+- Goal: item 3 of the 2026-09-30 visual review — trailing controls in settings
+  rows did not share a right edge.
+- Changed: `SettingsPickerRow` framed its popup with `maxWidth: 220`, which
+  centres the control inside that slot, so a narrow popup ("Av") and a wide
+  one ("Automatisk") ended at different right edges next to right-aligned
+  switches. The popup now takes a fixed 220-point trailing slot
+  (`settingsTrailingControlWidth`), so every row shares one column edge.
+- Verified: `swift test --package-path packages/BrevSettings` excluding the
+  pixel suites — 409 tests / 61 suites pass; `scripts/format.sh` and
+  `scripts/lint.sh` clean.
+- Skipped: `BrevSettingsSnapshotTests` (Appearance/MailboxView sections)
+  baseline re-record. Those suites are deferred in CI (the `snapshot-macos`
+  job skips itself below macOS 26 and the `test` job lists them in `--skip`);
+  this host is macOS 27, so recording here would rewrite macOS-26 baselines
+  with macOS-27 rendering. Re-record on a macOS 26 host when one is available.
+- Handoff: branch `fix/settings-picker-alignment`, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the

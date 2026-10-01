@@ -54,6 +54,13 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- Settings popups (conversation order, message font, reminder and delay
+  pickers) share one trailing column, so their right edges line up with the
+  switches beside them.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
