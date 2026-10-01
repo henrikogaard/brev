@@ -2132,6 +2132,7 @@ public struct BrevMailRootView: View {
         }
         .disabled(visibleRefreshTarget == nil || !canStartRefresh())
         .accessibilityLabel(String(localized: "Refresh", bundle: .module))
+        .help(String(localized: "Refresh", bundle: .module))
     }
 
     #if os(macOS)
@@ -2247,6 +2248,7 @@ public struct BrevMailRootView: View {
         }
         .disabled(!canPresentCompose())
         .accessibilityLabel(String(localized: "Compose", bundle: .module))
+        .help(String(localized: "Compose", bundle: .module))
     }
 
     @ToolbarContentBuilder
@@ -2297,6 +2299,7 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(!canPresentCompose())
                     .accessibilityLabel(String(localized: "Reply", bundle: .module))
+                    .help(String(localized: "Reply", bundle: .module))
 
                     if MailRootDetailToolbarPolicy.showsExtendedResponseActions(
                         platform: toolbarPlatform,
@@ -2309,6 +2312,7 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(!canPresentCompose())
                         .accessibilityLabel(String(localized: "Reply All", bundle: .module))
+                        .help(String(localized: "Reply All", bundle: .module))
 
                         Button {
                             presentForward(of: header)
@@ -2317,6 +2321,7 @@ public struct BrevMailRootView: View {
                         }
                         .disabled(!canPresentCompose())
                         .accessibilityLabel(String(localized: "Forward", bundle: .module))
+                        .help(String(localized: "Forward", bundle: .module))
                     }
 
                     Button {
@@ -2326,6 +2331,7 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(folder(role: .archive) == nil || !canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Archive", bundle: .module))
+                    .help(String(localized: "Archive", bundle: .module))
 
                     Button {
                         Task { await trash(header: header) }
@@ -2334,6 +2340,7 @@ public struct BrevMailRootView: View {
                     }
                     .disabled(!canStartCommandMutation())
                     .accessibilityLabel(String(localized: "Delete", bundle: .module))
+                    .help(String(localized: "Delete", bundle: .module))
 
                     if MailRootDetailToolbarPolicy.showsFlagButton(
                         platform: toolbarPlatform,

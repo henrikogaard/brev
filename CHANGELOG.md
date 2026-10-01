@@ -54,6 +54,12 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- Mail toolbar controls in the macOS window show a hover tooltip that matches
+  the name VoiceOver already announces.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing

@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-10-01 — Agent — Mail toolbar hover help
+
+- Goal: item 10 of the 2026-09-30 visual review — icon-only mail toolbar
+  controls announced a label to VoiceOver but showed no hover affordance on
+  macOS.
+- Changed: `.help(...)` on Refresh, Compose, Reply, Reply All, Forward,
+  Archive and Delete in `BrevMailRootView`, reusing the accessibility titles
+  so the tooltip and the spoken name agree. The flag button, the search
+  capsule and the composer's toolbar helper already carried help text.
+- Verified: `swift build --package-path packages/BrevMail`; focused
+  `BrevMailNativeToolbar` and `MailMessageCommandActions` suites (37 tests,
+  3 suites) green; `scripts/format.sh` and `scripts/lint.sh` clean.
+- Skipped: no rendered check for tooltips (they need a pointer); no snapshot
+  impact because help text is not drawn.
+- Handoff: branch `chore/toolbar-hover-help`, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the
