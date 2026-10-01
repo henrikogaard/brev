@@ -54,6 +54,13 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- Settings, account setup, Calendar/Contacts/Tasks and compose surfaces now
+  inherit the theme resolved at the app root instead of re-reading it, so a
+  presented surface can no longer render the previous theme for a frame.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing

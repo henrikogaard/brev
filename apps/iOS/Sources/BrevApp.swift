@@ -143,7 +143,6 @@ struct BrevApp: App {
                         },
                         onClose: { showSettings = false }
                     )
-                    .brevTheme(session.theme)
                     .environment(\.openURL, browserOpenURLAction)
                 } else if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
                     visibleBackendCount: session.visibleBackends.count,
@@ -263,7 +262,6 @@ struct BrevApp: App {
                 ) {
                     isShowingAddAccountSheet = false
                 }
-                .brevTheme(session.theme)
             }
             .fullScreenCover(isPresented: $showCalendar) {
                 // No NavigationStack wrapper: the root view is itself a
@@ -279,7 +277,6 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showCalendar = false }
                 )
-                .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showContacts) {
@@ -292,7 +289,6 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showContacts = false }
                 )
-                .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showTasks) {
@@ -305,7 +301,6 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showTasks = false }
                 )
-                .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .task {
@@ -383,7 +378,6 @@ struct BrevApp: App {
                     payload: payload, backends: session.visibleBackends,
                     canFileLocally: session.localBackend != nil
                 )
-                .brevTheme(session.theme)
                 .environment(\.openURL, browserOpenURLAction)
             }
         }
@@ -410,7 +404,6 @@ struct BrevApp: App {
                         AppSessionFactory.trustedEncryptionIdentityCount(for: account)
                     }
                 )
-                .brevTheme(session.theme)
             }
         }
     }

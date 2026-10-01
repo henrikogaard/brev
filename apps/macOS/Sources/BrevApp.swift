@@ -206,7 +206,6 @@ struct BrevApp: App {
                     isShowingAddAccountSheet = false
                     addAccountPrefillEmail = ""
                 }
-                .brevTheme(session.theme)
             }
             .task {
                 reconcileBackgroundMail()
@@ -299,7 +298,6 @@ struct BrevApp: App {
                     driveFeature: session.googleDriveFeature
                 )
             )
-            .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -317,7 +315,6 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
-            .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -335,7 +332,6 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
-            .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -392,7 +388,6 @@ struct BrevApp: App {
                     await session.reloadConfiguredAIBackends()
                 }
             )
-            .brevTheme(session.theme)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -403,7 +398,6 @@ struct BrevApp: App {
 
         Window("Keyboard Shortcuts", id: BrevWindowID.keyboardShortcuts) {
             KeyboardShortcutsHelpView()
-                .brevTheme(session.theme)
         }
         .windowResizability(.contentSize)
 

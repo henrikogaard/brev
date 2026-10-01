@@ -1,5 +1,27 @@
 # Worklog
 
+## 2026-10-01 — Agent — Root theme inheritance
+
+- Goal: item 1 of the 2026-09-30 visual review asked for the appearance to be
+  resolved once at the root and inherited by every surface.
+- Context: the iOS and macOS hosts re-injected `.brevTheme(session.theme)` on
+  the settings sheet, the add-account sheet, the Calendar/Contacts/Tasks
+  covers and the compose surface. `session.theme` is refreshed by the root
+  modifier in a `.task(id: colorScheme)`, so a surface presented before that
+  ran could render the previous theme while the root already used the
+  resolved one. The reported dark-list/light-reader split did not reproduce
+  (forced dark and light system appearance render #292929 / #FFFFFF), but the
+  duplicate sources of truth were real.
+- Changed: removed 13 `.brevTheme(session.theme)` re-injections (7 iOS,
+  6 macOS). Presented surfaces now inherit the theme the root modifier
+  resolves, and `session.theme` remains the value the picker writes and the
+  modifier keeps in sync.
+- Verified: `script/build_and_run.sh --mock` (macOS) and the BrevIOS
+  simulator build both succeed; the app launches with the mock mailbox.
+- Skipped: no pixel-suite impact — the snapshot suites inject their own theme,
+  and the deferred suites were not re-recorded.
+- Handoff: branch `fix/root-theme-inheritance`, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the
