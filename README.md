@@ -30,8 +30,11 @@ with:
   standards-first IMAP/SMTP with built-in profiles, autodiscovery,
   manual setup, and OAuth/XOAUTH2 where provider credentials are
   configured. Real-provider QA is still in progress before v1.
-- **Not a calendar client.** Brev handles incoming calendar
-  invitations; it doesn't replace Calendar.app.
+- **Not a system-calendar replacement.** Brev browses and edits
+  calendar, contact, and task data on connected Google and DAV
+  sources. Device calendars are not browsable inside Brev; the
+  one-off "create event from message" handoff to the system calendar
+  stays the only EventKit path.
 - **Not an AI product.** The optional AI Writer exists but is off by
   default and limited to compose assistance.
 
@@ -107,6 +110,25 @@ Anything not listed is roadmap, not release-blocker.
 - Inline invite banner in the reading pane (summary, start–end,
   location, organizer) with single-flight Accept / Maybe / Decline
   buttons gated on `serverSideCalendarReply`.
+
+### Calendar, Contacts, and Tasks
+
+- Dedicated Calendar, Contacts, and Tasks windows on macOS and
+  full-screen surfaces on iOS, backed by connected Google and DAV
+  sources. Browsing works read-only; editing needs a source that
+  reports write capability.
+- Events: day/week/month browsing, event detail with attendee state,
+  and create/edit/delete including recurring-edit scopes for the whole
+  series or this-and-future occurrences. Single-occurrence edits are
+  not supported yet.
+- Contacts: people browsing with names, addresses, organizations, and
+  groups; create/edit/delete with group memberships on CardDAV books
+  and Google groups. New contact groups cannot be created from Brev,
+  and duplicate contacts are not merged.
+- Tasks: task lists grouped by collection with completion state, plus
+  create, complete, edit, and delete. Writes go straight to the
+  provider with no offline queue, so a failed write surfaces as an
+  error instead of being retried later.
 
 ### Avatars
 
@@ -300,12 +322,12 @@ Future/deferred:
 - S/MIME parity beyond the current macOS-only outbound implementation. iOS
   remains fail-closed until a public, standards-compliant CMS encoder is
   available or an audited permissive implementation is adopted.
-- Client-side calendar invite handling via iMIP plus optional
-  CalDAV write target. `BrevCalendar`'s ICS parser is already the
-  fallback path.
-- AI Writer for user-configured providers (OpenAI-compatible, Ollama / local
-  LLM, and custom endpoints), directly connected from the device with a
-  visible destination label and no Brev-operated token/credit service.
+- Calendar/contact result groups inside mail search, Meet creation,
+  Drive picking, and Notes.
+- Single-occurrence edits of recurring events. The editor currently
+  scopes changes to the whole series or this-and-future occurrences.
+- Contact-group creation and duplicate merging across sources.
+- Offline queues for calendar, contact, and task writes.
 
 ### v3+ — recorded, not architected
 
@@ -321,15 +343,13 @@ them. They are not committed.
 - Read-side AI features (summarize, triage) gated on local-LLM-only
   paths and separate consent.
 
-### Calendar and Contacts roadmap
+### Calendar and Contacts status
 
-Brev currently ships mail-related calendar and contact workflows. First-class
-Google and DAV Calendar/Contacts browsing and authoring is accepted scope under
+Calendar, Contacts, and Tasks browsing and authoring ship under
 [ADR-0072](ADRs/0072-provider-neutral-calendar-contact-authoring.md) (superseding
-ADR-0039's authoring boundary) and is tracked by issues #3–#11. It is roadmap,
-not shipped functionality — availability is claimed only as each slice is
-implemented and verified. Tasks, Meet creation, Drive picking and Notes remain
-separate follow-ups.
+ADR-0039's authoring boundary) for connected Google and DAV sources; availability
+still depends on the source reporting write capability, and the roadmap slices
+that remain open are listed under Future/deferred above.
 
 ### Permanent non-goals
 

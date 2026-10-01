@@ -373,6 +373,81 @@ struct CompactSettingsViewSmokeTests {
         #endif
     }
 
+    @Test("calendar and contacts settings render with roadmap detail collapsed")
+    @MainActor
+    func calendarContactsSettingsRenderCollapsedRoadmap() async throws {
+        let view = CompactSettingsViewContainer(
+            accountStore: InMemoryAccountStore(),
+            initialSection: .calendarContacts
+        )
+
+        #if os(macOS)
+        let image = try await renderMacImage(
+            view
+                .frame(width: 860, height: 760)
+                .background(BrevTheme.brevPaper.bgPrimary.color)
+                .brevTheme(.brevPaper),
+            width: 860,
+            height: 760
+        )
+        try recordArtifactIfRequested(image, name: "calendar-contacts-collapsed-860x760")
+        #elseif canImport(UIKit)
+        let image = ImageRenderer(
+            content: view
+                .frame(width: 860, height: 760)
+                .background(BrevTheme.brevPaper.bgPrimary.color)
+                .brevTheme(.brevPaper)
+        )
+        image.scale = 2
+        try recordArtifactIfRequested(#require(image.uiImage), name: "calendar-contacts-collapsed-860x760")
+        #else
+        Issue.record("No supported image renderer is available on this platform.")
+        #endif
+    }
+
+    @Test("settings search expands the capability disclosure that owns its target")
+    @MainActor
+    func settingsSearchExpandsCapabilityDisclosure() async throws {
+        for target in ["Available now", "Tasks browsing"] {
+            let view = CalendarContactsSection()
+                .environment(\.settingsSearchTarget, target)
+                .frame(width: 860, height: 760)
+                .background(BrevTheme.brevPaper.bgPrimary.color)
+                .brevTheme(.brevPaper)
+
+            #if os(macOS)
+            let image = try await renderMacImage(view, width: 860, height: 760)
+            try recordArtifactIfRequested(image, name: "calendar-contacts-search-\(target)")
+            #elseif canImport(UIKit)
+            let renderer = ImageRenderer(content: view)
+            renderer.scale = 2
+            try recordArtifactIfRequested(
+                #require(renderer.uiImage),
+                name: "calendar-contacts-search-\(target)"
+            )
+            #else
+            Issue.record("No supported image renderer is available on this platform.")
+            #endif
+        }
+    }
+
+    @Test("settings search expands the import and export disclosure on macOS")
+    @MainActor
+    func settingsSearchExpandsImportExportDisclosure() async throws {
+        #if os(macOS)
+        let defaults = try Self.makeDefaults(named: "security-search-disclosure")
+        let view = SecuritySection(settingsStore: SettingsPersistenceStore(defaults: defaults))
+            .environment(\.settingsSearchTarget, "Allow private material in exports")
+            .frame(width: 860, height: 760)
+            .background(BrevTheme.brevPaper.bgPrimary.color)
+            .brevTheme(.brevPaper)
+        let image = try await renderMacImage(view, width: 860, height: 760)
+        try recordArtifactIfRequested(image, name: "security-search-import-export")
+        #else
+        Issue.record("The import and export disclosure is a macOS-only surface.")
+        #endif
+    }
+
     private static func makeDefaults(named name: String) throws -> UserDefaults {
         let suiteName = "CompactSettingsViewSmokeTests-\(name)-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

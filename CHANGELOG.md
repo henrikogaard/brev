@@ -615,6 +615,16 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Privacy & Security and Calendar & Contacts now lead with the controls
+  people change: the S/MIME key-material list, draft editor, and destructive
+  actions sit behind "Manage key material", the import/export toggles behind
+  "Advanced", and the calendar, contact, and task capability lists behind
+  "Capabilities and roadmap". Settings search still reaches every relocated
+  control and opens its disclosure; persisted values are unchanged.
+- The Calendar, Contacts, and Tasks status in the README now matches shipped
+  scope: browsing and authoring on connected Google and DAV sources, with
+  scoped calendar/contact results inside mail search still roadmap.
+
 - Folder rows in the mailbox sidebar align flush under the section headers
   (a narrower depth indent on both platforms), and a new Settings →
   Mailbox View → Folders → "Sidebar icons" toggle hides the leading

@@ -35,9 +35,11 @@ enum CalendarContactsCapabilityKind: Sendable, Hashable {
     case googleSourceEnablement
     case readOnlyCalendarBrowsing
     case readOnlyContactsBrowsing
+    case tasksBrowsing
     case unifiedPIMSearch
     case eventAuthoring
     case contactAuthoring
+    case tasksAuthoring
 }
 
 struct CalendarContactsCapabilityPresentation: Sendable, Hashable, Identifiable {
@@ -103,16 +105,14 @@ enum CalendarContactsScopePresentation {
 
             CalendarContactsCapabilityPresentation(
                 kind: .googleSourceEnablement,
-                title: String(localized: "Google Calendar and Contacts", bundle: .module),
+                title: String(localized: "Google Calendar & Contacts", bundle: .module),
                 detail: String(
                     localized: "Enable Calendar or Contacts on a connected Google account from the Sources list; authorization adds the read-only scope for that feature.",
                     bundle: .module
                 ),
                 status: .available,
                 symbolName: "g.circle"
-            )
-        ],
-        unavailableCapabilities: [
+            ),
             CalendarContactsCapabilityPresentation(
                 kind: .readOnlyCalendarBrowsing,
                 title: String(localized: "Calendar browsing", bundle: .module),
@@ -120,7 +120,7 @@ enum CalendarContactsScopePresentation {
                     localized: "Day, week, and month views over connected calendar sources.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
+                status: .available,
                 symbolName: "calendar"
             ),
             CalendarContactsCapabilityPresentation(
@@ -130,18 +130,18 @@ enum CalendarContactsScopePresentation {
                     localized: "People browsing over connected contact sources with names, email addresses, organizations, and groups.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
+                status: .available,
                 symbolName: "person.2"
             ),
             CalendarContactsCapabilityPresentation(
-                kind: .unifiedPIMSearch,
-                title: String(localized: "Calendar/contact search results", bundle: .module),
+                kind: .tasksBrowsing,
+                title: String(localized: "Tasks browsing", bundle: .module),
                 detail: String(
-                    localized: "Scoped calendar and contact result groups inside mail search without mixing provider semantics.",
+                    localized: "Task lists from connected sources, grouped by collection with completion state.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
-                symbolName: "magnifyingglass"
+                status: .available,
+                symbolName: "checklist"
             ),
             CalendarContactsCapabilityPresentation(
                 kind: .eventAuthoring,
@@ -150,7 +150,7 @@ enum CalendarContactsScopePresentation {
                     localized: "Create and manage events on writable calendar sources.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
+                status: .available,
                 symbolName: "calendar.badge.plus"
             ),
             CalendarContactsCapabilityPresentation(
@@ -160,8 +160,30 @@ enum CalendarContactsScopePresentation {
                     localized: "Create and manage contacts on writable contact sources.",
                     bundle: .module
                 ),
-                status: .notAvailableYet,
+                status: .available,
                 symbolName: "person.crop.circle.badge.plus"
+            ),
+            CalendarContactsCapabilityPresentation(
+                kind: .tasksAuthoring,
+                title: String(localized: "Task editing", bundle: .module),
+                detail: String(
+                    localized: "Create, complete, and manage tasks on writable task sources.",
+                    bundle: .module
+                ),
+                status: .available,
+                symbolName: "checklist"
+            )
+        ],
+        unavailableCapabilities: [
+            CalendarContactsCapabilityPresentation(
+                kind: .unifiedPIMSearch,
+                title: String(localized: "Calendar/contact search results", bundle: .module),
+                detail: String(
+                    localized: "Scoped calendar and contact result groups inside mail search without mixing provider semantics.",
+                    bundle: .module
+                ),
+                status: .notAvailableYet,
+                symbolName: "magnifyingglass"
             )
         ]
     )
@@ -169,6 +191,7 @@ enum CalendarContactsScopePresentation {
 
 struct CalendarContactsSection: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsSearchTarget) private var searchTarget
 
     /// Live source-list model; nil in previews and tests that only render
     /// the capability summary.
@@ -177,6 +200,9 @@ struct CalendarContactsSection: View {
     let googleAccounts: [BrevAccount]
 
     private let summary = CalendarContactsScopePresentation.summary
+
+    /// Roadmap detail stays collapsed; settings search expands it.
+    @State private var showsCapabilities = false
 
     init(
         model: PIMSourceSettingsModel? = nil,
@@ -190,20 +216,11 @@ struct CalendarContactsSection: View {
         SectionScaffold(
             title: String(localized: "Calendar & Contacts", bundle: .module),
             subtitle: String(
-                localized: "Brev stays mail-first while making calendar and contact data easier to inspect.",
+                localized: "Connect optional Google or DAV sources; available actions depend on the source.",
                 bundle: .module
             )
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
-                SettingsInfoCallout(
-                    symbolName: "scope",
-                    message: String(
-                        localized: "Calendar and Contacts are being added through optional Google and DAV sources. Available actions depend on the connected source.",
-                        bundle: .module
-                    ),
-                    tone: .info
-                )
-
                 if let model {
                     PIMSourcesSettingsView(
                         model: model,
@@ -211,9 +228,28 @@ struct CalendarContactsSection: View {
                     )
                 }
 
+                capabilityDisclosure
+            }
+        }
+        .task {
+            await model?.load()
+        }
+        .onChange(of: searchTarget, initial: true) { _, target in
+            expandCapabilities(matching: target)
+        }
+    }
+
+    /// Capability lists are reference material, not the primary action, so
+    /// they sit behind one disclosure; settings search opens it on demand.
+    private var capabilityDisclosure: some View {
+        DisclosureGroup(
+            String(localized: "Capabilities and roadmap", bundle: .module),
+            isExpanded: $showsCapabilities
+        ) {
+            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 capabilityGroup(
                     title: String(localized: "Available now", bundle: .module),
-                    subtitle: String(localized: "Calendar and contacts already support mail workflows.", bundle: .module),
+                    subtitle: String(localized: "Backed by your connected sources.", bundle: .module),
                     symbolName: "checkmark.circle",
                     capabilities: summary.currentCapabilities
                 )
@@ -228,11 +264,27 @@ struct CalendarContactsSection: View {
                     capabilities: summary.unavailableCapabilities
                 )
             }
+            .padding(.top, BrevSpacing.sm)
         }
-        .task {
-            await model?.load()
+        .brevFont(.caption)
+    }
+
+    /// Expands the disclosure when settings search targets the group heading
+    /// or any capability row inside it.
+    private func expandCapabilities(matching target: String?) {
+        guard let target else { return }
+        let detailTitles = Self.capabilityGroupTitles
+            + summary.currentCapabilities.map(\.title)
+            + summary.unavailableCapabilities.map(\.title)
+        if detailTitles.contains(target) {
+            showsCapabilities = true
         }
     }
+
+    private static let capabilityGroupTitles = [
+        String(localized: "Available now", bundle: .module),
+        String(localized: "Not available yet", bundle: .module),
+    ]
 
     private func capabilityGroup(
         title: String,

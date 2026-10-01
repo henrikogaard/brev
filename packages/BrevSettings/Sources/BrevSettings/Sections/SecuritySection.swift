@@ -17,6 +17,7 @@ import SwiftUI
 
 struct SecuritySection: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsSearchTarget) private var searchTarget
     @State private var encryptionSettings: EncryptionSettings
     @State private var keyMaterialSettings: SecurityKeyMaterialSettings
     @State private var draftRecord = DraftRecord.defaults
@@ -25,6 +26,10 @@ struct SecuritySection: View {
     @State private var typedConfirmationInput = ""
     @State private var materialOperationMessage: String?
     @State private var exportPreview: ExportPreview?
+    /// Specialist surfaces stay collapsed until asked for; settings search
+    /// expands the disclosure that owns its target.
+    @State private var showsKeyMaterialDetails = false
+    @State private var showsImportExportDetails = false
 
     private let settingsStore: SettingsPersistenceStore
     private let materialStore: any SecurityKeyMaterialStore
@@ -71,6 +76,9 @@ struct SecuritySection: View {
         }
         .sheet(item: $exportPreview) { preview in
             exportPreviewSheet(preview)
+        }
+        .onChange(of: searchTarget, initial: true) { _, target in
+            expandDetails(matching: target)
         }
     }
 
@@ -148,16 +156,12 @@ struct SecuritySection: View {
         SettingsGroup(
             title: String(localized: "Local key material", bundle: .module),
             subtitle: String(
-                localized: "Inspect, add metadata records, and remove local key/certificate catalog entries.",
+                localized: "Certificates Brev can use for signing and encryption.",
                 bundle: .module
             ),
             symbolName: "key.viewfinder"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                draftEditor
-
-                BrevDivider()
-
                 if keyMaterialSettings.records.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "key.slash",
@@ -166,29 +170,48 @@ struct SecuritySection: View {
                     )
                 } else {
                     ForEach(sortedRecords) { record in
-                        recordRow(record)
+                        recordSummaryRow(record)
                     }
                 }
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton("Remove All S/MIME", style: .destructive, bundle: .module) {
-                        requestBulkDelete(.removeAllSMIME)
-                    }
-                    .disabled(!keyMaterialSettings.records.contains(where: { $0.family == .smime }))
+                DisclosureGroup(
+                    String(localized: "Manage key material", bundle: .module),
+                    isExpanded: $showsKeyMaterialDetails
+                ) {
+                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                        if !keyMaterialSettings.records.isEmpty {
+                            ForEach(sortedRecords) { record in
+                                recordRow(record)
+                            }
 
-                    BrevButton(String(localized: "Remove Everything", bundle: .module), style: .destructive) {
-                        requestBulkDelete(.removeAllMaterial)
-                    }
-                    .disabled(keyMaterialSettings.records.isEmpty)
-                }
+                            BrevDivider()
+                        }
 
-                if let materialOperationMessage {
-                    SettingsInfoCallout(
-                        symbolName: "key",
-                        message: materialOperationMessage,
-                        tone: .info
-                    )
+                        draftEditor
+
+                        HStack(spacing: BrevSpacing.sm) {
+                            BrevButton("Remove All S/MIME", style: .destructive, bundle: .module) {
+                                requestBulkDelete(.removeAllSMIME)
+                            }
+                            .disabled(!keyMaterialSettings.records.contains(where: { $0.family == .smime }))
+
+                            BrevButton(String(localized: "Remove Everything", bundle: .module), style: .destructive) {
+                                requestBulkDelete(.removeAllMaterial)
+                            }
+                            .disabled(keyMaterialSettings.records.isEmpty)
+                        }
+
+                        if let materialOperationMessage {
+                            SettingsInfoCallout(
+                                symbolName: "key",
+                                message: materialOperationMessage,
+                                tone: .info
+                            )
+                        }
+                    }
+                    .padding(.top, BrevSpacing.sm)
                 }
+                .brevFont(.caption)
             }
         }
     }
@@ -211,25 +234,34 @@ struct SecuritySection: View {
                     }
                 }
 
-                SettingsToggleRow(
-                    symbolName: "lock.open",
-                    title: String(localized: "Allow private material in exports", bundle: .module),
-                    subtitle: String(
-                        localized: "When enabled, exports may include private key material. Use only on secure devices.",
-                        bundle: .module
-                    ),
-                    isOn: importExportBinding(for: \.includePrivateMaterialInExport)
-                )
+                DisclosureGroup(
+                    String(localized: "Advanced", bundle: .module),
+                    isExpanded: $showsImportExportDetails
+                ) {
+                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                        SettingsToggleRow(
+                            symbolName: "lock.open",
+                            title: String(localized: "Allow private material in exports", bundle: .module),
+                            subtitle: String(
+                                localized: "When enabled, exports may include private key material. Use only on secure devices.",
+                                bundle: .module
+                            ),
+                            isOn: importExportBinding(for: \.includePrivateMaterialInExport)
+                        )
 
-                SettingsToggleRow(
-                    symbolName: "arrow.triangle.2.circlepath",
-                    title: String(localized: "Replace existing records on import", bundle: .module),
-                    subtitle: String(
-                        localized: "Allow importing over existing fingerprints instead of skipping duplicates.",
-                        bundle: .module
-                    ),
-                    isOn: importExportBinding(for: \.allowReplacingExistingMaterialOnImport)
-                )
+                        SettingsToggleRow(
+                            symbolName: "arrow.triangle.2.circlepath",
+                            title: String(localized: "Replace existing records on import", bundle: .module),
+                            subtitle: String(
+                                localized: "Allow importing over existing fingerprints instead of skipping duplicates.",
+                                bundle: .module
+                            ),
+                            isOn: importExportBinding(for: \.allowReplacingExistingMaterialOnImport)
+                        )
+                    }
+                    .padding(.top, BrevSpacing.sm)
+                }
+                .brevFont(.caption)
             }
         }
     }
@@ -331,6 +363,60 @@ struct SecuritySection: View {
         .padding(BrevSpacing.sm)
         .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
+
+    /// Compact identity row: what is trusted stays visible while the
+    /// fingerprint and per-record actions live in the detail disclosure.
+    private func recordSummaryRow(_ record: SecurityKeyMaterialSettings.Record) -> some View {
+        HStack(alignment: .top, spacing: BrevSpacing.sm) {
+            Image(systemName: "key")
+                .symbolRenderingMode(.hierarchical)
+                .foregroundStyle(theme.textSecondary.color)
+                .frame(width: 18)
+
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(record.label)
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textPrimary.color)
+                Text(summaryDetail(for: record))
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+
+            Spacer(minLength: BrevSpacing.sm)
+
+            Text(trustLabel(for: record.trust))
+                .brevFont(.caption)
+                .foregroundStyle(record.trust == .trusted ? theme.success.color : theme.textTertiary.color)
+        }
+    }
+
+    private func summaryDetail(for record: SecurityKeyMaterialSettings.Record) -> String {
+        var parts = [String(localized: "S/MIME", bundle: .module)]
+        if record.canSign {
+            parts.append(String(localized: "Can sign", bundle: .module))
+        }
+        if record.canEncrypt {
+            parts.append(String(localized: "Can encrypt", bundle: .module))
+        }
+        if let emailAddress = record.emailAddress, !emailAddress.isEmpty {
+            parts.append(emailAddress)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// Expands the disclosure that owns a settings-search target so search
+    /// still reaches rows behind progressive disclosure.
+    private func expandDetails(matching target: String?) {
+        guard let target else { return }
+        if Self.importExportDetailTitles.contains(target) {
+            showsImportExportDetails = true
+        }
+    }
+
+    private static let importExportDetailTitles = [
+        String(localized: "Allow private material in exports", bundle: .module),
+        String(localized: "Replace existing records on import", bundle: .module),
+    ]
 
     private var sortedRecords: [SecurityKeyMaterialSettings.Record] {
         keyMaterialSettings.records.sorted {
