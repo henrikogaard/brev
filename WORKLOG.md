@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-10-01 — Agent — Favourite shortcut glyph
+
+- Goal: critique item 3 — a favourite shortcut row and the folder of the same
+  name used the same glyph, so the two read as the same object.
+- Changed: favourite rows render their symbol filled
+  (`.symbolVariant(.fill)`), keeping the outlined glyph for folders in the
+  account sections.
+- Verified: `swift build --package-path packages/BrevMail`; `MailboxFavorites`
+  suites green.
+- Not changed, with reasons: item 1 (favourites/account duplication) changes
+  the merged default of "All inboxes + account inboxes first" and needs a
+  product call; item 4's chevron on favourite rows is the standard iOS
+  drill-in affordance and reads correctly.
+- Handoff: PR targets `main`.
+
 ## 2026-10-01 — Agent — Unread marker on message rows (critique item 6)
 
 - Goal: the hard critique found the row opening with two competing circles —

@@ -68,6 +68,12 @@ All notable changes to Brev are documented here.
   unread mail.
 
 
+### Changed
+
+- Favourite mailbox shortcuts use filled icons so they no longer look
+  identical to the folder of the same name in the account sections.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
