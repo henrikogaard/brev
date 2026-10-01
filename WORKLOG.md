@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-10-01 — Agent — Unread marker on message rows (critique item 6)
+
+- Goal: the hard critique found the row opening with two competing circles —
+  the unread dot and the avatar.
+- Changed: `MessageListRow.unreadDot` became `unreadMarker`, a 3-point bar in
+  the leading gutter at the sender's line height. The gutter keeps the same
+  width for read and unread rows, the "Unread" accessibility label stays on
+  the combined row element, and the subject line keeps the colour/weight
+  signal.
+- Verified: `swift build --package-path packages/BrevMail`;
+  `MessageListRowIndicator` + `MessageListPresentation` suites (35 tests,
+  3 suites) green.
+- Skipped: pixel-suite re-record (`MessageListRowSnapshotTests` is deferred in
+  CI and this host is macOS 27).
+- Handoff: part of the 16-item critique batch; PR targets `main`.
+
 ## 2026-10-01 — Agent — macOS message-list header
 
 - Goal: item 8 of the 2026-09-30 visual review — the desktop message list had

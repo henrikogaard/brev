@@ -3618,7 +3618,7 @@ struct MessageListRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            unreadDot
+            unreadMarker
             if showAvatar, !usesAccessibilityLayout {
                 BrevAvatarView(
                     email: header.from.email,
@@ -3782,17 +3782,22 @@ struct MessageListRow: View {
     private var selectionFill: Color { selectionPalette.background.color }
 
     @ViewBuilder
-    private var unreadDot: some View {
-        let diameter: CGFloat = 8
-        Circle()
+    /// Unread marker: a thin bar in the row's leading gutter.
+    ///
+    /// The row used to open with an 8-point dot beside the avatar — two
+    /// circles competing before any text was read. The bar keeps the gutter
+    /// width stable between read and unread rows, carries the same "Unread"
+    /// label for the combined accessibility element, and leaves colour and
+    /// weight to the subject line.
+    private var unreadMarker: some View {
+        let width: CGFloat = 3
+        let height = max(12, textSize.listTitlePointSize * 1.1)
+        return RoundedRectangle(cornerRadius: width / 2)
             .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-            .frame(width: diameter, height: diameter)
-            // Centre the dot on the sender's first line rather than a fixed
-            // offset so it tracks the mailbox text-size preference.
-            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - diameter) / 2))
-            // The dot is the row's only unread affordance at regular widths —
-            // give it a label so the combined row element announces "Unread"
-            // rather than staying silent (compact rows carry a status value).
+            .frame(width: width, height: height)
+            // Align the bar with the sender's first line so it tracks the
+            // mailbox text-size preference.
+            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - height) / 2))
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
             .accessibilityHidden(header.isRead)
     }

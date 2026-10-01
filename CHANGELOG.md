@@ -61,6 +61,13 @@ All notable changes to Brev are documented here.
   untitled.
 
 
+### Changed
+
+- Message rows mark unread with a thin leading bar instead of a second circle
+  beside the avatar, leaving the row's leading gutter stable for read and
+  unread mail.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
