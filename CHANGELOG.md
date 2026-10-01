@@ -54,6 +54,14 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- Settings panes use one 680-point content column, callouts fill their row,
+  Mailbox View and Compose no longer repeat their pane name as a heading, and
+  Mailbox View shows Reading, Message list, Folders and Browser in a single
+  scroll instead of a segmented control inside the pane.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing

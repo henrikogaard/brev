@@ -24,15 +24,20 @@ struct SectionScaffold<Content: View>: View {
     @Environment(\.settingsScopeCaption) private var scopeCaption
     let title: String
     let subtitle: String?
+    /// Panes whose tab row already names them hide the repeated heading so the
+    /// same word is not the pane title, the tab and the first group at once.
+    let showsTitle: Bool
     let content: Content
 
     init(
         title: String,
         subtitle: String? = nil,
+        showsTitle: Bool = true,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.subtitle = subtitle
+        self.showsTitle = showsTitle
         self.content = content()
     }
 
@@ -44,9 +49,11 @@ struct SectionScaffold<Content: View>: View {
                 // content rather than as one more group in the stack.
                 VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.xl)) {
                     VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                        Text(title)
-                            .brevFont(.headline)
-                            .foregroundStyle(theme.textPrimary.color)
+                        if showsTitle {
+                            Text(title)
+                                .brevFont(.headline)
+                                .foregroundStyle(theme.textPrimary.color)
+                        }
                         if let subtitle {
                             Text(subtitle)
                                 .brevFont(.subheadline)
@@ -61,7 +68,7 @@ struct SectionScaffold<Content: View>: View {
                     }
                     content
                 }
-                .frame(maxWidth: 760, alignment: .leading)
+                .frame(maxWidth: 680, alignment: .leading)
                 .padding(.horizontal, horizontalPadding)
                 .padding(.top, topPadding)
                 .padding(.bottom, BrevSpacing.xl)

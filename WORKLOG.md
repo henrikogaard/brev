@@ -1,5 +1,29 @@
 # Worklog
 
+## 2026-10-01 — Agent — Settings layout polish (items 4, 5, 6, 7)
+
+- Goal: the remaining settings items from the 2026-09-30 visual review.
+- Changed:
+  - Item 4 — `SettingsInfoCallout` now fills its row (`maxWidth: .infinity,
+    alignment: .leading`) instead of hugging its text, so callouts share the
+    width and indent of the rows above them.
+  - Item 5 — `SectionScaffold` gained `showsTitle`; Mailbox View and Compose
+    hide the heading when the tab row already names the pane, removing the
+    word appearing as pane title and tab label at once.
+  - Item 6 — Mailbox View flattened: the nested segmented control
+    (Reading/Message list/Folders/Browser) is gone and the four groups render
+    in one scroll. Settings search relies on the scaffold's scroll-to-target,
+    so `selectPane` and `selectedPane` were removed with it.
+  - Item 7 — the shared content column tightened from 760 to 680 points so
+    panes with little content do not leave a wide empty band.
+- Verified: `swift test --package-path packages/BrevSettings` excluding the
+  pixel suites — 409 tests / 61 suites pass; `scripts/format.sh` and
+  `scripts/lint.sh` clean.
+- Skipped: pixel-suite re-record (BrevSettingsSnapshotTests covers Mailbox
+  View and Appearance; the suites are deferred in CI and this host is
+  macOS 27, so recording here would replace macOS-26 baselines).
+- Handoff: branch `fix/settings-layout-polish`, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the
