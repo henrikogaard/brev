@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-10-01 — Agent — iOS row hierarchy and group headers (menu items 5, 8)
+
+- Goal: critique items 5 and 8 — the row set two bold lines, and a date
+  group's count sat at the opposite edge from its label.
+- Changed: the subject is always regular, leaving the sender's `.bold` as the
+  row's only heavy weight while colour and the leading unread bar carry read
+  state; the date-group count renders next to its title ("· 3") instead of
+  being pushed to the trailing edge.
+- Verified: `swift build --package-path packages/BrevMail`;
+  `MessageListPresentation` + `MessageListRowIndicator` suites (35 tests,
+  3 suites) green.
+- Not changed: item 7 (move row status glyphs out of the trailing column) and
+  item 10 (row separation) both restructure the row's layout and need a
+  rendered check on the simulator first — the machine is still under memory
+  pressure.
+- Handoff: PR targets `main`.
+
 ## 2026-10-01 — Agent — Favourite shortcut glyph
 
 - Goal: critique item 3 — a favourite shortcut row and the folder of the same

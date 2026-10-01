@@ -74,6 +74,12 @@ All notable changes to Brev are documented here.
   identical to the folder of the same name in the account sections.
 
 
+### Changed
+
+- Message subjects use one regular weight so the sender is the row's only bold
+  line, and date-group headers keep their message count beside the label.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
