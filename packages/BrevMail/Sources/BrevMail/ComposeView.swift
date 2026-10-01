@@ -1233,8 +1233,11 @@ public struct ComposeView: View {
             }
         } label: {
             #if os(macOS)
-            // Text Send in the chrome row instead of a filled capsule —
-            // reads as a toolbar action and matches the iOS treatment.
+            // macOS has room for a real primary action: a plain label at the
+            // window edge read as static text, and its disabled state was a
+            // dimmed grey that gave no hint it was a control. The capsule uses
+            // the theme accent and keeps the same hit target; iOS keeps Apple
+            // Mail's text treatment.
             Group {
                 if isSending {
                     ProgressView()
@@ -1243,13 +1246,20 @@ public struct ComposeView: View {
                 } else {
                     Text(verbatim: pendingUndoSendTask != nil
                         ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
+                        .foregroundStyle(
+                            isDisabled ? theme.textTertiary.color : theme.bgPrimary.color
+                        )
                 }
             }
             .brevFont(.subheadline).fontWeight(.semibold)
-            .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.accent.color)
             .lineLimit(1)
-            .padding(.horizontal, BrevSpacing.xs)
+            .padding(.horizontal, BrevSpacing.md)
             .frame(minHeight: toolbarMetrics.hitTargetSize)
+            .background(
+                Capsule().fill(
+                    isDisabled ? theme.accentMuted.color : theme.accent.color
+                )
+            )
             .contentShape(Rectangle())
             #else
             // Apple Mail-style Send: bold accent text in the chrome row

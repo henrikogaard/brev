@@ -54,6 +54,12 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- The macOS composer shows Send as a filled accent button with an obvious
+  disabled state instead of plain text.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
