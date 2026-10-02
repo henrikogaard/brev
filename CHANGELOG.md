@@ -11,6 +11,10 @@ All notable changes to Brev are documented here.
   fresh install still opened Comfortable; every density `@AppStorage` default
   and the settings preview now use `MailboxListDensity.platformDefault`, while
   stored preferences keep winning.
+- Unblocking a sender in Settings now updates open message lists immediately;
+  the "Blocked sender" indicator disappears without restarting the view.
+  Saving the blocklist posts a change notification that lists observe, and
+  message rows derive their status glyphs once per render.
 
 ### Added
 

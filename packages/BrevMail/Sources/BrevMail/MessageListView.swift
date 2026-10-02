@@ -245,6 +245,13 @@ public struct MessageListView: View {
             .onReceive(NotificationCenter.default.publisher(for: .brevFollowUpDidChange)) { _ in
                 followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             }
+            .onReceive(
+                NotificationCenter.default.publisher(for: BlockedSendersSettings.Key.didChangeNotification)
+            ) { _ in
+                blockedSenderEmailSet = Set(
+                    BlockedSendersSettings.load().blockedEmails.map { $0.lowercased() }
+                )
+            }
             .onChange(of: headers) {
                 refreshPinnedMessageIDSet()
                 scheduleDebouncedThreadCountsRebuild()
@@ -3553,6 +3560,12 @@ struct MessageListRow: View {
 
     @State private var isHovered = false
     @State private var threadToggleFrame: CGRect = .zero
+    /// Status glyphs (answered/forwarded) derived once per render pass;
+    /// both the visible icons and the accessibility value read this instead
+    /// of rebuilding the array at each call site.
+    private var statusIndicators: [MessageListRowIndicator] {
+        MessageListRowIndicator.indicators(for: header)
+    }
 
     init(
         header: MessageHeader,
@@ -3746,7 +3759,7 @@ struct MessageListRow: View {
         if !header.isRead {
             values.append(String(localized: "Unread", bundle: .module))
         }
-        values.append(contentsOf: MessageListRowIndicator.indicators(for: header).map(\.accessibilityLabel))
+        values.append(contentsOf: statusIndicators.map(\.accessibilityLabel))
         if isPinned {
             values.append(String(localized: "Pinned", bundle: .module))
         }
@@ -3973,7 +3986,7 @@ struct MessageListRow: View {
     @ViewBuilder
     private var rowStatusIcons: some View {
         Group {
-            ForEach(MessageListRowIndicator.indicators(for: header), id: \.self) { indicator in
+            ForEach(statusIndicators, id: \.self) { indicator in
                 Image(systemName: indicator.symbolName)
                     .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
                     .font(fontFamily.font(size: max(12, textSize.captionPointSize)))
