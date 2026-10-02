@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-10-02 — Agent — Desktop Compact density default (critique item 12, ADR-0085)
+
+- Goal: the hard critique found the desktop list wasting the window's height at
+  the Comfortable default.
+- Changed: `MailboxListDensity.platformDefault` (`.compact` on macOS,
+  `.comfortable` on iOS) now backs the `@AppStorage` default in the twelve
+  density call sites; the decision is recorded in
+  `ADRs/0085-desktop-compact-density-default.md` because the touched file is
+  on ADR-0005's protected list. Stored preferences are untouched.
+- Verified: `swift build` for BrevDesign and BrevMail; `Mailbox list density`
+  suite (3 tests, including a new platform-default assertion);
+  `scripts/format.sh` and `scripts/lint.sh` clean (ADR gate satisfied).
+- Skipped: snapshot re-record — list snapshots now render Compact on macOS and
+  the suites are deferred in CI.
+- Handoff: independent branch, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the

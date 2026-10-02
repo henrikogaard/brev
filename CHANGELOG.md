@@ -54,6 +54,12 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- macOS starts with the Compact list density instead of Comfortable (ADR-0085);
+  an existing choice in Settings still wins.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
