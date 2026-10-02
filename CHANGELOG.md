@@ -56,14 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- macOS starts with the Compact list density instead of Comfortable (ADR-0085);
-  an existing choice in Settings still wins.
-
-
-### Changed
-
-- The reader's toolbar actions sit with the search field at the trailing edge of
-  the window instead of ending at the list column's boundary.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed
