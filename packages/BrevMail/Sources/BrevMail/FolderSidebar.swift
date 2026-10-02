@@ -669,6 +669,11 @@ public struct FolderSidebar: View {
                         HStack(spacing: BrevSpacing.sm) {
                             if showSidebarIcons {
                                 Image(systemName: favorite.symbol)
+                                    // Favourites are shortcuts, not folders:
+                                    // fill the glyph so a shortcut row does not
+                                    // read as the same object as the folder of
+                                    // the same name in the account sections.
+                                    .symbolVariant(.fill)
                                     .dynamicTypeSize(...DynamicTypeSize.large)
                                     .frame(width: sidebarMetrics.iconWidth)
                                     .foregroundStyle(theme.textSecondary.color)
