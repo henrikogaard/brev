@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-10-01 — Agent — macOS message-list header
+
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
+
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
 - Goal: work item 4 of the 2026-09-30 Brev follow-up handoff — make the
