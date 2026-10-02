@@ -1,22 +1,23 @@
 # Worklog
 
-## 2026-10-01 — Agent — macOS composer primary action
+## 2026-10-01 — Agent — macOS message-list header
 
-- Goal: item 2 of the 2026-09-30 visual review — macOS Send read as static
-  text, and its disabled state gave no hint it was a control.
-- Changed: the macOS branch of `sendButton` now draws a theme-accent capsule
-  with a contrasting label (disabled: accent-muted fill with tertiary text),
-  keeping the same hit target and Cancel Send behavior. iOS keeps the Apple
-  Mail text treatment. The Cc/Bcc reveal links already use the theme accent
-  and needed no change.
-- Verified: `swift build --package-path packages/BrevMail`;
-  `ComposeSendGuardPolicy` + `MailComposePresentationActions` suites (9
-  tests) green; `scripts/format.sh` and `scripts/lint.sh` clean.
-- Skipped: `ComposeViewMacOSSnapshotTests` / `ComposeViewSnapshotTests`
-  baseline re-record — both suites are deferred in CI (the `snapshot-macos`
-  job requires macOS 26+ and the `test` job lists them in `--skip`), and this
-  host is macOS 27, so recording here would replace macOS-26 baselines.
-- Handoff: branch `fix/macos-compose-send-affordance`, PR targets `main`.
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
 
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 

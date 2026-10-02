@@ -56,8 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- The macOS composer shows Send as a filled accent button with an obvious
-  disabled state instead of plain text.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed
