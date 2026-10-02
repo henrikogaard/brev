@@ -1,20 +1,23 @@
 # Worklog
 
-## 2026-10-01 — Agent — Mail toolbar hover help
+## 2026-10-01 — Agent — macOS message-list header
 
-- Goal: item 10 of the 2026-09-30 visual review — icon-only mail toolbar
-  controls announced a label to VoiceOver but showed no hover affordance on
-  macOS.
-- Changed: `.help(...)` on Refresh, Compose, Reply, Reply All, Forward,
-  Archive and Delete in `BrevMailRootView`, reusing the accessibility titles
-  so the tooltip and the spoken name agree. The flag button, the search
-  capsule and the composer's toolbar helper already carried help text.
-- Verified: `swift build --package-path packages/BrevMail`; focused
-  `BrevMailNativeToolbar` and `MailMessageCommandActions` suites (37 tests,
-  3 suites) green; `scripts/format.sh` and `scripts/lint.sh` clean.
-- Skipped: no rendered check for tooltips (they need a pointer); no snapshot
-  impact because help text is not drawn.
-- Handoff: branch `chore/toolbar-hover-help`, PR targets `main`.
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
 
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 

@@ -56,8 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- Mail toolbar controls in the macOS window show a hover tooltip that matches
-  the name VoiceOver already announces.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed
