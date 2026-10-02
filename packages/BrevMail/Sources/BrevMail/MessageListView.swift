@@ -3631,14 +3631,23 @@ struct MessageListRow: View {
                 // Unread subjects carry the weight and primary colour so the row
                 // has a read/unread signal beyond the 8-point dot alone. The
                 // sender keeps the emphasis established in #366.
-                Text(header.subject)
-                    .font(fontFamily.font(
-                        size: detailPointSize,
-                        weight: header.isRead ? .regular : .semibold
-                    ))
-                    .foregroundStyle(isSelected ? selectionPalette.text
-                        .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
-                    .lineLimit(usesAccessibilityLayout ? nil : (isCompactWidth ? 2 : 1))
+                // Status glyphs sit with the subject they qualify. In the
+                // trailing column they competed with the arrival time for the
+                // same right edge, leaving the row with two end points.
+                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                    Text(header.subject)
+                        .font(fontFamily.font(
+                            size: detailPointSize,
+                            weight: header.isRead ? .regular : .semibold
+                        ))
+                        .foregroundStyle(isSelected ? selectionPalette.text
+                            .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
+                        .lineLimit(usesAccessibilityLayout ? nil : (isCompactWidth ? 2 : 1))
+
+                    if contentPresentation.showsStatusIcons {
+                        rowStatusIcons
+                    }
+                }
                 if let matchedAttachmentName {
                     HStack(spacing: BrevSpacing.xxs) {
                         Image(systemName: "paperclip")
@@ -3666,13 +3675,21 @@ struct MessageListRow: View {
                             .previewLineCount)
                 }
             }
-            if contentPresentation.showsStatusIcons {
-                rowStatusIcons
-            }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, isCompactWidth ? max(12, density.verticalPadding) : density.verticalPadding)
         .background(rowBackground)
+        // Rows hid the list separator, so length alone separated them and long
+        // snippets merged into one block. A hairline keeps the continuous
+        // surface while giving the eye a stopping point.
+        .overlay(alignment: .bottom) {
+            if !isSelected {
+                Rectangle()
+                    .fill(theme.separator.color)
+                    .frame(height: 0.5)
+                    .padding(.leading, BrevSpacing.md)
+            }
+        }
         .overlay(alignment: .leading) {
             if isSelected {
                 RoundedRectangle(cornerRadius: 1)

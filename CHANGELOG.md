@@ -54,6 +54,13 @@ All notable changes to Brev are documented here.
   Sync remains strictly opt-in per source.
 
 
+### Changed
+
+- Message rows keep their status glyphs beside the subject and close with a
+  hairline separator, so the arrival time is the only element on the right
+  edge and long snippets no longer run together.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
