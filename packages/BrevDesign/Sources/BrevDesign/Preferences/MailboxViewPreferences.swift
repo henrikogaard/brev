@@ -336,6 +336,19 @@ public enum MailboxListDensity: String, Sendable, Hashable, CaseIterable, Identi
     case comfortable
     case spacious
 
+    /// Density a platform starts with before the user picks one.
+    ///
+    /// A desktop window is tall and wide enough to trade a little air for more
+    /// visible messages, while a phone screen is not. The stored preference
+    /// still wins the moment someone chooses a density in Settings.
+    public static var platformDefault: MailboxListDensity {
+        #if os(macOS)
+        .compact
+        #else
+        .comfortable
+        #endif
+    }
+
     public var id: String { rawValue }
 
     public var title: String {

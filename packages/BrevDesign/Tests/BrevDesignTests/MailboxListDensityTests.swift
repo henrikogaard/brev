@@ -19,6 +19,15 @@ import SwiftUI
 
 @Suite("Mailbox list density")
 struct MailboxListDensityTests {
+    @Test("platform default density follows the platform")
+    func platformDefaultMatchesPlatform() {
+        #if os(macOS)
+        #expect(MailboxListDensity.platformDefault == .compact)
+        #else
+        #expect(MailboxListDensity.platformDefault == .comfortable)
+        #endif
+    }
+
     #if os(macOS)
     @Test("desktop text size updates an already mounted interface label")
     @MainActor
