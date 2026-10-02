@@ -3628,14 +3628,12 @@ struct MessageListRow: View {
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 senderMetadataHeader
-                // Unread subjects carry the weight and primary colour so the row
-                // has a read/unread signal beyond the 8-point dot alone. The
-                // sender keeps the emphasis established in #366.
+                // The sender holds the row's only bold weight. The subject
+                // keeps read state in its colour while the leading unread bar
+                // carries the rest of the signal, so an unread row no longer
+                // sets two competing bold lines.
                 Text(header.subject)
-                    .font(fontFamily.font(
-                        size: detailPointSize,
-                        weight: header.isRead ? .regular : .semibold
-                    ))
+                    .font(fontFamily.font(size: detailPointSize, weight: .regular))
                     .foregroundStyle(isSelected ? selectionPalette.text
                         .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
                     .lineLimit(usesAccessibilityLayout ? nil : (isCompactWidth ? 2 : 1))
@@ -4034,12 +4032,14 @@ struct MessageListDateSectionHeader: View {
                     .brevFont(.caption)
                     .foregroundStyle(titleColor(for: presentation.style))
 
-                Spacer(minLength: BrevSpacing.xs)
-
-                Text(verbatim: "\(count)")
+                // The count stays with its label: pushed to the far edge it
+                // lost the connection to the group it counts.
+                Text(verbatim: "· \(count)")
                     .brevFont(.caption)
                     .foregroundStyle(countColor(for: presentation.style))
                     .monospacedDigit()
+
+                Spacer(minLength: BrevSpacing.xs)
             }
             .textCase(nil)
             .padding(.horizontal, BrevSpacing.md)
