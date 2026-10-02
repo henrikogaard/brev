@@ -95,7 +95,7 @@ repository checks.
 | 82 | Encryption at rest for the local mail store | Accepted |
 | 83 | Home-screen widgets share a snapshot file, never the Realm store | Accepted |
 | 84 | Offline PIM writes queue and replay on reconnect | Proposed |
-| 85 | Desktop starts in Compact list density | Proposed |
+| 85 | Desktop starts in Compact list density | Accepted |
 
 ## Conventions
 

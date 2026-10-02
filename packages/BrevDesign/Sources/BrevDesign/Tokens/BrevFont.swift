@@ -109,7 +109,7 @@ public extension View {
 }
 
 private struct BrevDesktopSizingModifier: ViewModifier {
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var densityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var densityRaw = MailboxListDensity.platformDefault.rawValue
 
     func body(content: Content) -> some View {
         #if os(macOS)

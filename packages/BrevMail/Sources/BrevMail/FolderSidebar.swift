@@ -56,7 +56,7 @@ public struct FolderSidebar: View {
     @Environment(\.networkMonitor) private var monitor
     @AppStorage("folder.disclosureState") private var disclosureStateData = Data()
     @AppStorage("mailbox.disclosureState") private var mailboxDisclosureData = Data()
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxFavorites.storageKey) private var favoritesData = Data()
     @State private var showsFavoritesEditor = false
     #if os(macOS)

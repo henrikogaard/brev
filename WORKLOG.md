@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-10-02 — Agent — Density call-site wiring follow-up
+
+- Goal: complete ADR-0085's implementation. A code review found that PR #180
+  merged the `MailboxListDensity.platformDefault` enum and its tests, but the
+  twelve `@AppStorage` call-site edits its description promised were never
+  committed; on `main` a fresh macOS install still opened Comfortable.
+- Changed: all density `@AppStorage` defaults now read
+  `platformDefault.rawValue`; the settings-preview default in
+  `MailboxViewSettings` uses `platformDefault` so the preview matches the
+  shipped start state; ADR-0085 is Accepted with a delivery note.
+- Verified: see the PR description. Snapshot suites set density explicitly
+  and are unaffected by the default change; two unit assertions that pinned
+  the old Comfortable default now assert platformDefault per ADR-0085, and
+  the mail-storage contrast smoke test pins its layout density to Comfortable
+  because its hard-coded pixel rectangle targets that layout.
+- Handoff: follow-up PR to `main`; no merge without Henrik's authorization.
+
 ## 2026-10-02 — Agent — Visual review batch (16 items)
 
 - Goal: land the 2026-10-01 hard critique batch.

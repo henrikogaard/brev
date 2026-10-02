@@ -31,7 +31,8 @@ struct MailboxViewSettingsTests {
         #expect(settings.previewLineCount == .one)
         #expect(settings.fontFamily == .system)
         #expect(settings.textSize == .medium)
-        #expect(settings.listDensity == .comfortable)
+        // ADR-0085: the platform default is .compact on macOS, .comfortable on iOS.
+        #expect(settings.listDensity == MailboxListDensity.platformDefault)
         #expect(settings.sortOrder == .newestFirst)
         #expect(settings.readingPanePlacement == .side)
         #expect(settings.showFolderStats == true)
@@ -81,7 +82,7 @@ struct MailboxViewSettingsTests {
 
         #expect(settings.fontFamily == .system)
         #expect(settings.textSize == .medium)
-        #expect(settings.listDensity == .comfortable)
+        #expect(settings.listDensity == MailboxListDensity.platformDefault)
         #expect(settings.previewLineCount == .one)
         #expect(settings.sortOrder == .newestFirst)
         #expect(settings.readingPanePlacement == .side)

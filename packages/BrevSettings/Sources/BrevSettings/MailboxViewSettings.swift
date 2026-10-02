@@ -40,7 +40,7 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
         previewLineCount: .one,
         fontFamily: .system,
         textSize: .medium,
-        listDensity: .comfortable,
+        listDensity: MailboxListDensity.platformDefault,
         sortOrder: .newestFirst,
         threadMessageOrder: .oldestFirst,
         readingPanePlacement: .side,

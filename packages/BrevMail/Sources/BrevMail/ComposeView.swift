@@ -291,7 +291,8 @@ public struct ComposeView: View {
     @AppStorage("compose.messageFormat") private var composeMessageFormatRaw = "automatic"
     @AppStorage(ComposeTextCheckingPolicy.storageKey) private var textCheckingEnabled = ComposeTextCheckingPolicy.defaultIsEnabled
     @AppStorage(MailboxViewPreferenceKey.fontFamily) private var mailboxFontFamilyRaw = MailboxFontFamily.system.rawValue
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
+        .rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var mailboxTextSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(AIWriterSettings.Key.isEnabled) private var aiEnabled = false
     @AppStorage(AIWriterSettings.Key.consentGiven) private var aiConsentGiven = false

@@ -114,7 +114,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.previewLineCount) private var previewLineCountRaw = MailboxPreviewLineCount.one.rawValue
     @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
     @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true

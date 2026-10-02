@@ -4,6 +4,14 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- The desktop now starts in Compact list density as ADR-0085 describes. The
+  call-site wiring that PR #180 described was missing from its merge, so a
+  fresh install still opened Comfortable; every density `@AppStorage` default
+  and the settings preview now use `MailboxListDensity.platformDefault`, while
+  stored preferences keep winning.
+
 ### Added
 
 - Desktop Favourites puts All Inboxes and each account inbox above collapsible
