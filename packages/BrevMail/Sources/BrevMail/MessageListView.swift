@@ -3781,7 +3781,6 @@ struct MessageListRow: View {
 
     private var selectionFill: Color { selectionPalette.background.color }
 
-    @ViewBuilder
     /// Unread marker: a thin bar in the row's leading gutter.
     ///
     /// The row used to open with an 8-point dot beside the avatar — two
@@ -3789,6 +3788,7 @@ struct MessageListRow: View {
     /// width stable between read and unread rows, carries the same "Unread"
     /// label for the combined accessibility element, and leaves colour and
     /// weight to the subject line.
+    @ViewBuilder
     private var unreadMarker: some View {
         let width: CGFloat = 3
         let height = max(12, textSize.listTitlePointSize * 1.1)
