@@ -76,7 +76,11 @@ struct MailboxFavorites: Codable, Equatable, Sendable {
     var data: Data { (try? JSONEncoder().encode(self)) ?? Data() }
 
     func isVisible(_ favorite: MailboxFavorite) -> Bool {
-        !hidden.contains(favorite.id) && (favorite.isDefault || added.contains(favorite.id))
+        // Only All Inboxes is on out of the box. Account inboxes stay available
+        // as candidates the user can add, so the folder tree owns them and the
+        // sidebar stops showing the same mailbox twice — once as a shortcut and
+        // again under its account.
+        !hidden.contains(favorite.id) && (favorite.id == .allInboxes || added.contains(favorite.id))
     }
 
     func ordered(_ candidates: [MailboxFavorite], visibleOnly: Bool = false) -> [MailboxFavorite] {
