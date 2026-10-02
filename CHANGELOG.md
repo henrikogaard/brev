@@ -56,9 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- Settings popups (conversation order, message font, reminder and delay
-  pickers) share one trailing column, so their right edges line up with the
-  switches beside them.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed
