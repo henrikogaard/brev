@@ -3618,7 +3618,7 @@ struct MessageListRow: View {
                 }
                 .buttonStyle(.plain)
             }
-            unreadDot
+            unreadMarker
             if showAvatar, !usesAccessibilityLayout {
                 BrevAvatarView(
                     email: header.from.email,
@@ -3628,18 +3628,15 @@ struct MessageListRow: View {
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 senderMetadataHeader
-                // Unread subjects carry the weight and primary colour so the row
-                // has a read/unread signal beyond the 8-point dot alone. The
-                // sender keeps the emphasis established in #366.
                 // Status glyphs sit with the subject they qualify. In the
                 // trailing column they competed with the arrival time for the
                 // same right edge, leaving the row with two end points.
                 HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                    // The sender holds the row's only bold weight. The subject
+                    // keeps read state in its colour while the leading unread
+                    // bar carries the rest of the signal.
                     Text(header.subject)
-                        .font(fontFamily.font(
-                            size: detailPointSize,
-                            weight: header.isRead ? .regular : .semibold
-                        ))
+                        .font(fontFamily.font(size: detailPointSize, weight: .regular))
                         .foregroundStyle(isSelected ? selectionPalette.text
                             .color : (header.isRead ? theme.textSecondary.color : theme.textPrimary.color))
                         .lineLimit(usesAccessibilityLayout ? nil : (isCompactWidth ? 2 : 1))
@@ -3798,18 +3795,23 @@ struct MessageListRow: View {
 
     private var selectionFill: Color { selectionPalette.background.color }
 
+    /// Unread marker: a thin bar in the row's leading gutter.
+    ///
+    /// The row used to open with an 8-point dot beside the avatar — two
+    /// circles competing before any text was read. The bar keeps the gutter
+    /// width stable between read and unread rows, carries the same "Unread"
+    /// label for the combined accessibility element, and leaves colour and
+    /// weight to the subject line.
     @ViewBuilder
-    private var unreadDot: some View {
-        let diameter: CGFloat = 8
-        Circle()
+    private var unreadMarker: some View {
+        let width: CGFloat = 3
+        let height = max(12, textSize.listTitlePointSize * 1.1)
+        return RoundedRectangle(cornerRadius: width / 2)
             .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-            .frame(width: diameter, height: diameter)
-            // Centre the dot on the sender's first line rather than a fixed
-            // offset so it tracks the mailbox text-size preference.
-            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - diameter) / 2))
-            // The dot is the row's only unread affordance at regular widths —
-            // give it a label so the combined row element announces "Unread"
-            // rather than staying silent (compact rows carry a status value).
+            .frame(width: width, height: height)
+            // Align the bar with the sender's first line so it tracks the
+            // mailbox text-size preference.
+            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - height) / 2))
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
             .accessibilityHidden(header.isRead)
     }
@@ -4046,12 +4048,14 @@ struct MessageListDateSectionHeader: View {
                     .brevFont(.caption)
                     .foregroundStyle(titleColor(for: presentation.style))
 
-                Spacer(minLength: BrevSpacing.xs)
-
-                Text(verbatim: "\(count)")
+                // The count stays with its label: pushed to the far edge it
+                // lost the connection to the group it counts.
+                Text(verbatim: "· \(count)")
                     .brevFont(.caption)
                     .foregroundStyle(countColor(for: presentation.style))
                     .monospacedDigit()
+
+                Spacer(minLength: BrevSpacing.xs)
             }
             .textCase(nil)
             .padding(.horizontal, BrevSpacing.md)

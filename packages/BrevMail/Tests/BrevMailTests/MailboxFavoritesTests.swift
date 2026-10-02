@@ -26,16 +26,24 @@ struct MailboxFavoritesTests {
                                     Folder(id: "sent", name: "Sent", role: .sent)])
     }
 
-    @Test("first use offers all inboxes and each source inbox without duplicate source identities")
-    func defaultsAndCounts() {
+    @Test("first use offers All Inboxes only; account inboxes are candidates")
+    func defaultsAndCounts() throws {
         let candidates = MailboxFavorite.candidates(sections: [section("private"), section("work")])
         let visible = MailboxFavorites(data: Data()).ordered(candidates, visibleOnly: true)
-        #expect(visible.map(\.title) == ["All Inboxes", "private", "work"])
+        // Account inboxes are no longer on by default: the folder tree owns
+        // them, and Favourites shows the same mailbox twice when they are both
+        // visible. Adding one through the editor brings it back.
+        #expect(visible.map(\.title) == ["All Inboxes"])
         #expect(Set(candidates.map(\.id)).count == 7)
         #expect(visible.first?.count == 6)
         #expect(visible.first?.countDescription == "6 unread")
         #expect(candidates.first { $0.title == "Drafts" }?.count == 2)
         #expect(candidates.first { $0.title == "Drafts" }?.countDescription == "2 drafts")
+
+        let workInbox = try #require(candidates.first { $0.title == "work" })
+        var withWorkInbox = MailboxFavorites(data: Data())
+        withWorkInbox.setVisible(true, id: workInbox.id)
+        #expect(withWorkInbox.ordered(candidates, visibleOnly: true).map(\.title) == ["All Inboxes", "work"])
     }
 
     @Test("editing persists order and visibility without losing filtered account preferences")
@@ -46,6 +54,8 @@ struct MailboxFavoritesTests {
         var settings = MailboxFavorites(data: Data())
         settings.setVisible(false, id: .allInboxes)
         settings.setVisible(true, id: privateDrafts.id)
+        settings.setVisible(true, id: workInbox.id)
+        settings.setVisible(true, id: candidates[1].id)
         settings.reorder([privateDrafts.id, workInbox.id, candidates[1].id])
         let restored = MailboxFavorites(data: settings.data)
         #expect(restored.ordered(candidates, visibleOnly: true).map(\.id)
@@ -59,6 +69,6 @@ struct MailboxFavoritesTests {
     func unavailableDestinations() {
         #expect(MailboxFavorite.candidates(sections: []).isEmpty)
         let candidates = MailboxFavorite.candidates(sections: [section("private")])
-        #expect(MailboxFavorites(data: Data("bad".utf8)).ordered(candidates, visibleOnly: true).count == 2)
+        #expect(MailboxFavorites(data: Data("bad".utf8)).ordered(candidates, visibleOnly: true).count == 1)
     }
 }
