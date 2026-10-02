@@ -56,10 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- Settings panes use one 680-point content column, callouts fill their row,
-  Mailbox View and Compose no longer repeat their pane name as a heading, and
-  Mailbox View shows Reading, Message list, Folders and Browser in a single
-  scroll instead of a segmented control inside the pane.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed

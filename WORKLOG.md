@@ -1,28 +1,23 @@
 # Worklog
 
-## 2026-10-01 — Agent — Settings layout polish (items 4, 5, 6, 7)
+## 2026-10-01 — Agent — macOS message-list header
 
-- Goal: the remaining settings items from the 2026-09-30 visual review.
-- Changed:
-  - Item 4 — `SettingsInfoCallout` now fills its row (`maxWidth: .infinity,
-    alignment: .leading`) instead of hugging its text, so callouts share the
-    width and indent of the rows above them.
-  - Item 5 — `SectionScaffold` gained `showsTitle`; Mailbox View and Compose
-    hide the heading when the tab row already names the pane, removing the
-    word appearing as pane title and tab label at once.
-  - Item 6 — Mailbox View flattened: the nested segmented control
-    (Reading/Message list/Folders/Browser) is gone and the four groups render
-    in one scroll. Settings search relies on the scaffold's scroll-to-target,
-    so `selectPane` and `selectedPane` were removed with it.
-  - Item 7 — the shared content column tightened from 760 to 680 points so
-    panes with little content do not leave a wide empty band.
-- Verified: `swift test --package-path packages/BrevSettings` excluding the
-  pixel suites — 409 tests / 61 suites pass; `scripts/format.sh` and
-  `scripts/lint.sh` clean.
-- Skipped: pixel-suite re-record (BrevSettingsSnapshotTests covers Mailbox
-  View and Appearance; the suites are deferred in CI and this host is
-  macOS 27, so recording here would replace macOS-26 baselines).
-- Handoff: branch `fix/settings-layout-polish`, PR targets `main`.
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
 
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
