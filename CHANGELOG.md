@@ -56,9 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- Settings, account setup, Calendar/Contacts/Tasks and compose surfaces now
-  inherit the theme resolved at the app root instead of re-reading it, so a
-  presented surface can no longer render the previous theme for a frame.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed

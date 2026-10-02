@@ -1,26 +1,23 @@
 # Worklog
 
-## 2026-10-01 — Agent — Root theme inheritance
+## 2026-10-01 — Agent — macOS message-list header
 
-- Goal: item 1 of the 2026-09-30 visual review asked for the appearance to be
-  resolved once at the root and inherited by every surface.
-- Context: the iOS and macOS hosts re-injected `.brevTheme(session.theme)` on
-  the settings sheet, the add-account sheet, the Calendar/Contacts/Tasks
-  covers and the compose surface. `session.theme` is refreshed by the root
-  modifier in a `.task(id: colorScheme)`, so a surface presented before that
-  ran could render the previous theme while the root already used the
-  resolved one. The reported dark-list/light-reader split did not reproduce
-  (forced dark and light system appearance render #292929 / #FFFFFF), but the
-  duplicate sources of truth were real.
-- Changed: removed 13 `.brevTheme(session.theme)` re-injections (7 iOS,
-  6 macOS). Presented surfaces now inherit the theme the root modifier
-  resolves, and `session.theme` remains the value the picker writes and the
-  modifier keeps in sync.
-- Verified: `script/build_and_run.sh --mock` (macOS) and the BrevIOS
-  simulator build both succeed; the app launches with the mock mailbox.
-- Skipped: no pixel-suite impact — the snapshot suites inject their own theme,
-  and the deferred suites were not re-recorded.
-- Handoff: branch `fix/root-theme-inheritance`, PR targets `main`.
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
 
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 

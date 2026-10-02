@@ -1802,36 +1802,41 @@ public struct BrevMailRootView: View {
                     }
                 )
             } else {
-                MessageListView(
-                    navigation: navigation,
-                    backend: selectedBackend,
-                    sourceID: navigation.selectedSourceID,
-                    canFileLocally: localBackend != nil,
-                    accountOwnedMailboxEmails: accountOwnedMailboxEmailsByAccountID[
-                        selectedBackend.account.id
-                    ] ?? [],
-                    folder: selectedFolder,
-                    allFolders: folders,
-                    searchSyntaxDescription: selectedSearchSyntaxDescription,
-                    localMessageWorkflowState: localMessageWorkflowStateBinding,
-                    isWorkBlocked: isMessageWorkBlocked,
-                    isMutationWorkBlocked: isCommandMutationBlocked,
-                    composeActions: composePresentationActions,
-                    onSelectMessage: { header in
-                        #if os(iOS)
-                        openSelectedMessageOnCompact(header: header)
-                        #endif
-                    },
-                    onMutation: { event in
-                        await handleMessageListMutation(event)
-                    },
-                    onUnreadCountChanged: { folderID, delta in
-                        applyUnreadCountChange(folderID: folderID, delta: delta)
-                    },
-                    onOpenInNewWindow: canDetachReaderWindow ? { header in
-                        openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
-                    } : nil
-                )
+                VStack(spacing: 0) {
+                    #if os(macOS)
+                    messageListHeader
+                    #endif
+                    MessageListView(
+                        navigation: navigation,
+                        backend: selectedBackend,
+                        sourceID: navigation.selectedSourceID,
+                        canFileLocally: localBackend != nil,
+                        accountOwnedMailboxEmails: accountOwnedMailboxEmailsByAccountID[
+                            selectedBackend.account.id
+                        ] ?? [],
+                        folder: selectedFolder,
+                        allFolders: folders,
+                        searchSyntaxDescription: selectedSearchSyntaxDescription,
+                        localMessageWorkflowState: localMessageWorkflowStateBinding,
+                        isWorkBlocked: isMessageWorkBlocked,
+                        isMutationWorkBlocked: isCommandMutationBlocked,
+                        composeActions: composePresentationActions,
+                        onSelectMessage: { header in
+                            #if os(iOS)
+                            openSelectedMessageOnCompact(header: header)
+                            #endif
+                        },
+                        onMutation: { event in
+                            await handleMessageListMutation(event)
+                        },
+                        onUnreadCountChanged: { folderID, delta in
+                            applyUnreadCountChange(folderID: folderID, delta: delta)
+                        },
+                        onOpenInNewWindow: canDetachReaderWindow ? { header in
+                            openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
+                        } : nil
+                    )
+                }
             }
         }
         .brevMailPaneSurface(.content)
@@ -2007,6 +2012,32 @@ public struct BrevMailRootView: View {
             || navigation.selectedSavedSearchID != nil
             || navigation.isAllAttachmentsSelected
     }
+
+    #if os(macOS)
+    /// Compact header above the desktop message list.
+    ///
+    /// macOS showed the mailbox name and counts only in the bottom status row,
+    /// so the list column had no visible title while iOS has carried one in
+    /// the navigation bar all along. This mirrors the iOS header: mailbox on
+    /// the first line, account or smart-view context on the second.
+    private var messageListHeader: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: selectedMessageDestinationTitle)
+                .brevFont(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+            if let selectedMessageDestinationContext {
+                Text(verbatim: selectedMessageDestinationContext)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+    }
+    #endif
 
     private var selectedMessageDestinationTitle: String {
         if navigation.isUnifiedInboxSelected {
