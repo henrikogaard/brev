@@ -17,6 +17,26 @@
   because its hard-coded pixel rectangle targets that layout.
 - Handoff: follow-up PR to `main`; no merge without Henrik's authorization.
 
+## 2026-10-02 — Agent — Mail list row performance and blocked-sender freshness
+
+- Goal: code-first performance audit of the mail hot paths, then land the
+  concrete fixes it justified.
+- Audit result: the list pipeline is already well optimized — presentation
+  snapshots are cached with full invalidation keys, date formatters are
+  static-cached, thread counts are precomputed, and signpost instrumentation
+  covers list build, reload, search, message open, and body render. The two
+  real findings: `MessageListRowIndicator.indicators(for:)` was rebuilt at
+  two call sites per row render, and the blocked-sender set was loaded once at
+  view init and never rebuilt, leaving the "Blocked sender" indicator stale
+  after an unblock in Settings.
+- Changed: rows derive status indicators once per render pass; the indicator
+  factory reserves its capacity; `BlockedSendersSettings.save` now posts
+  `brev.blockedSendersDidChange` and the message list rebuilds its lookup
+  set on that notification, matching the `brevFollowUpDidChange` pattern.
+- Verified: see the PR description.
+- Handoff: stacked slice PR targeting the density branch; no merge without
+  Henrik's authorization.
+
 ## 2026-10-02 — Agent — Visual review batch (16 items)
 
 - Goal: land the 2026-10-01 hard critique batch.

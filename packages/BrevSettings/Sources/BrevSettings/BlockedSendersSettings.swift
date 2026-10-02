@@ -22,6 +22,9 @@ import Foundation
 public struct BlockedSendersSettings: Codable, Equatable, Sendable {
     public enum Key {
         public static let blockedEmails = "blockedSenders.emails"
+        /// Posted whenever the blocklist changes so open lists can rebuild
+        /// their per-row lookup sets without waiting for a view recreation.
+        public static let didChangeNotification = Notification.Name("brev.blockedSendersDidChange")
     }
 
     public var blockedEmails: [String]
@@ -46,6 +49,7 @@ public struct BlockedSendersSettings: Codable, Equatable, Sendable {
     public func save(to defaults: UserDefaults = .standard) {
         guard let data = try? JSONEncoder().encode(self) else { return }
         defaults.set(data, forKey: Key.blockedEmails)
+        NotificationCenter.default.post(name: Key.didChangeNotification, object: nil)
     }
 
     // MARK: - Queries
