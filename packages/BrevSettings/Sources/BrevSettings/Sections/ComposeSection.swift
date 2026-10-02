@@ -40,7 +40,8 @@ struct ComposeSection: View {
     var body: some View {
         SectionScaffold(
             title: String(localized: "Compose", bundle: .module),
-            subtitle: String(localized: "Local defaults for replies, forwarding, formatting, and send safety.", bundle: .module)
+            subtitle: String(localized: "Local defaults for replies, forwarding, formatting, and send safety.", bundle: .module),
+            showsTitle: false
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 defaultsGroup

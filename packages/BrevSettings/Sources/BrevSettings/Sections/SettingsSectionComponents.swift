@@ -229,6 +229,9 @@ struct SettingsInfoCallout: View {
         }
         .padding(BrevSpacing.sm)
         .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        // Callouts used to hug their text, so a two-line note sat narrower
+        // and further in than the rows above it. Fill the row instead.
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
