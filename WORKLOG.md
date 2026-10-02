@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-10-02 — Agent — Trailing reader actions (critique item 11)
+
+- Goal: the hard critique found the reader's action cluster ending wherever the
+  list column stops on a wide window, rather than sitting with the search field
+  at the trailing edge.
+- Changed: `toolbarDetail` opens with a `ToolbarSpacer(.flexible)` on
+  macOS 26+, pushing the reader's actions to the trailing edge.
+- Verified: `swift build --package-path packages/BrevMail` (the flexible spacer
+  is available in this SDK). Rendered judgement of the resulting toolbar is
+  outstanding — the desktop window could not be captured in this session
+  (background instances refuse window capture by ID and the frontmost window
+  showed onboarding).
+- Not changed, with reasons: critique item 14 (sidebar click claiming focus) —
+  `onOpenMessages` hands keyboard focus to the message list on purpose
+  ("the same focus hand-off Apple Mail performs"), which contradicts the
+  critique's premise; without interactive testing I will not flip a documented
+  behaviour.
+- Handoff: PR targets `main`.
+
 ## 2026-10-02 — Agent — Desktop Compact density default (critique item 12, ADR-0085)
 
 - Goal: the hard critique found the desktop list wasting the window's height at

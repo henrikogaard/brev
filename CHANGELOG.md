@@ -60,6 +60,12 @@ All notable changes to Brev are documented here.
   an existing choice in Settings still wins.
 
 
+### Changed
+
+- The reader's toolbar actions sit with the search field at the trailing edge of
+  the window instead of ending at the list column's boundary.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing

@@ -2257,6 +2257,14 @@ public struct BrevMailRootView: View {
             on: .detail,
             platform: toolbarPlatform
         ) {
+            // Push the reader's actions to the trailing edge so they sit with
+            // the search field instead of ending wherever the list column
+            // happens to stop on a wide window.
+            #if os(macOS) && compiler(>=6.2)
+            if #available(macOS 26.0, *) {
+                ToolbarSpacer(.flexible, placement: .primaryAction)
+            }
+            #endif
             // The first item can start before the column boundary. Keep the
             // macOS 26 bordered control clear of the split-view divider.
             #if os(macOS) && compiler(>=6.2)
