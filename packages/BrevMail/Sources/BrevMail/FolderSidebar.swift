@@ -1020,9 +1020,18 @@ public struct FolderSidebar: View {
                     showsSmartViewSettings = true
                 }
             } label: {
-                Image(systemName: "ellipsis")
-                    .foregroundStyle(theme.textSecondary.color)
-                    .folderSidebarSquareTouchTarget(size: BrevSpacing.lg)
+                // Same text-button form as the Favourites header beside it: two
+                // headers, one gesture. The chevron keeps it legible as a menu
+                // now that the ellipsis (which carried that meaning alone) is
+                // gone.
+                HStack(spacing: BrevSpacing.xxs) {
+                    Text("Manage", bundle: .module)
+                        .brevFont(.subheadline)
+                    Image(systemName: "chevron.down")
+                        .brevFont(.caption)
+                }
+                .foregroundStyle(theme.accent.color)
+                .frame(minWidth: 44, minHeight: 44)
             }
             #if os(macOS)
             .menuStyle(.button)

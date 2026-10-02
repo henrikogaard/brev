@@ -80,6 +80,15 @@ All notable changes to Brev are documented here.
   line, and date-group headers keep their message count beside the label.
 
 
+### Changed
+
+- Favourites start with All Inboxes only; account inboxes stay available in
+  the favourites editor, so the sidebar no longer shows the same mailbox both
+  as a shortcut and under its account.
+- The Smart Views section header uses the same text action as Favourites
+  instead of a bare ellipsis glyph.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing

@@ -1,5 +1,30 @@
 # Worklog
 
+## 2026-10-02 — Agent — Favourites default and one header gesture (critique items 1, 2)
+
+- Goal: the hard critique found the sidebar showing the same account twice —
+  once as a favourite shortcut, again under its account — and two different
+  affordances ("Edit" text button, "…" glyph) on adjacent section headers.
+- Changed:
+  - `MailboxFavorites.isVisible` no longer treats account inboxes as visible
+    by default; only All Inboxes is on out of the box. Account inboxes stay
+    candidates in the editor and become shortcuts when added, so the folder
+    tree owns them and nothing appears twice. `isDefault` keeps marking
+    account inboxes for the editor.
+  - The Smart Views header renders a text action ("Manage") with a menu
+    chevron instead of a bare ellipsis, matching the Favourites header beside
+    it; the menu keeps "New Smart View" and "Manage Smart Views".
+- Tests updated with the intended behaviour, not to make them pass:
+  `defaultsAndCounts` now asserts All Inboxes only plus the add-one-back
+  path; `preferencesSurviveProfiles` adds the three shortcuts it expects to
+  see; `unavailableDestinations` expects one default row.
+- Verified: `swift build --package-path packages/BrevMail`; the
+  `Mailbox favorites` suite (3 tests) green; `scripts/format.sh` and
+  `scripts/lint.sh` clean.
+- Skipped: pixel re-record (the Favourites editor and sidebar snapshots are
+  deferred in CI on this macOS 27 host).
+- Handoff: stacked on `fix/row-hierarchy` (#177); land after it.
+
 ## 2026-10-01 — Agent — iOS row hierarchy and group headers (menu items 5, 8)
 
 - Goal: critique items 5 and 8 — the row set two bold lines, and a date
