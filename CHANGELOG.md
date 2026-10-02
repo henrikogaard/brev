@@ -61,6 +61,30 @@ All notable changes to Brev are documented here.
   untitled.
 
 
+### Changed
+
+- Mail toolbar controls show a hover tooltip matching the name VoiceOver
+  announces.
+- Settings popups share one trailing column, callouts fill their row, pane
+  headings stop repeating the tab that names them, and Mailbox View shows
+  Reading, Message list, Folders and Browser in a single scroll.
+- The macOS composer shows Send as a filled accent button with an obvious
+  disabled state.
+- Appearance is resolved once at the app root, so settings, account setup,
+  PIM covers and compose inherit the same theme.
+- The desktop message list has a compact header with the mailbox and account
+  context.
+- Message rows mark unread with a thin leading bar, keep status glyphs beside
+  the subject, and close with a hairline separator.
+- Favourites start with All Inboxes only (account inboxes remain available in
+  the editor) and the Smart Views header uses the same text action as
+  Favourites.
+- macOS starts with the Compact list density instead of Comfortable
+  (ADR-0085); an existing choice still wins.
+- The reader's toolbar actions sit with the search field at the trailing edge
+  of the window.
+
+
 ### Fixed
 
 - Settings → Folder Sync now resolves the mailbox Mail is effectively showing
