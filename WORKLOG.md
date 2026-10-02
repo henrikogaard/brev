@@ -1,5 +1,35 @@
 # Worklog
 
+## 2026-10-02 — Agent — Visual review batch (16 items)
+
+- Goal: land the 2026-10-01 hard critique batch.
+- Merged: #169 (mail toolbar hover help), #170 (settings popups on one
+  trailing column), #171 (macOS Send as a real button), #172 (appearance
+  resolved once at the root), #173 (settings layout polish: callouts fill
+  their row, pane headings stop repeating the tab, Mailbox View flattened,
+  680-point column), #174 (macOS list header), #175 (unread bar instead of a
+  second circle), #176 (favourite shortcuts use filled glyphs), #177 (one
+  heavy weight per row, date counts beside their labels), #178 (Favourites
+  start with All Inboxes only, Smart Views header uses a text action), #179
+  (row status glyphs beside the subject, hairline between rows), #180
+  (desktop starts in Compact density, ADR-0085), #181 (reader actions on the
+  trailing edge).
+- Documentation note: each branch's own WORKLOG/CHANGELOG edit was dropped
+  when the branches were merged onto the landed stack, because twelve of them
+  edited the same two files and could not merge otherwise. This entry and the
+  CHANGELOG block below carry the batch's documentation.
+- Resolved without a code change, reasons in the individual PRs: chevrons on
+  favourite rows (iOS drill-in affordance), the root back control (the leading
+  control is a forward action and the list is always pushed), footer versus
+  header (counts versus identity), the sidebar focus hand-off (deliberate
+  Apple Mail parity), settings navigation depth (only Mailbox View nested),
+  and segment-versus-picker alignment (the house rule, applied consistently).
+- Verified: every PR reached 21/21 on its exact head before merge; local
+  builds, focused suites, format and lint ran per branch.
+- Skipped: pixel-baseline re-records — those suites are deferred in CI
+  (macOS 15 runner, iOS 26.2 runtime) and this host is macOS 27, so recording
+  here would replace macOS-26 baselines.
+
 ## 2026-10-01 — Agent — macOS message-list header
 
 - Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
