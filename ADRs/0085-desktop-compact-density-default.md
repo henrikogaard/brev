@@ -1,6 +1,6 @@
 # ADR-0085: Desktop starts in Compact list density
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-02
 - **Deciders:** Henrik
 - **Related:** ADR-0004 (layout), ADR-0002 (theme), PR for the 2026-10-01
@@ -62,3 +62,9 @@ letting each platform begin where it reads best.
 - `packages/BrevDesign/Tests/BrevDesignTests/MailboxListDensityTests.swift`
 - `docs/qa/` entries for the 2026-10-01 visual review
 
+## Delivery note
+
+PR #180 landed the enum and its tests, but the twelve `@AppStorage` call-site
+edits were left in an uncommitted working tree and never reached `main`. This
+ADR's acceptance is recorded together with the follow-up that wires those call
+sites, restoring the behavior the decision describes.

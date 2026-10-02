@@ -541,7 +541,7 @@ struct DesktopInterfaceSettings: View {
         self.settingsStore = settingsStore
         _textSizeRaw = AppStorage(wrappedValue: MailboxTextSize.medium.rawValue,
                                   MailboxViewPreferenceKey.textSize, store: settingsStore.defaults)
-        _densityRaw = AppStorage(wrappedValue: MailboxListDensity.comfortable.rawValue,
+        _densityRaw = AppStorage(wrappedValue: MailboxListDensity.platformDefault.rawValue,
                                  MailboxViewPreferenceKey.listDensity, store: settingsStore.defaults)
     }
 

@@ -17,7 +17,8 @@ import SwiftUI
 /// Shared chrome for a settings detail pane: title at the top, scroll
 /// region beneath, padded by the standard rhythm.
 struct SectionScaffold<Content: View>: View {
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
+        .rawValue
     private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @Environment(\.brevTheme) private var theme
     @Environment(\.settingsSearchTarget) private var searchTarget

@@ -27,7 +27,7 @@ struct MessageListSearchField: View {
     var focusRequestID = 0
     private let configuration = MessageListSearchFieldPolicy.configuration(platform: .iOS)
     @AppStorage(MailboxViewPreferenceKey.listDensity)
-    private var listDensityRaw = MailboxListDensity.comfortable.rawValue
+    private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
 
     /// Compact density trims the band's height so a tighter list also gets a
     /// tighter search row; the field stays comfortably tappable either way.

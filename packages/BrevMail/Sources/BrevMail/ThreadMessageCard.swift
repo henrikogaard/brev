@@ -22,7 +22,8 @@ import SwiftUI
 /// Body is loaded lazily on first expansion and cached for the view's lifetime.
 /// Tapping the collapsed header toggles expansion by calling `onToggle`.
 struct ThreadMessageCard: View {
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
+        .rawValue
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize

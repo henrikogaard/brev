@@ -41,7 +41,8 @@ enum SettingsCalloutTone {
 /// and the spacing scale express the group without wrapping every section in
 /// another rounded card.
 struct SettingsGroup<Content: View>: View {
-    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.comfortable.rawValue
+    @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
+        .rawValue
     private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @Environment(\.brevTheme) private var theme
     let title: String

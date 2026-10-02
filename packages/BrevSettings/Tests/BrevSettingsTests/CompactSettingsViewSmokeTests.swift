@@ -344,6 +344,9 @@ struct CompactSettingsViewSmokeTests {
             emailAddress: "storage@example.org"
         )
         let defaults = try Self.makeDefaults(named: "mail-storage-picker-contrast")
+        // Pin the density: the pixel rectangle below targets the Comfortable
+        // layout, and the platform default is Compact on macOS (ADR-0085).
+        defaults.set(MailboxListDensity.comfortable.rawValue, forKey: MailboxViewPreferenceKey.listDensity)
         let view = MailStorageSectionContainer(
             account: account,
             backend: MockBackend(account: account),
