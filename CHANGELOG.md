@@ -56,9 +56,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- Message rows keep their status glyphs beside the subject and close with a
-  hairline separator, so the arrival time is the only element on the right
-  edge and long snippets no longer run together.
+- The desktop message list shows a compact header with the mailbox name and
+  account context, matching the iPhone header, instead of leaving the column
+  untitled.
 
 
 ### Fixed

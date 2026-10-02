@@ -1,20 +1,23 @@
 # Worklog
 
-## 2026-10-02 — Agent — Row status glyphs and separation (critique items 7, 10)
+## 2026-10-01 — Agent — macOS message-list header
 
-- Goal: the hard critique found each row ending at three different right-edge
-  elements and rows separated by spacing alone.
-- Changed: status glyphs (attachment, pin, flag, follow-up) moved from the
-  trailing column into the subject line, so the arrival time is the row's only
-  right-edge element. A 0.5-point hairline in `theme.separator` now closes
-  each unselected row, inset to the text column.
-- Verified: `swift build --package-path packages/BrevMail`;
-  `MessageListRowIndicator` + `MessageListPresentation` (35 tests, 3 suites)
-  green; `scripts/format.sh` and `scripts/lint.sh` clean.
-- Skipped: pixel re-record (`MessageListRowSnapshotTests` is deferred in CI and
-  this host is macOS 27) and a rendered frame — verified on the shared
-  verification worktree separately.
-- Handoff: independent of the sidebar stack; PR targets `main`.
+- Goal: item 8 of the 2026-09-30 visual review — the desktop message list had
+  no visible mailbox title; the name and counts appeared only in the bottom
+  status row ("9 meldinger · 5 uleste"), while iOS shows them in its
+  navigation bar.
+- Changed: added `messageListHeader` (macOS only) above `MessageListView` in
+  the list column, mirroring the iOS header — mailbox name on the first line,
+  account or smart-view context on the second, in the theme's headline and
+  caption styles.
+- Verified: rendered the window before and after (`Brev Test (2026-10-01)`);
+  before, the list column's first row sat directly under the toolbar with no
+  title; after, the header carries "Innboks" plus "Henrik Øgård (work)".
+  `swift build --package-path packages/BrevMail`, `BrevMailNativeToolbar`
+  (24 tests) and `scripts/lint.sh` / `scripts/format.sh` all pass.
+- Skipped: pixel-suite re-record — `BrevMailRootViewSnapshotTests` renders
+  this column and is deferred in CI on this macOS 27 host.
+- Handoff: branch `fix/macos-list-header`, PR targets `main`.
 
 ## 2026-09-30 — Agent — Settings detail simplification (Security + Calendar & Contacts)
 
