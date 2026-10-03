@@ -1,0 +1,22 @@
+GET /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond=- -> 200
+GET /__control/log depth=- auth=- cond=- -> 200
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+PUT /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond="seed-evt-hytte-invite" -> 204
+GET /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond=- -> 200
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PUT /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond="stub-2-1791056059058" -> 204
+GET /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond=- -> 200
+PROPFIND / depth=0 auth=Basic *** cond=- -> 207
+PUT /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond="stub-3-1791056292993" -> 204
+GET /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond=- -> 200
+PUT /cal/u/main/evt-standup.ics depth=- auth=Basic *** cond="seed-evt-standup" -> 204
+GET /cal/u/main/evt-standup.ics depth=- auth=Basic *** cond=- -> 200
+GET /cal/u/main/evt-standup.ics depth=- auth=Basic *** cond=- -> 200
+PUT /cal/u/main/evt-standup.ics depth=- auth=Basic *** cond="stub-5-1791056919582" -> 204
+GET /cal/u/main/evt-standup.ics depth=- auth=Basic *** cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+POST /__control/add depth=- auth=Basic *** cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207
+GET /cal/u/main/evt-hytte-invite.ics depth=- auth=Basic *** cond=- -> 200
+REPORT /cal/u/main/ depth=1 auth=Basic *** cond=- -> 207

@@ -1,0 +1,13 @@
+BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//Brev//Stub DAV Seed//EN
+BEGIN:VEVENT
+UID:demo-hytte-weekend@example.org
+DTSTAMP:20260528T120000Z
+DTSTART:20260911T160000Z
+DTEND:20260913T140000Z
+SUMMARY:Hytte weekend in Hemsedal
+ORGANIZER;CN=Sigrid Moen:mailto:sigrid.moen@example.org
+ATTENDEE;CN=Henrik Øgård;PARTSTAT=NEEDS-ACTION;RSVP=TRUE:mailto:henrik@ogard.example
+END:VEVENT
+END:VCALENDAR
