@@ -1,5 +1,31 @@
 # Worklog
 
+## 2026-10-03 — Agent — CI flaky-test triage and timeout fixes
+
+- Goal: triage the three rerun-after-failure CI events from 2026-10-02 and
+  fix what is actionable in the repo.
+- Findings: PR #182's `test (BrevCrypto)` failure was `actions/checkout`
+  DNS (`Could not resolve host: github.com`, three fetch retries exhausted;
+  run 37015131553 attempt 1) — runner infrastructure, no repo change. PR
+  #177's `test (BrevBackend)` was `older IMAP page reload emits updates
+  for changed cached headers` hitting the 1s `nextIMAPEvent` default
+  timeout (run 37000697020 attempt 1, IMAPSMTPBackendTests.swift:3287).
+  PR #184's `test (BrevMail)` was `WorkflowNavigationReconciliationTests`
+  post-undo restore exceeding its 1s poll budget (run 37059283658 attempt 1,
+  WorkflowNavigationReconciliationTests.swift:126).
+- Changed: `nextIMAPEvent`/`nextIMAPEventSkippingProgress` default timeout
+  1s → 5s (explicit call-site timeouts unchanged); the reconciliation test's
+  post-mutation and post-undo polling loops 50 → 250 × 20ms. Both only raise
+  the wait ceiling; promptly-settling tests run as fast as before.
+- Verified: focused suites pass locally
+  (`swift test --package-path packages/BrevBackend --filter
+  olderIMAPPageReloadEmitsUpdatesForChangedCachedHeaders`;
+  `swift test --package-path packages/BrevMail --filter
+  WorkflowNavigationReconciliation` — all six cases); `scripts/lint.sh` OK.
+- Skipped: full package suites locally (CI runs them on the PR). Test-only
+  change: no CHANGELOG, ADR, or snapshot impact.
+- Handoff: PR to `main`; no merge without Henrik's authorization.
+
 ## 2026-10-02 — Agent — Density call-site wiring follow-up
 
 - Goal: complete ADR-0085's implementation. A code review found that PR #180
