@@ -22,11 +22,21 @@
   attendee field skips address validation; iOS dark-theme contrast on agenda
   titles and event sheets; Settings cached-event count stale after background
   sync.
-- Skipped: CHANGELOG (QA docs only, no user-facing change); package tests
-  (no code touched).
+- Skipped (evidence pass): package tests (no code touched until the O11
+  follow-up below).
+- Follow-up fix (same PR, #187): O11. The iOS Calendar/Contacts/Tasks
+  full-screen covers and the macOS Calendar/Contacts/Tasks windows sat outside
+  `.brevRootAppearance`, so they rendered the default `brevMonoLight` theme
+  under a dark system appearance; each now applies the modifier. The stale
+  banner's "Last updated" catalog key held raw `\(…)` source; rekeyed to
+  `Last updated %@` with a guard in `MailStatusCopyLocalizationTests`
+  (red → green). Verified on the sim (`ios-40`/`ios-41`); macOS compile only.
+- Found: 168 catalog keys still use raw `\(…)` interpolation source (118
+  BrevMail, 50 BrevBackend), so those strings never localize. Each needs its
+  proper `%@`/`%lld` specifier; left for a follow-up.
 - Handoff: live Google/CalDAV/CardDAV fixtures, macOS 2.7/2.8/4.3 re-runs and
-  physical-iPhone QA still need Henrik. Observations O7–O12 are candidate
-  follow-up issues.
+  physical-iPhone QA still need Henrik. Observations O7–O10 and O12 are
+  candidate follow-up issues.
 
 ## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
 

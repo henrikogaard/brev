@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Calendar, Contacts and Tasks now follow the active Brev theme. In dark mode
+  they had rendered the light theme over a dark background, leaving event
+  titles near-invisible on iOS. The "Last updated" line in their cached-data
+  banner is also translated now.
+
 - The desktop now starts in Compact list density as ADR-0085 describes. The
   call-site wiring that PR #180 described was missing from its merge, so a
   fresh install still opened Comfortable; every density `@AppStorage` default

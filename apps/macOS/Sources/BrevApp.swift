@@ -298,6 +298,7 @@ struct BrevApp: App {
                     driveFeature: session.googleDriveFeature
                 )
             )
+            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -315,6 +316,7 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
+            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
@@ -332,6 +334,7 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
+            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
