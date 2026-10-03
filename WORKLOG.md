@@ -1,5 +1,28 @@
 # Worklog
 
+## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
+
+- Goal: advance the provider-neutral Calendar/Contacts parent issue (#3) to
+  its remaining gates without new implementation.
+- Findings: the architecture gate the issue required is already satisfied —
+  ADR-0072 (Accepted 2026-09-20) supersedes ADR-0039's authoring boundary;
+  ADR-0084 (offline PIM write queue) is Proposed follow-up scope with no
+  implementation in BrevCalendar/BrevMail yet. Sub-issues #4–#10, #12, #13,
+  #15 are closed and Done; #11 parity QA (Backlog) and #14 Drive picking
+  (In review) remain the open items.
+- Verified: `swift test --package-path packages/BrevCalendar` — 257 tests in
+  25 suites green on main content (14113dac + test-only 24de7e0a, run in the
+  /private/tmp/brev-flake-fix worktree).
+- Changed (GitHub-side only): refreshed issue #3's delivery-state section to
+  2026-10-03 and commented with the evidence; board #3 Backlog → In
+  progress → In review.
+- Skipped: live Google/DAV QA (needs Henrik-provisioned disposable Google
+  Workspace account and a DEVELOPMENT_TEAM-signed iOS build — #11 scope);
+  stub-matrix rows 2.7/2.8/4.3 stay open until a dedicated serve-sim QA pass.
+- Handoff: #3 closure waits on #11 live parity evidence and Henrik's
+  sign-off in docs/qa/pim-parity-matrix.md. No merge without Henrik's
+  authorization.
+
 ## 2026-10-03 — Agent — CI flaky-test triage and timeout fixes
 
 - Goal: triage the three rerun-after-failure CI events from 2026-10-02 and
