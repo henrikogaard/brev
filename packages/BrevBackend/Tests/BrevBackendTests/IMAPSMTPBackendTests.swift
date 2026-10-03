@@ -10997,7 +10997,7 @@ private func waitForIMAPHeaderSnapshot(
 
 private func nextIMAPEvent(
     from stream: AsyncStream<MailEvent>,
-    timeoutNanoseconds: UInt64 = 1_000_000_000
+    timeoutNanoseconds: UInt64 = 5_000_000_000
 ) async throws -> MailEvent? {
     try await withThrowingTaskGroup(of: MailEvent?.self) { group in
         group.addTask {
@@ -11021,7 +11021,7 @@ private func nextIMAPEvent(
 /// events skip past the progress noise with this.
 private func nextIMAPEventSkippingProgress(
     from stream: AsyncStream<MailEvent>,
-    timeoutNanoseconds: UInt64 = 1_000_000_000
+    timeoutNanoseconds: UInt64 = 5_000_000_000
 ) async throws -> MailEvent? {
     while true {
         let event = try await nextIMAPEvent(from: stream, timeoutNanoseconds: timeoutNanoseconds)

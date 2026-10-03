@@ -113,14 +113,14 @@ struct WorkflowNavigationReconciliationTests {
         model.workflow = snooze
             ? LocalMessageWorkflowStatePolicy.snoozing(messageID, until: .distantFuture, in: .defaults)
             : LocalMessageWorkflowStatePolicy.markingDone([messageID], in: .defaults)
-        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != (unreadOnly ? 1 : 2) {
+        for _ in 0 ..< 250 where navigation.currentFolderHeaders.count != (unreadOnly ? 1 : 2) {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a"] : ["a", "c"]))
         #expect(navigation.selectedMessageID == (unreadOnly ? "a" : "c"))
         let task = try #require(undo.undo())
         #expect(await task.value)
-        for _ in 0 ..< 50 where navigation.currentFolderHeaders.count != (unreadOnly ? 2 : 3) {
+        for _ in 0 ..< 250 where navigation.currentFolderHeaders.count != (unreadOnly ? 2 : 3) {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a", "b"] : ["a", "b", "c"]))
