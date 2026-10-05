@@ -1294,6 +1294,34 @@ struct IMAPSessionClientTests {
         #expect(await transport.sentLines.last == "A0003 UID FETCH 43 (BODY.PEEK[2])")
     }
 
+    @Test("client accepts a structured part UID after the literal")
+    func clientAcceptsStructuredPartUIDAfterLiteral() async throws {
+        let literal = Data([0x58])
+        let transport = ScriptedIMAPTransport(
+            lines: [
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
+                "A0001 OK LOGIN completed",
+                "A0002 OK [READ-WRITE] SELECT completed",
+                "* 9 FETCH (BODY[2] {\(literal.count)}",
+                " UID 43)",
+                "A0003 OK FETCH completed",
+            ],
+            dataReads: [literal]
+        )
+        let client = IMAPSessionClient(transport: transport)
+
+        let data = try await client.loginAndFetchMessagePart(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            uid: 43,
+            section: "2",
+            transferEncoding: "7bit"
+        )
+
+        #expect(data == literal)
+    }
+
     @Test("raw message source preserves body lines that look like fetch terminators")
     func rawMessageSourcePreservesBodyLinesThatLookLikeFetchTerminators() async throws {
         let rawMessage = [
@@ -1325,6 +1353,86 @@ struct IMAPSessionClientTests {
         )
 
         #expect(source.rawMessage.contains("Before\r\n)\r\nAfter"))
+    }
+
+    @Test("raw message source accepts a UID after the literal")
+    func rawMessageSourceAcceptsUIDAfterLiteral() async throws {
+        let literal = Data([0x41, 0x42])
+        let transport = ScriptedIMAPTransport(
+            lines: [
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
+                "A0001 OK LOGIN completed",
+                "A0002 OK [READ-WRITE] SELECT completed",
+                "* 9 FETCH (BODY[] {\(literal.count)}",
+                " UID 43)",
+                "* 10 EXISTS",
+                "A0003 OK FETCH completed",
+            ],
+            dataReads: [literal]
+        )
+        let client = IMAPSessionClient(transport: transport)
+
+        let source = try await client.loginAndFetchMessageSource(
+            configuration: Self.configuration(),
+            credential: Self.credential(),
+            folderPath: "INBOX",
+            uid: 43
+        )
+
+        #expect(source.rawMessageData == literal)
+    }
+
+    @Test("raw message source rejects a mismatched UID after the literal")
+    func rawMessageSourceRejectsMismatchedUIDAfterLiteral() async throws {
+        let literal = Data(" UID 43)".utf8)
+        let transport = ScriptedIMAPTransport(
+            lines: [
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
+                "A0001 OK LOGIN completed",
+                "A0002 OK [READ-WRITE] SELECT completed",
+                "* 9 FETCH (BODY[] {\(literal.count)}",
+                " UID 99)",
+                "A0003 OK FETCH completed",
+            ],
+            dataReads: [literal]
+        )
+        let client = IMAPSessionClient(transport: transport)
+
+        await #expect(throws: IMAPClientError.malformedResponse(" UID 99)")) {
+            try await client.loginAndFetchMessageSource(
+                configuration: Self.configuration(),
+                credential: Self.credential(),
+                folderPath: "INBOX",
+                uid: 43
+            )
+        }
+    }
+
+    @Test("raw message source ignores an unsolicited UID after the literal closes")
+    func rawMessageSourceIgnoresUnsolicitedUIDAfterLiteralCloses() async throws {
+        let literal = Data([0x41])
+        let transport = ScriptedIMAPTransport(
+            lines: [
+                "* OK [CAPABILITY IMAP4rev1 CONDSTORE] IMAP4rev1 ready",
+                "A0001 OK LOGIN completed",
+                "A0002 OK [READ-WRITE] SELECT completed",
+                "* 9 FETCH (BODY[] {\(literal.count)}",
+                ")",
+                "* 10 FETCH (UID 43 FLAGS (\\Seen))",
+                "A0003 OK FETCH completed",
+            ],
+            dataReads: [literal]
+        )
+        let client = IMAPSessionClient(transport: transport)
+
+        await #expect(throws: IMAPClientError.malformedResponse(")")) {
+            try await client.loginAndFetchMessageSource(
+                configuration: Self.configuration(),
+                credential: Self.credential(),
+                folderPath: "INBOX",
+                uid: 43
+            )
+        }
     }
 
     @Test("raw message source reads literal bytes without treating tagged body lines as completion")

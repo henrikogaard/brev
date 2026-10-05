@@ -1,5 +1,27 @@
 # Worklog
 
+## 2026-10-05 — Agent — IMAP trailing-UID literal compatibility
+
+- Goal: make message bodies readable when a server returns the UID after
+  the BODY literal, reproduced with Microsoft Exchange.
+- Changed: consume the declared literal bytes before validating UID metadata
+  from the same FETCH response. Stop collecting metadata at the response's
+  close marker so later unsolicited updates cannot supply the requested UID.
+  Raw-source and structured-part fetches share the completion validation.
+- Verified: trailing-UID success cases failed before the fix; all 93
+  IMAPSessionClientTests pass afterward. Regression cases cover exact byte
+  preservation, wrong trailing UIDs with UID-looking body text, and later
+  unsolicited responses. Full lint passes; format reports zero changed files.
+  A dated macOS live test build installed and passed strict signature
+  verification; the previously failing work message rendered successfully.
+- Documentation sweep: CHANGELOG updated. No new network operation, public
+  boundary, protected path, UI, setup contract, or privacy behavior changed;
+  README, ADRs, PRIVACY, and UI snapshots need no update.
+- Skipped: sending mail (not requested) and the full multi-package/iOS test
+  matrix (narrow internal parser change; PR CI covers broader integration).
+- Handoff: PR targeting main; upstream maintainer review/merge required.
+  Personal OAuth configuration and live mailbox data remain outside Git.
+
 ## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
 
 - Goal: advance the provider-neutral Calendar/Contacts parent issue (#3) to

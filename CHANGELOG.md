@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- IMAP messages now load when the server places the UID after the body
+  literal, as Microsoft Exchange can do, while still rejecting data for
+  a different UID.
 - The desktop now starts in Compact list density as ADR-0085 describes. The
   call-site wiring that PR #180 described was missing from its merge, so a
   fresh install still opened Comfortable; every density `@AppStorage` default
