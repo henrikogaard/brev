@@ -59,6 +59,53 @@ public struct BrevColor: Codable, Sendable, Hashable {
         Self.colorCache.setObject(CachedColor(parsed), forKey: key)
         return parsed
     }
+
+    /// Relative luminance of the color's sRGB channels.
+    public var relativeLuminance: Double {
+        let components = sRGBComponents
+        return Self.linearized(components.red) * 0.2126
+            + Self.linearized(components.green) * 0.7152
+            + Self.linearized(components.blue) * 0.0722
+    }
+
+    /// WCAG contrast ratio between this color and another opaque sRGB color.
+    public func contrastRatio(against other: BrevColor) -> Double {
+        let first = relativeLuminance
+        let second = other.relativeLuminance
+        return (max(first, second) + 0.05) / (min(first, second) + 0.05)
+    }
+
+    var sRGBComponents: (red: Double, green: Double, blue: Double) {
+        var stripped = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+        if stripped.hasPrefix("#") {
+            stripped.removeFirst()
+        }
+
+        guard let raw = UInt64(stripped, radix: 16),
+              stripped.count == 6 || stripped.count == 8 else {
+            return (1, 0, 1)
+        }
+
+        if stripped.count == 8 {
+            return (
+                Double((raw & 0xFF00_0000) >> 24) / 255,
+                Double((raw & 0x00FF_0000) >> 16) / 255,
+                Double((raw & 0x0000_FF00) >> 8) / 255
+            )
+        }
+        return (
+            Double((raw & 0xFF0000) >> 16) / 255,
+            Double((raw & 0x00FF00) >> 8) / 255,
+            Double(raw & 0x0000FF) / 255
+        )
+    }
+
+    private static func linearized(_ channel: Double) -> Double {
+        if channel <= 0.04045 {
+            return channel / 12.92
+        }
+        return pow((channel + 0.055) / 1.055, 2.4)
+    }
 }
 
 public extension Color {

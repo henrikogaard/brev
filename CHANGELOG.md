@@ -20,6 +20,13 @@ All notable changes to Brev are documented here.
   `String(localized:)` looks up the `%@`/`%lld` format key, so 168 entries
   could never match and silently fell back to English. All keys and their
   translations now use the format specifiers the runtime generates.
+- Settings and auxiliary macOS windows now share Mail's appearance policy.
+  Appearance and Settings section controls adapt to narrow widths and large
+  text; theme/icon names wrap, and dismissal/reset controls remain readable.
+- Performance exports require a process and run start, exclude unrelated
+  test timings, and no longer treat body fetch as visible message opening or
+  list reload as launch time. Sparse or missing measurements cannot silently
+  pass the budget gate.
 - The desktop now starts in Compact list density as ADR-0085 describes. The
   call-site wiring that PR #180 described was missing from its merge, so a
   fresh install still opened Comfortable; every density `@AppStorage` default
@@ -31,6 +38,12 @@ All notable changes to Brev are documented here.
   message rows derive their status glyphs once per render.
 
 ### Added
+
+- Appearance separates Theme, macOS System accent, and Custom accent from
+  light/dark mode. Quiet theme accents remain the default; saved custom
+  colors survive source changes, while effective controls adjust for contrast.
+- Sidebar account/app groups and matching neutral management menus reduce
+  visual competition without removing favorites, Smart Views, or destinations.
 
 - Desktop Favourites puts All Inboxes and each account inbox above collapsible
   accounts, with editable Drafts/Sent shortcuts and saved order/visibility.

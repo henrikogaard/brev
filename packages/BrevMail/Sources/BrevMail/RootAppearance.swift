@@ -14,6 +14,9 @@ import BrevSettings
 import BrevThemes
 import Foundation
 import SwiftUI
+#if os(macOS)
+import AppKit
+#endif
 
 public extension View {
     /// Applies Brev's persisted theme pair while leaving follow-system mode
@@ -28,13 +31,16 @@ public extension View {
 
 private struct BrevRootAppearanceModifier: ViewModifier {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
     @Bindable var session: AppSession
     let defaults: UserDefaults
     /// Cached at init and refreshed only when the persisted theme settings
     /// change — the root view re-evaluates often enough that reading the
     /// defaults keys inside `body` was measurable launch/scroll work.
     @State private var followsSystem: Bool
+    @State private var hasAppearanceSettings: Bool
     @State private var themeSettings: AppearanceThemeSettings
+    @State private var systemColorsRevision = 0
 
     init(session: AppSession, defaults: UserDefaults) {
         _session = Bindable(session)
@@ -43,11 +49,16 @@ private struct BrevRootAppearanceModifier: ViewModifier {
             initialValue: ThemePreferences.followsSystemAppearance(defaults: defaults)
         )
         _themeSettings = State(initialValue: AppearanceThemeSettings.load(from: defaults))
+        _hasAppearanceSettings = State(initialValue: AppearanceThemeSettings.hasSavedValue(in: defaults))
     }
 
     private var displayedTheme: BrevTheme {
-        guard followsSystem else { return session.theme }
-        return themeSettings.resolvedTheme(prefersDark: colorScheme == .dark)
+        _ = systemColorsRevision
+        guard hasAppearanceSettings else { return session.theme }
+        return themeSettings.resolvedTheme(
+            prefersDark: colorScheme == .dark,
+            increasedContrast: colorSchemeContrast == .increased
+        )
     }
 
     func body(content: Content) -> some View {
@@ -65,7 +76,16 @@ private struct BrevRootAppearanceModifier: ViewModifier {
             ) { _ in
                 themeSettings = AppearanceThemeSettings.load(from: defaults)
                 followsSystem = ThemePreferences.followsSystemAppearance(defaults: defaults)
+                hasAppearanceSettings = AppearanceThemeSettings.hasSavedValue(in: defaults)
+                applyAppearanceTheme()
             }
+            .onChange(of: colorSchemeContrast) { _, _ in applyAppearanceTheme() }
+        #if os(macOS)
+            .onReceive(NotificationCenter.default.publisher(for: NSColor.systemColorsDidChangeNotification)) { _ in
+                systemColorsRevision += 1
+                applyAppearanceTheme()
+            }
+        #endif
     }
 
     @MainActor
@@ -78,7 +98,8 @@ private struct BrevRootAppearanceModifier: ViewModifier {
         guard AppearanceThemeSettings.hasSavedValue(in: defaults) else { return }
 
         let resolvedTheme = AppearanceThemeSettings.load(from: defaults).resolvedTheme(
-            prefersDark: colorScheme == .dark
+            prefersDark: colorScheme == .dark,
+            increasedContrast: colorSchemeContrast == .increased
         )
         if session.theme != resolvedTheme {
             session.theme = resolvedTheme

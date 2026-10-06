@@ -12,6 +12,9 @@
 
 import BrevThemes
 import Foundation
+#if os(macOS)
+import AppKit
+#endif
 
 public extension Notification.Name {
     /// Posted when `AppearanceThemeSettings.save(to:)` persists a change so
@@ -20,6 +23,36 @@ public extension Notification.Name {
     static let brevAppearanceThemeSettingsDidChange = Notification.Name(
         "eu.brevmail.settings.appearanceTheme.changed"
     )
+}
+
+/// The source used to choose the application's effective accent color.
+public enum AppearanceAccentSource: String, CaseIterable, Identifiable, Sendable, Codable {
+    case theme
+    case system
+    case custom
+
+    public var id: String { rawValue }
+
+    /// Localized label suitable for an appearance source picker.
+    public var title: String {
+        switch self {
+        case .theme:
+            return String(localized: "Theme", bundle: .module)
+        case .system:
+            return String(localized: "System accent", bundle: .module)
+        case .custom:
+            return String(localized: "Custom", bundle: .module)
+        }
+    }
+
+    /// Sources supported by the current platform's appearance controls.
+    public static var availableSources: [AppearanceAccentSource] {
+        #if os(iOS)
+        return [.theme, .custom]
+        #else
+        return [.theme, .system, .custom]
+        #endif
+    }
 }
 
 public enum AppearanceThemeMode: String, CaseIterable, Identifiable, Sendable, Codable {
@@ -52,18 +85,72 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
         static let lightThemeID = "appearance.lightThemeID"
         static let darkThemeID = "appearance.darkThemeID"
         static let accentHex = "appearance.accentHex"
+        static let accentSource = "appearance.accentSource"
     }
 
     var mode: AppearanceThemeMode
     var lightThemeID: String
     var darkThemeID: String
     var accentHex: String?
+    var accentSource: AppearanceAccentSource
+
+    private enum CodingKeys: String, CodingKey {
+        case mode
+        case lightThemeID
+        case darkThemeID
+        case accentHex
+        case accentSource
+    }
+
+    init(
+        mode: AppearanceThemeMode,
+        lightThemeID: String,
+        darkThemeID: String,
+        accentHex: String? = nil,
+        accentSource: AppearanceAccentSource = .theme
+    ) {
+        self.mode = mode
+        self.lightThemeID = lightThemeID
+        self.darkThemeID = darkThemeID
+        self.accentHex = accentHex
+        self.accentSource = accentSource
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        let accentHex = Self.normalizedAccentHex(
+            (try? container.decodeIfPresent(String.self, forKey: .accentHex)) ?? nil
+        )
+        let source = ((try? container.decodeIfPresent(String.self, forKey: .accentSource)) ?? nil)
+            .flatMap(AppearanceAccentSource.init(rawValue:))
+            ?? (accentHex == nil ? .theme : .custom)
+        try self.init(
+            mode: container.decodeIfPresent(AppearanceThemeMode.self, forKey: .mode)
+                ?? Self.defaults.mode,
+            lightThemeID: container.decodeIfPresent(String.self, forKey: .lightThemeID)
+                ?? Self.defaults.lightThemeID,
+            darkThemeID: container.decodeIfPresent(String.self, forKey: .darkThemeID)
+                ?? Self.defaults.darkThemeID,
+            accentHex: accentHex,
+            accentSource: source
+        )
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(mode, forKey: .mode)
+        try container.encode(lightThemeID, forKey: .lightThemeID)
+        try container.encode(darkThemeID, forKey: .darkThemeID)
+        try container.encodeIfPresent(Self.normalizedAccentHex(accentHex), forKey: .accentHex)
+        try container.encode(accentSource, forKey: .accentSource)
+    }
 
     public static let defaults = AppearanceThemeSettings(
         mode: .followSystem,
         lightThemeID: "brev-mono-light",
         darkThemeID: "brev-mono-grey",
-        accentHex: nil
+        accentHex: nil,
+        accentSource: .theme
     )
 
     /// Whether the app should inherit the operating system's active color
@@ -73,7 +160,8 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> AppearanceThemeSettings {
-        AppearanceThemeSettings(
+        let accentHex = normalizedAccentHex(defaults.string(forKey: Key.accentHex))
+        return AppearanceThemeSettings(
             mode: enumValue(
                 AppearanceThemeMode.self,
                 for: Key.mode,
@@ -90,7 +178,11 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
                 defaultValue: Self.defaults.darkThemeID,
                 defaults: defaults
             ),
-            accentHex: normalizedAccentHex(defaults.string(forKey: Key.accentHex))
+            accentHex: accentHex,
+            accentSource: accentSource(
+                defaults.string(forKey: Key.accentSource),
+                accentHex: accentHex
+            )
         )
     }
 
@@ -99,6 +191,7 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
             || defaults.object(forKey: Key.lightThemeID) != nil
             || defaults.object(forKey: Key.darkThemeID) != nil
             || defaults.object(forKey: Key.accentHex) != nil
+            || defaults.object(forKey: Key.accentSource) != nil
     }
 
     public func save(to defaults: UserDefaults = .standard) {
@@ -110,6 +203,7 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
         } else {
             defaults.removeObject(forKey: Key.accentHex)
         }
+        defaults.set(accentSource.rawValue, forKey: Key.accentSource)
         NotificationCenter.default.post(name: .brevAppearanceThemeSettingsDidChange, object: nil)
     }
 
@@ -126,15 +220,34 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
 
     public func resolvedTheme(
         in builtIns: [BrevTheme] = BrevTheme.brevBuiltIns,
-        prefersDark: Bool
+        prefersDark: Bool,
+        systemAccent: BrevColor? = nil,
+        increasedContrast: Bool = false
     ) -> BrevTheme {
         let expectedMode: BrevThemeMode = resolvedThemeMode(prefersDark: prefersDark)
         let theme = selectedTheme(for: expectedMode, in: builtIns)
 
-        guard let accentHex = Self.normalizedAccentHex(accentHex) else {
+        let requestedAccent: BrevColor?
+        switch accentSource {
+        case .theme:
+            requestedAccent = nil
+        case .custom:
+            requestedAccent = Self.normalizedAccentHex(accentHex).map(BrevColor.init)
+        case .system:
+            #if os(macOS)
+            requestedAccent = systemAccent
+                ?? Self.macOSSystemAccent(for: expectedMode)
+            #else
+            requestedAccent = nil
+            #endif
+        }
+
+        guard let requestedAccent else {
             return theme
         }
-        return theme.withAccent(BrevColor(accentHex))
+        return theme
+            .withAccent(requestedAccent)
+            .withReadableAccent(increasedContrast: increasedContrast)
     }
 
     mutating func selectTheme(_ theme: BrevTheme) {
@@ -197,6 +310,41 @@ public struct AppearanceThemeSettings: Equatable, Sendable, Codable {
         }
         return normalized.uppercased()
     }
+
+    private static func accentSource(
+        _ rawValue: String?,
+        accentHex: String?
+    ) -> AppearanceAccentSource {
+        guard let rawValue,
+              let source = AppearanceAccentSource(rawValue: rawValue) else {
+            return accentHex == nil ? .theme : .custom
+        }
+        return source
+    }
+
+    #if os(macOS)
+    private static func macOSSystemAccent(for mode: BrevThemeMode) -> BrevColor? {
+        guard let appearance = NSAppearance(
+            named: mode == .dark ? .darkAqua : .aqua
+        ) else {
+            return nil
+        }
+
+        var color: NSColor?
+        appearance.performAsCurrentDrawingAppearance {
+            color = NSColor.controlAccentColor.usingColorSpace(.sRGB)
+        }
+        guard let color else { return nil }
+        return BrevColor(
+            String(
+                format: "#%02X%02X%02X",
+                Int((color.redComponent * 255).rounded()),
+                Int((color.greenComponent * 255).rounded()),
+                Int((color.blueComponent * 255).rounded())
+            )
+        )
+    }
+    #endif
 
     private static func enumValue<Value>(
         _ type: Value.Type,

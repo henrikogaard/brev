@@ -22,6 +22,34 @@ import UIKit
 @Suite("Compact settings rows", .serialized)
 @MainActor
 struct CompactSettingsRowSnapshotTests {
+    @Test("appearance controls stack at accessibility text sizes", arguments: [false, true])
+    func accessibleAppearance(dark: Bool) throws {
+        let suite = "AccessibleAppearance-" + UUID().uuidString
+        let defaults = try #require(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        var settings = AppearanceThemeSettings.defaults
+        settings.mode = dark ? .alwaysDark : .alwaysLight
+        settings.accentSource = .custom
+        settings.accentHex = dark ? "#000000" : "#FFFFFF"
+        settings.save(to: defaults)
+        let theme = settings.resolvedTheme(prefersDark: dark)
+        let view = AppearanceSection(
+            activeTheme: .constant(theme),
+            activeAppIcon: .constant(.defaultVariant),
+            settingsStore: SettingsPersistenceStore(defaults: defaults)
+        )
+        .brevTheme(theme)
+        .tint(theme.accent.color)
+        .environment(\.colorScheme, dark ? .dark : .light)
+        .environment(\.dynamicTypeSize, .accessibility3)
+        .background(theme.bgPrimary.color)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 375, height: 1800),
+                                            traits: .init(displayScale: 2)),
+                       named: dark ? "appearance-accessible-dark" : "appearance-accessible-light",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
     @Test("signature name and controls fit a narrow phone", arguments: [320.0, 375.0])
     func compactSignature(width: Double) throws {
         let defaults = try #require(UserDefaults(suiteName: "CompactSignatures-" + UUID().uuidString))

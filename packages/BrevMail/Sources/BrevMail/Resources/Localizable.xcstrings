@@ -1,6 +1,17 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "%@ doesn't look like a valid email address": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ ser ikke ut som en gyldig e-postadresse"
+          }
+        }
+      }
+    },
     "%@ uses Google OAuth2. Prefer Sign in with Google when this build has a Google OAuth client ID, or use a Google app password from a 2-Step Verification-enabled account.": {
       "extractionState": "manual",
       "localizations": {
@@ -45,6 +56,50 @@
         }
       }
     },
+    "%@, %lld messages, collapsed": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %lld meldinger, sammenfoldet"
+          }
+        }
+      }
+    },
+    "%@, %lld messages, expanded": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, %lld meldinger, utvidet"
+          }
+        }
+      }
+    },
+    "%@, but Brev couldn't save a copy to Sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, men Brev kunne ikke lagre en kopi i Sendt."
+          }
+        }
+      }
+    },
+    "%lld %@ could not be filed locally.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld %@ kunne ikke lagres lokalt."
+          }
+        }
+      }
+    },
     "%lld Filters": {
       "extractionState": "manual",
       "localizations": {
@@ -56,6 +111,209 @@
         }
       }
     },
+    "%lld attachment%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vedlegg"
+          }
+        }
+      }
+    },
+    "%lld days before": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld dager før"
+          }
+        }
+      }
+    },
+    "%lld drafts": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld draft"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld drafts"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld utkast"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld utkast"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld hidden read message%@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld skjulte leste meldinger"
+          }
+        }
+      }
+    },
+    "%lld hours before": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld timer før"
+          }
+        }
+      }
+    },
+    "%lld loaded": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld lastet inn"
+          }
+        }
+      }
+    },
+    "%lld mailboxes skipped because server search is unavailable.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mailbox skipped because server search is unavailable."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld mailboxes skipped because server search is unavailable."
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld postkasse hoppet over fordi serversøk ikke er tilgjengelig."
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld postkasser hoppet over fordi serversøk ikke er tilgjengelig."
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "%lld message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld melding"
+          }
+        }
+      }
+    },
+    "%lld message shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld melding vist"
+          }
+        }
+      }
+    },
+    "%lld messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld meldinger"
+          }
+        }
+      }
+    },
+    "%lld messages from %lld participants": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld meldinger fra %lld deltakere"
+          }
+        }
+      }
+    },
+    "%lld messages shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld meldinger vist"
+          }
+        }
+      }
+    },
+    "%lld minutes before": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld minutter før"
+          }
+        }
+      }
+    },
     "%lld months ago": {
       "extractionState": "manual",
       "localizations": {
@@ -63,6 +321,168 @@
           "stringUnit": {
             "state": "translated",
             "value": "For %lld måneder siden"
+          }
+        }
+      }
+    },
+    "%lld of %lld messages filed locally. %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld av %lld meldinger lagret lokalt. %@"
+          }
+        }
+      }
+    },
+    "%lld pinned": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld festet"
+          }
+        }
+      }
+    },
+    "%lld scheduled messages remain in Outbox. Waiting mail is checked when Brev is next opened; messages needing review will not retry automatically.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld planlagte meldinger ligger igjen i Utboks. Ventende e-post sjekkes neste gang Brev åpnes; meldinger som trenger gjennomgang prøves ikke på nytt automatisk."
+          }
+        }
+      }
+    },
+    "%lld selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld valgt"
+          }
+        }
+      }
+    },
+    "%lld shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld vist"
+          }
+        }
+      }
+    },
+    "%lld template(s)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld mal(er)"
+          }
+        }
+      }
+    },
+    "%lld thread shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld samtale vist"
+          }
+        }
+      }
+    },
+    "%lld threads shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld samtaler vist"
+          }
+        }
+      }
+    },
+    "%lld times": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld ganger"
+          }
+        }
+      }
+    },
+    "%lld total": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld totalt"
+          }
+        }
+      }
+    },
+    "%lld unavailable mailboxes are still part of this profile. Reconnect them in Accounts, or remove their membership here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld utilgjengelige postkasser er fortsatt en del av denne profilen. Koble dem til igjen under Kontoer, eller fjern medlemskapet deres her."
+          }
+        }
+      }
+    },
+    "%lld unread": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unread"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unread"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ulest"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld uleste"
+                }
+              }
+            }
           }
         }
       }
@@ -111,17 +531,6 @@
         }
       }
     },
-    "+47 000 00 000": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "+47 000 00 000"
-          }
-        }
-      }
-    },
     "+%lld more": {
       "extractionState": "manual",
       "localizations": {
@@ -129,6 +538,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "+%lld til"
+          }
+        }
+      }
+    },
+    "+47 000 00 000": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "+47 000 00 000"
           }
         }
       }
@@ -162,23 +582,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Én planlagt melding ligger igjen i Utboks. Ventende e-post sjekkes neste gang Brev åpnes; meldinger som trenger gjennomgang prøves ikke på nytt automatisk."
-          }
-        }
-      }
-    },
-    "contact.unknown": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "?"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "?"
           }
         }
       }
@@ -337,6 +740,17 @@
         }
       }
     },
+    "Accounts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer"
+          }
+        }
+      }
+    },
     "Accounts without authentication are not supported.": {
       "extractionState": "manual",
       "localizations": {
@@ -355,6 +769,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Legg til"
+          }
+        }
+      }
+    },
+    "Add %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til %@"
           }
         }
       }
@@ -392,23 +817,6 @@
         }
       }
     },
-    "addNote.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Add Note"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Legg til notat"
-          }
-        }
-      }
-    },
     "Add Note…": {
       "extractionState": "manual",
       "localizations": {
@@ -427,17 +835,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Legg til URL"
-          }
-        }
-      }
-    },
-    "Add %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Legg til %@"
           }
         }
       }
@@ -706,23 +1103,6 @@
         }
       }
     },
-    "allMailboxes.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "All Mailboxes"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Alle postkasser"
-          }
-        }
-      }
-    },
     "All Mailboxes is always available. Custom profiles choose which mailboxes appear in the sidebar and Unified Inbox.": {
       "extractionState": "manual",
       "localizations": {
@@ -910,6 +1290,17 @@
         }
       }
     },
+    "Apps": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Apper"
+          }
+        }
+      }
+    },
     "Archive": {
       "extractionState": "manual",
       "localizations": {
@@ -1031,6 +1422,17 @@
         }
       }
     },
+    "Attachment": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vedlegg"
+          }
+        }
+      }
+    },
     "Attachments": {
       "extractionState": "manual",
       "localizations": {
@@ -1071,6 +1473,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Autentisering"
+          }
+        }
+      }
+    },
+    "Auto": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Automatisk"
           }
         }
       }
@@ -1152,19 +1565,13 @@
         }
       }
     },
-    "blockSender.action": {
+    "Block %@?": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Block Sender"
-          }
-        },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Blokker avsender"
+            "value": "Blokker %@?"
           }
         }
       }
@@ -1176,34 +1583,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Blokker avsender?"
-          }
-        }
-      }
-    },
-    "blockSender.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Block Sender…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blokker avsender …"
-          }
-        }
-      }
-    },
-    "Block %@?": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Blokker %@?"
           }
         }
       }
@@ -1292,6 +1671,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Brev kontrollerer meldingsinnhold side for side; dette kan hente meldings­data fordi du ba om et vedleggs­søk. Ingen bakgrunns­henting kjører."
+          }
+        }
+      }
+    },
+    "Brev could not match you to an attendee on the synced event, so only the reply was sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke matche deg til en deltaker på den synkroniserte hendelsen, så bare svaret ble sendt."
+          }
+        }
+      }
+    },
+    "Brev could not verify that all matching messages were searched. Try again or narrow your search.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke bekrefte at alle samsvarende meldinger ble gjennomsøkt. Prøv igjen eller avgrens søket."
           }
         }
       }
@@ -1545,6 +1946,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kalenderoppsett"
+          }
+        }
+      }
+    },
+    "Calendar updated on %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalender oppdatert på %@."
           }
         }
       }
@@ -1867,6 +2279,16 @@
         }
       }
     },
+    "Choose your shortcuts and drag to reorder. Inbox counts show unread mail; Drafts counts show all drafts.": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg snarveier og dra for å endre rekkefølgen. Innbokser viser antall uleste meldinger; Utkast viser alle utkast."
+          }
+        }
+      }
+    },
     "City": {
       "extractionState": "manual",
       "localizations": {
@@ -1955,6 +2377,17 @@
         }
       }
     },
+    "Collapse %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul %@"
+          }
+        }
+      }
+    },
     "Collapse All": {
       "extractionState": "manual",
       "localizations": {
@@ -1973,17 +2406,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skjul smartvisninger"
-          }
-        }
-      }
-    },
-    "Collapse %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skjul %@"
           }
         }
       }
@@ -2373,23 +2795,6 @@
         }
       }
     },
-    "copyLink.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy link"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kopier lenke"
-          }
-        }
-      }
-    },
     "Copy to Folder…": {
       "extractionState": "manual",
       "localizations": {
@@ -2412,19 +2817,13 @@
         }
       }
     },
-    "copyToLocalFolder.menu": {
+    "Correct or remove the highlighted address before sending.": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Copy to Local Folder…"
-          }
-        },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kopier til lokal mappe …"
+            "value": "Rett eller fjern den markerte adressen før du sender."
           }
         }
       }
@@ -2528,23 +2927,6 @@
         }
       }
     },
-    "couldntLoadFolders.plain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't load folders"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke laste mapper"
-          }
-        }
-      }
-    },
     "Couldn't load calendar invite": {
       "extractionState": "manual",
       "localizations": {
@@ -2600,6 +2982,17 @@
         }
       }
     },
+    "Couldn't load mailboxes.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste postkasser."
+          }
+        }
+      }
+    },
     "Couldn't load message": {
       "extractionState": "manual",
       "localizations": {
@@ -2622,17 +3015,6 @@
         }
       }
     },
-    "Couldn't load more messages.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke laste flere meldinger."
-          }
-        }
-      }
-    },
     "Couldn't load messages.": {
       "extractionState": "manual",
       "localizations": {
@@ -2644,13 +3026,13 @@
         }
       }
     },
-    "Couldn't load mailboxes.": {
+    "Couldn't load more messages.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kunne ikke laste postkasser."
+            "value": "Kunne ikke laste flere meldinger."
           }
         }
       }
@@ -2688,17 +3070,6 @@
         }
       }
     },
-    "Couldn't read calendar invite": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke lese kalenderinvitasjonen"
-          }
-        }
-      }
-    },
     "Couldn't load the calendar invite.": {
       "extractionState": "manual",
       "localizations": {
@@ -2706,17 +3077,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke laste kalenderinvitasjonen."
-          }
-        }
-      }
-    },
-    "Couldn't mark this message as read.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke merke denne meldingen som lest."
           }
         }
       }
@@ -2732,6 +3092,28 @@
         }
       }
     },
+    "Couldn't mark this message as read.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke merke denne meldingen som lest."
+          }
+        }
+      }
+    },
+    "Couldn't read calendar invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke lese kalenderinvitasjonen"
+          }
+        }
+      }
+    },
     "Couldn't read the cache for %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -2739,17 +3121,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke lese bufferen for %@."
-          }
-        }
-      }
-    },
-    "Couldn't respond to invite": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke svare på invitasjonen"
           }
         }
       }
@@ -2772,6 +3143,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kunne ikke oppdatere e-post."
+          }
+        }
+      }
+    },
+    "Couldn't respond to invite": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke svare på invitasjonen"
           }
         }
       }
@@ -2897,23 +3279,6 @@
         }
       }
     },
-    "couldntUpdateAiWriter.period": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Couldn't update with AI Writer."
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kunne ikke oppdatere med AI-skriver."
-          }
-        }
-      }
-    },
     "Couldn't update message.": {
       "extractionState": "manual",
       "localizations": {
@@ -3024,23 +3389,6 @@
         }
       }
     },
-    "createTask.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Create Task…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opprett oppgave …"
-          }
-        }
-      }
-    },
     "Create a profile to show a focused set of mailboxes without disconnecting the rest.": {
       "extractionState": "manual",
       "localizations": {
@@ -3059,23 +3407,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lag app-spesifikt passord"
-          }
-        }
-      }
-    },
-    "createTask.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Create task"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Opprett oppgave"
           }
         }
       }
@@ -3201,6 +3532,16 @@
         }
       }
     },
+    "Date: %@": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dato: %@"
+          }
+        }
+      }
+    },
     "Dates": {
       "extractionState": "manual",
       "localizations": {
@@ -3208,23 +3549,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Datoer"
-          }
-        }
-      }
-    },
-    "day.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Day"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dag"
           }
         }
       }
@@ -3346,23 +3670,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slett hendelse"
-          }
-        }
-      }
-    },
-    "deleteFolder.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Delete Folder"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Slett mappe"
           }
         }
       }
@@ -3653,6 +3960,17 @@
         }
       }
     },
+    "Draft saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkast lagret."
+          }
+        }
+      }
+    },
     "Draft with AI": {
       "extractionState": "manual",
       "localizations": {
@@ -3660,6 +3978,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Utkast med AI"
+          }
+        }
+      }
+    },
+    "Drafts": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkast"
           }
         }
       }
@@ -3689,23 +4017,6 @@
     "Due": {
       "extractionState": "manual",
       "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Frist"
-          }
-        }
-      }
-    },
-    "dueDate.title": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Due Date"
-          }
-        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -3780,23 +4091,6 @@
         }
       }
     },
-    "editNote.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit Note"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rediger notat"
-          }
-        }
-      }
-    },
     "Edit Note…": {
       "extractionState": "manual",
       "localizations": {
@@ -3830,6 +4124,16 @@
         }
       }
     },
+    "Edit favourites": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rediger favoritter"
+          }
+        }
+      }
+    },
     "Edit scheduled send": {
       "extractionState": "manual",
       "localizations": {
@@ -3837,23 +4141,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rediger planlagt sending"
-          }
-        }
-      }
-    },
-    "editTask.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Edit task"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rediger oppgave"
           }
         }
       }
@@ -3957,23 +4244,6 @@
         }
       }
     },
-    "enableAiWriter.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Enable AI Writer…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Aktiver AI-skriver …"
-          }
-        }
-      }
-    },
     "Enable AI...": {
       "extractionState": "manual",
       "localizations": {
@@ -4036,6 +4306,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slutter"
+          }
+        }
+      }
+    },
+    "Enter a full email address, like name@example.com.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en fullstendig e-postadresse, for eksempel navn@example.com."
           }
         }
       }
@@ -4150,6 +4431,17 @@
         }
       }
     },
+    "Expand %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis %@"
+          }
+        }
+      }
+    },
     "Expand All": {
       "extractionState": "manual",
       "localizations": {
@@ -4168,17 +4460,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vis smartvisninger"
-          }
-        }
-      }
-    },
-    "Expand %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis %@"
           }
         }
       }
@@ -4293,6 +4574,16 @@
         }
       }
     },
+    "Favourites": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Favoritter"
+          }
+        }
+      }
+    },
     "File type": {
       "extractionState": "manual",
       "localizations": {
@@ -4355,6 +4646,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Filtrer etter liste"
+          }
+        }
+      }
+    },
+    "Filters": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Filtre"
           }
         }
       }
@@ -4700,6 +5002,16 @@
         }
       }
     },
+    "From: %@": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fra: %@"
+          }
+        }
+      }
+    },
     "Future": {
       "extractionState": "manual",
       "localizations": {
@@ -5041,23 +5353,6 @@
         }
       }
     },
-    "importMail.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Import Mail"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Importer e-post"
-          }
-        }
-      }
-    },
     "Import Mail…": {
       "extractionState": "manual",
       "localizations": {
@@ -5179,6 +5474,39 @@
         }
       }
     },
+    "Invite accepted": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitasjon godtatt"
+          }
+        }
+      }
+    },
+    "Invite declined": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitasjon avslått"
+          }
+        }
+      }
+    },
+    "Invite response updated": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar på invitasjon oppdatert"
+          }
+        }
+      }
+    },
     "Italic": {
       "extractionState": "manual",
       "localizations": {
@@ -5245,23 +5573,6 @@
         }
       }
     },
-    "keyboardShortcuts.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Keyboard Shortcuts"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tastatursnarveier"
-          }
-        }
-      }
-    },
     "Keyboard Shortcuts…": {
       "extractionState": "manual",
       "localizations": {
@@ -5269,6 +5580,16 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tastatursnarveier …"
+          }
+        }
+      }
+    },
+    "Keyword: %@": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søkeord: %@"
           }
         }
       }
@@ -5375,23 +5696,6 @@
     "Later Today": {
       "extractionState": "manual",
       "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Senere i dag"
-          }
-        }
-      }
-    },
-    "laterToday.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Later today"
-          }
-        },
         "nb": {
           "stringUnit": {
             "state": "translated",
@@ -5528,6 +5832,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Laster oppgaver"
+          }
+        }
+      }
+    },
+    "Local": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På enheten"
           }
         }
       }
@@ -6016,6 +6331,50 @@
         }
       }
     },
+    "Message queued in Outbox and will retry when the account is online.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen ligger i Utboks og sendes på nytt når kontoen er tilkoblet."
+          }
+        }
+      }
+    },
+    "Message scheduled for %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen er planlagt sendt %@."
+          }
+        }
+      }
+    },
+    "Message sent, but Brev couldn't remove the saved draft.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen er sendt, men Brev kunne ikke fjerne det lagrede utkastet."
+          }
+        }
+      }
+    },
+    "Message sent, but Brev couldn't save a copy to Sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingen er sendt, men Brev kunne ikke lagre en kopi i Sendt."
+          }
+        }
+      }
+    },
     "Message unavailable.": {
       "extractionState": "manual",
       "localizations": {
@@ -6236,23 +6595,6 @@
         }
       }
     },
-    "moveToLocalFolder.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Move to Local Folder…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Flytt til lokal mappe …"
-          }
-        }
-      }
-    },
     "Move to folder": {
       "extractionState": "manual",
       "localizations": {
@@ -6297,17 +6639,6 @@
         }
       }
     },
-    "Moved to Local Folder": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Flyttet til lokal mappe"
-          }
-        }
-      }
-    },
     "Moved to %@": {
       "extractionState": "manual",
       "localizations": {
@@ -6319,19 +6650,13 @@
         }
       }
     },
-    "move.menu": {
+    "Moved to Local Folder": {
       "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Move…"
-          }
-        },
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Flytt …"
+            "value": "Flyttet til lokal mappe"
           }
         }
       }
@@ -6435,23 +6760,6 @@
         }
       }
     },
-    "newLocalFolder.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New Local Folder"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ny lokal mappe"
-          }
-        }
-      }
-    },
     "New Local Folder…": {
       "extractionState": "manual",
       "localizations": {
@@ -6496,23 +6804,6 @@
         }
       }
     },
-    "newSubfolder.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New Subfolder"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ny undermappe"
-          }
-        }
-      }
-    },
     "New Subfolder…": {
       "extractionState": "manual",
       "localizations": {
@@ -6531,40 +6822,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ny oppgave"
-          }
-        }
-      }
-    },
-    "newContact.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New contact"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ny kontakt"
-          }
-        }
-      }
-    },
-    "newEvent.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New event"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ny hendelse"
           }
         }
       }
@@ -6624,23 +6881,6 @@
         }
       }
     },
-    "newTask.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "New task"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ny oppgave"
-          }
-        }
-      }
-    },
     "Next": {
       "extractionState": "manual",
       "localizations": {
@@ -6692,23 +6932,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Neste forsøk: %@"
-          }
-        }
-      }
-    },
-    "nextWeek.lower": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Next week"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Neste uke"
           }
         }
       }
@@ -6966,13 +7189,13 @@
         }
       }
     },
-    "No messages match this saved search.": {
+    "No messages": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen meldinger samsvarer med dette lagrede søket."
+            "value": "Ingen meldinger"
           }
         }
       }
@@ -6988,13 +7211,13 @@
         }
       }
     },
-    "No messages": {
+    "No messages match this saved search.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen meldinger"
+            "value": "Ingen meldinger samsvarer med dette lagrede søket."
           }
         }
       }
@@ -7061,23 +7284,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ingen signatur"
-          }
-        }
-      }
-    },
-    "noSubject.plain": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "No subject"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Uten emne"
           }
         }
       }
@@ -7232,6 +7438,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Notater"
+          }
+        }
+      }
+    },
+    "Now": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nå"
           }
         }
       }
@@ -7962,23 +8179,6 @@
         }
       }
     },
-    "print.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Print"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skriv ut"
-          }
-        }
-      }
-    },
     "Print / Export": {
       "extractionState": "manual",
       "localizations": {
@@ -8100,6 +8300,17 @@
         }
       }
     },
+    "Read": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lest"
+          }
+        }
+      }
+    },
     "Read receipt requested.": {
       "extractionState": "manual",
       "localizations": {
@@ -8188,6 +8399,17 @@
         }
       }
     },
+    "Remove %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern %@"
+          }
+        }
+      }
+    },
     "Remove Follow-Up Reminder": {
       "extractionState": "manual",
       "localizations": {
@@ -8217,17 +8439,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fjern bilde"
-          }
-        }
-      }
-    },
-    "Remove %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fjern %@"
           }
         }
       }
@@ -8305,23 +8516,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gi nytt navn"
-          }
-        }
-      }
-    },
-    "renameFolder.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rename Folder"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gi mappen nytt navn"
           }
         }
       }
@@ -8476,6 +8670,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Endre størrelse på AI-sidepanel­felter"
+          }
+        }
+      }
+    },
+    "Responded": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svart"
           }
         }
       }
@@ -8964,6 +9169,17 @@
         }
       }
     },
+    "Search Mail (filter active)": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i e-post (filter aktivt)"
+          }
+        }
+      }
+    },
     "Search attachments": {
       "extractionState": "manual",
       "localizations": {
@@ -8993,6 +9209,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Søk i hendelser"
+          }
+        }
+      }
+    },
+    "Search filters": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søkefiltre"
           }
         }
       }
@@ -9092,6 +9319,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Søk i meldinger"
+          }
+        }
+      }
+    },
+    "Search messages, filter active": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i meldinger, filter aktivt"
           }
         }
       }
@@ -9338,6 +9576,27 @@
         }
       }
     },
+    "Sent": {
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sendt"
+          }
+        }
+      }
+    },
+    "Server": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "På serveren"
+          }
+        }
+      }
+    },
     "Server search complete": {
       "extractionState": "manual",
       "localizations": {
@@ -9367,40 +9626,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Sett oppfølgings­påminnelse"
-          }
-        }
-      }
-    },
-    "setFollowUpReminder.menu": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Set Follow-Up Reminder…"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sett oppfølgings­påminnelse …"
-          }
-        }
-      }
-    },
-    "setLocalName.action": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Set Local Name"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sett lokalt navn"
           }
         }
       }
@@ -9471,6 +9696,17 @@
         }
       }
     },
+    "Show %@ mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis %@ e-post"
+          }
+        }
+      }
+    },
     "Show %@ search operators": {
       "extractionState": "manual",
       "localizations": {
@@ -9511,17 +9747,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vis sidepanelikoner"
-          }
-        }
-      }
-    },
-    "Show %@ mail": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis %@ e-post"
           }
         }
       }
@@ -9779,23 +10004,6 @@
         }
       }
     },
-    "signature.label": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signature:"
-          }
-        },
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Signatur:"
-          }
-        }
-      }
-    },
     "Signature: %@": {
       "extractionState": "manual",
       "localizations": {
@@ -9950,17 +10158,6 @@
         }
       }
     },
-    "Sort By": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sorter etter"
-          }
-        }
-      }
-    },
     "Something went wrong": {
       "extractionState": "manual",
       "localizations": {
@@ -9968,6 +10165,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Noe gikk galt"
+          }
+        }
+      }
+    },
+    "Sort By": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sorter etter"
           }
         }
       }
@@ -10301,17 +10509,6 @@
         }
       }
     },
-    "Task created in Reminders.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppgaven ble opprettet i Påminnelser."
-          }
-        }
-      }
-    },
     "Task created in %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -10319,6 +10516,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oppgave opprettet i %@."
+          }
+        }
+      }
+    },
+    "Task created in Reminders.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgaven ble opprettet i Påminnelser."
           }
         }
       }
@@ -10374,6 +10582,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Foreløpig"
+          }
+        }
+      }
+    },
+    "Tentative response sent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foreløpig svar sendt"
           }
         }
       }
@@ -10444,13 +10663,13 @@
         }
       }
     },
-    "The full message couldn't be downloaded.": {
+    "The %@ calendar is read-only, so the event's attendee list was not updated.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Hele meldingen kunne ikke lastes ned."
+            "value": "%@-kalenderen er skrivebeskyttet, så hendelsens deltakerliste ble ikke oppdatert."
           }
         }
       }
@@ -10473,6 +10692,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Utkastet endret seg før AI-skriver var ferdig. Prøv igjen med gjeldende tekst."
+          }
+        }
+      }
+    },
+    "The event is not synced to a Brev calendar, so only the reply was sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hendelsen er ikke synkronisert til en Brev-kalender, så bare svaret ble sendt."
+          }
+        }
+      }
+    },
+    "The full message couldn't be downloaded.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hele meldingen kunne ikke lastes ned."
           }
         }
       }
@@ -10994,6 +11235,17 @@
         }
       }
     },
+    "Unknown date": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ukjent dato"
+          }
+        }
+      }
+    },
     "Unknown error.": {
       "extractionState": "manual",
       "localizations": {
@@ -11133,6 +11385,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oppdaterte %lld meldinger; %lld mislyktes. %@"
+          }
+        }
+      }
+    },
+    "Updating the %@ calendar failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdatering av %@-kalenderen feilet: %@"
           }
         }
       }
@@ -11478,208 +11741,19 @@
         }
       }
     },
-    "%@ doesn't look like a valid email address": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@ ser ikke ut som en gyldig e-postadresse"
-          }
-        }
-      }
-    },
-    "%lld attachment%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vedlegg"
-          }
-        }
-      }
-    },
-    "%lld times": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld ganger"
-          }
-        }
-      }
-    },
-    "%lld template(s)": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld mal(er)"
-          }
-        }
-      }
-    },
-    "%lld hidden read message%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld skjulte leste meldinger"
-          }
-        }
-      }
-    },
-    "%lld hours before": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld timer før"
-          }
-        }
-      }
-    },
-    "%lld days before": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld dager før"
-          }
-        }
-      }
-    },
-    "%lld minutes before": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld minutter før"
-          }
-        }
-      }
-    },
-    "%lld messages": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld meldinger"
-          }
-        }
-      }
-    },
-    "%lld scheduled messages remain in Outbox. Waiting mail is checked when Brev is next opened; messages needing review will not retry automatically.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld planlagte meldinger ligger igjen i Utboks. Ventende e-post sjekkes neste gang Brev åpnes; meldinger som trenger gjennomgang prøves ikke på nytt automatisk."
-          }
-        }
-      }
-    },
-    "%lld %@ could not be filed locally.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld %@ kunne ikke lagres lokalt."
-          }
-        }
-      }
-    },
-    "%lld of %lld messages filed locally. %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld av %lld meldinger lagret lokalt. %@"
-          }
-        }
-      }
-    },
-    "%lld selected": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld valgt"
-          }
-        }
-      }
-    },
-    "%lld messages from %lld participants": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld meldinger fra %lld deltakere"
-          }
-        }
-      }
-    },
-    "%lld unavailable mailboxes are still part of this profile. Reconnect them in Accounts, or remove their membership here.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld utilgjengelige postkasser er fortsatt en del av denne profilen. Koble dem til igjen under Kontoer, eller fjern medlemskapet deres her."
-          }
-        }
-      }
-    },
-    "%lld unread": {
+    "addNote.action": {
       "extractionState": "manual",
       "localizations": {
         "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld unread"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld unread"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Add Note"
           }
         },
         "nb": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld ulest"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld uleste"
-                }
-              }
-            }
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg til notat"
           }
         }
       }
@@ -11697,6 +11771,176 @@
           "stringUnit": {
             "state": "translated",
             "value": "alle mapper"
+          }
+        }
+      }
+    },
+    "allMailboxes.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Mailboxes"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Alle postkasser"
+          }
+        }
+      }
+    },
+    "blockSender.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block Sender"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokker avsender"
+          }
+        }
+      }
+    },
+    "blockSender.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Block Sender…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Blokker avsender …"
+          }
+        }
+      }
+    },
+    "contact.unknown": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "?"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "?"
+          }
+        }
+      }
+    },
+    "copyLink.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy link"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier lenke"
+          }
+        }
+      }
+    },
+    "copyToLocalFolder.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Copy to Local Folder…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier til lokal mappe …"
+          }
+        }
+      }
+    },
+    "couldntLoadFolders.plain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't load folders"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke laste mapper"
+          }
+        }
+      }
+    },
+    "couldntUpdateAiWriter.period": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Couldn't update with AI Writer."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke oppdatere med AI-skriver."
+          }
+        }
+      }
+    },
+    "createTask.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create task"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett oppgave"
+          }
+        }
+      }
+    },
+    "createTask.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Create Task…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Opprett oppgave …"
           }
         }
       }
@@ -11729,6 +11973,23 @@
         }
       }
     },
+    "day.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Day"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dag"
+          }
+        }
+      }
+    },
     "days": {
       "extractionState": "manual",
       "localizations": {
@@ -11736,6 +11997,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "dager"
+          }
+        }
+      }
+    },
+    "deleteFolder.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Delete Folder"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett mappe"
+          }
+        }
+      }
+    },
+    "dueDate.title": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Due Date"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frist"
+          }
+        }
+      }
+    },
+    "editNote.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit Note"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rediger notat"
+          }
+        }
+      }
+    },
+    "editTask.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Edit task"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rediger oppgave"
+          }
+        }
+      }
+    },
+    "enableAiWriter.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enable AI Writer…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aktiver AI-skriver …"
           }
         }
       }
@@ -11813,6 +12159,57 @@
         }
       }
     },
+    "importMail.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Import Mail"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Importer e-post"
+          }
+        }
+      }
+    },
+    "keyboardShortcuts.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keyboard Shortcuts"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tastatursnarveier"
+          }
+        }
+      }
+    },
+    "laterToday.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Later today"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Senere i dag"
+          }
+        }
+      }
+    },
     "message": {
       "extractionState": "manual",
       "localizations": {
@@ -11852,6 +12249,40 @@
         }
       }
     },
+    "move.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytt …"
+          }
+        }
+      }
+    },
+    "moveToLocalFolder.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Move to Local Folder…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Flytt til lokal mappe …"
+          }
+        }
+      }
+    },
     "name@example.com": {
       "extractionState": "manual",
       "localizations": {
@@ -11863,6 +12294,125 @@
         }
       }
     },
+    "newContact.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New contact"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny kontakt"
+          }
+        }
+      }
+    },
+    "newEvent.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New event"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny hendelse"
+          }
+        }
+      }
+    },
+    "newLocalFolder.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Local Folder"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny lokal mappe"
+          }
+        }
+      }
+    },
+    "newSubfolder.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New Subfolder"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny undermappe"
+          }
+        }
+      }
+    },
+    "newTask.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New task"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ny oppgave"
+          }
+        }
+      }
+    },
+    "nextWeek.lower": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Next week"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste uke"
+          }
+        }
+      }
+    },
+    "noSubject.plain": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No subject"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Uten emne"
+          }
+        }
+      }
+    },
     "on %@": {
       "extractionState": "manual",
       "localizations": {
@@ -11870,6 +12420,91 @@
           "stringUnit": {
             "state": "translated",
             "value": "på %@"
+          }
+        }
+      }
+    },
+    "print.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Print"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv ut"
+          }
+        }
+      }
+    },
+    "renameFolder.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rename Folder"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gi mappen nytt navn"
+          }
+        }
+      }
+    },
+    "setFollowUpReminder.menu": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Follow-Up Reminder…"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett oppfølgings­påminnelse …"
+          }
+        }
+      }
+    },
+    "setLocalName.action": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set Local Name"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett lokalt navn"
+          }
+        }
+      }
+    },
+    "signature.label": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signature:"
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Signatur:"
           }
         }
       }
@@ -11896,6 +12531,17 @@
         }
       }
     },
+    "this sender": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "denne avsenderen"
+          }
+        }
+      }
+    },
     "thisFolder.lower": {
       "extractionState": "manual",
       "localizations": {
@@ -11913,13 +12559,24 @@
         }
       }
     },
-    "this sender": {
+    "to %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "denne avsenderen"
+            "value": "til %@"
+          }
+        }
+      }
+    },
+    "to %@ + %lld more": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "til %@ + %lld til"
           }
         }
       }
@@ -12009,641 +12666,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "leverandøren din"
-          }
-        }
-      }
-    },
-    "%lld loaded": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld lastet inn"
-          }
-        }
-      }
-    },
-    "%lld mailboxes skipped because server search is unavailable.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld mailbox skipped because server search is unavailable."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld mailboxes skipped because server search is unavailable."
-                }
-              }
-            }
-          }
-        },
-        "nb": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld postkasse hoppet over fordi serversøk ikke er tilgjengelig."
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld postkasser hoppet over fordi serversøk ikke er tilgjengelig."
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "%lld message": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld melding"
-          }
-        }
-      }
-    },
-    "%lld message shown": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld melding vist"
-          }
-        }
-      }
-    },
-    "%lld messages shown": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld meldinger vist"
-          }
-        }
-      }
-    },
-    "%lld pinned": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld festet"
-          }
-        }
-      }
-    },
-    "%lld shown": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vist"
-          }
-        }
-      }
-    },
-    "%lld thread shown": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld samtale vist"
-          }
-        }
-      }
-    },
-    "%lld threads shown": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld samtaler vist"
-          }
-        }
-      }
-    },
-    "%lld total": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld totalt"
-          }
-        }
-      }
-    },
-    "Attachment": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vedlegg"
-          }
-        }
-      }
-    },
-    "Auto": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Automatisk"
-          }
-        }
-      }
-    },
-    "Brev could not verify that all matching messages were searched. Try again or narrow your search.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev kunne ikke bekrefte at alle samsvarende meldinger ble gjennomsøkt. Prøv igjen eller avgrens søket."
-          }
-        }
-      }
-    },
-    "Correct or remove the highlighted address before sending.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rett eller fjern den markerte adressen før du sender."
-          }
-        }
-      }
-    },
-    "Draft saved.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Utkast lagret."
-          }
-        }
-      }
-    },
-    "Filters": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Filtre"
-          }
-        }
-      }
-    },
-    "Local": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "På enheten"
-          }
-        }
-      }
-    },
-    "Message queued in Outbox and will retry when the account is online.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meldingen ligger i Utboks og sendes på nytt når kontoen er tilkoblet."
-          }
-        }
-      }
-    },
-    "Message scheduled for %@.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meldingen er planlagt sendt %@."
-          }
-        }
-      }
-    },
-    "Message sent, but Brev couldn't remove the saved draft.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meldingen er sendt, men Brev kunne ikke fjerne det lagrede utkastet."
-          }
-        }
-      }
-    },
-    "Message sent, but Brev couldn't save a copy to Sent.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Meldingen er sendt, men Brev kunne ikke lagre en kopi i Sendt."
-          }
-        }
-      }
-    },
-    "Now": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Nå"
-          }
-        }
-      }
-    },
-    "Search filters": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Søkefiltre"
-          }
-        }
-      }
-    },
-    "Search messages, filter active": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Søk i meldinger, filter aktivt"
-          }
-        }
-      }
-    },
-    "Server": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "På serveren"
-          }
-        }
-      }
-    },
-    "Unknown date": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ukjent dato"
-          }
-        }
-      }
-    },
-    "%@, %lld messages, collapsed": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@, %lld meldinger, sammenfoldet"
-          }
-        }
-      }
-    },
-    "%@, %lld messages, expanded": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@, %lld meldinger, utvidet"
-          }
-        }
-      }
-    },
-    "to %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "til %@"
-          }
-        }
-      }
-    },
-    "to %@ + %lld more": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "til %@ + %lld til"
-          }
-        }
-      }
-    },
-    "Search Mail (filter active)": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Søk i e-post (filter aktivt)"
-          }
-        }
-      }
-    },
-    "Read": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Lest"
-          }
-        }
-      }
-    },
-    "Date: %@": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Dato: %@"
-          }
-        }
-      }
-    },
-    "From: %@": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Fra: %@"
-          }
-        }
-      }
-    },
-    "Keyword: %@": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Søkeord: %@"
-          }
-        }
-      }
-    },
-    "Favourites": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Favoritter"
-          }
-        }
-      }
-    },
-    "Edit favourites": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Rediger favoritter"
-          }
-        }
-      }
-    },
-    "Choose your shortcuts and drag to reorder. Inbox counts show unread mail; Drafts counts show all drafts.": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Velg snarveier og dra for å endre rekkefølgen. Innbokser viser antall uleste meldinger; Utkast viser alle utkast."
-          }
-        }
-      }
-    },
-    "Drafts": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Utkast"
-          }
-        }
-      }
-    },
-    "Sent": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Sendt"
-          }
-        }
-      }
-    },
-    "%lld drafts": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld draft"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld drafts"
-                }
-              }
-            }
-          }
-        },
-        "nb": {
-          "variations": {
-            "plural": {
-              "one": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld utkast"
-                }
-              },
-              "other": {
-                "stringUnit": {
-                  "state": "translated",
-                  "value": "%lld utkast"
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "Brev could not match you to an attendee on the synced event, so only the reply was sent.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev kunne ikke matche deg til en deltaker på den synkroniserte hendelsen, så bare svaret ble sendt."
-          }
-        }
-      }
-    },
-    "Calendar updated on %@.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Kalender oppdatert på %@."
-          }
-        }
-      }
-    },
-    "Enter a full email address, like name@example.com.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Skriv inn en fullstendig e-postadresse, for eksempel navn@example.com."
-          }
-        }
-      }
-    },
-    "Invite accepted": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitasjon godtatt"
-          }
-        }
-      }
-    },
-    "Invite declined": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Invitasjon avslått"
-          }
-        }
-      }
-    },
-    "Invite response updated": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Svar på invitasjon oppdatert"
-          }
-        }
-      }
-    },
-    "Responded": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Svart"
-          }
-        }
-      }
-    },
-    "Tentative response sent": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Foreløpig svar sendt"
-          }
-        }
-      }
-    },
-    "The %@ calendar is read-only, so the event's attendee list was not updated.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@-kalenderen er skrivebeskyttet, så hendelsens deltakerliste ble ikke oppdatert."
-          }
-        }
-      }
-    },
-    "The event is not synced to a Brev calendar, so only the reply was sent.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Hendelsen er ikke synkronisert til en Brev-kalender, så bare svaret ble sendt."
-          }
-        }
-      }
-    },
-    "Updating the %@ calendar failed: %@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Oppdatering av %@-kalenderen feilet: %@"
-          }
-        }
-      }
-    },
-    "%@, but Brev couldn't save a copy to Sent.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%@, men Brev kunne ikke lagre en kopi i Sendt."
           }
         }
       }

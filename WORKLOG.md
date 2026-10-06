@@ -43,6 +43,58 @@
   (no mock reachability); signing/cert build steps are CI's domain.
 - Handoff: PR #189 to `main`; no merge without Henrik's authorization.
 
+## 2026-10-06 — Devin — Settings flush-left pass (PR #191)
+
+- Goal: Henrik flagged leftover left gaps (rows indented under group headers; Settings sidebar categories indented vs search field and Extensions).
+- `SettingsGroup` no longer indents its rows by the symbol column — rows, previews, segmented controls and callouts share the header's left edge.
+- macOS Settings sidebar: category and extension rows share one selection-pill style whose edges match the search field; extension icons use the shared symbol width and secondary tint; Extensions header aligns with row icons.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, macOS `script/build_and_run.sh --mock` + rendered sidebar, iOS 27 simulator build.
+- iPhone follow-up: Settings extension rows use the category rows' insets/height; mail sidebar Favourites/Smart Views/Accounts headers use the Apps header inset so headers line up with card rows.
+- Folder Sync table header/rows drop their extra horizontal padding and use `SettingsSymbol`; Google placeholder row uses the shared symbol column and body title.
+
+## 2026-10-06 — Devin — Settings alignment follow-up (PR #191)
+
+- Goal: fix the live-QA alignment findings from the first pass (macOS Compose/Auto-Reply, iPhone large and accessibility text).
+- Symbol column widened to 24 pt; `SettingsSymbol` steps wide glyphs (Abc, signature) down a scale instead of overlapping titles; Settings section lists reuse `SettingsSymbol`.
+- iOS menu pickers offset the native button padding (`SettingsLayout.menuButtonInset`) so values end on the switch edge inline and start on the title edge when stacked; iOS pickers no longer `fixedSize` so stacked menus stay inside the pane.
+- Compose "Manage recent recipients" is a custom disclosure row on the shared icon/title/trailing columns; Auto-Reply date pickers use label + trailing control rows; Notifications Authorization row stacks when it does not fit; Appearance Accent stays inline beside the label on iPhone at non-accessibility sizes.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, `swift build`, iOS 27 simulator build + rendered Compose at large and accessibility-extra-large, macOS `script/build_and_run.sh --mock` build.
+- Known: `mailStorageCacheLookbackSelectionStaysReadableInLightTheme` fails only in the full BrevSettings run (passes in isolation) on this host, identically on the previous commit — order-dependent pixel probe, not caused by this change.
+
+## 2026-10-06 — Devin — Settings alignment pass (PR #191)
+
+- Goal: make Settings text, icon and option columns line up consistently on macOS and iOS.
+- Added `SettingsLayout` (20 pt symbol column, shared stacked-control indent, trailing popup slot, density-aware pane inset) and routed `SettingsGroup`, `SettingsRowLabel`, `SettingsSymbol`, picker/segmented rows, callouts, `SectionScaffold` and `SettingsView` headers/section lists through it.
+- Appearance Accent/Themes now reuse `SettingsRowLabel`; Mailbox View preview moved inside the Mailbox list group; notification badge rows use distinct symbols.
+- macOS popups hug their value and share the switches' trailing edge; iPhone picker rows wrap the label beside a hugging menu like switch rows, stacking only at accessibility sizes.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, `git diff --check`, BrevSettings non-pixel tests (420 passed), `script/build_and_run.sh --mock` macOS build + rendered review of all panes, iOS 27 simulator build + rendered Compose at default and accessibility-extra-large text (content size restored to `large`).
+- Skipped: pixel snapshot suites (pre-existing renderer drift on this host, see entry below); `tuist build BrevMacOS` fails here without `-skipMacroValidation` while the repo build script succeeds.
+
+## 2026-10-06 — Devin — Appearance, navigation and performance assessment fixes
+
+- Goal: implement Henrik's sidebar/Settings/accent assessment without removing
+  destinations or mistaking mock timings for daily-driver readiness. Branch
+  `fix/appearance-navigation-performance`, targeting `main`; no matching issue/card.
+- Changed: shared root appearance across macOS windows; explicit Theme/System/Custom
+  accent sources with legacy migration and preserved custom values; contrast-safe
+  effective accents and filled-button foregrounds; adaptive Settings navigation and
+  large-text controls; clearer mailbox scope, Accounts/Apps headings and neutral
+  management menus. Appearance remains device-local per ADR-0056.
+- Measurement changes: collector requires PID and run start; summaries distinguish
+  visible body opening from fetch/render and launch from list reload. Budget output
+  requires attributed cached workloads and 20 logged samples; external launch,
+  scrolling and memory measurements stay explicit and missing evidence fails closed.
+- Verified so far: 13 BrevThemes tests, 36 focused BrevSettings tests, six Python
+  regression tests and performance-budget self-test. Final compilation, formatting,
+  lint and visual regression checks are pending; results will be appended before push.
+  Model/parser regressions were added alongside implementation rather than a separate
+  red-first TDD cycle.
+- Documentation sweep: ADR-0048, CHANGELOG, performance QA protocol and this log.
+  No README/setup, privacy/network, version/release or agent-policy changes.
+- Limits: representative two-account/10k-header Instruments evidence, physical-phone
+  performance and live-provider provisioning/sign-off remain unverified. No merge,
+  release, daily-driver replacement or issue closure is authorized.
+
 ## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
 
 - Goal: advance the provider-neutral Calendar/Contacts parent issue (#3) to
@@ -5027,3 +5079,60 @@ buttons, and package-aware localization.
   `ORGANIZER:mailto:qa@local.test` + attendee PARTSTAT). ADR-0072 log entry
   added for the CI `adr-required` gate (BrevCalendar sources are protected
   paths). testing-brev-ui skill gained a stub-DAV/PIM section.
+
+## 2026-10-06 — Agent — Appearance accent verification handoff
+
+- Goal: verify the integrated ADR-0048 accent work and lead-owned appearance/settings/sidebar/performance changes on `fix/appearance-navigation-performance`; preserve the combined worktree for review, with no commit or push.
+- Verification: `scripts/format.sh` completed (8/1,209 files formatted; 159 skipped); `scripts/lint.sh` passed (SwiftFormat lint 0/1,209, strict SwiftLint, coverage self-test, and ADR-required check). Focused tests passed: BrevThemes 13, BrevSettings 66 across four suites, and BrevMail `FolderSidebarPresentation` 37. No root-appearance policy test suite was present.
+- Full nonpixel suites passed with CI pixel filters: BrevSettings 420 tests/62 suites; BrevMail 1,855/276; BrevBackend 1,152/114. BrevMail's separate `ContactsAccessPolicyTests` passed 6 tests, and the Release `AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest` guard passed.
+- `tuist generate` and unsigned Debug builds of `BrevMacOS` and `BrevIOS` passed. The iOS build used Xcode 27 RC and simulator UDID `8E780854-5816-4435-AD8F-8098DF847EB5` (iPhone 17, iOS 27.0). Xcode 27 emitted diagnostics in unrelated BrevMail/BrevAvatars sources, but both schemes built successfully.
+- The requested iOS `accessibleAppearance(dark:)` snapshot test passed on rerun (2 cases). Its first run created these references, now retained for pixel review: `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/accessibleAppearance-dark.appearance-accessible-light.png` and `.../accessibleAppearance-dark.appearance-accessible-dark.png`. The first run exited 65 after first-recording failures and a 600-second simulator-diagnostics timeout; the rerun passed.
+- Focused macOS snapshots were not re-recorded: `FolderSidebarSnapshotTests` reported 20 image mismatches across Gmail-native sidebar, all-inboxes alignment, smart views, compact profile scopes, and desktop favorites/editor variants; `AIWriterSectionMacSnapshotTests/desktopSizing` mismatched `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/BrevSettingsSnapshotTests/capture-_-theme-name-size.desktop-small-compact.png` and `...desktop-large-spacious.png`. These comparisons ran on macOS 26.5.2; no base-branch comparison was made, so they are not classified as pre-existing macOS 27 renderer failures.
+- The iOS-only imported-system-accent fallback assertion was not executed (the full package tests ran on macOS; the iOS app build compiled the implementation). No UI was launched or driven, `/Applications/Brev.app` was left untouched, and the combined worktree remains uncommitted and unpushed for lead review.
+
+## 2026-10-06 — Agent — Appearance catalog and snapshot cleanup
+
+- Goal: remove String Catalog ordering churn while preserving the integrated appearance work, then refresh only the two new accessible-appearance iOS references for lead pixel review. No commit or push.
+- Rebuilt both catalogs from their `HEAD` bytes plus exactly the intended additions: BrevMail `Accounts` and `Apps`, and eight BrevSettings appearance/settings strings. A parsed assertion confirmed every existing entry and metadata value is unchanged, with no removals or unexpected additions; original `HEAD` ordering and two-space JSON formatting were restored.
+- Scoped SwiftFormat on `AppearanceSection.swift`, `SettingsSectionComponents.swift`, and `CompactSettingsRowSnapshotTests.swift` changed 0/3 files. `scripts/lint.sh` passed once after all edits (SwiftFormat lint 0/1,209; strict SwiftLint; coverage self-test; ADR-required check).
+- On Xcode 27 RC, iPhone 17 / iOS 27.0 simulator `8E780854-5816-4435-AD8F-8098DF847EB5`, record mode wrote only these references: `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/accessibleAppearance-dark.appearance-accessible-light.png` and `.../accessibleAppearance-dark.appearance-accessible-dark.png`. The record invocation intentionally exits 65 because SnapshotTesting reports record-mode issues; the no-diagnostics rerun passed both dynamic cases. The iOS-only `importedSystemSourceFallsBackToThemeOnIOS()` test passed separately (1 test), after the combined filter without `()` selected only the snapshot case.
+- Existing macOS snapshot differences remain pending comparison against `main`; no existing baselines were changed. Full suites and builds were intentionally not rerun per the handoff. Simulator remains running, no UI was driven, and `/Applications/Brev.app` was untouched.
+
+## 2026-10-06 — Agent — Appearance runtime verification
+
+- macOS mock: separate Settings and Mail changed light/dark together; accent
+  search, Theme/System/Custom selection, requested `#111111` preservation and
+  Follow theme reset passed. Favorites/Smart Views management and standalone
+  Calendar/Contacts/Tasks/Shortcuts opened; Shortcuts also followed light mode.
+- iPhone 17/iOS 27 mock: normal and accessibility-extra-large layouts passed,
+  including Increased Contrast, custom `#111111` round-trip, theme chooser
+  selection/dismissal and reset. Temporary appearance values and simulator
+  accessibility settings were restored. Existing toolbar-gear Settings access
+  remains deliberate; no duplicate Apps row is required.
+- Limits: OS-accent notification delivery, exhaustive sidebar keyboard navigation,
+  scoped folder-sync caption, filled-button-specific runtime contrast and all
+  iOS destination flows were not exercised. Model tests cover numerical contrast;
+  screenshots are visual evidence, not measurements.
+- No blueprint change: simulator accessibility toggles are reversible test
+  fixtures, not development-environment setup. No daily-driver replacement,
+  provider authentication or real message sending occurred.
+- Baseline comparison: pristine `ed631a7` reproduces all 20 sidebar and two
+  desktop Settings snapshot mismatches on macOS 26.5.2 / Xcode 26.6. Four
+  Favorites-editor renders are pixel-identical across base and branch; other
+  differences match the intentional headings, ellipsis actions, source picker
+  and neutral symbols. Existing references were not rewritten to mask host
+  drift. New iOS accessibility snapshots pass. Canonical-host refresh of the
+  changed desktop references remains a follow-up.
+
+## 2026-10-06 — Devin — PR #191 Folder Sync header cleanup
+
+- Goal: Henrik flagged the top of iPhone Folder Sync as looking bad (duplicate title, cramped mailbox picker on a grey band, black filter field).
+- Changes: Folder Sync scope bar is now a standard `SettingsPickerRow` (Mailbox title/subtitle, menu shows display name, email only when names collide); iOS scope bar uses the pane surface with a 1 pt separator (macOS keeps `bgSecondary`). iOS `SectionScaffold` no longer repeats the navigation title in-pane. iOS filter field uses a search-style quiet surface; filter/Refresh stack at accessibility sizes; "Show" header no longer breaks mid-word; AX folder rows use a dedicated stacked layout so the retention menu never clips.
+- Verification: `scripts/format.sh`, `scripts/lint.sh`, `git diff --check`, iOS simulator build; testing agent measured iPhone 17 at large (dark + light) and AX-XL plus macOS Folder Sync scope bar.
+- Open: at AX-XL the pinned Mailbox bar takes ~40% of the screen; dark-mode navigation bar (black) vs pane (grey) contrast band and Notifications "Request Access" pill contrast observed but not changed.
+
+## 2026-10-06 — Devin — PR #191 iPhone Settings scope inline
+
+- Goal: Henrik said the Folder Sync top still did not look better (pinned grey Mailbox strip under a black large-title area).
+- Changes: on iOS, Settings panes no longer pin a scope bar; the Folder Sync mailbox picker and Mail Storage account row render inside the scroll content via a `settingsScopeAccessory` environment in `SectionScaffold`. Folder Sync uses a single-line Mailbox row (custom wrapping `Menu` at accessibility sizes so the label never clips). iOS detail panes paint `BrevWindowSurfaceBackground(.content)` under the safe area so the navigation title shares the pane colour. macOS keeps the pinned scope bar.
+- Verification: format, lint, `git diff --check`, iOS simulator build, macOS mock build; testing agent measured iPhone 17 large text (dark + light) and AX-XL, Mail Storage/Appearance spot checks, and Mac Folder Sync.

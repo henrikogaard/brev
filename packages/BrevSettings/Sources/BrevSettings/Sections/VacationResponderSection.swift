@@ -236,17 +236,31 @@ private struct VacationResponderPane: View {
         )
     }
 
+    private func scheduleDateRow(symbolName: String, title: String, selection: Binding<Date>) -> some View {
+        HStack(alignment: .center, spacing: BrevSpacing.md) {
+            HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
+                SettingsSymbol(symbolName: symbolName)
+                Text(title)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+            }
+            Spacer(minLength: BrevSpacing.md)
+            DatePicker(title, selection: selection, displayedComponents: [.date, .hourAndMinute])
+                .labelsHidden()
+        }
+    }
+
     private var scheduleRows: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            DatePicker(
-                String(localized: "Active from", bundle: .module),
-                selection: startsAtBinding,
-                displayedComponents: [.date, .hourAndMinute]
+            scheduleDateRow(
+                symbolName: "calendar",
+                title: String(localized: "Active from", bundle: .module),
+                selection: startsAtBinding
             )
-            DatePicker(
-                String(localized: "Active until", bundle: .module),
-                selection: endsAtBinding,
-                displayedComponents: [.date, .hourAndMinute]
+            scheduleDateRow(
+                symbolName: "calendar.badge.checkmark",
+                title: String(localized: "Active until", bundle: .module),
+                selection: endsAtBinding
             )
             SettingsToggleRow(
                 symbolName: "calendar.badge.clock",

@@ -12736,6 +12736,94 @@
           }
         }
       }
+    },
+    "Accent source": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aksentkilde"
+          }
+        }
+      }
+    },
+    "Choose Brev's colors and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg Brevs farger og appsymbol."
+          }
+        }
+      }
+    },
+    "Select the icon shown on your Home Screen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg symbolet som vises på Hjem-skjermen."
+          }
+        }
+      }
+    },
+    "System accent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent"
+          }
+        }
+      }
+    },
+    "System accent is available on Mac. This device uses the theme accent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent er tilgjengelig på Mac. Denne enheten bruker temaets aksentfarge."
+          }
+        }
+      }
+    },
+    "These settings apply only to the selected mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disse innstillingene gjelder bare den valgte postkassen."
+          }
+        }
+      }
+    },
+    "Uses the macOS accent, adjusted for readable controls.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruker aksentfargen i macOS, justert for lesbare kontroller."
+          }
+        }
+      }
+    },
+    "Your color is saved unchanged. Controls adjust for contrast when needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fargen din lagres uendret. Kontroller justeres for kontrast ved behov."
+          }
+        }
+      }
     }
   },
   "version": "1.0"
