@@ -4973,3 +4973,57 @@ buttons, and package-aware localization.
 - Verified: focused BrevMail tests green (28 MessageListPresentation tests plus the new localization suite); `scripts/format.sh` 0/1206 changed and `scripts/lint.sh` OK; rendered simulator run (iPhone 17 Pro, iOS 27, mock backend, `-AppleLanguages '(nb)'`, driven through xcodebuildmcp with `simctl` screenshots) captured the search, filter, and spam empty states in Norwegian in `docs/qa/mail-status-localization-2026-09-30/`, matching catalog values.
 - Limits: physical-iPhone acceptance pending (handoff item 1; the device is blocked on the Gmail 404 session failure that PR #164 addresses). The reader preview-only banner is catalog- and test-verified only because the mock backend cannot fail a body load. The full BrevMail suite shows 54 host-renderer snapshot mismatches on this macOS 27 host that reproduce byte-identically on a pristine `origin/main` checkout; they are pre-existing environment drift, not this branch, and baselines were not re-recorded.
 - Documentation sweep: CHANGELOG Unreleased Fixed entry, QA evidence, ADR-0013 amendment, and this log. No README/setup, PRIVACY/network, version, release, or agent-policy change; no new ADR required. Delivery is a review PR; no merge or issue-closeout authorization.
+
+
+## 2026-10-05 — Agent — PIM parity QA follow-ups (O7–O10, O12)
+
+- Goal: fix the codeable findings from the stub-DAV parity matrix in
+  `docs/qa/pim-parity-stub-dav-2026-10-03/README.md` (O7–O12). Branch
+  `fix/pim-qa-followups` stacks on `fix/l10n-interpolated-catalog-keys`
+  (PR #189) because both edit `Localizable.xcstrings`.
+- O7 (source row showed raw enum): 13 `String(describing: error)` sites in
+  `PIMEventSyncService`, `PIMTaskSyncService`, `PIMContactSyncService`,
+  `PIMCollectionService` now render through a shared `PIMErrorText` helper
+  that prefers `LocalizedError.errorDescription` — the sync error enums
+  already carried localized text, `describing` just bypassed it.
+- O8 (English RSVP badges/sentences): `CalendarInviteResponsePresentation`
+  had no `String(localized:)` at all — reply badge ("Responded", the local
+  response label), confirmation prefixes, and all reconciliation sentences
+  now localize via `.module`; `AttendeeState.displayLabel` stays an English
+  model token (Models.swift has no localized strings) with a localized
+  `responseLabel` at the presentation layer. 12 new keys + nb entries in the
+  BrevMail catalog.
+- O9 (attendee PUT lacked ORGANIZER): `PIMEventWriteService` claims a DAV
+  organizer when an event has attendees but none set — basic-auth username
+  when `@`-shaped, else `source.principalURL`. `PIMEventICSWriter` emits
+  `mailto:` only for mailbox-shaped values (URI values pass verbatim) and
+  `ICSParser.parsePerson` now accepts any URI cal-address, not just mailto,
+  so the organizer round-trips through sync.
+- O10 (attendee field took non-addresses): `addAttendee()` reuses
+  `RecipientAddressValidator.isLikelyEmailAddress` and shows an inline
+  caption-styled error that clears on edit.
+- O12 (stale cached counts): `PIMSourceSettingsModel.observeSourceChanges()`
+  subscribes to `coordinator.changes()` — every `markStatus` a background
+  sync writes emits — and reloads; wired via a second `.task` in
+  `CalendarContactsSection`, same pattern as the browsing models.
+- O1 already fixed on main (`PIMDetailEditabilityHint` in contact/task/event
+  detail views). O11 was fixed in PR #187.
+- Verified: `swift test` BrevCalendar 264/264 (incl. new organizer-URI
+  round-trip, organizer-inject create/update, no-attendee no-organizer,
+  PIMErrorText); BrevSettings 26/26 (incl. new observer test); BrevMail
+  filtered suites green incl. catalog symbol/format guards; swiftformat +
+  swiftlint clean on touched files; `xcodebuild -scheme BrevMacOS` pending
+  in background at write time.
+- Skipped: live stub-DAV replay (no server in this environment); UI pass on
+  the attendee hint handed to the testing agent.
+
+- Post-commit: `xcodebuild -scheme BrevMacOS` BUILD SUCCEEDED. Testing run
+  verified ALL five follow-ups live on macOS nb — O8 invite badge
+  ("Godtatt" + nb reconciliation sentence), O12 live row refresh
+  (`Klar`→`Mislyktes` and `5 → 6 hendelser bufret` without reopening
+  Settings), O10 attendee rejection caption, O7 readable nb error text for
+  missingCredential AND transport families, and O9 via
+  `scripts/stub-dav-server.py` (stored ICS carries
+  `ORGANIZER:mailto:qa@local.test` + attendee PARTSTAT). ADR-0072 log entry
+  added for the CI `adr-required` gate (BrevCalendar sources are protected
+  paths). testing-brev-ui skill gained a stub-DAV/PIM section.

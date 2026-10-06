@@ -6,6 +6,15 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Calendar and Contacts QA follow-ups: event writes that add attendees
+  now set `ORGANIZER` so scheduling servers can send invitations (the
+  basic-auth username when it is mailbox-shaped, else the source's
+  principal URL); the attendee field rejects non-addresses with an
+  inline hint instead of accepting them; sync failures on source rows
+  show the readable error text instead of raw enum case names like
+  `missingCredential`; RSVP reply badges and confirmation sentences
+  localize; and Settings refreshes source rows and cached counts when a
+  background sync pass lands while the section is open.
 - Norwegian mail and backend strings now localize in every interpolated
   message. The string catalogs carried keys with raw `\(…)` source text, but
   `String(localized:)` looks up the `%@`/`%lld` format key, so 168 entries

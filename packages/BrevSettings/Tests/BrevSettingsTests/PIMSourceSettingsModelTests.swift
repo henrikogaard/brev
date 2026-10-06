@@ -225,6 +225,40 @@ struct PIMSourceSettingsModelTests {
         #expect(model.lastError == nil)
     }
 
+    @Test("observeSourceChanges reloads after a background status write")
+    @MainActor
+    func observeSourceChangesReloads() async throws {
+        let store = InMemorySourceStore()
+        try await store.save(Self.source(id: "a"))
+        let coordinator = PIMSourceCoordinator(
+            store: store,
+            credentials: InMemoryCredentialStore(),
+            localData: InMemoryLocalDataStore()
+        )
+        let model = makeModel(store: store, coordinator: coordinator)
+        await model.load()
+        #expect(model.sources.first?.status == .ready)
+
+        let observer = Task { await model.observeSourceChanges() }
+        defer { observer.cancel() }
+        // Give the stream a turn to subscribe before mutating.
+        await Task.yield()
+
+        try await coordinator.markStatus(
+            .failed,
+            for: "a",
+            detail: "sync failed"
+        )
+
+        // The broadcaster yields, then load() re-reads the source —
+        // poll briefly rather than assume a fixed scheduling order.
+        for _ in 0 ..< 20 where model.sources.first?.status != .failed {
+            try await Task.sleep(for: .milliseconds(25))
+        }
+        #expect(model.sources.first?.status == .failed)
+        #expect(model.sources.first?.statusDetail == "sync failed")
+    }
+
     @Test("setSyncEnabled persists the opt-in and refreshes the list")
     @MainActor
     func setSyncEnabledPersistsOptIn() async throws {

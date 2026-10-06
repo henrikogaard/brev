@@ -12515,6 +12515,138 @@
           }
         }
       }
+    },
+    "Brev could not match you to an attendee on the synced event, so only the reply was sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kunne ikke matche deg til en deltaker på den synkroniserte hendelsen, så bare svaret ble sendt."
+          }
+        }
+      }
+    },
+    "Calendar updated on %@.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalender oppdatert på %@."
+          }
+        }
+      }
+    },
+    "Enter a full email address, like name@example.com.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skriv inn en fullstendig e-postadresse, for eksempel navn@example.com."
+          }
+        }
+      }
+    },
+    "Invite accepted": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitasjon godtatt"
+          }
+        }
+      }
+    },
+    "Invite declined": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Invitasjon avslått"
+          }
+        }
+      }
+    },
+    "Invite response updated": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar på invitasjon oppdatert"
+          }
+        }
+      }
+    },
+    "Responded": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svart"
+          }
+        }
+      }
+    },
+    "Tentative response sent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foreløpig svar sendt"
+          }
+        }
+      }
+    },
+    "The %@ calendar is read-only, so the event's attendee list was not updated.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@-kalenderen er skrivebeskyttet, så hendelsens deltakerliste ble ikke oppdatert."
+          }
+        }
+      }
+    },
+    "The event is not synced to a Brev calendar, so only the reply was sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hendelsen er ikke synkronisert til en Brev-kalender, så bare svaret ble sendt."
+          }
+        }
+      }
+    },
+    "Updating the %@ calendar failed: %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppdatering av %@-kalenderen feilet: %@"
+          }
+        }
+      }
+    },
+    "%@, but Brev couldn't save a copy to Sent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@, men Brev kunne ikke lagre en kopi i Sendt."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

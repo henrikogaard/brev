@@ -65,14 +65,14 @@ struct CalendarInviteResponsePresentation: Equatable {
     ) -> CalendarInviteResponsePresentation? {
         if let localResponse, localResponse.messageID == header.id {
             return CalendarInviteResponsePresentation(
-                label: localResponse.response.displayLabel,
+                label: responseLabel(for: localResponse.response),
                 showsActions: false
             )
         }
 
         if header.isAnswered {
             return CalendarInviteResponsePresentation(
-                label: "Responded",
+                label: String(localized: "Responded", bundle: .module),
                 showsActions: false
             )
         }
@@ -93,7 +93,11 @@ struct CalendarInviteResponsePresentation: Equatable {
     ) -> MailRootStatus {
         if sendResult?.warnings.contains(.sentCopyAppendFailed) == true {
             return MailRootStatus(
-                message: "\(confirmationMessagePrefix(for: response)), but Brev couldn't save a copy to Sent.",
+                message: String(
+                    localized:
+                    "\(confirmationMessagePrefix(for: response)), but Brev couldn't save a copy to Sent.",
+                    bundle: .module
+                ),
                 tone: .warning
             )
         }
@@ -119,47 +123,76 @@ struct CalendarInviteResponsePresentation: Equatable {
         switch reconciliation {
         case .updated(let sourceName):
             return MailRootStatus(
-                message: base.message
-                    + " Calendar updated on \(sourceName).",
+                message: base.message + " " + String(
+                    localized: "Calendar updated on \(sourceName).",
+                    bundle: .module
+                ),
                 tone: .success
             )
         case .notSynced:
             return MailRootStatus(
-                message: base.message
-                    + " The event is not synced to a Brev calendar, so only the reply was sent.",
+                message: base.message + " " + String(
+                    localized:
+                    "The event is not synced to a Brev calendar, so only the reply was sent.",
+                    bundle: .module
+                ),
                 tone: .info
             )
         case .notWritable(let sourceName):
             return MailRootStatus(
-                message: base.message
-                    + " The \(sourceName) calendar is read-only, so the event's attendee list was not updated.",
+                message: base.message + " " + String(
+                    localized:
+                    "The \(sourceName) calendar is read-only, so the event's attendee list was not updated.",
+                    bundle: .module
+                ),
                 tone: .warning
             )
         case .noMatchingAttendee:
             return MailRootStatus(
-                message: base.message
-                    + " Brev could not match you to an attendee on the synced event, so only the reply was sent.",
+                message: base.message + " " + String(
+                    localized:
+                    "Brev could not match you to an attendee on the synced event, so only the reply was sent.",
+                    bundle: .module
+                ),
                 tone: .info
             )
         case .failed(let sourceName, let message):
             return MailRootStatus(
-                message: base.message
-                    + " Updating the \(sourceName) calendar failed: \(message)",
+                message: base.message + " " + String(
+                    localized: "Updating the \(sourceName) calendar failed: \(message)",
+                    bundle: .module
+                ),
                 tone: .warning
             )
+        }
+    }
+
+    /// The RSVP badge for the locally-recorded reply — `AttendeeState`
+    /// lives in BrevBackend, so its English `displayLabel` stays a
+    /// model token and this layer owns the localized words.
+    private static func responseLabel(for response: AttendeeState) -> String {
+        switch response {
+        case .accepted:
+            String(localized: "Accepted", bundle: .module)
+        case .tentative:
+            String(localized: "Tentative", bundle: .module)
+        case .declined:
+            String(localized: "Declined", bundle: .module)
+        case .needsAction:
+            String(localized: "Needs action", bundle: .module)
         }
     }
 
     private static func confirmationMessagePrefix(for response: AttendeeState) -> String {
         switch response {
         case .accepted:
-            return "Invite accepted"
+            return String(localized: "Invite accepted", bundle: .module)
         case .tentative:
-            return "Tentative response sent"
+            return String(localized: "Tentative response sent", bundle: .module)
         case .declined:
-            return "Invite declined"
+            return String(localized: "Invite declined", bundle: .module)
         case .needsAction:
-            return "Invite response updated"
+            return String(localized: "Invite response updated", bundle: .module)
         }
     }
 }

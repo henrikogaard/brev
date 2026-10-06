@@ -279,14 +279,14 @@ public actor PIMContactSyncService {
             _ = try? await coordinator.markStatus(
                 .authenticationRequired,
                 for: source.id,
-                detail: String(describing: error)
+                detail: PIMErrorText.text(for: error)
             )
             summary.failures.append(
-                .init(scope: source.id, message: String(describing: error))
+                .init(scope: source.id, message: PIMErrorText.text(for: error))
             )
         } catch {
             summary.failures.append(
-                .init(scope: source.id, message: String(describing: error))
+                .init(scope: source.id, message: PIMErrorText.text(for: error))
             )
         }
     }
@@ -340,12 +340,12 @@ public actor PIMContactSyncService {
                 _ = try? await coordinator.markStatus(
                     .authenticationRequired,
                     for: source.id,
-                    detail: String(describing: error)
+                    detail: PIMErrorText.text(for: error)
                 )
                 summary.failures.append(
                     .init(
                         scope: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
                 return
@@ -353,7 +353,7 @@ public actor PIMContactSyncService {
                 summary.failures.append(
                     .init(
                         scope: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
             }

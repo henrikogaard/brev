@@ -141,6 +141,19 @@ public final class PIMSourceSettingsModel {
         }
     }
 
+    // MARK: - Change observation
+
+    /// Re-runs `load()` on every coordinator source mutation — connect,
+    /// removal, and every `markStatus` a background sync writes — so a
+    /// sync pass done while Settings stays open refreshes rows, statuses
+    /// and cached counts without reopening the section. Runs until the
+    /// consuming task is cancelled; call from `.task`.
+    public func observeSourceChanges() async {
+        for await _ in coordinator.changes() {
+            await load()
+        }
+    }
+
     // MARK: - Loading
 
     /// Refreshes the source snapshot from the coordinator.

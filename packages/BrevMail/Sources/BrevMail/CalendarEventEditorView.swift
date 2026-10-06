@@ -40,6 +40,8 @@ public struct CalendarEventEditorView: View {
     private let editedEvent: PIMEvent?
     @State private var pendingScopeSave = false
     @State private var newAttendee = ""
+    /// Inline feedback when the attendee field rejects a non-address.
+    @State private var attendeeError: String?
     /// Whether the Drive attach sheet is showing (#14).
     @State private var isShowingDriveAttach = false
     /// Reminder offsets the picker offers, in minutes.
@@ -503,6 +505,12 @@ public struct CalendarEventEditorView: View {
                     String(localized: "Add attendee", bundle: .module)
                 )
             }
+            .onChange(of: newAttendee) { attendeeError = nil }
+            if let attendeeError {
+                Text(attendeeError)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.danger.color)
+            }
             if !draft.attendeeEmails.isEmpty {
                 Text(String(
                     localized:
@@ -520,6 +528,14 @@ public struct CalendarEventEditorView: View {
             in: .whitespacesAndNewlines
         )
         guard !email.isEmpty else { return }
+        guard RecipientAddressValidator.isLikelyEmailAddress(email) else {
+            attendeeError = String(
+                localized: "Enter a full email address, like name@example.com.",
+                bundle: .module
+            )
+            return
+        }
+        attendeeError = nil
         draft.attendeeEmails.append(email)
         newAttendee = ""
     }

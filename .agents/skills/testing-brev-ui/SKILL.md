@@ -274,3 +274,14 @@ SIMCTL_CHILD_BREV_USE_MOCK=1 xcrun simctl launch <udid> eu.brevmail.brev.ios -Ap
 - The thread "N hidden read messages" footer needs `Kun uleste` (Unread only) active AND at least one read message in the thread — mark a card read via its right-click context menu to force it.
 - iOS: the `ios` AX target reads the sim's full tree (button labels like "Sorter og filtrer, sortert nyeste først" appear in nb); the folder-stats footer does NOT render on the iOS list — verify counts via section-header AX labels ("I dag, 3 meldinger, utvidet") or the toolbar filter label instead.
 - xcstringstool symbol collisions: two catalog keys that differ only by case (or produce the same `word(_:)` signature, e.g. `Foo %@` vs `foo %@`) hard-fail at build time. Fast pre-build check: normalize keys to camelCase + arity and look for duplicates — the `no two catalog keys generate the same symbol` guards in `MailStatusCopyLocalizationTests`/`BackendCatalogKeyFormatTests` encode this.
+
+## PIM (CalDAV/CardDAV) end-to-end
+
+- `python3 scripts/stub-dav-server.py --port 8643 --seed <dir-of-.ics-files> --log /tmp/dav.log &` — accepts ANY credentials. Use a **mailbox-shaped username** (e.g. `qa@local.test`) when checking ORGANIZER emission — the write path claims the username only when it looks like an email, else falls back to `source.principalURL`.
+- The `--log` file only records request lines (`PUT /cal/u/main/x.ics -> 204`), never bodies. To inspect written ICS: `curl http://localhost:8643/<stored-href>` and grep `ORGANIZER`/`ATTENDEE`/`PARTSTAT`.
+- `POST /__control/add` with `{"href":"/cal/u/main/x.ics","body":"<ics>"}` injects items for live sync tests; `GET /__control/log` returns the request log.
+- **Mock-mode DAV credentials are session-scoped** (in-memory store): relaunching drops the credential but keeps the source (`~/Library/Application Support/Brev/pim-sources.json`) → next sync marks the row failed — a natural readable-error trigger. Restore via row ⋯ menu → reconnect; labels sit ABOVE the credential fields, click inside them.
+- Reaching the event editor: source row "Tillat redigering" (Allow editing) must be ON or the detail pane has no Rediger button → Vindu → Calendar → Agenda → event row → detail pane → "Rediger".
+- Live Settings-row refresh proof: keep Settings open, sync from the Calendar window's toolbar or kill the stub — the row's status/count must change without reopening Settings.
+- `osascript -e 'tell application "Brev Test …" to quit'` BLOCKS behind a modal dialog; prefer `kill <pid>`.
+- `-AppleLanguages "(nb)"` only works via direct binary exec, not `open`-launched instances.
