@@ -6,6 +6,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Norwegian mail and backend strings now localize in every interpolated
+  message. The string catalogs carried keys with raw `\(…)` source text, but
+  `String(localized:)` looks up the `%@`/`%lld` format key, so 168 entries
+  could never match and silently fell back to English. All keys and their
+  translations now use the format specifiers the runtime generates.
 - The desktop now starts in Compact list density as ADR-0085 describes. The
   call-site wiring that PR #180 described was missing from its merge, so a
   fresh install still opened Comfortable; every density `@AppStorage` default

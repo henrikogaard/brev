@@ -247,3 +247,30 @@ Google Calendar/Contacts/Tasks sources sit in Settings → Calendar & Contacts. 
 - **No `+` = no writable collection.** Even with "Allow editing" ON, `+` stays hidden until ≥1 writable collection is discovered — so enable editing, then Refresh Collections. A `serviceDisabled` source never reaches a writable target.
 - **Failed sources hide create UI (correct):** a source at `Failed`/`authenticationRequired` gives `editing.canEdit=false` → its cover shows "No contacts/events" with no create button and no Allow-editing toggle — capability-driven UI, not a bug.
 - **Preflight for Henrik:** if a Google PIM source reports `serviceDisabled`, the fix is enabling Google Calendar / People / Tasks APIs in the OAuth client's GCP project (client id `879180545678-…`) — it is NOT an OAuth/grant problem, so don't re-run sign-in expecting it to resolve.
+
+## Locale testing (nb / non-English)
+
+`String(localized:)` catalogs can be exercised without touching the system language:
+
+**macOS** — relaunch the dated test build with `-AppleLanguages` (build via `script/build_and_run.sh --mock` first, quit it, then relaunch):
+
+```bash
+BREV_USE_MOCK=1 "<DerivedData>/Brev Test (YYYY-MM-DD).app/Contents/MacOS/Brev Test (YYYY-MM-DD)" \
+  -ApplePersistenceIgnoreState YES -AppleLanguages "(nb)" &
+```
+
+Use `(en)` for an English baseline on the same build — the broken-state comparison costs one relaunch.
+
+**iOS** — pass the arg through `simctl launch`:
+
+```bash
+SIMCTL_CHILD_BREV_USE_MOCK=1 xcrun simctl launch <udid> eu.brevmail.brev.ios -AppleLanguages "(nb)"
+```
+
+## Verifying translations
+
+- Interpolated strings (`%lld`/`%@` keys) are the ones that silently fall back to English when a catalog key is wrong — prefer them over static strings when checking a l10n change. The folder-stats footer ("N meldinger · M uleste" nb) is always visible at the bottom of the macOS message list and uses three interpolated keys.
+- macOS toolbar Menu buttons are icon-only; their `.help` tooltip == the accessibility label — hover the button to read localized AX copy without VoiceOver, or query it via osascript System Events.
+- The thread "N hidden read messages" footer needs `Kun uleste` (Unread only) active AND at least one read message in the thread — mark a card read via its right-click context menu to force it.
+- iOS: the `ios` AX target reads the sim's full tree (button labels like "Sorter og filtrer, sortert nyeste først" appear in nb); the folder-stats footer does NOT render on the iOS list — verify counts via section-header AX labels ("I dag, 3 meldinger, utvidet") or the toolbar filter label instead.
+- xcstringstool symbol collisions: two catalog keys that differ only by case (or produce the same `word(_:)` signature, e.g. `Foo %@` vs `foo %@`) hard-fail at build time. Fast pre-build check: normalize keys to camelCase + arity and look for duplicates — the `no two catalog keys generate the same symbol` guards in `MailStatusCopyLocalizationTests`/`BackendCatalogKeyFormatTests` encode this.

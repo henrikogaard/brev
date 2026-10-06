@@ -1,5 +1,48 @@
 # Worklog
 
+## 2026-10-05 — Agent — Interpolated string-catalog key rekey
+
+- Goal: finish the localization follow-up PR #187 flagged — 168 catalog keys
+  (118 BrevMail, 50 BrevBackend) held raw `\(…)` interpolation source, which
+  the `String(localized:)` runtime never looks up; Norwegian UI silently fell
+  back to English for every one of them.
+- Changed: rekeyed every `\(…)` catalog entry to the format specifiers the
+  runtime generates — `%@` for String-like interpolations, `%lld` for the
+  confirmed Int sites (`*.count`, `code` status codes, time deltas,
+  `pendingUndoSendCountdown`, `Int(retryAfter.rounded())`, `rule.interval`,
+  `draft.repeatInterval/repeatCount`, `overflow`, `selectionCount`, etc. —
+  each verified against its call site). Same specifier rewrite applied inside
+  nb translations. 44 rekeys landed on already-correct `%` keys and were
+  deduped (keeping the hand-maintained translations); one stale
+  `Google rejected the token exchange%@ (HTTP %@).` entry whose code slot
+  mismatched the Int call site was removed. Zero `\(…)` keys remain.
+- Tests: new `no catalog key keeps raw string-interpolation source` guard in
+  `MailStatusCopyLocalizationTests` (BrevMail) and a new
+  `BackendCatalogKeyFormatTests` suite (BrevBackend) scan the whole catalog so
+  the pattern cannot regress.
+- Verified: both suites pass on the rewritten catalogs (4/4 BrevMail, 2/2
+  BrevBackend); the pre-existing nb status-copy and plural tests stay green;
+  `xcodebuild -scheme BrevMacOS` compiles every catalog through xcstringstool
+  and builds clean; swiftformat --lint and swiftlint clean on touched files.
+  Catalog-vs-runtime key convention cross-checked against BrevGmail's working
+  `HTTP %lld` entries (Int `statusCode` call sites).
+- Post-push fix (found by UI test run): the rekey made `All folders in %@`
+  and `all folders in %@` — case variants that generate the same
+  `allFoldersIn(_:)` symbol and fail xcstringstool. The lowercase pair only
+  fed the English mailbox-chat AI prompt (`scopeDescription`), so it is now a
+  plain non-localized string; `all folders in the current account` lost its
+  only call site and was removed from the catalog. Added a
+  `no two catalog keys generate the same symbol` guard (approximates
+  xcstringstool's key→symbol normalization) to both catalog test suites so a
+  case/punctuation-variant key pair cannot regress.
+- Verified live: testing run rebuilt the app on macOS + iOS sim with
+  `-AppleLanguages nb` — `9 meldinger · 5 uleste`, `4 vist · 9 totalt`,
+  `Sorter og filtrer, 2 filtre aktive`, `1 skjulte leste meldinger`, `+2 til`
+  all render Norwegian where English leaked before.
+- Skipped: undo-send countdown and attachment-header strings unverified live
+  (no mock reachability); signing/cert build steps are CI's domain.
+- Handoff: PR #189 to `main`; no merge without Henrik's authorization.
+
 ## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
 
 - Goal: advance the provider-neutral Calendar/Contacts parent issue (#3) to
