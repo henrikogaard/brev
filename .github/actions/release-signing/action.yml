@@ -20,6 +20,10 @@ inputs:
     description: base64-encoded .mobileprovision for the ring's bundle id
     required: false
     default: ""
+  widget-profile-base64:
+    description: base64-encoded .mobileprovision for the ring's widget extension bundle id
+    required: false
+    default: ""
   asc-key-p8-base64:
     description: base64-encoded App Store Connect .p8 key
     required: false
@@ -38,6 +42,7 @@ runs:
         P12_B64: ${{ inputs.p12-base64 }}
         P12_PASSWORD: ${{ inputs.p12-password }}
         PROFILE_B64: ${{ inputs.profile-base64 }}
+        WIDGET_PROFILE_B64: ${{ inputs.widget-profile-base64 }}
         ASC_P8_B64: ${{ inputs.asc-key-p8-base64 }}
         SPARKLE_KEY: ${{ inputs.sparkle-private-ed-key }}
       run: |
@@ -115,6 +120,36 @@ runs:
         printf 'BREV_TEAM_ID=%s\n' "$TEAM_ID" >> "$GITHUB_ENV"
         printf 'BREV_PROVISIONING_PROFILE_SPECIFIER=%s\n' "$PROFILE_NAME" >> "$GITHUB_ENV"
 
+        # The embedded widget extension (ADR-0083) has its own bundle id and
+        # needs its own Developer ID profile signed by the same certificate.
+        if [[ -z "$WIDGET_PROFILE_B64" ]]; then
+          echo "::error::Missing widget extension provisioning profile (BREV_MACOS_WIDGET_PROFILE_*_BASE64)"
+          exit 1
+        fi
+        printf '%s' "$WIDGET_PROFILE_B64" | base64 --decode >"$WORK/widget-profile.mobileprovision"
+        security cms -D -i "$WORK/widget-profile.mobileprovision" -o "$WORK/widget-profile.plist"
+        WIDGET_PROFILE_UUID="$(plutil -extract UUID raw -o - "$WORK/widget-profile.plist" | tr -d '\r\n')"
+        WIDGET_PROFILE_NAME="$(plutil -extract Name raw -o - "$WORK/widget-profile.plist" | tr -d '\r\n')"
+        WIDGET_TEAM_ID="$(plutil -extract TeamIdentifier.0 raw -o - "$WORK/widget-profile.plist" 2>/dev/null \
+          | tr -d '\r\n')"
+        if [[ "$WIDGET_TEAM_ID" != "$TEAM_ID" ]]; then
+          echo "::error::Widget provisioning profile team does not match the app profile team"
+          exit 1
+        fi
+        WIDGET_PROFILE_CERT_SHA256="$(plutil -extract DeveloperCertificates.0 raw -o - "$WORK/widget-profile.plist" \
+          | base64 --decode \
+          | openssl x509 -inform DER -noout -fingerprint -sha256 \
+          | awk -F= 'NR == 1 {print $2}' \
+          | tr -d ':\r\n' | tr '[:lower:]' '[:upper:]')"
+        echo "Widget provisioning profile certificate SHA-256: $WIDGET_PROFILE_CERT_SHA256"
+        if [[ "$IDENTITY_CERT_SHA256" != "$WIDGET_PROFILE_CERT_SHA256" ]]; then
+          echo "::error::Developer ID certificate and widget provisioning profile do not match"
+          exit 1
+        fi
+        cp "$WORK/widget-profile.mobileprovision" "$PROFILE_DIR/$WIDGET_PROFILE_UUID.mobileprovision"
+        printf '%s' "$WIDGET_PROFILE_UUID" >"$WORK/widget-profile-uuid"
+        printf 'BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER=%s\n' "$WIDGET_PROFILE_NAME" >> "$GITHUB_ENV"
+
         printf '%s' "$ASC_P8_B64" | base64 --decode >"$WORK/AuthKey.p8"
         chmod 600 "$WORK/AuthKey.p8"
         echo "BREV_ASC_KEY_PATH=$WORK/AuthKey.p8" >> "$GITHUB_ENV"
@@ -136,5 +171,8 @@ runs:
         fi
         if [[ -f "$WORK/profile-uuid" ]]; then
           rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$WORK/profile-uuid").mobileprovision"
+        fi
+        if [[ -f "$WORK/widget-profile-uuid" ]]; then
+          rm -f "$HOME/Library/MobileDevice/Provisioning Profiles/$(cat "$WORK/widget-profile-uuid").mobileprovision"
         fi
         rm -rf "$WORK"

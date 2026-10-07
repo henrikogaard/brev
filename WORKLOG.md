@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-10-07 — Devin — Release recovery: widget profile + Sparkle key rotation
+
+- Goal: produce the signed 0.2.0 release after moving to `release-signing` (#195).
+- Findings: recovery dispatch 37629206211 reached the signed-archive step and failed with "No profile … matching 'Brev Stable Widgets Developer ID CI Distribution'". The widget extension (#144, ADR-0083) needs its own Developer ID profile that CI never installed. The 0.1.0 app profile also lacks the `group.eu.brevmail.brev` app-group entitlement.
+- Changes: the `release-signing` action takes `widget-profile-base64`, verifies its team and certificate fingerprint, and exports `BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER`; the Release and Nightly workflows pass `BREV_MACOS_WIDGET_PROFILE_{STABLE,NIGHTLY}_BASE64`; release.md gets the portal and secret steps. At Henrik's request the Sparkle key was rotated: the new private key and public key (`bmBu…`) are set in `release-signing`. The original public key (`aFO3…`, embedded in 0.1.0) has no recoverable private half.
+- Verification: actionlint, `scripts/test-developer-id-release-config.sh`, `git diff --check`.
+- Next (Henrik): portal work to create the widget App IDs and profiles and regenerate the app profiles with App Groups; upload the four profiles; re-dispatch Release for `v0.2.0`.
+
 ## 2026-10-07 — Devin — Release environment startup probes
 
 - Goal: find why `v0.2.0` release runs (and every nightly since Sep 23) fail with "job was not started because it repeatedly failed to be acquired".
