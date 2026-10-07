@@ -5210,3 +5210,9 @@ buttons, and package-aware localization.
 - Earlier "Settings stays English under nb" finding was a launch-argument artifact; relaunched with `open -n … --args -AppleLanguages "(nb)"`, Settings is Norwegian on both the test build and installed 0.2.0.
 - Verified: format, lint, BrevSettings build, live mac + iOS sim re-test at 5d00392. BrevSettings/BrevMail pixel snapshots fail locally on this macOS 26.5 host; the same 14 BrevSettings tests fail on clean `origin/main`, so they are host renderer drift, not re-recorded. CI skips them on macos-15.
 - Open: iOS AX XL app-icon captions hyphenate mid-word and grid stays two columns.
+
+## 2026-10-07 — Devin — Stable release 0.2.1 prep
+
+- Goal: Henrik approved merging #199 and releasing, to test Sparkle auto-update from the installed 0.2.0.
+- Changes: `marketingVersion` and project `MARKETING_VERSION` 0.2.0 → 0.2.1; `[Unreleased]` notes became `## [0.2.1] - 2026-10-07`.
+- Next: tag `v0.2.1` once Build on main is green; Henrik runs Check for Updates in 0.2.0 himself.

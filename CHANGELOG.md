@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-10-07
+
 ### Added
 
 - Appearance settings have a **Reset to Defaults** button that restores the default themes, accent, window style, text size, density and app icon after confirmation.
