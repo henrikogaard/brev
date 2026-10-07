@@ -47,6 +47,29 @@ acquisition failures or use them as an allowed-ref release comparison.
   of restricted environments.
 - The ARM64 capacity notice cannot explain the Linux release failure.
 
+## Secret-update and onset checks
+
+The current environment-secret metadata does not show an edit near the onset.
+Developer ID material, provisioning profiles, App Store Connect material,
+Sparkle signing key, and OAuth secrets were last updated on September 17.
+The only later environment secrets are `BREV_GOOGLE_API_KEY` and
+`BREV_GOOGLE_APP_ID`, created September 29, after acquisition failures were
+already occurring. This does not rule out deleted secrets or internal GitHub
+state changes; it does not support attributing the onset to a recorded edit of
+the current signing secrets.
+
+Nightly workflow-level success must be distinguished from build success:
+
+- Run [35933998396](https://github.com/henrikogaard/brev/actions/runs/35933998396),
+  created September 24 at 01:31 Oslo time, completed its build successfully
+  with 18 steps and an assigned runner.
+- Run [36073145304](https://github.com/henrikogaard/brev/actions/runs/36073145304),
+  created September 25 at 01:31 Oslo time, reports workflow success but its
+  build was skipped. It does not prove signing or release startup that night.
+- Run [36201321338](https://github.com/henrikogaard/brev/actions/runs/36201321338),
+  created September 26 at 01:31 Oslo time, has a failed build with zero steps
+  and runner ID 0; the following night's run has the same signature.
+
 ## GitHub Support draft
 
 Subject: Existing Actions environment causes runner acquisition failure on both Ubuntu and macOS
