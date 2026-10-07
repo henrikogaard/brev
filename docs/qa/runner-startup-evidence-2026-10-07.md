@@ -24,6 +24,7 @@ provisioning is responsible.
 | Diagnostics 37613417608, `macos-15-release` and `macos-26-release` | `main` / `release` | Both failed acquisition; runner ID 0, zero steps. |
 | [Diagnostics 37613566767](https://github.com/henrikogaard/brev/actions/runs/37613566767), `ubuntu-environment` | `chore/runner-environment-diagnostics` / fresh restricted `runner-diagnostic-2026-10-07` | Passed; runner ID 1000023098. Its custom branch policy explicitly permits this branch. |
 | Diagnostics 37613566767, `macos-26-release` | Same diagnostic branch / fresh restricted environment | Passed; runner ID 1000023101. The job ID retains the original release name, but its environment input selects the fresh environment. |
+| Diagnostics 37613566767, `macos-15-release` | Same diagnostic branch / fresh restricted environment | Passed; runner ID 1000023109. All five jobs in this restricted-environment comparison passed. |
 
 The release acquisition annotation reads:
 
@@ -59,7 +60,7 @@ have no checkout, no secret references, no requested token permissions, and no
 build, signing, or publishing commands. A Linux release-environment job also
 fails, while Linux and macOS jobs in a fresh empty environment pass in the
 same workflow run. A fresh environment with custom branch restrictions also
-starts its Linux and macOS 26 jobs successfully.
+starts its Linux, macOS 15, and macOS 26 jobs successfully.
 
 Please investigate the environment/job preparation path for environment ID
 `22170646957` and check run `112765913314` in run `37613417608`. Release run
@@ -81,5 +82,7 @@ approval and subsequent startup, signing, notarization, and artifact checks.
 Do not delete the existing environment as a diagnostic experiment.
 
 The diagnostic branch and empty environment are retained with the evidence.
-Some queued/waiting macOS probes are not final results; refresh them before
-making any additional runner-capacity claim.
+The main diagnostic's waiting macOS 15 release job is not counted as a failure
+or pass. The later allowed-main comparison has final acquisition failures for
+all three release jobs, and the restricted fresh-environment comparison is
+fully successful.
