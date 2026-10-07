@@ -5203,3 +5203,4 @@ buttons, and package-aware localization.
 - macOS chrome: removed the scroll-edge blur from the reader column; inbox category bar paints `BrevWindowSurfaceBackground(.content)`. AI Sidebar (`.brevMailContext`) is in the default toolbar set, with a one-time insert into autosaved toolbars.
 - Appearance: Reset to Default (confirmation alert) resets theme/accent, window appearance, titlebar, text size, density and app icon.
 - Verification: BrevGmail suite green; BrevMail toolbar/label/sidebar suites green; `FolderSidebarSnapshotTests` failures reproduce identically on unchanged main on this host (pre-existing); format/lint OK; macOS mock build OK.
+- Follow-up: the default macOS build uses the SwiftUI fallback toolbar (native `NSToolbar` only with `BREV_ENABLE_NATIVE_TOOLBAR=1`), so the AI Sidebar toggle is now also a trailing-edge fallback toolbar button (`mail.toolbar.aiSidebar`, label flips to Hide AI Sidebar).

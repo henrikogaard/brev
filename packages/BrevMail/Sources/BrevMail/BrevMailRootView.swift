@@ -2713,8 +2713,31 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .primaryAction) {
             Spacer()
         }
+        // Trailing-edge toggle, like Mail's Inspector button.
+        if !BrevMailToolbarRuntime.usesNativeToolbar {
+            ToolbarItem(placement: .primaryAction) {
+                mailContextToolbarToggle
+            }
+        }
         #endif
     }
+
+    #if os(macOS)
+    private var mailContextToolbarToggle: some View {
+        let title = isMailContextColumnPresented
+            ? String(localized: "Hide AI Sidebar", bundle: .module)
+            : String(localized: "AI Sidebar", bundle: .module)
+        return Button {
+            isMailContextColumnPresented.toggle()
+        } label: {
+            Label(title, systemImage: MailContextColumnVisibility.toolbarSymbolName)
+                .labelStyle(.iconOnly)
+        }
+        .accessibilityLabel(title)
+        .accessibilityIdentifier("mail.toolbar.aiSidebar")
+        .help(title)
+    }
+    #endif
 
     #if os(iOS)
     @ToolbarContentBuilder
