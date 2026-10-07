@@ -6,12 +6,30 @@ with `release`. All three jobs run independently. The workflow does not check
 out code, reference secrets, sign artifacts, or publish releases. Its token
 has no requested permissions.
 
+The workflow also compares plain Ubuntu with Ubuntu using the selected
+environment. Its `environment` dispatch input defaults to `release`; a fresh
+name lets you isolate environment-specific state without copying secrets or
+changing release protections. GitHub creates an empty environment for a new
+name. Use a unique diagnostic name and preserve it with the evidence until
+cleanup is authorized.
+
 After the workflow has been merged:
 
 ```sh
 gh workflow run runner-diagnostics.yml --ref main
 gh run list --workflow runner-diagnostics.yml --limit 1
 ```
+
+To compare a fresh environment on a diagnostic branch that contains this
+workflow (the workflow must already exist on the default branch):
+
+```sh
+gh workflow run runner-diagnostics.yml --ref chore/runner-environment-diagnostics \
+  -f environment=runner-diagnostic-2026-10-07
+```
+
+Select `release` only on `main` or an allowed tag; a diagnostic branch would
+otherwise measure branch-policy rejection rather than runner startup.
 
 Each started job records runner, image, OS, architecture, and selected Xcode
 information in its log and job summary. It reports the default Xcode without
@@ -35,6 +53,12 @@ Compare results before changing the nightly workflow:
 - If all three start, the minimal setup works. This does not prove the full
   nightly job can start or that the original failure was transient.
 - Mixed results require a repeat before attributing a cause to either variable.
+- If a fresh environment starts while `release` fails, the failure is specific
+  to the existing environment's configuration or internal state.
+- If fresh and release environments fail on both Ubuntu and macOS while plain
+  jobs start, investigate GitHub's repository environment/job startup path.
+- If Ubuntu environment jobs start while macOS environment jobs fail,
+  investigate the macOS environment/job startup path.
 
 The release environment permits `main` and `v*` tags. A feature-branch or PR
 run would not reproduce the nightly's branch access. Keep that policy intact.

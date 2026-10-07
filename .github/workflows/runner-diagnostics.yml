@@ -1,9 +1,15 @@
 name: Runner startup diagnostics
 
-# Run on main so release environment branch rules match the nightly job.
+# Run on main when selecting release so its branch rules match Nightly.
 # No checkout, secret references, signing, or release commands.
 on:
   workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to compare against plain runners (fresh names create empty environments)'
+        type: string
+        default: release
+        required: true
 
 permissions: {}
 
@@ -35,7 +41,7 @@ jobs:
   macos-15-release:
     runs-on: macos-15
     timeout-minutes: 5
-    environment: release
+    environment: ${{ inputs.environment }}
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -60,7 +66,7 @@ jobs:
   macos-26-release:
     runs-on: macos-26
     timeout-minutes: 5
-    environment: release
+    environment: ${{ inputs.environment }}
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -82,3 +88,25 @@ jobs:
             xcodebuild -version
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+  ubuntu-plain:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Report runner
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+          DIAGNOSTIC_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          printf 'Runner: %s\nArchitecture: %s\n' "$DIAGNOSTIC_RUNNER_NAME" "$DIAGNOSTIC_RUNNER_ARCH" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  ubuntu-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Report runner
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+          DIAGNOSTIC_RUNNER_ARCH: ${{ runner.arch }}
+        run: |
+          printf 'Runner: %s\nArchitecture: %s\n' "$DIAGNOSTIC_RUNNER_NAME" "$DIAGNOSTIC_RUNNER_ARCH" | tee -a "$GITHUB_STEP_SUMMARY"
