@@ -5216,3 +5216,11 @@ buttons, and package-aware localization.
 - Goal: Henrik approved merging #199 and releasing, to test Sparkle auto-update from the installed 0.2.0.
 - Changes: `marketingVersion` and project `MARKETING_VERSION` 0.2.0 → 0.2.1; `[Unreleased]` notes became `## [0.2.1] - 2026-10-07`.
 - Next: tag `v0.2.1` once Build on main is green; Henrik runs Check for Updates in 0.2.0 himself.
+
+## 2026-10-07 — Devin — Sparkle installer fails in sandboxed release
+
+- Goal: Henrik's Check for Updates in 0.2.0 found 0.2.1 but failed with "An error occurred while running the updater".
+- Cause: the release app is sandboxed with `SUEnableInstallerLauncherService`, but `BrevMacOSRelease.entitlements` lacked the `com.apple.security.temporary-exception.mach-lookup.global-name` exception for `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` / `-spki` that Sparkle's installer needs. Confirmed absent from the installed 0.2.0 signature.
+- Changes: add the exception to the release entitlements; `scripts/release-installed-verify.sh` now fails when it is missing.
+- Skipped: a local signed archive (no Developer ID cert on this host); verify on the next release DMG.
+- Next: 0.2.0/0.2.1 cannot self-update; Henrik installs the next release manually once, then auto-update is tested against the release after it.
