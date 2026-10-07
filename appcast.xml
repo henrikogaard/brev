@@ -1,5 +1,30 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.0</title><pubDate>Wed, 07 Oct 2026 15:44:37 GMT</pubDate><sparkle:version>2026100715</sparkle:version><sparkle:shortVersionString>0.2.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Fixed
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.1</title><pubDate>Wed, 07 Oct 2026 20:34:40 GMT</pubDate><sparkle:version>2026100720</sparkle:version><sparkle:shortVersionString>0.2.1</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Added
+
+- Appearance settings have a **Reset to Defaults** button that restores the default themes, accent, window style, text size, density and app icon after confirmation.
+- The Mac toolbar has a trailing button to show or hide the AI Sidebar.
+
+### Changed
+
+- Settings groups use rounded grouped surfaces with plain headings, like System Settings.
+
+### Fixed
+
+- The top of the reading pane no longer takes on colours from the selected message; it fades from the theme background instead of blurring the message.
+- The inbox category bar is solid, and the message list no longer draws a blur band below the list header.
+- Gmail inbox categories (`CATEGORY_UPDATES` and similar), `UNREAD` and `CHAT` no longer appear as sidebar folders or label chips, and `STARRED`/`IMPORTANT` show localized names.
+
+- Signed Release and Nightly builds install a Developer ID provisioning profile for the macOS widget extension, which every signed archive since the widget was added had been missing.
+
+### Changed
+
+- Sparkle update signing uses a new EdDSA key starting with 0.2.0. Installs of 0.1.0 or a September Nightly cannot auto-update to it; install 0.2.0 manually once, and later updates work normally.
+
+### Fixed
+
+- Signed release jobs use a replacement signing environment after the original
+  environment stopped assigning runners. Existing release tags can be retried
+  through the current workflow without moving the tag.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.1/Brev-0.2.1.dmg" length="33401061" type="application/octet-stream" sparkle:edSignature="mkayvmt5oN2qEanhHlLUnjeYD+GIgTaetrKbbGyweUaY8DhBHPDx1lbR2ibj+Zw3sVx2iQSoTli2hcAFSoj7BA==" /></item><item><title>0.2.0</title><pubDate>Wed, 07 Oct 2026 15:44:37 GMT</pubDate><sparkle:version>2026100715</sparkle:version><sparkle:shortVersionString>0.2.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Fixed
 
 - Calendar and Contacts QA follow-ups: event writes that add attendees
   now set `ORGANIZER` so scheduling servers can send invitations (the
@@ -51,11 +76,11 @@
   Compose/message windows. Full windows covers all of these surfaces;
   Sidebars only keeps content and auxiliary windows opaque.
 
-- Settings now uses eight task categories plus About &amp; Updates on both
+- Settings now uses eight task categories plus About &amp;amp; Updates on both
   platforms, with subpages for Writing, mailboxes, privacy, and storage.
   Send safety precedes expandable recipient history; remote-image and avatar
   permissions live in Privacy, browser choice in Reading, and preference sync
-  in Sync &amp; Storage. Existing settings and search destinations are preserved.
+  in Sync &amp;amp; Storage. Existing settings and search destinations are preserved.
 - iPhone mailbox navigation uses inset Favourites, account, and utility groups,
   aligned counts, and a checkmark-based shortcut editor. Large text wraps
   without icon overlap and keeps the unread/draft count meaning visible.
@@ -226,7 +251,7 @@
   access." The macOS authorize URL already included them; the iOS
   arm dropped them.
 
-- Calendar &amp; Contacts settings: "Reconnect…" on a Google source now
+- Calendar &amp;amp; Contacts settings: "Reconnect…" on a Google source now
   re-runs Google authorization instead of opening the DAV credential
   form (which could never fix an OAuth failure). The row reads
   "Re-authorize with Google…".
@@ -353,7 +378,7 @@
 - Add Account: the whole "Advanced setup" row toggles, and Manual
   IMAP/SMTP shows the server form instead of a dead-end warning; the iOS
   sheet gains a navigation title and Cancel.
-- Settings → Calendar &amp; Contacts labels the per-source toggles
+- Settings → Calendar &amp;amp; Contacts labels the per-source toggles
   ("Background sync", "Allow editing") and stops truncating collection
   names on iPhone.
 - macOS Window menu gains "Message Viewer" (⌘0), which also reopens the
@@ -363,7 +388,7 @@
   instead of floating pill chips that overlapped the last mailbox rows.
 - macOS compose: To/Cc/Bcc labels now share one fixed-width, right-aligned
   gutter with From/Subject, and reply quotes render an accent bar beside
-  the muted quoted text instead of only raw `&gt;` prefixes.
+  the muted quoted text instead of only raw `&amp;gt;` prefixes.
 - Settings: the "Applies to all mailboxes" note now sits under the pane
   subtitle instead of floating as an orphan banner above the section title.
 - macOS search options now use system segmented controls for search
@@ -437,7 +462,7 @@
   also when the app was already active, via an explicit handoff request)
   and "New Message" (opens the composer with optional To / Subject /
   Body) on both macOS and iOS, exposed to Shortcuts and Siri phrases.
-- `brev://compose?to=…&amp;subject=…&amp;body=…` accepts direct fields
+- `brev://compose?to=…&amp;amp;subject=…&amp;amp;body=…` accepts direct fields
   (attachments remain confined to the share handoff), and a bare
   `brev://compose` opens a blank composer.
 
@@ -464,14 +489,14 @@
   endpoints and RFC 6764 discovery with HTTPS enforcement and
   credential-safe redirect handling). Sync scheduling lands in a later
   slice.
-- Settings Calendar &amp; Contacts source management (ADR-0072): connect
+- Settings Calendar &amp;amp; Contacts source management (ADR-0072): connect
   CalDAV/CardDAV sources with discovery or manual endpoints, see each
   source's shared status, opt into background sync per source, reconnect
   credentials, and remove sources with an explicit keep-or-delete cache
   choice. Unsent source drafts are always deleted on removal; provider
   data is never touched.
 - Google Calendar/Contacts enablement (ADR-0072): each Google mail account
-  in Settings → Calendar &amp; Contacts can enable Calendar or Contacts through
+  in Settings → Calendar &amp;amp; Contacts can enable Calendar or Contacts through
   a fresh Google authorization that adds the feature's read-only scope. The
   new grant is installed only when it covers mail plus the requested scopes
   for the same account; declining changes nothing. Sync itself is not
@@ -501,7 +526,7 @@
   collection keeps its last snapshot, photo URLs stay unfetched
   references, and each contact keeps the provider's original payload for
   round-trip fidelity. Browsing views land in a later slice.
-- Task sync (ADR-0072): a Tasks source kind joins Calendar &amp; Contacts —
+- Task sync (ADR-0072): a Tasks source kind joins Calendar &amp;amp; Contacts —
   Google accounts can enable Tasks with the `tasks.readonly` scope, and
   CalDAV sources can be connected as task sources where only
   VTODO-capable collections are listed. "Sync Now" reads tasks into a
@@ -564,7 +589,7 @@
    with a "+N more" overflow, and tapping a day opens it in the day
   layout. Multi-day and all-day events cover every day they span.
 - Calendar editing opt-in and write pipeline (ADR-0072): calendar
-  sources gain an Editing toggle in Settings → Calendar &amp; Contacts.
+  sources gain an Editing toggle in Settings → Calendar &amp;amp; Contacts.
   Google sources re-authorize with the calendar.events scope before the
   capability flips; CalDAV sources opt in locally. Behind it, a
   provider-neutral write service creates, updates, and deletes events
@@ -670,7 +695,7 @@
   "Search inside attachments"): Brev extracts text locally from attachments
   already cached on this device — nothing is downloaded for indexing — so
   message search can match attachment text and label the hit with "Found in
-  &lt;name&gt;". Turning the toggle off deletes the account's attachment index;
+  &amp;lt;name&amp;gt;". Turning the toggle off deletes the account's attachment index;
   Mail Storage shows its size with Rebuild/Remove actions.
 - Brev Nightly: a separate pre-release app (`Brev Nightly.app`,
   `eu.brevmail.brev.nightly`) with its own app icon, preferences, and
@@ -680,7 +705,7 @@
 
 ### Changed
 
-- Privacy &amp; Security and Calendar &amp; Contacts now lead with the controls
+- Privacy &amp;amp; Security and Calendar &amp;amp; Contacts now lead with the controls
   people change: the S/MIME key-material list, draft editor, and destructive
   actions sit behind "Manage key material", the import/export toggles behind
   "Advanced", and the calendar, contact, and task capability lists behind
@@ -1021,7 +1046,7 @@
   text with previews and two-line subjects, label Mailboxes/Inbox navigation,
   move Compose to the bottom toolbar, and remove duplicate Settings controls.
   Folder rows no longer reserve an empty desktop disclosure column; nested
-  folders retain indentation and a separate expand/collapse target.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.0/Brev-0.2.0.dmg" length="33373436" type="application/octet-stream" sparkle:edSignature="ohpaHPgBuiZ0bYHNB3+LqEgmsNuTlIrfqviOgnFWyknMufdJz6DWHH9BhPd5vPtH8zNOso9B8zBirC4pYi/bDw==" /></item><item><title>0.1.0</title><pubDate>Thu, 17 Sep 2026 23:43:30 GMT</pubDate><sparkle:version>2026091723</sparkle:version><sparkle:shortVersionString>0.1.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Added
+  folders retain indentation and a separate expand/collapse target.&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.0/Brev-0.2.0.dmg" length="33373436" type="application/octet-stream" sparkle:edSignature="ohpaHPgBuiZ0bYHNB3+LqEgmsNuTlIrfqviOgnFWyknMufdJz6DWHH9BhPd5vPtH8zNOso9B8zBirC4pYi/bDw==" /></item><item><title>0.1.0</title><pubDate>Thu, 17 Sep 2026 23:43:30 GMT</pubDate><sparkle:version>2026091723</sparkle:version><sparkle:shortVersionString>0.1.0</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Added
 
 - Initial public source baseline for the native macOS and iOS apps.
 - Native Gmail API support for Gmail and Google Workspace accounts.
