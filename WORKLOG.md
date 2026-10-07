@@ -1,5 +1,10 @@
 # Worklog
 
+## 2026-10-07 — Devin — Author name correction
+
+- Henrik's name is "Henrik Øgård": fixed LICENSE, NOTICE, llms.txt and the ADR-0009 account-holder line. Apple signing-identity strings in ADR-0009, docs/release.md and scripts/release-archive.sh are left as-is because they must match the certificate common name.
+- Verification: `git diff --check`.
+
 ## 2026-10-07 — Devin — Release environment startup probes
 
 - Goal: find why `v0.2.0` release runs (and every nightly since Sep 23) fail with "job was not started because it repeatedly failed to be acquired".
