@@ -104,6 +104,8 @@ struct AppearanceSection: View {
                     Button(String(localized: "Reset to Default…", bundle: .module)) {
                         isShowingResetConfirmation = true
                     }
+                    .buttonStyle(.bordered)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                     .accessibilityIdentifier("settings.appearance.resetToDefault")
                 }
             }
@@ -124,7 +126,7 @@ struct AppearanceSection: View {
             String(localized: "Reset appearance to default?", bundle: .module),
             isPresented: $isShowingResetConfirmation
         ) {
-            Button(String(localized: "Reset", bundle: .module), role: .destructive) {
+            Button(String(localized: "Reset Appearance", bundle: .module), role: .destructive) {
                 resetToDefaults()
             }
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
