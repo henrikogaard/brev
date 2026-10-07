@@ -96,7 +96,7 @@ jobs:
     if: needs.plan.outputs.skip != 'true'
     runs-on: macos-15
     timeout-minutes: 60
-    environment: release
+    environment: release-signing
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0

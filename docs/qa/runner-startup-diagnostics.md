@@ -1,8 +1,8 @@
 # Runner startup diagnostics
 
 Run the manual **Runner startup diagnostics** workflow on `main` to compare
-`macos-15` without an environment, `macos-15` with `release`, and `macos-26`
-with `release`. All three jobs run independently. The workflow does not check
+`macos-15` without an environment, `macos-15` with `release-signing`, and `macos-26`
+with `release-signing`. All three jobs run independently. The workflow does not check
 out code, reference secrets, sign artifacts, or publish releases. Its token
 has no requested permissions.
 
@@ -30,7 +30,7 @@ Compare results before changing the nightly workflow:
 
 - If both `macos-15` jobs fail while `macos-26` starts, investigate the
   macOS 15 runner pool.
-- If the plain job starts while both `release` jobs fail, investigate the
+- If the plain job starts while both `release-signing` jobs fail, investigate the
   environment-associated startup path and its annotations.
 - If all three start, the minimal setup works. This does not prove the full
   nightly job can start or that the original failure was transient.
@@ -46,9 +46,9 @@ The workflow also runs on pushes to `main` that change it, because the
 maintainer PAT cannot dispatch workflows. Three extra jobs separate the
 variables:
 
-- `ubuntu-release`: the `release` environment on a Linux runner.
+- `ubuntu-release`: the `release-signing` environment on a Linux runner.
 - `ubuntu-probe-environment` and `macos-15-probe-environment`: an empty
   `runner-probe` environment (auto-created, no secrets or rules).
 
-If the probe environment starts on macOS while `release` fails everywhere,
-the fault is in the `release` environment itself, not the runner pool.
+If the probe environment starts on macOS while `release-signing` fails everywhere,
+the fault is in the `release-signing` environment itself, not the runner pool.

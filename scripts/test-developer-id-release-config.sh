@@ -216,6 +216,8 @@ if [[ "$picker_command" != *"BREV_GOOGLE_APP_ID=123456789"* || "$picker_command"
   exit 1
 fi
 
+python3 scripts/test-release-dispatch.py
+
 echo "test-developer-id-release-config.sh: OK"
 
 exit=0
