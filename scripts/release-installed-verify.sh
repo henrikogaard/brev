@@ -116,6 +116,16 @@ if ! printf '%s\n' "$entitlements" | grep -A1 '<key>com.apple.security.network.s
 fi
 echo "    OK"
 
+echo "==> Sparkle sandboxed installer entitlement"
+bundle_id="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$APP_PATH/Contents/Info.plist")"
+for suffix in spks spki; do
+  if ! printf '%s\n' "$entitlements" | grep -q "<string>${bundle_id}-${suffix}</string>"; then
+    echo "release-installed-verify.sh: missing mach-lookup exception ${bundle_id}-${suffix}; Sparkle cannot install updates" >&2
+    exit 1
+  fi
+done
+echo "    OK"
+
 if [[ $SKIP_GATEKEEPER -eq 0 ]]; then
   echo "==> gatekeeper assessment (app)"
   spctl -a -t exec -v "$APP_PATH"

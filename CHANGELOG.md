@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Mac auto-update no longer fails with "An error occurred while running the updater": signed builds now carry the sandbox entitlement Sparkle's installer needs. Installs of 0.2.0 or 0.2.1 need one manual download of the next release; updates work from then on.
+
 ## [0.2.1] - 2026-10-07
 
 ### Added
