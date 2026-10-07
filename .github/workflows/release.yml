@@ -80,6 +80,20 @@ jobs:
       - name: Tuist generate
         run: mise exec -- tuist generate --no-open
 
+      # The product stays on its tag; recovery must use this workflow's signing repair.
+      - name: Load signing action from workflow revision
+        env:
+          SIGNING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SIGNING_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid signing workflow revision"
+            exit 1
+          fi
+          git fetch origin "$SIGNING_WORKFLOW_SHA"
+          git show "$SIGNING_WORKFLOW_SHA:.github/actions/release-signing/action.yml" > "$RUNNER_TEMP/release-signing-action.yml"
+          cp "$RUNNER_TEMP/release-signing-action.yml" .github/actions/release-signing/action.yml
+
       - name: Set up signing material
         uses: ./.github/actions/release-signing
         with:
@@ -87,6 +101,7 @@ jobs:
           p12-base64: ${{ secrets.BREV_DEVELOPER_ID_P12_BASE64 }}
           p12-password: ${{ secrets.BREV_DEVELOPER_ID_P12_PASSWORD }}
           profile-base64: ${{ secrets.BREV_MACOS_PROFILE_STABLE_BASE64 }}
+          widget-profile-base64: ${{ secrets.BREV_MACOS_WIDGET_PROFILE_STABLE_BASE64 }}
           asc-key-p8-base64: ${{ secrets.BREV_ASC_KEY_P8_BASE64 }}
           sparkle-private-ed-key: ${{ secrets.BREV_SPARKLE_PRIVATE_ED_KEY }}
 
@@ -98,6 +113,7 @@ jobs:
         run: |
           {
             echo "BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER=$BREV_PROVISIONING_PROFILE_SPECIFIER"
+            echo "BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER=$BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER"
             echo "BREV_ASC_KEY_ID=$BREV_ASC_KEY_ID"
             echo "BREV_ASC_ISSUER_ID=$BREV_ASC_ISSUER_ID"
             echo "BREV_SPARKLE_PUBLIC_ED_KEY=$BREV_SPARKLE_PUBLIC_ED_KEY"

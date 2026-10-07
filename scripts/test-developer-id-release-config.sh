@@ -32,6 +32,13 @@ if ! grep -Fq 'IDENTITY_CERT_SHA256=' "$signing_action" ||
   exit 1
 fi
 
+if ! grep -Fq 'Developer ID certificate and widget provisioning profile do not match' "$signing_action" ||
+    ! grep -Fq 'widget-profile-base64: ${{ secrets.BREV_MACOS_WIDGET_PROFILE_STABLE_BASE64 }}' "$release_workflow" ||
+    ! grep -Fq 'widget-profile-base64: ${{ secrets.BREV_MACOS_WIDGET_PROFILE_NIGHTLY_BASE64 }}' "$nightly_workflow"; then
+  echo "ERROR: release signing must install a matching Developer ID profile for the widget extension" >&2
+  exit 1
+fi
+
 if grep -Fq "sed -e :a" "$release_workflow" ||
     ! grep -Fq 'lines[++count]=$0' "$release_workflow"; then
   echo "ERROR: release notes extraction must use the portable awk-only trim path" >&2

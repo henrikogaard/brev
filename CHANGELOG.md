@@ -6,6 +6,14 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Signed Release and Nightly builds install a Developer ID provisioning profile for the macOS widget extension, which every signed archive since the widget was added had been missing.
+
+### Changed
+
+- Sparkle update signing uses a new EdDSA key starting with 0.2.0. Installs of 0.1.0 or a September Nightly cannot auto-update to it; install 0.2.0 manually once, and later updates work normally.
+
+### Fixed
+
 - Signed release jobs use a replacement signing environment after the original
   environment stopped assigning runners. Existing release tags can be retried
   through the current workflow without moving the tag.

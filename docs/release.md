@@ -53,6 +53,8 @@ gh workflow run release.yml --ref main -f tag=v0.2.0
 
 The workflow checks out `refs/tags/<tag>`, validates the `vX.Y.Z` format, and
 checks main ancestry plus a successful Build for the checked-out tag SHA.
+The signing action is loaded from the immutable running workflow revision, so
+widget-profile and signing repairs apply even when the product tag is older.
 It refuses to overwrite an existing GitHub Release. The tag is not moved.
 The `release-signing` environment replaced the failing `release` environment
 on 2026-10-07; keep the original intact until recovery is verified.
@@ -92,7 +94,14 @@ Developer portal (once):
    `Brev Nightly Developer ID Distribution` for that App ID and download
    it (the stable profile `Brev Developer ID Distribution` already exists
    per the manual flow below).
-3. Generate a Sparkle EdDSA keypair once on the release machine with
+3. For the widget extension (ADR-0083), enable App Groups with
+   `group.eu.brevmail.brev` on both app App IDs, create App IDs
+   `eu.brevmail.brev.macos.widgets` and
+   `eu.brevmail.brev.nightly.macos.widgets` with the same group, then
+   regenerate the app profiles and create Developer ID profiles named
+   `Brev Stable Widgets Developer ID CI Distribution` and
+   `Brev Nightly Widgets Developer ID CI Distribution`.
+4. Generate a Sparkle EdDSA keypair once on the release machine with
    `Tuist/.build/artifacts/sparkle/Sparkle/bin/generate_keys`; export the
    private key with `generate_keys -x` (base64 private-key export) and
    keep the printed public key.
@@ -108,6 +117,10 @@ gh secret set --env release-signing BREV_MACOS_PROFILE_STABLE_BASE64 \
   --body "$(base64 -i 'Brev Developer ID Distribution.mobileprovision' | tr -d '\n')"
 gh secret set --env release-signing BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
   --body "$(base64 -i 'Brev Nightly Developer ID Distribution.mobileprovision' | tr -d '\n')"
+gh secret set --env release-signing BREV_MACOS_WIDGET_PROFILE_STABLE_BASE64 \
+  --body "$(base64 -i 'Brev Stable Widgets Developer ID CI Distribution.provisionprofile' | tr -d '\n')"
+gh secret set --env release-signing BREV_MACOS_WIDGET_PROFILE_NIGHTLY_BASE64 \
+  --body "$(base64 -i 'Brev Nightly Widgets Developer ID CI Distribution.provisionprofile' | tr -d '\n')"
 gh secret set --env release-signing BREV_ASC_KEY_ID --body "<App Store Connect key id>"
 gh secret set --env release-signing BREV_ASC_ISSUER_ID --body "<issuer id>"
 gh secret set --env release-signing BREV_ASC_KEY_P8_BASE64 \
