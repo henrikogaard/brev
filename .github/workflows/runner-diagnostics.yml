@@ -4,6 +4,9 @@ name: Runner startup diagnostics
 # No checkout, secret references, signing, or release commands.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/runner-diagnostics.yml']
 
 permissions: {}
 
@@ -82,3 +85,41 @@ jobs:
             xcodebuild -version
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+
+  # Isolate whether acquisition fails for the `release` environment itself,
+  # for any environment on macOS, or only for `release` on macOS.
+  ubuntu-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  ubuntu-probe-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: runner-probe
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  macos-15-probe-environment:
+    runs-on: macos-15
+    timeout-minutes: 5
+    environment: runner-probe
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"

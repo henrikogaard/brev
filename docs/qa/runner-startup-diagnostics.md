@@ -39,3 +39,16 @@ Compare results before changing the nightly workflow:
 The release environment permits `main` and `v*` tags. A feature-branch or PR
 run would not reproduce the nightly's branch access. Keep that policy intact.
 A new manual workflow must be present on the default branch before dispatch.
+
+## Environment isolation probes
+
+The workflow also runs on pushes to `main` that change it, because the
+maintainer PAT cannot dispatch workflows. Three extra jobs separate the
+variables:
+
+- `ubuntu-release`: the `release` environment on a Linux runner.
+- `ubuntu-probe-environment` and `macos-15-probe-environment`: an empty
+  `runner-probe` environment (auto-created, no secrets or rules).
+
+If the probe environment starts on macOS while `release` fails everywhere,
+the fault is in the `release` environment itself, not the runner pool.

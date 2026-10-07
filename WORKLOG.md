@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-07 — Devin — Release environment startup probes
+
+- Goal: find why `v0.2.0` release runs (and every nightly since Sep 23) fail with "job was not started because it repeatedly failed to be acquired".
+- Added `ubuntu-release`, `ubuntu-probe-environment`, `macos-15-probe-environment` jobs and a push-to-main trigger (PAT cannot dispatch). Branch run: plain macOS and the fresh `runner-probe` environment start on both Linux and macOS; `release` jobs were rejected by branch policy as expected off main.
+- Verification: actionlint, `git diff --check`.
+- Next: the main run shows whether `release` fails on Linux too.
+
 ## 2026-10-06 — Devin — Stable release 0.2.0 prep
 
 - Goal: Henrik asked for a stable 0.2.0 release installed on the dev Mac, as the baseline for a later Sparkle auto-update test.
