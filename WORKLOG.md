@@ -5224,3 +5224,9 @@ buttons, and package-aware localization.
 - Changes: add the exception to the release entitlements; `scripts/release-installed-verify.sh` now fails when it is missing.
 - Skipped: a local signed archive (no Developer ID cert on this host); verify on the next release DMG.
 - Next: 0.2.0/0.2.1 cannot self-update; Henrik installs the next release manually once, then auto-update is tested against the release after it.
+
+## 2026-10-07 — Devin — Stable release 0.2.2 prep
+
+- Goal: ship the Sparkle sandbox entitlement fix (#200) so auto-update can be tested from 0.2.2 → 0.2.3.
+- Changes: version 0.2.1 → 0.2.2; changelog heading.
+- Next: tag `v0.2.2` after Build is green; Henrik installs it manually; then cut 0.2.3.
