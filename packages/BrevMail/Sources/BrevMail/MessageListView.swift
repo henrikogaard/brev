@@ -405,21 +405,16 @@ public struct MessageListView: View {
             }
             Group {
                 if folder != nil {
-                    // The scroll edge blur is mounted on the list itself, not
-                    // on the pane: transient bars above it (bulk actions,
-                    // search options) push the scroll viewport down, and a
-                    // pane-top band would sit above where rows actually clip.
-                    // The inbox category bar instead floats as a safe-area
-                    // inset over the list, so rows slide beneath it and the
-                    // band blurs them behind its clear background — the same
-                    // "behind translucent chrome" reading as the toolbar edge.
-                    listContent(presentation: presentation)
-                        .brevMailPaneScrollEdgeBlur()
-                        .safeAreaInset(edge: .top, spacing: 0) {
-                            if showsInboxCategoryBar {
-                                InboxCategoryBar(activeCategory: $activeInboxCategory)
-                            }
+                    // The list starts below the pane header, mid-window, so it
+                    // carries no scroll edge blur: that band belongs to the
+                    // window's top edge only. The category bar is opaque chrome
+                    // above the rows, never a frosted strip they show through.
+                    VStack(spacing: 0) {
+                        if showsInboxCategoryBar {
+                            InboxCategoryBar(activeCategory: $activeInboxCategory)
                         }
+                        listContent(presentation: presentation)
+                    }
                 } else {
                     MessageListEmptyStateView(
                         status: MessageListPresentation.noFolderStatus()
@@ -3212,7 +3207,7 @@ struct InboxCategoryBar: View {
             .padding(.horizontal, BrevSpacing.md)
         }
         .frame(height: InboxCategoryBarPresentation.height(platform: platform))
-        .background(Color.clear)
+        .background(BrevWindowSurfaceBackground(role: .content))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(BrevSeparator.color(for: theme))

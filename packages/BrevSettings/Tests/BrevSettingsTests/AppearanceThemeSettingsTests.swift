@@ -317,6 +317,25 @@ struct AppearanceThemeSettingsTests {
         #expect(AppearanceThemeSettings.hasSavedValue(in: defaults) == false)
     }
 
+    @Test("Reset to Defaults restores every Appearance preference")
+    func resetRestoresAppearanceDefaults() throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        var custom = AppearanceThemeSettings.defaults
+        custom.mode = .alwaysDark
+        custom.accentSource = .custom
+        custom.accentHex = "#FF0000"
+        store.save(custom)
+        store.save(AppIconVariant.envelopeCarbon)
+        defaults.set(false, forKey: AppearancePreferenceKey.transparentMainTitlebar)
+
+        AppearanceReset.apply(to: store)
+
+        #expect(store.appearanceThemeSettings() == AppearanceThemeSettings.defaults)
+        #expect(store.appIconVariant() == AppIconVariant.defaultVariant)
+        #expect(defaults.bool(forKey: AppearancePreferenceKey.transparentMainTitlebar))
+    }
+
     private static func makeDefaults() throws -> UserDefaults {
         let suiteName = "AppearanceThemeSettingsTests-\(UUID().uuidString)"
         let defaults = try #require(UserDefaults(suiteName: suiteName))

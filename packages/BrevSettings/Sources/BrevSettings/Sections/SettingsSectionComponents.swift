@@ -70,11 +70,8 @@ enum SettingsCalloutTone {
     }
 }
 
-/// A titled group of settings rows.
-///
-/// The header and rows share one continuous surface. Proximity, indentation,
-/// and the spacing scale express the group without wrapping every section in
-/// another rounded card.
+/// A titled group of settings rows, drawn like System Settings: a plain
+/// heading and footnote above one rounded inset surface holding the rows.
 struct SettingsGroup<Content: View>: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
@@ -82,35 +79,30 @@ struct SettingsGroup<Content: View>: View {
     @Environment(\.brevTheme) private var theme
     let title: String
     let subtitle: String
+    /// Kept for call sites and search metadata; Apple's grouped headings
+    /// carry no glyph, so only rows show symbols.
     let symbolName: String
     @ViewBuilder let content: Content
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
-                SettingsSymbol(symbolName: symbolName)
-                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(title)
-                        .id(title)
-                        .brevFont(.headline)
-                        .foregroundStyle(theme.textPrimary.color)
-                    Text(subtitle)
-                        .brevFont(.footnote)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(title)
+                    .id(title)
+                    .brevFont(.headline)
+                    .foregroundStyle(theme.textPrimary.color)
+                Text(subtitle)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .fixedSize(horizontal: false, vertical: true)
             }
 
-            // Settings is a continuous task surface. Proximity and alignment
-            // carry the grouping; rows share the header's icon column so the
-            // pane keeps one left edge.
             VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.md)) {
                 content
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.top, BrevSpacing.xs)
+            .settingsGroupedSurface()
         }
-        .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.sm))
+        .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.xs))
     }
 }
 
@@ -386,5 +378,15 @@ private struct SettingsStackedControl: ViewModifier {
                 symbolWidth + SettingsLayout.symbolSpacing - (isMenu ? SettingsLayout.stackedMenuButtonInset : 0)
             )
             .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+extension View {
+    /// The rounded inset surface every Settings group draws its rows on.
+    func settingsGroupedSurface() -> some View {
+        padding(.horizontal, BrevSpacing.md)
+            .padding(.vertical, BrevSpacing.md)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .brevQuietSurface(cornerRadius: BrevRadius.md)
     }
 }

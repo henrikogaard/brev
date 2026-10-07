@@ -29,6 +29,7 @@ struct AppearanceSection: View {
     @State private var windowAppearance: WindowAppearancePreferences
     @State private var mailboxSettings: MailboxViewSettings
     @State private var isThemePickerPresented = false
+    @State private var isResetConfirmationPresented = false
 
     private let appearanceControls = AppearanceControlsPolicy.current
     private let settingsStore: SettingsPersistenceStore
@@ -91,6 +92,8 @@ struct AppearanceSection: View {
                         }
                     }
                 }
+
+                resetRow
             }
         }
         .defaultAppStorage(settingsStore.defaults)
@@ -112,6 +115,53 @@ struct AppearanceSection: View {
                 onSettingsChanged: persistAndApplyThemeSettings
             )
         }
+    }
+
+    private var resetRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Button(String(localized: "Reset to Defaults", bundle: .module)) {
+                isResetConfirmationPresented = true
+            }
+            #if os(iOS)
+            .buttonStyle(.bordered)
+            #endif
+            .help(resetMessage)
+            .confirmationDialog(
+                String(localized: "Reset appearance to defaults?", bundle: .module),
+                isPresented: $isResetConfirmationPresented,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Reset Appearance", bundle: .module), role: .destructive) {
+                    resetToDefaults()
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(resetMessage)
+            }
+        }
+    }
+
+    private var resetMessage: String {
+        #if os(macOS)
+        String(
+            localized: "Restores the default themes, accent, window style, text size, density, and app icon.",
+            bundle: .module
+        )
+        #else
+        String(localized: "Restores the default themes, accent, and app icon.", bundle: .module)
+        #endif
+    }
+
+    private func resetToDefaults() {
+        AppearanceReset.apply(to: settingsStore)
+        themeSettings = settingsStore.appearanceThemeSettings()
+        windowAppearance = settingsStore.windowAppearancePreferences()
+        mailboxSettings = settingsStore.mailboxViewSettings()
+        transparentMainTitlebar = true
+        activeAppIcon = AppIconVariant.defaultVariant
+        applyResolvedTheme()
+        NotificationCenter.default.post(name: .brevAppearanceThemeSettingsDidChange, object: nil)
     }
 
     private var appearanceSubtitle: String {
@@ -492,7 +542,7 @@ private struct ThemePickerSheet: View {
     }
 }
 
-private enum AppearancePreferenceKey {
+enum AppearancePreferenceKey {
     static let transparentMainTitlebar = "window.transparentMainTitlebar"
 }
 
@@ -657,3 +707,17 @@ struct DesktopInterfaceSettings: View {
     }
 }
 #endif
+
+/// Restores every preference the Appearance pane owns to its shipped default.
+enum AppearanceReset {
+    static func apply(to store: SettingsPersistenceStore) {
+        store.save(AppearanceThemeSettings.defaults)
+        store.save(WindowAppearancePreferences.defaults)
+        store.save(AppIconVariant.defaultVariant)
+        store.defaults.set(true, forKey: AppearancePreferenceKey.transparentMainTitlebar)
+        #if os(macOS)
+        store.defaults.removeObject(forKey: MailboxViewPreferenceKey.textSize)
+        store.defaults.removeObject(forKey: MailboxViewPreferenceKey.listDensity)
+        #endif
+    }
+}

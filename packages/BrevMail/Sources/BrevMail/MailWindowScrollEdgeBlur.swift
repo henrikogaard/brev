@@ -14,6 +14,7 @@
 import AppKit
 import OSLog
 #endif
+import BrevThemes
 import SwiftUI
 
 extension View {
@@ -40,7 +41,48 @@ extension View {
     }
 }
 
+extension View {
+    /// Mounts an opaque, theme-coloured scroll edge at the top of the reading
+    /// pane. The reader shows sender-authored HTML, and a blurred copy of it
+    /// tinted the toolbar band with each message's colours; the reader's edge
+    /// fades from the theme surface instead so the chrome never takes on
+    /// message content. No-op off macOS.
+    @ViewBuilder
+    func brevMailReaderScrollEdgeFade() -> some View {
+        #if os(macOS)
+        overlay(alignment: .top) {
+            MailReaderScrollEdgeFade()
+                .frame(height: MailScrollEdgeBlurView.bandHeight)
+                .frame(maxWidth: .infinity)
+                .allowsHitTesting(false)
+                .ignoresSafeArea(edges: .top)
+        }
+        #else
+        self
+        #endif
+    }
+}
+
 #if os(macOS)
+/// Theme surface that is solid under the toolbar and fades to clear at the
+/// bottom of the band.
+struct MailReaderScrollEdgeFade: View {
+    @Environment(\.brevTheme) private var theme
+
+    var body: some View {
+        LinearGradient(
+            stops: [
+                .init(color: theme.bgPrimary.color, location: 0),
+                .init(color: theme.bgPrimary.color, location: 0.6),
+                .init(color: theme.bgPrimary.color.opacity(0), location: 1),
+            ],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .accessibilityHidden(true)
+    }
+}
+
 /// Mail's soft scroll edge: rows dissolve into a progressive blur as they
 /// scroll under the toolbar band, instead of being cut off at a hard line.
 ///

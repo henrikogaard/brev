@@ -282,6 +282,7 @@ struct BrevMailNativeToolbarTests {
             "app.brev.mail.archive",
             "app.brev.mail.delete",
             "app.brev.mail.more",
+            "app.brev.mail.mailContext",
         ])
     }
 

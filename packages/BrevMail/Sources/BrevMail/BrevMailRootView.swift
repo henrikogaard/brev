@@ -1339,7 +1339,7 @@ public struct BrevMailRootView: View {
                 // bottom-stack presentation the same pane is the lower half of
                 // the `VSplitView`, mid-window, where no band belongs.
                 readingPaneDetailPane
-                    .brevMailPaneScrollEdgeBlur()
+                    .brevMailReaderScrollEdgeFade()
             }
         case .bottomStack:
             NavigationSplitView(
@@ -2715,8 +2715,32 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .primaryAction) {
             Spacer()
         }
+        // Trailing-edge toggle for the right column, like Apple's inspector
+        // buttons; the column takes reader width instead of growing the window.
+        ToolbarItem(placement: .primaryAction) {
+            mailContextToolbarToggle
+        }
         #endif
     }
+
+    #if os(macOS)
+    private var mailContextToolbarToggle: some View {
+        let title = isMailContextColumnPresented
+            ? String(localized: "Hide AI Sidebar", bundle: .module)
+            : String(localized: "AI Sidebar", bundle: .module)
+        return Button {
+            isMailContextColumnPresented.toggle()
+        } label: {
+            Label(title, systemImage: MailContextColumnVisibility.toolbarSymbolName)
+                .labelStyle(.iconOnly)
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(isMailContextColumnPresented
+            ? String(localized: "Shown", bundle: .module)
+            : String(localized: "Hidden", bundle: .module))
+        .help(title)
+    }
+    #endif
 
     #if os(iOS)
     @ToolbarContentBuilder

@@ -5221,6 +5221,17 @@
         }
       }
     },
+    "Hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjult"
+          }
+        }
+      }
+    },
     "Hide": {
       "extractionState": "manual",
       "localizations": {
@@ -5360,6 +5371,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Importer e-post …"
+          }
+        }
+      }
+    },
+    "Important": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viktig"
           }
         }
       }
@@ -9905,6 +9927,17 @@
         }
       }
     },
+    "Shown": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vises"
+          }
+        }
+      }
+    },
     "Shows a date picker for a custom reminder time": {
       "extractionState": "manual",
       "localizations": {
@@ -10231,6 +10264,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Regneark"
+          }
+        }
+      }
+    },
+    "Starred": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stjernemerket"
           }
         }
       }

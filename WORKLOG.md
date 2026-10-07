@@ -5195,3 +5195,18 @@ buttons, and package-aware localization.
 - Restored the original public variable in `release-signing` and removed only the mismatching private-key copy created by this session. Eleven correct environment secrets remain; the original Sparkle private-key backup is required before recovery PR #195 can merge safely. Asked Henrik for its secure source/location, not its contents. The P12 password question was resolved by selective Keychain export and needs no user action.
 - Re-saved the original release environment/policy configuration with identical values and read back unchanged main/v* restrictions; Ubuntu acquisition still fails in run `37624988515`. No original secrets were changed or deleted. Apple notarization API authentication with the selected local key passed.
 - PR #195 contains the scoped recovery implementation and verification. Hosted CI is still running with no observed failures; do not merge or dispatch the release until both the required checks and Sparkle credential continuity are satisfied. Merge authorization is already granted; no additional approval is needed once those prerequisites pass.
+
+## 2026-10-07 — Devin — Chrome, appearance reset and Settings polish
+
+- Goal: Henrik's 0.2.0 feedback — toolbar band tinted by mail content, blur behind toolbar buttons, Appearance reset, AI Sidebar toggle, Apple-style Settings, raw Gmail `CATEGORY_*` labels.
+- Reader pane uses an opaque theme fade instead of the content blur; message list drops its mid-pane blur and the category bar is opaque. SwiftUI toolbar gains a trailing `sidebar.right` AI Sidebar toggle (the AppKit toolbar is opt-in only; its defaults also include the item). `AppearanceReset` restores Appearance-owned preferences. `SettingsGroup` renders rows in a rounded quiet surface with icon-free headings. Gmail hides CATEGORY_/UNREAD/CHAT labels from folders and chips.
+- The monospace look on Henrik's Brev.app comes from the persisted Mailbox View font preference (user setting, not changed).
+- Verification: lint, format, BrevGmail tests, BrevSettings AppearanceThemeSettings tests, BrevMail toolbar/visibility tests, macOS mock build.
+
+### 2026-10-07 — Devin — Chrome/Settings polish follow-up (#199)
+
+- Folder Sync table, About rows and Smart Views now use the shared grouped surface (`settingsGroupedSurface()`); iOS switch column widened to 52 pt; AX-size header drops the "Keep offline" column; iOS Reset to Defaults is bordered.
+- AI Sidebar toolbar/menu labels now localized (`MailContextColumnVisibility.toolbarLabel`).
+- Earlier "Settings stays English under nb" finding was a launch-argument artifact; relaunched with `open -n … --args -AppleLanguages "(nb)"`, Settings is Norwegian on both the test build and installed 0.2.0.
+- Verified: format, lint, BrevSettings build, live mac + iOS sim re-test at 5d00392. BrevSettings/BrevMail pixel snapshots fail locally on this macOS 26.5 host; the same 14 BrevSettings tests fail on clean `origin/main`, so they are host renderer drift, not re-recorded. CI skips them on macos-15.
+- Open: iOS AX XL app-icon captions hyphenate mid-word and grid stays two columns.

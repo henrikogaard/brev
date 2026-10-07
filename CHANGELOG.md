@@ -4,7 +4,20 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Appearance settings have a **Reset to Defaults** button that restores the default themes, accent, window style, text size, density and app icon after confirmation.
+- The Mac toolbar has a trailing button to show or hide the AI Sidebar.
+
+### Changed
+
+- Settings groups use rounded grouped surfaces with plain headings, like System Settings.
+
 ### Fixed
+
+- The top of the reading pane no longer takes on colours from the selected message; it fades from the theme background instead of blurring the message.
+- The inbox category bar is solid, and the message list no longer draws a blur band below the list header.
+- Gmail inbox categories (`CATEGORY_UPDATES` and similar), `UNREAD` and `CHAT` no longer appear as sidebar folders or label chips, and `STARRED`/`IMPORTANT` show localized names.
 
 - Signed Release and Nightly builds install a Developer ID provisioning profile for the macOS widget extension, which every signed archive since the widget was added had been missing.
 

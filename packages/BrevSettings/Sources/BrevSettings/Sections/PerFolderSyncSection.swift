@@ -284,31 +284,22 @@ public struct PerFolderSyncSection: View {
                     .foregroundStyle(theme.textSecondary.color)
                     .padding(.vertical, BrevSpacing.lg)
             } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: BrevSpacing.sm) {
-                        Text("Folder", bundle: .module).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
-                        Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
-                        Text("Show", bundle: .module)
-                            .fixedSize()
-                            .frame(width: 44, alignment: .trailing)
-                    }
-                    HStack {
-                        Text("Folder", bundle: .module)
-                        Spacer()
-                        Text("Show", bundle: .module)
-                            .fixedSize()
-                            .frame(width: 44, alignment: .trailing)
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    folderTableHeader
+                    LazyVStack(spacing: 0) {
+                        let rows = visibleRows
+                        ForEach(rows) { row in
+                            folderRow(row)
+                            if row.id != rows.last?.id {
+                                Rectangle().fill(theme.separator.color).frame(height: 1)
+                            }
+                        }
                     }
                 }
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
-                .padding(.trailing, Self.tableTrailingInset)
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleRows) { row in
-                        folderRow(row)
-                        Rectangle().fill(theme.separator.color).frame(height: 1)
-                    }
-                }
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .brevQuietSurface(cornerRadius: BrevRadius.md)
                 if visibleRows.isEmpty {
                     Text("No matching folders", bundle: .module)
                         .foregroundStyle(theme.textSecondary.color)
@@ -319,6 +310,31 @@ public struct PerFolderSyncSection: View {
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
         }
+    }
+
+    /// Stacked accessibility rows carry their own "Keep offline" caption,
+    /// so the header drops that column instead of mislabeling the layout.
+    private var folderTableHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                HStack(spacing: BrevSpacing.sm) {
+                    Text("Folder", bundle: .module).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                    Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
+                    Text("Show", bundle: .module)
+                        .fixedSize()
+                        .frame(width: Self.toggleColumnWidth, alignment: .trailing)
+                }
+            }
+            HStack {
+                Text("Folder", bundle: .module)
+                Spacer()
+                Text("Show", bundle: .module)
+                    .fixedSize()
+                    .frame(width: Self.toggleColumnWidth, alignment: .trailing)
+            }
+        }
+        .brevFont(.footnote)
+        .foregroundStyle(theme.textSecondary.color)
     }
 
     private var visibleRows: [FolderSyncRow] {
@@ -338,9 +354,7 @@ public struct PerFolderSyncSection: View {
         }
         .frame(minHeight: 40)
         .fixedSize(horizontal: false, vertical: true)
-        .padding(.trailing, Self.tableTrailingInset)
         .padding(.vertical, BrevSpacing.xxs)
-        .background(theme.bgPrimary.color)
     }
 
     /// Accessibility sizes give each control its own line under the folder
@@ -350,7 +364,7 @@ public struct PerFolderSyncSection: View {
             HStack(alignment: .top) {
                 folderIdentity(row)
                 Spacer(minLength: BrevSpacing.sm)
-                visibilityToggle(row.folder).frame(width: 44)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text("Keep offline", bundle: .module)
@@ -369,7 +383,7 @@ public struct PerFolderSyncSection: View {
             HStack(spacing: BrevSpacing.sm) {
                 folderIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
                 retentionPicker(row.folder)
-                visibilityToggle(row.folder).frame(width: 44)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
             }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
@@ -382,18 +396,17 @@ public struct PerFolderSyncSection: View {
                     }
                 }
                 Spacer(minLength: BrevSpacing.sm)
-                visibilityToggle(row.folder).frame(width: 44)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
             }
         }
     }
 
-    /// iOS switches overhang the 44 pt column; inset the table's trailing
-    /// side so they end on the same edge as switches in other panes.
-    private static let tableTrailingInset: CGFloat = {
+    /// Wide enough for the platform control: a macOS checkbox or a 51 pt iOS switch.
+    private static let toggleColumnWidth: CGFloat = {
         #if os(iOS)
-        BrevSpacing.sm
+        52
         #else
-        0
+        44
         #endif
     }()
 

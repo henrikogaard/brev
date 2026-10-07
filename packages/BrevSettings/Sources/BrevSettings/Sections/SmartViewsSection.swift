@@ -44,12 +44,14 @@ public struct SmartViewsSection: View {
                 get: { settings.showInSidebar }, set: { value in update { $0.showInSidebar = value } }
             ))
             .id(String(localized: "Show Smart Views in sidebar", bundle: .module))
+            .settingsGroupedSurface()
             VStack(spacing: 0) {
                 ForEach(Array(settings.orderedEntries.enumerated()), id: \.element.id) { index, entry in
                     row(entry, index: index)
                 }
             }
             .id(String(localized: "Display order", bundle: .module))
+            .settingsGroupedSurface()
             Button {
                 editing = nil
                 showsEditor = true
