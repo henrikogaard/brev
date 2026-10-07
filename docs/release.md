@@ -53,6 +53,8 @@ gh workflow run release.yml --ref main -f tag=v0.2.0
 
 The workflow checks out `refs/tags/<tag>`, validates the `vX.Y.Z` format, and
 checks main ancestry plus a successful Build for the checked-out tag SHA.
+The signing action is loaded from the immutable running workflow revision, so
+widget-profile and signing repairs apply even when the product tag is older.
 It refuses to overwrite an existing GitHub Release. The tag is not moved.
 The `release-signing` environment replaced the failing `release` environment
 on 2026-10-07; keep the original intact until recovery is verified.

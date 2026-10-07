@@ -80,6 +80,20 @@ jobs:
       - name: Tuist generate
         run: mise exec -- tuist generate --no-open
 
+      # The product stays on its tag; recovery must use this workflow's signing repair.
+      - name: Load signing action from workflow revision
+        env:
+          SIGNING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SIGNING_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid signing workflow revision"
+            exit 1
+          fi
+          git fetch origin "$SIGNING_WORKFLOW_SHA"
+          git show "$SIGNING_WORKFLOW_SHA:.github/actions/release-signing/action.yml" > "$RUNNER_TEMP/release-signing-action.yml"
+          cp "$RUNNER_TEMP/release-signing-action.yml" .github/actions/release-signing/action.yml
+
       - name: Set up signing material
         uses: ./.github/actions/release-signing
         with:

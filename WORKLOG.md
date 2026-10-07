@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-10-07 — Codex — PR #197 release signing recovery
+
+- Goal: finish Developer ID app/widget provisioning and recover the existing v0.2.0 tag.
+- Apple setup: registered stable/nightly macOS widget IDs, assigned the existing `group.eu.brevmail.brev` to all four app/widget IDs, regenerated the two app profiles, and generated two widget profiles. Validated active Developer ID profile type, team, exact bundle ID, App Group, expiry, and SHA-256 certificate match before uploading all four environment secrets to `release-signing`. Downloaded copies are in Henrik's Downloads folder.
+- Fixed the open review finding: Release loads the signing action from `github.workflow_sha` after checking out the product tag. Product HEAD stays on the tag and setup/cleanup both use the repaired action.
+- Verification: regression fixture failed before the workflow change; passes afterward and verifies current action content, unchanged tag HEAD, invalid revision rejection, tag format, ancestry, and green Build gates. Actionlint and Developer ID configuration self-test passed.
+- Scope: configuration only; no new Swift/UI tests or product build locally. Hosted signed archive/notarization is the remaining release verification. Existing ADR-0009/ADR-0080 distribution policy is unchanged; release runbook updated. README/privacy/agent instructions need no update.
+
 ## 2026-10-07 — Devin — Release recovery: widget profile + Sparkle key rotation
 
 - Goal: produce the signed 0.2.0 release after moving to `release-signing` (#195).
