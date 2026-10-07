@@ -52,7 +52,7 @@ appropriate license disclosures, but there's residual ambiguity.
 
 ### Code signing
 
-- **Developer ID:** Henrik Ø. Gaard (personal Apple Developer
+- **Developer ID:** Henrik Øgård (personal Apple Developer
   account).
 - **Team identifier:** `45AD7E7G5G`, the App Store Connect team used for
   Brev distribution.

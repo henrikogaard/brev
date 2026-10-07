@@ -2,7 +2,7 @@
 
 > Modern, open-source mail client for macOS and iOS. Standalone app with
 > Brev-owned mail, UI, and provider layers. Native on each platform,
-> IDE-style theming, zero telemetry. By Henrik Ø. Gaard.
+> IDE-style theming, zero telemetry. By Henrik Øgård.
 
 ## Reading order for LLMs
 
