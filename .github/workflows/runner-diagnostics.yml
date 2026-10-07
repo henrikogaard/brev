@@ -1,6 +1,6 @@
 name: Runner startup diagnostics
 
-# Run on main so release environment branch rules match the nightly job.
+# Run on main so release-signing environment branch rules match the nightly job.
 # No checkout, secret references, signing, or release commands.
 on:
   workflow_dispatch:
@@ -38,7 +38,7 @@ jobs:
   macos-15-release:
     runs-on: macos-15
     timeout-minutes: 5
-    environment: release
+    environment: release-signing
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -63,7 +63,7 @@ jobs:
   macos-26-release:
     runs-on: macos-26
     timeout-minutes: 5
-    environment: release
+    environment: release-signing
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -86,12 +86,12 @@ jobs:
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
 
-  # Isolate whether acquisition fails for the `release` environment itself,
-  # for any environment on macOS, or only for `release` on macOS.
+  # Isolate whether acquisition fails for the `release-signing` environment itself,
+  # for any environment on macOS, or only for `release-signing` on macOS.
   ubuntu-release:
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    environment: release
+    environment: release-signing
     steps:
       - name: Report runner
         shell: bash

@@ -12,7 +12,7 @@ release model.
 
 ADR-0080 replaced the "keys stay on the release machine" rule. Signing
 material now lives in GitHub Actions repository secrets scoped to the
-`release` environment, and two workflows produce signed builds:
+`release-signing` environment, and two workflows produce signed builds:
 
 - **Stable** — `.github/workflows/release.yml` runs on pushes of `vX.Y.Z`
   tags. It archives and exports `Brev.app` (`eu.brevmail.brev`), notarizes
@@ -42,6 +42,20 @@ Both feeds are served by GitHub Pages from the `gh-pages` branch root at
 `gh-pages` branch with `.nojekyll` on first run; enable Pages from that
 branch once (repo Settings → Pages → Deploy from a branch → `gh-pages`
 `/`).
+
+To recover a failed existing tag using the current workflow, dispatch Release
+on `main` and select that tag. Re-running the old failed run uses its original
+workflow and environment, so it does not pick up a workflow repair:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v0.2.0
+```
+
+The workflow checks out `refs/tags/<tag>`, validates the `vX.Y.Z` format, and
+checks main ancestry plus a successful Build for the checked-out tag SHA.
+It refuses to overwrite an existing GitHub Release. The tag is not moved.
+The `release-signing` environment replaced the failing `release` environment
+on 2026-10-07; keep the original intact until recovery is verified.
 
 Everything below this section is the **manual fallback** for cutting a
 release locally when CI signing is unavailable or a release must be
@@ -86,26 +100,26 @@ Developer portal (once):
 GitHub (once):
 
 ```bash
-# Secrets (release environment scope is enforced by the workflows)
-gh secret set BREV_DEVELOPER_ID_P12_BASE64 \
+# Secrets (release-signing environment scope is enforced by the workflows)
+gh secret set --env release-signing BREV_DEVELOPER_ID_P12_BASE64 \
   --body "$(base64 -i dev-id-cert.p12 | tr -d '\n')"
-gh secret set BREV_DEVELOPER_ID_P12_PASSWORD --body "<p12 password>"
-gh secret set BREV_MACOS_PROFILE_STABLE_BASE64 \
+gh secret set --env release-signing BREV_DEVELOPER_ID_P12_PASSWORD --body "<p12 password>"
+gh secret set --env release-signing BREV_MACOS_PROFILE_STABLE_BASE64 \
   --body "$(base64 -i 'Brev Developer ID Distribution.mobileprovision' | tr -d '\n')"
-gh secret set BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
+gh secret set --env release-signing BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
   --body "$(base64 -i 'Brev Nightly Developer ID Distribution.mobileprovision' | tr -d '\n')"
-gh secret set BREV_ASC_KEY_ID --body "<App Store Connect key id>"
-gh secret set BREV_ASC_ISSUER_ID --body "<issuer id>"
-gh secret set BREV_ASC_KEY_P8_BASE64 \
+gh secret set --env release-signing BREV_ASC_KEY_ID --body "<App Store Connect key id>"
+gh secret set --env release-signing BREV_ASC_ISSUER_ID --body "<issuer id>"
+gh secret set --env release-signing BREV_ASC_KEY_P8_BASE64 \
   --body "$(base64 -i AuthKey.p8 | tr -d '\n')"
-gh secret set BREV_SPARKLE_PRIVATE_ED_KEY --body "<generate_keys -x output>"
+gh secret set --env release-signing BREV_SPARKLE_PRIVATE_ED_KEY --body "<generate_keys -x output>"
 
 # Public key is a variable, not a secret — it ships inside the app bundle.
-gh variable set BREV_SPARKLE_PUBLIC_ED_KEY --body "<44-char base64 key>"
+gh variable set --env release-signing BREV_SPARKLE_PUBLIC_ED_KEY --body "<44-char base64 key>"
 ```
 
-Then create the `release` environment (repo Settings → Environments →
-New environment → `release`) so secrets resolve only for the two release
+Then create the `release-signing` environment (repo Settings → Environments →
+New environment → `release-signing`) so secrets resolve only for the two release
 workflows. Operator notes:
 
 - Configure the environment with required reviewers and/or deployment

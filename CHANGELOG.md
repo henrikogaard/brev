@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Signed release jobs use a replacement signing environment after the original
+  environment stopped assigning runners. Existing release tags can be retried
+  through the current workflow without moving the tag.
+
 ## [0.2.0] - 2026-10-06
 
 ### Fixed
