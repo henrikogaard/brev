@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-06 — Devin — Stable release 0.2.0 prep
+
+- Goal: Henrik asked for a stable 0.2.0 release installed on the dev Mac, as the baseline for a later Sparkle auto-update test.
+- Changes: `BrevConstants.marketingVersion` and the committed project `MARKETING_VERSION` bumped 0.1.0 → 0.2.0; the accumulated `[Unreleased]` CHANGELOG notes became `## [0.2.0] - 2026-10-06` (required by `release.yml`), with a fresh empty `[Unreleased]`.
+- Verification: format, lint, `git diff --check`; release itself is produced by `release.yml` on the `v0.2.0` tag after this merges.
+- Next: tag `v0.2.0` on main once Build is green, install the notarized DMG as `/Applications/Brev.app`, then tag a follow-up release to exercise Sparkle updating 0.2.0.
+
 ## 2026-10-05 — Agent — Interpolated string-catalog key rekey
 
 - Goal: finish the localization follow-up PR #187 flagged — 168 catalog keys

@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-06
+
 ### Fixed
 
 - Calendar and Contacts QA follow-ups: event writes that add attendees
