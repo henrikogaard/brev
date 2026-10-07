@@ -6,6 +6,7 @@
 - Apple setup: registered stable/nightly macOS widget IDs, assigned the existing `group.eu.brevmail.brev` to all four app/widget IDs, regenerated the two app profiles, and generated two widget profiles. Validated active Developer ID profile type, team, exact bundle ID, App Group, expiry, and SHA-256 certificate match before uploading all four environment secrets to `release-signing`. Downloaded copies are in Henrik's Downloads folder.
 - Fixed the open review finding: Release loads the signing action from `github.workflow_sha` after checking out the product tag. Product HEAD stays on the tag and setup/cleanup both use the repaired action.
 - Verification: regression fixture failed before the workflow change; passes afterward and verifies current action content, unchanged tag HEAD, invalid revision rejection, tag format, ancestry, and green Build gates. Actionlint and Developer ID configuration self-test passed.
+- Integration: merged current main after #196; retained both release-recovery and author-correction worklog entries.
 - Scope: configuration only; no new Swift/UI tests or product build locally. Hosted signed archive/notarization is the remaining release verification. Existing ADR-0009/ADR-0080 distribution policy is unchanged; release runbook updated. README/privacy/agent instructions need no update.
 
 ## 2026-10-07 — Devin — Release recovery: widget profile + Sparkle key rotation
@@ -15,6 +16,10 @@
 - Changes: the `release-signing` action takes `widget-profile-base64`, verifies its team and certificate fingerprint, and exports `BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER`; the Release and Nightly workflows pass `BREV_MACOS_WIDGET_PROFILE_{STABLE,NIGHTLY}_BASE64`; release.md gets the portal and secret steps. At Henrik's request the Sparkle key was rotated: the new private key and public key (`bmBu…`) are set in `release-signing`. The original public key (`aFO3…`, embedded in 0.1.0) has no recoverable private half.
 - Verification: actionlint, `scripts/test-developer-id-release-config.sh`, `git diff --check`.
 - Next (Henrik): portal work to create the widget App IDs and profiles and regenerate the app profiles with App Groups; upload the four profiles; re-dispatch Release for `v0.2.0`.
+## 2026-10-07 — Devin — Author name correction
+
+- Henrik's name is "Henrik Øgård": fixed LICENSE, NOTICE, llms.txt and the ADR-0009 account-holder line. Apple signing-identity strings in ADR-0009, docs/release.md and scripts/release-archive.sh are left as-is because they must match the certificate common name.
+- Verification: `git diff --check`.
 
 ## 2026-10-07 — Devin — Release environment startup probes
 
