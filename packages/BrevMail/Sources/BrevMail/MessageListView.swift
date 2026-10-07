@@ -409,10 +409,8 @@ public struct MessageListView: View {
                     // on the pane: transient bars above it (bulk actions,
                     // search options) push the scroll viewport down, and a
                     // pane-top band would sit above where rows actually clip.
-                    // The inbox category bar instead floats as a safe-area
-                    // inset over the list, so rows slide beneath it and the
-                    // band blurs them behind its clear background — the same
-                    // "behind translucent chrome" reading as the toolbar edge.
+                    // The inbox category bar is an opaque safe-area inset, so
+                    // rows clip at its bottom edge rather than showing through.
                     listContent(presentation: presentation)
                         .brevMailPaneScrollEdgeBlur()
                         .safeAreaInset(edge: .top, spacing: 0) {
@@ -3212,7 +3210,9 @@ struct InboxCategoryBar: View {
             .padding(.horizontal, BrevSpacing.md)
         }
         .frame(height: InboxCategoryBarPresentation.height(platform: platform))
-        .background(Color.clear)
+        // Opaque so rows clip at the bar instead of showing through it; the
+        // soft scroll edge belongs to the window's top edge only.
+        .background(BrevWindowSurfaceBackground(role: .content))
         .overlay(alignment: .bottom) {
             Rectangle()
                 .fill(BrevSeparator.color(for: theme))

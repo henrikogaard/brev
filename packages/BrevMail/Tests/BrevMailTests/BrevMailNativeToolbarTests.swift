@@ -249,7 +249,7 @@ struct BrevMailNativeToolbarTests {
         #expect(state.messageHeaderForInvocation(.delete) == header)
     }
 
-    @Test("native toolbar defaults keep only primary actions and More")
+    @Test("native toolbar defaults keep primary actions, More, and the AI Sidebar toggle")
     func nativeToolbarDefaultsPrioritizePrimaryActions() {
         let coordinator = BrevMailNativeToolbarBridge.Coordinator(
             state: BrevMailNativeToolbarState(
@@ -282,6 +282,7 @@ struct BrevMailNativeToolbarTests {
             "app.brev.mail.archive",
             "app.brev.mail.delete",
             "app.brev.mail.more",
+            "app.brev.mail.mailContext",
         ])
     }
 

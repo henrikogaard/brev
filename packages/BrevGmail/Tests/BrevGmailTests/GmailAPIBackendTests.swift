@@ -273,6 +273,31 @@ struct GmailAPIBackendTests {
         #expect(page.nextPageToken == nil)
     }
 
+    @Test("folders hide Gmail state and category labels and nest labels by leaf name")
+    func foldersHideStateLabelsAndUseLeafNames() async throws {
+        let transport = StubGmailTransport(
+            labels: [
+                GmailLabel(id: "INBOX", name: "INBOX", type: "system"),
+                GmailLabel(id: "UNREAD", name: "UNREAD", type: "system"),
+                GmailLabel(id: "CATEGORY_UPDATES", name: "CATEGORY_UPDATES", type: "system"),
+                GmailLabel(id: "label-archive", name: "Arkiv", type: "user"),
+                GmailLabel(id: "label-cave", name: "Arkiv/Archive/Dykking/Cave1", type: "user")
+            ]
+        )
+        let backend = GmailAPIBackend(
+            account: Self.account,
+            transport: transport,
+            store: InMemoryGmailAccountStore()
+        )
+        try await backend.connect()
+        let folders = try await backend.folders()
+
+        #expect(Set(folders.map(\.id)) == ["INBOX", "label-archive", "label-cave"])
+        let cave = try #require(folders.first { $0.id == "label-cave" })
+        #expect(cave.parentID == "label-archive")
+        #expect(cave.name == "Archive/Dykking/Cave1")
+    }
+
     @Test("maps Workspace labels, display identity, and native capabilities")
     func mapsWorkspaceLabelsAndCapabilities() async throws {
         let transport = StubGmailTransport(

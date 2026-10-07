@@ -2292,12 +2292,13 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     }
 
     private static func folders(from labels: [GmailLabel]) -> [Folder] {
-        labels.map { label in
-            Folder(
+        labels.filter { !isHiddenSystemLabel($0.id) }.map { label in
+            let parent = nearestAncestor(of: label, among: labels)
+            return Folder(
                 id: label.id,
-                name: label.name,
+                name: parent.map { String(label.name.dropFirst($0.name.count + 1)) } ?? label.name,
                 role: role(for: label),
-                parentID: parentID(for: label, among: labels),
+                parentID: parent?.id,
                 unreadCount: label.messagesUnread ?? 0,
                 totalCount: label.messagesTotal ?? 0
             )
@@ -2420,6 +2421,26 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
     }
 
+    /// Gmail state and category labels (`UNREAD`, `CHAT`, `CATEGORY_*`) are
+    /// message attributes, not mailboxes; Gmail's own sidebar never lists them.
+    static func isHiddenSystemLabel(_ id: String) -> Bool {
+        let upper = id.uppercased()
+        return upper.hasPrefix("CATEGORY_") || upper == "UNREAD" || upper == "CHAT"
+    }
+
+    /// The closest existing label whose name is a path prefix, so
+    /// `A/B/C` nests under `A` when `A/B` was never created as a label.
+    private static func nearestAncestor(of label: GmailLabel, among labels: [GmailLabel]) -> GmailLabel? {
+        var path = Substring(label.name)
+        while let slash = path.lastIndex(of: "/") {
+            path = path[..<slash]
+            if let parent = labels.first(where: { $0.name == path && $0.id != label.id }) {
+                return parent
+            }
+        }
+        return nil
+    }
+
     private static func parentID(for label: GmailLabel, among labels: [GmailLabel]) -> String? {
         guard let slash = label.name.lastIndex(of: "/") else { return nil }
         let parentName = String(label.name[..<slash])
@@ -2484,7 +2505,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             case "SPAM": return "\\Junk"
             case "STARRED": return "\\Starred"
             case "IMPORTANT": return "\\Important"
-            default: return labels.first { $0.id == id }?.name ?? id
+            default:
+                // Non-user labels carry the system-label backslash so row chips
+                // skip them, matching the IMAP `X-GM-LABELS` convention.
+                let label = labels.first { $0.id == id }
+                if label?.type == "system" || isHiddenSystemLabel(id) {
+                    return "\\\(id)"
+                }
+                return label?.name ?? id
             }
         }
         return MessageHeader(

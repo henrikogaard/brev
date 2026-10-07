@@ -12824,6 +12824,61 @@
           }
         }
       }
+    },
+    "Reset Appearance": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill utseende"
+          }
+        }
+      }
+    },
+    "Restore the default theme, accent, window style, text size, density, and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjenopprett standard tema, aksentfarge, vindusstil, tekststørrelse, tetthet og appikon."
+          }
+        }
+      }
+    },
+    "Reset to Default…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill til standard …"
+          }
+        }
+      }
+    },
+    "Reset appearance to default?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vil du tilbakestille utseendet til standard?"
+          }
+        }
+      }
+    },
+    "Your accounts, mail, and other settings are not changed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontoer, e-post og andre innstillinger endres ikke."
+          }
+        }
+      }
     }
   },
   "version": "1.0"

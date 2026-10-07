@@ -5364,6 +5364,17 @@
         }
       }
     },
+    "Important": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viktig"
+          }
+        }
+      }
+    },
     "Imported %lld %@ into %@ with %lld %@.": {
       "extractionState": "manual",
       "localizations": {
@@ -10231,6 +10242,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Regneark"
+          }
+        }
+      }
+    },
+    "Starred": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Stjernemerket"
           }
         }
       }

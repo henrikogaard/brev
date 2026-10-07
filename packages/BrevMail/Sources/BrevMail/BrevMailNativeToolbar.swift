@@ -323,6 +323,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             window.toolbar?.showsBaselineSeparator = false
             BrevWindowChromeApplier.applyCurrentPreferences(to: window, for: .mainWindow)
 
+            insertMailContextIntoSavedToolbarOnce()
             placeMailContextAfterSearch()
             if appliedMailContextState == nil {
                 appliedMailContextState = state.isMailContextPresented
@@ -365,6 +366,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 .brevArchive,
                 .brevDelete,
                 .brevMore,
+                .brevMailContext,
             ]
         }
 
@@ -521,6 +523,21 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 updateVisibleItems()
                 actions.toggleMailContext()
             }
+        }
+
+        /// Autosaved toolbars predate the AI Sidebar button in the default set;
+        /// add it once so existing installs get it, and respect later removal.
+        private func insertMailContextIntoSavedToolbarOnce() {
+            let key = "mail.toolbar.didInsertMailContext"
+            guard let toolbar = window?.toolbar, !UserDefaults.standard.bool(forKey: key) else { return }
+            UserDefaults.standard.set(true, forKey: key)
+            guard !toolbar.items.contains(where: {
+                $0.itemIdentifier == BrevMailNativeToolbarItem.mailContext.identifier
+            }) else { return }
+            toolbar.insertItem(
+                withItemIdentifier: BrevMailNativeToolbarItem.mailContext.identifier,
+                at: toolbar.items.count
+            )
         }
 
         private func placeMailContextAfterSearch() {

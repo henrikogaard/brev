@@ -29,6 +29,7 @@ struct AppearanceSection: View {
     @State private var windowAppearance: WindowAppearancePreferences
     @State private var mailboxSettings: MailboxViewSettings
     @State private var isThemePickerPresented = false
+    @State private var isShowingResetConfirmation = false
 
     private let appearanceControls = AppearanceControlsPolicy.current
     private let settingsStore: SettingsPersistenceStore
@@ -91,6 +92,20 @@ struct AppearanceSection: View {
                         }
                     }
                 }
+
+                SettingsGroup(
+                    title: String(localized: "Reset Appearance", bundle: .module),
+                    subtitle: String(
+                        localized: "Restore the default theme, accent, window style, text size, density, and app icon.",
+                        bundle: .module
+                    ),
+                    symbolName: "arrow.counterclockwise"
+                ) {
+                    Button(String(localized: "Reset to Default…", bundle: .module)) {
+                        isShowingResetConfirmation = true
+                    }
+                    .accessibilityIdentifier("settings.appearance.resetToDefault")
+                }
             }
         }
         .defaultAppStorage(settingsStore.defaults)
@@ -104,6 +119,17 @@ struct AppearanceSection: View {
         .onChange(of: colorSchemeContrast) { _, _ in applyResolvedTheme() }
         .onReceive(NotificationCenter.default.publisher(for: .brevAppearanceThemeSettingsDidChange)) { _ in
             themeSettings = settingsStore.appearanceThemeSettings()
+        }
+        .alert(
+            String(localized: "Reset appearance to default?", bundle: .module),
+            isPresented: $isShowingResetConfirmation
+        ) {
+            Button(String(localized: "Reset", bundle: .module), role: .destructive) {
+                resetToDefaults()
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: {
+            Text("Your accounts, mail, and other settings are not changed.", bundle: .module)
         }
         .sheet(isPresented: $isThemePickerPresented) {
             ThemePickerSheet(
@@ -366,6 +392,18 @@ struct AppearanceSection: View {
     private func persistAndApplyThemeSettings() {
         settingsStore.save(themeSettings)
         applyResolvedTheme()
+    }
+
+    private func resetToDefaults() {
+        themeSettings = .defaults
+        persistAndApplyThemeSettings()
+        windowAppearance = .defaults
+        settingsStore.save(windowAppearance)
+        transparentMainTitlebar = true
+        settingsStore.defaults.removeObject(forKey: MailboxViewPreferenceKey.textSize)
+        settingsStore.defaults.removeObject(forKey: MailboxViewPreferenceKey.listDensity)
+        mailboxSettings = settingsStore.mailboxViewSettings()
+        activeAppIcon = AppIconVariant.defaultVariant
     }
 
     private func applyResolvedTheme() {

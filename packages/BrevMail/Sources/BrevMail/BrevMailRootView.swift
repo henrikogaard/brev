@@ -1335,11 +1335,9 @@ public struct BrevMailRootView: View {
             } content: {
                 messageListPane
             } detail: {
-                // The detail column's band lives here, not in the pane: in the
-                // bottom-stack presentation the same pane is the lower half of
-                // the `VSplitView`, mid-window, where no band belongs.
+                // No scroll edge blur on the reader: it sampled rendered HTML
+                // and tinted the toolbar band with the message's colors.
                 readingPaneDetailPane
-                    .brevMailPaneScrollEdgeBlur()
             }
         case .bottomStack:
             NavigationSplitView(

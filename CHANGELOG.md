@@ -6,6 +6,16 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Gmail accounts no longer show raw label IDs (`CATEGORY_UPDATES`, `UNREAD`, `STARRED`, `DRAFT`) as folders or message chips. Starred and Important use readable, localized names, and nested labels show their own name under the nearest parent label instead of the full path.
+- macOS: the reading pane no longer tints the toolbar band with the message's colors, and the inbox category bar is opaque, so list rows no longer show through it.
+
+### Added
+
+- Settings → Appearance → Reset to Default restores the default theme, accent, window style, text size, density and app icon, after a confirmation.
+- macOS: an AI Sidebar button in the mail toolbar shows or hides the right-hand sender/AI sidebar. Existing customized toolbars get it once.
+
+### Fixed
+
 - Signed Release and Nightly builds install a Developer ID provisioning profile for the macOS widget extension, which every signed archive since the widget was added had been missing.
 
 ### Changed

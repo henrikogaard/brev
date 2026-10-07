@@ -648,9 +648,9 @@ enum FolderSidebarPresentation {
         aliasPreferences: FolderAliasPreferences,
         capabilities: BackendCapabilities = []
     ) -> String {
-        if isProviderNativeLabelSource(capabilities: capabilities)
-            && (folder.role == .starred || isProviderImportantFolder(folder)) {
-            return folder.name
+        if isProviderNativeLabelSource(capabilities: capabilities) {
+            if folder.role == .starred { return String(localized: "Starred", bundle: .module) }
+            if isProviderImportantFolder(folder) { return String(localized: "Important", bundle: .module) }
         }
         return FolderAliasPreferencesPolicy.displayName(
             for: folder,
