@@ -41,7 +41,6 @@ struct MailboxViewSection: View {
             // settings search scrolls straight to the group it names.
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 readingGroup
-                SettingsMailPreview(settings: mailboxSettings)
                 listGroup
                 folderVisibilityGroup
                 BrowserSettingsGroup(settingsStore: settingsStore)
@@ -191,6 +190,7 @@ struct MailboxViewSection: View {
             symbolName: "list.bullet.rectangle"
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                SettingsMailPreview(settings: mailboxSettings)
                 SettingsToggleRow(
                     symbolName: "rectangle.stack",
                     title: String(localized: "Group conversations", bundle: .module),

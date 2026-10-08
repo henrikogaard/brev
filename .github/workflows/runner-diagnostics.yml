@@ -1,9 +1,12 @@
 name: Runner startup diagnostics
 
-# Run on main so release environment branch rules match the nightly job.
+# Run on main so release-signing environment branch rules match the nightly job.
 # No checkout, secret references, signing, or release commands.
 on:
   workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['.github/workflows/runner-diagnostics.yml']
 
 permissions: {}
 
@@ -35,7 +38,7 @@ jobs:
   macos-15-release:
     runs-on: macos-15
     timeout-minutes: 5
-    environment: release
+    environment: release-signing
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -60,7 +63,7 @@ jobs:
   macos-26-release:
     runs-on: macos-26
     timeout-minutes: 5
-    environment: release
+    environment: release-signing
     steps:
       - name: Report runner and toolchain
         shell: bash
@@ -82,3 +85,41 @@ jobs:
             xcodebuild -version
           } | tee -a "$GITHUB_STEP_SUMMARY"
 
+
+  # Isolate whether acquisition fails for the `release-signing` environment itself,
+  # for any environment on macOS, or only for `release-signing` on macOS.
+  ubuntu-release:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: release-signing
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  ubuntu-probe-environment:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: runner-probe
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"
+
+  macos-15-probe-environment:
+    runs-on: macos-15
+    timeout-minutes: 5
+    environment: runner-probe
+    steps:
+      - name: Report runner
+        shell: bash
+        env:
+          DIAGNOSTIC_RUNNER_NAME: ${{ runner.name }}
+        run: |
+          printf 'Runner: %s\n' "$DIAGNOSTIC_RUNNER_NAME" | tee -a "$GITHUB_STEP_SUMMARY"

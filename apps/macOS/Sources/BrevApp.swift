@@ -302,6 +302,7 @@ struct BrevApp: App {
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1100, height: 720)
         .windowResizability(.contentMinSize)
@@ -319,6 +320,7 @@ struct BrevApp: App {
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
@@ -336,6 +338,7 @@ struct BrevApp: App {
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
@@ -392,12 +395,14 @@ struct BrevApp: App {
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 960, height: 640)
         .windowResizability(.contentMinSize)
 
         Window("Keyboard Shortcuts", id: BrevWindowID.keyboardShortcuts) {
             KeyboardShortcutsHelpView()
+                .brevRootAppearance(session: session)
         }
         .windowResizability(.contentSize)
 

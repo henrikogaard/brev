@@ -128,6 +128,22 @@ enum MailRootMessageListTitlePolicy {
         )
     }
 
+    /// Whether the title carries an account line. Only a single account's
+    /// folder has one; unified and cross-account destinations do not.
+    static func showsAccountContext(
+        hasSelectedFolder: Bool,
+        isUnifiedInboxSelected: Bool,
+        isSmartViewSelected: Bool,
+        isAllAttachmentsSelected: Bool,
+        hasSelectedSavedSearch: Bool
+    ) -> Bool {
+        hasSelectedFolder
+            && !isUnifiedInboxSelected
+            && !isSmartViewSelected
+            && !isAllAttachmentsSelected
+            && !hasSelectedSavedSearch
+    }
+
     static func accountContext(
         mailboxDisplayName: String,
         accountDisplayName: String,

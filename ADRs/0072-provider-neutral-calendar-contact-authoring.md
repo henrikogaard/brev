@@ -1220,6 +1220,31 @@ grant.
   taxonomy covers collection discovery where a misconfigured project
   fails first.
 
+### #3/#11 — stub-DAV parity follow-ups (2026-10-05, BrevCalendar/BrevMail/BrevSettings)
+
+- `PIMEventWriteService` claims an `ORGANIZER` on DAV create/update
+  when the event has attendees but none set: the basic-auth username
+  when it is mailbox-shaped, else `source.principalURL`. A scheduling
+  object without an organizer cannot send invitations, so the account
+  identity is the only attribution Brev can make. cal-address values
+  are URIs, not mailboxes: `PIMEventICSWriter` prefixes `mailto:` only
+  when the value has no scheme, and `ICSParser.parsePerson` accepts any
+  URI scheme so the claimed organizer survives the next sync.
+- `PIMErrorText` renders sync/write service failures for status rows —
+  `LocalizedError.errorDescription` first — replacing the
+  `String(describing:)` sites that leaked raw enum case names like
+  `missingCredential` into Settings.
+- `PIMSourceSettingsModel` subscribes to `coordinator.changes()`, so a
+  `markStatus` a background sync writes refreshes source rows and
+  cached item counts while Settings stays open — the observation
+  pattern the browsing models already used.
+- `CalendarInviteResponsePresentation` localizes its badge and
+  confirmation sentences; `AttendeeState.displayLabel` remains an
+  English model token — localization happens at the presentation layer.
+- The event editor's attendee field validates input through
+  `RecipientAddressValidator` with an inline error instead of
+  accepting non-addresses.
+
 ## References (checked 2026-09-20)
 
 - [ADR-0028](0028-mail-provider-architecture.md), [ADR-0039](0039-read-only-calendar-contacts-scope.md), [ADR-0043](0043-provider-backed-workflow-state.md)

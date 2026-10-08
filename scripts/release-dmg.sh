@@ -135,6 +135,11 @@ fi
 
 APP_BUNDLE_NAME="$(basename "$APP_PATH")"
 
+# Export directories also contain Xcode logs and plists, not installer content.
+STAGING_DIR="$(mktemp -d "$REPO_ROOT/build/release/dmg-stage.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+ditto "$APP_PATH" "$STAGING_DIR/$APP_BUNDLE_NAME"
+
 # 2. Create DMG with create-dmg (brew install create-dmg)
 echo "→ Creating DMG…"
 if command -v create-dmg >/dev/null 2>&1; then
@@ -148,12 +153,13 @@ if command -v create-dmg >/dev/null 2>&1; then
     --hide-extension "$APP_BUNDLE_NAME" \
     --app-drop-link 430 180 \
     "$DMG_PATH" \
-    "$EXPORT_DIR/"
+    "$STAGING_DIR/"
 else
   echo "  WARN: create-dmg not found; using hdiutil fallback packaging" >&2
+  ln -s /Applications "$STAGING_DIR/Applications"
   hdiutil create \
     -volname "$VOLUME_NAME" \
-    -srcfolder "$EXPORT_DIR" \
+    -srcfolder "$STAGING_DIR" \
     -ov \
     -format UDZO \
     "$DMG_PATH"

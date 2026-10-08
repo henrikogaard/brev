@@ -203,7 +203,14 @@ public enum PIMEventICSWriter {
         if person.rsvp != .unknown {
             line += ";PARTSTAT=" + partstat(person.rsvp)
         }
-        return line + ":mailto:" + person.email
+        return line + ":" + address(person.email)
+    }
+
+    /// RFC 5545 cal-address is a URI: mailboxes carry the conventional
+    /// `mailto:` prefix, while values that are already URIs — a
+    /// source's principal URL claimed as ORGANIZER — pass through.
+    private static func address(_ value: String) -> String {
+        value.contains(":") ? value : "mailto:" + value
     }
 
     private static func partstat(_ rsvp: PIMEventPerson.RSVP) -> String {

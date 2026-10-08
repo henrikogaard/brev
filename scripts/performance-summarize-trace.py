@@ -15,14 +15,16 @@ reading them from Instruments / `footprint` as described in
 docs/qa/performance-live-run.md.
 
 usage:
-  scripts/performance-summarize-trace.py /tmp/brev-performance.log \
-      --scroll-p95-ms 14 --memory-mb 520 --output /tmp/brev-perf-results.json
+  scripts/performance-summarize-trace.py /tmp/brev-cached.log \
+      --cached-workload --inbox-usable-ms 750 --scroll-p95-ms 14 \
+      --memory-mb 520 --output /tmp/brev-perf-results.json
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import math
 import re
 import statistics
 import sys
@@ -30,14 +32,17 @@ from collections import defaultdict
 
 LINE = re.compile(r"(?P<event>(?:mail|ui)\.[A-Za-z.]+)(?:\s+(?P<status>finished|failed))?\s+(?P<body>.*?durationMs=(?P<ms>[0-9.]+))")
 KV = re.compile(r"(\w+)=([A-Za-z0-9._-]+)")
-TAGS = ("path", "surface", "execution", "renderer", "hit", "update")
+TAGS = ("path", "surface", "execution", "renderer", "hit", "update", "usableContent")
+PROVENANCE = re.compile(r"^# brev-performance pid=([1-9][0-9]*) start=(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})$")
+PROCESS = re.compile(r"\b([^\s\[]+)\[(\d+):[^\]]*\]")
+MIN_P95_SAMPLES = 20
 
 
 def percentile(values: list[float], pct: float) -> float:
     if not values:
         return float("nan")
     ordered = sorted(values)
-    index = min(len(ordered) - 1, max(0, round((pct / 100.0) * (len(ordered) - 1))))
+    index = min(len(ordered) - 1, max(0, math.ceil((pct / 100.0) * len(ordered)) - 1))
     return ordered[index]
 
 
@@ -47,12 +52,19 @@ def summarize(values: list[float]) -> dict:
         "median_ms": round(statistics.median(values), 2),
         "p95_ms": round(percentile(values, 95), 2),
         "max_ms": round(max(values), 2),
+        "limited_sample": len(values) < MIN_P95_SAMPLES,
     }
 
 
-def parse(lines) -> dict[str, list[float]]:
+def parse(lines, pid: str | None = None, start: str | None = None) -> dict[str, list[float]]:
     buckets: dict[str, list[float]] = defaultdict(list)
     for line in lines:
+        if pid is not None:
+            process = PROCESS.search(line)
+            if not process or process.group(2) != pid:
+                continue
+            if start is not None and line[:19] < start:
+                continue
         match = LINE.search(line)
         if not match:
             continue
@@ -79,41 +91,73 @@ def pick(buckets: dict[str, list[float]], event: str, **tags: str) -> list[float
     return values
 
 
+def budget_results(buckets: dict[str, list[float]], *, cached_workload: bool) -> dict:
+    """Only measured cached queries and visible bodies qualify; reload is not launch."""
+    if not cached_workload:
+        return {}
+    candidates = {
+        "cached_inbox_query_ms": pick(buckets, "mail.messages.page", path="cacheHit"),
+        "cached_thread_open_ms": pick(buckets, "ui.body.visible", surface="messageBody"),
+    }
+    return {
+        key: round(percentile(values, 95), 1)
+        for key, values in candidates.items()
+        if len(values) >= MIN_P95_SAMPLES
+    }
+
+
+def nonnegative_finite(value: str) -> float:
+    number = float(value)
+    if not math.isfinite(number) or number < 0:
+        raise argparse.ArgumentTypeError("measurement must be finite and nonnegative")
+    return number
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("trace", help="log export from scripts/collect-performance-trace.sh")
-    parser.add_argument("--scroll-p95-ms", type=float, help="95th percentile frame time from Instruments while scrolling")
-    parser.add_argument("--memory-mb", type=float, help="resident memory in MB after 60s idle")
+    parser.add_argument("--cached-workload", action="store_true",
+                        help="confirm trace contains the documented cached query/body-open scenario, not mixed cold/network work")
+    parser.add_argument("--inbox-usable-ms", type=nonnegative_finite,
+                        help="launch-to-usable p95 measured externally, never inferred from a list reload or workspace operation")
+    parser.add_argument("--scroll-p95-ms", type=nonnegative_finite, help="95th percentile frame time from Instruments while scrolling")
+    parser.add_argument("--memory-mb", type=nonnegative_finite, help="resident memory in MB after 60s idle")
     parser.add_argument("--output", help="write JSON here instead of stdout")
     args = parser.parse_args()
 
     with open(args.trace, encoding="utf-8", errors="replace") as handle:
-        buckets = parse(handle)
+        lines = handle.readlines()
+    provenance = PROVENANCE.fullmatch(lines[0].strip()) if lines else None
+    if provenance:
+        pid, start = provenance.groups()
+        buckets = parse(lines[1:], pid=pid, start=start)
+    else:
+        buckets = parse(lines)
+        print("warning: unattributed trace; diagnostic details only, no budget metrics emitted", file=sys.stderr)
 
     if not buckets:
         print("no Performance events found; is the log export filtered to eu.brevmail.brev/Performance?", file=sys.stderr)
         return 1
 
-    usable = pick(buckets, "ui.list", surface="messageList", path="reload")
-    query = pick(buckets, "mail.messages.page", path="cacheHit")
-    thread_open = pick(buckets, "ui.body.visible", surface="messageBody") or pick(
-        buckets, "ui.body.fetch", surface="messageBody")
-
-    results: dict = {}
-    # Budget values use the 95th percentile so one slow outlier in a five-minute
-    # session does not hide behind the median, matching the budget table's intent.
-    if usable:
-        results["cached_inbox_usable_ms"] = round(percentile(usable, 95), 1)
-    if query:
-        results["cached_inbox_query_ms"] = round(percentile(query, 95), 1)
-    if thread_open:
-        results["cached_thread_open_ms"] = round(percentile(thread_open, 95), 1)
-    if args.scroll_p95_ms is not None:
-        results["list_scroll_frame_p95_ms"] = args.scroll_p95_ms
-    if args.memory_mb is not None:
-        results["idle_resident_memory_mb"] = args.memory_mb
+    results = budget_results(buckets, cached_workload=bool(provenance) and args.cached_workload)
+    if provenance:
+        results["_provenance"] = {"pid": pid, "start": start, "cached_workload": args.cached_workload}
+        for key, value in (
+            ("cached_inbox_usable_ms", args.inbox_usable_ms),
+            ("list_scroll_frame_p95_ms", args.scroll_p95_ms),
+            ("idle_resident_memory_mb", args.memory_mb),
+        ):
+            if value is not None:
+                results[key] = value
 
     results["_detail"] = {key: summarize(values) for key, values in sorted(buckets.items())}
+    results["_measurement_policy"] = {
+        "p95": "nearest-rank",
+        "minimum_logged_samples": MIN_P95_SAMPLES,
+        "inbox_usable": "external launch-to-usable measurement; no list/workspace fallback",
+        "thread_open": "ui.body.visible only; no fetch/render fallback",
+        "qualification": "sample floor is not statistical confidence or live-workload certification",
+    }
 
     missing = [k for k in ("cached_inbox_usable_ms", "cached_inbox_query_ms", "cached_thread_open_ms",
                            "list_scroll_frame_p95_ms", "idle_resident_memory_mb") if k not in results]

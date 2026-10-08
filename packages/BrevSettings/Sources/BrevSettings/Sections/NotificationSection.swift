@@ -159,14 +159,14 @@ struct NotificationSection: View {
                 authorizationRow
 
                 SettingsToggleRow(
-                    symbolName: "circlebadge.fill",
+                    symbolName: "app.badge",
                     title: String(localized: "Show dock badge", bundle: .module),
                     subtitle: String(localized: "Show unread count on the app icon.", bundle: .module),
                     isOn: binding(for: \.badgeEnabled)
                 )
 
                 SettingsPickerRow(
-                    symbolName: "circlebadge.fill",
+                    symbolName: "number.square",
                     title: String(localized: "App badge", bundle: .module),
                     subtitle: settings.badgePolicy.subtitle,
                     selection: binding(for: \.badgePolicy)
@@ -250,7 +250,7 @@ struct NotificationSection: View {
             )
 
             SettingsToggleRow(
-                symbolName: "circlebadge",
+                symbolName: "app.badge",
                 title: String(localized: "Badge", bundle: .module),
                 subtitle: String(
                     localized: "Include this account in badge counts when selected accounts are used.",
@@ -333,16 +333,36 @@ struct NotificationSection: View {
     }
 
     private var authorizationRow: some View {
-        HStack(alignment: .center, spacing: BrevSpacing.md) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("Authorization", bundle: .module)
-                    .brevFont(.body)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text(authorizationStatus.displaySubtitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
+        ViewThatFits(in: .horizontal) {
+            HStack(alignment: .center, spacing: BrevSpacing.md) {
+                authorizationText
+                Spacer(minLength: BrevSpacing.sm)
+                authorizationActions
             }
-            Spacer(minLength: BrevSpacing.sm)
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                authorizationText
+                authorizationActions
+            }
+        }
+        .padding(BrevSpacing.md)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .brevQuietSurface()
+    }
+
+    private var authorizationText: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text("Authorization", bundle: .module)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            Text(authorizationStatus.displaySubtitle)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var authorizationActions: some View {
+        HStack(spacing: BrevSpacing.md) {
             statusPill
             if authorizationStatus == .notDetermined {
                 Button {
@@ -357,8 +377,6 @@ struct NotificationSection: View {
                 .disabled(isRequestingAuthorization)
             }
         }
-        .padding(BrevSpacing.md)
-        .brevQuietSurface()
     }
 
     private var statusPill: some View {

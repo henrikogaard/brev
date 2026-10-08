@@ -570,15 +570,12 @@ struct PIMSourcesSettingsView: View {
     /// the feature is listed as unavailable rather than hidden so the
     /// surface never implies the option does not exist.
     private var googlePlaceholderRow: some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Image(systemName: "g.circle")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.textTertiary.color)
-                .frame(width: 18)
+        HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
+            SettingsSymbol(symbolName: "g.circle", color: theme.textTertiary)
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 HStack(spacing: BrevSpacing.xs) {
                     Text(String(localized: "Google Calendar & Contacts", bundle: .module))
-                        .brevFont(.subheadline)
+                        .brevFont(.body)
                         .foregroundStyle(theme.textTertiary.color)
                     Text(String(localized: "Not available yet", bundle: .module))
                         .brevFont(.caption)

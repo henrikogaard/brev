@@ -200,6 +200,15 @@ public actor PIMEventWriteService {
                 draft.conference = nil
             }
             let credential = try await davCredential(for: source)
+            if draft.organizer == nil, !draft.attendees.isEmpty {
+                // Servers only send scheduling messages for an object
+                // that names an ORGANIZER — the DAV account identity is
+                // the only attribution Brev can claim.
+                draft.organizer = Self.davOrganizer(
+                    source: source,
+                    credential: credential
+                )
+            }
             let ics = PIMEventICSWriter.vcalendar(
                 for: draft,
                 dtstamp: now()
@@ -300,6 +309,14 @@ public actor PIMEventWriteService {
             }
         case .calDAV:
             let credential = try await davCredential(for: source)
+            if updated.organizer == nil, !updated.attendees.isEmpty {
+                // Same attribution as create: a scheduling object
+                // without ORGANIZER cannot send invites.
+                updated.organizer = Self.davOrganizer(
+                    source: source,
+                    credential: credential
+                )
+            }
             let ics = PIMEventICSWriter.vcalendar(
                 for: updated,
                 dtstamp: now()
@@ -502,6 +519,25 @@ public actor PIMEventWriteService {
               )
         else { throw WriteError.missingCredential }
         return credential
+    }
+
+    /// The DAV identity claimed as ORGANIZER when an event has attendees
+    /// but no organizer. A mailbox-shaped basic-auth username wins;
+    /// otherwise the source's principal URL is the stable cal-address
+    /// URI. `PIMEventPerson.email` carries the URI verbatim — the ICS
+    /// writer omits the `mailto:` prefix for non-mailbox values.
+    private static func davOrganizer(
+        source: PIMSource,
+        credential: CalDAVCredential
+    ) -> PIMEventPerson? {
+        if case .basic(let username, _) = credential,
+           username.contains("@") {
+            return PIMEventPerson(email: username)
+        }
+        if let principalURL = source.principalURL {
+            return PIMEventPerson(email: principalURL.absoluteString)
+        }
+        return nil
     }
 
     // MARK: - Error mapping

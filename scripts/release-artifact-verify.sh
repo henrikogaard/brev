@@ -92,6 +92,36 @@ if [[ "$expected" != "$actual" ]]; then
 fi
 echo "    OK"
 
+echo "==> mounted installer contents"
+MOUNT_DIR="$(mktemp -d "${TMPDIR:-/tmp}/brev-dmg-verify.XXXXXX")"
+cleanup() {
+  hdiutil detach "$MOUNT_DIR" >/dev/null 2>&1 || true
+  rmdir "$MOUNT_DIR" 2>/dev/null || true
+}
+trap cleanup EXIT
+hdiutil attach "$DMG_PATH" -readonly -nobrowse -mountpoint "$MOUNT_DIR" >/dev/null
+python3 - "$MOUNT_DIR" <<'PY'
+import os
+import pathlib
+import sys
+
+root = pathlib.Path(sys.argv[1])
+visible = {item.name for item in root.iterdir() if not item.name.startswith(".")}
+apps = visible & {"Brev.app", "Brev Nightly.app", "BrevMail.app"}
+if len(apps) != 1 or visible != apps | {"Applications"}:
+    sys.exit(f"Unexpected DMG contents: {sorted(visible)}; expected one Brev app and Applications")
+app = root / next(iter(apps))
+if not app.is_dir() or app.is_symlink() or not (app / "Contents/Info.plist").is_file():
+    sys.exit("Missing app bundle in DMG")
+link = root / "Applications"
+if not link.is_symlink() or os.readlink(link) != "/Applications":
+    sys.exit("DMG must contain an Applications symlink pointing to /Applications")
+print("    OK: app bundle and Applications shortcut; no export logs/plists")
+PY
+hdiutil detach "$MOUNT_DIR" >/dev/null
+rmdir "$MOUNT_DIR"
+trap - EXIT
+
 if [[ $SKIP_STAPLER -eq 0 ]]; then
   echo "==> stapler validation"
   xcrun stapler validate "$DMG_PATH"

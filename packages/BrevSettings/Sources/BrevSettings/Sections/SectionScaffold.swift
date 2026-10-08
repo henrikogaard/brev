@@ -23,6 +23,7 @@ struct SectionScaffold<Content: View>: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.settingsScopeCaption) private var scopeCaption
+    @Environment(\.settingsScopeAccessory) private var scopeAccessory
     let title: String
     let subtitle: String?
     /// Panes whose tab row already names them hide the repeated heading so the
@@ -50,7 +51,7 @@ struct SectionScaffold<Content: View>: View {
                 // content rather than as one more group in the stack.
                 VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.xl)) {
                     VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                        if showsTitle {
+                        if showsTitle, !Self.navigationBarShowsTitle {
                             Text(title)
                                 .brevFont(.headline)
                                 .foregroundStyle(theme.textPrimary.color)
@@ -66,6 +67,9 @@ struct SectionScaffold<Content: View>: View {
                                 .brevFont(.footnote)
                                 .foregroundStyle(theme.textSecondary.color)
                         }
+                    }
+                    if let scopeAccessory {
+                        scopeAccessory
                     }
                     content
                 }
@@ -84,12 +88,18 @@ struct SectionScaffold<Content: View>: View {
         .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
     }
 
-    private var horizontalPadding: CGFloat {
+    /// iOS panes are pushed with the section name as the navigation title,
+    /// so the in-pane heading would only repeat it.
+    private static var navigationBarShowsTitle: Bool {
         #if os(iOS)
-        BrevSpacing.lg
+        true
         #else
-        interfaceDensity.desktopSpacing(BrevSpacing.xxl)
+        false
         #endif
+    }
+
+    private var horizontalPadding: CGFloat {
+        SettingsLayout.paneHorizontalInset(interfaceDensity)
     }
 
     private var topPadding: CGFloat {

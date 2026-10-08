@@ -175,12 +175,12 @@ public actor PIMTaskSyncService {
                 _ = try? await coordinator.markStatus(
                     .authenticationRequired,
                     for: sourceID,
-                    detail: String(describing: error)
+                    detail: PIMErrorText.text(for: error)
                 )
                 summary.failures.append(
                     .init(
                         collectionID: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
                 return summary
@@ -188,7 +188,7 @@ public actor PIMTaskSyncService {
                 summary.failures.append(
                     .init(
                         collectionID: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
             }

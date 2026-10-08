@@ -168,7 +168,7 @@ public actor PIMCollectionService {
             _ = try? await coordinator.markStatus(
                 .failed,
                 for: sourceID,
-                detail: String(describing: error)
+                detail: PIMErrorText.text(for: error)
             )
             throw error
         }

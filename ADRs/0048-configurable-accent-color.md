@@ -67,6 +67,30 @@ the theme environment and leave native controls inconsistent.
 - Native controls may still apply platform-specific contrast adjustments to
   the configured tint; the semantic theme token remains the source value.
 
+## 2026-10-06 — Accent-source and contrast clarification
+
+Henrik requested implementation of the sidebar/Settings/accent assessment.
+Keep ADR-0069's quiet theme-matched default. Persist an explicit `theme`,
+`system`, or `custom` accent source independently from the light/dark mode.
+Legacy settings and backups with a valid accent but no source migrate to
+Custom; those without an override migrate to Theme. Preserve the original
+custom hex when changing sources.
+
+System resolves macOS's control accent at the theme boundary and updates on
+system-color changes. iOS does not expose this choice; imported System settings
+use the theme accent until the user selects Theme or Custom.
+
+Custom and System effective accents are contrast-adjusted against the theme's
+primary, secondary and tertiary surfaces (4.5:1 target for normal text, 7:1
+with Increased Contrast). If the stronger target is impossible, try the normal
+target; themes with mutually incompatible surfaces use the strongest attainable
+minimum contrast rather than claiming to meet an impossible target.
+Keep the stored choice unchanged. Filled controls use a contrast-derived
+on-accent foreground; selection and semantic status palettes remain independent.
+Recovery actions use the theme's primary text, not the requested custom color.
+All scenes use the shared root appearance policy. No new network behavior,
+theme JSON keys, or telemetry is introduced.
+
 ## References
 
 - ADR-0002: Theme system architecture

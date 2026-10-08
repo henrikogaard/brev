@@ -46,15 +46,19 @@ struct AboutSection: View {
 
     var body: some View {
         SectionScaffold(title: String(localized: "About", bundle: .module)) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                ForEach(AboutSectionPresentation.infoRows(version: version), id: \.label) { item in
-                    row(label: item.label, value: item.value)
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    ForEach(AboutSectionPresentation.infoRows(version: version), id: \.label) { item in
+                        row(label: item.label, value: item.value)
+                        Rectangle().fill(theme.separator.color).frame(height: 1)
+                    }
+                    linkRow(
+                        label: String(localized: "Repository", bundle: .module),
+                        title: AboutSectionPresentation.repositoryDisplayName,
+                        destination: AboutSectionPresentation.repositoryURL
+                    )
                 }
-                linkRow(
-                    label: String(localized: "Repository", bundle: .module),
-                    title: AboutSectionPresentation.repositoryDisplayName,
-                    destination: AboutSectionPresentation.repositoryURL
-                )
+                .settingsGroupedSurface()
 
                 Text("Brev is free software. Source code, ADRs, and the privacy promise live in the repository.", bundle: .module)
                     .brevFont(.footnote)

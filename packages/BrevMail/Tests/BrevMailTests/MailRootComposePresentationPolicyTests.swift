@@ -373,6 +373,38 @@ struct MailboxFilterControlPolicyTests {
         ) == "Henrik")
     }
 
+    @Test("message-list account context requires a single-account folder")
+    func messageListAccountContextRequiresSingleAccountFolder() {
+        #expect(MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: true,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: false,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+    }
+
     @Test("message-list account context falls back to a stable email identity")
     func messageListAccountContextFallsBackToStableEmailIdentity() {
         #expect(MailRootMessageListTitlePolicy.accountContext(

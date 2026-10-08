@@ -52,7 +52,7 @@ struct MailContextColumnVisibilityTests {
         // below it has to name the missing state instead of repeating it.
         #expect(MailContextColumnVisibility.idleTitle == "No message selected")
         #expect(MailContextColumnVisibility.idleTitle != MailContextColumnVisibility.toolbarLabel)
-        #expect(MailContextColumnVisibility.toolbarSymbolName == "sparkles")
+        #expect(MailContextColumnVisibility.toolbarSymbolName == "sidebar.right")
     }
 
     #if os(macOS)

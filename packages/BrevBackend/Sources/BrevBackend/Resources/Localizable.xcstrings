@@ -1,24 +1,24 @@
 {
   "sourceLanguage": "en",
   "strings": {
-    "1 queued mail change needs review: \\(firstMessage)": {
+    "1 queued mail change needs review: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "1 endring av e-post i kø må gjennomgås: \\(firstMessage)"
+            "value": "1 endring av e-post i kø må gjennomgås: %@"
           }
         }
       }
     },
-    "A local folder named “\\(name)” already exists.": {
+    "A local folder named “%@” already exists.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "En lokal mappe med navnet «\\(name)» finnes allerede."
+            "value": "En lokal mappe med navnet «%@» finnes allerede."
           }
         }
       }
@@ -89,13 +89,13 @@
         }
       }
     },
-    "Brev cannot add \\(authentication.rawValue) mail accounts yet.": {
+    "Brev cannot add %@ mail accounts yet.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Brev kan ikke legge til \\(authentication.rawValue)-e-postkontoer ennå."
+            "value": "Brev kan ikke legge til %@-e-postkontoer ennå."
           }
         }
       }
@@ -122,24 +122,24 @@
         }
       }
     },
-    "Cannot open file for writing: \\(name)": {
+    "Cannot open file for writing: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kan ikke åpne filen for skriving: \\(name)"
+            "value": "Kan ikke åpne filen for skriving: %@"
           }
         }
       }
     },
-    "Cannot open mail import source: \\(name)": {
+    "Cannot open mail import source: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kan ikke åpne e-postimportkilden: \\(name)"
+            "value": "Kan ikke åpne e-postimportkilden: %@"
           }
         }
       }
@@ -177,13 +177,13 @@
         }
       }
     },
-    "Connection failed: \\(reason)": {
+    "Connection failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tilkobling mislyktes: \\(reason)"
+            "value": "Tilkobling mislyktes: %@"
           }
         }
       }
@@ -210,35 +210,35 @@
         }
       }
     },
-    "Couldn't find \\(id).": {
+    "Couldn't find %@.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Fant ikke \\(id)."
+            "value": "Fant ikke %@."
           }
         }
       }
     },
-    "Couldn't read pending mail changes: \\(Self.userFacingDescription(for: error))": {
+    "Couldn't read pending mail changes: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kunne ikke lese ventende e-postendringer: \\(Self.userFacingDescription(for: error))"
+            "value": "Kunne ikke lese ventende e-postendringer: %@"
           }
         }
       }
     },
-    "Couldn't read pending mail conflict records: \\(Self.userFacingDescription(for: error))": {
+    "Couldn't read pending mail conflict records: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Kunne ikke lese ventende e-postkonfliktregistreringer: \\(Self.userFacingDescription(for: error))"
+            "value": "Kunne ikke lese ventende e-postkonfliktregistreringer: %@"
           }
         }
       }
@@ -331,13 +331,13 @@
         }
       }
     },
-    "Export write failed: \\(reason)": {
+    "Export write failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skriving av eksporten mislyktes: \\(reason)"
+            "value": "Skriving av eksporten mislyktes: %@"
           }
         }
       }
@@ -386,13 +386,13 @@
         }
       }
     },
-    "Google could not verify the signed-in account (HTTP \\(code)).": {
+    "Google could not verify the signed-in account (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google kunne ikke verifisere den innloggede kontoen (HTTP \\(code))."
+            "value": "Google kunne ikke verifisere den innloggede kontoen (HTTP %lld)."
           }
         }
       }
@@ -419,56 +419,46 @@
         }
       }
     },
-    "Google rejected sign-in (\\(error))\\(detail)": {
+    "Google rejected sign-in (%@)%@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google avviste innloggingen (\\(error))\\(detail)"
+            "value": "Google avviste innloggingen (%@)%@"
           }
         }
       }
     },
-    "Google rejected the token exchange%@ (HTTP %@).": {
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Google avviste token-utvekslingen %@ (HTTP %@)."
-          }
-        }
-      }
-    },
-    "Google rejected the token exchange\\(providerDetail) (HTTP \\(code)).": {
+    "Google rejected the token exchange%@ (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google avviste tokenutvekslingen\\(providerDetail) (HTTP \\(code))."
+            "value": "Google avviste tokenutvekslingen%@ (HTTP %lld)."
           }
         }
       }
     },
-    "Google returned an unreadable account profile: \\(reason)": {
+    "Google returned an unreadable account profile: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google returnerte en uleselig kontoprofil: \\(reason)"
+            "value": "Google returnerte en uleselig kontoprofil: %@"
           }
         }
       }
     },
-    "Google returned an unreadable token response: \\(reason)": {
+    "Google returned an unreadable token response: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google returnerte et uleselig tokensvar: \\(reason)"
+            "value": "Google returnerte et uleselig tokensvar: %@"
           }
         }
       }
@@ -484,13 +474,13 @@
         }
       }
     },
-    "Google sign-in has an invalid callback configuration: \\(reason)": {
+    "Google sign-in has an invalid callback configuration: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Google-innlogging har en ugyldig tilbakekallskonfigurasjon: \\(reason)"
+            "value": "Google-innlogging har en ugyldig tilbakekallskonfigurasjon: %@"
           }
         }
       }
@@ -561,24 +551,24 @@
         }
       }
     },
-    "IMAP command \\(command) failed: \\(response)": {
+    "IMAP command %@ failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-kommandoen \\(command) mislyktes: \\(response)"
+            "value": "IMAP-kommandoen %@ mislyktes: %@"
           }
         }
       }
     },
-    "IMAP command \\(command) is not supported: \\(response)": {
+    "IMAP command %@ is not supported: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-kommandoen \\(command) støttes ikke: \\(response)"
+            "value": "IMAP-kommandoen %@ støttes ikke: %@"
           }
         }
       }
@@ -594,57 +584,57 @@
         }
       }
     },
-    "IMAP search does not support \\(criterion) yet.": {
+    "IMAP search does not support %@ yet.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-søk støtter ikke \\(criterion) ennå."
+            "value": "IMAP-søk støtter ikke %@ ennå."
           }
         }
       }
     },
-    "IMAP server closed the connection: \\(reason)": {
+    "IMAP server closed the connection: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-serveren lukket tilkoblingen: \\(reason)"
+            "value": "IMAP-serveren lukket tilkoblingen: %@"
           }
         }
       }
     },
-    "IMAP server does not support IDLE: \\(response)": {
+    "IMAP server does not support IDLE: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-serveren støtter ikke IDLE: \\(response)"
+            "value": "IMAP-serveren støtter ikke IDLE: %@"
           }
         }
       }
     },
-    "IMAP server rejected the connection: \\(response)": {
+    "IMAP server rejected the connection: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-serveren avviste tilkoblingen: \\(response)"
+            "value": "IMAP-serveren avviste tilkoblingen: %@"
           }
         }
       }
     },
-    "IMAP server returned an unreadable response: \\(response)": {
+    "IMAP server returned an unreadable response: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-serveren returnerte et uleselig svar: \\(response)"
+            "value": "IMAP-serveren returnerte et uleselig svar: %@"
           }
         }
       }
@@ -671,24 +661,24 @@
         }
       }
     },
-    "IMAP transport does not support \\(mode.rawValue) yet.": {
+    "IMAP transport does not support %@ yet.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-transport støtter ikke \\(mode.rawValue) ennå."
+            "value": "IMAP-transport støtter ikke %@ ennå."
           }
         }
       }
     },
-    "IMAP transport failed: \\(message)": {
+    "IMAP transport failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "IMAP-transport mislyktes: \\(message)"
+            "value": "IMAP-transport mislyktes: %@"
           }
         }
       }
@@ -715,13 +705,13 @@
         }
       }
     },
-    "Local folder \\(id) does not exist.": {
+    "Local folder %@ does not exist.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Den lokale mappen \\(id) finnes ikke."
+            "value": "Den lokale mappen %@ finnes ikke."
           }
         }
       }
@@ -737,13 +727,13 @@
         }
       }
     },
-    "Local message \\(id) does not exist.": {
+    "Local message %@ does not exist.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Den lokale meldingen \\(id) finnes ikke."
+            "value": "Den lokale meldingen %@ finnes ikke."
           }
         }
       }
@@ -770,13 +760,13 @@
         }
       }
     },
-    "Mail import read failed: \\(reason)": {
+    "Mail import read failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lesing av e-postimporten mislyktes: \\(reason)"
+            "value": "Lesing av e-postimporten mislyktes: %@"
           }
         }
       }
@@ -792,13 +782,13 @@
         }
       }
     },
-    "ManageSieve connection error: \\(detail)": {
+    "ManageSieve connection error: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "ManageSieve-tilkoblingsfeil: \\(detail)"
+            "value": "ManageSieve-tilkoblingsfeil: %@"
           }
         }
       }
@@ -825,35 +815,35 @@
         }
       }
     },
-    "Microsoft rejected sign-in (\\(error))\\(detail)": {
+    "Microsoft rejected sign-in (%@)%@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Microsoft avviste innloggingen (\\(error))\\(detail)"
+            "value": "Microsoft avviste innloggingen (%@)%@"
           }
         }
       }
     },
-    "Microsoft rejected the token exchange (HTTP \\(code)).": {
+    "Microsoft rejected the token exchange (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Microsoft avviste tokenutvekslingen (HTTP \\(code))."
+            "value": "Microsoft avviste tokenutvekslingen (HTTP %lld)."
           }
         }
       }
     },
-    "Microsoft returned an unreadable token response: \\(reason)": {
+    "Microsoft returned an unreadable token response: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Microsoft returnerte et uleselig tokensvar: \\(reason)"
+            "value": "Microsoft returnerte et uleselig tokensvar: %@"
           }
         }
       }
@@ -891,13 +881,13 @@
         }
       }
     },
-    "Network error: \\(underlying)": {
+    "Network error: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Nettverksfeil: \\(underlying)"
+            "value": "Nettverksfeil: %@"
           }
         }
       }
@@ -913,46 +903,46 @@
         }
       }
     },
-    "No trusted encryption material is available for \\(recipients.joined(separator: \", \")).": {
+    "No trusted encryption material is available for %@.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Intet betrodd krypteringsmateriale er tilgjengelig for \\(recipients.joined(separator: \", \"))."
+            "value": "Intet betrodd krypteringsmateriale er tilgjengelig for %@."
           }
         }
       }
     },
-    "No trusted signing identity is available for \\(senderEmail).": {
+    "No trusted signing identity is available for %@.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen betrodd signeringsidentitet er tilgjengelig for \\(senderEmail)."
+            "value": "Ingen betrodd signeringsidentitet er tilgjengelig for %@."
           }
         }
       }
     },
-    "OAuth2 token refresh failed (HTTP \\(code)).": {
+    "OAuth2 token refresh failed (HTTP %lld).": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppdatering av OAuth2-token mislyktes (HTTP \\(code))."
+            "value": "Oppdatering av OAuth2-token mislyktes (HTTP %lld)."
           }
         }
       }
     },
-    "OAuth2 token refresh returned an unreadable response: \\(reason)": {
+    "OAuth2 token refresh returned an unreadable response: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppdatering av OAuth2-token returnerte et uleselig svar: \\(reason)"
+            "value": "Oppdatering av OAuth2-token returnerte et uleselig svar: %@"
           }
         }
       }
@@ -979,13 +969,13 @@
         }
       }
     },
-    "Rate limited. Try again in \\(Int(retryAfter.rounded())) seconds.": {
+    "Rate limited. Try again in %@ seconds.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Grensen for forespørsler er nådd. Prøv igjen om \\(Int(retryAfter.rounded())) sekunder."
+            "value": "Grensen for forespørsler er nådd. Prøv igjen om %@ sekunder."
           }
         }
       }
@@ -1001,13 +991,13 @@
         }
       }
     },
-    "Read failed: \\(reason)": {
+    "Read failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Lesing mislyktes: \\(reason)"
+            "value": "Lesing mislyktes: %@"
           }
         }
       }
@@ -1045,13 +1035,13 @@
         }
       }
     },
-    "SMTP client does not support \\(authentication.rawValue) authentication yet.": {
+    "SMTP client does not support %@ authentication yet.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-klienten støtter ikke \\(authentication.rawValue)-autentisering ennå."
+            "value": "SMTP-klienten støtter ikke %@-autentisering ennå."
           }
         }
       }
@@ -1067,46 +1057,46 @@
         }
       }
     },
-    "SMTP command \\(command) failed: \\(response)": {
+    "SMTP command %@ failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-kommandoen \\(command) mislyktes: \\(response)"
+            "value": "SMTP-kommandoen %@ mislyktes: %@"
           }
         }
       }
     },
-    "SMTP server did not advertise \\(mechanism) authentication.": {
+    "SMTP server did not advertise %@ authentication.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-serveren annonserte ikke \\(mechanism)-autentisering."
+            "value": "SMTP-serveren annonserte ikke %@-autentisering."
           }
         }
       }
     },
-    "SMTP server rejected the connection: \\(response)": {
+    "SMTP server rejected the connection: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-serveren avviste tilkoblingen: \\(response)"
+            "value": "SMTP-serveren avviste tilkoblingen: %@"
           }
         }
       }
     },
-    "SMTP server returned an unreadable response: \\(response)": {
+    "SMTP server returned an unreadable response: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-serveren returnerte et uleselig svar: \\(response)"
+            "value": "SMTP-serveren returnerte et uleselig svar: %@"
           }
         }
       }
@@ -1133,24 +1123,24 @@
         }
       }
     },
-    "SMTP transport does not support \\(mode.rawValue) yet.": {
+    "SMTP transport does not support %@ yet.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-transport støtter ikke \\(mode.rawValue) ennå."
+            "value": "SMTP-transport støtter ikke %@ ennå."
           }
         }
       }
     },
-    "SMTP transport failed: \\(message)": {
+    "SMTP transport failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "SMTP-transport mislyktes: \\(message)"
+            "value": "SMTP-transport mislyktes: %@"
           }
         }
       }
@@ -1188,13 +1178,13 @@
         }
       }
     },
-    "Settings discovery failed: \\(message)": {
+    "Settings discovery failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Oppdaging av innstillinger mislyktes: \\(message)"
+            "value": "Oppdaging av innstillinger mislyktes: %@"
           }
         }
       }
@@ -1331,13 +1321,13 @@
         }
       }
     },
-    "The message may have been delivered, but SMTP confirmation was unavailable (\\(underlying)). Check Sent before trying again.": {
+    "The message may have been delivered, but SMTP confirmation was unavailable (%@). Check Sent before trying again.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Meldingen kan ha blitt levert, men SMTP-bekreftelse var utilgjengelig (\\(underlying)). Sjekk Sendte før du prøver igjen."
+            "value": "Meldingen kan ha blitt levert, men SMTP-bekreftelse var utilgjengelig (%@). Sjekk Sendte før du prøver igjen."
           }
         }
       }
@@ -1452,13 +1442,13 @@
         }
       }
     },
-    "Write failed: \\(reason)": {
+    "Write failed: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Skriving mislyktes: \\(reason)"
+            "value": "Skriving mislyktes: %@"
           }
         }
       }
@@ -1474,13 +1464,13 @@
         }
       }
     },
-    "\\(conflicts.count) queued mail changes needs review: \\(firstMessage)": {
+    "%lld queued mail changes needs review: %@": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "\\(conflicts.count) e-postendringer i kø må gjennomgås: \\(firstMessage)"
+            "value": "%lld e-postendringer i kø må gjennomgås: %@"
           }
         }
       }

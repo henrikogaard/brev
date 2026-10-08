@@ -134,7 +134,7 @@ public struct BrevButton: View {
     private var foreground: Color {
         switch style {
         case .primary, .destructive:
-            return theme.bgPrimary.color
+            return style == .primary ? theme.onAccent.color : theme.bgPrimary.color
         case .secondary:
             return theme.textPrimary.color
         case .tertiary:

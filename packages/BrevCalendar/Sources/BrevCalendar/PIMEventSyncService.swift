@@ -183,12 +183,12 @@ public actor PIMEventSyncService {
                 _ = try? await coordinator.markStatus(
                     .authenticationRequired,
                     for: sourceID,
-                    detail: String(describing: error)
+                    detail: PIMErrorText.text(for: error)
                 )
                 summary.failures.append(
                     .init(
                         collectionID: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
                 return summary
@@ -196,7 +196,7 @@ public actor PIMEventSyncService {
                 summary.failures.append(
                     .init(
                         collectionID: collection.id,
-                        message: String(describing: error)
+                        message: PIMErrorText.text(for: error)
                     )
                 )
             }
