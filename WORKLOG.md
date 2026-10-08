@@ -5285,3 +5285,11 @@ buttons, and package-aware localization.
 - Verification: focused BrevMail policy/prefill tests passed; `scripts/format.sh` reported no formatting changes; `scripts/lint.sh` passed. Mock macOS build/run succeeded as 0.2.4 (44), PID 4399; iOS 27 simulator build succeeded and the app launched on `8E780854-5816-4435-AD8F-8098DF847EB5` (PID 4921). The default mock backend omits `.smtpOAuth`, so the quick-reply bar is correctly hidden and its empty/typed states could not be captured; no send was attempted.
 - Screenshots: `/Users/devin/qa/sidebar-quick-reply/mac-light-list.png`, `mac-light-reader.png`, `mac-dark-reader.png`, `iphone-list.png`, and `iphone-reader.png`. Quick-reply screenshots are unavailable because the mock lacks `.smtpOAuth`.
 - Handoff: use mock only; do not touch `/Applications/Brev.app`. No PR or CI wait requested.
+
+## 2026-10-08 — Devin — Quick-reply mock preview
+
+- Goal: expose quick reply in the mock apps without changing the root capability gate or default mock capability set.
+- Changes: macOS and iOS app demo-backend factories now pass `.full.union(.smtpOAuth)`; `MockBackend.send(draft:)` and `save(draft:)` mutate only its in-memory actor store.
+- Verification: macOS mock build 0.2.4 (46) and iOS 27 simulator build/launch passed. Focused BrevMail tests passed (38 tests, 6 suites); format reported 0/1,213 changed; lint passed.
+- Screenshots: captured and inspected `mac-light-quick-reply-empty.png` and `iphone-reader-quick-reply.png`; the bar does not collide with either reader footer, and the Mac screenshot has no focus ring. The keyboard-up capture shows the field focused but no software keyboard. Mac typed, dark, sent, and expanded-composer states remain uncaptured: the app's accessibility provider reported that PID 6202 did not answer.
+- Handoff: mock apps remain running; never touch `/Applications/Brev.app`.
