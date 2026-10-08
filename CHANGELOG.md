@@ -4,13 +4,99 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Sidebar account rows show an account icon and collapsed Inbox unread count; mailbox titles show unread counts for the selected Inbox or folder.
+- Readers support quick replies with Undo Send and an option to continue in the full composer.
+
+### Changed
+
+- Mac Inbox categories use plain icon-and-label tabs with an underlined selection on one shared blurred surface, so scrolling mail remains visible behind the filters. Reduce Transparency keeps the surface opaque.
+
 ### Fixed
 
-- Calendar, Contacts and Tasks now follow the active Brev theme. In dark mode
-  they had rendered the light theme over a dark background, leaving event
-  titles near-invisible on iOS. The "Last updated" line in their cached-data
-  banner is also translated now.
+- Expanding a quick reply preserves the typed text when the full quoted message loads, and the placeholder names the reply recipient; detached iPad replies preserve the same prefill. Quick reply skips self-authored latest messages, hides when no replyable message exists, and keeps queued sends on the originating account.
+- Mac toolbar mailbox titles and unread pills retain their full width instead of truncating.
+- IMAP messages now load when the server places the UID after the body
+  literal, as Microsoft Exchange can do, while still rejecting data for
+  a different UID.
+- On iOS, Calendar, Contacts and Tasks now follow the active Brev theme. In dark
+  mode they had rendered the light theme over a dark background, leaving event
+  titles near-invisible.
 
+## [0.2.4] - 2026-10-08
+
+### Fixed
+
+- Mac mailbox titles and account names sit beside the filter button to save vertical space. Category controls stay on an opaque surface; blur is confined to the top toolbar. All Inboxes and other cross-account views no longer show the last account's name.
+- Mac mailbox rows and message content scroll behind the native toolbar up to the window edge, with blur rather than being cut off below it.
+
+## [0.2.3] - 2026-10-08
+
+### Fixed
+
+- Mac installers now include an Applications shortcut for drag-to-install and no longer expose Xcode export logs or plists. Stable and Nightly packaging both verify the mounted installer layout before publication.
+
+## [0.2.2] - 2026-10-07
+
+### Fixed
+
+- Mac auto-update no longer fails with "An error occurred while running the updater": signed builds now carry the sandbox entitlement Sparkle's installer needs. Installs of 0.2.0 or 0.2.1 need one manual download of the next release; updates work from then on.
+
+## [0.2.1] - 2026-10-07
+
+### Added
+
+- Appearance settings have a **Reset to Defaults** button that restores the default themes, accent, window style, text size, density and app icon after confirmation.
+- The Mac toolbar has a trailing button to show or hide the AI Sidebar.
+
+### Changed
+
+- Settings groups use rounded grouped surfaces with plain headings, like System Settings.
+
+### Fixed
+
+- The top of the reading pane no longer takes on colours from the selected message; it fades from the theme background instead of blurring the message.
+- The inbox category bar is solid, and the message list no longer draws a blur band below the list header.
+- Gmail inbox categories (`CATEGORY_UPDATES` and similar), `UNREAD` and `CHAT` no longer appear as sidebar folders or label chips, and `STARRED`/`IMPORTANT` show localized names.
+
+- Signed Release and Nightly builds install a Developer ID provisioning profile for the macOS widget extension, which every signed archive since the widget was added had been missing.
+
+### Changed
+
+- Sparkle update signing uses a new EdDSA key starting with 0.2.0. Installs of 0.1.0 or a September Nightly cannot auto-update to it; install 0.2.0 manually once, and later updates work normally.
+
+### Fixed
+
+- Signed release jobs use a replacement signing environment after the original
+  environment stopped assigning runners. Existing release tags can be retried
+  through the current workflow without moving the tag.
+
+## [0.2.0] - 2026-10-06
+
+### Fixed
+
+- Calendar and Contacts QA follow-ups: event writes that add attendees
+  now set `ORGANIZER` so scheduling servers can send invitations (the
+  basic-auth username when it is mailbox-shaped, else the source's
+  principal URL); the attendee field rejects non-addresses with an
+  inline hint instead of accepting them; sync failures on source rows
+  show the readable error text instead of raw enum case names like
+  `missingCredential`; RSVP reply badges and confirmation sentences
+  localize; and Settings refreshes source rows and cached counts when a
+  background sync pass lands while the section is open.
+- Norwegian mail and backend strings now localize in every interpolated
+  message. The string catalogs carried keys with raw `\(…)` source text, but
+  `String(localized:)` looks up the `%@`/`%lld` format key, so 168 entries
+  could never match and silently fell back to English. All keys and their
+  translations now use the format specifiers the runtime generates.
+- Settings and auxiliary macOS windows now share Mail's appearance policy.
+  Appearance and Settings section controls adapt to narrow widths and large
+  text; theme/icon names wrap, and dismissal/reset controls remain readable.
+- Performance exports require a process and run start, exclude unrelated
+  test timings, and no longer treat body fetch as visible message opening or
+  list reload as launch time. Sparse or missing measurements cannot silently
+  pass the budget gate.
 - The desktop now starts in Compact list density as ADR-0085 describes. The
   call-site wiring that PR #180 described was missing from its merge, so a
   fresh install still opened Comfortable; every density `@AppStorage` default
@@ -22,6 +108,12 @@ All notable changes to Brev are documented here.
   message rows derive their status glyphs once per render.
 
 ### Added
+
+- Appearance separates Theme, macOS System accent, and Custom accent from
+  light/dark mode. Quiet theme accents remain the default; saved custom
+  colors survive source changes, while effective controls adjust for contrast.
+- Sidebar account/app groups and matching neutral management menus reduce
+  visual competition without removing favorites, Smart Views, or destinations.
 
 - Desktop Favourites puts All Inboxes and each account inbox above collapsible
   accounts, with editable Drafts/Sent shortcuts and saved order/visibility.

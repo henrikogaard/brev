@@ -161,8 +161,10 @@ enum MailboxChatScopeSearchPolicy {
         case .folder:
             folderName ?? String(localized: "currentFolder.lower", bundle: .module)
         case .account:
-            accountLabel.map { String(localized: "all folders in \($0)", bundle: .module) }
-                ?? String(localized: "all folders in the current account", bundle: .module)
+            // Prompt context only: this string is never rendered to the user,
+            // so it stays in English with the rest of the system prompt.
+            accountLabel.map { "all folders in \($0)" }
+                ?? "all folders in the current account"
         }
     }
 }

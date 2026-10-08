@@ -184,24 +184,22 @@ struct ComposeSection: View {
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    DisclosureGroup(isExpanded: $showsRecentRecipients) {
-                        VStack(spacing: BrevSpacing.xs) {
+                    recentRecipientsToggle
+                    if showsRecentRecipients {
+                        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                             ForEach(recentRecipients) { recipient in
                                 recentRecipientRow(recipient)
                             }
+                            Button(
+                                String(localized: "Clear recent recipients", bundle: .module),
+                                role: .destructive
+                            ) {
+                                recentRecipientStore.removeAll()
+                                refreshRecentRecipients()
+                            }
+                            .buttonStyle(.borderless)
                         }
-                        Button(String(localized: "Clear recent recipients", bundle: .module), role: .destructive) {
-                            recentRecipientStore.removeAll()
-                            refreshRecentRecipients()
-                        }
-                        .buttonStyle(.borderless)
-                    } label: {
-                        HStack {
-                            Text("Manage recent recipients", bundle: .module).brevFont(.body)
-                            Spacer()
-                            Text(verbatim: "\(recentRecipients.count)").brevFont(.caption)
-                                .foregroundStyle(theme.textSecondary.color).monospacedDigit()
-                        }
+                        .settingsStackedControl()
                     }
                 }
 
@@ -215,6 +213,34 @@ struct ComposeSection: View {
                 )
             }
         }
+    }
+
+    /// Disclosure row on the shared icon/title/trailing columns; a stock
+    /// `DisclosureGroup` puts its chevron in the icon column instead.
+    private var recentRecipientsToggle: some View {
+        Button {
+            withAnimation(.snappy) { showsRecentRecipients.toggle() }
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
+                SettingsSymbol(symbolName: "clock.arrow.circlepath")
+                Text("Manage recent recipients", bundle: .module)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.md)
+                Text(verbatim: "\(recentRecipients.count)")
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .monospacedDigit()
+                Image(systemName: "chevron.right")
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .rotationEffect(.degrees(showsRecentRecipients ? 90 : 0))
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(Text(verbatim: "\(recentRecipients.count)"))
+        .accessibilityAddTraits(showsRecentRecipients ? .isSelected : [])
     }
 
     private func requestContactsAccessFromExplicitSettingsAction() {

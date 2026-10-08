@@ -298,11 +298,11 @@ struct BrevApp: App {
                     driveFeature: session.googleDriveFeature
                 )
             )
-            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1100, height: 720)
         .windowResizability(.contentMinSize)
@@ -316,11 +316,11 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
-            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
@@ -334,11 +334,11 @@ struct BrevApp: App {
                     collectionService: session.pimCollectionService
                 )
             )
-            .brevRootAppearance(session: session)
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 1000, height: 680)
         .windowResizability(.contentMinSize)
@@ -395,12 +395,14 @@ struct BrevApp: App {
             .brevTransparentWindowToolbarBackground(theme: session.theme)
             .brevHiddenWindowTitle()
             .environment(\.openURL, browserOpenURLAction)
+            .brevRootAppearance(session: session)
         }
         .defaultSize(width: 960, height: 640)
         .windowResizability(.contentMinSize)
 
         Window("Keyboard Shortcuts", id: BrevWindowID.keyboardShortcuts) {
             KeyboardShortcutsHelpView()
+                .brevRootAppearance(session: session)
         }
         .windowResizability(.contentSize)
 
@@ -864,6 +866,7 @@ extension AppSession {
                         databaseURL: BrevSyncEngine.defaultDatabaseURL(accountID: accountID)
                     )
                 },
+                makeDemoBackend: { MockBackend(capabilities: .full.union(.smtpOAuth)) },
                 googleOAuthAccountProvisioningCoordinator: { result in
                     let connected = try await gmailConnector.provision(result)
                     return AppSession.LoginResult(

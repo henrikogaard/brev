@@ -19,6 +19,8 @@ struct AppearanceSection: View {
     @Environment(\.settingsSearchTarget) private var searchTarget
     @Environment(\.brevTheme) private var theme
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage(AppearancePreferenceKey.transparentMainTitlebar)
     private var transparentMainTitlebar = true
     @Binding var activeTheme: BrevTheme
@@ -27,6 +29,7 @@ struct AppearanceSection: View {
     @State private var windowAppearance: WindowAppearancePreferences
     @State private var mailboxSettings: MailboxViewSettings
     @State private var isThemePickerPresented = false
+    @State private var isResetConfirmationPresented = false
 
     private let appearanceControls = AppearanceControlsPolicy.current
     private let settingsStore: SettingsPersistenceStore
@@ -54,7 +57,7 @@ struct AppearanceSection: View {
     var body: some View {
         SectionScaffold(
             title: String(localized: "Appearance", bundle: .module),
-            subtitle: String(localized: "Choose Brev's colors, window style, and Dock icon.", bundle: .module)
+            subtitle: appearanceSubtitle
         ) {
             VStack(alignment: .leading, spacing: BrevSpacing.xl) {
                 #if os(macOS)
@@ -75,7 +78,7 @@ struct AppearanceSection: View {
 
                 SettingsGroup(
                     title: String(localized: "App icon", bundle: .module),
-                    subtitle: String(localized: "Select the logo style used by the app and Dock.", bundle: .module),
+                    subtitle: appIconSubtitle,
                     symbolName: "app.badge"
                 ) {
                     LazyVGrid(columns: iconColumns, alignment: .leading, spacing: BrevSpacing.sm) {
@@ -89,6 +92,8 @@ struct AppearanceSection: View {
                         }
                     }
                 }
+
+                resetRow
             }
         }
         .defaultAppStorage(settingsStore.defaults)
@@ -99,6 +104,10 @@ struct AppearanceSection: View {
         .onChange(of: colorScheme) { _, _ in
             applyResolvedTheme()
         }
+        .onChange(of: colorSchemeContrast) { _, _ in applyResolvedTheme() }
+        .onReceive(NotificationCenter.default.publisher(for: .brevAppearanceThemeSettingsDidChange)) { _ in
+            themeSettings = settingsStore.appearanceThemeSettings()
+        }
         .sheet(isPresented: $isThemePickerPresented) {
             ThemePickerSheet(
                 themeSettings: $themeSettings,
@@ -106,6 +115,69 @@ struct AppearanceSection: View {
                 onSettingsChanged: persistAndApplyThemeSettings
             )
         }
+    }
+
+    private var resetRow: some View {
+        HStack {
+            Spacer(minLength: 0)
+            Button(String(localized: "Reset to Defaults", bundle: .module)) {
+                isResetConfirmationPresented = true
+            }
+            #if os(iOS)
+            .buttonStyle(.bordered)
+            #endif
+            .help(resetMessage)
+            .confirmationDialog(
+                String(localized: "Reset appearance to defaults?", bundle: .module),
+                isPresented: $isResetConfirmationPresented,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Reset Appearance", bundle: .module), role: .destructive) {
+                    resetToDefaults()
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(resetMessage)
+            }
+        }
+    }
+
+    private var resetMessage: String {
+        #if os(macOS)
+        String(
+            localized: "Restores the default themes, accent, window style, text size, density, and app icon.",
+            bundle: .module
+        )
+        #else
+        String(localized: "Restores the default themes, accent, and app icon.", bundle: .module)
+        #endif
+    }
+
+    private func resetToDefaults() {
+        AppearanceReset.apply(to: settingsStore)
+        themeSettings = settingsStore.appearanceThemeSettings()
+        windowAppearance = settingsStore.windowAppearancePreferences()
+        mailboxSettings = settingsStore.mailboxViewSettings()
+        transparentMainTitlebar = true
+        activeAppIcon = AppIconVariant.defaultVariant
+        applyResolvedTheme()
+        NotificationCenter.default.post(name: .brevAppearanceThemeSettingsDidChange, object: nil)
+    }
+
+    private var appearanceSubtitle: String {
+        #if os(macOS)
+        String(localized: "Choose Brev's colors, window style, and Dock icon.", bundle: .module)
+        #else
+        String(localized: "Choose Brev's colors and app icon.", bundle: .module)
+        #endif
+    }
+
+    private var appIconSubtitle: String {
+        #if os(macOS)
+        String(localized: "Select the logo style used by the app and Dock.", bundle: .module)
+        #else
+        String(localized: "Select the icon shown on your Home Screen.", bundle: .module)
+        #endif
     }
 
     private var themeGroup: some View {
@@ -133,72 +205,111 @@ struct AppearanceSection: View {
         }
     }
 
+    @ViewBuilder
     private var accentColorRow: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
-                accentColorLabel
-                Spacer(minLength: BrevSpacing.md)
-                accentColorControls
-            }
-
+        if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                 accentColorLabel
                 accentColorControls
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .settingsStackedControl(isMenu: true)
             }
+        } else {
+            #if os(iOS)
+            HStack(alignment: .center, spacing: BrevSpacing.md) {
+                accentColorLabel.frame(maxWidth: .infinity, alignment: .leading)
+                accentColorControls.fixedSize()
+                    .padding(.trailing, -SettingsLayout.menuButtonInset)
+            }
+            #else
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: BrevSpacing.md) {
+                    accentColorLabel
+                    Spacer(minLength: BrevSpacing.md)
+                    accentColorControls
+                }
+
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    accentColorLabel
+                    accentColorControls
+                        .settingsStackedControl(isMenu: true)
+                }
+            }
+            #endif
         }
     }
 
     private var accentColorLabel: some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Image(systemName: "paintbrush.pointed")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.accent.color)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text("Accent", bundle: .module)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text(accentColorSubtitle)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
+        SettingsRowLabel(
+            symbolName: "paintbrush.pointed",
+            title: String(localized: "Accent", bundle: .module),
+            subtitle: accentColorSubtitle
+        )
+        .id(String(localized: "Accent color", bundle: .module))
     }
 
     private var accentColorControls: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Text(themeSettings.accentHex == nil ? String(localized: "Theme", bundle: .module) : String(
-                localized: "Custom",
-                bundle: .module
-            ))
-            .brevFont(.caption)
-            .foregroundStyle(theme.textTertiary.color)
-
-            ColorPicker(
-                String(localized: "Accent color", bundle: .module),
-                selection: accentColorBinding,
-                supportsOpacity: false
-            )
+        VStack(alignment: .trailing, spacing: BrevSpacing.sm) {
+            Picker(String(localized: "Accent source", bundle: .module), selection: accentSourceBinding) {
+                ForEach(AppearanceAccentSource.availableSources) { source in
+                    Text(source.title).tag(source)
+                }
+            }
+            .pickerStyle(.menu)
             .labelsHidden()
-            .accessibilityLabel(String(localized: "Accent color", bundle: .module))
+            .id(String(localized: "Accent source", bundle: .module))
 
-            if themeSettings.accentHex != nil {
+            if themeSettings.accentSource == .custom {
+                ColorPicker(
+                    String(localized: "Accent color", bundle: .module),
+                    selection: accentColorBinding,
+                    supportsOpacity: false
+                )
+                .fixedSize(horizontal: false, vertical: true)
+            }
+
+            if themeSettings.accentSource != .theme {
                 Button(String(localized: "Follow theme", bundle: .module)) {
-                    updateThemeSettings { $0.accentHex = nil }
+                    updateThemeSettings { $0.accentSource = .theme }
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(theme.accent.color)
+                .foregroundStyle(theme.textPrimary.color)
             }
         }
     }
 
     private var accentColorSubtitle: String {
-        themeSettings.accentHex == nil
-            ? String(localized: "Follows \(effectiveBaseTheme.name) and changes with your theme.", bundle: .module)
-            : String(localized: "Overrides the accent supplied by each theme.", bundle: .module)
+        switch themeSettings.accentSource {
+        case .theme:
+            String(localized: "Follows \(effectiveBaseTheme.name) and changes with your theme.", bundle: .module)
+        case .system:
+            #if os(macOS)
+            String(localized: "Uses the macOS accent, adjusted for readable controls.", bundle: .module)
+            #else
+            String(localized: "System accent is available on Mac. This device uses the theme accent.", bundle: .module)
+            #endif
+        case .custom:
+            String(localized: "Your color is saved unchanged. Controls adjust for contrast when needed.", bundle: .module)
+        }
+    }
+
+    private var accentSourceBinding: Binding<AppearanceAccentSource> {
+        Binding(
+            get: {
+                #if os(iOS)
+                themeSettings.accentSource == .system ? .theme : themeSettings.accentSource
+                #else
+                themeSettings.accentSource
+                #endif
+            },
+            set: { source in
+                updateThemeSettings {
+                    if source == .custom, $0.accentHex == nil {
+                        $0.accentHex = activeTheme.accent.hex
+                    }
+                    $0.accentSource = source
+                }
+            }
+        )
     }
 
     private var effectiveBaseTheme: BrevTheme {
@@ -207,46 +318,51 @@ struct AppearanceSection: View {
         )
     }
 
+    @ViewBuilder
     private var themePairRow: some View {
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(alignment: .leading, spacing: BrevSpacing.md) {
                 themePairLabel
-                Spacer(minLength: BrevSpacing.md)
-                selectedThemePair
-                chooseThemesButton
-            }
-
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                themePairLabel
-                HStack(spacing: BrevSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrevSpacing.md) {
                     selectedThemePair
-                    Spacer(minLength: BrevSpacing.sm)
                     chooseThemesButton
+                }
+                .settingsStackedControl()
+            }
+        } else {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .center, spacing: BrevSpacing.md) {
+                    themePairLabel
+                    Spacer(minLength: BrevSpacing.md)
+                    selectedThemePair
+                    chooseThemesButton
+                }
+
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    themePairLabel
+                    HStack(spacing: BrevSpacing.md) {
+                        selectedThemePair
+                        chooseThemesButton
+                    }
+                    .settingsStackedControl()
                 }
             }
         }
     }
 
     private var themePairLabel: some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Image(systemName: "swatchpalette")
-                .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(theme.accent.color)
-                .frame(width: 18)
-
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text("Themes", bundle: .module)
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text("Your saved light and dark pair.", bundle: .module)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-            }
-        }
+        SettingsRowLabel(
+            symbolName: "swatchpalette",
+            title: String(localized: "Themes", bundle: .module),
+            subtitle: String(localized: "Your saved light and dark pair.", bundle: .module)
+        )
     }
 
     private var selectedThemePair: some View {
-        HStack(spacing: BrevSpacing.md) {
+        let layout = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(alignment: .leading, spacing: BrevSpacing.sm))
+            : AnyLayout(HStackLayout(spacing: BrevSpacing.md))
+        return layout {
             SelectedThemeSummary(
                 label: String(localized: "Light", bundle: .module),
                 candidate: themeSettings.selectedTheme(for: .light)
@@ -282,7 +398,10 @@ struct AppearanceSection: View {
                 AccentColorCodec.color(from: themeSettings.accentHex ?? activeTheme.accent.hex)
             },
             set: { color in
-                updateThemeSettings { $0.accentHex = AccentColorCodec.hex(from: color) }
+                updateThemeSettings {
+                    $0.accentHex = AccentColorCodec.hex(from: color)
+                    $0.accentSource = .custom
+                }
             }
         )
     }
@@ -302,7 +421,8 @@ struct AppearanceSection: View {
     private func applyResolvedTheme() {
         activeTheme = themeSettings.resolvedTheme(
             in: BrevTheme.brevBuiltIns,
-            prefersDark: prefersDarkTheme
+            prefersDark: prefersDarkTheme,
+            increasedContrast: colorSchemeContrast == .increased
         )
     }
 }
@@ -324,7 +444,7 @@ private struct SelectedThemeSummary: View {
                 Text(candidate.name)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(1)
+                    .fixedSize(horizontal: false, vertical: true)
             }
         }
         .accessibilityElement(children: .ignore)
@@ -335,13 +455,16 @@ private struct SelectedThemeSummary: View {
 private struct ThemePickerSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Binding var themeSettings: AppearanceThemeSettings
     @State private var selectedMode: BrevThemeMode
     let onSettingsChanged: () -> Void
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 168, maximum: 240), spacing: BrevSpacing.sm)
-    ]
+    private var columns: [GridItem] {
+        dynamicTypeSize.isAccessibilitySize
+            ? [GridItem(.flexible())]
+            : [GridItem(.adaptive(minimum: 168, maximum: 240), spacing: BrevSpacing.sm)]
+    }
 
     init(
         themeSettings: Binding<AppearanceThemeSettings>,
@@ -406,6 +529,7 @@ private struct ThemePickerSheet: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(String(localized: "Done", bundle: .module)) { dismiss() }
+                        .foregroundStyle(theme.textPrimary.color)
                 }
             }
         }
@@ -418,7 +542,7 @@ private struct ThemePickerSheet: View {
     }
 }
 
-private enum AppearancePreferenceKey {
+enum AppearancePreferenceKey {
     static let transparentMainTitlebar = "window.transparentMainTitlebar"
 }
 
@@ -450,13 +574,11 @@ private struct AppIconVariantButton: View {
                     Text(variant.title)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.textPrimary.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                     Text(variant.subtitle)
                         .brevFont(.caption)
                         .foregroundStyle(theme.textTertiary.color)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.8)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(BrevSpacing.sm)
@@ -487,8 +609,7 @@ private struct ThemeTile: View {
                 Text(candidate.name)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.85)
+                    .fixedSize(horizontal: false, vertical: true)
                 Text(candidate.mode == .dark ? String(localized: "Dark", bundle: .module) : String(
                     localized: "Light",
                     bundle: .module
@@ -586,3 +707,17 @@ struct DesktopInterfaceSettings: View {
     }
 }
 #endif
+
+/// Restores every preference the Appearance pane owns to its shipped default.
+enum AppearanceReset {
+    static func apply(to store: SettingsPersistenceStore) {
+        store.save(AppearanceThemeSettings.defaults)
+        store.save(WindowAppearancePreferences.defaults)
+        store.save(AppIconVariant.defaultVariant)
+        store.defaults.set(true, forKey: AppearancePreferenceKey.transparentMainTitlebar)
+        #if os(macOS)
+        store.defaults.removeObject(forKey: MailboxViewPreferenceKey.textSize)
+        store.defaults.removeObject(forKey: MailboxViewPreferenceKey.listDensity)
+        #endif
+    }
+}

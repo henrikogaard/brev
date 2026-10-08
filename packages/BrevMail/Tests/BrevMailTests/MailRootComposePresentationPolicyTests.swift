@@ -116,6 +116,62 @@ struct MailRootComposePresentationPolicyTests {
     }
 }
 
+@Suite("MailRootQuickReplyPolicy")
+struct MailRootQuickReplyPolicyTests {
+    @Test("outbound-ended thread selects the newest replyable inbound message")
+    func outboundEndedThreadSelectsPriorInbound() {
+        let inbound = Self.header(
+            id: "inbound",
+            sender: "alex@example.org",
+            date: 1
+        )
+        let outbound = Self.header(
+            id: "outbound",
+            sender: "henrik@example.org",
+            date: 2,
+            recipients: ["henrik@example.org"]
+        )
+
+        let target = MailRootQuickReplyPolicy.target(
+            in: [inbound, outbound],
+            accountEmail: "henrik@example.org"
+        )
+
+        #expect(target?.id == "inbound")
+    }
+
+    @Test("all-self thread has no quick-reply target")
+    func allSelfThreadHasNoTarget() {
+        let headers = [
+            Self.header(id: "older", sender: "henrik@example.org", date: 1),
+            Self.header(id: "newer", sender: "henrik@example.org", date: 2),
+        ]
+
+        #expect(MailRootQuickReplyPolicy.target(
+            in: headers,
+            accountEmail: "henrik@example.org"
+        ) == nil)
+    }
+
+    private static func header(
+        id: String,
+        sender: String,
+        date: TimeInterval,
+        recipients: [String] = []
+    ) -> MessageHeader {
+        MessageHeader(
+            id: id,
+            threadID: "thread",
+            folderID: "inbox",
+            from: Correspondent(name: sender, email: sender),
+            to: recipients.map { Correspondent(email: $0) },
+            subject: "Subject",
+            snippet: "Snippet",
+            date: Date(timeIntervalSince1970: date)
+        )
+    }
+}
+
 @Suite("MailRootSheetPresentationPolicy")
 struct MailRootSheetPresentationPolicyTests {
     @Test("settings can present when no sheet is active")
@@ -371,6 +427,82 @@ struct MailboxFilterControlPolicyTests {
             accountDisplayName: "Henrik",
             mailboxEmail: "henrik@example.org"
         ) == "Henrik")
+    }
+
+    @Test("message-list account context requires a single-account folder")
+    func messageListAccountContextRequiresSingleAccountFolder() {
+        #expect(MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: true,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: true,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+        #expect(!MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: false,
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false
+        ))
+    }
+
+    @Test("message-list unread count follows the selected destination")
+    func messageListUnreadCountFollowsSelectedDestination() {
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: nil,
+            unifiedInboxUnreadCounts: [2, 3, 4]
+        ) == 9)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 7,
+            unifiedInboxUnreadCounts: []
+        ) == 7)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: true,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 7,
+            unifiedInboxUnreadCounts: []
+        ) == nil)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: nil,
+            unifiedInboxUnreadCounts: [0, 0]
+        ) == nil)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 0,
+            unifiedInboxUnreadCounts: []
+        ) == nil)
     }
 
     @Test("message-list account context falls back to a stable email identity")

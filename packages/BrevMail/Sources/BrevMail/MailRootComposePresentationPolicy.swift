@@ -128,6 +128,44 @@ enum MailRootMessageListTitlePolicy {
         )
     }
 
+    /// Whether the title carries an account line. Only a single account's
+    /// folder has one; unified and cross-account destinations do not.
+    static func showsAccountContext(
+        hasSelectedFolder: Bool,
+        isUnifiedInboxSelected: Bool,
+        isSmartViewSelected: Bool,
+        isAllAttachmentsSelected: Bool,
+        hasSelectedSavedSearch: Bool
+    ) -> Bool {
+        hasSelectedFolder
+            && !isUnifiedInboxSelected
+            && !isSmartViewSelected
+            && !isAllAttachmentsSelected
+            && !hasSelectedSavedSearch
+    }
+
+    static func unreadCount(
+        isUnifiedInboxSelected: Bool,
+        isSmartViewSelected: Bool,
+        isAllAttachmentsSelected: Bool,
+        hasSelectedSavedSearch: Bool,
+        selectedFolderUnreadCount: Int?,
+        unifiedInboxUnreadCounts: [Int]
+    ) -> Int? {
+        guard !isSmartViewSelected,
+              !isAllAttachmentsSelected,
+              !hasSelectedSavedSearch else { return nil }
+        let count: Int
+        if isUnifiedInboxSelected {
+            count = unifiedInboxUnreadCounts.reduce(0, +)
+        } else if let selectedFolderUnreadCount {
+            count = selectedFolderUnreadCount
+        } else {
+            return nil
+        }
+        return count > 0 ? count : nil
+    }
+
     static func accountContext(
         mailboxDisplayName: String,
         accountDisplayName: String,
@@ -146,6 +184,23 @@ enum MailRootMessageListTitlePolicy {
             return displayName
         }
         return email.isEmpty ? nil : email
+    }
+}
+
+enum MailRootQuickReplyPolicy {
+    static func target(
+        in headers: [MessageHeader],
+        accountEmail: String
+    ) -> MessageHeader? {
+        headers
+            .filter {
+                !ComposeReplyResolver.recipients(
+                    for: $0,
+                    mode: .sender,
+                    accountEmail: accountEmail
+                ).isEmpty
+            }
+            .max { $0.date < $1.date }
     }
 }
 

@@ -38,6 +38,158 @@
   physical-iPhone QA still need Henrik. Observations O7–O10 and O12 are
   candidate follow-up issues.
 
+## 2026-10-05 — Agent — IMAP trailing-UID literal compatibility
+
+- Goal: make message bodies readable when a server returns the UID after
+  the BODY literal, reproduced with Microsoft Exchange.
+- Changed: consume the declared literal bytes before validating UID metadata
+  from the same FETCH response. Stop collecting metadata at the response's
+  close marker so later unsolicited updates cannot supply the requested UID.
+  Raw-source and structured-part fetches share the completion validation.
+- Verified: trailing-UID success cases failed before the fix; all 93
+  IMAPSessionClientTests pass afterward. Regression cases cover exact byte
+  preservation, wrong trailing UIDs with UID-looking body text, and later
+  unsolicited responses. Full lint passes; format reports zero changed files.
+  A dated macOS live test build installed and passed strict signature
+  verification; the previously failing work message rendered successfully.
+- Documentation sweep: CHANGELOG updated. No new network operation, public
+  boundary, protected path, UI, setup contract, or privacy behavior changed;
+  README, ADRs, PRIVACY, and UI snapshots need no update.
+- Skipped: sending mail (not requested) and the full multi-package/iOS test
+  matrix (narrow internal parser change; PR CI covers broader integration).
+- Handoff: PR targeting main; upstream maintainer review/merge required.
+  Personal OAuth configuration and live mailbox data remain outside Git.
+
+## 2026-10-07 — Codex — PR #197 release signing recovery
+
+- Goal: finish Developer ID app/widget provisioning and recover the existing v0.2.0 tag.
+- Apple setup: registered stable/nightly macOS widget IDs, assigned the existing `group.eu.brevmail.brev` to all four app/widget IDs, regenerated the two app profiles, and generated two widget profiles. Validated active Developer ID profile type, team, exact bundle ID, App Group, expiry, and SHA-256 certificate match before uploading all four environment secrets to `release-signing`. Downloaded copies are in Henrik's Downloads folder.
+- Fixed the open review finding: Release loads the signing action from `github.workflow_sha` after checking out the product tag. Product HEAD stays on the tag and setup/cleanup both use the repaired action.
+- Verification: regression fixture failed before the workflow change; passes afterward and verifies current action content, unchanged tag HEAD, invalid revision rejection, tag format, ancestry, and green Build gates. Actionlint and Developer ID configuration self-test passed.
+- Integration: merged current main after #196; retained both release-recovery and author-correction worklog entries.
+- Scope: configuration only; no new Swift/UI tests or product build locally. Hosted signed archive/notarization is the remaining release verification. Existing ADR-0009/ADR-0080 distribution policy is unchanged; release runbook updated. README/privacy/agent instructions need no update.
+
+## 2026-10-07 — Devin — Release recovery: widget profile + Sparkle key rotation
+
+- Goal: produce the signed 0.2.0 release after moving to `release-signing` (#195).
+- Findings: recovery dispatch 37629206211 reached the signed-archive step and failed with "No profile … matching 'Brev Stable Widgets Developer ID CI Distribution'". The widget extension (#144, ADR-0083) needs its own Developer ID profile that CI never installed. The 0.1.0 app profile also lacks the `group.eu.brevmail.brev` app-group entitlement.
+- Changes: the `release-signing` action takes `widget-profile-base64`, verifies its team and certificate fingerprint, and exports `BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER`; the Release and Nightly workflows pass `BREV_MACOS_WIDGET_PROFILE_{STABLE,NIGHTLY}_BASE64`; release.md gets the portal and secret steps. At Henrik's request the Sparkle key was rotated: the new private key and public key (`bmBu…`) are set in `release-signing`. The original public key (`aFO3…`, embedded in 0.1.0) has no recoverable private half.
+- Verification: actionlint, `scripts/test-developer-id-release-config.sh`, `git diff --check`.
+- Next (Henrik): portal work to create the widget App IDs and profiles and regenerate the app profiles with App Groups; upload the four profiles; re-dispatch Release for `v0.2.0`.
+## 2026-10-07 — Devin — Author name correction
+
+- Henrik's name is "Henrik Øgård": fixed LICENSE, NOTICE, llms.txt and the ADR-0009 account-holder line. Apple signing-identity strings in ADR-0009, docs/release.md and scripts/release-archive.sh are left as-is because they must match the certificate common name.
+- Verification: `git diff --check`.
+
+## 2026-10-07 — Devin — Release environment startup probes
+
+- Goal: find why `v0.2.0` release runs (and every nightly since Sep 23) fail with "job was not started because it repeatedly failed to be acquired".
+- Added `ubuntu-release`, `ubuntu-probe-environment`, `macos-15-probe-environment` jobs and a push-to-main trigger (PAT cannot dispatch). Branch run: plain macOS and the fresh `runner-probe` environment start on both Linux and macOS; `release` jobs were rejected by branch policy as expected off main.
+- Verification: actionlint, `git diff --check`.
+- Next: the main run shows whether `release` fails on Linux too.
+
+## 2026-10-06 — Devin — Stable release 0.2.0 prep
+
+- Goal: Henrik asked for a stable 0.2.0 release installed on the dev Mac, as the baseline for a later Sparkle auto-update test.
+- Changes: `BrevConstants.marketingVersion` and the committed project `MARKETING_VERSION` bumped 0.1.0 → 0.2.0; the accumulated `[Unreleased]` CHANGELOG notes became `## [0.2.0] - 2026-10-06` (required by `release.yml`), with a fresh empty `[Unreleased]`.
+- Verification: format, lint, `git diff --check`; release itself is produced by `release.yml` on the `v0.2.0` tag after this merges.
+- Next: tag `v0.2.0` on main once Build is green, install the notarized DMG as `/Applications/Brev.app`, then tag a follow-up release to exercise Sparkle updating 0.2.0.
+
+## 2026-10-05 — Agent — Interpolated string-catalog key rekey
+
+- Goal: finish the localization follow-up PR #187 flagged — 168 catalog keys
+  (118 BrevMail, 50 BrevBackend) held raw `\(…)` interpolation source, which
+  the `String(localized:)` runtime never looks up; Norwegian UI silently fell
+  back to English for every one of them.
+- Changed: rekeyed every `\(…)` catalog entry to the format specifiers the
+  runtime generates — `%@` for String-like interpolations, `%lld` for the
+  confirmed Int sites (`*.count`, `code` status codes, time deltas,
+  `pendingUndoSendCountdown`, `Int(retryAfter.rounded())`, `rule.interval`,
+  `draft.repeatInterval/repeatCount`, `overflow`, `selectionCount`, etc. —
+  each verified against its call site). Same specifier rewrite applied inside
+  nb translations. 44 rekeys landed on already-correct `%` keys and were
+  deduped (keeping the hand-maintained translations); one stale
+  `Google rejected the token exchange%@ (HTTP %@).` entry whose code slot
+  mismatched the Int call site was removed. Zero `\(…)` keys remain.
+- Tests: new `no catalog key keeps raw string-interpolation source` guard in
+  `MailStatusCopyLocalizationTests` (BrevMail) and a new
+  `BackendCatalogKeyFormatTests` suite (BrevBackend) scan the whole catalog so
+  the pattern cannot regress.
+- Verified: both suites pass on the rewritten catalogs (4/4 BrevMail, 2/2
+  BrevBackend); the pre-existing nb status-copy and plural tests stay green;
+  `xcodebuild -scheme BrevMacOS` compiles every catalog through xcstringstool
+  and builds clean; swiftformat --lint and swiftlint clean on touched files.
+  Catalog-vs-runtime key convention cross-checked against BrevGmail's working
+  `HTTP %lld` entries (Int `statusCode` call sites).
+- Post-push fix (found by UI test run): the rekey made `All folders in %@`
+  and `all folders in %@` — case variants that generate the same
+  `allFoldersIn(_:)` symbol and fail xcstringstool. The lowercase pair only
+  fed the English mailbox-chat AI prompt (`scopeDescription`), so it is now a
+  plain non-localized string; `all folders in the current account` lost its
+  only call site and was removed from the catalog. Added a
+  `no two catalog keys generate the same symbol` guard (approximates
+  xcstringstool's key→symbol normalization) to both catalog test suites so a
+  case/punctuation-variant key pair cannot regress.
+- Verified live: testing run rebuilt the app on macOS + iOS sim with
+  `-AppleLanguages nb` — `9 meldinger · 5 uleste`, `4 vist · 9 totalt`,
+  `Sorter og filtrer, 2 filtre aktive`, `1 skjulte leste meldinger`, `+2 til`
+  all render Norwegian where English leaked before.
+- Skipped: undo-send countdown and attachment-header strings unverified live
+  (no mock reachability); signing/cert build steps are CI's domain.
+- Handoff: PR #189 to `main`; no merge without Henrik's authorization.
+
+## 2026-10-06 — Devin — Settings flush-left pass (PR #191)
+
+- Goal: Henrik flagged leftover left gaps (rows indented under group headers; Settings sidebar categories indented vs search field and Extensions).
+- `SettingsGroup` no longer indents its rows by the symbol column — rows, previews, segmented controls and callouts share the header's left edge.
+- macOS Settings sidebar: category and extension rows share one selection-pill style whose edges match the search field; extension icons use the shared symbol width and secondary tint; Extensions header aligns with row icons.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, macOS `script/build_and_run.sh --mock` + rendered sidebar, iOS 27 simulator build.
+- iPhone follow-up: Settings extension rows use the category rows' insets/height; mail sidebar Favourites/Smart Views/Accounts headers use the Apps header inset so headers line up with card rows.
+- Folder Sync table header/rows drop their extra horizontal padding and use `SettingsSymbol`; Google placeholder row uses the shared symbol column and body title.
+
+## 2026-10-06 — Devin — Settings alignment follow-up (PR #191)
+
+- Goal: fix the live-QA alignment findings from the first pass (macOS Compose/Auto-Reply, iPhone large and accessibility text).
+- Symbol column widened to 24 pt; `SettingsSymbol` steps wide glyphs (Abc, signature) down a scale instead of overlapping titles; Settings section lists reuse `SettingsSymbol`.
+- iOS menu pickers offset the native button padding (`SettingsLayout.menuButtonInset`) so values end on the switch edge inline and start on the title edge when stacked; iOS pickers no longer `fixedSize` so stacked menus stay inside the pane.
+- Compose "Manage recent recipients" is a custom disclosure row on the shared icon/title/trailing columns; Auto-Reply date pickers use label + trailing control rows; Notifications Authorization row stacks when it does not fit; Appearance Accent stays inline beside the label on iPhone at non-accessibility sizes.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, `swift build`, iOS 27 simulator build + rendered Compose at large and accessibility-extra-large, macOS `script/build_and_run.sh --mock` build.
+- Known: `mailStorageCacheLookbackSelectionStaysReadableInLightTheme` fails only in the full BrevSettings run (passes in isolation) on this host, identically on the previous commit — order-dependent pixel probe, not caused by this change.
+
+## 2026-10-06 — Devin — Settings alignment pass (PR #191)
+
+- Goal: make Settings text, icon and option columns line up consistently on macOS and iOS.
+- Added `SettingsLayout` (20 pt symbol column, shared stacked-control indent, trailing popup slot, density-aware pane inset) and routed `SettingsGroup`, `SettingsRowLabel`, `SettingsSymbol`, picker/segmented rows, callouts, `SectionScaffold` and `SettingsView` headers/section lists through it.
+- Appearance Accent/Themes now reuse `SettingsRowLabel`; Mailbox View preview moved inside the Mailbox list group; notification badge rows use distinct symbols.
+- macOS popups hug their value and share the switches' trailing edge; iPhone picker rows wrap the label beside a hugging menu like switch rows, stacking only at accessibility sizes.
+- Verified: `scripts/format.sh`, `scripts/lint.sh`, `git diff --check`, BrevSettings non-pixel tests (420 passed), `script/build_and_run.sh --mock` macOS build + rendered review of all panes, iOS 27 simulator build + rendered Compose at default and accessibility-extra-large text (content size restored to `large`).
+- Skipped: pixel snapshot suites (pre-existing renderer drift on this host, see entry below); `tuist build BrevMacOS` fails here without `-skipMacroValidation` while the repo build script succeeds.
+
+## 2026-10-06 — Devin — Appearance, navigation and performance assessment fixes
+
+- Goal: implement Henrik's sidebar/Settings/accent assessment without removing
+  destinations or mistaking mock timings for daily-driver readiness. Branch
+  `fix/appearance-navigation-performance`, targeting `main`; no matching issue/card.
+- Changed: shared root appearance across macOS windows; explicit Theme/System/Custom
+  accent sources with legacy migration and preserved custom values; contrast-safe
+  effective accents and filled-button foregrounds; adaptive Settings navigation and
+  large-text controls; clearer mailbox scope, Accounts/Apps headings and neutral
+  management menus. Appearance remains device-local per ADR-0056.
+- Measurement changes: collector requires PID and run start; summaries distinguish
+  visible body opening from fetch/render and launch from list reload. Budget output
+  requires attributed cached workloads and 20 logged samples; external launch,
+  scrolling and memory measurements stay explicit and missing evidence fails closed.
+- Verified so far: 13 BrevThemes tests, 36 focused BrevSettings tests, six Python
+  regression tests and performance-budget self-test. Final compilation, formatting,
+  lint and visual regression checks are pending; results will be appended before push.
+  Model/parser regressions were added alongside implementation rather than a separate
+  red-first TDD cycle.
+- Documentation sweep: ADR-0048, CHANGELOG, performance QA protocol and this log.
+  No README/setup, privacy/network, version/release or agent-policy changes.
+- Limits: representative two-account/10k-header Instruments evidence, physical-phone
+  performance and live-provider provisioning/sign-off remain unverified. No merge,
+  release, daily-driver replacement or issue closure is authorized.
+
 ## 2026-10-03 — Agent — Issue #3 PIM parent status reconciliation
 
 - Goal: advance the provider-neutral Calendar/Contacts parent issue (#3) to
@@ -4968,3 +5120,253 @@ buttons, and package-aware localization.
 - Verified: focused BrevMail tests green (28 MessageListPresentation tests plus the new localization suite); `scripts/format.sh` 0/1206 changed and `scripts/lint.sh` OK; rendered simulator run (iPhone 17 Pro, iOS 27, mock backend, `-AppleLanguages '(nb)'`, driven through xcodebuildmcp with `simctl` screenshots) captured the search, filter, and spam empty states in Norwegian in `docs/qa/mail-status-localization-2026-09-30/`, matching catalog values.
 - Limits: physical-iPhone acceptance pending (handoff item 1; the device is blocked on the Gmail 404 session failure that PR #164 addresses). The reader preview-only banner is catalog- and test-verified only because the mock backend cannot fail a body load. The full BrevMail suite shows 54 host-renderer snapshot mismatches on this macOS 27 host that reproduce byte-identically on a pristine `origin/main` checkout; they are pre-existing environment drift, not this branch, and baselines were not re-recorded.
 - Documentation sweep: CHANGELOG Unreleased Fixed entry, QA evidence, ADR-0013 amendment, and this log. No README/setup, PRIVACY/network, version, release, or agent-policy change; no new ADR required. Delivery is a review PR; no merge or issue-closeout authorization.
+
+
+## 2026-10-05 — Agent — PIM parity QA follow-ups (O7–O10, O12)
+
+- Goal: fix the codeable findings from the stub-DAV parity matrix in
+  `docs/qa/pim-parity-stub-dav-2026-10-03/README.md` (O7–O12). Branch
+  `fix/pim-qa-followups` stacks on `fix/l10n-interpolated-catalog-keys`
+  (PR #189) because both edit `Localizable.xcstrings`.
+- O7 (source row showed raw enum): 13 `String(describing: error)` sites in
+  `PIMEventSyncService`, `PIMTaskSyncService`, `PIMContactSyncService`,
+  `PIMCollectionService` now render through a shared `PIMErrorText` helper
+  that prefers `LocalizedError.errorDescription` — the sync error enums
+  already carried localized text, `describing` just bypassed it.
+- O8 (English RSVP badges/sentences): `CalendarInviteResponsePresentation`
+  had no `String(localized:)` at all — reply badge ("Responded", the local
+  response label), confirmation prefixes, and all reconciliation sentences
+  now localize via `.module`; `AttendeeState.displayLabel` stays an English
+  model token (Models.swift has no localized strings) with a localized
+  `responseLabel` at the presentation layer. 12 new keys + nb entries in the
+  BrevMail catalog.
+- O9 (attendee PUT lacked ORGANIZER): `PIMEventWriteService` claims a DAV
+  organizer when an event has attendees but none set — basic-auth username
+  when `@`-shaped, else `source.principalURL`. `PIMEventICSWriter` emits
+  `mailto:` only for mailbox-shaped values (URI values pass verbatim) and
+  `ICSParser.parsePerson` now accepts any URI cal-address, not just mailto,
+  so the organizer round-trips through sync.
+- O10 (attendee field took non-addresses): `addAttendee()` reuses
+  `RecipientAddressValidator.isLikelyEmailAddress` and shows an inline
+  caption-styled error that clears on edit.
+- O12 (stale cached counts): `PIMSourceSettingsModel.observeSourceChanges()`
+  subscribes to `coordinator.changes()` — every `markStatus` a background
+  sync writes emits — and reloads; wired via a second `.task` in
+  `CalendarContactsSection`, same pattern as the browsing models.
+- O1 already fixed on main (`PIMDetailEditabilityHint` in contact/task/event
+  detail views). O11 was fixed in PR #187.
+- Verified: `swift test` BrevCalendar 264/264 (incl. new organizer-URI
+  round-trip, organizer-inject create/update, no-attendee no-organizer,
+  PIMErrorText); BrevSettings 26/26 (incl. new observer test); BrevMail
+  filtered suites green incl. catalog symbol/format guards; swiftformat +
+  swiftlint clean on touched files; `xcodebuild -scheme BrevMacOS` pending
+  in background at write time.
+- Skipped: live stub-DAV replay (no server in this environment); UI pass on
+  the attendee hint handed to the testing agent.
+
+- Post-commit: `xcodebuild -scheme BrevMacOS` BUILD SUCCEEDED. Testing run
+  verified ALL five follow-ups live on macOS nb — O8 invite badge
+  ("Godtatt" + nb reconciliation sentence), O12 live row refresh
+  (`Klar`→`Mislyktes` and `5 → 6 hendelser bufret` without reopening
+  Settings), O10 attendee rejection caption, O7 readable nb error text for
+  missingCredential AND transport families, and O9 via
+  `scripts/stub-dav-server.py` (stored ICS carries
+  `ORGANIZER:mailto:qa@local.test` + attendee PARTSTAT). ADR-0072 log entry
+  added for the CI `adr-required` gate (BrevCalendar sources are protected
+  paths). testing-brev-ui skill gained a stub-DAV/PIM section.
+
+## 2026-10-06 — Agent — Appearance accent verification handoff
+
+- Goal: verify the integrated ADR-0048 accent work and lead-owned appearance/settings/sidebar/performance changes on `fix/appearance-navigation-performance`; preserve the combined worktree for review, with no commit or push.
+- Verification: `scripts/format.sh` completed (8/1,209 files formatted; 159 skipped); `scripts/lint.sh` passed (SwiftFormat lint 0/1,209, strict SwiftLint, coverage self-test, and ADR-required check). Focused tests passed: BrevThemes 13, BrevSettings 66 across four suites, and BrevMail `FolderSidebarPresentation` 37. No root-appearance policy test suite was present.
+- Full nonpixel suites passed with CI pixel filters: BrevSettings 420 tests/62 suites; BrevMail 1,855/276; BrevBackend 1,152/114. BrevMail's separate `ContactsAccessPolicyTests` passed 6 tests, and the Release `AppSessionFactoryTests.releaseBuildIgnoresInjectedDemoRequest` guard passed.
+- `tuist generate` and unsigned Debug builds of `BrevMacOS` and `BrevIOS` passed. The iOS build used Xcode 27 RC and simulator UDID `8E780854-5816-4435-AD8F-8098DF847EB5` (iPhone 17, iOS 27.0). Xcode 27 emitted diagnostics in unrelated BrevMail/BrevAvatars sources, but both schemes built successfully.
+- The requested iOS `accessibleAppearance(dark:)` snapshot test passed on rerun (2 cases). Its first run created these references, now retained for pixel review: `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/accessibleAppearance-dark.appearance-accessible-light.png` and `.../accessibleAppearance-dark.appearance-accessible-dark.png`. The first run exited 65 after first-recording failures and a 600-second simulator-diagnostics timeout; the rerun passed.
+- Focused macOS snapshots were not re-recorded: `FolderSidebarSnapshotTests` reported 20 image mismatches across Gmail-native sidebar, all-inboxes alignment, smart views, compact profile scopes, and desktop favorites/editor variants; `AIWriterSectionMacSnapshotTests/desktopSizing` mismatched `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/BrevSettingsSnapshotTests/capture-_-theme-name-size.desktop-small-compact.png` and `...desktop-large-spacious.png`. These comparisons ran on macOS 26.5.2; no base-branch comparison was made, so they are not classified as pre-existing macOS 27 renderer failures.
+- The iOS-only imported-system-accent fallback assertion was not executed (the full package tests ran on macOS; the iOS app build compiled the implementation). No UI was launched or driven, `/Applications/Brev.app` was left untouched, and the combined worktree remains uncommitted and unpushed for lead review.
+
+## 2026-10-06 — Agent — Appearance catalog and snapshot cleanup
+
+- Goal: remove String Catalog ordering churn while preserving the integrated appearance work, then refresh only the two new accessible-appearance iOS references for lead pixel review. No commit or push.
+- Rebuilt both catalogs from their `HEAD` bytes plus exactly the intended additions: BrevMail `Accounts` and `Apps`, and eight BrevSettings appearance/settings strings. A parsed assertion confirmed every existing entry and metadata value is unchanged, with no removals or unexpected additions; original `HEAD` ordering and two-space JSON formatting were restored.
+- Scoped SwiftFormat on `AppearanceSection.swift`, `SettingsSectionComponents.swift`, and `CompactSettingsRowSnapshotTests.swift` changed 0/3 files. `scripts/lint.sh` passed once after all edits (SwiftFormat lint 0/1,209; strict SwiftLint; coverage self-test; ADR-required check).
+- On Xcode 27 RC, iPhone 17 / iOS 27.0 simulator `8E780854-5816-4435-AD8F-8098DF847EB5`, record mode wrote only these references: `packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/accessibleAppearance-dark.appearance-accessible-light.png` and `.../accessibleAppearance-dark.appearance-accessible-dark.png`. The record invocation intentionally exits 65 because SnapshotTesting reports record-mode issues; the no-diagnostics rerun passed both dynamic cases. The iOS-only `importedSystemSourceFallsBackToThemeOnIOS()` test passed separately (1 test), after the combined filter without `()` selected only the snapshot case.
+- Existing macOS snapshot differences remain pending comparison against `main`; no existing baselines were changed. Full suites and builds were intentionally not rerun per the handoff. Simulator remains running, no UI was driven, and `/Applications/Brev.app` was untouched.
+
+## 2026-10-06 — Agent — Appearance runtime verification
+
+- macOS mock: separate Settings and Mail changed light/dark together; accent
+  search, Theme/System/Custom selection, requested `#111111` preservation and
+  Follow theme reset passed. Favorites/Smart Views management and standalone
+  Calendar/Contacts/Tasks/Shortcuts opened; Shortcuts also followed light mode.
+- iPhone 17/iOS 27 mock: normal and accessibility-extra-large layouts passed,
+  including Increased Contrast, custom `#111111` round-trip, theme chooser
+  selection/dismissal and reset. Temporary appearance values and simulator
+  accessibility settings were restored. Existing toolbar-gear Settings access
+  remains deliberate; no duplicate Apps row is required.
+- Limits: OS-accent notification delivery, exhaustive sidebar keyboard navigation,
+  scoped folder-sync caption, filled-button-specific runtime contrast and all
+  iOS destination flows were not exercised. Model tests cover numerical contrast;
+  screenshots are visual evidence, not measurements.
+- No blueprint change: simulator accessibility toggles are reversible test
+  fixtures, not development-environment setup. No daily-driver replacement,
+  provider authentication or real message sending occurred.
+- Baseline comparison: pristine `ed631a7` reproduces all 20 sidebar and two
+  desktop Settings snapshot mismatches on macOS 26.5.2 / Xcode 26.6. Four
+  Favorites-editor renders are pixel-identical across base and branch; other
+  differences match the intentional headings, ellipsis actions, source picker
+  and neutral symbols. Existing references were not rewritten to mask host
+  drift. New iOS accessibility snapshots pass. Canonical-host refresh of the
+  changed desktop references remains a follow-up.
+
+## 2026-10-06 — Devin — PR #191 Folder Sync header cleanup
+
+- Goal: Henrik flagged the top of iPhone Folder Sync as looking bad (duplicate title, cramped mailbox picker on a grey band, black filter field).
+- Changes: Folder Sync scope bar is now a standard `SettingsPickerRow` (Mailbox title/subtitle, menu shows display name, email only when names collide); iOS scope bar uses the pane surface with a 1 pt separator (macOS keeps `bgSecondary`). iOS `SectionScaffold` no longer repeats the navigation title in-pane. iOS filter field uses a search-style quiet surface; filter/Refresh stack at accessibility sizes; "Show" header no longer breaks mid-word; AX folder rows use a dedicated stacked layout so the retention menu never clips.
+- Verification: `scripts/format.sh`, `scripts/lint.sh`, `git diff --check`, iOS simulator build; testing agent measured iPhone 17 at large (dark + light) and AX-XL plus macOS Folder Sync scope bar.
+- Open: at AX-XL the pinned Mailbox bar takes ~40% of the screen; dark-mode navigation bar (black) vs pane (grey) contrast band and Notifications "Request Access" pill contrast observed but not changed.
+
+## 2026-10-06 — Devin — PR #191 iPhone Settings scope inline
+
+- Goal: Henrik said the Folder Sync top still did not look better (pinned grey Mailbox strip under a black large-title area).
+- Changes: on iOS, Settings panes no longer pin a scope bar; the Folder Sync mailbox picker and Mail Storage account row render inside the scroll content via a `settingsScopeAccessory` environment in `SectionScaffold`. Folder Sync uses a single-line Mailbox row (custom wrapping `Menu` at accessibility sizes so the label never clips). iOS detail panes paint `BrevWindowSurfaceBackground(.content)` under the safe area so the navigation title shares the pane colour. macOS keeps the pinned scope bar.
+- Verification: format, lint, `git diff --check`, iOS simulator build, macOS mock build; testing agent measured iPhone 17 large text (dark + light) and AX-XL, Mail Storage/Appearance spot checks, and Mac Folder Sync.
+
+## 2026-10-07 — Codex — Release environment startup evidence
+
+- Goal: troubleshoot release acquisition failures without running a release or modifying the release environment, secrets, or protections.
+- Ran the existing main startup diagnostic (`37613181185`). Concurrent PR #193 reached main during investigation; preserved that work and used its allowed-main Linux/fresh-environment comparison (`37613417608`). Linux `release` fails acquisition, while fresh Linux/macOS environment jobs pass. Feature-branch release rejections were excluded from acquisition evidence.
+- Built and pushed a manual environment-input diagnostic on `chore/runner-environment-diagnostics` (`505132e0`) before the concurrent probes reached main. Its workflow has no checkout, secret references, token permissions, signing, or publishing. Created empty `runner-diagnostic-2026-10-07` with a custom branch policy permitting only that diagnostic branch. Run `37613566767` confirms restricted-environment Linux startup; macOS controls remained queued at inspection.
+- Delivery scope narrowed to this evidence report and Support draft on `docs/runner-startup-evidence`, based on current main `1dce2573`. The diagnostic branch/environment are retained; no overlapping workflow implementation is proposed. Support draft has not been sent.
+- Verification: diagnostic configuration passed actionlint; format changed zero Swift files; lint and diff checks passed. Real Actions metadata/annotations provide runtime evidence. App tests/builds, snapshots, privacy audit, CHANGELOG, and ADR changes are not applicable to a CI evidence report; release signing validity and full release completion remain unverified.
+- Final comparison: main run `37613417608` completed with acquisition failures for Ubuntu, macOS 15, and macOS 26 using `release`, and successful plain/fresh-environment controls. Restricted fresh environment also passed macOS 26 in run `37613566767`; its macOS 15 environment job remains queued and is not counted as a pass. Refreshed local lint, format (zero changes), and diff checks passed on the documentation branch.
+- Refreshed final result: all five jobs in restricted-environment run `37613566767` passed, including macOS 15 (runner ID 1000023109). Updated the report and PR evidence to replace the earlier queued snapshot. Evidence PR #194 targets main; no merge or release authorization was requested or exercised.
+- Cross-checked Devin's proposed secret-edit cause against current secret metadata: signing/OAuth secrets were last updated September 17; Google API key/app ID were added September 29, after observed acquisition failures. No current secret has a September 24–25 edit timestamp. Run 36073145304 reports workflow success but skips the build; run 35933998396 actually passes the build. The report records Oslo dates and distinguishes skipped builds from successful startup. No secret values were accessed or changed.
+
+## 2026-10-07 — Codex — Release signing environment recovery
+
+- Authorization: Henrik requested completing recovery and merging the necessary changes. Merged evidence PR #194 after every check passed, then based `fix/release-environment-recovery` on current main `cae71ea2`. No other feature PR is in scope.
+- Created `release-signing` and verified all five startup probes before credentials (run `37622714025`) and after all credentials (run `37623249131`). Final branch policies permit only `main` and `v*` tags; the temporary diagnostic-branch exception was removed. The old release environment remains intact.
+- Populated 12 environment secrets and the Sparkle public variable from existing local sources; Microsoft client ID remains inherited from the repository secret. Exported only the valid matching Developer ID identity from Keychain with a random temporary P12 password. OpenSSL legacy-mode verification confirms its public certificate matches both stable/nightly CI profiles. Removed the temporary P12/password/source after upload. No secret contents are recorded.
+- Changed stable, nightly, and startup probes to `release-signing`. Added manual stable dispatch for an existing tag because rerunning an old run preserves the old workflow. Checkout is pinned to the selected tag ref; format, main ancestry, green Build, and release-overwrite protections remain enforced against the checked-out tag SHA.
+- Added a real shell-gate fixture: distinct workflow/tag commits prove Build is checked for the tag; missing Build, malformed tags, and unrelated ancestry are rejected. The original workflow fails the manual-tag fixture; the updated workflow passes. Integrated it into the existing release-config self-test.
+- Updated ADR-0080, release/diagnostic runbooks, and Unreleased changelog. Verification: startup comparisons, actionlint, release dispatch fixture, and developer-ID release-config tests pass. Lint/format and PR checks follow. Archive/notarization/publication are not yet verified; the recovery dispatch will use the unchanged v0.2.0 tag after merge.
+- Credential continuity blocker discovered before merge/publication: the canonical checkout's local Sparkle key/public variable differs from the existing release environment. Neither the legacy local export, Desktop seed, nor separate Rista export matches the original public key. The published September 23 Nightly embeds the original key and its DMG signature cryptographically verifies against it. Thus changing to a local replacement key would break existing update verification.
+- Restored the original public variable in `release-signing` and removed only the mismatching private-key copy created by this session. Eleven correct environment secrets remain; the original Sparkle private-key backup is required before recovery PR #195 can merge safely. Asked Henrik for its secure source/location, not its contents. The P12 password question was resolved by selective Keychain export and needs no user action.
+- Re-saved the original release environment/policy configuration with identical values and read back unchanged main/v* restrictions; Ubuntu acquisition still fails in run `37624988515`. No original secrets were changed or deleted. Apple notarization API authentication with the selected local key passed.
+- PR #195 contains the scoped recovery implementation and verification. Hosted CI is still running with no observed failures; do not merge or dispatch the release until both the required checks and Sparkle credential continuity are satisfied. Merge authorization is already granted; no additional approval is needed once those prerequisites pass.
+
+## 2026-10-07 — Devin — Chrome, appearance reset and Settings polish
+
+- Goal: Henrik's 0.2.0 feedback — toolbar band tinted by mail content, blur behind toolbar buttons, Appearance reset, AI Sidebar toggle, Apple-style Settings, raw Gmail `CATEGORY_*` labels.
+- Reader pane uses an opaque theme fade instead of the content blur; message list drops its mid-pane blur and the category bar is opaque. SwiftUI toolbar gains a trailing `sidebar.right` AI Sidebar toggle (the AppKit toolbar is opt-in only; its defaults also include the item). `AppearanceReset` restores Appearance-owned preferences. `SettingsGroup` renders rows in a rounded quiet surface with icon-free headings. Gmail hides CATEGORY_/UNREAD/CHAT labels from folders and chips.
+- The monospace look on Henrik's Brev.app comes from the persisted Mailbox View font preference (user setting, not changed).
+- Verification: lint, format, BrevGmail tests, BrevSettings AppearanceThemeSettings tests, BrevMail toolbar/visibility tests, macOS mock build.
+
+### 2026-10-07 — Devin — Chrome/Settings polish follow-up (#199)
+
+- Folder Sync table, About rows and Smart Views now use the shared grouped surface (`settingsGroupedSurface()`); iOS switch column widened to 52 pt; AX-size header drops the "Keep offline" column; iOS Reset to Defaults is bordered.
+- AI Sidebar toolbar/menu labels now localized (`MailContextColumnVisibility.toolbarLabel`).
+- Earlier "Settings stays English under nb" finding was a launch-argument artifact; relaunched with `open -n … --args -AppleLanguages "(nb)"`, Settings is Norwegian on both the test build and installed 0.2.0.
+- Verified: format, lint, BrevSettings build, live mac + iOS sim re-test at 5d00392. BrevSettings/BrevMail pixel snapshots fail locally on this macOS 26.5 host; the same 14 BrevSettings tests fail on clean `origin/main`, so they are host renderer drift, not re-recorded. CI skips them on macos-15.
+- Open: iOS AX XL app-icon captions hyphenate mid-word and grid stays two columns.
+
+## 2026-10-07 — Devin — Stable release 0.2.1 prep
+
+- Goal: Henrik approved merging #199 and releasing, to test Sparkle auto-update from the installed 0.2.0.
+- Changes: `marketingVersion` and project `MARKETING_VERSION` 0.2.0 → 0.2.1; `[Unreleased]` notes became `## [0.2.1] - 2026-10-07`.
+- Next: tag `v0.2.1` once Build on main is green; Henrik runs Check for Updates in 0.2.0 himself.
+
+## 2026-10-07 — Devin — Sparkle installer fails in sandboxed release
+
+- Goal: Henrik's Check for Updates in 0.2.0 found 0.2.1 but failed with "An error occurred while running the updater".
+- Cause: the release app is sandboxed with `SUEnableInstallerLauncherService`, but `BrevMacOSRelease.entitlements` lacked the `com.apple.security.temporary-exception.mach-lookup.global-name` exception for `$(PRODUCT_BUNDLE_IDENTIFIER)-spks` / `-spki` that Sparkle's installer needs. Confirmed absent from the installed 0.2.0 signature.
+- Changes: add the exception to the release entitlements; `scripts/release-installed-verify.sh` now fails when it is missing.
+- Skipped: a local signed archive (no Developer ID cert on this host); verify on the next release DMG.
+- Next: 0.2.0/0.2.1 cannot self-update; Henrik installs the next release manually once, then auto-update is tested against the release after it.
+
+## 2026-10-07 — Devin — Stable release 0.2.2 prep
+
+- Goal: ship the Sparkle sandbox entitlement fix (#200) so auto-update can be tested from 0.2.2 → 0.2.3.
+- Changes: version 0.2.1 → 0.2.2; changelog heading.
+- Next: tag `v0.2.2` after Build is green; Henrik installs it manually; then cut 0.2.3.
+
+## 2026-10-08 — Devin — DMG drag-to-install repair / 0.2.3
+
+- Goal: fix the missing Applications shortcut Henrik found in 0.2.2.
+- Cause: the hdiutil fallback packaged the entire Xcode export directory without creating a shortcut.
+- Changes: stage only the app, add the shortcut in both packaging paths, and reject invalid mounted layouts before publication. Prepare the already-approved 0.2.3 update-test release.
+- Verification: passed the real-hdiutil regression for fallback and modeled create-dmg packaging, including rejection of missing/wrong Applications shortcuts and Xcode export logs; Developer ID release config and shell syntax checks; format and lint. CI remains pending. Signed artifact verification follows release; Henrik drives Check for Updates himself.
+- Documentation sweep: release runbook updated; no app behavior, architectural, privacy, or setup change.
+
+## 2026-10-08 — Devin — Mail list scroll chrome follow-up
+
+- Goal: match the supplied Apple Mail reference: scrolling rows behind a blurred mailbox header, and continuous neutral reader chrome.
+- Changes: reserve mailbox title/category controls with a safe-area inset and let inner lists scroll under the full-height blur; clip rows at the outer pane boundary. Preserve the original title in the no-folder empty state. Unified/smart and saved-search lists retain their title without a misleading selected-account context. Keep a solid Reduce Transparency fallback and remove the separate reader fade and macOS related-conversation background.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed. The focused blur retry, pane-surface, related-conversation and header suites passed 20 tests; after changing the new snapshot to title-only, its focused test passed again. Recorded only the five related-conversation references and `mailboxHeader.mailbox-title.png`. `./script/build_and_run.sh --mock` succeeded at 0.2.3 (35). Live dark/full-transparency scrolling was verified for a folder and All Inboxes, including the footer boundary and neutral reader surface. The pre-existing ViewBuilder warning in `MessageListView.swift` and non-Sendable conversion warnings in `BrevMailRootView.swift` remain. Full package suites, iOS and live-provider QA were not rerun for this macOS-only surface correction.
+- Snapshot evidence: `mailbox-title` renders only `MailListTitle`; it is not proof of scroll layout or the Reduce Transparency fallback. The live scrolling check is the geometry evidence, and no system appearance settings were changed.
+- Documentation sweep: changelog updated. No new ADR needed: this repairs the existing ADR-0015 surface policy without adding a new rendering architecture. No setup, privacy, network, signing or release changes. iOS keeps its existing header stack and related-conversation background.
+- Handoff: PR targets main; do not merge or release without Henrik's approval. The installed daily-driver app and Check for Updates remain untouched.
+- Recorded overflow QA follow-up: list blur, category actions and footer boundaries passed, but expanding a long conversation in a short window exposed sharp reader text in the toolbar safe area. Clip macOS reader content before applying the shared pane surface, so only neutral window material extends behind the toolbar. Re-test overflow before acceptance.
+- Overflow re-test: rebuilt the mock test identity with the clipping fix. The four-message Hemsedal conversation passed top/middle/bottom scrolling in light and dark mode at the app's minimum allowed 1440×652-point window; all expanded messages stayed reachable, no sharp text entered the toolbar, list blur and footer containment still passed. Recorded UI reproduction/re-test is the regression evidence for this geometry-only modifier; no new isolated snapshot was added because it would not exercise the native window safe area. Production Brev and the updater were untouched.
+- Verification: focused BrevMail tests passed (14 tests across `MailPaneSurfacePolicyTests` and `MailScrollEdgeBlurRetryStateTests`); `scripts/format.sh` and `scripts/lint.sh` passed. The accepted live UI re-test remains the GUI evidence; no build or UI rerun was performed.
+
+## 2026-10-08 — Devin — PR #202 native-toolbar scroll-under correction
+
+- Henrik correctly rejected the preceding acceptance: clipping removed sharp text but also removed the content that should be blurred behind the actual native toolbar. Blur below the toolbar was insufficient.
+- Expand the pane's top clip boundary by the measured toolbar safe-area inset, without moving layout or expanding its footer/side bounds. Overlay non-fading blur in that top region; keep the solid Reduce Transparency fallback. Explicitly allow macOS reader scroll overflow and preserve the separate fixed list controls.
+- Rebuilt mock 0.2.3 (37). Recorded light/dark UI testing proved moving blurred rows and expanded four-message Hemsedal content behind the actual native toolbar up to the window edge. Toolbar icons stayed sharp; footer remained contained. This supersedes the previous uniform/clipped-toolbar acceptance.
+- Long single-message overflow was not demonstrated: the selected mock message fitted without scrolling. iOS and live-provider QA were not rerun. No snapshot was added: this regression requires native-window safe-area geometry and scrolling, covered by the recorded runtime check rather than an isolated view image.
+- Documentation sweep: updated the Unreleased changelog. Existing ADR-0015 still governs shared chrome/readability; no new architecture, setup, privacy, network, signing or release behavior. Production Brev and updater untouched. Do not merge or release without approval.
+- Local verification: the focused BrevMail policy tests passed (14 tests in 2 suites); `scripts/format.sh` and `scripts/lint.sh` passed. No build or GUI tests were rerun; the testing agent's recorded native-toolbar retest remains the runtime evidence.
+
+## 2026-10-08 — Devin — PR #202 crash recovery and compact mailbox toolbar
+
+- Recovered `fix/mail-list-scroll-chrome` at `54020b2`, with four saved, uncommitted UI edits. Continue the existing PR, not a sibling.
+- Move the mailbox title/account into the default macOS toolbar beside the filter. Retain the in-pane title for the opt-in AppKit toolbar, which owns its items separately. Replace the category/header material with the opaque theme surface; preserve the toolbar-only scroll-under blur and footer clipping.
+- The opaque category background used SwiftUI's default safe-area extension and painted over the list toolbar strip. Constrain it with `ignoresSafeAreaEdges: []` so list rows remain visible and blurred beneath the toolbar.
+- Verified: focused policy tests passed (14 tests in 2 suites), and format/lint passed before the final one-line background change. The mock app was rebuilt; live scrolling shows blurred list and reader content under the toolbar, with sharp mailbox controls and the title beside the filter. The existing title snapshot is unchanged, because acceptance depends on live window geometry. Dark mode was not rechecked.
+- Documentation sweep: changelog/worklog only. No architecture, privacy, setup, iOS, signing or version change. Do not merge/release, replace the daily-driver app, or trigger Check for Updates.
+- Follow-up: All Inboxes and other cross-account views omit the last account subtitle; focused `MailRootMessageListTitlePolicy` coverage checks folder-only, unified inbox, Smart View and no-folder cases. The policy filter passed (28 tests in 5 suites).
+- Follow-up: Hide the macOS 26 glass capsule behind the toolbar mailbox title with `.sharedBackgroundVisibility(.hidden)`; mock build 0.2.3 (42) passed, pending visual review.
+
+## 2026-10-08 — Devin — Stable release 0.2.4 prep
+
+- Goal: publish the approved PR #202 mailbox toolbar and scroll-under changes in stable 0.2.4.
+- Merge: squash-merged PR #202 as `233f335`; `main` and the PR branch now match the approved `b7258c6` content.
+- Changes: bumped the shared marketing version and four project settings from 0.2.3 to 0.2.4; moved the current Unreleased fixes under the dated release heading.
+- Verification: `git diff origin/main b7258c6 --stat` was empty after merge. Build, Release workflow, and published artifact/appcast checks follow the release commit.
+- Handoff: do not install into `/Applications` or run Check for Updates; Henrik performs the update test.
+
+## 2026-10-08 — Devin — Plain category tabs on shared blur
+
+- Goal: try Henrik's approved replacement for the opaque category pills: plain labels and a subtle selected underline over one shared blurred header.
+- Changes: macOS-only tab styling; reuse the existing non-fading within-window blur and theme wash for the fixed header, with an opaque Reduce Transparency fallback. Keep iOS chips, toolbar scroll-under geometry, category actions and footer boundaries unchanged.
+- Isolation: branch `fix/mac-category-blur` in `/Users/devin/repos/brev-category-blur` starts from stable main; unfinished PR #203 quick-reply edits in the original checkout are untouched.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed; 38 focused BrevMail tests in 3 suites passed; new light/dark category snapshots recorded and passed. `script/build_and_run.sh --mock` built the isolated dated test identity; the running mock Mac app (default toolbar, `BREV_ENABLE_NATIVE_TOOLBAR=0`) passed category selection, shared-blur scrolling in light/dark, All Inboxes, reader toolbar scroll-under, title placement, footer and divider checks. The test recording is stored under `/Users/devin/screencasts/brev-category-default-blur/`. iOS runtime and Reduce Transparency fallback were not checked; iOS's existing chip path is unchanged.
+- Launch note: the experimental `BREV_ENABLE_NATIVE_TOOLBAR=1` bridge crashed at startup with the already-documented `SwiftUI.BarAppearanceBridge`/`NSToolbar` observer conflict; the shipped/default toolbar is flag 0 and was stable. This is not a new category-row crash.
+- Documentation sweep: changelog/worklog only. No architecture, privacy, setup, network, signing or version changes; no new ADR required. No production install, updater, merge or release.
+
+## 2026-10-08 — Devin — Sidebar unread and reader quick reply
+
+- Goal: add account-row Inbox badges, message-list unread pills, and inline reader quick replies on macOS and iOS.
+- Changes: normalized macOS account rows; added the destination unread-count policy and title pill; added a localized quick-reply bar using the notification reply draft/delivery pipeline; wired typed text into the full reply composer while preserving quote protection. Added focused policy/prefill tests and Norwegian translations.
+- Verification: focused BrevMail policy/prefill tests passed; `scripts/format.sh` reported no formatting changes; `scripts/lint.sh` passed. Mock macOS build/run succeeded as 0.2.4 (44), PID 4399; iOS 27 simulator build succeeded and the app launched on `8E780854-5816-4435-AD8F-8098DF847EB5` (PID 4921). The default mock backend omits `.smtpOAuth`, so the quick-reply bar is correctly hidden and its empty/typed states could not be captured; no send was attempted.
+- Screenshots: `/Users/devin/qa/sidebar-quick-reply/mac-light-list.png`, `mac-light-reader.png`, `mac-dark-reader.png`, `iphone-list.png`, and `iphone-reader.png`. Quick-reply screenshots are unavailable because the mock lacks `.smtpOAuth`.
+- Handoff: use mock only; do not touch `/Applications/Brev.app`. No PR or CI wait requested.
+
+## 2026-10-08 — Devin — Quick-reply mock preview
+
+- Goal: expose quick reply in the mock apps without changing the root capability gate or default mock capability set.
+- Changes: macOS and iOS app demo-backend factories now pass `.full.union(.smtpOAuth)`; `MockBackend.send(draft:)` and `save(draft:)` mutate only its in-memory actor store.
+- Verification: macOS mock build 0.2.4 (46) and iOS 27 simulator build/launch passed. Focused BrevMail tests passed (38 tests, 6 suites); format reported 0/1,213 changed; lint passed.
+- Screenshots: captured and inspected `mac-light-quick-reply-empty.png` and `iphone-reader-quick-reply.png`; the bar does not collide with either reader footer, and the Mac screenshot has no focus ring. The keyboard-up capture shows the field focused but no software keyboard. Mac typed, dark, sent, and expanded-composer states remain uncaptured: the app's accessibility provider reported that PID 6202 did not answer.
+- Handoff: mock apps remain running; never touch `/Applications/Brev.app`.
+
+## 2026-10-08 — Devin — PR #203 quick-reply and toolbar QA fixes
+
+- Goal: preserve quick-reply text through quote-body refresh, identify the actual recipient, and prevent Mac title truncation.
+- Changes: apply the existing prefill policy when rebuilding reply bodies; resolve the bar's recipient from reply targets; size the Mac title and context to their content; carry quick-reply prefill through detached iPad compose; select only replyable messages; and bind queued sends to their original source/backend.
+- Verification: focused BrevMail tests passed (58 tests, 10 suites); iOS quick-reply snapshots passed (1 test, 2 light/dark references); the FolderSidebar run passed the 16 changed account-row snapshots, while the 4 unchanged Favorites-editor references remain mismatched from host-renderer drift reproduced on pristine `ed631a7`. Added only the two quick-reply PNGs and refreshed the 16 account-row PNGs. `scripts/format.sh` reported 0/1,213 files formatted; `scripts/lint.sh` passed. The dated mock build passed as 0.2.4 (49), PID 7134, and the requested iOS 27 simulator build passed.
+- Warnings: existing non-Sendable closure conversions in `BrevMailRootView.swift`, a non-Sendable app-delegate capture in `BrevApp.swift`, and BrevThemes visibility warnings appeared during builds/tests; they did not fail verification. The snapshot test runner also logged unavailable Contacts/Intents XPC services on this host.
+- Handoff: no GUI QA or CI was run/watched. The dated mock test app remains running; `/Applications/Brev.app` was not touched.

@@ -576,13 +576,17 @@ public final class MailNavigationState {
     }
 
     /// Open compose as a reply to the selected message.
-    public func presentReply(to header: MessageHeader, sourceID: MailSourceID? = nil) {
+    public func presentReply(
+        to header: MessageHeader,
+        sourceID: MailSourceID? = nil,
+        prefillBodyText: String? = nil
+    ) {
         guard canPresentCompose else { return }
         composeReplyTo = header
         composeReplyMode = .sender
         composeForwardOf = nil
         composeSourceID = sourceID
-        composePrefill = nil
+        composePrefill = prefillBodyText.flatMap { $0.isEmpty ? nil : ComposePrefill(bodyText: $0) }
         composeDraft = nil
         presentCompose()
     }

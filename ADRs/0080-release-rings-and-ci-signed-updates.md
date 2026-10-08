@@ -87,8 +87,12 @@ Rules:
 - The secrets are only referenced by `release.yml` and `nightly.yml`.
   `build.yml` and `lint.yml` remain unsigned and secret-free
   (`permissions: contents: read`).
-- Both workflows run in a dedicated `release` GitHub environment so
+- Both workflows run in a dedicated `release-signing` GitHub environment so
   secrets are scoped and environment protection rules can be added later.
+  On 2026-10-07 this replaced `release`, whose jobs failed acquisition on
+  Linux and macOS while fresh-environment controls started. The replacement
+  retains `main`/`v*` restrictions and the same signing identities and keys;
+  the original environment is preserved for investigation.
 - Keys are imported into a temporary keychain created for the job and
   deleted in an `always()` step. Nothing is written to the checked-out
   tree.

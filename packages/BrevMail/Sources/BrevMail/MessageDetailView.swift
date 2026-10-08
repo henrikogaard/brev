@@ -672,6 +672,9 @@ public struct MessageDetailView: View {
                 }
             }
         }
+        #if os(macOS)
+        .scrollClipDisabled()
+        #endif
         .toolbar {
             #if os(iOS)
             // The consolidated reader overflow menu — one inventory, shared

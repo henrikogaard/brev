@@ -59,6 +59,9 @@ extension SettingsSection {
                 String(localized: "App icon", bundle: .module),
                 String(localized: "Color and themes", bundle: .module),
                 String(localized: "Mode", bundle: .module),
+                String(localized: "Accent color", bundle: .module),
+                String(localized: "Accent source", bundle: .module),
+                String(localized: "Themes", bundle: .module),
                 String(localized: "Window background opacity", bundle: .module),
                 String(localized: "Sidebar background opacity", bundle: .module),
             ]
@@ -296,6 +299,10 @@ private struct SettingsScopeCaptionKey: EnvironmentKey {
     static let defaultValue: String? = nil
 }
 
+private struct SettingsScopeAccessoryKey: EnvironmentKey {
+    static let defaultValue: AnyView? = nil
+}
+
 extension EnvironmentValues {
     var settingsSearchTarget: String? {
         get { self[SettingsSearchTargetKey.self] }
@@ -307,5 +314,12 @@ extension EnvironmentValues {
     var settingsScopeCaption: String? {
         get { self[SettingsScopeCaptionKey.self] }
         set { self[SettingsScopeCaptionKey.self] = newValue }
+    }
+
+    /// Optional scope control (e.g. the mailbox picker) that SectionScaffold
+    /// scrolls with the pane instead of pinning above it.
+    var settingsScopeAccessory: AnyView? {
+        get { self[SettingsScopeAccessoryKey.self] }
+        set { self[SettingsScopeAccessoryKey.self] = newValue }
     }
 }

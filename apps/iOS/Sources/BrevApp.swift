@@ -682,6 +682,7 @@ extension AppSession {
                 localSearchIndex: { accountID in
                     makeLocalSearchIndex(accountID: accountID)
                 },
+                makeDemoBackend: { MockBackend(capabilities: .full.union(.smtpOAuth)) },
                 googleOAuthAccountProvisioningCoordinator: { result in
                     let connected = try await gmailConnector.provision(result)
                     return AppSession.LoginResult(

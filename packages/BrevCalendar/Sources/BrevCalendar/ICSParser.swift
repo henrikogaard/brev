@@ -546,18 +546,34 @@ public enum ICSParser {
         params: [String: String],
         value: String
     ) -> ParsedPerson? {
-        // Value is typically "mailto:email@example.com"
+        // cal-address is a URI: typically "mailto:email@example.com" for
+        // mailboxes, or a principal URL when the participant (e.g. a
+        // DAV account claimed as ORGANIZER) has no mailbox.
         let trimmed = value.trimmingCharacters(in: .whitespaces)
-        guard let scheme = trimmed.range(of: "mailto:", options: .caseInsensitive) else {
+        let email: String
+        if trimmed.range(of: "mailto:", options: [.anchored, .caseInsensitive]) != nil {
+            email = String(trimmed.dropFirst("mailto:".count))
+        } else if let colon = trimmed.firstIndex(of: ":"),
+                  isURIScheme(trimmed[..<colon]) {
+            email = trimmed
+        } else {
             return nil
         }
-        let email = String(trimmed[scheme.upperBound...])
         let cn = params["CN"]?.trimmingCharacters(in: CharacterSet(charactersIn: "\""))
         return ParsedPerson(
             name: cn?.isEmpty == false ? cn : nil,
             email: email,
             participation: params["PARTSTAT"]?.uppercased()
         )
+    }
+
+    /// Whether the text before a value's first colon is a URI scheme
+    /// (`ALPHA` then `ALPHA`/`DIGIT`/`+`/`-`/`.`).
+    private static func isURIScheme(_ candidate: Substring) -> Bool {
+        guard let first = candidate.first, first.isLetter else { return false }
+        return candidate.allSatisfy {
+            $0.isLetter || $0.isNumber || "+-.".contains($0)
+        }
     }
 
     /// Parses an RFC 5545 duration trigger such as `-PT15M` or `-P1D` into

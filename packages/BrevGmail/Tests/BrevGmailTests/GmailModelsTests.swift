@@ -16,6 +16,17 @@ import Testing
 
 @Suite("Gmail API models")
 struct GmailModelsTests {
+    @Test("Gmail state labels are not sidebar mailboxes")
+    func hidesStateLabels() {
+        for id in ["CATEGORY_UPDATES", "CATEGORY_PROMOTIONS", "CATEGORY_SOCIAL", "CATEGORY_FORUMS",
+                   "CATEGORY_PERSONAL", "UNREAD", "CHAT"] {
+            #expect(GmailAPIBackend.isHiddenStateLabel(id))
+        }
+        for id in ["INBOX", "STARRED", "IMPORTANT", "SENT", "Label_42"] {
+            #expect(!GmailAPIBackend.isHiddenStateLabel(id))
+        }
+    }
+
     @Test("accepts Gmail pages and history events with omitted optional arrays")
     func acceptsOmittedArrays() throws {
         let page = try JSONDecoder().decode(

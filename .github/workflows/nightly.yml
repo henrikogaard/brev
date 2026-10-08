@@ -96,7 +96,7 @@ jobs:
     if: needs.plan.outputs.skip != 'true'
     runs-on: macos-15
     timeout-minutes: 60
-    environment: release
+    environment: release-signing
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -146,6 +146,7 @@ jobs:
           p12-base64: ${{ secrets.BREV_DEVELOPER_ID_P12_BASE64 }}
           p12-password: ${{ secrets.BREV_DEVELOPER_ID_P12_PASSWORD }}
           profile-base64: ${{ secrets.BREV_MACOS_PROFILE_NIGHTLY_BASE64 }}
+          widget-profile-base64: ${{ secrets.BREV_MACOS_WIDGET_PROFILE_NIGHTLY_BASE64 }}
           asc-key-p8-base64: ${{ secrets.BREV_ASC_KEY_P8_BASE64 }}
           sparkle-private-ed-key: ${{ secrets.BREV_SPARKLE_PRIVATE_ED_KEY }}
 
@@ -157,6 +158,7 @@ jobs:
         run: |
           {
             echo "BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY=$BREV_PROVISIONING_PROFILE_SPECIFIER"
+            echo "BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER_NIGHTLY=$BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER"
             echo "BREV_ASC_KEY_ID=$BREV_ASC_KEY_ID"
             echo "BREV_ASC_ISSUER_ID=$BREV_ASC_ISSUER_ID"
             echo "BREV_SPARKLE_PUBLIC_ED_KEY=$BREV_SPARKLE_PUBLIC_ED_KEY"

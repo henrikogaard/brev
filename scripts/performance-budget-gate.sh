@@ -57,14 +57,16 @@ def violations(data):
         if key not in data:
             failures.append(f"missing measurement: {key}")
             continue
-        value = float(data[key])
-        if math.isnan(value) or value > limit:
+        value = data[key]
+        if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0 or value > limit:
             failures.append(f"{key}={value} exceeds hard limit {limit}")
     return failures
 
 sample = {key: limit - 1 for key, limit in budgets.items()}
 assert violations(sample) == []
 assert violations({**sample, "cached_inbox_query_ms": 401})
+for invalid in (-1, float("nan"), float("inf"), float("-inf"), True, None, "1"):
+    assert violations({**sample, "cached_inbox_query_ms": invalid})
 assert violations({key: value for key, value in sample.items() if key != "idle_resident_memory_mb"})
 print("performance-budget-gate.sh: policy self-check OK")
 PY
@@ -110,8 +112,10 @@ for key, limit in budgets.items():
     if key not in data:
         violations.append(f"missing measurement: {key}")
         continue
-    value = float(data[key])
-    if math.isnan(value) or value > limit:
+    value = data[key]
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value < 0:
+        violations.append(f"invalid measurement: {key}={value!r} (expected finite nonnegative number)")
+    elif value > limit:
         violations.append(f"{key}={value} exceeds hard limit {limit}")
 
 if violations:

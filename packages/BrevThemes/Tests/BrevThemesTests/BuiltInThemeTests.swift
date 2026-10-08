@@ -129,6 +129,51 @@ struct BuiltInThemeTests {
         #expect(overridden.avatarPalette == theme.avatarPalette)
     }
 
+    @Test("BrevColor reports WCAG contrast for sRGB colors")
+    func colorContrastRatio() {
+        #expect(BrevColor("#000000").contrastRatio(against: BrevColor("#FFFFFF")) >= 20.99)
+        #expect(BrevColor("#777777").contrastRatio(against: BrevColor("#FFFFFF")) >= 4.47)
+    }
+
+    @Test("readable accents adjust black and white for light and dark surfaces")
+    func readableAccentsMeetNormalContrast() {
+        for theme in [BrevTheme.brevMonoLight, BrevTheme.brevMonoGrey] {
+            for accent in [BrevColor("#000000"), BrevColor("#FFFFFF")] {
+                let readable = theme.withAccent(accent).withReadableAccent()
+                for surface in [theme.bgPrimary, theme.bgSecondary, theme.bgTertiary] {
+                    #expect(
+                        readable.accent.contrastRatio(against: surface) >= 4.5,
+                        "\(theme.id): \(readable.accent.hex) on \(surface.hex)"
+                    )
+                }
+            }
+        }
+    }
+
+    @Test("increased contrast prefers the seven to one target")
+    func readableAccentsMeetIncreasedContrastWhenFeasible() {
+        for theme in [BrevTheme.brevMonoLight, BrevTheme.brevMonoGrey] {
+            let readable = theme
+                .withAccent(BrevColor("#808080"))
+                .withReadableAccent(increasedContrast: true)
+
+            for surface in [theme.bgPrimary, theme.bgSecondary, theme.bgTertiary] {
+                #expect(readable.accent.contrastRatio(against: surface) >= 7)
+            }
+        }
+    }
+
+    @Test("readable accent transformation preserves non-accent palette roles")
+    func readableAccentPreservesPalette() {
+        let theme = BrevTheme.brevSlate
+        let readable = theme.withAccent(BrevColor("#808080")).withReadableAccent()
+
+        #expect(readable.bgPrimary == theme.bgPrimary)
+        #expect(readable.selection == theme.selection)
+        #expect(readable.success == theme.success)
+        #expect(readable.avatarPalette == theme.avatarPalette)
+    }
+
     @Test("default theme pair uses monochrome chrome and semantic state colors")
     func defaultThemePairUsesMonochromeChrome() {
         #expect(BrevTheme.brevMonoLight.bgPrimary.hex == "#FFFFFF")

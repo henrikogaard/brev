@@ -17,6 +17,8 @@ import SwiftUI
 
 public struct PerFolderSyncSection: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var symbolWidth = SettingsLayout.symbolWidth
     @State private var settings: AccountMailboxSyncSettings
     @State private var visibilityPreferences: FolderVisibilityPreferences
     @State private var relatedAutoLoadEnabled = false
@@ -227,17 +229,52 @@ public struct PerFolderSyncSection: View {
         )
     }
 
+    @ViewBuilder
+    private var refreshButton: some View {
+        if let onReload {
+            Button(action: onReload) {
+                Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
+            }
+            .disabled(isLoading)
+        }
+    }
+
+    @ViewBuilder
+    private var filterField: some View {
+        #if os(iOS)
+        HStack(spacing: BrevSpacing.xs) {
+            Image(systemName: "magnifyingglass")
+                .brevFont(.body)
+                .foregroundStyle(theme.textTertiary.color)
+            TextField(String(localized: "Filter folders", bundle: .module), text: $filter)
+                .brevFont(.body)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .accessibilityLabel(String(localized: "Filter folders", bundle: .module))
+        }
+        .padding(.horizontal, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.xs)
+        .frame(maxWidth: .infinity, minHeight: 36)
+        .brevQuietSurface(cornerRadius: BrevRadius.md)
+        #else
+        TextField(String(localized: "Filter folders", bundle: .module), text: $filter)
+            .textFieldStyle(.roundedBorder)
+            .accessibilityLabel(String(localized: "Filter folders", bundle: .module))
+        #endif
+    }
+
     private var folderOverridesGroup: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack {
-                TextField(String(localized: "Filter folders", bundle: .module), text: $filter)
-                    .textFieldStyle(.roundedBorder)
-                    .accessibilityLabel(String(localized: "Filter folders", bundle: .module))
-                if let onReload {
-                    Button(action: onReload) {
-                        Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(spacing: BrevSpacing.sm) {
+                        filterField
+                        refreshButton
                     }
-                    .disabled(isLoading)
+                }
+                VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                    filterField
+                    refreshButton
                 }
             }
             if isLoading { ProgressView().controlSize(.small) }
@@ -247,27 +284,22 @@ public struct PerFolderSyncSection: View {
                     .foregroundStyle(theme.textSecondary.color)
                     .padding(.vertical, BrevSpacing.lg)
             } else {
-                ViewThatFits(in: .horizontal) {
-                    HStack(spacing: BrevSpacing.sm) {
-                        Text("Folder", bundle: .module).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
-                        Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
-                        Text("Show", bundle: .module).frame(width: 44)
-                    }
-                    HStack {
-                        Text("Folder", bundle: .module)
-                        Spacer()
-                        Text("Show", bundle: .module).frame(width: 44)
-                    }
-                }
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
-                .padding(.horizontal, BrevSpacing.sm)
-                LazyVStack(spacing: 0) {
-                    ForEach(visibleRows) { row in
-                        folderRow(row)
-                        Rectangle().fill(theme.separator.color).frame(height: 1)
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    folderTableHeader
+                    LazyVStack(spacing: 0) {
+                        let rows = visibleRows
+                        ForEach(rows) { row in
+                            folderRow(row)
+                            if row.id != rows.last?.id {
+                                Rectangle().fill(theme.separator.color).frame(height: 1)
+                            }
+                        }
                     }
                 }
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.sm)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .brevQuietSurface(cornerRadius: BrevRadius.md)
                 if visibleRows.isEmpty {
                     Text("No matching folders", bundle: .module)
                         .foregroundStyle(theme.textSecondary.color)
@@ -280,18 +312,78 @@ public struct PerFolderSyncSection: View {
         }
     }
 
+    /// Stacked accessibility rows carry their own "Keep offline" caption,
+    /// so the header drops that column instead of mislabeling the layout.
+    private var folderTableHeader: some View {
+        ViewThatFits(in: .horizontal) {
+            if !dynamicTypeSize.isAccessibilitySize {
+                HStack(spacing: BrevSpacing.sm) {
+                    Text("Folder", bundle: .module).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
+                    Text("Keep offline", bundle: .module).frame(width: 132, alignment: .leading)
+                    Text("Show", bundle: .module)
+                        .fixedSize()
+                        .frame(width: Self.toggleColumnWidth, alignment: .trailing)
+                }
+            }
+            HStack {
+                Text("Folder", bundle: .module)
+                Spacer()
+                Text("Show", bundle: .module)
+                    .fixedSize()
+                    .frame(width: Self.toggleColumnWidth, alignment: .trailing)
+            }
+        }
+        .brevFont(.footnote)
+        .foregroundStyle(theme.textSecondary.color)
+    }
+
     private var visibleRows: [FolderSyncRow] {
         let rows = FolderSyncRows.make(folders)
         let query = filter.trimmingCharacters(in: .whitespacesAndNewlines)
         return query.isEmpty ? rows : rows.filter { $0.folder.name.localizedStandardContains(query) }
     }
 
+    @ViewBuilder
     private func folderRow(_ row: FolderSyncRow) -> some View {
+        Group {
+            if dynamicTypeSize.isAccessibilitySize {
+                accessibilityFolderRow(row)
+            } else {
+                regularFolderRow(row)
+            }
+        }
+        .frame(minHeight: 40)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.vertical, BrevSpacing.xxs)
+    }
+
+    /// Accessibility sizes give each control its own line under the folder
+    /// name so the menu never clips to a fixed column.
+    private func accessibilityFolderRow(_ row: FolderSyncRow) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            HStack(alignment: .top) {
+                folderIdentity(row)
+                Spacer(minLength: BrevSpacing.sm)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
+            }
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text("Keep offline", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                retentionPicker(row.folder, fixedWidth: false)
+                    .padding(.leading, -SettingsLayout.stackedMenuButtonInset)
+            }
+            .padding(.leading, CGFloat(min(row.depth, 6)) * 14 + symbolWidth + SettingsLayout.symbolSpacing)
+        }
+        .padding(.vertical, BrevSpacing.xs)
+    }
+
+    private func regularFolderRow(_ row: FolderSyncRow) -> some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: BrevSpacing.sm) {
                 folderIdentity(row).frame(minWidth: 140, maxWidth: .infinity, alignment: .leading)
                 retentionPicker(row.folder)
-                visibilityToggle(row.folder).frame(width: 44)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
             }
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
@@ -304,20 +396,23 @@ public struct PerFolderSyncSection: View {
                     }
                 }
                 Spacer(minLength: BrevSpacing.sm)
-                visibilityToggle(row.folder).frame(width: 44)
+                visibilityToggle(row.folder).frame(width: Self.toggleColumnWidth, alignment: .trailing)
             }
         }
-        .frame(minHeight: 40)
-        .padding(.horizontal, BrevSpacing.sm)
-        .padding(.vertical, BrevSpacing.xxs)
-        .background(theme.bgPrimary.color)
     }
 
+    /// Wide enough for the platform control: a macOS checkbox or a 51 pt iOS switch.
+    private static let toggleColumnWidth: CGFloat = {
+        #if os(iOS)
+        52
+        #else
+        44
+        #endif
+    }()
+
     private func folderIdentity(_ row: FolderSyncRow) -> some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: folderIcon(for: row.folder.role))
-                .foregroundStyle(theme.textSecondary.color)
-                .frame(width: 18)
+        HStack(spacing: SettingsLayout.symbolSpacing) {
+            SettingsSymbol(symbolName: folderIcon(for: row.folder.role))
             Text(row.folder.name)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
@@ -327,7 +422,7 @@ public struct PerFolderSyncSection: View {
         .padding(.leading, CGFloat(min(row.depth, 6)) * 14)
     }
 
-    private func retentionPicker(_ folder: Folder) -> some View {
+    private func retentionPicker(_ folder: Folder, fixedWidth: Bool = true) -> some View {
         Picker(String(localized: "Offline retention for \(folder.name)", bundle: .module),
                selection: retentionBinding(for: folder)) {
             Text("Default", bundle: .module).tag(OfflineRetentionPolicy?.none)
@@ -336,7 +431,7 @@ public struct PerFolderSyncSection: View {
             }
         }
         .labelsHidden()
-        .frame(width: 132)
+        .frame(width: fixedWidth ? 132 : nil, alignment: .leading)
         .accessibilityLabel(String(localized: "Offline retention for \(folder.name)", bundle: .module))
     }
 

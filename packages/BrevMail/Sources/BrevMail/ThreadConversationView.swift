@@ -246,91 +246,94 @@ public struct ThreadConversationView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
             .scrollContentBackground(.hidden)
-            .onAppear {
-                let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: visibleHeaders
-                )
-                if let defaultID {
-                    expandedMessageIDs = [defaultID]
-                }
-                if shouldAutoScrollToExpandedMessage, let defaultID {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        withAnimation {
-                            proxy.scrollTo(defaultID, anchor: .top)
+            #if os(macOS)
+                .scrollClipDisabled()
+            #endif
+                .onAppear {
+                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                        selectedID: navigation.selectedMessageID,
+                        in: visibleHeaders
+                    )
+                    if let defaultID {
+                        expandedMessageIDs = [defaultID]
+                    }
+                    if shouldAutoScrollToExpandedMessage, let defaultID {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            withAnimation {
+                                proxy.scrollTo(defaultID, anchor: .top)
+                            }
                         }
                     }
                 }
-            }
-            // Re-initialise when the selected thread changes.
-            .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
-                guard newThreadID != nil else { return }
-                // Drop the previous thread's pooled renderers — their card
-                // identities are gone, so nothing still needs them warm.
-                renderPool = ThreadConversationRenderPool()
-                let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: visibleHeaders
-                )
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    expandedMessageIDs = defaultID.map { [$0] } ?? []
-                }
-                if shouldAutoScrollToExpandedMessage, let defaultID {
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                        withAnimation { proxy.scrollTo(defaultID, anchor: .top) }
+                // Re-initialise when the selected thread changes.
+                .onChange(of: threadHeaders.first?.threadID) { _, newThreadID in
+                    guard newThreadID != nil else { return }
+                    // Drop the previous thread's pooled renderers — their card
+                    // identities are gone, so nothing still needs them warm.
+                    renderPool = ThreadConversationRenderPool()
+                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                        selectedID: navigation.selectedMessageID,
+                        in: visibleHeaders
+                    )
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        expandedMessageIDs = defaultID.map { [$0] } ?? []
+                    }
+                    if shouldAutoScrollToExpandedMessage, let defaultID {
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                            withAnimation { proxy.scrollTo(defaultID, anchor: .top) }
+                        }
                     }
                 }
-            }
-            .onChange(of: visibleHeaders.map(\.id)) { _, visibleIDs in
-                guard !visibleIDs.isEmpty,
-                      expandedMessageIDs.isDisjoint(with: visibleIDs)
-                else { return }
-                let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                    selectedID: navigation.selectedMessageID,
-                    in: visibleHeaders
-                )
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    expandedMessageIDs = defaultID.map { [$0] } ?? []
-                }
-            }
-            .onChange(of: navigation.selectedMessageID) { _, selectedID in
-                guard let selectedID,
-                      visibleHeaders.contains(where: { $0.id == selectedID })
-                else { return }
-                withAnimation(.easeInOut(duration: 0.15)) {
-                    expandedMessageIDs.insert(selectedID)
-                    if shouldAutoScrollToExpandedMessage {
-                        proxy.scrollTo(selectedID, anchor: .top)
+                .onChange(of: visibleHeaders.map(\.id)) { _, visibleIDs in
+                    guard !visibleIDs.isEmpty,
+                          expandedMessageIDs.isDisjoint(with: visibleIDs)
+                    else { return }
+                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                        selectedID: navigation.selectedMessageID,
+                        in: visibleHeaders
+                    )
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        expandedMessageIDs = defaultID.map { [$0] } ?? []
                     }
                 }
-            }
-            .focusedSceneValue(\.mailPrintExportActions, printExportActions)
-            .alert(String(localized: "Print / Export Failed", bundle: .module), isPresented: printExportErrorBinding) {
-                Button(String(localized: "OK", bundle: .module), role: .cancel) {
-                    printExportErrorMessage = nil
+                .onChange(of: navigation.selectedMessageID) { _, selectedID in
+                    guard let selectedID,
+                          visibleHeaders.contains(where: { $0.id == selectedID })
+                    else { return }
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        expandedMessageIDs.insert(selectedID)
+                        if shouldAutoScrollToExpandedMessage {
+                            proxy.scrollTo(selectedID, anchor: .top)
+                        }
+                    }
                 }
-            } message: {
-                Text(printExportErrorMessage ?? "")
-            }
+                .focusedSceneValue(\.mailPrintExportActions, printExportActions)
+                .alert(String(localized: "Print / Export Failed", bundle: .module), isPresented: printExportErrorBinding) {
+                    Button(String(localized: "OK", bundle: .module), role: .cancel) {
+                        printExportErrorMessage = nil
+                    }
+                } message: {
+                    Text(printExportErrorMessage ?? "")
+                }
             #if os(iOS)
-            .sheet(isPresented: Binding(
-                get: { exportShareURL != nil },
-                set: { if !$0 { exportShareURL = nil } }
-            )) {
-                if let url = exportShareURL {
-                    MailShareSheet(activityItems: [url])
+                .sheet(isPresented: Binding(
+                    get: { exportShareURL != nil },
+                    set: { if !$0 { exportShareURL = nil } }
+                )) {
+                    if let url = exportShareURL {
+                        MailShareSheet(activityItems: [url])
+                    }
                 }
-            }
             #endif
-            .alert(String(localized: "Enable AI Thread Summaries?", bundle: .module), isPresented: $showAISummaryConsent) {
-                Button(String(localized: "Enable", bundle: .module)) {
-                    aiEnabled = true
-                    aiConsentGiven = true
+                .alert(String(localized: "Enable AI Thread Summaries?", bundle: .module), isPresented: $showAISummaryConsent) {
+                    Button(String(localized: "Enable", bundle: .module)) {
+                        aiEnabled = true
+                        aiConsentGiven = true
+                    }
+                    Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+                } message: {
+                    Text(AIWriterDisclosure.defaultProvider.consentMessage)
                 }
-                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
-            } message: {
-                Text(AIWriterDisclosure.defaultProvider.consentMessage)
-            }
         }
     }
 

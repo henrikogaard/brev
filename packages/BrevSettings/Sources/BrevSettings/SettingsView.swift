@@ -26,6 +26,7 @@ import UIKit
 public struct SettingsView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -33,6 +34,7 @@ public struct SettingsView: View {
     @State private var selectedPluginContribution: RegisteredContribution?
     @State private var accounts: [BrevAccount] = []
     @State private var currentAccountID: BrevAccount.ID?
+    private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
     @State private var searchText = ""
@@ -225,6 +227,7 @@ public struct SettingsView: View {
                     closeSettings()
                 }
                 .accessibilityLabel(String(localized: "Close Settings", bundle: .module))
+                .foregroundStyle(theme.textPrimary.color)
             }
         }
     }
@@ -441,7 +444,7 @@ public struct SettingsView: View {
                     .dynamicTypeSize(...DynamicTypeSize.large)
                 #endif
                     .foregroundStyle(theme.textSecondary.color)
-                    .frame(width: 20)
+                    .frame(width: SettingsLayout.symbolWidth)
             }
             Text(category.title)
                 .lineLimit(nil)
@@ -456,21 +459,37 @@ public struct SettingsView: View {
         ForEach(navigation.availability.visibleCategories.filter { $0.isSupplementary == supplementary }) { category in
             let selected = selectedPluginContribution == nil && navigation.selected.category == category
             Button { selectCategory(category) } label: {
-                categoryRow(category)
-                    .padding(.horizontal, BrevSpacing.sm)
-                    .padding(
-                        .vertical,
-                        (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.xs)
-                    )
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(selected ? theme.selection.color : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
-                    .contentShape(Rectangle())
+                sidebarRowChrome(categoryRow(category), selected: selected)
             }
             .buttonStyle(.plain)
             .accessibilityAddTraits(selected ? .isSelected : [])
-            .listRowInsets(EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0))
+            .listRowInsets(sidebarRowInsets)
         }
+    }
+
+    /// Selection pill shared by category and extension rows so every sidebar
+    /// icon sits on one column under the search field's glyph.
+    private func sidebarRowChrome(_ row: some View, selected: Bool) -> some View {
+        row
+            .padding(.horizontal, BrevSpacing.sm)
+            .padding(
+                .vertical,
+                (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.xs)
+            )
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(selected ? theme.selection.color : Color.clear)
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            .contentShape(Rectangle())
+    }
+
+    /// The sidebar list insets rows a few points inside the search field;
+    /// pull the pill out so both share the same leading and trailing edges.
+    private var sidebarRowInsets: EdgeInsets {
+        #if os(macOS)
+        EdgeInsets(top: 1, leading: -BrevSpacing.xs, bottom: 1, trailing: -BrevSpacing.xs)
+        #else
+        EdgeInsets(top: 1, leading: 0, bottom: 1, trailing: 0)
+        #endif
     }
 
     @ViewBuilder
@@ -489,19 +508,29 @@ public struct SettingsView: View {
                     } label: {
                         pluginSettingsRow(contribution)
                     }
+                    .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
+                    .listRowBackground(theme.bgPrimary.color)
                     #else
                     Button {
                         selectedPluginContribution = contribution
                     } label: {
-                        pluginSettingsRow(contribution)
+                        sidebarRowChrome(
+                            pluginSettingsRow(contribution),
+                            selected: selectedPluginContribution == contribution
+                        )
                     }
                     .buttonStyle(.plain)
+                    .accessibilityAddTraits(selectedPluginContribution == contribution ? .isSelected : [])
+                    .listRowInsets(sidebarRowInsets)
                     #endif
                 }
             } header: {
                 Text("Extensions", bundle: .module)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
+                #if os(macOS)
+                    .padding(.leading, BrevSpacing.sm)
+                #endif
             }
         }
     }
@@ -511,13 +540,18 @@ public struct SettingsView: View {
             if showSidebarIcons {
                 Image(systemName: contribution.sfSymbolName)
                     .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(theme.accent.color)
-                    .frame(width: 18, alignment: .center)
+                    .brevFont(.body)
+                #if os(iOS)
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                #endif
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: SettingsLayout.symbolWidth)
             }
             Text(contribution.displayName)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
         }
+        .settingsTouchTarget()
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -646,16 +680,17 @@ public struct SettingsView: View {
                     VStack(alignment: .leading, spacing: BrevSpacing.md) {
                         Text(category.title).brevFont(.headline)
                             .foregroundStyle(theme.textPrimary.color)
-                        Picker(category.title, selection: Binding(
-                            get: { navigation.selected },
-                            set: { section in searchTarget = nil; navigation.select(section) }
-                        )) {
-                            ForEach(sections) { section in Text(section.title).tag(section) }
+                        ViewThatFits(in: .horizontal) {
+                            if !dynamicTypeSize.isAccessibilitySize {
+                                sectionPicker(category: category, sections: sections)
+                                    .pickerStyle(.segmented)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                            sectionPicker(category: category, sections: sections)
+                                .pickerStyle(.menu)
                         }
-                        .labelsHidden()
-                        .pickerStyle(.segmented)
                     }
-                    .padding(.horizontal, BrevSpacing.xl)
+                    .padding(.horizontal, SettingsLayout.paneHorizontalInset(interfaceDensity))
                     .padding(.vertical, BrevSpacing.lg)
                     Divider().overlay(theme.border.color)
                 }
@@ -665,13 +700,125 @@ public struct SettingsView: View {
         }
     }
 
+    private func sectionPicker(category: SettingsCategory, sections: [SettingsSection]) -> some View {
+        Picker(category.title, selection: Binding(
+            get: { navigation.selected },
+            set: { section in searchTarget = nil; navigation.select(section) }
+        )) {
+            ForEach(sections) { section in Text(section.title).tag(section) }
+        }
+        .labelsHidden()
+    }
+
     private func scopedDetail(for section: SettingsSection) -> some View {
+        #if os(iOS)
+        // iPhone panes scroll the scope with their content so the large
+        // navigation title flows straight into the pane, as in iOS Settings.
+        detail(for: section)
+            .environment(\.settingsScopeCaption, settingsScopeCaption(for: section))
+            .environment(\.settingsScopeAccessory, inlineSettingsScope(for: section))
+            .background(BrevWindowSurfaceBackground(role: .content).ignoresSafeArea())
+        #else
         VStack(spacing: 0) {
             settingsScope(for: section)
             detail(for: section)
         }
         .environment(\.settingsScopeCaption, settingsScopeCaption(for: section))
+        #endif
     }
+
+    #if os(iOS)
+    private func inlineSettingsScope(for section: SettingsSection) -> AnyView? {
+        switch section {
+        case .mailStorage:
+            AnyView(
+                SettingsRowLabel(
+                    symbolName: "person.crop.circle",
+                    title: currentAccount?.emailAddress ?? String(localized: "No account selected", bundle: .module),
+                    subtitle: String(localized: "Storage and repair actions apply to this entire account.", bundle: .module)
+                )
+            )
+        case .folderSync:
+            AnyView(inlineMailboxPicker)
+        default:
+            nil
+        }
+    }
+
+    @ViewBuilder
+    private var inlineMailboxPicker: some View {
+        if mailboxContext.mailboxes.isEmpty {
+            SettingsRowLabel(
+                symbolName: "tray",
+                title: String(localized: "Mailbox", bundle: .module),
+                subtitle: String(localized: "Open a mailbox in Mail to choose its settings.", bundle: .module)
+            )
+        } else {
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(spacing: BrevSpacing.md) {
+                        mailboxRowTitle
+                        Spacer(minLength: BrevSpacing.sm)
+                        mailboxMenu.fixedSize()
+                            .padding(.trailing, -SettingsLayout.menuButtonInset)
+                    }
+                }
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    mailboxRowTitle
+                    wrappingMailboxMenu
+                        .settingsStackedControl()
+                }
+            }
+            .frame(minHeight: 44)
+        }
+    }
+
+    private var mailboxRowTitle: some View {
+        HStack(spacing: SettingsLayout.symbolSpacing) {
+            SettingsSymbol(symbolName: "tray")
+            Text("Mailbox", bundle: .module)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+        }
+    }
+
+    /// The system menu button clips a wrapped label, so accessibility sizes
+    /// use a plain menu whose label can grow onto a second line.
+    private var wrappingMailboxMenu: some View {
+        Menu {
+            mailboxPicker.pickerStyle(.inline)
+        } label: {
+            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xxs) {
+                Text(selectedMailbox.map(mailboxPickerTitle) ?? String(localized: "Choose mailbox", bundle: .module))
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                Image(systemName: "chevron.up.chevron.down")
+                    .imageScale(.small)
+            }
+            .brevFont(.body)
+            .foregroundStyle(theme.textSecondary.color)
+        }
+        .accessibilityLabel(String(localized: "Settings mailbox", bundle: .module))
+    }
+
+    private var mailboxMenu: some View {
+        mailboxPicker
+            .pickerStyle(.menu)
+            .accessibilityLabel(String(localized: "Settings mailbox", bundle: .module))
+    }
+
+    private var mailboxPicker: some View {
+        Picker(String(localized: "Mailbox", bundle: .module), selection: $selectedSourceID) {
+            if selectedMailbox == nil {
+                Text("Choose mailbox", bundle: .module).tag(MailSourceID?.none)
+            }
+            ForEach(mailboxContext.mailboxes) { item in
+                Text(verbatim: mailboxPickerTitle(item)).tag(Optional(item.id))
+            }
+        }
+        .labelsHidden()
+    }
+    #endif
 
     private func settingsScopeCaption(for section: SettingsSection) -> String? {
         [.appearance, .mailboxView, .compose, .vipAndReminders, .privacy, .preferenceSync].contains(section)
@@ -695,34 +842,52 @@ public struct SettingsView: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, BrevSpacing.xl)
+            .padding(.horizontal, SettingsLayout.paneHorizontalInset(interfaceDensity))
             .padding(.vertical, BrevSpacing.sm)
             .background(theme.bgSecondary.color)
         } else if section == .folderSync {
-            HStack(spacing: BrevSpacing.md) {
-                Image(systemName: "tray")
+            Group {
                 if mailboxContext.mailboxes.isEmpty {
-                    Text("Open a mailbox in Mail to choose its settings.", bundle: .module)
+                    SettingsRowLabel(
+                        symbolName: "tray",
+                        title: String(localized: "Mailbox", bundle: .module),
+                        subtitle: String(localized: "Open a mailbox in Mail to choose its settings.", bundle: .module)
+                    )
                 } else {
-                    Picker(String(localized: "Mailbox", bundle: .module), selection: $selectedSourceID) {
+                    SettingsPickerRow(
+                        symbolName: "tray",
+                        title: String(localized: "Mailbox", bundle: .module),
+                        subtitle: String(localized: "These settings apply only to the selected mailbox.", bundle: .module),
+                        selection: $selectedSourceID
+                    ) {
                         if selectedMailbox == nil {
                             Text("Choose mailbox", bundle: .module).tag(MailSourceID?.none)
                         }
                         ForEach(mailboxContext.mailboxes) { item in
-                            Text(verbatim: "\(item.mailbox.displayName) · \(item.mailbox.email)")
+                            Text(verbatim: mailboxPickerTitle(item))
                                 .tag(Optional(item.id))
                         }
                     }
                     .accessibilityLabel(String(localized: "Settings mailbox", bundle: .module))
                 }
             }
-            .brevFont(.body)
-            .foregroundStyle(theme.textPrimary.color)
-            .padding(.horizontal, BrevSpacing.xl)
+            .padding(.horizontal, SettingsLayout.paneHorizontalInset(interfaceDensity))
             .padding(.vertical, BrevSpacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(theme.bgSecondary.color)
+            .overlay(alignment: .bottom) {
+                Rectangle().fill(theme.separator.color).frame(height: 1)
+            }
         }
+    }
+
+    /// Display names stay short in the scope menu; the address is only added
+    /// when two mailboxes would otherwise read the same.
+    private func mailboxPickerTitle(_ item: SettingsMailbox) -> String {
+        let name = item.mailbox.displayName
+        let isAmbiguous = name.isEmpty
+            || mailboxContext.mailboxes.filter { $0.mailbox.displayName == name }.count > 1
+        return isAmbiguous ? item.mailbox.email : name
     }
 
     private var currentBackend: (any MailBackend)? {
@@ -740,14 +905,12 @@ public struct SettingsView: View {
             if showSidebarIcons {
                 // Fixed icon column so wide SF Symbols (paintpalette, calendar.badge…)
                 // don't push labels out of vertical alignment with narrower glyphs.
-                Image(systemName: section.symbolName)
-                    .symbolRenderingMode(.hierarchical)
-                    .foregroundStyle(theme.accent.color)
-                    .frame(width: 18, alignment: .center)
+                SettingsSymbol(symbolName: section.symbolName)
             }
             Text(section.title)
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
         }
         .settingsTouchTarget()
     }

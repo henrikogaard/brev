@@ -650,6 +650,12 @@ enum FolderSidebarPresentation {
     ) -> String {
         if isProviderNativeLabelSource(capabilities: capabilities)
             && (folder.role == .starred || isProviderImportantFolder(folder)) {
+            // Gmail names its system labels by their raw IDs ("STARRED").
+            if folder.name.caseInsensitiveCompare(folder.id) == .orderedSame {
+                return folder.role == .starred
+                    ? String(localized: "Starred", bundle: .module)
+                    : String(localized: "Important", bundle: .module)
+            }
             return folder.name
         }
         return FolderAliasPreferencesPolicy.displayName(

@@ -228,6 +228,7 @@ public struct BrevMailRootView: View {
     @State private var navigation = MailNavigationState()
     @State private var relatedConversation = RelatedConversationController()
     @State private var readerThreadMemo = ReaderThreadHeadersMemo()
+    @State private var quickReplyDraftWasSaved = false
     @State private var splitViewVisibility: NavigationSplitViewVisibility = .automatic
     @State private var preferredCompactColumn: NavigationSplitViewColumn = .sidebar
     /// Whether the macOS AI Sidebar column is open. Persisted so relaunching
@@ -1335,11 +1336,7 @@ public struct BrevMailRootView: View {
             } content: {
                 messageListPane
             } detail: {
-                // The detail column's band lives here, not in the pane: in the
-                // bottom-stack presentation the same pane is the lower half of
-                // the `VSplitView`, mid-window, where no band belongs.
                 readingPaneDetailPane
-                    .brevMailPaneScrollEdgeBlur()
             }
         case .bottomStack:
             NavigationSplitView(
@@ -1534,18 +1531,31 @@ public struct BrevMailRootView: View {
     @ViewBuilder
     private func readingPaneContent(fallbackHeader: MessageHeader? = nil) -> some View {
         VStack(spacing: 0) {
+            let threadHeaders = relatedConversation.mergedThreadHeaders(
+                loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
+            )
+            let usesThreadReader = selectedBackend.groupsMessagesIntoThreads && threadHeaders.count > 1
+            let quickReplySourceID = navigation.selectedSourceID
+            let quickReplyBackend: (any MailBackend)? = {
+                guard let quickReplySourceID else { return selectedBackend }
+                return connectedBackend(forAccountID: quickReplySourceID.accountID)
+            }()
+            let quickReplyCandidates = usesThreadReader
+                ? threadHeaders
+                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
+            let quickReplyTarget = MailRootQuickReplyPolicy.target(
+                in: quickReplyCandidates,
+                accountEmail: quickReplyBackend?.account.emailAddress
+                    ?? selectedBackend.account.emailAddress
+            )
             if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
                 RelatedConversationBar(controller: relatedConversation)
             }
             Group {
-                let threadHeaders = relatedConversation.mergedThreadHeaders(
-                    loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
-                )
                 if !hasValidSelectedSourceBackend {
                     Text("This mailbox is no longer connected.", bundle: .module)
                         .foregroundStyle(theme.textSecondary.color)
-                } else if selectedBackend.groupsMessagesIntoThreads,
-                          threadHeaders.count > 1 {
+                } else if usesThreadReader {
                     ThreadConversationView(
                         threadHeaders: threadHeaders,
                         backend: selectedBackend,
@@ -1573,6 +1583,36 @@ public struct BrevMailRootView: View {
                     )
                 }
             }
+            if let quickReplyTarget,
+               let quickReplyBackend,
+               quickReplyBackend.capabilities.contains(.smtpOAuth) {
+                ReaderQuickReplyBar(
+                    recipientName: quickReplyRecipientName(
+                        for: quickReplyTarget,
+                        accountEmail: quickReplyBackend.account.emailAddress
+                    ),
+                    onSend: { [quickReplyBackend, quickReplySourceID, quickReplyTarget] text in
+                        let result = await sendQuickReply(
+                            text,
+                            header: quickReplyTarget,
+                            sourceID: quickReplySourceID,
+                            backend: quickReplyBackend
+                        )
+                        quickReplyDraftWasSaved = result.draftWasSaved
+                        return result.sent
+                    },
+                    onExpand: { [quickReplySourceID, quickReplyTarget] text in
+                        presentReply(
+                            to: quickReplyTarget,
+                            sourceID: quickReplySourceID,
+                            prefillBodyText: text
+                        )
+                    },
+                    isDisabled: isCommandMutationBlocked || isComposePresentationBlocked,
+                    draftWasSaved: $quickReplyDraftWasSaved
+                )
+                .id(quickReplyTarget.id)
+            }
         }
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
@@ -1592,6 +1632,7 @@ public struct BrevMailRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #else
         .frame(minWidth: readerMinimumWidth)
+        .mailToolbarScrollUnder()
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
@@ -1741,6 +1782,7 @@ public struct BrevMailRootView: View {
                 canFileLocally: localBackend != nil,
                 savedSearchID: mailbox.id,
                 savedSearchTitle: mailbox.name,
+                paneTitle: selectedMessageDestinationTitle,
                 savedSearchQuery: mailbox.query,
                 localMessageWorkflowState: localMessageWorkflowStateBinding,
                 isWorkBlocked: isMessageWorkBlocked,
@@ -1785,6 +1827,7 @@ public struct BrevMailRootView: View {
                     canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmailsByAccountID: accountOwnedMailboxEmailsByAccountID,
                     smartView: selectedSmartView,
+                    paneTitle: selectedMessageDestinationTitle,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
                     isWorkBlocked: isMessageWorkBlocked,
                     isMutationWorkBlocked: isCommandMutationBlocked,
@@ -1802,10 +1845,7 @@ public struct BrevMailRootView: View {
                     }
                 )
             } else {
-                VStack(spacing: 0) {
-                    #if os(macOS)
-                    messageListHeader
-                    #endif
+                Group {
                     MessageListView(
                         navigation: navigation,
                         backend: selectedBackend,
@@ -1815,6 +1855,8 @@ public struct BrevMailRootView: View {
                             selectedBackend.account.id
                         ] ?? [],
                         folder: selectedFolder,
+                        paneTitle: selectedMessageDestinationTitle,
+                        paneContext: selectedMessageDestinationContext,
                         allFolders: folders,
                         searchSyntaxDescription: selectedSearchSyntaxDescription,
                         localMessageWorkflowState: localMessageWorkflowStateBinding,
@@ -1859,10 +1901,8 @@ public struct BrevMailRootView: View {
         #endif
             .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarList }
-        // No pane-level scroll edge blur here: the message list mounts the
-        // band on its own scroll viewport (see MessageListView), which sits
-        // below the inbox category and action bars when those are present. A
-        // pane-top band would float above where rows actually clip.
+        // Each list owns its header inset and blur, keeping the footer outside
+        // the scroll viewport and the controls above the passing rows.
         #if os(macOS)
             // Edit > Search Mail has to open the collapsed control, not just
             // ask an unrendered field for focus.
@@ -2013,32 +2053,6 @@ public struct BrevMailRootView: View {
             || navigation.isAllAttachmentsSelected
     }
 
-    #if os(macOS)
-    /// Compact header above the desktop message list.
-    ///
-    /// macOS showed the mailbox name and counts only in the bottom status row,
-    /// so the list column had no visible title while iOS has carried one in
-    /// the navigation bar all along. This mirrors the iOS header: mailbox on
-    /// the first line, account or smart-view context on the second.
-    private var messageListHeader: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(verbatim: selectedMessageDestinationTitle)
-                .brevFont(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
-            if let selectedMessageDestinationContext {
-                Text(verbatim: selectedMessageDestinationContext)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-    }
-    #endif
-
     private var selectedMessageDestinationTitle: String {
         if navigation.isUnifiedInboxSelected {
             return String(localized: "All Inboxes", bundle: .module)
@@ -2064,7 +2078,13 @@ public struct BrevMailRootView: View {
     }
 
     private var selectedMessageDestinationContext: String? {
-        guard navigation.selectedFolderID != nil else { return nil }
+        guard MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: navigation.selectedFolderID != nil,
+            isUnifiedInboxSelected: navigation.isUnifiedInboxSelected,
+            isSmartViewSelected: navigation.isSmartViewSelected,
+            isAllAttachmentsSelected: navigation.isAllAttachmentsSelected,
+            hasSelectedSavedSearch: selectedSavedSearch != nil
+        ) else { return nil }
         let account = selectedSourceSection?.account ?? selectedBackend.account
         let mailbox = selectedSourceSection?.mailbox
             ?? mailboxes.first { $0.id == activeMailboxID }
@@ -2074,6 +2094,69 @@ public struct BrevMailRootView: View {
             mailboxEmail: mailbox?.email ?? account.emailAddress
         )
     }
+
+    private var selectedMessageDestinationUnreadCount: Int? {
+        MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: navigation.isUnifiedInboxSelected,
+            isSmartViewSelected: navigation.isSmartViewSelected,
+            isAllAttachmentsSelected: navigation.isAllAttachmentsSelected,
+            hasSelectedSavedSearch: selectedSavedSearch != nil,
+            selectedFolderUnreadCount: selectedFolder?.unreadCount,
+            unifiedInboxUnreadCounts: visibleSourceSections.map {
+                $0.folders.first { $0.role == .inbox }?.unreadCount ?? 0
+            }
+        )
+    }
+
+    private func quickReplyRecipientName(
+        for header: MessageHeader,
+        accountEmail: String
+    ) -> String {
+        let recipientEmail = ComposeReplyResolver.recipients(
+            for: header,
+            mode: .sender,
+            accountEmail: accountEmail
+        ).first
+        guard let recipientEmail else { return header.from.displayName }
+        let recipient = (header.replyTo + [header.from]).first {
+            $0.email.caseInsensitiveCompare(recipientEmail) == .orderedSame
+        }
+        return recipient?.displayName ?? recipientEmail
+    }
+
+    private func unreadCountPill(_ count: Int) -> some View {
+        Text(String(localized: "\(count) unread", bundle: .module))
+            .brevFont(.caption)
+            .monospacedDigit()
+            .foregroundStyle(theme.textSecondary.color)
+            .padding(.horizontal, BrevSpacing.xs)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(theme.bgSecondary.color))
+    }
+
+    #if os(macOS)
+    private var macToolbarDestinationTitle: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                Text(verbatim: selectedMessageDestinationTitle)
+                    .brevFont(.headline)
+                    .lineLimit(1)
+                if let selectedMessageDestinationUnreadCount {
+                    unreadCountPill(selectedMessageDestinationUnreadCount)
+                }
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            if let selectedMessageDestinationContext {
+                Text(verbatim: selectedMessageDestinationContext)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+    #endif
 
     @ToolbarContentBuilder
     private var toolbarList: some ToolbarContent {
@@ -2086,6 +2169,24 @@ public struct BrevMailRootView: View {
                 mailboxFilterToolbarControl
             }
         }
+        // A title is not a control, so it drops the Liquid Glass capsule
+        // macOS 26 puts behind toolbar items.
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .primaryAction) {
+                macToolbarDestinationTitle
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                macToolbarDestinationTitle
+            }
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            macToolbarDestinationTitle
+        }
+        #endif
         // Keeps the section occupied so the detail column's action cluster does
         // not slide left across the message list.
         ToolbarItem(placement: .primaryAction) {
@@ -2094,9 +2195,14 @@ public struct BrevMailRootView: View {
         #else
         ToolbarItem(placement: .principal) {
             VStack(spacing: 1) {
-                Text(verbatim: selectedMessageDestinationTitle)
-                    .brevFont(.headline)
-                    .lineLimit(1)
+                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                    Text(verbatim: selectedMessageDestinationTitle)
+                        .brevFont(.headline)
+                        .lineLimit(1)
+                    if let selectedMessageDestinationUnreadCount {
+                        unreadCountPill(selectedMessageDestinationUnreadCount)
+                    }
+                }
                 if let selectedMessageDestinationContext {
                     Text(verbatim: selectedMessageDestinationContext)
                         .brevFont(.caption)
@@ -2715,8 +2821,32 @@ public struct BrevMailRootView: View {
         ToolbarItem(placement: .primaryAction) {
             Spacer()
         }
+        // Trailing-edge toggle for the right column, like Apple's inspector
+        // buttons; the column takes reader width instead of growing the window.
+        ToolbarItem(placement: .primaryAction) {
+            mailContextToolbarToggle
+        }
         #endif
     }
+
+    #if os(macOS)
+    private var mailContextToolbarToggle: some View {
+        let title = isMailContextColumnPresented
+            ? String(localized: "Hide AI Sidebar", bundle: .module)
+            : String(localized: "AI Sidebar", bundle: .module)
+        return Button {
+            isMailContextColumnPresented.toggle()
+        } label: {
+            Label(title, systemImage: MailContextColumnVisibility.toolbarSymbolName)
+                .labelStyle(.iconOnly)
+        }
+        .accessibilityLabel(title)
+        .accessibilityValue(isMailContextColumnPresented
+            ? String(localized: "Shown", bundle: .module)
+            : String(localized: "Hidden", bundle: .module))
+        .help(title)
+    }
+    #endif
 
     #if os(iOS)
     @ToolbarContentBuilder
@@ -3333,17 +3463,26 @@ public struct BrevMailRootView: View {
         )
     }
 
-    private func presentReply(to header: MessageHeader, sourceID: MailSourceID? = nil) {
+    private func presentReply(
+        to header: MessageHeader,
+        sourceID: MailSourceID? = nil,
+        prefillBodyText: String? = nil
+    ) {
         guard canPresentCompose() else { return }
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
+                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID),
+                prefillBodyText: prefillBodyText
             ))
             return
         }
         #endif
-        navigation.presentReply(to: header, sourceID: sourceID ?? navigation.selectedSourceID)
+        navigation.presentReply(
+            to: header,
+            sourceID: sourceID ?? navigation.selectedSourceID,
+            prefillBodyText: prefillBodyText
+        )
     }
 
     private func presentReplyAll(to header: MessageHeader, sourceID: MailSourceID? = nil) {
@@ -5763,6 +5902,58 @@ public struct BrevMailRootView: View {
     /// the notification targeted.
     private func connectedBackend(forAccountID accountID: String) -> (any MailBackend)? {
         backends.first { $0.account.id == accountID }
+    }
+
+    private func sendQuickReply(
+        _ userText: String,
+        header: MessageHeader,
+        sourceID: MailSourceID?,
+        backend replyBackend: any MailBackend
+    ) async -> (sent: Bool, draftWasSaved: Bool) {
+        guard replyBackend.capabilities.contains(.smtpOAuth) else {
+            return (false, false)
+        }
+
+        let securityDefaults = composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled
+        let securityMode = OutboundMessageSecurityMode(
+            signing: securityDefaults.shouldSignByDefault,
+            encrypting: securityDefaults.shouldEncryptByDefault
+        )
+        let signatureBody = signatureContextProvider?(replyBackend.account).selectedSignature?.body
+
+        guard let draft = NotificationInlineReplyComposer.draft(
+            id: UUID().uuidString,
+            userText: userText,
+            header: header,
+            accountEmail: replyBackend.account.emailAddress,
+            signatureBody: signatureBody,
+            securityMode: securityMode
+        ) else {
+            return (false, false)
+        }
+
+        let outcome = await NotificationInlineReplyPipeline.deliver(
+            draft: draft,
+            save: { draft in
+                if let sourceID {
+                    return try await replyBackend.save(draft: draft, sourceID: sourceID)
+                }
+                return try await replyBackend.save(draft: draft)
+            },
+            send: { draft in
+                if let sourceID {
+                    _ = try await replyBackend.send(draft: draft, sourceID: sourceID)
+                } else {
+                    _ = try await replyBackend.send(draft: draft)
+                }
+            }
+        )
+        switch outcome {
+        case .sent:
+            return (true, false)
+        case .failed(let draftWasSaved):
+            return (false, draftWasSaved)
+        }
     }
 
     /// Persist and send the text entered directly in a new-mail notification.

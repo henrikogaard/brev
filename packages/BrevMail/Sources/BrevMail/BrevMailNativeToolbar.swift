@@ -365,6 +365,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 .brevArchive,
                 .brevDelete,
                 .brevMore,
+                .brevMailContext,
             ]
         }
 
@@ -533,6 +534,7 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
             guard let currentIndex = toolbar.items.firstIndex(where: {
                 $0.itemIdentifier == BrevMailNativeToolbarItem.mailContext.identifier
             }) else {
+                insertMailContextOnceForSavedToolbars(toolbar, at: desiredIndex)
                 return
             }
             guard currentIndex != desiredIndex else { return }
@@ -544,6 +546,20 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
                 at: min(adjustedIndex, toolbar.items.count)
             )
         }
+
+        /// Toolbars saved before the AI Sidebar toggle became a default item
+        /// gain it once; removing it afterwards through Customize Toolbar sticks.
+        private func insertMailContextOnceForSavedToolbars(_ toolbar: NSToolbar, at index: Int) {
+            let defaults = UserDefaults.standard
+            guard !defaults.bool(forKey: Self.mailContextDefaultItemMigrationKey) else { return }
+            defaults.set(true, forKey: Self.mailContextDefaultItemMigrationKey)
+            toolbar.insertItem(
+                withItemIdentifier: BrevMailNativeToolbarItem.mailContext.identifier,
+                at: min(index, toolbar.items.count)
+            )
+        }
+
+        private static let mailContextDefaultItemMigrationKey = "toolbar.mailContextDefaultItemInserted"
 
         private func applyExternalMailContextChange(isPresented: Bool) {
             appliedMailContextState = isPresented

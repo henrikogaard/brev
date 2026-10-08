@@ -234,6 +234,9 @@ struct CalendarContactsSection: View {
         .task {
             await model?.load()
         }
+        .task {
+            await model?.observeSourceChanges()
+        }
         .onChange(of: searchTarget, initial: true) { _, target in
             expandCapabilities(matching: target)
         }

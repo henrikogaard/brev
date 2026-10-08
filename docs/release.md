@@ -12,7 +12,7 @@ release model.
 
 ADR-0080 replaced the "keys stay on the release machine" rule. Signing
 material now lives in GitHub Actions repository secrets scoped to the
-`release` environment, and two workflows produce signed builds:
+`release-signing` environment, and two workflows produce signed builds:
 
 - **Stable** — `.github/workflows/release.yml` runs on pushes of `vX.Y.Z`
   tags. It archives and exports `Brev.app` (`eu.brevmail.brev`), notarizes
@@ -42,6 +42,22 @@ Both feeds are served by GitHub Pages from the `gh-pages` branch root at
 `gh-pages` branch with `.nojekyll` on first run; enable Pages from that
 branch once (repo Settings → Pages → Deploy from a branch → `gh-pages`
 `/`).
+
+To recover a failed existing tag using the current workflow, dispatch Release
+on `main` and select that tag. Re-running the old failed run uses its original
+workflow and environment, so it does not pick up a workflow repair:
+
+```sh
+gh workflow run release.yml --ref main -f tag=v0.2.0
+```
+
+The workflow checks out `refs/tags/<tag>`, validates the `vX.Y.Z` format, and
+checks main ancestry plus a successful Build for the checked-out tag SHA.
+The signing action is loaded from the immutable running workflow revision, so
+widget-profile and signing repairs apply even when the product tag is older.
+It refuses to overwrite an existing GitHub Release. The tag is not moved.
+The `release-signing` environment replaced the failing `release` environment
+on 2026-10-07; keep the original intact until recovery is verified.
 
 Everything below this section is the **manual fallback** for cutting a
 release locally when CI signing is unavailable or a release must be
@@ -78,7 +94,14 @@ Developer portal (once):
    `Brev Nightly Developer ID Distribution` for that App ID and download
    it (the stable profile `Brev Developer ID Distribution` already exists
    per the manual flow below).
-3. Generate a Sparkle EdDSA keypair once on the release machine with
+3. For the widget extension (ADR-0083), enable App Groups with
+   `group.eu.brevmail.brev` on both app App IDs, create App IDs
+   `eu.brevmail.brev.macos.widgets` and
+   `eu.brevmail.brev.nightly.macos.widgets` with the same group, then
+   regenerate the app profiles and create Developer ID profiles named
+   `Brev Stable Widgets Developer ID CI Distribution` and
+   `Brev Nightly Widgets Developer ID CI Distribution`.
+4. Generate a Sparkle EdDSA keypair once on the release machine with
    `Tuist/.build/artifacts/sparkle/Sparkle/bin/generate_keys`; export the
    private key with `generate_keys -x` (base64 private-key export) and
    keep the printed public key.
@@ -86,26 +109,30 @@ Developer portal (once):
 GitHub (once):
 
 ```bash
-# Secrets (release environment scope is enforced by the workflows)
-gh secret set BREV_DEVELOPER_ID_P12_BASE64 \
+# Secrets (release-signing environment scope is enforced by the workflows)
+gh secret set --env release-signing BREV_DEVELOPER_ID_P12_BASE64 \
   --body "$(base64 -i dev-id-cert.p12 | tr -d '\n')"
-gh secret set BREV_DEVELOPER_ID_P12_PASSWORD --body "<p12 password>"
-gh secret set BREV_MACOS_PROFILE_STABLE_BASE64 \
+gh secret set --env release-signing BREV_DEVELOPER_ID_P12_PASSWORD --body "<p12 password>"
+gh secret set --env release-signing BREV_MACOS_PROFILE_STABLE_BASE64 \
   --body "$(base64 -i 'Brev Developer ID Distribution.mobileprovision' | tr -d '\n')"
-gh secret set BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
+gh secret set --env release-signing BREV_MACOS_PROFILE_NIGHTLY_BASE64 \
   --body "$(base64 -i 'Brev Nightly Developer ID Distribution.mobileprovision' | tr -d '\n')"
-gh secret set BREV_ASC_KEY_ID --body "<App Store Connect key id>"
-gh secret set BREV_ASC_ISSUER_ID --body "<issuer id>"
-gh secret set BREV_ASC_KEY_P8_BASE64 \
+gh secret set --env release-signing BREV_MACOS_WIDGET_PROFILE_STABLE_BASE64 \
+  --body "$(base64 -i 'Brev Stable Widgets Developer ID CI Distribution.provisionprofile' | tr -d '\n')"
+gh secret set --env release-signing BREV_MACOS_WIDGET_PROFILE_NIGHTLY_BASE64 \
+  --body "$(base64 -i 'Brev Nightly Widgets Developer ID CI Distribution.provisionprofile' | tr -d '\n')"
+gh secret set --env release-signing BREV_ASC_KEY_ID --body "<App Store Connect key id>"
+gh secret set --env release-signing BREV_ASC_ISSUER_ID --body "<issuer id>"
+gh secret set --env release-signing BREV_ASC_KEY_P8_BASE64 \
   --body "$(base64 -i AuthKey.p8 | tr -d '\n')"
-gh secret set BREV_SPARKLE_PRIVATE_ED_KEY --body "<generate_keys -x output>"
+gh secret set --env release-signing BREV_SPARKLE_PRIVATE_ED_KEY --body "<generate_keys -x output>"
 
 # Public key is a variable, not a secret — it ships inside the app bundle.
-gh variable set BREV_SPARKLE_PUBLIC_ED_KEY --body "<44-char base64 key>"
+gh variable set --env release-signing BREV_SPARKLE_PUBLIC_ED_KEY --body "<44-char base64 key>"
 ```
 
-Then create the `release` environment (repo Settings → Environments →
-New environment → `release`) so secrets resolve only for the two release
+Then create the `release-signing` environment (repo Settings → Environments →
+New environment → `release-signing`) so secrets resolve only for the two release
 workflows. Operator notes:
 
 - Configure the environment with required reviewers and/or deployment
@@ -390,6 +417,12 @@ This exports the archive with the explicit Developer ID provisioning profile,
 creates and signs the DMG, submits it for notarization, staples the ticket,
 verifies Gatekeeper, and writes a SHA-256 checksum. Use `--skip-notarize` on
 non-release machines to package without Developer ID signing.
+
+Both the styled `create-dmg` path and the `hdiutil` fallback package a clean
+staging directory: only the app and an `Applications` shortcut pointing to
+`/Applications`. Xcode export logs/plists stay outside the image.
+Artifact verification mounts the image read-only and rejects missing or
+incorrect shortcuts and unexpected visible files before publication.
 
 Output:
 - `build/release/BrevMail.dmg`

@@ -650,6 +650,61 @@
         }
       }
     },
+    "Reset Appearance": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill utseende"
+          }
+        }
+      }
+    },
+    "Reset appearance to defaults?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vil du tilbakestille utseendet til standard?"
+          }
+        }
+      }
+    },
+    "Reset to Defaults": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tilbakestill til standard"
+          }
+        }
+      }
+    },
+    "Restores the default themes, accent, and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjenoppretter standardtemaer, aksentfarge og appikon."
+          }
+        }
+      }
+    },
+    "Restores the default themes, accent, window style, text size, density, and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjenoppretter standardtemaer, aksentfarge, vindusstil, tekststørrelse, tetthet og appikon."
+          }
+        }
+      }
+    },
     "Task editing": {
       "extractionState": "manual",
       "localizations": {
@@ -12733,6 +12788,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "E-post og Innstillinger"
+          }
+        }
+      }
+    },
+    "Accent source": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Aksentkilde"
+          }
+        }
+      }
+    },
+    "Choose Brev's colors and app icon.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg Brevs farger og appsymbol."
+          }
+        }
+      }
+    },
+    "Select the icon shown on your Home Screen.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg symbolet som vises på Hjem-skjermen."
+          }
+        }
+      }
+    },
+    "System accent": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent"
+          }
+        }
+      }
+    },
+    "System accent is available on Mac. This device uses the theme accent.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Systemaksent er tilgjengelig på Mac. Denne enheten bruker temaets aksentfarge."
+          }
+        }
+      }
+    },
+    "These settings apply only to the selected mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Disse innstillingene gjelder bare den valgte postkassen."
+          }
+        }
+      }
+    },
+    "Uses the macOS accent, adjusted for readable controls.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruker aksentfargen i macOS, justert for lesbare kontroller."
+          }
+        }
+      }
+    },
+    "Your color is saved unchanged. Controls adjust for contrast when needed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fargen din lagres uendret. Kontroller justeres for kontrast ved behov."
           }
         }
       }

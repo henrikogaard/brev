@@ -341,6 +341,36 @@ struct PIMEventWriteTests {
         #expect(ics.contains("TRIGGER:-PT15M"))
     }
 
+    @Test("A URI organizer serializes without mailto and parses back")
+    func icsWriterURIOrganizer() {
+        var event = Self.event(
+            collectionID: "c1",
+            uid: "uid-org@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        event.organizer = PIMEventPerson(
+            email: "https://dav.example.com/principals/u1/"
+        )
+        event.attendees = [
+            PIMEventPerson(email: "guest@example.com", rsvp: .needsAction),
+        ]
+        let ics = PIMEventICSWriter.vcalendar(
+            for: event,
+            dtstamp: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        #expect(
+            ics.contains(
+                "ORGANIZER:https://dav.example.com/principals/u1/"
+            )
+        )
+        #expect(ics.contains("ATTENDEE;PARTSTAT=NEEDS-ACTION:mailto:guest@example.com"))
+        let parsed = ICSParser.parseFirstEvent(from: ics)
+        #expect(
+            parsed?.organizer?.email
+                == "https://dav.example.com/principals/u1/"
+        )
+    }
+
     @Test("Lines fold at 75 octets without splitting UTF-8")
     func icsWriterFolding() {
         let longSummary = String(repeating: "æ", count: 60)
@@ -1509,6 +1539,157 @@ struct PIMEventWriteTests {
             collectionID: collection.id
         )
         #expect(cached.isEmpty)
+    }
+
+    // MARK: - DAV organizer attribution
+
+    @Test("DAV create claims the mailbox-shaped username as ORGANIZER")
+    func davCreateInjectsOrganizer() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(201, headers: ["ETag": "\"dav-1\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "henrik@example.com", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        var draft = Self.event(collectionID: collection.id)
+        draft.attendees = [
+            PIMEventPerson(email: "guest@example.com", rsvp: .needsAction),
+        ]
+        let stored = try await service.create(
+            draft,
+            in: collection,
+            source: source
+        )
+        #expect(stored.organizer?.email == "henrik@example.com")
+        let request = try #require(davTransport.requests.first)
+        let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+        #expect(body.contains("ORGANIZER:mailto:henrik@example.com"))
+    }
+
+    @Test("DAV update falls back to the source principal URL as ORGANIZER")
+    func davUpdateOrganizerPrincipalURL() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(204, headers: ["ETag": "\"v2\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        var source = Self.source(write: true)
+        source.principalURL = URL(
+            string: "https://dav.example.com/principals/u1/"
+        )
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        // Bearer credentials carry no username — the principal URL is
+        // the only stable DAV identity left.
+        try await credentials.setCredential(
+            .bearer(token: "t"),
+            for: "pim-source-pim-test"
+        )
+        let href =
+            "https://dav.example.com/calendars/henrik/work/e-org.ics"
+        var synced = Self.event(
+            collectionID: collection.id,
+            providerItemKey: href,
+            etag: "\"v1\"",
+            uid: "e-org@brev"
+        )
+        synced.attendees = [
+            PIMEventPerson(email: "guest@example.com", rsvp: .needsAction),
+        ]
+        try await eventStore.saveEvents(
+            [synced],
+            for: source.id,
+            collectionID: collection.id
+        )
+        let updated = try await service.update(
+            synced,
+            in: collection,
+            source: source
+        )
+        #expect(
+            updated.organizer?.email
+                == "https://dav.example.com/principals/u1/"
+        )
+        let request = try #require(davTransport.requests.first)
+        let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+        #expect(
+            body.contains(
+                "ORGANIZER:https://dav.example.com/principals/u1/"
+            )
+        )
+    }
+
+    @Test("DAV writes without attendees add no ORGANIZER")
+    func davWriteNoAttendeesNoOrganizer() async throws {
+        let sourceStore = InMemorySourceStore()
+        let collectionStore = InMemoryCollectionStore()
+        let eventStore = InMemoryEventStore()
+        let credentials = InMemoryCredentialStore()
+        let davTransport = ScriptedTransport(steps: [
+            .response(201, headers: ["ETag": "\"dav-1\""]),
+        ])
+        let service = Self.makeService(
+            sourceStore: sourceStore,
+            collectionStore: collectionStore,
+            eventStore: eventStore,
+            credentials: credentials,
+            googleTransport: ScriptedTransport(steps: []),
+            davTransport: davTransport
+        )
+        let source = Self.source(write: true)
+        try await sourceStore.save(source)
+        let collection = Self.collection()
+        try await collectionStore.saveCollections(
+            [collection],
+            for: source.id
+        )
+        try await credentials.setCredential(
+            .basic(username: "henrik@example.com", password: "p"),
+            for: "pim-source-pim-test"
+        )
+        let stored = try await service.create(
+            Self.event(collectionID: collection.id),
+            in: collection,
+            source: source
+        )
+        #expect(stored.organizer == nil)
+        let request = try #require(davTransport.requests.first)
+        let body = String(decoding: request.httpBody ?? Data(), as: UTF8.self)
+        #expect(!body.contains("ORGANIZER"))
     }
 
     // MARK: - Coordinator capability

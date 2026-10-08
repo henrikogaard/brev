@@ -403,7 +403,7 @@ public struct FolderSidebar: View {
         if onOpenSettings != nil || onOpenCalendar != nil
             || onOpenContacts != nil || onOpenTasks != nil {
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                Text("More", bundle: .module)
+                Text("Apps", bundle: .module)
                     .brevFont(.caption).fontWeight(.semibold)
                     .foregroundStyle(theme.textSecondary.color)
                     .padding(.horizontal, BrevSpacing.md)
@@ -430,6 +430,7 @@ public struct FolderSidebar: View {
                         )
                     }
                     if let onOpenSettings {
+                        Divider().overlay(theme.border.color)
                         appsRow(
                             title: String(localized: "Settings", bundle: .module),
                             systemImage: "gearshape",
@@ -511,6 +512,13 @@ public struct FolderSidebar: View {
         }
 
         #if os(iOS)
+        if !sourceSections.isEmpty {
+            Text("Accounts", bundle: .module)
+                .brevFont(.caption).fontWeight(.semibold)
+                .foregroundStyle(theme.textSecondary.color)
+                .padding(.horizontal, phoneSectionHeaderInset)
+                .padding(.bottom, BrevSpacing.xs)
+        }
         VStack(spacing: 0) {
             ForEach(sourceSections) { section in
                 VStack(spacing: 0) {
@@ -529,7 +537,7 @@ public struct FolderSidebar: View {
         .background(theme.bgPrimary.color, in: RoundedRectangle(cornerRadius: BrevRadius.lg))
         #else
         if !sourceSections.isEmpty {
-            Text("Mailboxes", bundle: .module)
+            Text("Accounts", bundle: .module)
                 .brevFont(.caption).fontWeight(.semibold)
                 .foregroundStyle(theme.textSecondary.color)
                 .padding(.top, BrevSpacing.sm)
@@ -634,6 +642,16 @@ public struct FolderSidebar: View {
     }
 
     #if os(iOS)
+    /// iPhone section headers sit on the same inset as the card rows' icons
+    /// (and the Apps header), so every sidebar section shares one left edge.
+    private var phoneSectionHeaderInset: CGFloat {
+        #if os(iOS)
+        BrevSpacing.md
+        #else
+        sidebarMetrics.folderRowTrailingPadding
+        #endif
+    }
+
     private var phoneRowSeparator: some View {
         Rectangle().fill(theme.border.color).frame(height: 0.5)
             .padding(.leading, BrevSpacing.md + (showSidebarIcons ? sidebarMetrics.iconWidth + BrevSpacing.sm : 0))
@@ -646,13 +664,9 @@ public struct FolderSidebar: View {
                     .brevFont(.caption).fontWeight(.semibold)
                     .foregroundStyle(theme.textSecondary.color)
                 Spacer()
-                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
-                    .brevFont(.subheadline)
-                    .tint(theme.accent.color)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+                favoritesActions
             }
-            .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+            .padding(.horizontal, phoneSectionHeaderInset)
             let favorites = MailboxFavorites(data: favoritesData).ordered(favoriteCandidates, visibleOnly: true)
             VStack(spacing: 0) {
                 ForEach(favorites) { favorite in
@@ -764,11 +778,7 @@ public struct FolderSidebar: View {
                     .brevFont(.caption).fontWeight(.semibold)
                     .foregroundStyle(theme.textSecondary.color)
                 Spacer()
-                Button(String(localized: "Edit", bundle: .module)) { showsFavoritesEditor = true }
-                    .buttonStyle(.plain)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+                favoritesActions
             }
             .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
             .frame(minHeight: sidebarMetrics.sourceHeaderMinimumHeight)
@@ -851,16 +861,23 @@ public struct FolderSidebar: View {
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             #else
-            HStack(spacing: BrevSpacing.xxs) {
+            HStack(spacing: folderLabelSpacing) {
+                Image(systemName: section.account.id == LocalMailBackend.accountID ? "internaldrive" : "envelope")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .brevFont(.body)
+                    .frame(width: sidebarMetrics.iconWidth, alignment: .center)
                 Text(verbatim: section.title)
-                    .brevFont(.caption)
-                    .fontWeight(.semibold)
+                    .brevFont(.body)
+                    .fontWeight(.regular)
+                    .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(theme.warning.color)
+                } else if !isExpanded {
+                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .brevFont(.caption)
@@ -870,8 +887,8 @@ public struct FolderSidebar: View {
             .foregroundStyle(theme.textSecondary.color)
             .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
             .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
-            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.folderRowMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             #endif
         }
@@ -1020,18 +1037,7 @@ public struct FolderSidebar: View {
                     showsSmartViewSettings = true
                 }
             } label: {
-                // Same text-button form as the Favourites header beside it: two
-                // headers, one gesture. The chevron keeps it legible as a menu
-                // now that the ellipsis (which carried that meaning alone) is
-                // gone.
-                HStack(spacing: BrevSpacing.xxs) {
-                    Text("Manage", bundle: .module)
-                        .brevFont(.subheadline)
-                    Image(systemName: "chevron.down")
-                        .brevFont(.caption)
-                }
-                .foregroundStyle(theme.accent.color)
-                .frame(minWidth: 44, minHeight: 44)
+                sidebarActionsLabel
             }
             #if os(macOS)
             .menuStyle(.button)
@@ -1046,7 +1052,7 @@ public struct FolderSidebar: View {
         .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
         .frame(minHeight: sidebarMetrics.folderRowMinimumHeight)
         #else
-        .padding(.horizontal, sidebarMetrics.folderRowTrailingPadding)
+        .padding(.horizontal, phoneSectionHeaderInset)
         #endif
         .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
 
@@ -1368,6 +1374,31 @@ public struct FolderSidebar: View {
     }
 
     private var sidebarStartsCollapsed: Bool { true }
+
+    private var favoritesActions: some View {
+        Menu {
+            Button(String(localized: "Edit favourites", bundle: .module)) {
+                showsFavoritesEditor = true
+            }
+        } label: {
+            sidebarActionsLabel
+        }
+        #if os(macOS)
+        .menuStyle(.button)
+        #endif
+        .buttonStyle(.plain)
+        .menuIndicator(.hidden)
+        .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
+        .help(String(localized: "Edit favourites", bundle: .module))
+    }
+
+    private var sidebarActionsLabel: some View {
+        Image(systemName: "ellipsis")
+            .brevFont(.body)
+            .foregroundStyle(theme.textSecondary.color)
+            .frame(minWidth: sidebarMetrics.disclosureHitSize, minHeight: sidebarMetrics.disclosureHitSize)
+            .contentShape(Rectangle())
+    }
 
     @ViewBuilder
     private var mailboxHeader: some View {

@@ -26,17 +26,22 @@ count of the large folder (Settings › Mail Storage, or the footer stats row).
 
 ## 1. Start capture
 
-Terminal 1 — live log, leave running for the whole session:
+Before launching the test app, record `run_start=$(date '+%Y-%m-%d %H:%M:%S')`.
+After launch, select its exact PID from `ps -axo pid=,command=`; verify that
+`ps -p "$pid" -o command=` names the test app executable, not a build script,
+SwiftPM test helper, or WebKit process. Do not pick the first substring match.
+Use a new PID/start pair for every relaunch; never concatenate different runs.
+
+Terminal 1 — live log, leave running for the current process:
 
 ```sh
-log stream --style compact --predicate 'subsystem == "eu.brevmail.brev" && category == "Performance"'
+log stream --info --style compact --predicate "subsystem == \"eu.brevmail.brev\" AND category == \"Performance\" AND processIdentifier == $pid"
 ```
 
 Terminal 2 — CPU sampler, leave running (records `%CPU` and RSS in MB once a
 second; PID is the test build):
 
 ```sh
-pid=$(pgrep -f "Brev Test" | head -1)
 while sleep 1; do ps -o %cpu=,rss= -p "$pid" | awk '{printf "%s cpu=%s rss_mb=%.0f\n", strftime("%H:%M:%S"), $1, $2/1024}'; done | tee /tmp/brev-cpu.log
 ```
 
@@ -51,12 +56,12 @@ the wall-clock time at the start of each step so log lines can be attributed.
 
 | Step | Action | What it measures |
 | --- | --- | --- |
-| S1 cold selection | Quit the app, relaunch, select the large folder | `ui.startup.ready`, `ui.list … path=reload`, `mail.messages.page path=cacheHit` |
-| S2 warm selection | Select a different folder, then re-select the large folder; repeat 5× | `cached_inbox_usable_ms`, `cached_inbox_query_ms` |
+| S1 cold launch | Capture launch-to-first-usable-inbox with Instruments launch recording; keep cache warm but process cold. Repeat at least 20 launches with a new PID/start pair each time | Externally measured launch p95 → `cached_inbox_usable_ms`; `ui.startup.ready` remains separate session-restore/workspace diagnostics, not launch timing |
+| S2 warm selection | Select a different folder, then re-select the large folder; repeat at least 20× | Warm `ui.list` diagnostics and `cached_inbox_query_ms`; **not** launch-to-usable |
 | S3 scroll | Two-finger scroll from top to bottom of the large folder at a steady pace, then back, ~20 s each way | Core Animation FPS / hitches → `list_scroll_frame_p95_ms` |
 | S4 load more | Scroll to the end until three more pages load | `mail.messages.page path=server`, `mail.threads.resolve update=incremental` |
 | S5 sidebar resize | Drag the sidebar divider slowly narrower and wider for ~15 s while the large folder is shown | Frame time in Instruments; `Message List Presentation Build` signpost count should stay near zero |
-| S6 open messages | Open 10 cached messages: 5 plain text, 5 HTML with images/attachments | `ui.body.visible` → `cached_thread_open_ms`, `Body Render`, `HTML Body Import` |
+| S6 open messages | Open at least 20 cached messages, equally split between plain text and HTML with images/attachments; preserve first/reused WebKit observations separately | `ui.body.visible` → `cached_thread_open_ms`; fetch and render remain separate diagnostics |
 | S7 search | Search the current folder for a common word; then All Mailboxes; then repeat the same search (cache-warm) | `ui.search`, `mail.search path=…`, `mail.search.cacheRead` |
 | S8 unified inbox | Switch to the unified inbox, reload, scroll one screen | `Unified Inbox Reload`, `Unified Inbox Presentation Build` |
 | S9 idle | Leave the app in the foreground on the large folder for 60 s without touching it | Last `rss_mb` value in `/tmp/brev-cpu.log` → `idle_resident_memory_mb`; `%cpu` should be ≈0 |
@@ -69,7 +74,8 @@ Stop Instruments after S10.
 Export the log for the session window:
 
 ```sh
-scripts/collect-performance-trace.sh --last 40m --output /tmp/brev-performance.log
+scripts/collect-performance-trace.sh --pid "$pid" --start "$run_start" \
+  --output /tmp/brev-performance.log
 ```
 
 From Instruments:
@@ -85,16 +91,37 @@ From Instruments:
 - **CPU**: from `/tmp/brev-cpu.log`, note the peak `%cpu` during S3/S4 and the
   steady value during S9/S10.
 
-Summarize to budget JSON (the script prints per-event count/median/p95/max
-under `_detail` for the worklog):
+For budget query/open values, capture a **separate controlled cached run**
+containing only S2 and S6 after startup has settled. Record a fresh
+`cached_start` immediately before those steps; export immediately after them
+with the same PID and `--start "$cached_start"` to `/tmp/brev-cached.log`.
+Do not use `--cached-workload` on the mixed exploratory trace, network/cold
+workloads, or mock data as readiness evidence. Keep plain-text/HTML and
+first/reused renderer notes in the result's accompanying report.
+
+Summarize to budget JSON (per-event count/median/nearest-rank p95/max are
+under `_detail`). Logged budget metrics require at least 20 successful samples;
+smaller samples remain diagnostic and are flagged `limited_sample`. This floor
+prevents a one- or two-sample “p95”; it is not a statistical-confidence claim.
+The collector header preserves PID/start attribution. Old unscoped exports
+still produce diagnostic detail but cannot emit passing budget values.
+Missing measurements remain absent, so the gate fails as incomplete:
 
 ```sh
-scripts/performance-summarize-trace.py /tmp/brev-performance.log \
+scripts/performance-summarize-trace.py /tmp/brev-cached.log \
+  --cached-workload \
+  --inbox-usable-ms <externally measured launch-to-usable p95 from S1> \
   --scroll-p95-ms <from Instruments> \
   --memory-mb <last rss_mb from S9> \
   --output /tmp/brev-perf-results.json
 BREV_PERF_RESULTS_JSON=/tmp/brev-perf-results.json scripts/performance-budget-gate.sh
 ```
+
+Never substitute a warm list reload, workspace load, body fetch, or HTML import
+duration for end-to-end usable/visible timing. The script does not do so.
+For simulator logs, use that simulator's `log show` with the same PID/start
+predicate; do not reuse host PIDs. Physical-iPhone and live-mailbox readiness
+still require their own measurements.
 
 ## 4. Record
 

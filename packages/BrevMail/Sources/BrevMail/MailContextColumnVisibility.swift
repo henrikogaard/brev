@@ -21,7 +21,7 @@ enum MailContextColumnVisibility {
     static let keyboardShortcutModifiers: EventModifiers = [.command, .option]
 
     /// Accessibility / toolbar label.
-    static let toolbarLabel = "AI Sidebar"
+    static var toolbarLabel: String { String(localized: "AI Sidebar", bundle: .module) }
 
     /// Title shown when the sidebar has no selected message context yet.
     ///
@@ -30,8 +30,9 @@ enum MailContextColumnVisibility {
     /// "AI Sidebar" a second time and said nothing about why it was empty.
     static let idleTitle = "No message selected"
 
-    /// AI-specific SF Symbol for the assistant sidebar toggle.
-    static let toolbarSymbolName = "sparkles"
+    /// Trailing-sidebar glyph, as in Apple's inspector toggles: the button
+    /// reads as "show or hide the right column", not as an AI action.
+    static let toolbarSymbolName = "sidebar.right"
 }
 
 /// Root-owned toggle action shared by the native toolbar and macOS commands.
@@ -52,7 +53,7 @@ struct MailContextColumnAction {
     }
 
     var label: String {
-        isPresented ? "Hide AI Sidebar" : MailContextColumnVisibility.toolbarLabel
+        isPresented ? String(localized: "Hide AI Sidebar", bundle: .module) : MailContextColumnVisibility.toolbarLabel
     }
 
     @MainActor

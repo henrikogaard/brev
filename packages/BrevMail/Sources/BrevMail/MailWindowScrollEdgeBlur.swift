@@ -14,9 +14,21 @@
 import AppKit
 import OSLog
 #endif
+import BrevDesign
+import BrevThemes
 import SwiftUI
 
 extension View {
+    /// Lets scrolling content reach the window edge beneath a blurred toolbar.
+    @ViewBuilder
+    func mailToolbarScrollUnder() -> some View {
+        #if os(macOS)
+        modifier(MailToolbarScrollUnderModifier())
+        #else
+        self
+        #endif
+    }
+
     /// Mounts the scroll edge blur band at the top of one split-view pane.
     ///
     /// Per pane, not once across the whole split view: a single full-width
@@ -40,7 +52,102 @@ extension View {
     }
 }
 
+extension View {
+    /// Reserves space for list controls while allowing rows to scroll beneath them.
+    @ViewBuilder
+    func mailListHeader(@ViewBuilder content: () -> some View) -> some View {
+        #if os(macOS)
+        modifier(MailListHeaderModifier(header: content()))
+        #else
+        VStack(spacing: 0) {
+            content()
+            self
+        }
+        #endif
+    }
+}
+
 #if os(macOS)
+private struct MailToolbarScrollUnderModifier: ViewModifier {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @State private var toolbarHeight: CGFloat = 0
+
+    func body(content: Content) -> some View {
+        content
+            // Expand only the top clipping boundary, not the footer or dividers.
+            .padding(.top, toolbarHeight)
+            .clipped()
+            .padding(.top, -toolbarHeight)
+            .overlay(alignment: .top) {
+                Group {
+                    if reduceTransparency {
+                        theme.bgPrimary.color
+                    } else {
+                        MailWindowScrollEdgeBlur(fadesAtBottom: false)
+                            .overlay(theme.bgPrimary.color.opacity(0.35))
+                    }
+                }
+                .frame(height: toolbarHeight)
+                .offset(y: -toolbarHeight)
+                .allowsHitTesting(false)
+            }
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                max(0, proxy.safeAreaInsets.top)
+            } action: { height in
+                toolbarHeight = height
+            }
+    }
+}
+
+private struct MailListHeaderModifier<Header: View>: ViewModifier {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    let header: Header
+
+    func body(content: Content) -> some View {
+        content
+            .safeAreaInset(edge: .top, spacing: 0) {
+                header
+                    .frame(maxWidth: .infinity)
+                    .background {
+                        if reduceTransparency {
+                            theme.bgPrimary.color
+                        } else {
+                            MailWindowScrollEdgeBlur(fadesAtBottom: false)
+                                .overlay(theme.bgPrimary.color.opacity(0.35))
+                                .allowsHitTesting(false)
+                        }
+                    }
+            }
+            .mailToolbarScrollUnder()
+    }
+}
+
+struct MailListTitle: View {
+    @Environment(\.brevTheme) private var theme
+    let title: String
+    let context: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: title)
+                .brevFont(.headline)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+            if let context {
+                Text(verbatim: context)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, BrevSpacing.xs)
+    }
+}
+
 /// Mail's soft scroll edge: rows dissolve into a progressive blur as they
 /// scroll under the toolbar band, instead of being cut off at a hard line.
 ///
@@ -65,11 +172,17 @@ extension View {
 /// as siblings into `window.contentView` never composite at all; and SwiftUI
 /// `scrollEdgeEffectStyle(.soft)` never engages with this window's chrome.
 struct MailWindowScrollEdgeBlur: NSViewRepresentable {
+    var fadesAtBottom = true
+
     func makeNSView(context: Context) -> MailScrollEdgeBlurView {
-        MailScrollEdgeBlurView()
+        let view = MailScrollEdgeBlurView()
+        view.setFadesAtBottom(fadesAtBottom)
+        return view
     }
 
-    func updateNSView(_ nsView: MailScrollEdgeBlurView, context: Context) {}
+    func updateNSView(_ nsView: MailScrollEdgeBlurView, context: Context) {
+        nsView.setFadesAtBottom(fadesAtBottom)
+    }
 }
 
 /// Budget for the self-scheduled reduction retries a single trigger may
@@ -103,6 +216,13 @@ final class MailScrollEdgeBlurView: NSView {
     private static let blurRadius: CGFloat = 10
 
     private let effectView = NSVisualEffectView()
+    private var fadesAtBottom = true
+
+    func setFadesAtBottom(_ fades: Bool) {
+        guard fadesAtBottom != fades else { return }
+        fadesAtBottom = fades
+        effectView.maskImage = fades ? Self.fadeMaskImage() : nil
+    }
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)

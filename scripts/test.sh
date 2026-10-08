@@ -93,6 +93,9 @@ scripts/test-testflight-export-options.sh
 echo "── Developer ID release policy ──"
 scripts/test-developer-id-release-config.sh
 
+echo "── DMG installer layout ──"
+bash scripts/test-release-dmg.sh
+
 echo "── Sparkle appcast merge ──"
 scripts/test-release-appcast.sh
 

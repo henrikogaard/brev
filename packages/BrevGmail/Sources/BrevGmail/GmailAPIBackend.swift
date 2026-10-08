@@ -2291,8 +2291,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         return data
     }
 
+    /// Gmail state labels that are not mailboxes: inbox categories surface as
+    /// the category bar, and UNREAD/CHAT as flags, so none get a sidebar row.
+    static func isHiddenStateLabel(_ id: String) -> Bool {
+        let upper = id.uppercased()
+        return upper.hasPrefix("CATEGORY_") || upper == "UNREAD" || upper == "CHAT"
+    }
+
     private static func folders(from labels: [GmailLabel]) -> [Folder] {
-        labels.map { label in
+        labels.filter { !isHiddenStateLabel($0.id) }.map { label in
             Folder(
                 id: label.id,
                 name: label.name,
@@ -2484,6 +2491,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
             case "SPAM": return "\\Junk"
             case "STARRED": return "\\Starred"
             case "IMPORTANT": return "\\Important"
+            case let other where isHiddenStateLabel(other): return "\\" + other
             default: return labels.first { $0.id == id }?.name ?? id
             }
         }

@@ -25,6 +25,14 @@
 	<array>
 		<string>group.eu.brevmail.brev</string>
 	</array>
+	<!-- Sparkle's installer launcher (SUEnableInstallerLauncherService) talks
+	     to the sandboxed app over these mach services; without them every
+	     update fails with "An error occurred while running the updater". -->
+	<key>com.apple.security.temporary-exception.mach-lookup.global-name</key>
+	<array>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spks</string>
+		<string>$(PRODUCT_BUNDLE_IDENTIFIER)-spki</string>
+	</array>
 	<!-- Opt-in iCloud Key-Value preference sync (ADR-0056). Requires
 	     iCloud → Key-value storage on the App ID; unsigned local builds
 	     get a store that never leaves the device. -->

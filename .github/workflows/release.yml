@@ -4,9 +4,15 @@ name: Release
 on:
   push:
     tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing vX.Y.Z tag to release using the current workflow'
+        type: string
+        required: true
 
 concurrency:
-  group: release-${{ github.ref }}
+  group: release-${{ inputs.tag || github.ref_name }}
   cancel-in-progress: false
 
 permissions:
@@ -15,23 +21,25 @@ permissions:
 env:
   GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
   BREV_MICROSOFT_OAUTH_CLIENT_ID: ${{ secrets.BREV_MICROSOFT_OAUTH_CLIENT_ID }}
+  BREV_RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
 
 jobs:
   stable:
     runs-on: macos-15
     timeout-minutes: 60
-    environment: release
+    environment: release-signing
     steps:
       - name: Checkout
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          ref: refs/tags/${{ inputs.tag || github.ref_name }}
 
       - name: Resolve release version
         run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
-            echo "::error::Tag $GITHUB_REF_NAME is not a vX.Y.Z release tag"
+          VERSION="${BREV_RELEASE_TAG#v}"
+          if [[ "$BREV_RELEASE_TAG" != "v$VERSION" || ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+([-+][A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::Tag $BREV_RELEASE_TAG is not a vX.Y.Z release tag"
             exit 1
           fi
           echo "VERSION=$VERSION" >> "$GITHUB_ENV"
@@ -41,13 +49,14 @@ jobs:
         run: |
           set -euo pipefail
           git fetch origin main
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
-            echo "::error::Tag $GITHUB_REF_NAME points at $GITHUB_SHA, which is not reachable from origin/main. Release tags must be cut on main."
+          RELEASE_SHA="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "::error::Tag $BREV_RELEASE_TAG points at $RELEASE_SHA, which is not reachable from origin/main. Release tags must be cut on main."
             exit 1
           fi
-          RUNS="$(gh run list --workflow Build --commit "$GITHUB_SHA" --status success --limit 1 --json databaseId --jq length)"
+          RUNS="$(gh run list --workflow Build --commit "$RELEASE_SHA" --status success --limit 1 --json databaseId --jq length)"
           if [[ "$RUNS" == "0" ]]; then
-            echo "::error::Build workflow has not passed on $GITHUB_SHA; not shipping a stable release."
+            echo "::error::Build workflow has not passed on $RELEASE_SHA; not shipping a stable release."
             exit 1
           fi
 
@@ -71,6 +80,20 @@ jobs:
       - name: Tuist generate
         run: mise exec -- tuist generate --no-open
 
+      # The product stays on its tag; recovery must use this workflow's signing repair.
+      - name: Load signing action from workflow revision
+        env:
+          SIGNING_WORKFLOW_SHA: ${{ github.workflow_sha }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$SIGNING_WORKFLOW_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Invalid signing workflow revision"
+            exit 1
+          fi
+          git fetch origin "$SIGNING_WORKFLOW_SHA"
+          git show "$SIGNING_WORKFLOW_SHA:.github/actions/release-signing/action.yml" > "$RUNNER_TEMP/release-signing-action.yml"
+          cp "$RUNNER_TEMP/release-signing-action.yml" .github/actions/release-signing/action.yml
+
       - name: Set up signing material
         uses: ./.github/actions/release-signing
         with:
@@ -78,6 +101,7 @@ jobs:
           p12-base64: ${{ secrets.BREV_DEVELOPER_ID_P12_BASE64 }}
           p12-password: ${{ secrets.BREV_DEVELOPER_ID_P12_PASSWORD }}
           profile-base64: ${{ secrets.BREV_MACOS_PROFILE_STABLE_BASE64 }}
+          widget-profile-base64: ${{ secrets.BREV_MACOS_WIDGET_PROFILE_STABLE_BASE64 }}
           asc-key-p8-base64: ${{ secrets.BREV_ASC_KEY_P8_BASE64 }}
           sparkle-private-ed-key: ${{ secrets.BREV_SPARKLE_PRIVATE_ED_KEY }}
 
@@ -89,6 +113,7 @@ jobs:
         run: |
           {
             echo "BREV_MACOS_PROVISIONING_PROFILE_SPECIFIER=$BREV_PROVISIONING_PROFILE_SPECIFIER"
+            echo "BREV_MACOS_WIDGET_PROVISIONING_PROFILE_SPECIFIER=$BREV_WIDGET_PROVISIONING_PROFILE_SPECIFIER"
             echo "BREV_ASC_KEY_ID=$BREV_ASC_KEY_ID"
             echo "BREV_ASC_ISSUER_ID=$BREV_ASC_ISSUER_ID"
             echo "BREV_SPARKLE_PUBLIC_ED_KEY=$BREV_SPARKLE_PUBLIC_ED_KEY"
