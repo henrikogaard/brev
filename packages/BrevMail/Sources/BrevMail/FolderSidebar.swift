@@ -861,16 +861,23 @@ public struct FolderSidebar: View {
             .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             #else
-            HStack(spacing: BrevSpacing.xxs) {
+            HStack(spacing: folderLabelSpacing) {
+                Image(systemName: section.account.id == LocalMailBackend.accountID ? "internaldrive" : "envelope")
+                    .foregroundStyle(theme.textSecondary.color)
+                    .brevFont(.body)
+                    .frame(width: sidebarMetrics.iconWidth, alignment: .center)
                 Text(verbatim: section.title)
-                    .brevFont(.caption)
-                    .fontWeight(.semibold)
+                    .brevFont(.body)
+                    .fontWeight(.regular)
+                    .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(1)
                     .truncationMode(.tail)
                 Spacer(minLength: BrevSpacing.sm)
                 if section.loadError != nil {
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(theme.warning.color)
+                } else if !isExpanded {
+                    unreadBadge(section.folders.first { $0.role == .inbox }?.unreadCount ?? 0)
                 }
                 Image(systemName: isExpanded ? "chevron.down" : "chevron.right")
                     .brevFont(.caption)
@@ -880,8 +887,8 @@ public struct FolderSidebar: View {
             .foregroundStyle(theme.textSecondary.color)
             .padding(.leading, sidebarMetrics.folderRowLeadingPadding(depth: 0))
             .padding(.trailing, sidebarMetrics.folderRowTrailingPadding)
-            .padding(.vertical, sidebarMetrics.sourceHeaderVerticalPadding)
-            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.sourceHeaderMinimumHeight, alignment: .leading)
+            .padding(.vertical, sidebarMetrics.folderRowVerticalPadding)
+            .frame(maxWidth: .infinity, minHeight: sidebarMetrics.folderRowMinimumHeight, alignment: .leading)
             .contentShape(Rectangle())
             #endif
         }

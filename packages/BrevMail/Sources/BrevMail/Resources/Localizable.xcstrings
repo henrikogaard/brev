@@ -3224,6 +3224,28 @@
         }
       }
     },
+    "Couldn't send reply.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke sende svaret."
+          }
+        }
+      }
+    },
+    "Couldn't send. Your reply was saved as a draft.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kunne ikke sende. Svaret er lagret som et utkast."
+          }
+        }
+      }
+    },
     "Couldn't send your message.": {
       "extractionState": "manual",
       "localizations": {
@@ -7618,6 +7640,17 @@
         }
       }
     },
+    "Open in Composer": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne i skrivevindu"
+          }
+        }
+      }
+    },
     "Open in Contacts": {
       "extractionState": "manual",
       "localizations": {
@@ -8630,6 +8663,17 @@
         }
       }
     },
+    "Reply to %@…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar til %@…"
+          }
+        }
+      }
+    },
     "Report Junk": {
       "extractionState": "manual",
       "localizations": {
@@ -9561,6 +9605,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Send nå"
+          }
+        }
+      }
+    },
+    "Send reply": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Send svar"
           }
         }
       }

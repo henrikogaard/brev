@@ -5299,3 +5299,27 @@ buttons, and package-aware localization.
 - Changes: bumped the shared marketing version and four project settings from 0.2.3 to 0.2.4; moved the current Unreleased fixes under the dated release heading.
 - Verification: `git diff origin/main b7258c6 --stat` was empty after merge. Build, Release workflow, and published artifact/appcast checks follow the release commit.
 - Handoff: do not install into `/Applications` or run Check for Updates; Henrik performs the update test.
+
+## 2026-10-08 — Devin — Sidebar unread and reader quick reply
+
+- Goal: add account-row Inbox badges, message-list unread pills, and inline reader quick replies on macOS and iOS.
+- Changes: normalized macOS account rows; added the destination unread-count policy and title pill; added a localized quick-reply bar using the notification reply draft/delivery pipeline; wired typed text into the full reply composer while preserving quote protection. Added focused policy/prefill tests and Norwegian translations.
+- Verification: focused BrevMail policy/prefill tests passed; `scripts/format.sh` reported no formatting changes; `scripts/lint.sh` passed. Mock macOS build/run succeeded as 0.2.4 (44), PID 4399; iOS 27 simulator build succeeded and the app launched on `8E780854-5816-4435-AD8F-8098DF847EB5` (PID 4921). The default mock backend omits `.smtpOAuth`, so the quick-reply bar is correctly hidden and its empty/typed states could not be captured; no send was attempted.
+- Screenshots: `/Users/devin/qa/sidebar-quick-reply/mac-light-list.png`, `mac-light-reader.png`, `mac-dark-reader.png`, `iphone-list.png`, and `iphone-reader.png`. Quick-reply screenshots are unavailable because the mock lacks `.smtpOAuth`.
+- Handoff: use mock only; do not touch `/Applications/Brev.app`. No PR or CI wait requested.
+
+## 2026-10-08 — Devin — Quick-reply mock preview
+
+- Goal: expose quick reply in the mock apps without changing the root capability gate or default mock capability set.
+- Changes: macOS and iOS app demo-backend factories now pass `.full.union(.smtpOAuth)`; `MockBackend.send(draft:)` and `save(draft:)` mutate only its in-memory actor store.
+- Verification: macOS mock build 0.2.4 (46) and iOS 27 simulator build/launch passed. Focused BrevMail tests passed (38 tests, 6 suites); format reported 0/1,213 changed; lint passed.
+- Screenshots: captured and inspected `mac-light-quick-reply-empty.png` and `iphone-reader-quick-reply.png`; the bar does not collide with either reader footer, and the Mac screenshot has no focus ring. The keyboard-up capture shows the field focused but no software keyboard. Mac typed, dark, sent, and expanded-composer states remain uncaptured: the app's accessibility provider reported that PID 6202 did not answer.
+- Handoff: mock apps remain running; never touch `/Applications/Brev.app`.
+
+## 2026-10-08 — Devin — PR #203 quick-reply and toolbar QA fixes
+
+- Goal: preserve quick-reply text through quote-body refresh, identify the actual recipient, and prevent Mac title truncation.
+- Changes: apply the existing prefill policy when rebuilding reply bodies; resolve the bar's recipient from reply targets; size the Mac title and context to their content; carry quick-reply prefill through detached iPad compose; select only replyable messages; and bind queued sends to their original source/backend.
+- Verification: focused BrevMail tests passed (58 tests, 10 suites); iOS quick-reply snapshots passed (1 test, 2 light/dark references); the FolderSidebar run passed the 16 changed account-row snapshots, while the 4 unchanged Favorites-editor references remain mismatched from host-renderer drift reproduced on pristine `ed631a7`. Added only the two quick-reply PNGs and refreshed the 16 account-row PNGs. `scripts/format.sh` reported 0/1,213 files formatted; `scripts/lint.sh` passed. The dated mock build passed as 0.2.4 (49), PID 7134, and the requested iOS 27 simulator build passed.
+- Warnings: existing non-Sendable closure conversions in `BrevMailRootView.swift`, a non-Sendable app-delegate capture in `BrevApp.swift`, and BrevThemes visibility warnings appeared during builds/tests; they did not fail verification. The snapshot test runner also logged unavailable Contacts/Intents XPC services on this host.
+- Handoff: no GUI QA or CI was run/watched. The dated mock test app remains running; `/Applications/Brev.app` was not touched.

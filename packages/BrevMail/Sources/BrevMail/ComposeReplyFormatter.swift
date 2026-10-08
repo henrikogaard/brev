@@ -103,3 +103,19 @@ enum ComposeReplyFormatter {
         return trimmed.isEmpty ? "(no subject)" : trimmed
     }
 }
+
+enum ComposeReplyPrefillPolicy {
+    static func bodyText(
+        prefillBodyText: String?,
+        replyBody: String,
+        placement: ComposeReplyQuotePlacement
+    ) -> String {
+        guard let prefillBodyText, !prefillBodyText.isEmpty else { return replyBody }
+        switch placement {
+        case .belowReply:
+            return prefillBodyText + replyBody
+        case .aboveReply:
+            return replyBody + prefillBodyText
+        }
+    }
+}
