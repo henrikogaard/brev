@@ -277,6 +277,7 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showCalendar = false }
                 )
+                .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showContacts) {
@@ -289,6 +290,7 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showContacts = false }
                 )
+                .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .fullScreenCover(isPresented: $showTasks) {
@@ -301,6 +303,7 @@ struct BrevApp: App {
                     ),
                     onDismiss: { showTasks = false }
                 )
+                .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)
             }
             .task {

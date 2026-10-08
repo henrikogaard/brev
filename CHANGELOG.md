@@ -20,6 +20,9 @@ All notable changes to Brev are documented here.
 - IMAP messages now load when the server places the UID after the body
   literal, as Microsoft Exchange can do, while still rejecting data for
   a different UID.
+- On iOS, Calendar, Contacts and Tasks now follow the active Brev theme. In dark
+  mode they had rendered the light theme over a dark background, leaving event
+  titles near-invisible.
 
 ## [0.2.4] - 2026-10-08
 

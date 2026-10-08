@@ -81,7 +81,10 @@ struct MailStatusCopyLocalizationTests {
         "Flagged messages will appear here.",
         "Snoozed messages will appear here.",
         "Messages marked done will appear here.",
-        "Messages from your VIP senders will appear here."
+        "Messages from your VIP senders will appear here.",
+        // Calendar/Contacts/Tasks kept-cache banner
+        "Showing cached data",
+        "Last updated %@"
     ]
 
     @Test("no catalog key keeps raw string-interpolation source")

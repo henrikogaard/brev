@@ -1,5 +1,43 @@
 # Worklog
 
+## 2026-10-03 — Agent — Issue #11 stub-DAV rows 2.7/2.8/4.3
+
+- Goal: close the stub-matrix rows left open by the #3 reconciliation
+  (2.7 attendee add/remove, 2.8 RSVP round-trip, 4.3 idle background
+  pickup) with an iOS simulator pass against `scripts/stub-dav-server.py`.
+- Run: `main` @ ed631a71, iOS Debug (mock mail, 5-min fetch), iPhone 17 Pro
+  sim iOS 27.0, authed stub on :8643 seeded with the canonical seed plus a
+  Hytte invite matching the mock mailbox's invite UID.
+- Results: 2.8 ✓ (accept/maybe/decline each a chained If-Match PUT → 204;
+  remote PARTSTAT ACCEPTED/TENTATIVE/DECLINED). 2.7 ✓* (attendee add and
+  remove each PUT → 204 and reflected remotely; stub has no CalDAV
+  scheduling, so live invite delivery stays with the live fixtures). 4.3 iOS
+  ✓ (Background sync ON → injected event picked up by unprompted REPORTs at
+  the 5-min cadence; verifies the #135 O3 fix). macOS legs not re-run.
+- Changed: `docs/qa/pim-parity-matrix.md` rows 2.7/2.8/4.3, O3 status, new
+  O7–O12 summary; new evidence dir `docs/qa/pim-parity-stub-dav-2026-10-03/`
+  (screenshots, wire log, ICS before/after, README with observations).
+- Observations (not fixed): raw `missingCredential` in the source row; RSVP
+  strings unlocalized; attendee PUTs omit ORGANIZER under `METHOD:PUBLISH`;
+  attendee field skips address validation; iOS dark-theme contrast on agenda
+  titles and event sheets; Settings cached-event count stale after background
+  sync.
+- Skipped (evidence pass): package tests (no code touched until the O11
+  follow-up below).
+- Follow-up fix (same PR, #187): O11. The iOS Calendar/Contacts/Tasks
+  full-screen covers and the macOS Calendar/Contacts/Tasks windows sat outside
+  `.brevRootAppearance`, so they rendered the default `brevMonoLight` theme
+  under a dark system appearance; each now applies the modifier. The stale
+  banner's "Last updated" catalog key held raw `\(…)` source; rekeyed to
+  `Last updated %@` with a guard in `MailStatusCopyLocalizationTests`
+  (red → green). Verified on the sim (`ios-40`/`ios-41`); macOS compile only.
+- Found: 168 catalog keys still use raw `\(…)` interpolation source (118
+  BrevMail, 50 BrevBackend), so those strings never localize. Each needs its
+  proper `%@`/`%lld` specifier; left for a follow-up.
+- Handoff: live Google/CalDAV/CardDAV fixtures, macOS 2.7/2.8/4.3 re-runs and
+  physical-iPhone QA still need Henrik. Observations O7–O10 and O12 are
+  candidate follow-up issues.
+
 ## 2026-10-05 — Agent — IMAP trailing-UID literal compatibility
 
 - Goal: make message bodies readable when a server returns the UID after
