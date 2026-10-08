@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Mac mailbox titles and account names sit beside the filter button to save vertical space. Category controls stay on an opaque surface; blur is confined to the top toolbar. All Inboxes and other cross-account views no longer show the last account's name.
+- Mac mailbox rows and message content scroll behind the native toolbar up to the window edge, with blur rather than being cut off below it.
+
 ## [0.2.3] - 2026-10-08
 
 ### Fixed

@@ -1335,11 +1335,7 @@ public struct BrevMailRootView: View {
             } content: {
                 messageListPane
             } detail: {
-                // The detail column's band lives here, not in the pane: in the
-                // bottom-stack presentation the same pane is the lower half of
-                // the `VSplitView`, mid-window, where no band belongs.
                 readingPaneDetailPane
-                    .brevMailReaderScrollEdgeFade()
             }
         case .bottomStack:
             NavigationSplitView(
@@ -1592,6 +1588,7 @@ public struct BrevMailRootView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         #else
         .frame(minWidth: readerMinimumWidth)
+        .mailToolbarScrollUnder()
         .onGeometryChange(for: CGFloat.self) { proxy in
             proxy.size.width
         } action: { width in
@@ -1741,6 +1738,7 @@ public struct BrevMailRootView: View {
                 canFileLocally: localBackend != nil,
                 savedSearchID: mailbox.id,
                 savedSearchTitle: mailbox.name,
+                paneTitle: selectedMessageDestinationTitle,
                 savedSearchQuery: mailbox.query,
                 localMessageWorkflowState: localMessageWorkflowStateBinding,
                 isWorkBlocked: isMessageWorkBlocked,
@@ -1785,6 +1783,7 @@ public struct BrevMailRootView: View {
                     canFileLocally: localBackend != nil,
                     accountOwnedMailboxEmailsByAccountID: accountOwnedMailboxEmailsByAccountID,
                     smartView: selectedSmartView,
+                    paneTitle: selectedMessageDestinationTitle,
                     localMessageWorkflowState: localMessageWorkflowStateBinding,
                     isWorkBlocked: isMessageWorkBlocked,
                     isMutationWorkBlocked: isCommandMutationBlocked,
@@ -1802,10 +1801,7 @@ public struct BrevMailRootView: View {
                     }
                 )
             } else {
-                VStack(spacing: 0) {
-                    #if os(macOS)
-                    messageListHeader
-                    #endif
+                Group {
                     MessageListView(
                         navigation: navigation,
                         backend: selectedBackend,
@@ -1815,6 +1811,8 @@ public struct BrevMailRootView: View {
                             selectedBackend.account.id
                         ] ?? [],
                         folder: selectedFolder,
+                        paneTitle: selectedMessageDestinationTitle,
+                        paneContext: selectedMessageDestinationContext,
                         allFolders: folders,
                         searchSyntaxDescription: selectedSearchSyntaxDescription,
                         localMessageWorkflowState: localMessageWorkflowStateBinding,
@@ -1859,10 +1857,8 @@ public struct BrevMailRootView: View {
         #endif
             .brevDesktopSizing()
             .brevMailFallbackToolbar { toolbarList }
-        // No pane-level scroll edge blur here: the message list mounts the
-        // band on its own scroll viewport (see MessageListView), which sits
-        // below the inbox category and action bars when those are present. A
-        // pane-top band would float above where rows actually clip.
+        // Each list owns its header inset and blur, keeping the footer outside
+        // the scroll viewport and the controls above the passing rows.
         #if os(macOS)
             // Edit > Search Mail has to open the collapsed control, not just
             // ask an unrendered field for focus.
@@ -2013,32 +2009,6 @@ public struct BrevMailRootView: View {
             || navigation.isAllAttachmentsSelected
     }
 
-    #if os(macOS)
-    /// Compact header above the desktop message list.
-    ///
-    /// macOS showed the mailbox name and counts only in the bottom status row,
-    /// so the list column had no visible title while iOS has carried one in
-    /// the navigation bar all along. This mirrors the iOS header: mailbox on
-    /// the first line, account or smart-view context on the second.
-    private var messageListHeader: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            Text(verbatim: selectedMessageDestinationTitle)
-                .brevFont(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
-            if let selectedMessageDestinationContext {
-                Text(verbatim: selectedMessageDestinationContext)
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .lineLimit(1)
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.xs)
-    }
-    #endif
-
     private var selectedMessageDestinationTitle: String {
         if navigation.isUnifiedInboxSelected {
             return String(localized: "All Inboxes", bundle: .module)
@@ -2064,7 +2034,13 @@ public struct BrevMailRootView: View {
     }
 
     private var selectedMessageDestinationContext: String? {
-        guard navigation.selectedFolderID != nil else { return nil }
+        guard MailRootMessageListTitlePolicy.showsAccountContext(
+            hasSelectedFolder: navigation.selectedFolderID != nil,
+            isUnifiedInboxSelected: navigation.isUnifiedInboxSelected,
+            isSmartViewSelected: navigation.isSmartViewSelected,
+            isAllAttachmentsSelected: navigation.isAllAttachmentsSelected,
+            hasSelectedSavedSearch: selectedSavedSearch != nil
+        ) else { return nil }
         let account = selectedSourceSection?.account ?? selectedBackend.account
         let mailbox = selectedSourceSection?.mailbox
             ?? mailboxes.first { $0.id == activeMailboxID }
@@ -2074,6 +2050,23 @@ public struct BrevMailRootView: View {
             mailboxEmail: mailbox?.email ?? account.emailAddress
         )
     }
+
+    #if os(macOS)
+    private var macToolbarDestinationTitle: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: selectedMessageDestinationTitle)
+                .brevFont(.headline)
+                .lineLimit(1)
+            if let selectedMessageDestinationContext {
+                Text(verbatim: selectedMessageDestinationContext)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(1)
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+    #endif
 
     @ToolbarContentBuilder
     private var toolbarList: some ToolbarContent {
@@ -2086,6 +2079,24 @@ public struct BrevMailRootView: View {
                 mailboxFilterToolbarControl
             }
         }
+        // A title is not a control, so it drops the Liquid Glass capsule
+        // macOS 26 puts behind toolbar items.
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *) {
+            ToolbarItem(placement: .primaryAction) {
+                macToolbarDestinationTitle
+            }
+            .sharedBackgroundVisibility(.hidden)
+        } else {
+            ToolbarItem(placement: .primaryAction) {
+                macToolbarDestinationTitle
+            }
+        }
+        #else
+        ToolbarItem(placement: .primaryAction) {
+            macToolbarDestinationTitle
+        }
+        #endif
         // Keeps the section occupied so the detail column's action cluster does
         // not slide left across the message list.
         ToolbarItem(placement: .primaryAction) {

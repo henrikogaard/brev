@@ -65,6 +65,7 @@ struct UnifiedInboxListView: View {
     /// items are additionally filtered by `savedSearchQuery` (ADR-0041).
     private let savedSearchID: String?
     private let savedSearchTitle: String?
+    private let paneTitle: String?
     private let savedSearchQuery: SmartMailbox.SavedQuery?
     private let isMutationWorkBlocked: Bool
     private let isWorkBlocked: Bool
@@ -151,6 +152,7 @@ struct UnifiedInboxListView: View {
         smartView: MailboxSmartView? = nil,
         savedSearchID: String? = nil,
         savedSearchTitle: String? = nil,
+        paneTitle: String? = nil,
         savedSearchQuery: SmartMailbox.SavedQuery? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
         isWorkBlocked: Bool,
@@ -169,6 +171,7 @@ struct UnifiedInboxListView: View {
         self.smartView = smartView
         self.savedSearchID = savedSearchID
         self.savedSearchTitle = savedSearchTitle
+        self.paneTitle = paneTitle
         self.savedSearchQuery = savedSearchQuery
         self.isWorkBlocked = isWorkBlocked
         self.isMutationWorkBlocked = isMutationWorkBlocked
@@ -236,9 +239,11 @@ struct UnifiedInboxListView: View {
                     }
                 )
             }
+            #if os(iOS)
             if showsInboxCategoryBar {
                 InboxCategoryBar(activeCategory: $activeInboxCategory)
             }
+            #endif
             if !trimmedSearchText.isEmpty {
                 CollapsibleOptionsStrip(
                     isExpanded: $isSearchOptionsExpanded,
@@ -326,7 +331,10 @@ struct UnifiedInboxListView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
-                            .refreshable { await reloadVisibleItems() }
+                            #if os(macOS)
+                                .scrollClipDisabled()
+                            #endif
+                                .refreshable { await reloadVisibleItems() }
                             #if os(macOS)
                                 .onChange(of: selectedUnifiedItemID) { _, selection in
                                     guard let selection else { return }
@@ -368,6 +376,18 @@ struct UnifiedInboxListView: View {
                     #endif
                 }
             }
+            #if os(macOS)
+            .mailListHeader {
+                VStack(spacing: 0) {
+                    if BrevMailToolbarRuntime.usesNativeToolbar, let paneTitle {
+                        MailListTitle(title: paneTitle, context: nil)
+                    }
+                    if showsInboxCategoryBar {
+                        InboxCategoryBar(activeCategory: $activeInboxCategory)
+                    }
+                }
+            }
+            #endif
             if let folderStatsFooterPresentation = folderStatsFooterPresentation(for: presentation) {
                 MessageListFolderStatsFooter(presentation: folderStatsFooterPresentation)
             }

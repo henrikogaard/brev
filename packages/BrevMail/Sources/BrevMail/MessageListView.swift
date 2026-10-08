@@ -59,6 +59,8 @@ public struct MessageListView: View {
     private let accountOwnedMailboxEmails: Set<String>
     private let folder: Folder?
     private let folderDisplayName: String?
+    private let paneTitle: String?
+    private let paneContext: String?
     private let allFolders: [Folder]
     private let searchSyntaxDescription: ServerSearchSyntaxDescription?
     private let isMutationWorkBlocked: Bool
@@ -186,6 +188,8 @@ public struct MessageListView: View {
         accountOwnedMailboxEmails: Set<String> = [],
         folder: Folder?,
         folderDisplayName: String? = nil,
+        paneTitle: String? = nil,
+        paneContext: String? = nil,
         allFolders: [Folder] = [],
         searchSyntaxDescription: ServerSearchSyntaxDescription? = nil,
         localMessageWorkflowState: Binding<LocalMessageWorkflowState> = .constant(.defaults),
@@ -205,6 +209,8 @@ public struct MessageListView: View {
         self.accountOwnedMailboxEmails = accountOwnedMailboxEmails
         self.folder = folder
         self.folderDisplayName = folderDisplayName
+        self.paneTitle = paneTitle
+        self.paneContext = paneContext
         self.allFolders = allFolders
         self.searchSyntaxDescription = searchSyntaxDescription
         self.isWorkBlocked = isWorkBlocked
@@ -405,20 +411,30 @@ public struct MessageListView: View {
             }
             Group {
                 if folder != nil {
-                    // The list starts below the pane header, mid-window, so it
-                    // carries no scroll edge blur: that band belongs to the
-                    // window's top edge only. The category bar is opaque chrome
-                    // above the rows, never a frosted strip they show through.
-                    VStack(spacing: 0) {
-                        if showsInboxCategoryBar {
-                            InboxCategoryBar(activeCategory: $activeInboxCategory)
+                    listContent(presentation: presentation)
+                        .mailListHeader {
+                            VStack(spacing: 0) {
+                                #if os(macOS)
+                                if BrevMailToolbarRuntime.usesNativeToolbar, let paneTitle {
+                                    MailListTitle(title: paneTitle, context: paneContext)
+                                }
+                                #endif
+                                if showsInboxCategoryBar {
+                                    InboxCategoryBar(activeCategory: $activeInboxCategory)
+                                }
+                            }
                         }
-                        listContent(presentation: presentation)
-                    }
                 } else {
                     MessageListEmptyStateView(
                         status: MessageListPresentation.noFolderStatus()
                     )
+                    #if os(macOS)
+                    .mailListHeader {
+                        if BrevMailToolbarRuntime.usesNativeToolbar, let paneTitle {
+                            MailListTitle(title: paneTitle, context: paneContext)
+                        }
+                    }
+                    #endif
                 }
             }
             #if !os(iOS)
@@ -731,12 +747,15 @@ public struct MessageListView: View {
                     }
                     .listStyle(.plain)
                     .scrollContentBackground(.hidden)
-                    // The section headers are intentionally smaller than message rows.
-                    // Remove List's platform minimum so their own padding determines
-                    // the gap between date groups.
-                    .environment(\.defaultMinListRowHeight, 1)
-                    .refreshable { await reloadVisibleMessages() }
-                    .brevBottomBarScrollInset()
+                    #if os(macOS)
+                        .scrollClipDisabled()
+                    #endif
+                        // The section headers are intentionally smaller than message rows.
+                        // Remove List's platform minimum so their own padding determines
+                        // the gap between date groups.
+                        .environment(\.defaultMinListRowHeight, 1)
+                        .refreshable { await reloadVisibleMessages() }
+                        .brevBottomBarScrollInset()
                     #if os(macOS)
                         .onChange(of: navigation.selectedMessageID) { _, selection in
                             guard let selection else { return }
@@ -3207,13 +3226,15 @@ struct InboxCategoryBar: View {
             .padding(.horizontal, BrevSpacing.md)
         }
         .frame(height: InboxCategoryBarPresentation.height(platform: platform))
-        .background(BrevWindowSurfaceBackground(role: .content))
-        .overlay(alignment: .bottom) {
-            Rectangle()
-                .fill(BrevSeparator.color(for: theme))
-                .frame(height: 0.5)
-        }
-        .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+        #if os(iOS)
+            .background(BrevWindowSurfaceBackground(role: .content))
+        #endif
+            .overlay(alignment: .bottom) {
+                Rectangle()
+                    .fill(BrevSeparator.color(for: theme))
+                    .frame(height: 0.5)
+            }
+            .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
     }
 
     private func categoryButton(_ category: InboxCategory) -> some View {

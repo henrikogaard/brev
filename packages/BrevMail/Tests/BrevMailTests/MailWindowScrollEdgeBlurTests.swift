@@ -11,11 +11,30 @@
  */
 
 #if os(macOS)
+import AppKit
 @testable import BrevMail
 import Testing
 
 @Suite("Scroll edge blur reduction retry")
 struct MailScrollEdgeBlurRetryStateTests {
+    @Test("header blur covers the full band while pane blur keeps its fade")
+    @MainActor
+    func headerBlurDoesNotFadeBehindControls() throws {
+        let view = MailScrollEdgeBlurView()
+        let effect = try #require(view.subviews.first as? NSVisualEffectView)
+        #expect(effect.maskImage != nil)
+
+        view.setFadesAtBottom(false)
+        #expect(effect.maskImage == nil)
+        #expect(effect.blendingMode == .withinWindow)
+        #expect(view.hitTest(.zero) == nil)
+
+        view.setFadesAtBottom(true)
+        let restoredMask = try #require(effect.maskImage)
+        view.setFadesAtBottom(true)
+        #expect(effect.maskImage === restoredMask)
+    }
+
     @Test("a missing backdrop is retried a bounded number of times")
     func missingBackdropIsRetriedBoundedly() {
         var state = MailScrollEdgeBlurRetryState()

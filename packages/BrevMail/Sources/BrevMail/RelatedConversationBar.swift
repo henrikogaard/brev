@@ -43,8 +43,10 @@ struct RelatedConversationBar: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(theme.bgSecondary.color)
-        .accessibilityElement(children: .combine)
+        #if os(iOS)
+            .background(theme.bgSecondary.color)
+        #endif
+            .accessibilityElement(children: .combine)
     }
 
     private var statusRow: some View {
