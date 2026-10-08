@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Sidebar account rows show an account icon and collapsed Inbox unread count; mailbox titles show unread counts for the selected Inbox or folder.
+- Readers support quick replies with Undo Send and an option to continue in the full composer.
+
 ## [0.2.4] - 2026-10-08
 
 ### Fixed

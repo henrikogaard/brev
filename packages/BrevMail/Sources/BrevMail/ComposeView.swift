@@ -456,8 +456,12 @@ public struct ComposeView: View {
             ))
             _subject = State(initialValue: ComposeReplyFormatter.subject(for: replyingTo.subject))
             let placement = ComposeReplyQuotePlacement.load()
-            initialBodyText = ComposeReplyFormatter.body(
-                for: replyingTo,
+            initialBodyText = ComposeReplyPrefillPolicy.bodyText(
+                prefillBodyText: prefill?.bodyText,
+                replyBody: ComposeReplyFormatter.body(
+                    for: replyingTo,
+                    placement: placement
+                ),
                 placement: placement
             )
             _quoteProtection = State(initialValue: ComposeQuoteProtection(

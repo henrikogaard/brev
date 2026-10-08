@@ -50,6 +50,25 @@ struct ComposeReplyFormatterTests {
         """)
     }
 
+    @Test("reply prefill stays in the typing region for either quote placement")
+    func replyPrefillStaysInTypingRegionForEitherQuotePlacement() {
+        #expect(ComposeReplyPrefillPolicy.bodyText(
+            prefillBodyText: "Quick reply",
+            replyBody: "\n\nQuoted original",
+            placement: .belowReply
+        ) == "Quick reply\n\nQuoted original")
+        #expect(ComposeReplyPrefillPolicy.bodyText(
+            prefillBodyText: "Quick reply",
+            replyBody: "Quoted original\n\n",
+            placement: .aboveReply
+        ) == "Quoted original\n\nQuick reply")
+        #expect(ComposeReplyPrefillPolicy.bodyText(
+            prefillBodyText: nil,
+            replyBody: "Quoted original",
+            placement: .belowReply
+        ) == "Quoted original")
+    }
+
     @Test("above reply placement puts quoted original before reply area")
     func aboveReplyPlacementPutsQuoteFirst() {
         let body = ComposeReplyFormatter.body(for: Self.makeHeader(), placement: .aboveReply)

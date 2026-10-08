@@ -5277,3 +5277,11 @@ buttons, and package-aware localization.
 - Changes: bumped the shared marketing version and four project settings from 0.2.3 to 0.2.4; moved the current Unreleased fixes under the dated release heading.
 - Verification: `git diff origin/main b7258c6 --stat` was empty after merge. Build, Release workflow, and published artifact/appcast checks follow the release commit.
 - Handoff: do not install into `/Applications` or run Check for Updates; Henrik performs the update test.
+
+## 2026-10-08 — Devin — Sidebar unread and reader quick reply
+
+- Goal: add account-row Inbox badges, message-list unread pills, and inline reader quick replies on macOS and iOS.
+- Changes: normalized macOS account rows; added the destination unread-count policy and title pill; added a localized quick-reply bar using the notification reply draft/delivery pipeline; wired typed text into the full reply composer while preserving quote protection. Added focused policy/prefill tests and Norwegian translations.
+- Verification: focused BrevMail policy/prefill tests passed; `scripts/format.sh` reported no formatting changes; `scripts/lint.sh` passed. Mock macOS build/run succeeded as 0.2.4 (44), PID 4399; iOS 27 simulator build succeeded and the app launched on `8E780854-5816-4435-AD8F-8098DF847EB5` (PID 4921). The default mock backend omits `.smtpOAuth`, so the quick-reply bar is correctly hidden and its empty/typed states could not be captured; no send was attempted.
+- Screenshots: `/Users/devin/qa/sidebar-quick-reply/mac-light-list.png`, `mac-light-reader.png`, `mac-dark-reader.png`, `iphone-list.png`, and `iphone-reader.png`. Quick-reply screenshots are unavailable because the mock lacks `.smtpOAuth`.
+- Handoff: use mock only; do not touch `/Applications/Brev.app`. No PR or CI wait requested.

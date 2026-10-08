@@ -405,6 +405,50 @@ struct MailboxFilterControlPolicyTests {
         ))
     }
 
+    @Test("message-list unread count follows the selected destination")
+    func messageListUnreadCountFollowsSelectedDestination() {
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: nil,
+            unifiedInboxUnreadCounts: [2, 3, 4]
+        ) == 9)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 7,
+            unifiedInboxUnreadCounts: []
+        ) == 7)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: true,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 7,
+            unifiedInboxUnreadCounts: []
+        ) == nil)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: true,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: nil,
+            unifiedInboxUnreadCounts: [0, 0]
+        ) == nil)
+        #expect(MailRootMessageListTitlePolicy.unreadCount(
+            isUnifiedInboxSelected: false,
+            isSmartViewSelected: false,
+            isAllAttachmentsSelected: false,
+            hasSelectedSavedSearch: false,
+            selectedFolderUnreadCount: 0,
+            unifiedInboxUnreadCounts: []
+        ) == nil)
+    }
+
     @Test("message-list account context falls back to a stable email identity")
     func messageListAccountContextFallsBackToStableEmailIdentity() {
         #expect(MailRootMessageListTitlePolicy.accountContext(
