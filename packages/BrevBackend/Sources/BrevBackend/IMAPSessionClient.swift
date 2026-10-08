@@ -2096,11 +2096,16 @@ public actor IMAPSessionClient {
             }
 
             if let literalByteCount = Self.bodyLiteralByteCount(in: line, uid: uid) {
+                let prefixUIDs = Self.fetchUIDValues(in: line)
                 let literal = try await readLiteralData(
                     byteCount: literalByteCount,
                     commandName: "UID FETCH"
                 )
-                try await readFetchLiteralCompletion(tag: tag)
+                try await readFetchLiteralCompletion(
+                    tag: tag,
+                    uid: uid,
+                    prefixUIDs: prefixUIDs
+                )
                 guard !literal.isEmpty else {
                     throw IMAPClientError.malformedResponse(line)
                 }
@@ -2225,7 +2230,11 @@ public actor IMAPSessionClient {
                 byteCount: literalByteCount,
                 commandName: "UID FETCH"
             )
-            try await readFetchLiteralCompletion(tag: tag)
+            try await readFetchLiteralCompletion(
+                tag: tag,
+                uid: uid,
+                prefixUIDs: Self.fetchUIDValues(in: line)
+            )
             return literal
         }
     }
@@ -2248,16 +2257,42 @@ public actor IMAPSessionClient {
         return data
     }
 
-    private func readFetchLiteralCompletion(tag: String) async throws {
+    private func readFetchLiteralCompletion(
+        tag: String,
+        uid: Int,
+        prefixUIDs: [Int]
+    ) async throws {
+        // Exchange may emit UID on the continuation line after the literal.
+        // Only metadata before the FETCH close marker belongs to this response;
+        // later untagged responses must not satisfy UID validation.
+        var trailingResponses: [String] = []
+        var fetchContinuationOpen = true
         while true {
             let line = try await readLine(commandName: "UID FETCH")
             if line.hasPrefix("\(tag) ") {
                 try Self.validateTaggedResponse(line, tag: tag, commandName: "UID FETCH")
+                let responseUIDs = prefixUIDs
+                    + trailingResponses.flatMap(Self.fetchUIDValues(in:))
+                guard !fetchContinuationOpen,
+                      !responseUIDs.isEmpty,
+                      responseUIDs.allSatisfy({ $0 == uid })
+                else {
+                    throw IMAPClientError.malformedResponse(
+                        trailingResponses.joined(separator: "\n")
+                    )
+                }
                 return
             }
-            if line.trimmingCharacters(in: .whitespacesAndNewlines) == ")" {
+            guard fetchContinuationOpen else {
                 continue
             }
+            guard !line.hasPrefix("* ") else {
+                throw IMAPClientError.malformedResponse(line)
+            }
+            trailingResponses.append(line)
+            fetchContinuationOpen = !line
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .hasSuffix(")")
         }
     }
 
@@ -3235,11 +3270,15 @@ public actor IMAPSessionClient {
     private static func bodyLiteralByteCount(in line: String, uid: Int) -> Int? {
         guard line.hasPrefix("* "),
               line.range(of: " FETCH ", options: .caseInsensitive) != nil,
-              fetchLine(line, containsUID: uid),
               isRawMessageFetchLine(line),
               line.hasSuffix("}"),
               let openBrace = line.lastIndex(of: "{")
         else {
+            return nil
+        }
+
+        let fetchUIDs = fetchUIDValues(in: line)
+        guard fetchUIDs.isEmpty || fetchUIDs.allSatisfy({ $0 == uid }) else {
             return nil
         }
 
@@ -3258,11 +3297,16 @@ public actor IMAPSessionClient {
     private static func fetchLiteralByteCount(in line: String, uid: Int) -> Int? {
         guard line.hasPrefix("* "),
               line.range(of: " FETCH ", options: .caseInsensitive) != nil,
-              fetchLine(line, containsUID: uid),
               line.range(of: "BODY[", options: .caseInsensitive) != nil,
               line.hasSuffix("}"),
               let openBrace = line.lastIndex(of: "{")
         else { return nil }
+
+        let fetchUIDs = fetchUIDValues(in: line)
+        guard fetchUIDs.isEmpty || fetchUIDs.allSatisfy({ $0 == uid }) else {
+            return nil
+        }
+
         let countStart = line.index(after: openBrace)
         let countEnd = line.index(before: line.endIndex)
         guard countStart < countEnd,
@@ -3290,7 +3334,8 @@ public actor IMAPSessionClient {
         }
     }
 
-    private static func fetchLine(_ line: String, containsUID uid: Int) -> Bool {
+    private static func fetchUIDValues(in line: String) -> [Int] {
+        var values: [Int] = []
         var index = line.startIndex
         var isInsideQuotedString = false
         var isEscaped = false
@@ -3333,19 +3378,22 @@ public actor IMAPSessionClient {
                     line.formIndex(after: &valueIndex)
                 }
                 guard start < valueIndex,
-                      Int(line[start ..< valueIndex]) == uid
+                      let value = Int(line[start ..< valueIndex]),
+                      valueIndex == line.endIndex
+                      || line[valueIndex].isWhitespace
+                      || line[valueIndex] == ")"
                 else {
                     line.formIndex(after: &index)
                     continue
                 }
-                if valueIndex == line.endIndex || line[valueIndex].isWhitespace || line[valueIndex] == ")" {
-                    return true
-                }
+                values.append(value)
+                index = valueIndex
+                continue
             }
 
             line.formIndex(after: &index)
         }
-        return false
+        return values
     }
 
     private static func isFetchAttributeBoundary(
