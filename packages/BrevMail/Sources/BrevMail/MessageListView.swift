@@ -3246,10 +3246,29 @@ struct InboxCategoryBar: View {
                 Image(systemName: category.symbolName)
                     .font(.caption2)
                 Text(category.title)
+                #if os(macOS)
+                    .brevFont(.caption).fontWeight(isSelected ? .semibold : .regular)
+                #else
                     .brevFont(.caption).fontWeight(.medium)
+                #endif
                     .lineLimit(1)
             }
+            #if os(macOS)
+            .foregroundStyle(isSelected ? theme.textPrimary.color : theme.textSecondary.color)
+            .padding(.horizontal, BrevSpacing.xs)
+            .frame(height: InboxCategoryBarPresentation.height(platform: .macOS))
+            .contentShape(Rectangle())
+            .overlay(alignment: .bottom) {
+                if isSelected {
+                    Rectangle()
+                        .fill(theme.textPrimary.color.opacity(0.65))
+                        .frame(height: 2)
+                        .padding(.horizontal, BrevSpacing.xs)
+                }
+            }
+            #else
             .brevChip(selected: isSelected)
+            #endif
             .fixedSize(horizontal: true, vertical: false)
             .inboxCategoryTouchTarget()
         }

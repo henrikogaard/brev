@@ -102,6 +102,7 @@ private struct MailToolbarScrollUnderModifier: ViewModifier {
 
 private struct MailListHeaderModifier<Header: View>: ViewModifier {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let header: Header
 
     func body(content: Content) -> some View {
@@ -109,7 +110,15 @@ private struct MailListHeaderModifier<Header: View>: ViewModifier {
             .safeAreaInset(edge: .top, spacing: 0) {
                 header
                     .frame(maxWidth: .infinity)
-                    .background(theme.bgPrimary.color, ignoresSafeAreaEdges: [])
+                    .background {
+                        if reduceTransparency {
+                            theme.bgPrimary.color
+                        } else {
+                            MailWindowScrollEdgeBlur(fadesAtBottom: false)
+                                .overlay(theme.bgPrimary.color.opacity(0.35))
+                                .allowsHitTesting(false)
+                        }
+                    }
             }
             .mailToolbarScrollUnder()
     }

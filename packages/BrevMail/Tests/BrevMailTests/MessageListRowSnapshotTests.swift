@@ -24,6 +24,23 @@ import Testing
 @Suite("Message list row snapshots")
 @MainActor
 struct MessageListRowSnapshotTests {
+    @Test("category tabs use plain labels and an underlined selection", arguments: [false, true])
+    func categoryTabs(dark: Bool) {
+        let theme = dark ? BrevTheme.brevMonoDark : BrevTheme.brevMonoLight
+        let view = InboxCategoryBar(activeCategory: .constant(.primary))
+            .frame(width: 520, height: 34)
+            .background(theme.bgPrimary.color)
+            .brevTheme(theme)
+            .environment(\.colorScheme, dark ? .dark : .light)
+        let host = NSHostingController(rootView: view)
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 520, height: 34)),
+            named: dark ? "category-tabs-dark" : "category-tabs-light",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("mailbox header shows title and account context")
     func mailboxHeader() {
         let theme = BrevTheme.brevSlate
