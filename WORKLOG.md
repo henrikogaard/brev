@@ -5332,3 +5332,10 @@ buttons, and package-aware localization.
 - Verification: focused BrevMail tests passed (58 tests, 10 suites); iOS quick-reply snapshots passed (1 test, 2 light/dark references); the FolderSidebar run passed the 16 changed account-row snapshots, while the 4 unchanged Favorites-editor references remain mismatched from host-renderer drift reproduced on pristine `ed631a7`. Added only the two quick-reply PNGs and refreshed the 16 account-row PNGs. `scripts/format.sh` reported 0/1,213 files formatted; `scripts/lint.sh` passed. The dated mock build passed as 0.2.4 (49), PID 7134, and the requested iOS 27 simulator build passed.
 - Warnings: existing non-Sendable closure conversions in `BrevMailRootView.swift`, a non-Sendable app-delegate capture in `BrevApp.swift`, and BrevThemes visibility warnings appeared during builds/tests; they did not fail verification. The snapshot test runner also logged unavailable Contacts/Intents XPC services on this host.
 - Handoff: no GUI QA or CI was run/watched. The dated mock test app remains running; `/Applications/Brev.app` was not touched.
+
+## 2026-10-08 — Devin — Stable release 0.2.5 prep
+
+- Authorization: Henrik requested 0.2.5 release preparation after PR #204 merged as `4b2f1dd`; merge, tag, and publication remain pending review.
+- Changes: bumped marketing versions to 0.2.5 and moved the current Unreleased notes under the dated release heading.
+- Verification: `scripts/format.sh` passed (0/1,213 files formatted); `scripts/lint.sh` passed. Build CI and signed artifact verification remain pending review.
+- Handoff: prepared branch only; no merge, tag, publication, or CI wait. `/Applications/Brev.app` and the updater remain untouched.
