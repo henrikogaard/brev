@@ -1,8 +1,26 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.4</title><pubDate>Thu, 08 Oct 2026 16:01:13 GMT</pubDate><sparkle:version>2026100815</sparkle:version><sparkle:shortVersionString>0.2.4</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Fixed
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.5</title><pubDate>Thu, 08 Oct 2026 22:54:48 GMT</pubDate><sparkle:version>2026100822</sparkle:version><sparkle:shortVersionString>0.2.5</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>### Added
+
+- Sidebar account rows show an account icon and collapsed Inbox unread count; mailbox titles show unread counts for the selected Inbox or folder.
+- Readers support quick replies with Undo Send and an option to continue in the full composer.
+
+### Changed
+
+- Mac Inbox categories use plain icon-and-label tabs with an underlined selection on one shared blurred surface, so scrolling mail remains visible behind the filters. Reduce Transparency keeps the surface opaque.
+
+### Fixed
+
+- Expanding a quick reply preserves the typed text when the full quoted message loads, and the placeholder names the reply recipient; detached iPad replies preserve the same prefill. Quick reply skips self-authored latest messages, hides when no replyable message exists, and keeps queued sends on the originating account.
+- Mac toolbar mailbox titles and unread pills retain their full width instead of truncating.
+- IMAP messages now load when the server places the UID after the body
+  literal, as Microsoft Exchange can do, while still rejecting data for
+  a different UID.
+- On iOS, Calendar, Contacts and Tasks now follow the active Brev theme. In dark
+  mode they had rendered the light theme over a dark background, leaving event
+  titles near-invisible.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.5/Brev-0.2.5.dmg" length="32814640" type="application/octet-stream" sparkle:edSignature="fd4z8Xbj6414dJ3h+a1u7Q3qKczh/ZYRmcf3YAGBabtR9EuUlFoGQNIVcteAuqzipbc8oe5Bsm1YpDWK/I/IBA==" /></item><item><title>0.2.4</title><pubDate>Thu, 08 Oct 2026 16:01:13 GMT</pubDate><sparkle:version>2026100815</sparkle:version><sparkle:shortVersionString>0.2.4</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Fixed
 
 - Mac mailbox titles and account names sit beside the filter button to save vertical space. Category controls stay on an opaque surface; blur is confined to the top toolbar. All Inboxes and other cross-account views no longer show the last account's name.
-- Mac mailbox rows and message content scroll behind the native toolbar up to the window edge, with blur rather than being cut off below it.</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.4/Brev-0.2.4.dmg" length="32725882" type="application/octet-stream" sparkle:edSignature="fNEY7ve8UG+5AX/WWHtGXlhxRMhruqd38TUij2+uT01PnYadroeQ2mwlwcf7mN2cfRo68fL6wQsILD6M/J0jAg==" /></item><item><title>0.2.3</title><pubDate>Thu, 08 Oct 2026 07:50:05 GMT</pubDate><sparkle:version>2026100807</sparkle:version><sparkle:shortVersionString>0.2.3</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Fixed
+- Mac mailbox rows and message content scroll behind the native toolbar up to the window edge, with blur rather than being cut off below it.&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.4/Brev-0.2.4.dmg" length="32725882" type="application/octet-stream" sparkle:edSignature="fNEY7ve8UG+5AX/WWHtGXlhxRMhruqd38TUij2+uT01PnYadroeQ2mwlwcf7mN2cfRo68fL6wQsILD6M/J0jAg==" /></item><item><title>0.2.3</title><pubDate>Thu, 08 Oct 2026 07:50:05 GMT</pubDate><sparkle:version>2026100807</sparkle:version><sparkle:shortVersionString>0.2.3</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Fixed
 
 - Mac installers now include an Applications shortcut for drag-to-install and no longer expose Xcode export logs or plists. Stable and Nightly packaging both verify the mounted installer layout before publication.&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/v0.2.3/Brev-0.2.3.dmg" length="32703667" type="application/octet-stream" sparkle:edSignature="fsyp3Ebw6udNIbtVBBIh3/+dllA59Vp540/aAaEIN21Cq8F7d1GXVW/5DeuzxzrQVN6aawS5CkIG4FiM52rZDw==" /></item><item><title>0.2.2</title><pubDate>Wed, 07 Oct 2026 21:55:58 GMT</pubDate><sparkle:version>2026100721</sparkle:version><sparkle:shortVersionString>0.2.2</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;### Fixed
 
