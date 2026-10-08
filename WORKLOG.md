@@ -5277,3 +5277,12 @@ buttons, and package-aware localization.
 - Changes: bumped the shared marketing version and four project settings from 0.2.3 to 0.2.4; moved the current Unreleased fixes under the dated release heading.
 - Verification: `git diff origin/main b7258c6 --stat` was empty after merge. Build, Release workflow, and published artifact/appcast checks follow the release commit.
 - Handoff: do not install into `/Applications` or run Check for Updates; Henrik performs the update test.
+
+## 2026-10-08 — Devin — Plain category tabs on shared blur
+
+- Goal: try Henrik's approved replacement for the opaque category pills: plain labels and a subtle selected underline over one shared blurred header.
+- Changes: macOS-only tab styling; reuse the existing non-fading within-window blur and theme wash for the fixed header, with an opaque Reduce Transparency fallback. Keep iOS chips, toolbar scroll-under geometry, category actions and footer boundaries unchanged.
+- Isolation: branch `fix/mac-category-blur` in `/Users/devin/repos/brev-category-blur` starts from stable main; unfinished PR #203 quick-reply edits in the original checkout are untouched.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed; 38 focused BrevMail tests in 3 suites passed; new light/dark category snapshots recorded and passed. `script/build_and_run.sh --mock` built the isolated dated test identity; the running mock Mac app (default toolbar, `BREV_ENABLE_NATIVE_TOOLBAR=0`) passed category selection, shared-blur scrolling in light/dark, All Inboxes, reader toolbar scroll-under, title placement, footer and divider checks. The test recording is stored under `/Users/devin/screencasts/brev-category-default-blur/`. iOS runtime and Reduce Transparency fallback were not checked; iOS's existing chip path is unchanged.
+- Launch note: the experimental `BREV_ENABLE_NATIVE_TOOLBAR=1` bridge crashed at startup with the already-documented `SwiftUI.BarAppearanceBridge`/`NSToolbar` observer conflict; the shipped/default toolbar is flag 0 and was stable. This is not a new category-row crash.
+- Documentation sweep: changelog/worklog only. No architecture, privacy, setup, network, signing or version changes; no new ADR required. No production install, updater, merge or release.

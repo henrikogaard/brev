@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Mac Inbox categories use plain icon-and-label tabs with an underlined selection on one shared blurred surface, so scrolling mail remains visible behind the filters. Reduce Transparency keeps the surface opaque.
+
 ## [0.2.4] - 2026-10-08
 
 ### Fixed
