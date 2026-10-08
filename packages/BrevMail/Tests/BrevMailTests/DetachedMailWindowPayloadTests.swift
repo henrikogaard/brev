@@ -44,6 +44,36 @@ struct DetachedMailWindowPayloadTests {
         #expect(decoded.kind == expectedKind)
     }
 
+    @Test("compose reply payload round-trips its prefilled body")
+    func composeReplyRoundTripWithPrefill() throws {
+        let payload = ComposeWindowPayload(
+            kind: .reply(messageID: "m1", sourceID: sampleSourceID),
+            prefillBodyText: "Thanks for the update."
+        )
+        let data = try JSONEncoder().encode(payload)
+        let decoded = try JSONDecoder().decode(ComposeWindowPayload.self, from: data)
+
+        #expect(decoded == payload)
+        #expect(decoded.prefillBodyText == "Thanks for the update.")
+    }
+
+    @Test("compose reply payload decodes older data without a prefill")
+    func composeReplyDecodesLegacyPayloadWithoutPrefill() throws {
+        let current = ComposeWindowPayload(kind: .reply(messageID: "m1", sourceID: nil))
+        var object = try #require(
+            JSONSerialization.jsonObject(
+                with: JSONEncoder().encode(current)
+            ) as? [String: Any]
+        )
+        object.removeValue(forKey: "prefillBodyText")
+        let legacyData = try JSONSerialization.data(withJSONObject: object)
+
+        let decoded = try JSONDecoder().decode(ComposeWindowPayload.self, from: legacyData)
+
+        #expect(decoded.kind == current.kind)
+        #expect(decoded.prefillBodyText == nil)
+    }
+
     @Test("new-compose payload is distinct from reply payloads")
     func newComposeDistinct() {
         #expect(ComposeWindowPayload(kind: .new(sourceID: nil))

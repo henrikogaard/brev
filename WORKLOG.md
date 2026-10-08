@@ -1,5 +1,27 @@
 # Worklog
 
+## 2026-10-05 — Agent — IMAP trailing-UID literal compatibility
+
+- Goal: make message bodies readable when a server returns the UID after
+  the BODY literal, reproduced with Microsoft Exchange.
+- Changed: consume the declared literal bytes before validating UID metadata
+  from the same FETCH response. Stop collecting metadata at the response's
+  close marker so later unsolicited updates cannot supply the requested UID.
+  Raw-source and structured-part fetches share the completion validation.
+- Verified: trailing-UID success cases failed before the fix; all 93
+  IMAPSessionClientTests pass afterward. Regression cases cover exact byte
+  preservation, wrong trailing UIDs with UID-looking body text, and later
+  unsolicited responses. Full lint passes; format reports zero changed files.
+  A dated macOS live test build installed and passed strict signature
+  verification; the previously failing work message rendered successfully.
+- Documentation sweep: CHANGELOG updated. No new network operation, public
+  boundary, protected path, UI, setup contract, or privacy behavior changed;
+  README, ADRs, PRIVACY, and UI snapshots need no update.
+- Skipped: sending mail (not requested) and the full multi-package/iOS test
+  matrix (narrow internal parser change; PR CI covers broader integration).
+- Handoff: PR targeting main; upstream maintainer review/merge required.
+  Personal OAuth configuration and live mailbox data remain outside Git.
+
 ## 2026-10-07 — Codex — PR #197 release signing recovery
 
 - Goal: finish Developer ID app/widget provisioning and recover the existing v0.2.0 tag.
@@ -5286,3 +5308,27 @@ buttons, and package-aware localization.
 - Verification: `scripts/format.sh` and `scripts/lint.sh` passed; 38 focused BrevMail tests in 3 suites passed; new light/dark category snapshots recorded and passed. `script/build_and_run.sh --mock` built the isolated dated test identity; the running mock Mac app (default toolbar, `BREV_ENABLE_NATIVE_TOOLBAR=0`) passed category selection, shared-blur scrolling in light/dark, All Inboxes, reader toolbar scroll-under, title placement, footer and divider checks. The test recording is stored under `/Users/devin/screencasts/brev-category-default-blur/`. iOS runtime and Reduce Transparency fallback were not checked; iOS's existing chip path is unchanged.
 - Launch note: the experimental `BREV_ENABLE_NATIVE_TOOLBAR=1` bridge crashed at startup with the already-documented `SwiftUI.BarAppearanceBridge`/`NSToolbar` observer conflict; the shipped/default toolbar is flag 0 and was stable. This is not a new category-row crash.
 - Documentation sweep: changelog/worklog only. No architecture, privacy, setup, network, signing or version changes; no new ADR required. No production install, updater, merge or release.
+
+## 2026-10-08 — Devin — Sidebar unread and reader quick reply
+
+- Goal: add account-row Inbox badges, message-list unread pills, and inline reader quick replies on macOS and iOS.
+- Changes: normalized macOS account rows; added the destination unread-count policy and title pill; added a localized quick-reply bar using the notification reply draft/delivery pipeline; wired typed text into the full reply composer while preserving quote protection. Added focused policy/prefill tests and Norwegian translations.
+- Verification: focused BrevMail policy/prefill tests passed; `scripts/format.sh` reported no formatting changes; `scripts/lint.sh` passed. Mock macOS build/run succeeded as 0.2.4 (44), PID 4399; iOS 27 simulator build succeeded and the app launched on `8E780854-5816-4435-AD8F-8098DF847EB5` (PID 4921). The default mock backend omits `.smtpOAuth`, so the quick-reply bar is correctly hidden and its empty/typed states could not be captured; no send was attempted.
+- Screenshots: `/Users/devin/qa/sidebar-quick-reply/mac-light-list.png`, `mac-light-reader.png`, `mac-dark-reader.png`, `iphone-list.png`, and `iphone-reader.png`. Quick-reply screenshots are unavailable because the mock lacks `.smtpOAuth`.
+- Handoff: use mock only; do not touch `/Applications/Brev.app`. No PR or CI wait requested.
+
+## 2026-10-08 — Devin — Quick-reply mock preview
+
+- Goal: expose quick reply in the mock apps without changing the root capability gate or default mock capability set.
+- Changes: macOS and iOS app demo-backend factories now pass `.full.union(.smtpOAuth)`; `MockBackend.send(draft:)` and `save(draft:)` mutate only its in-memory actor store.
+- Verification: macOS mock build 0.2.4 (46) and iOS 27 simulator build/launch passed. Focused BrevMail tests passed (38 tests, 6 suites); format reported 0/1,213 changed; lint passed.
+- Screenshots: captured and inspected `mac-light-quick-reply-empty.png` and `iphone-reader-quick-reply.png`; the bar does not collide with either reader footer, and the Mac screenshot has no focus ring. The keyboard-up capture shows the field focused but no software keyboard. Mac typed, dark, sent, and expanded-composer states remain uncaptured: the app's accessibility provider reported that PID 6202 did not answer.
+- Handoff: mock apps remain running; never touch `/Applications/Brev.app`.
+
+## 2026-10-08 — Devin — PR #203 quick-reply and toolbar QA fixes
+
+- Goal: preserve quick-reply text through quote-body refresh, identify the actual recipient, and prevent Mac title truncation.
+- Changes: apply the existing prefill policy when rebuilding reply bodies; resolve the bar's recipient from reply targets; size the Mac title and context to their content; carry quick-reply prefill through detached iPad compose; select only replyable messages; and bind queued sends to their original source/backend.
+- Verification: focused BrevMail tests passed (58 tests, 10 suites); iOS quick-reply snapshots passed (1 test, 2 light/dark references); the FolderSidebar run passed the 16 changed account-row snapshots, while the 4 unchanged Favorites-editor references remain mismatched from host-renderer drift reproduced on pristine `ed631a7`. Added only the two quick-reply PNGs and refreshed the 16 account-row PNGs. `scripts/format.sh` reported 0/1,213 files formatted; `scripts/lint.sh` passed. The dated mock build passed as 0.2.4 (49), PID 7134, and the requested iOS 27 simulator build passed.
+- Warnings: existing non-Sendable closure conversions in `BrevMailRootView.swift`, a non-Sendable app-delegate capture in `BrevApp.swift`, and BrevThemes visibility warnings appeared during builds/tests; they did not fail verification. The snapshot test runner also logged unavailable Contacts/Intents XPC services on this host.
+- Handoff: no GUI QA or CI was run/watched. The dated mock test app remains running; `/Applications/Brev.app` was not touched.

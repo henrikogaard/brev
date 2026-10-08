@@ -61,6 +61,27 @@ public struct ComposeWindowPayload: Codable, Hashable, Sendable {
     }
 
     public let kind: Kind
+    public let prefillBodyText: String?
 
-    public init(kind: Kind) { self.kind = kind }
+    public init(kind: Kind, prefillBodyText: String? = nil) {
+        self.kind = kind
+        self.prefillBodyText = prefillBodyText
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case kind
+        case prefillBodyText
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        kind = try container.decode(Kind.self, forKey: .kind)
+        prefillBodyText = try container.decodeIfPresent(String.self, forKey: .prefillBodyText)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(kind, forKey: .kind)
+        try container.encodeIfPresent(prefillBodyText, forKey: .prefillBodyText)
+    }
 }
