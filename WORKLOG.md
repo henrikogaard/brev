@@ -5269,3 +5269,11 @@ buttons, and package-aware localization.
 - Documentation sweep: changelog/worklog only. No architecture, privacy, setup, iOS, signing or version change. Do not merge/release, replace the daily-driver app, or trigger Check for Updates.
 - Follow-up: All Inboxes and other cross-account views omit the last account subtitle; focused `MailRootMessageListTitlePolicy` coverage checks folder-only, unified inbox, Smart View and no-folder cases. The policy filter passed (28 tests in 5 suites).
 - Follow-up: Hide the macOS 26 glass capsule behind the toolbar mailbox title with `.sharedBackgroundVisibility(.hidden)`; mock build 0.2.3 (42) passed, pending visual review.
+
+## 2026-10-08 — Devin — Stable release 0.2.4 prep
+
+- Goal: publish the approved PR #202 mailbox toolbar and scroll-under changes in stable 0.2.4.
+- Merge: squash-merged PR #202 as `233f335`; `main` and the PR branch now match the approved `b7258c6` content.
+- Changes: bumped the shared marketing version and four project settings from 0.2.3 to 0.2.4; moved the current Unreleased fixes under the dated release heading.
+- Verification: `git diff origin/main b7258c6 --stat` was empty after merge. Build, Release workflow, and published artifact/appcast checks follow the release commit.
+- Handoff: do not install into `/Applications` or run Check for Updates; Henrik performs the update test.
