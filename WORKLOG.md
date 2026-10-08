@@ -5230,3 +5230,11 @@ buttons, and package-aware localization.
 - Goal: ship the Sparkle sandbox entitlement fix (#200) so auto-update can be tested from 0.2.2 → 0.2.3.
 - Changes: version 0.2.1 → 0.2.2; changelog heading.
 - Next: tag `v0.2.2` after Build is green; Henrik installs it manually; then cut 0.2.3.
+
+## 2026-10-08 — Devin — DMG drag-to-install repair / 0.2.3
+
+- Goal: fix the missing Applications shortcut Henrik found in 0.2.2.
+- Cause: the hdiutil fallback packaged the entire Xcode export directory without creating a shortcut.
+- Changes: stage only the app, add the shortcut in both packaging paths, and reject invalid mounted layouts before publication. Prepare the already-approved 0.2.3 update-test release.
+- Verification: passed the real-hdiutil regression for fallback and modeled create-dmg packaging, including rejection of missing/wrong Applications shortcuts and Xcode export logs; Developer ID release config and shell syntax checks; format and lint. CI remains pending. Signed artifact verification follows release; Henrik drives Check for Updates himself.
+- Documentation sweep: release runbook updated; no app behavior, architectural, privacy, or setup change.

@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+## [0.2.3] - 2026-10-08
+
+### Fixed
+
+- Mac installers now include an Applications shortcut for drag-to-install and no longer expose Xcode export logs or plists. Stable and Nightly packaging both verify the mounted installer layout before publication.
+
 ## [0.2.2] - 2026-10-07
 
 ### Fixed

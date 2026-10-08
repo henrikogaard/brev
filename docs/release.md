@@ -418,6 +418,12 @@ creates and signs the DMG, submits it for notarization, staples the ticket,
 verifies Gatekeeper, and writes a SHA-256 checksum. Use `--skip-notarize` on
 non-release machines to package without Developer ID signing.
 
+Both the styled `create-dmg` path and the `hdiutil` fallback package a clean
+staging directory: only the app and an `Applications` shortcut pointing to
+`/Applications`. Xcode export logs/plists stay outside the image.
+Artifact verification mounts the image read-only and rejects missing or
+incorrect shortcuts and unexpected visible files before publication.
+
 Output:
 - `build/release/BrevMail.dmg`
 - `build/release/BrevMail.dmg.sha256`
