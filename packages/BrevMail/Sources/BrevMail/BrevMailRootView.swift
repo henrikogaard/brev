@@ -1535,9 +1535,19 @@ public struct BrevMailRootView: View {
                 loaded: threadHeadersForSelection(fallbackHeader: fallbackHeader)
             )
             let usesThreadReader = selectedBackend.groupsMessagesIntoThreads && threadHeaders.count > 1
-            let quickReplyTarget = usesThreadReader
-                ? threadHeaders.max { $0.date < $1.date }
-                : navigation.selectedHeader ?? fallbackHeader
+            let quickReplySourceID = navigation.selectedSourceID
+            let quickReplyBackend: (any MailBackend)? = {
+                guard let quickReplySourceID else { return selectedBackend }
+                return connectedBackend(forAccountID: quickReplySourceID.accountID)
+            }()
+            let quickReplyCandidates = usesThreadReader
+                ? threadHeaders
+                : [navigation.selectedHeader ?? fallbackHeader].compactMap { $0 }
+            let quickReplyTarget = MailRootQuickReplyPolicy.target(
+                in: quickReplyCandidates,
+                accountEmail: quickReplyBackend?.account.emailAddress
+                    ?? selectedBackend.account.emailAddress
+            )
             if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
                 RelatedConversationBar(controller: relatedConversation)
             }
@@ -1574,23 +1584,27 @@ public struct BrevMailRootView: View {
                 }
             }
             if let quickReplyTarget,
-               selectedBackend.capabilities.contains(.smtpOAuth),
-               hasValidSelectedSourceBackend {
+               let quickReplyBackend,
+               quickReplyBackend.capabilities.contains(.smtpOAuth) {
                 ReaderQuickReplyBar(
-                    recipientName: quickReplyTarget.from.name ?? quickReplyTarget.from.email,
-                    onSend: { text in
+                    recipientName: quickReplyRecipientName(
+                        for: quickReplyTarget,
+                        accountEmail: quickReplyBackend.account.emailAddress
+                    ),
+                    onSend: { [quickReplyBackend, quickReplySourceID, quickReplyTarget] text in
                         let result = await sendQuickReply(
                             text,
                             header: quickReplyTarget,
-                            sourceID: navigation.selectedSourceID
+                            sourceID: quickReplySourceID,
+                            backend: quickReplyBackend
                         )
                         quickReplyDraftWasSaved = result.draftWasSaved
                         return result.sent
                     },
-                    onExpand: { text in
+                    onExpand: { [quickReplySourceID, quickReplyTarget] text in
                         presentReply(
                             to: quickReplyTarget,
-                            sourceID: navigation.selectedSourceID,
+                            sourceID: quickReplySourceID,
                             prefillBodyText: text
                         )
                     },
@@ -2094,6 +2108,22 @@ public struct BrevMailRootView: View {
         )
     }
 
+    private func quickReplyRecipientName(
+        for header: MessageHeader,
+        accountEmail: String
+    ) -> String {
+        let recipientEmail = ComposeReplyResolver.recipients(
+            for: header,
+            mode: .sender,
+            accountEmail: accountEmail
+        ).first
+        guard let recipientEmail else { return header.from.displayName }
+        let recipient = (header.replyTo + [header.from]).first {
+            $0.email.caseInsensitiveCompare(recipientEmail) == .orderedSame
+        }
+        return recipient?.displayName ?? recipientEmail
+    }
+
     private func unreadCountPill(_ count: Int) -> some View {
         Text(String(localized: "\(count) unread", bundle: .module))
             .brevFont(.caption)
@@ -2115,11 +2145,13 @@ public struct BrevMailRootView: View {
                     unreadCountPill(selectedMessageDestinationUnreadCount)
                 }
             }
+            .fixedSize(horizontal: true, vertical: false)
             if let selectedMessageDestinationContext {
                 Text(verbatim: selectedMessageDestinationContext)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
         .accessibilityElement(children: .combine)
@@ -3440,7 +3472,8 @@ public struct BrevMailRootView: View {
         #if os(iOS)
         if shouldDetachCompose {
             openWindow(value: ComposeWindowPayload(
-                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID)
+                kind: .reply(messageID: header.id, sourceID: sourceID ?? navigation.selectedSourceID),
+                prefillBodyText: prefillBodyText
             ))
             return
         }
@@ -5874,25 +5907,25 @@ public struct BrevMailRootView: View {
     private func sendQuickReply(
         _ userText: String,
         header: MessageHeader,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        backend replyBackend: any MailBackend
     ) async -> (sent: Bool, draftWasSaved: Bool) {
-        guard hasValidSelectedSourceBackend,
-              selectedBackend.capabilities.contains(.smtpOAuth) else {
+        guard replyBackend.capabilities.contains(.smtpOAuth) else {
             return (false, false)
         }
 
-        let securityDefaults = composeSecurityDefaultsProvider?(selectedBackend.account) ?? .disabled
+        let securityDefaults = composeSecurityDefaultsProvider?(replyBackend.account) ?? .disabled
         let securityMode = OutboundMessageSecurityMode(
             signing: securityDefaults.shouldSignByDefault,
             encrypting: securityDefaults.shouldEncryptByDefault
         )
-        let signatureBody = signatureContextProvider?(selectedBackend.account).selectedSignature?.body
+        let signatureBody = signatureContextProvider?(replyBackend.account).selectedSignature?.body
 
         guard let draft = NotificationInlineReplyComposer.draft(
             id: UUID().uuidString,
             userText: userText,
             header: header,
-            accountEmail: selectedBackend.account.emailAddress,
+            accountEmail: replyBackend.account.emailAddress,
             signatureBody: signatureBody,
             securityMode: securityMode
         ) else {
@@ -5903,15 +5936,15 @@ public struct BrevMailRootView: View {
             draft: draft,
             save: { draft in
                 if let sourceID {
-                    return try await selectedBackend.save(draft: draft, sourceID: sourceID)
+                    return try await replyBackend.save(draft: draft, sourceID: sourceID)
                 }
-                return try await selectedBackend.save(draft: draft)
+                return try await replyBackend.save(draft: draft)
             },
             send: { draft in
                 if let sourceID {
-                    _ = try await selectedBackend.send(draft: draft, sourceID: sourceID)
+                    _ = try await replyBackend.send(draft: draft, sourceID: sourceID)
                 } else {
-                    _ = try await selectedBackend.send(draft: draft)
+                    _ = try await replyBackend.send(draft: draft)
                 }
             }
         )

@@ -187,6 +187,23 @@ enum MailRootMessageListTitlePolicy {
     }
 }
 
+enum MailRootQuickReplyPolicy {
+    static func target(
+        in headers: [MessageHeader],
+        accountEmail: String
+    ) -> MessageHeader? {
+        headers
+            .filter {
+                !ComposeReplyResolver.recipients(
+                    for: $0,
+                    mode: .sender,
+                    accountEmail: accountEmail
+                ).isEmpty
+            }
+            .max { $0.date < $1.date }
+    }
+}
+
 enum MailRootSettingsToolbarPolicy {
     static func showsSettingsButton(
         on surface: MailRootToolbarSurface,

@@ -154,6 +154,7 @@ struct ReaderQuickReplyBar: View {
         guard !isDisabled,
               !isSending,
               !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        let send = onSend
         status = nil
         draftWasSaved = false
         pendingSendText = text
@@ -161,7 +162,7 @@ struct ReaderQuickReplyBar: View {
 
         let delaySeconds = ComposeUndoSendPolicy.delaySeconds()
         guard delaySeconds > 0 else {
-            sendTask = Task { await deliver(text) }
+            sendTask = Task { await deliver(text, using: send) }
             return
         }
 
@@ -177,7 +178,7 @@ struct ReaderQuickReplyBar: View {
             }
             guard !Task.isCancelled else { return }
             remainingSeconds = nil
-            await deliver(text)
+            await deliver(text, using: send)
         }
     }
 
@@ -193,8 +194,11 @@ struct ReaderQuickReplyBar: View {
         status = nil
     }
 
-    private func deliver(_ text: String) async {
-        let sent = await onSend(text)
+    private func deliver(
+        _ text: String,
+        using send: @escaping (String) async -> Bool
+    ) async {
+        let sent = await send(text)
         sendTask = nil
         remainingSeconds = nil
         isSending = false

@@ -140,6 +140,7 @@ public struct DetachedComposeWindowView: View {
             replyingTo: quote.replyingTo,
             replyMode: quote.replyMode,
             forwardingFrom: quote.forwardingFrom,
+            prefill: payload.prefillBodyText.map { ComposePrefill(bodyText: $0) },
             recoveredDraft: recoveredDraft,
             aiBackend: aiBackend(for: account),
             signatureContext: signatureContextProvider?(account),

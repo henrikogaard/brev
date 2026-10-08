@@ -3547,9 +3547,13 @@ public struct ComposeView: View {
         if let replyingTo {
             header = replyingTo
             buildBase = { quoteText in
-                ComposeReplyFormatter.body(
-                    for: replyingTo,
-                    quoteText: quoteText,
+                ComposeReplyPrefillPolicy.bodyText(
+                    prefillBodyText: prefill?.bodyText,
+                    replyBody: ComposeReplyFormatter.body(
+                        for: replyingTo,
+                        quoteText: quoteText,
+                        placement: placement
+                    ),
                     placement: placement
                 )
             }

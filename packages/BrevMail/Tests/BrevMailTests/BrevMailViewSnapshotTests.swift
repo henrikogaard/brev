@@ -25,13 +25,14 @@ import UIKit
 /// made — and records its reference image under `__Snapshots__/` on
 /// first run (set `SNAPSHOT_TESTING_RECORD=true` to re-record).
 ///
-/// The six cases covered here are:
+/// The cases covered here are:
 ///   1. Message list row — unread
 ///   2. Message list row — flagged + read
 ///   3. Message list row — with attachment indicator
 ///   4. Folder sidebar entry — inbox with unread count badge
 ///   5. Folder sidebar entry — no unread (no badge)
 ///   6. Empty folder state (no messages in folder)
+///   7. Reader quick-reply bar — light and dark themes
 @Suite("BrevMail view snapshots")
 struct BrevMailViewSnapshotTests {
     // MARK: - Fixtures
@@ -251,6 +252,31 @@ struct BrevMailViewSnapshotTests {
             status: MessageListPresentation.emptyStatus(searchText: "")
         )
         snap(view, width: 320, height: 240, theme: theme, named: "message-list-empty-state")
+    }
+
+    @Test("ReaderQuickReplyBar renders light and dark baselines")
+    @MainActor
+    func readerQuickReplyBarLightAndDark() {
+        let bar = ReaderQuickReplyBar(
+            recipientName: "Ada Nyström",
+            onSend: { _ in true },
+            onExpand: { _ in },
+            isDisabled: false
+        )
+        snap(
+            bar,
+            width: 390,
+            height: 120,
+            theme: .brevPaper,
+            named: "quick-reply-bar-light"
+        )
+        snap(
+            bar,
+            width: 390,
+            height: 120,
+            theme: .brevSlate,
+            named: "quick-reply-bar-dark"
+        )
     }
 }
 #endif

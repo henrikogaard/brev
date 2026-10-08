@@ -78,22 +78,28 @@ struct NotificationInlineReplyTests {
     func savesBeforeSending() async {
         let recorder = PipelineRecorder()
         let draft = Draft(id: "draft-1", subject: "Subject", htmlBody: "Reply")
+        let boundBackendID = "account-original"
 
         let outcome = await NotificationInlineReplyPipeline.deliver(
             draft: draft,
             save: { draft in
-                await recorder.record("save:\(draft.id)")
+                await recorder.record("save:\(boundBackendID):\(draft.id)")
+                await recorder.record("navigation:account-after-navigation")
                 var saved = draft
                 saved.remoteID = "remote-1"
                 return saved
             },
             send: { draft in
-                await recorder.record("send:\(draft.remoteID ?? "nil")")
+                await recorder.record("send:\(boundBackendID):\(draft.remoteID ?? "nil")")
             }
         )
 
         #expect(outcome == .sent)
-        #expect(await recorder.events == ["save:draft-1", "send:remote-1"])
+        #expect(await recorder.events == [
+            "save:account-original:draft-1",
+            "navigation:account-after-navigation",
+            "send:account-original:remote-1",
+        ])
     }
 
     @Test("reports whether a failed reply was preserved as a draft")

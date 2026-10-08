@@ -9,6 +9,11 @@ All notable changes to Brev are documented here.
 - Sidebar account rows show an account icon and collapsed Inbox unread count; mailbox titles show unread counts for the selected Inbox or folder.
 - Readers support quick replies with Undo Send and an option to continue in the full composer.
 
+### Fixed
+
+- Expanding a quick reply preserves the typed text when the full quoted message loads, and the placeholder names the reply recipient; detached iPad replies preserve the same prefill. Quick reply skips self-authored latest messages, hides when no replyable message exists, and keeps queued sends on the originating account.
+- Mac toolbar mailbox titles and unread pills retain their full width instead of truncating.
+
 ## [0.2.4] - 2026-10-08
 
 ### Fixed
