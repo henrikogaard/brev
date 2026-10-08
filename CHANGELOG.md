@@ -13,6 +13,9 @@ All notable changes to Brev are documented here.
 
 - Expanding a quick reply preserves the typed text when the full quoted message loads, and the placeholder names the reply recipient; detached iPad replies preserve the same prefill. Quick reply skips self-authored latest messages, hides when no replyable message exists, and keeps queued sends on the originating account.
 - Mac toolbar mailbox titles and unread pills retain their full width instead of truncating.
+- IMAP messages now load when the server places the UID after the body
+  literal, as Microsoft Exchange can do, while still rejecting data for
+  a different UID.
 
 ## [0.2.4] - 2026-10-08
 
