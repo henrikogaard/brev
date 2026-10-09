@@ -29,25 +29,137 @@ struct ScheduleSendSheet: View {
 
     let initiallyScheduledDate: Date?
     let now: () -> Date
+    /// Calendar and locale used to resolve and label the quick picks;
+    /// injectable so snapshots do not depend on the machine's zone or 24-hour
+    /// setting.
+    let calendar: Calendar
+    let locale: Locale
     let onConfirm: (Date?) -> Void
 
     init(
         initiallyScheduledDate: Date?,
         now: @escaping () -> Date = { Date() },
+        calendar: Calendar = .current,
+        locale: Locale = .current,
         onConfirm: @escaping (Date?) -> Void
     ) {
         self.initiallyScheduledDate = initiallyScheduledDate
         self.now = now
+        self.calendar = calendar
+        self.locale = locale
         self.onConfirm = onConfirm
         let resolved = ScheduleSendSheet.resolveInitialOption(
             scheduled: initiallyScheduledDate,
-            now: now()
+            now: now(),
+            calendar: calendar
         )
         _selectedOption = State(initialValue: resolved.option)
         _customDate = State(initialValue: resolved.customDate)
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard form sheet. Cancel and Schedule live in the navigation
+    /// bar, the content scrolls, and the custom date picker only appears when
+    /// "Pick Date & Time" is chosen.
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    ForEach(ScheduleSendDateResolver.Option.allCases) { option in
+                        nativeOptionRow(option)
+                    }
+                }
+                .listRowBackground(theme.bgSecondary.color)
+
+                if selectedOption == .custom {
+                    Section {
+                        customDatePicker
+                    }
+                    .listRowBackground(theme.bgSecondary.color)
+                }
+
+                Section {
+                    Label {
+                        Text(ScheduleSendReliabilityPresentation.localDeliveryNotice)
+                            .brevFont(.footnote)
+                            .foregroundStyle(theme.textSecondary.color)
+                    } icon: {
+                        Image(systemName: "info.circle")
+                            .foregroundStyle(theme.accent.color)
+                    }
+                }
+                .listRowBackground(theme.bgSecondary.color)
+            }
+            .scrollContentBackground(.hidden)
+            .background(theme.bgPrimary.color)
+            .navigationTitle(Text("Schedule send", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onConfirm(chosenDate)
+                        dismiss()
+                    } label: {
+                        Text(confirmTitle, bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private func nativeOptionRow(_ option: ScheduleSendDateResolver.Option) -> some View {
+        Button {
+            selectOption(option)
+        } label: {
+            HStack(spacing: BrevSpacing.sm) {
+                Image(systemName: option.symbolName)
+                    .symbolRenderingMode(.hierarchical)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: 24)
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(option.title)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                    if let resolved = optionSubtitle(option) {
+                        Text(resolved)
+                            .brevFont(.footnote)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                }
+                Spacer(minLength: BrevSpacing.sm)
+                if selectedOption == option {
+                    Image(systemName: "checkmark")
+                        .fontWeight(.semibold)
+                        .foregroundStyle(theme.accent.color)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(selectedOption == option ? .isSelected : [])
+    }
+    #endif
+
+    private var desktopBody: some View {
         VStack(spacing: 0) {
             header
             optionsList
@@ -102,13 +214,7 @@ struct ScheduleSendSheet: View {
 
     private func optionRow(_ option: ScheduleSendDateResolver.Option) -> some View {
         Button {
-            selectedOption = option
-            if option == .custom, customDate < now() {
-                customDate = ScheduleSendDateResolver.date(
-                    for: .tomorrowNine,
-                    now: now()
-                ) ?? now().addingTimeInterval(60 * 60)
-            }
+            selectOption(option)
         } label: {
             HStack(spacing: BrevSpacing.sm) {
                 Image(systemName: option.symbolName)
@@ -142,13 +248,30 @@ struct ScheduleSendSheet: View {
         .accessibilityAddTraits(selectedOption == option ? .isSelected : [])
     }
 
+    private func selectOption(_ option: ScheduleSendDateResolver.Option) {
+        selectedOption = option
+        if option == .custom, customDate < now() {
+            customDate = ScheduleSendDateResolver.date(
+                for: .tomorrowNine,
+                now: now()
+            ) ?? now().addingTimeInterval(60 * 60)
+        }
+    }
+
     private func optionSubtitle(_ option: ScheduleSendDateResolver.Option) -> String? {
         guard option != .sendNow, option != .custom,
-              let date = ScheduleSendDateResolver.date(for: option, now: now())
+              let date = ScheduleSendDateResolver.date(for: option, now: now(), calendar: calendar)
         else {
             return nil
         }
-        return ScheduleSendDateResolver.formattedScheduleDate(date)
+        #if os(iOS)
+        var style = Date.FormatStyle(date: .abbreviated, time: .shortened)
+        style.locale = locale
+        style.timeZone = calendar.timeZone
+        return date.formatted(style)
+        #else
+        return ScheduleSendDateResolver.formattedScheduleDate(date, calendar: calendar)
+        #endif
     }
 
     private var customDatePicker: some View {
@@ -159,6 +282,8 @@ struct ScheduleSendSheet: View {
             displayedComponents: [.date, .hourAndMinute]
         )
         .datePickerStyle(.graphical)
+        .environment(\.calendar, calendar)
+        .environment(\.locale, locale)
         .labelsHidden()
         .padding(.horizontal, BrevSpacing.lg)
         .padding(.vertical, BrevSpacing.md)
@@ -203,7 +328,7 @@ struct ScheduleSendSheet: View {
         case .sendNow: nil
         case .custom: max(customDate, now())
         case let option:
-            ScheduleSendDateResolver.date(for: option, now: now())
+            ScheduleSendDateResolver.date(for: option, now: now(), calendar: calendar)
         }
     }
 
@@ -216,9 +341,9 @@ struct ScheduleSendSheet: View {
     /// quick-pick, falling back to `.custom` when nothing matches.
     private static func resolveInitialOption(
         scheduled: Date?,
-        now: Date
+        now: Date,
+        calendar: Calendar
     ) -> ResolvedInitialOption {
-        let calendar = Calendar.current
         let oneHour = now.addingTimeInterval(60 * 60)
         let initialCustom = max(scheduled ?? oneHour, now)
 
@@ -227,7 +352,7 @@ struct ScheduleSendSheet: View {
         }
 
         for option in ScheduleSendDateResolver.Option.allCases where option != .custom {
-            guard let resolved = ScheduleSendDateResolver.date(for: option, now: now) else {
+            guard let resolved = ScheduleSendDateResolver.date(for: option, now: now, calendar: calendar) else {
                 continue
             }
             if calendar.isDate(resolved, equalTo: scheduled, toGranularity: .minute) {

@@ -4,8 +4,20 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
+
 ### Fixed
 
+- iOS compose now behaves like iOS Mail when you close it. Cancel on a draft you have edited asks Delete Draft or Save Draft, and Cancel on an untouched compose or reply just closes it (a reply no longer leaves a stray draft). Swiping the sheet down on an edited draft is blocked and shows the same choice, and Cancel and swipe-down are disabled while a send is counting down. Discard Draft in the ••• menu now asks before deleting.
+- iOS compose opens with the keyboard up: New Message focuses To, a reply puts the cursor above the quoted message, and Return moves To, Cc, Bcc, Subject and the body in order.
+- iOS compose text follows Dynamic Type. The message body, which previously ignored the system text size and showed a reply's quote in a tiny default font, and the toolbar icons now scale. At the largest accessibility sizes the title yields so Cancel and Send stay on screen.
+- iOS Insert Link, Schedule Send and Templates are native sheets with Cancel/Done in the navigation bar. The link field uses the URL keyboard, Schedule Send scrolls on small phones, and templates are searchable with the system search field.
+- iOS Google Drive sheets no longer impose a 560 pt minimum width that made them wider than an iPhone screen; they get a navigation bar with Cancel and a scalable icon.
+- Reply attribution lines are localized and use your local time ("Den 9. okt. 2026 kl. 10:13 skrev …:") instead of English text in UTC. Signature placement still recognises English lines in older drafts.
+- iOS recipient chips read as one VoiceOver element with Remove as an action instead of two stops.
+- iOS compose no longer logs "Modifying state during view update" while the body editor is created or its text is replaced.
 - Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
 - Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 

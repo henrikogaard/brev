@@ -23,6 +23,7 @@ import SwiftUI
 /// into the grant. Declining leaves the feature untouched.
 struct GoogleDriveOptInPrompt: View {
     @Environment(\.brevTheme) private var theme
+    @ScaledMetric(relativeTo: .largeTitle) private var iconPointSize: CGFloat = 32
     let account: BrevAccount
     let feature: GoogleDriveFeature
     /// Runs after a successful grant — the sheet advances to the
@@ -61,9 +62,16 @@ struct GoogleDriveOptInPrompt: View {
     }
 
     var body: some View {
+        ScrollView {
+            optInContent
+        }
+    }
+
+    private var optInContent: some View {
         VStack(spacing: BrevSpacing.lg) {
             Image(systemName: "externaldrive.badge.plus")
-                .font(.system(size: 32))
+                .font(.system(size: iconPointSize))
+                .accessibilityHidden(true)
                 .foregroundStyle(theme.accent.color)
             Text("Google Drive attachments", bundle: .module)
                 .brevFont(.title)
@@ -99,6 +107,62 @@ struct GoogleDriveOptInPrompt: View {
             .disabled(feature.isEnabling)
         }
         .padding(BrevSpacing.xl)
+    }
+}
+
+/// Shared chrome for the Drive sheets (attach, save, event attach). iOS gets a
+/// `NavigationStack` with an inline title and a Cancel button; macOS keeps the
+/// titled header and its minimum size. The 560 x 420 minimum must never apply
+/// on iPhone, where it lays the sheet out wider than the screen.
+struct GoogleDriveSheetChrome<Content: View>: View {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.dismiss) private var dismiss
+
+    let title: LocalizedStringKey
+    @ViewBuilder let content: () -> Content
+
+    var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            content()
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(theme.bgPrimary.color)
+                .navigationTitle(Text(title, bundle: .module))
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button {
+                            dismiss()
+                        } label: {
+                            Text("Cancel", bundle: .module)
+                        }
+                    }
+                }
+        }
+        #else
+        VStack(spacing: 0) {
+            HStack {
+                Text(title, bundle: .module)
+                    .brevFont(.title)
+                    .foregroundStyle(theme.textPrimary.color)
+                Spacer()
+                Button {
+                    dismiss()
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(theme.textTertiary.color)
+                }
+                .buttonStyle(.borderless)
+                .accessibilityLabel(
+                    String(localized: "Close", bundle: .module)
+                )
+            }
+            .padding(BrevSpacing.md)
+            BrevDivider()
+            content()
+        }
+        .frame(minWidth: 560, minHeight: 420)
+        #endif
     }
 }
 
