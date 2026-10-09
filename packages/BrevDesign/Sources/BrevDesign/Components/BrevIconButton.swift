@@ -14,9 +14,9 @@ import BrevThemes
 import SwiftUI
 
 /// Shared icon-only button with a guaranteed 44-point minimum hit target on
-/// touch platforms. The visible glyph keeps its compact size; only the tappable
-/// area grows. Always provide an accessibility label — icon-only controls have
-/// no readable text for VoiceOver.
+/// touch platforms. The glyph and the tappable area scale with Dynamic Type.
+/// Always provide an accessibility label — icon-only controls have no
+/// readable text for VoiceOver.
 public struct BrevIconButton: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
@@ -24,7 +24,8 @@ public struct BrevIconButton: View {
     private let systemName: String
     private let accessibilityLabel: Text
     private let help: Text?
-    private let iconSize: CGFloat
+    @ScaledMetric private var scaledIconSize: CGFloat
+    @ScaledMetric(relativeTo: .body) private var scaledHitSize: CGFloat = 44
     private let isDestructive: Bool
     private let action: () -> Void
 
@@ -33,7 +34,8 @@ public struct BrevIconButton: View {
     ///   - systemName: SF Symbol name.
     ///   - accessibilityLabel: VoiceOver label. Pass `bundle:` from package call sites.
     ///   - help: Optional macOS tooltip; defaults to the accessibility label.
-    ///   - iconSize: Glyph point size; the hit area stays 44 pt on iOS regardless.
+    ///   - iconSize: Glyph point size at the default text size. The glyph and the
+    ///     hit area scale with Dynamic Type; the hit area never drops below 44 pt on iOS.
     ///   - isDestructive: Tints the glyph with the theme danger role.
     public init(
         systemName: String,
@@ -47,7 +49,7 @@ public struct BrevIconButton: View {
         self.systemName = systemName
         self.accessibilityLabel = Text(accessibilityLabel, bundle: bundle)
         self.help = help.map { Text($0, bundle: bundle) }
-        self.iconSize = iconSize
+        _scaledIconSize = ScaledMetric(wrappedValue: iconSize, relativeTo: .body)
         self.isDestructive = isDestructive
         self.action = action
     }
@@ -55,7 +57,7 @@ public struct BrevIconButton: View {
     public var body: some View {
         Button(action: action) {
             Image(systemName: systemName)
-                .font(.system(size: iconSize, weight: .medium))
+                .font(.system(size: scaledIconSize, weight: .medium))
                 .foregroundStyle(isDestructive ? theme.danger.color : theme.textSecondary.color)
                 .frame(minWidth: minimumHitSize, minHeight: minimumHitSize)
                 .contentShape(Rectangle())
@@ -68,7 +70,7 @@ public struct BrevIconButton: View {
 
     private var minimumHitSize: CGFloat {
         #if os(iOS)
-        44
+        BrevHitTarget.resolved(scaled: scaledHitSize)
         #else
         0
         #endif

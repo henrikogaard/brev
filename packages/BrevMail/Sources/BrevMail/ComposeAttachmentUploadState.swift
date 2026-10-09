@@ -110,16 +110,16 @@ enum ComposeAttachmentUploadState {
 
     static func unresolvedFailureMessage(for attachments: [PendingAttachment]) -> String? {
         attachments.contains { $0.uploadErrorMessage != nil }
-            ? "Retry or remove failed attachments before saving or sending."
+            ? String(localized: "Retry or remove failed attachments before saving or sending.", bundle: .module)
             : nil
     }
 
     static func statusText(for attachment: PendingAttachment) -> String? {
         guard let uploadErrorMessage = attachment.uploadErrorMessage else { return nil }
-        return "Upload failed: \(uploadErrorMessage)"
+        return String(localized: "Upload failed: \(uploadErrorMessage)", bundle: .module)
     }
 
     static func retryActionTitle(for attachment: PendingAttachment) -> String? {
-        attachment.uploadErrorMessage == nil ? nil : "Retry on Send"
+        attachment.uploadErrorMessage == nil ? nil : String(localized: "Retry on Send", bundle: .module)
     }
 }

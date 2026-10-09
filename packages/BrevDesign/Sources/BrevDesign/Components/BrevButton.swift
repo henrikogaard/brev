@@ -35,6 +35,7 @@ public enum BrevButtonStyle: Sendable, Hashable {
 public struct BrevButton: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.isEnabled) private var isEnabled
+    @ScaledMetric(relativeTo: .headline) private var scaledMinimumHeight: CGFloat = 44
 
     private enum Title {
         case localized(LocalizedStringKey, bundle: Bundle?)
@@ -97,9 +98,11 @@ public struct BrevButton: View {
                 }
             }
             .brevFont(.headline)
+            .multilineTextAlignment(.center)
             .padding(.horizontal, BrevSpacing.lg)
             .padding(.vertical, BrevSpacing.sm)
-            // iOS keeps the 44 pt touch-target floor; macOS stays compact.
+            // iOS keeps the 44 pt touch-target floor and grows with Dynamic Type;
+            // macOS stays compact.
             .frame(minHeight: minimumHeight)
             .background(background)
             .foregroundStyle(foreground)
@@ -125,7 +128,7 @@ public struct BrevButton: View {
 
     private var minimumHeight: CGFloat {
         #if os(iOS)
-        44
+        BrevHitTarget.resolved(scaled: scaledMinimumHeight)
         #else
         32
         #endif
@@ -147,7 +150,7 @@ public struct BrevButton: View {
         switch style {
         case .secondary:
             RoundedRectangle(cornerRadius: BrevRadius.md)
-                .stroke(theme.border.color, lineWidth: 1)
+                .stroke(theme.controlBorder.color, lineWidth: 1)
         case .primary, .destructive, .tertiary:
             EmptyView()
         }

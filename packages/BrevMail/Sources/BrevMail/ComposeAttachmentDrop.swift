@@ -111,7 +111,10 @@ enum ComposeAttachmentDrop {
         } catch {
             return ComposeAttachmentImportResult(
                 attachments: [],
-                errorMessage: "Couldn't attach dropped image: \(error.localizedDescription)"
+                errorMessage: String(
+                    localized: "Couldn't attach dropped image: \(error.localizedDescription)",
+                    bundle: .module
+                )
             )
         }
 

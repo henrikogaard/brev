@@ -17,6 +17,11 @@ All notable changes to Brev are documented here.
 - The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
 - iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
 - iOS Appearance: the mail preview text now follows Dynamic Type.
+- Accessibility: all 37 built-in themes now meet WCAG contrast for accent, warning and danger text (4.5:1) and for success and info glyphs (3:1). 31 palette colours across 15 themes (Brev Paper, Brev Forest, Nord, Nordic, Gruvbox, Solarized, Catppuccin Latte, One Dark Pro, Blurple Night, Pearl Light, Tender and Tomorrow) were adjusted in lightness only. Outlined buttons use a 3:1 outline, and selected filter chips keep readable text on their accent tint.
+- Accessibility: icon buttons, filter chips, status banners and buttons grow with Dynamic Type and keep a 44 pt touch target on iPhone and iPad. A new Reduce Motion helper is available for animations.
+- iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
+- iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
+- Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
 
 ## [0.2.6] - 2026-10-09
 
