@@ -133,6 +133,7 @@ struct ThreadMessageCard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .modifier(ThreadCardHeaderAffordance(isExpanded: isExpanded))
                 .accessibilityLabel(headerAccessibilityLabel)
                 .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
                     localized: "Collapsed message",
@@ -366,8 +367,14 @@ struct ThreadMessageCard: View {
             }
 
             Image(systemName: isExpanded ? "chevron.up" : "chevron.down")
+            #if os(macOS)
+                // Mouse users have no other cue that the header is a control.
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(theme.textSecondary.color)
+            #else
                 .font(.caption2)
                 .foregroundStyle(theme.textTertiary.color)
+            #endif
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.sm))
@@ -878,6 +885,30 @@ struct ThreadMessageCard: View {
         case .unsupported:
             throw MailBackendError.notSupported(backend.capabilities)
         }
+    }
+}
+
+/// Pointer affordance for a thread card header on macOS: a subtle hover
+/// background and an expand/collapse tooltip. A no-op on iOS, where there is
+/// no pointer and the header keeps its plain look.
+private struct ThreadCardHeaderAffordance: ViewModifier {
+    let isExpanded: Bool
+    #if os(macOS)
+    @Environment(\.brevTheme) private var theme
+    @State private var isHovered = false
+    #endif
+
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content
+            .background(isHovered ? theme.bgSecondary.color : Color.clear)
+            .onHover { isHovered = $0 }
+            .help(isExpanded
+                ? String(localized: "Collapse message", bundle: .module)
+                : String(localized: "Expand message", bundle: .module))
+        #else
+        content
+        #endif
     }
 }
 

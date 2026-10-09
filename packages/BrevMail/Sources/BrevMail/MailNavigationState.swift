@@ -547,6 +547,18 @@ public final class MailNavigationState {
         selectedMessageID = currentFolderHeaders[safe: index - 1]?.id ?? selected
     }
 
+    /// Move the reading-pane selection for a Home / End / Page Up / Page Down
+    /// key. Other commands, and an empty list, leave the selection unchanged.
+    func moveSelection(_ command: MessageListKeyCommand) {
+        let current = selectedMessageID.flatMap { currentFolderIndex(of: $0) }
+        guard let target = MessageListKeyboardNavigation.targetIndex(
+            for: command,
+            current: current,
+            count: currentFolderHeaders.count
+        ) else { return }
+        selectedMessageID = currentFolderHeaders[target].id
+    }
+
     /// Ask the active message list to refetch the currently visible
     /// folder. Commands use this instead of reaching into list state.
     public func requestReload() {

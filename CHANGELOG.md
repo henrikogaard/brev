@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.
+
 ### Changed
 
 - iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
@@ -11,6 +15,7 @@ All notable changes to Brev are documented here.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+- Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
 
 ### Fixed
 
@@ -29,6 +34,8 @@ All notable changes to Brev are documented here.
 
 - iOS: archiving, deleting or moving a message from the reader now shows the "Archived/Deleted/Moved" toast with Undo above the bottom bar and announces it to VoiceOver, then shows the next message with a slide, or goes back to the list when none is left. Undo and Dismiss on toasts are 44 pt targets on iPhone.
 - iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
+
+- The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 
 ## [0.2.6] - 2026-10-09
 
