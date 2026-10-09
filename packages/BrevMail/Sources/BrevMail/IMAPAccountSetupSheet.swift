@@ -325,13 +325,9 @@ public struct IMAPAccountSetupSheet: View {
                         .brevFont(.caption)
                         .foregroundStyle(theme.textTertiary.color)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: BrevSpacing.sm) {
-                            advancedSetupShortcuts
-                        }
-                        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                            advancedSetupShortcuts
-                        }
+                    // One row; wraps only when the buttons no longer fit.
+                    FlowLayout(spacing: BrevSpacing.sm) {
+                        advancedSetupShortcuts
                     }
 
                     if showsAdvancedServerFields {
@@ -358,11 +354,32 @@ public struct IMAPAccountSetupSheet: View {
     @ViewBuilder
     private var advancedSetupShortcuts: some View {
         ForEach(IMAPAccountSetupPresentation.SkipShortcut.allCases) { shortcut in
+            #if os(iOS)
+            // Compact variant of the secondary BrevButton so all three
+            // shortcuts fit one row on iPhone widths.
+            Button {
+                applySkip(shortcut)
+            } label: {
+                Text(verbatim: shortcut.title)
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .padding(.horizontal, BrevSpacing.md)
+                    .frame(minHeight: 44)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrevRadius.md)
+                            .stroke(theme.border.color, lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            }
+            .buttonStyle(.plain)
+            .disabled(isDiscovering || session.isSigningIn)
+            .opacity(isDiscovering || session.isSigningIn ? 0.5 : 1)
+            #else
             BrevButton(verbatim: shortcut.title, style: .secondary) {
                 applySkip(shortcut)
             }
             .disabled(isDiscovering || session.isSigningIn)
-            .imapSetupTouchTarget()
+            #endif
         }
     }
 
@@ -811,8 +828,16 @@ public struct IMAPAccountSetupSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             fieldLabel(title)
+            #if os(iOS)
+            // The system rounded-border style paints near-black boxes inside
+            // the themed card in dark mode; use theme surfaces instead.
+            content()
+                .textFieldStyle(.plain)
+                .setupFieldSurface(theme: theme)
+            #else
             content()
                 .textFieldStyle(.roundedBorder)
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1277,6 +1302,19 @@ private extension View {
         #else
         self
         #endif
+    }
+
+    func setupFieldSurface(theme: BrevTheme) -> some View {
+        brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
+            .padding(.horizontal, BrevSpacing.md)
+            .frame(minHeight: 44)
+            .background(theme.bgPrimary.color)
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            .overlay {
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .stroke(theme.border.color, lineWidth: 1)
+            }
     }
 
     func setupSectionSurface(theme: BrevTheme) -> some View {
