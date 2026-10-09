@@ -271,6 +271,7 @@ jobs:
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/replyCompose()' \
             '-only-testing:BrevMailTests/ComposeAccessibilityBoundsTests' \
+            '-only-testing:BrevMailTests/ComposeNativeSheetsSnapshotTests' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerAccessibilityTextSize()' \

@@ -220,6 +220,21 @@ that sync is handled by Apple/system account settings, not by Brev.
 **How to disable:** Do not choose the Create Meeting action, or deny
 Calendar permission when macOS/iOS asks.
 
+### iOS photo, camera, and document-scan attachments
+
+In the iOS compose sheet the paperclip menu can attach pictures from your
+Photo Library, take a photo with the camera, or scan documents with the
+system document scanner. Photo Library items arrive through Apple's photo
+picker, which gives Brev only the pictures you select. The camera and
+scanner run on the device, and a scan is turned into a PDF on the device.
+The result is added to the message as a normal attachment and travels only
+when you send that message through your own mail server.
+
+Brev makes no network request for these actions.
+
+**How to disable:** Do not use Take Photo or Scan Documents, or deny Camera
+access when iOS asks.
+
 ### Meeting-time suggestions
 
 If enabled: Brev can suggest meeting times while you compose a message.

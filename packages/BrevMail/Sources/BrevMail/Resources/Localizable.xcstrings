@@ -2239,6 +2239,17 @@
         }
       }
     },
+    "Attach File": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Legg ved fil"
+          }
+        }
+      }
+    },
     "Attach from Google Drive": {
       "extractionState": "manual",
       "localizations": {
@@ -4642,6 +4653,17 @@
         }
       }
     },
+    "Delete Draft": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett utkast"
+          }
+        }
+      }
+    },
     "Delete Event": {
       "extractionState": "manual",
       "localizations": {
@@ -4781,6 +4803,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Slett denne kontakten?"
+          }
+        }
+      }
+    },
+    "Delete this draft?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette dette utkastet?"
           }
         }
       }
@@ -5045,6 +5078,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Utkast"
+          }
+        }
+      }
+    },
+    "Draft options": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utkastvalg"
           }
         }
       }
@@ -8685,6 +8729,17 @@
         }
       }
     },
+    "On %@ at %@, %@ wrote:": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Den %1$@ kl. %2$@ skrev %3$@:"
+          }
+        }
+      }
+    },
     "On date": {
       "extractionState": "manual",
       "localizations": {
@@ -9066,6 +9121,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "PDF-eksport mislyktes: %@"
+          }
+        }
+      }
+    },
+    "Photo Library": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bildebibliotek"
           }
         }
       }
@@ -10199,6 +10265,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rolle"
+          }
+        }
+      }
+    },
+    "Scan Documents": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skann dokumenter"
           }
         }
       }
@@ -11888,6 +11965,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Synkroniserte oppgaver vises her. Bruk Synkroniser nå for å oppdatere bufferen."
+          }
+        }
+      }
+    },
+    "Take Photo": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ta bilde"
           }
         }
       }

@@ -24,6 +24,7 @@ with `TEST_RUNNER_` so they reach the test process; compare again without them.
 | `BrevMailSnapshotTests/composeViewRendersSignaturePicker()` | `BrevMailSnapshotTests/composeViewRendersSignaturePicker.signature-picker.png` | #53: reviewed toolbar changes; Work signature picker remains visible. |
 | `ComposeViewSnapshotTests/emptyCompose()` | `ComposeViewSnapshotTests/emptyCompose.empty-compose.png` | #53: Close/mode/Send above, Attach/More below; empty fields and sender preserved. |
 | `ComposeViewSnapshotTests/replyCompose()` | `ComposeViewSnapshotTests/replyCompose.reply-compose.png` | #53: same toolbar changes; recipient chip, subject, sender and quoted body preserved. |
+| `ComposeNativeSheetsSnapshotTests` | `ComposeNativeSheetsSnapshotTests/*.png` (8 references) | iOS compose slice: Insert Link (new, existing link), Schedule Send (quick picks, custom date; calendar and locale pinned to UTC / en_US), Templates (populated, empty), Drive sheet chrome at phone width, Cc/Bcc rows. Rendered in a real `UIWindow`. |
 | `MessageDetailViewSnapshotTests/noSelectionPlaceholder()` | `MessageDetailViewSnapshotTests/noSelectionPlaceholder.no-selection.png` | #53: reviewed theme contrast refresh; envelope and no-selection copy preserved. |
 | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()` | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender.header-present.png` | #53: reviewed secondary-text contrast and body sizing; subject, sender, recipients, date and snippet preserved. |
 | `SettingsFormSnapshotTests` (root, accounts, notifications, appearance × light, dark, accessibility 3) | `SettingsFormSnapshotTests/forms.<pane>-<variant>.png` | Settings panes as inset-grouped forms (iOS slice 7). Notifications renders the denied state with the Open Settings row. Reviewed in light, dark and AX3; no card-in-card surfaces. |
@@ -148,3 +149,23 @@ eighteen tests in five suites on iOS 27 with `en` / `en_US`.
 The 660 pt compose reference now shows Close, mode and Send across the header,
 with Attach/More below the form. This supersedes the earlier overflow placement
 described in the PR #47 history above. Deferred suites remain explicitly separate.
+
+## iOS compose slice — 2026-10-09
+
+The compose sheet changed on purpose, so `ComposeViewSnapshotTests/emptyCompose()`,
+`ComposeViewSnapshotTests/replyCompose()`,
+`BrevMailSnapshotTests/composeViewRendersSignaturePicker()`,
+`PhoneMailboxSnapshotTests/narrowCompose()` and both `phoneCompose(accessibility:)` references were re-recorded after visual
+review. Every difference is explained by the slice: a text "Cancel" replaces the
+✕, the reply quote now uses the Dynamic Type body font instead of UIKit's small
+default font, and the reply attribution line is localized and in local time
+(`replyCompose()` pins `ComposeReplyFormatter` to `en_GB` / UTC so the text does
+not depend on the machine). At accessibility sizes the centred title is dropped
+so Cancel and Send keep their room.
+
+Recorded on the iOS 27.0 (24A434) simulator, iPhone 17 Pro. On that runtime
+`PhoneMailboxSnapshotTests` references for views this slice does not touch
+(favourites, settings categories, folder hierarchy, sidebar, search) also fail
+to compare locally; they were left untouched and still need a runtime-matched
+refresh.
+

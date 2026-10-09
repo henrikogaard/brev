@@ -49,33 +49,10 @@ struct GoogleDriveAttachSheet: View {
     @State private var pickerError: String?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            BrevDivider()
+        GoogleDriveSheetChrome(title: "Google Drive") {
             content
         }
-        .frame(minWidth: 560, minHeight: 420)
         .task { await advanceIfEnabled() }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Google Drive", bundle: .module)
-                .brevFont(.title)
-                .foregroundStyle(theme.textPrimary.color)
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(
-                String(localized: "Close", bundle: .module)
-            )
-        }
-        .padding(BrevSpacing.md)
     }
 
     @ViewBuilder
