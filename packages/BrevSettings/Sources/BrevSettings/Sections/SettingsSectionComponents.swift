@@ -70,8 +70,9 @@ enum SettingsCalloutTone {
     }
 }
 
-/// A titled group of settings rows, drawn like System Settings: a plain
-/// heading and footnote above one rounded inset surface holding the rows.
+/// A titled group of settings rows. macOS draws it like System Settings: a
+/// plain heading and footnote above one rounded inset surface. iOS renders a
+/// native `Section` inside the pane's `Form`, with the subtitle as footer.
 struct SettingsGroup<Content: View>: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
@@ -85,6 +86,25 @@ struct SettingsGroup<Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
+        #if os(iOS)
+        Section {
+            Group { content }
+                .listRowBackground(theme.bgPrimary.color)
+                .listRowSeparatorTint(theme.separator.color)
+        } header: {
+            Text(title)
+                .id(title)
+                .textCase(nil)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        } footer: {
+            if !subtitle.isEmpty {
+                Text(subtitle)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+        }
+        #else
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text(title)
@@ -103,6 +123,132 @@ struct SettingsGroup<Content: View>: View {
             .settingsGroupedSurface()
         }
         .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.xs))
+        #endif
+    }
+}
+
+/// Stacks the groups of a pane. macOS spaces them in a `VStack`; on iOS the
+/// stack disappears so every `SettingsGroup` becomes a `Section` of the
+/// enclosing `Form` (a real `VStack` would collapse them into one row).
+struct SettingsGroupStack<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(iOS)
+        Group { content }
+        #else
+        VStack(alignment: .leading, spacing: BrevSpacing.xl) { content }
+        #endif
+    }
+}
+
+/// Stacks the rows of a group. macOS spaces them in a `VStack`; on iOS each
+/// child becomes its own `Form` row with native separators.
+struct SettingsRowStack<Content: View>: View {
+    var spacing: CGFloat = BrevSpacing.md
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(iOS)
+        Group { content }
+        #else
+        VStack(alignment: .leading, spacing: spacing) { content }
+        #endif
+    }
+}
+
+/// A button inside a settings pane. macOS keeps the sanctioned `BrevButton`
+/// pill; iOS draws a plain accent row (red for destructive actions) the way
+/// iOS Settings does, so a Form never carries bordered pills inside rows.
+struct SettingsButton: View {
+    @Environment(\.brevTheme) private var theme
+
+    private enum Title {
+        case verbatim(String)
+        case localized(LocalizedStringKey, Bundle?)
+    }
+
+    private let title: Title
+    private let style: BrevButtonStyle
+    /// Question asked before a destructive action runs on iOS. macOS keeps
+    /// the existing flow of each call site.
+    private let confirmationTitle: String?
+    private let action: () -> Void
+    #if os(iOS)
+    @State private var isConfirming = false
+    #endif
+
+    /// Creates a button from an already-localized title.
+    init(
+        _ title: String,
+        style: BrevButtonStyle = .primary,
+        confirmationTitle: String? = nil,
+        action: @escaping () -> Void
+    ) {
+        self.title = .verbatim(title)
+        self.style = style
+        self.confirmationTitle = confirmationTitle
+        self.action = action
+    }
+
+    /// Creates a button from a catalog key in the given bundle.
+    init(
+        _ title: LocalizedStringKey,
+        style: BrevButtonStyle = .primary,
+        bundle: Bundle?,
+        action: @escaping () -> Void
+    ) {
+        self.title = .localized(title, bundle)
+        self.style = style
+        confirmationTitle = nil
+        self.action = action
+    }
+
+    var body: some View {
+        #if os(iOS)
+        Button(role: style == .destructive ? .destructive : nil) {
+            if confirmationTitle != nil { isConfirming = true } else { action() }
+        } label: {
+            switch title {
+            case .verbatim(let text): Text(verbatim: text)
+            case .localized(let key, let bundle): Text(key, bundle: bundle)
+            }
+        }
+        .buttonStyle(.borderless)
+        .foregroundStyle(style == .destructive ? theme.danger.color : theme.accent.color)
+        .confirmationDialog(
+            confirmationTitle ?? "",
+            isPresented: $isConfirming,
+            titleVisibility: .visible
+        ) {
+            if case .verbatim(let text) = title {
+                Button(text, role: .destructive, action: action)
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        }
+        #else
+        switch title {
+        case .verbatim(let text): BrevButton(verbatim: text, style: style, action: action)
+        case .localized(let key, let bundle): BrevButton(key, style: style, bundle: bundle, action: action)
+        }
+        #endif
+    }
+}
+
+/// Lays a pane's action buttons side by side on macOS; on iOS each button is
+/// its own tappable row, so none of them shares a row with another control.
+struct SettingsButtonRow<Content: View>: View {
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        #if os(iOS)
+        Group { content }
+        #else
+        HStack(spacing: BrevSpacing.sm) {
+            content
+            Spacer(minLength: 0)
+        }
+        #endif
     }
 }
 
@@ -115,6 +261,20 @@ struct SettingsToggleRow: View {
     var isEnabled = true
 
     var body: some View {
+        #if os(iOS)
+        // iOS Settings toggles carry only a title; the explanation is the
+        // accessibility hint and the group footer. A disabled row keeps full
+        // contrast by switching to the secondary text token, not by fading.
+        Toggle(isOn: $isOn) {
+            Text(title)
+                .id(title)
+                .brevFont(.body)
+                .foregroundStyle((isEnabled ? theme.textPrimary : theme.textSecondary).color)
+        }
+        .accessibilityHint(subtitle)
+        .tint(theme.accent.color)
+        .disabled(!isEnabled)
+        #else
         // A macOS switch hugs its label, so without the greedy frame each
         // row's switch landed just after its own text — every row at a
         // different x, and none lined up with the pickers beside them.
@@ -133,6 +293,7 @@ struct SettingsToggleRow: View {
         .tint(theme.accent.color)
         .disabled(!isEnabled)
         .opacity(isEnabled ? 1 : 0.55)
+        #endif
     }
 }
 
@@ -164,17 +325,19 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
 
     var body: some View {
         #if os(iOS)
-        // On iPhone the label wraps beside a hugging menu, matching the
-        // switch rows; only accessibility sizes stack the menu below.
-        if dynamicTypeSize.isAccessibilitySize {
-            stacked
-        } else {
-            HStack(alignment: .center, spacing: BrevSpacing.md) {
-                label.frame(maxWidth: .infinity, alignment: .leading)
-                picker.fixedSize()
-                    .padding(.trailing, -SettingsLayout.menuButtonInset)
-            }
+        // A native menu `Picker` row: the title leads and the current value
+        // trails, wrapping under the title at accessibility sizes.
+        Picker(selection: $selection) {
+            content
+        } label: {
+            Text(title)
+                .id(title)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
         }
+        .pickerStyle(.menu)
+        .tint(theme.textSecondary.color)
+        .accessibilityHint(subtitle)
         #else
         ViewThatFits(in: .horizontal) {
             if !dynamicTypeSize.isAccessibilitySize {
@@ -232,7 +395,7 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .padding(.horizontal, BrevSpacing.sm)
                 .padding(.vertical, BrevSpacing.xs)
-                .brevQuietSurface(cornerRadius: BrevRadius.sm)
+                .settingsInlineSurface(cornerRadius: BrevRadius.sm)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
             }
@@ -241,6 +404,7 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
 }
 
 struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
+    @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let symbolName: String
     let title: String
@@ -250,6 +414,23 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
     @ViewBuilder let content: Content
 
     var body: some View {
+        #if os(iOS)
+        // Title above a full-width segmented control; accessibility sizes use
+        // a menu so segment labels never clip.
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            Text(title)
+                .id(title)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            if dynamicTypeSize.isAccessibilitySize {
+                picker.pickerStyle(.menu).tint(theme.textSecondary.color)
+            } else {
+                picker.pickerStyle(.segmented)
+            }
+        }
+        .accessibilityHint(subtitle)
+        .padding(.vertical, BrevSpacing.xxs)
+        #else
         // Same trailing column as switches and popups when it fits; otherwise
         // the control drops under the title text, never under the symbol.
         ViewThatFits(in: .horizontal) {
@@ -272,6 +453,7 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
             }
         }
         .opacity(isEnabled ? 1 : 0.55)
+        #endif
     }
 
     private var label: some View {
@@ -299,11 +481,13 @@ struct SettingsInfoCallout: View {
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        #if os(macOS)
         .padding(BrevSpacing.sm)
+        #endif
         // The frame must precede the surface: applied after it, the surface
         // still hugged the text and each note ended at a different x.
         .frame(maxWidth: .infinity, alignment: .leading)
-        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 }
 
@@ -382,11 +566,44 @@ private struct SettingsStackedControl: ViewModifier {
 }
 
 extension View {
+    /// Bordered pill on macOS; a plain tinted row button on iOS, where a pill
+    /// inside a `Form` row reads as a card inside a card.
+    @ViewBuilder
+    func settingsButtonStyle(prominent: Bool = false) -> some View {
+        #if os(iOS)
+        buttonStyle(.borderless)
+        #else
+        if prominent {
+            buttonStyle(.borderedProminent)
+        } else {
+            buttonStyle(.bordered)
+        }
+        #endif
+    }
+
     /// The rounded inset surface every Settings group draws its rows on.
+    /// iOS rows already sit on the `Form`'s grouped surface, so nothing is added.
+    @ViewBuilder
     func settingsGroupedSurface() -> some View {
+        #if os(iOS)
+        self
+        #else
         padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.md)
             .frame(maxWidth: .infinity, alignment: .leading)
             .brevQuietSurface(cornerRadius: BrevRadius.md)
+        #endif
+    }
+
+    /// A quiet card for content nested inside a settings row. macOS keeps the
+    /// shared quiet surface; on iOS the enclosing `Form` row is already the
+    /// surface, so a second card would read as card-in-card.
+    @ViewBuilder
+    func settingsInlineSurface(cornerRadius: CGFloat = BrevRadius.md) -> some View {
+        #if os(iOS)
+        self
+        #else
+        brevQuietSurface(cornerRadius: cornerRadius)
+        #endif
     }
 }

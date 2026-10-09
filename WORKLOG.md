@@ -5470,6 +5470,29 @@ buttons, and package-aware localization.
 - Blank-body count: 10 of 10 visible launches rendered (`-font.reader serif`, mock build from the branch merged with main, screen unlocked). An earlier run with the screen locked showed 9 of 10 blank because no launch became visible (WebKit activity state 184 → 56), the known hidden-window artifact.
 - No snapshot test: the change is pane-root wiring in `BrevMailRootView`, which has no snapshot coverage; `brevFont` itself already reads the environment.
 
+## 2026-10-09 — Claude Code — ADR-0003 note for #212
+
+- #212 touched `packages/BrevAvatars/Sources` (an ADR-required protected path) without an ADR change, and was merged while the `adr-required` check was red. This adds the missing ADR-0003 amendment describing `AvatarDisplayImageCache`. Lesson: check `adr-required` before merging, even though `main` has no required checks.
+
+## 2026-10-09 — Agent — iOS UI/UX and accessibility audit (no code change)
+
+- Goal: audit every reachable iOS surface against the iOS HIG / iOS Mail and produce findings plus PR slices.
+- Changes: new `docs/qa/ios-ux-audit-2026-10-09/` (README with findings table and 8 PR slices, 62 screenshots, per-screen `performAccessibilityAudit` output, theme contrast table). No product code touched.
+- Verification: temporary XCUITest walker (removed, never committed) on own iPhone 17 Pro and iPad Pro 11 iOS 27 simulators (deleted afterwards), mock backend only; variants en/nb, light/dark, AX3/AX5, four built-in themes.
+- Skipped: VoiceOver speech, Reduce Motion/Transparency/Bold Text toggles, PIM screens with data, attachments/HTML/banners, widgets and extensions (see README section 4).
+- Handoff: local branch `audit/ios-ux-2026-10-09` also carries an unpushed local merge of `origin/fix/ios-account-setup-sheet` (#208); cherry-pick the audit commit if #208 is not merged first.
+
+## 2026-10-09 — Claude Code — iOS Settings panes as forms (slice 7 of the iOS UI/UX pass)
+
+- Goal: audit findings T1-T9 (`docs/qa/ios-ux-audit-2026-10-09`): Settings panes as native forms, one flat root list, labeled mailbox switches with a default-mailbox checkmark list, iOS-only copy, confirmations for destructive actions, Settings as a sheet over mail. Branch `fix/ios-settings-forms` from `origin/main` @ 42656635.
+- Changes: `SectionScaffold`, `SettingsGroup` and the row components render a `Form`/`Section` on iOS and stay unchanged on macOS (`SettingsGroupStack`, `SettingsRowStack`, `SettingsButton`, `SettingsButtonRow`, `settingsInlineSurface`, `settingsFormChrome` are the seams). New iOS pages: account detail (Show in Mail switches, default mailbox checkmarks, confirmed sign out and remove), per-account notification switches, per-folder sync page. Smart Views reorders with `.onMove` (new `SmartMailboxSettings.moveEntries`); the saved-search editor is a navigation-bar sheet; the sidebar Smart Views sheet in `FolderSidebar.swift` too. `BrevApp.swift` presents Settings as a `.sheet` (add-account sheet hangs off Settings while it is open). Settings search drops Mac-only rows on iPhone. ADR-0002 got a note on `BrevButton` vs form row buttons.
+- Decisions: row subtitles are not shown under iOS rows (accessibility hint plus section footers instead), per the audit. `BrevQuietSurface.swift` itself is untouched because BrevMail/compose/reader use it; Settings stops using it on iOS. The quiet-hours picker keeps hour menus (the model stores whole hours, so a time `DatePicker` would drop minutes).
+- Verification: red-to-green Swift Testing for `NotificationPanePresentation`, account detail presentation, search platform adjustment and Smart View drag reorder; `swift test` on macOS has the same 48 snapshot issues in the same 5 suites as `origin/main` @ 42656635 (macOS 27 host vs macOS 26 references), +14 passing tests; new iOS suite `SettingsFormSnapshotTests` (root, Accounts, Notifications denied state, Appearance x light/dark/AX3) and re-recorded `CompactSettingsRowSnapshotTests` pass on iOS 27.0; swiftlint strict and swiftformat clean on touched files; simulator walk with a temporary XCUITest (not committed) in light, dark, nb and AX3 with accessibility audits, evidence in `docs/qa/ios-slice7-settings-2026-10-09/`.
+- Skipped / not verified: `scripts/lint.sh` stops on two pre-existing swiftformat findings in BrevAvatars and BrevMail tests (not touched). Outbox "Discard All Pending Changes" and task delete confirmations (T5) live in BrevMail files outside this slice. `BrevSettingsSnapshotTests` iOS references (not in CI) were not re-recorded. Audit "Text clipped" on a few plain button rows is not reproducible visually.
+- Handoff: slice 6's shared sheet modifier is not used here (Settings applies `.brevRootAppearance(session:)` directly); swap it in when that lands.
+
+- Follow-up (same PR): the root rows were 74 pt because the shared row added a 44 pt minimum-height frame on top of the default list insets. Removed it (and the zero-inset override on extension rows, and the callout padding on iOS), so rows use the system metrics (52 pt on iOS 27). The root now uses the existing task groups (App, Reading & Composing, Organization, Sync & Storage, Privacy & Security, Advanced) so every section has a header. Re-recorded only the 3 root form snapshots and the 2 signature snapshots; the other baselines still match. Contrast item on the root audit appears only at the initial scroll position (search-field glass over a header).
+
 ## 2026-10-09 — Claude Code — iOS a11y slice 4: contrast contract, scalable controls, plurals, extension strings
 
 - Goal: audit slice 4 (G1-G3, N1-N4, X1, X3) from the 2026-10-09 iOS UX audit. Branch `fix/a11y-contrast-strings` from `origin/main` @ 42656635.

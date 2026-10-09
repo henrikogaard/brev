@@ -281,27 +281,18 @@ public struct SettingsView: View {
                 if !normalizedSearchText.isEmpty {
                     ForEach(searchResults) { result in
                         NavigationLink {
-                            scopedDetail(for: result.section)
+                            compactPane(for: result.section)
                                 .environment(\.settingsSearchTarget, result.target)
-                                .navigationTitle(result.section.title)
-                                .onAppear { navigation.select(result.section) }
-                            #if os(iOS)
-                                .toolbar { settingsDismissToolbar }
-                            #endif
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(result.title)
                                 Text(result.section.category.title + " › " + result.section.title).brevFont(.footnote)
                             }
                         }
+                        .listRowBackground(theme.bgPrimary.color)
                     }
                 } else {
-                    Section {
-                        compactCategoryRows(supplementary: false)
-                    }
-                    Section {
-                        compactCategoryRows(supplementary: true)
-                    }
+                    compactRootSections
                 }
                 if filteredSettingsGroups.isEmpty {
                     settingsSearchEmptyState
@@ -329,40 +320,39 @@ public struct SettingsView: View {
         }
     }
 
+    /// One root list in the iOS Settings style: the task groups the sidebar
+    /// already uses (App, Reading & Composing, ...), every one with a header,
+    /// each row pushing straight to its pane. Rows keep the system list
+    /// metrics; the list's own minimum row height keeps them at least 44 pt.
     @ViewBuilder
-    private func compactCategoryRows(supplementary: Bool) -> some View {
-        ForEach(navigation.availability.visibleCategories.filter { $0.isSupplementary == supplementary }) { category in
-            NavigationLink {
-                if category.sections(in: navigation.availability).count == 1,
-                   let section = category.sections(in: navigation.availability).first {
-                    scopedDetail(for: section).navigationTitle(category.title)
-                        .onAppear { navigation.select(section) }
-                    #if os(iOS)
-                        .toolbar { settingsDismissToolbar }
-                    #endif
-                } else {
-                    List(category.sections(in: navigation.availability)) { section in
-                        NavigationLink {
-                            scopedDetail(for: section).navigationTitle(section.title)
-                                .onAppear { navigation.select(section) }
-                            #if os(iOS)
-                                .toolbar { settingsDismissToolbar }
-                            #endif
-                        } label: { sectionRow(section) }
-                            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
-                            .listRowBackground(theme.bgPrimary.color)
+    private var compactRootSections: some View {
+        ForEach(navigation.availability.groupedVisibleSections(matching: ""), id: \.group) { entry in
+            Section {
+                ForEach(entry.sections) { section in
+                    NavigationLink {
+                        compactPane(for: section)
+                    } label: {
+                        sectionRow(section)
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(theme.bgSecondary.color.ignoresSafeArea())
-                    .navigationTitle(category.title)
-                    #if os(iOS)
-                        .toolbar { settingsDismissToolbar }
-                    #endif
+                    .listRowBackground(theme.bgPrimary.color)
                 }
-            } label: { categoryRow(category) }
-                .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
-                .listRowBackground(theme.bgPrimary.color)
+            } header: {
+                if let label = entry.group.headerLabel {
+                    Text(label)
+                        .textCase(nil)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+            }
         }
+    }
+
+    private func compactPane(for section: SettingsSection) -> some View {
+        scopedDetail(for: section)
+            .navigationTitle(section.title)
+            .onAppear { navigation.select(section) }
+        #if os(iOS)
+            .toolbar { settingsDismissToolbar }
+        #endif
     }
 
     @ViewBuilder
@@ -508,7 +498,6 @@ public struct SettingsView: View {
                     } label: {
                         pluginSettingsRow(contribution)
                     }
-                    .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
                     .listRowBackground(theme.bgPrimary.color)
                     #else
                     Button {
@@ -551,7 +540,9 @@ public struct SettingsView: View {
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
         }
+        #if os(macOS)
         .settingsTouchTarget()
+        #endif
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -912,7 +903,6 @@ public struct SettingsView: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .settingsTouchTarget()
     }
 
     private var searchResults: [SettingsSearchResult] {

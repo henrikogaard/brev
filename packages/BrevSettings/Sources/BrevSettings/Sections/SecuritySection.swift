@@ -52,7 +52,7 @@ struct SecuritySection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 #if os(macOS)
                 defaultsGroup
                 keyCatalogGroup
@@ -107,7 +107,7 @@ struct SecuritySection: View {
             subtitle: String(localized: "Apply security defaults when trusted local material is available.", bundle: .module),
             symbolName: "lock.shield"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "checkmark.shield",
                     title: String(localized: "Enable S/MIME", bundle: .module),
@@ -161,7 +161,7 @@ struct SecuritySection: View {
             ),
             symbolName: "key.viewfinder"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if keyMaterialSettings.records.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "key.slash",
@@ -189,13 +189,13 @@ struct SecuritySection: View {
 
                         draftEditor
 
-                        HStack(spacing: BrevSpacing.sm) {
-                            BrevButton("Remove All S/MIME", style: .destructive, bundle: .module) {
+                        SettingsButtonRow {
+                            SettingsButton("Remove All S/MIME", style: .destructive, bundle: .module) {
                                 requestBulkDelete(.removeAllSMIME)
                             }
                             .disabled(!keyMaterialSettings.records.contains(where: { $0.family == .smime }))
 
-                            BrevButton(String(localized: "Remove Everything", bundle: .module), style: .destructive) {
+                            SettingsButton(String(localized: "Remove Everything", bundle: .module), style: .destructive) {
                                 requestBulkDelete(.removeAllMaterial)
                             }
                             .disabled(keyMaterialSettings.records.isEmpty)
@@ -222,7 +222,7 @@ struct SecuritySection: View {
             subtitle: String(localized: "Control preferred export formats and replacement behavior.", bundle: .module),
             symbolName: "square.and.arrow.up.on.square"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsPickerRow(
                     symbolName: "doc.badge.gearshape",
                     title: String(localized: "S/MIME export format", bundle: .module),
@@ -318,7 +318,7 @@ struct SecuritySection: View {
                     .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
             }
 
-            BrevButton(String(localized: "Add Record", bundle: .module), style: .secondary) {
+            SettingsButton(String(localized: "Add Record", bundle: .module), style: .secondary) {
                 addDraftRecord()
             }
             .disabled(!draftRecord.isValid)
@@ -340,11 +340,11 @@ struct SecuritySection: View {
 
                 Spacer(minLength: BrevSpacing.sm)
 
-                BrevButton(String(localized: "Export", bundle: .module), style: .secondary) {
+                SettingsButton(String(localized: "Export", bundle: .module), style: .secondary) {
                     exportMaterial(record: record)
                 }
 
-                BrevButton(String(localized: "Remove", bundle: .module), style: .destructive) {
+                SettingsButton(String(localized: "Remove", bundle: .module), style: .destructive) {
                     requestRemoveRecord(record)
                 }
             }
@@ -361,7 +361,7 @@ struct SecuritySection: View {
             }
         }
         .padding(BrevSpacing.sm)
-        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     /// Compact identity row: what is trusted stays visible while the
@@ -602,7 +602,7 @@ struct SecuritySection: View {
             .navigationTitle(String(localized: "Export Material", bundle: .module))
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
-                    BrevButton(String(localized: "Done", bundle: .module), style: .primary) {
+                    SettingsButton(String(localized: "Done", bundle: .module), style: .primary) {
                         exportPreview = nil
                     }
                 }

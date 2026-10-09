@@ -1,0 +1,17 @@
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are unsupported | User will not be able to change the font size of this element | element: nil
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='11 unread' id='' frame=(195.83333333333337, 71.16666666666667, 57.99999999999997, 14.333333333333329)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Inbox' id='' frame=(144.16666666666669, 66.16666666666667, 43.666666666666686, 20.33333333333333)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are unsupported | User will not be able to change the font size of this element | element: nil
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Henrik Øgård (private)' id='' frame=(137.66666666666669, 87.5, 126.66666666666669, 14.333333333333329)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil

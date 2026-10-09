@@ -31,7 +31,7 @@ struct BrowserSettingsGroup: View {
             subtitle: String(localized: "Choose where Brev opens links from messages and settings.", bundle: .module),
             symbolName: "safari"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsPickerRow(
                     symbolName: "link",
                     title: String(localized: "Open links in", bundle: .module),

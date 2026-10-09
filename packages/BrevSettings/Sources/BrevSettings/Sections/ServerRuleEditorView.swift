@@ -112,7 +112,7 @@ public struct ServerRuleEditorView: View {
             ForEach(Array(draft.conditions.enumerated()), id: \.offset) { index, _ in
                 conditionRow(at: index)
             }
-            BrevButton(String(localized: "Add condition", bundle: .module), style: .tertiary) {
+            SettingsButton(String(localized: "Add condition", bundle: .module), style: .tertiary) {
                 draft.conditions.append(.subjectContains(""))
             }
         }
@@ -128,7 +128,7 @@ public struct ServerRuleEditorView: View {
                 }
                 .labelsHidden()
                 Spacer(minLength: BrevSpacing.sm)
-                BrevButton(String(localized: "Remove", bundle: .module), style: .destructive) {
+                SettingsButton(String(localized: "Remove", bundle: .module), style: .destructive) {
                     draft.conditions.remove(at: index)
                 }
             }
@@ -149,7 +149,7 @@ public struct ServerRuleEditorView: View {
             ForEach(Array(draft.actions.enumerated()), id: \.offset) { index, _ in
                 actionRow(at: index)
             }
-            BrevButton(String(localized: "Add action", bundle: .module), style: .tertiary) {
+            SettingsButton(String(localized: "Add action", bundle: .module), style: .tertiary) {
                 draft.actions.append(.markRead)
             }
         }
@@ -165,7 +165,7 @@ public struct ServerRuleEditorView: View {
                 }
                 .labelsHidden()
                 Spacer(minLength: BrevSpacing.sm)
-                BrevButton(String(localized: "Remove", bundle: .module), style: .destructive) {
+                SettingsButton(String(localized: "Remove", bundle: .module), style: .destructive) {
                     draft.actions.remove(at: index)
                 }
             }

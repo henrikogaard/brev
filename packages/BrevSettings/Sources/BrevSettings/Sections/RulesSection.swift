@@ -54,7 +54,7 @@ public struct RulesSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 tabPicker
                 if let backend = activeBackend {
                     tabContent(for: backend)
@@ -74,7 +74,19 @@ public struct RulesSection: View {
         return backendProvider(currentAccountID)
     }
 
+    @ViewBuilder
     private var tabPicker: some View {
+        #if os(iOS)
+        Section {
+            rulesSourcePicker
+        }
+        .listRowBackground(theme.bgPrimary.color)
+        #else
+        rulesSourcePicker
+        #endif
+    }
+
+    private var rulesSourcePicker: some View {
         Picker(String(localized: "Rules source", bundle: .module), selection: $selectedTab) {
             ForEach(RulesTab.allCases) { tab in
                 Text(tab.title).tag(tab)
@@ -133,7 +145,7 @@ private struct ServerRulesPane: View {
     @State private var statusMessage: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+        SettingsRowStack(spacing: BrevSpacing.lg) {
             capabilityGroup
             listGroup
         }
@@ -174,7 +186,7 @@ private struct ServerRulesPane: View {
                 : String(localized: "Server-side rules are not supported by this account.", bundle: .module),
             symbolName: "server.rack"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if isServerRulesSupported {
                     SettingsInfoCallout(
                         symbolName: "checkmark.seal",
@@ -204,7 +216,7 @@ private struct ServerRulesPane: View {
             ),
             symbolName: "list.bullet.rectangle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if !isServerRulesSupported {
                     notSupportedCallout
                 } else if isLoading && rules.isEmpty {
@@ -230,7 +242,7 @@ private struct ServerRulesPane: View {
                         tone: .info
                     )
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(rules) { rule in
                             ServerRuleRow(
                                 rule: rule,
@@ -242,16 +254,15 @@ private struct ServerRulesPane: View {
                     }
                 }
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Add rule", bundle: .module), style: .secondary) {
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Add rule", bundle: .module), style: .secondary) {
                         editorDraft = ServerRuleEditorDraft.newRule()
                     }
                     .disabled(!isServerRulesSupported)
-                    BrevButton(String(localized: "Refresh", bundle: .module), style: .tertiary) {
+                    SettingsButton(String(localized: "Refresh", bundle: .module), style: .tertiary) {
                         Task { await reload(force: true) }
                     }
                     .disabled(isLoading || !isServerRulesSupported)
-                    Spacer(minLength: 0)
                 }
 
                 if let statusMessage {
@@ -394,8 +405,8 @@ private struct ServerRuleRow: View {
 
                 Spacer(minLength: BrevSpacing.sm)
 
-                BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
-                BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
+                SettingsButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                SettingsButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
             }
 
             HStack(spacing: BrevSpacing.xs) {
@@ -410,7 +421,7 @@ private struct ServerRuleRow: View {
             }
         }
         .padding(BrevSpacing.md)
-        .brevQuietSurface()
+        .settingsInlineSurface()
     }
 
     private var conditionSummary: String {
@@ -462,7 +473,7 @@ private struct LocalRulesPane: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+        SettingsRowStack(spacing: BrevSpacing.lg) {
             controlsGroup
             listGroup
         }
@@ -490,7 +501,7 @@ private struct LocalRulesPane: View {
             subtitle: String(localized: "Provider-neutral rules evaluated deterministically by Brev.", bundle: .module),
             symbolName: "line.3.horizontal.decrease.circle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "bolt.badge.clock",
                     title: String(localized: "Run local rules automatically", bundle: .module),
@@ -521,8 +532,8 @@ private struct LocalRulesPane: View {
                 ),
                 tone: .info
             )
-            HStack(spacing: BrevSpacing.sm) {
-                BrevButton(
+            SettingsButtonRow {
+                SettingsButton(
                     isSyncingServerRules ? String(localized: "Syncing...", bundle: .module) : String(
                         localized: "Sync to server",
                         bundle: .module
@@ -532,7 +543,6 @@ private struct LocalRulesPane: View {
                     syncLocalRulesToServer()
                 }
                 .disabled(isSyncingServerRules || settings.rules.isEmpty)
-                Spacer(minLength: 0)
             }
             if let syncErrorMessage {
                 SettingsInfoCallout(
@@ -553,7 +563,7 @@ private struct LocalRulesPane: View {
             ),
             symbolName: "list.bullet.rectangle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if settings.rules.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "checklist.unchecked",
@@ -564,7 +574,7 @@ private struct LocalRulesPane: View {
                         tone: .info
                     )
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(Array(settings.rules.enumerated()), id: \.element.id) { index, rule in
                             LocalRuleRow(
                                 rule: rule,
@@ -589,11 +599,10 @@ private struct LocalRulesPane: View {
                     }
                 }
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Add rule", bundle: .module), style: .secondary) {
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Add rule", bundle: .module), style: .secondary) {
                         editorDraft = LocalRuleEditorDraft.newRule()
                     }
-                    Spacer(minLength: 0)
                 }
 
                 if let statusMessage {
@@ -711,7 +720,7 @@ struct LocalRuleRow: View {
                 HStack(spacing: BrevSpacing.sm) {
                     enabledControl
                     Spacer(minLength: 0)
-                    BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                    SettingsButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
                     Menu {
                         Button(String(localized: "Move Rule Up", bundle: .module), action: onMoveUp)
                             .disabled(isFirst)
@@ -748,13 +757,13 @@ struct LocalRuleRow: View {
                     onMoveDown()
                 }
                 .disabled(isLast)
-                BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
-                BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
+                SettingsButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                SettingsButton(String(localized: "Delete", bundle: .module), style: .destructive) { onDelete() }
             }
             #endif
         }
         .padding(BrevSpacing.sm)
-        .brevQuietSurface()
+        .settingsInlineSurface()
     }
 
     private var enabledControl: some View {

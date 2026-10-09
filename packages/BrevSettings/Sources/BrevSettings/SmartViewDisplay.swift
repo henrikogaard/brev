@@ -66,6 +66,19 @@ public extension SmartMailboxSettings {
         ids.swapAt(index, index + offset)
         displayOrder = ids
     }
+
+    /// Applies a drag reorder as `List.onMove` reports it, keeping hidden entries in place.
+    mutating func moveEntries(from source: IndexSet, to destination: Int) {
+        var ids = orderedEntries.map(\.id)
+        let sources = source.sorted()
+        let moving = sources.map { ids[$0] }
+        let insertion = destination - sources.filter { $0 < destination }.count
+        for index in sources.reversed() {
+            ids.remove(at: index)
+        }
+        ids.insert(contentsOf: moving, at: insertion)
+        displayOrder = ids
+    }
 }
 
 extension SmartViewCondition.Field {

@@ -354,6 +354,21 @@ public struct FolderSidebar: View {
                 MailboxFavoritesEditor(data: $favoritesData, candidates: favoriteCandidates)
             }
             .sheet(isPresented: $showsSmartViewSettings) {
+                #if os(iOS)
+                // A navigation-bar sheet with Done in the bar, like the
+                // favourites editor, instead of an in-content button row.
+                NavigationStack {
+                    SmartViewsSection(mailboxes: smartViewMailboxes)
+                        .navigationTitle(String(localized: "Smart Views", bundle: .module))
+                        .navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button(String(localized: "Done", bundle: .module)) { showsSmartViewSettings = false }
+                            }
+                        }
+                }
+                .tint(theme.accent.color)
+                #else
                 VStack(spacing: 0) {
                     SmartViewsSection(mailboxes: smartViewMailboxes)
                     HStack {
@@ -364,8 +379,7 @@ public struct FolderSidebar: View {
                     .padding(BrevSpacing.lg)
                 }
                 .background(theme.bgPrimary.color)
-                #if os(macOS)
-                    .frame(width: 680, height: 570)
+                .frame(width: 680, height: 570)
                 #endif
             }
             .sheet(item: $savedSearchEditorTarget) { target in

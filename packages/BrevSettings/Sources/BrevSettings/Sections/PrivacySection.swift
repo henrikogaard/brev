@@ -25,6 +25,10 @@ struct PrivacySection: View {
     @State private var avatarSettings: AvatarPrivacySettings
     @State private var mailboxSettings: MailboxViewSettings
     @State private var remoteContentPolicy: RemoteContentPolicy
+    #if os(iOS)
+    /// The allowlist entry the user asked to remove, awaiting confirmation.
+    @State private var pendingRevocation: PendingAllowlistRevocation?
+    #endif
 
     private let settingsStore: SettingsPersistenceStore
 
@@ -40,7 +44,7 @@ struct PrivacySection: View {
             title: String(localized: "Privacy", bundle: .module),
             subtitle: String(localized: "Control remote images, sender image sources, and trusted senders.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 remoteImagesGroup
                 senderIconGroup
                 remoteContentAllowlist
@@ -52,6 +56,24 @@ struct PrivacySection: View {
                 remoteContentPolicy = settingsStore.remoteContentPolicy()
             }
         }
+        #if os(iOS)
+        .confirmationDialog(
+            String(localized: "Remove this allowlist entry?", bundle: .module),
+            isPresented: Binding(
+                get: { pendingRevocation != nil },
+                set: { if !$0 { pendingRevocation = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: pendingRevocation
+        ) { pending in
+            Button(String(localized: "Remove \(pending.title)", bundle: .module), role: .destructive) {
+                pending.revoke()
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: { _ in
+            Text("Remote content from this sender is blocked again.", bundle: .module)
+        }
+        #endif
     }
 
     private var privacyDefaults: some View {
@@ -60,7 +82,7 @@ struct PrivacySection: View {
             subtitle: String(localized: "Brev starts with conservative mail-rendering choices.", bundle: .module),
             symbolName: "lock.shield"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 privacyRow(
                     symbolName: "eye.slash",
                     title: String(localized: "Remote content starts blocked", bundle: .module),
@@ -95,7 +117,7 @@ struct PrivacySection: View {
             subtitle: String(localized: "Review senders and domains allowed to load remote images.", bundle: .module),
             symbolName: "photo.badge.checkmark"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if remoteContentPolicy.hasAllowlistEntries {
                     ForEach(remoteContentPolicy.allowedSenderEntries, id: \.self) { sender in
                         allowlistRow(
@@ -177,11 +199,21 @@ struct PrivacySection: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
             Spacer(minLength: BrevSpacing.md)
-            Button(action: onRevoke) {
+            Button {
+                #if os(iOS)
+                pendingRevocation = PendingAllowlistRevocation(title: title, revoke: onRevoke)
+                #else
+                onRevoke()
+                #endif
+            } label: {
                 Image(systemName: "trash")
                     .foregroundStyle(theme.danger.color)
+                #if os(iOS)
+                    .frame(minWidth: 44, minHeight: 44)
+                #endif
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Remove allowlist entry", bundle: .module))
             .help(String(localized: "Remove allowlist entry", bundle: .module))
         }
     }
@@ -226,7 +258,7 @@ struct PrivacySection: View {
             ),
             symbolName: "person.crop.circle.badge.checkmark"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "person.crop.square",
                     title: String(localized: "Use Contacts photos", bundle: .module),
@@ -259,11 +291,11 @@ struct PrivacySection: View {
                     isEnabled: mailboxSettings.showSenderAvatars
                 )
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Initials only", bundle: .module), style: .secondary) {
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Initials only", bundle: .module), style: .secondary) {
                         updateAvatarSettings { $0.useInitialsOnly() }
                     }
-                    BrevButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
+                    SettingsButton(String(localized: "Clear cached avatars", bundle: .module), style: .tertiary) {
                         Task { await AvatarResolver.shared.clearCache() }
                     }
                     Spacer(minLength: BrevSpacing.md)
@@ -372,3 +404,11 @@ struct PrivacySection: View {
         )
     }
 }
+
+#if os(iOS)
+/// An allowlist removal waiting for the user's confirmation.
+private struct PendingAllowlistRevocation {
+    let title: String
+    let revoke: () -> Void
+}
+#endif

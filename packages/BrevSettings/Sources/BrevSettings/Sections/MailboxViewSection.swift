@@ -42,7 +42,7 @@ struct MailboxViewSection: View {
             // One scroll instead of a segmented control nested inside a tabbed
             // pane: the four groups are short enough to read together, and
             // settings search scrolls straight to the group it names.
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 readingGroup
                 listGroup
                 folderVisibilityGroup
@@ -57,7 +57,7 @@ struct MailboxViewSection: View {
             subtitle: String(localized: "Show or hide standard folders in the mailbox sidebar.", bundle: .module),
             symbolName: "folder"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "star",
                     title: String(localized: "Starred", bundle: .module),
@@ -126,7 +126,7 @@ struct MailboxViewSection: View {
             subtitle: String(localized: "Rendering, conversation order, and type.", bundle: .module),
             symbolName: "text.alignleft"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "doc.richtext",
                     title: String(localized: "Use rich HTML renderer", bundle: .module),
@@ -181,7 +181,7 @@ struct MailboxViewSection: View {
             subtitle: String(localized: "Tune the overview columns for scanning and triage.", bundle: .module),
             symbolName: "list.bullet.rectangle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsMailPreview(settings: mailboxSettings)
                 SettingsToggleRow(
                     symbolName: "rectangle.stack",
@@ -319,7 +319,7 @@ struct MailboxViewSection: View {
         }
         .padding(BrevSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
     #endif
 

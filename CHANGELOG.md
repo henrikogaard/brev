@@ -4,9 +4,19 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
+- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
+- iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
+- iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
+- iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+
 ### Fixed
 
 - The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
+- iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
+- iOS Appearance: the mail preview text now follows Dynamic Type.
 - Accessibility: all 37 built-in themes now meet WCAG contrast for accent, warning and danger text (4.5:1) and for success and info glyphs (3:1). 31 palette colours across 15 themes (Brev Paper, Brev Forest, Nord, Nordic, Gruvbox, Solarized, Catppuccin Latte, One Dark Pro, Blurple Night, Pearl Light, Tender and Tomorrow) were adjusted in lightness only. Outlined buttons use a 3:1 outline, and selected filter chips keep readable text on their accent tint.
 - Accessibility: icon buttons, filter chips, status banners and buttons grow with Dynamic Type and keep a 44 pt touch target on iPhone and iPad. A new Reduce Motion helper is available for animations.
 - iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
