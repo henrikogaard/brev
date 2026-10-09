@@ -1809,7 +1809,7 @@ public struct MessageDetailView: View {
     @ViewBuilder
     private func attachmentsSection(_ attachments: [Attachment]) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-            Text("\(attachments.count) attachment\(attachments.count == 1 ? "" : "s")", bundle: .module)
+            Text(MessageAttachmentCountLabel.title(count: attachments.count))
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
             ForEach(attachments) { attachment in

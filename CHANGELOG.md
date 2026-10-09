@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.
+
 ### Changed
 
 - iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
@@ -11,6 +15,7 @@ All notable changes to Brev are documented here.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+- Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
 
 ### Fixed
 
@@ -22,6 +27,8 @@ All notable changes to Brev are documented here.
 - iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
 - iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
 - Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
+
+- The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 
 ## [0.2.6] - 2026-10-09
 

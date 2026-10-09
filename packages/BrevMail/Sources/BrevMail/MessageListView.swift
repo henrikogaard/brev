@@ -786,6 +786,12 @@ public struct MessageListView: View {
                 activateSelectedMessageFromKeyboard()
                 return .handled
             }
+            .onKeyPress(
+                keys: [.delete, .deleteForward, .escape, .home, .end, .pageUp, .pageDown],
+                phases: [.down, .repeat]
+            ) { press in
+                handleListKeyPress(press)
+            }
             .onChange(of: navigation.messageListFocusRequestID) { _, _ in
                 // Mailbox activation from the sidebar (Return / → on a
                 // leaf, or a click) hands the keyboard to this list.
@@ -1780,6 +1786,51 @@ public struct MessageListView: View {
     }
 
     #if os(macOS)
+    /// Delete, Escape, Home, End, Page Up and Page Down on the focused list.
+    /// The list container only receives these while it holds keyboard focus,
+    /// so the search field and other text inputs keep their own editing keys.
+    private func handleListKeyPress(_ press: KeyPress) -> KeyPress.Result {
+        guard let command = MessageListKeyboardNavigation.command(for: press.key, modifiers: press.modifiers) else {
+            return .ignored
+        }
+        switch command {
+        case .deleteSelection:
+            // Destructive: act once per physical press, never on key repeat.
+            guard listKeyboardFocus, press.phase == .down else { return .ignored }
+            deleteSelectionFromKeyboard()
+            return .handled
+        case .clearSelection:
+            // Nothing to clear: let Escape reach whatever else wants it.
+            guard !navigation.bulkSelection.isEmpty else { return .ignored }
+            navigation.bulkSelection.removeAll()
+            return .handled
+        case .moveToStart, .moveToEnd, .pageUp, .pageDown:
+            listKeyboardFocus = true
+            navigation.moveSelection(command)
+            return .handled
+        }
+    }
+
+    /// Moves the bulk selection, or the single selected message, to Trash
+    /// through the same paths as the row's Delete swipe action and the bulk
+    /// bar: undo registration, permanent-delete confirmation and rollback
+    /// all apply.
+    private func deleteSelectionFromKeyboard() {
+        guard !isMutationActionBlocked else { return }
+        if !navigation.bulkSelection.isEmpty {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+            Task { await bulkDelete() }
+            return
+        }
+        guard let header = navigation.selectedHeader else { return }
+        performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+        if isPermanentDelete(for: header) {
+            pendingDeleteHeaderID = header.id
+        } else {
+            Task { await deleteRow(header: header) }
+        }
+    }
+
     /// Return activates the selected row like a click: drafts reopen in
     /// the composer, multi-message threads expand, bulk mode toggles.
     private func activateSelectedMessageFromKeyboard() {
