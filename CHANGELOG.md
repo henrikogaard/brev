@@ -7,9 +7,11 @@ All notable changes to Brev are documented here.
 ### Added
 
 - Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.
+- Mac message list multi-select: Command-click toggles a message, Shift-click selects the range from the last selected message, Shift-Up and Shift-Down extend it, and Edit > Select All Messages (Command-A, while the list has focus) selects every message in view. With two or more messages selected the reading pane shows how many are selected, with Mark Read, Mark Unread, Flag, Archive and Delete buttons.
 
 ### Changed
 
+- Mac message list: a plain click or arrow key now returns to a single selected message instead of toggling checked messages.
 - Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
 
 ### Fixed

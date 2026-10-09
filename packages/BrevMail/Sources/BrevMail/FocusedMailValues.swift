@@ -491,6 +491,24 @@ public struct FocusedMailHelpActionsKey: FocusedValueKey {
     public typealias Value = MailHelpActions
 }
 
+/// Select-all action published by the message list only while it holds
+/// keyboard focus, so Edit > Select All Messages is enabled for the list and
+/// stays out of the way of text fields (which keep the standard Select All).
+struct MailListSelectAllAction {
+    let perform: @MainActor () -> Void
+}
+
+struct FocusedListSelectAllKey: FocusedValueKey {
+    typealias Value = MailListSelectAllAction
+}
+
+extension FocusedValues {
+    var mailListSelectAll: MailListSelectAllAction? {
+        get { self[FocusedListSelectAllKey.self] }
+        set { self[FocusedListSelectAllKey.self] = newValue }
+    }
+}
+
 public extension FocusedValues {
     var mailNavigation: MailNavigationState? {
         get { self[FocusedNavigationKey.self] }

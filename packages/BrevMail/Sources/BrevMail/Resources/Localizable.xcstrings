@@ -322,6 +322,47 @@
         }
       }
     },
+    "%lld messages selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld message selected"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld messages selected"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld melding valgt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld meldinger valgt"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld messages shown": {
       "extractionState": "manual",
       "localizations": {
@@ -4666,6 +4707,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Eksporter som PDF …"
+          }
+        }
+      }
+    },
+    "Extend Selection Down": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid markeringen ned"
+          }
+        }
+      }
+    },
+    "Extend Selection Up": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid markeringen opp"
           }
         }
       }
@@ -9063,6 +9126,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Rolle"
+          }
+        }
+      }
+    },
+    "Select All Messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg alle meldinger"
           }
         }
       }
