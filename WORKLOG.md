@@ -5461,3 +5461,11 @@ buttons, and package-aware localization.
 - Consequence: the 2026-10-09 #207 entry's "pre-existing blank reader body" and the 5/6 rate with `brevFontSection(.reader)` came from occluded-window captures. Dropping the reader environment font for that reason was not necessary.
 - Verification tip: before trusting a screenshot of a Brev web body, make sure the window was visible on screen during load (not hidden, covered, or on an idle display).
 - Verification: no code changed, so no tests run.
+
+## 2026-10-09 — Claude Code — reader pane sets its font section (ADR-0086)
+
+- Goal: put `brevFontSection(.reader)` back on the reader, now that the blank-body "regression" that kept it out turned out to be an occluded-window capture artifact (see #214).
+- Changes: `.brevFontSection(.reader)` on the macOS/iPad reader pane root and the iOS compact reader root in `BrevMailRootView` (inside the toolbar modifiers, like sidebar and list), and on the detached reader window root. ADR-0086 decision 4 updated; CHANGELOG entry under Unreleased.
+- Verification: swiftformat/swiftlint clean on the touched files; macOS mock test build installs; BrevIOS builds for the iOS Simulator. Visible launch with `-font.reader serif`: reader title, metadata and thread cards are serif, list and sidebar stay System, body renders.
+- Blank-body count: 10 of 10 visible launches rendered (`-font.reader serif`, mock build from the branch merged with main, screen unlocked). An earlier run with the screen locked showed 9 of 10 blank because no launch became visible (WebKit activity state 184 → 56), the known hidden-window artifact.
+- No snapshot test: the change is pane-root wiring in `BrevMailRootView`, which has no snapshot coverage; `brevFont` itself already reads the environment.
