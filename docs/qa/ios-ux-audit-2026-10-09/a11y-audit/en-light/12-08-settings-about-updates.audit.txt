@@ -1,0 +1,1 @@
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: 42 label='henrikogaard/brev' id='' frame=(245.66666666666666, 333.0, 128.33333333333334, 18.0)

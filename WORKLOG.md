@@ -5473,3 +5473,11 @@ buttons, and package-aware localization.
 ## 2026-10-09 — Claude Code — ADR-0003 note for #212
 
 - #212 touched `packages/BrevAvatars/Sources` (an ADR-required protected path) without an ADR change, and was merged while the `adr-required` check was red. This adds the missing ADR-0003 amendment describing `AvatarDisplayImageCache`. Lesson: check `adr-required` before merging, even though `main` has no required checks.
+
+## 2026-10-09 — Agent — iOS UI/UX and accessibility audit (no code change)
+
+- Goal: audit every reachable iOS surface against the iOS HIG / iOS Mail and produce findings plus PR slices.
+- Changes: new `docs/qa/ios-ux-audit-2026-10-09/` (README with findings table and 8 PR slices, 62 screenshots, per-screen `performAccessibilityAudit` output, theme contrast table). No product code touched.
+- Verification: temporary XCUITest walker (removed, never committed) on own iPhone 17 Pro and iPad Pro 11 iOS 27 simulators (deleted afterwards), mock backend only; variants en/nb, light/dark, AX3/AX5, four built-in themes.
+- Skipped: VoiceOver speech, Reduce Motion/Transparency/Bold Text toggles, PIM screens with data, attachments/HTML/banners, widgets and extensions (see README section 4).
+- Handoff: local branch `audit/ios-ux-2026-10-09` also carries an unpushed local merge of `origin/fix/ios-account-setup-sheet` (#208); cherry-pick the audit commit if #208 is not merged first.
