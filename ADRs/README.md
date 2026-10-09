@@ -97,6 +97,7 @@ repository checks.
 | 84 | Offline PIM writes queue and replay on reconnect | Proposed |
 | 85 | Desktop starts in Compact list density | Accepted |
 | 86 | Per-section font family | Accepted |
+| 87 | Serve IMAP header pages from SQLite and retire whole-folder JSON | Proposed |
 
 ## Conventions
 

@@ -5445,3 +5445,10 @@ buttons, and package-aware localization.
 - Measured (release build, throwaway benchmark, not committed): pin refresh over 10k headers 2.68 ms → <0.01 ms with no pins, 3.07 ms → 0.02 ms with 20 pins.
 - Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
 - Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
+
+## 2026-10-09 — Claude Code — ADR-0087 IMAP header pages from SQLite (Proposed)
+
+- Goal: Henrik chose to design the folder-switch speed-up (whole-folder JSON header cache) before building it.
+- Change: drafted ADR-0087 (Proposed): SQLite becomes the IMAP header store, paging metadata moves to `folder_sync_state` plus an `imap_page_windows` table, full-folder consumers become queries, memory-only fallback without an index, lazy per-folder migration, storage UI reads SQLite, and a measure-first rollout with targets. Amends ADR-0029, ADR-0030 and ADR-0082 §3 once accepted. No code.
+- Evidence: a read-only code survey (callers, schema v6, nullability, encryption, tests, local cache sizes 0.5–0.8 KB/header). Cold folder open and SQLite page reads at 10k/50k are still unmeasured; step 1 of the rollout measures them.
+- Next: Henrik accepts or edits; implementation is four stacked PRs.
