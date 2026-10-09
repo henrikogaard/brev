@@ -34,7 +34,7 @@ struct AvatarDisplayImageCacheTests {
     @Test("size, preferences and resolver are part of the key")
     func keyIsolatesVariants() throws {
         let cache = AvatarDisplayImageCache(countLimit: 4)
-        cache.store(try Self.image(), for: .init(resolverID: 1, email: "a@b.c", preferences: .default, pixelDimension: 56))
+        try cache.store(Self.image(), for: .init(resolverID: 1, email: "a@b.c", preferences: .default, pixelDimension: 56))
         var gravatar = AvatarPreferences.default
         gravatar.useGravatar = true
 
@@ -47,7 +47,7 @@ struct AvatarDisplayImageCacheTests {
     func storingNilRemoves() throws {
         let cache = AvatarDisplayImageCache(countLimit: 4)
         let key = AvatarDisplayImageCache.Key(resolverID: 1, email: "a@b.c", preferences: .default, pixelDimension: 56)
-        cache.store(try Self.image(), for: key)
+        try cache.store(Self.image(), for: key)
         cache.store(nil, for: key)
         #expect(cache.image(for: key) == nil)
     }
