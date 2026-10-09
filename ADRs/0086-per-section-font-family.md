@@ -61,13 +61,14 @@ Constraints:
    rule and gets unit tests.
 
 4. **Environment for tokens, one property wrapper for content.** A
-   `brevFontSection(_:)` modifier on the sidebar and message list pane
-   roots in `BrevMailRootView` puts the resolved family in the SwiftUI
-   environment (`\.brevFontFamily`). The reader pane does not set it. A
-   blank HTML body after launch already happens on `main` (about 1 in 5
-   mock launches), but setting a non-system design on the reader pane's
-   tokens made it far more frequent (5 of 6). The reader's text already
-   takes the family directly (below), so the pane-wide value adds little. It sits inside the toolbar modifiers, so window
+   `brevFontSection(_:)` modifier on the sidebar, message list and reader
+   pane roots in `BrevMailRootView` (and the detached reader window root)
+   puts the resolved family in the SwiftUI environment
+   (`\.brevFontFamily`). The reader was first left out because of a blank
+   HTML body after launch; that turned out to be a capture artifact of a
+   window that was never visible (WebKit does not paint a hidden page), not
+   a font or Brev bug, so the reader sets its section like the other panes.
+   It sits inside the toolbar modifiers, so window
    toolbars stay System. `BrevFontModifier` applies that family's design to
    every `brevFont` token (Dynamic Type and the macOS `desktopFont` path).
    Views outside a section keep `.default`. Content views that size their
