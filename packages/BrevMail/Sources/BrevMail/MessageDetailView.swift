@@ -44,6 +44,9 @@ public struct MessageDetailView: View {
     @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     @Environment(\.openURL) private var openURL
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.relatedConversationController) private var relatedConversation
+    @Environment(\.messageReaderReferenceDate) private var referenceDate
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
     private let header: MessageHeader?
@@ -528,6 +531,9 @@ public struct MessageDetailView: View {
             readerCanvas {
                 VStack(alignment: .leading, spacing: BrevSpacing.md) {
                     VStack(alignment: .leading, spacing: mailboxListDensity.metadataSpacing) {
+                        #if os(iOS)
+                        phoneHeader(for: header)
+                        #else
                         Text(header.subject)
                             .font(mailboxFontFamily.font(
                                 size: mailboxTextSize.bodyPointSize + 5,
@@ -582,9 +588,19 @@ public struct MessageDetailView: View {
                         if isRecipientsExpanded {
                             recipientDetail(header: header)
                         }
+                        #endif
                         labelChipRow(header: header)
+                        #if os(iOS)
+                        RelatedConversationFootnote()
+                        #endif
                     }
+                    #if os(macOS)
                     .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+                    #endif
+                    #if os(iOS)
+                    // The phone header ends in a hairline above the body.
+                    BrevDivider()
+                    #endif
 
                     // No rule between the header and what follows it. The reader's
                     // content column is capped at `maximumContentWidth` while the
@@ -683,6 +699,16 @@ public struct MessageDetailView: View {
             // the root toolbar's "More" affordance (ellipsis.circle).
             ToolbarItem(placement: .primaryAction) {
                 Menu {
+                    // Related-mail actions and the original/dark body toggle
+                    // live here on the phone instead of in bars above and
+                    // inside the message body.
+                    if let relatedConversation {
+                        RelatedConversationReaderMenuSection(controller: relatedConversation)
+                    }
+                    if showsHTMLRenderingToggle(for: header) {
+                        htmlRenderingModeMenuButton(for: header)
+                        Divider()
+                    }
                     readerMenuButtons(for: header)
                 } label: {
                     Label(
@@ -1103,9 +1129,109 @@ public struct MessageDetailView: View {
         MessageDetailPresentation.collapsedRecipientLine(recipients)
     }
 
+    #if os(iOS)
+    /// Apple Mail style phone header: avatar, one-line sender with a short
+    /// date, the collapsible "to" line, then the subject beneath.
+    @ViewBuilder
+    private func phoneHeader(for header: MessageHeader) -> some View {
+        let scale = scaledBodyMetric / 100
+        let isLargeText = dynamicTypeSize.isAccessibilitySize
+        let shortDate = MessageReaderHeaderPresentation.shortDate(for: header.date, now: referenceDate ?? Date())
+        let recipientSummary = recipientLine(header.to.isEmpty ? header.cc : header.to)
+        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            HStack(alignment: .top, spacing: BrevSpacing.sm) {
+                if showSenderAvatars {
+                    BrevAvatarView(
+                        email: header.from.email,
+                        displayName: header.from.name,
+                        size: (mailboxListDensity.avatarSize + BrevSpacing.xs) * min(scale, 1.6)
+                    )
+                    .accessibilityHidden(true)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                        Text(header.from.displayName)
+                            .font(mailboxFontFamily.font(
+                                size: (mailboxTextSize.listTitlePointSize + 2) * scale,
+                                weight: .semibold
+                            ))
+                            .foregroundStyle(theme.textPrimary.color)
+                            .lineLimit(isLargeText ? nil : 1)
+                            .truncationMode(.tail)
+                        if !isLargeText {
+                            Spacer(minLength: BrevSpacing.xs)
+                            Text(shortDate)
+                                .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
+                                .foregroundStyle(theme.textTertiary.color)
+                                .lineLimit(1)
+                                .fixedSize()
+                        }
+                    }
+                    // One VoiceOver stop for sender and date, reading the full
+                    // date rather than the abbreviated visual one.
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(MessageReaderHeaderPresentation.accessibilityLabel(
+                        senderName: header.from.displayName,
+                        fullDate: dateLabel
+                    ))
+                    if isLargeText {
+                        // At accessibility sizes the date drops beneath the
+                        // name instead of squeezing it into a sliver.
+                        Text(shortDate)
+                            .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
+                            .foregroundStyle(theme.textTertiary.color)
+                            .accessibilityHidden(true)
+                    }
+                    if !header.to.isEmpty || !header.cc.isEmpty {
+                        Button {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                isRecipientsExpanded.toggle()
+                            }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(recipientSummary)
+                                    .lineLimit(isLargeText ? 2 : 1)
+                                Image(systemName: isRecipientsExpanded ? "chevron.up" : "chevron.down")
+                                    .font(.system(size: 9 * scale))
+                            }
+                            .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
+                            .foregroundStyle(theme.textSecondary.color)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(recipientSummary)
+                        .accessibilityValue(isRecipientsExpanded
+                            ? String(localized: "Expanded", bundle: .module)
+                            : String(localized: "Collapsed", bundle: .module))
+                        .accessibilityHint(String(
+                            localized: "Shows or hides the sender address, recipients and full date",
+                            bundle: .module
+                        ))
+                    }
+                }
+            }
+            if isRecipientsExpanded {
+                recipientDetail(header: header)
+            }
+            Text(header.subject)
+                .font(mailboxFontFamily.font(
+                    size: (mailboxTextSize.bodyPointSize + 4) * scale,
+                    weight: .semibold
+                ))
+                .foregroundStyle(theme.textPrimary.color)
+                .accessibilityAddTraits(.isHeader)
+        }
+    }
+    #endif
+
     @ViewBuilder
     private func recipientDetail(header: MessageHeader) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            #if os(iOS)
+            // The collapsed phone header hides the raw address and shows a
+            // short date; the expanded details carry both in full.
+            recipientRow(label: "From", recipients: [header.from])
+            #endif
             if !header.to.isEmpty {
                 recipientRow(label: "To", recipients: header.to)
             }
@@ -1115,23 +1241,44 @@ public struct MessageDetailView: View {
             if !header.bcc.isEmpty {
                 recipientRow(label: "Bcc", recipients: header.bcc)
             }
+            #if os(iOS)
+            detailRow(label: "Date") {
+                Text(dateLabel)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            #endif
         }
         .padding(.top, BrevSpacing.xs)
         .padding(.leading, showSenderAvatars ? 44 : 0) // align under the avatar's right edge
     }
 
     @ViewBuilder
-    private func recipientRow(label: String, recipients: [Correspondent]) -> some View {
-        HStack(alignment: .top, spacing: BrevSpacing.sm) {
-            Text(label)
-                .brevFont(.caption)
-                .foregroundStyle(theme.textTertiary.color)
-                .frame(width: 24, alignment: .leading)
+    private func recipientRow(label: LocalizedStringKey, recipients: [Correspondent]) -> some View {
+        detailRow(label: label) {
             FlowLayout(spacing: BrevSpacing.xs) {
                 ForEach(recipients, id: \.email) { recipient in
                     recipientChip(recipient)
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func detailRow<Content: View>(
+        label: LocalizedStringKey,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(alignment: .top, spacing: BrevSpacing.sm) {
+            Text(label, bundle: .module)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textTertiary.color)
+            #if os(iOS)
+                .frame(width: 44, alignment: .leading)
+            #else
+                .frame(width: 24, alignment: .leading)
+            #endif
+            content()
         }
     }
 
@@ -2031,13 +2178,12 @@ public struct MessageDetailView: View {
         }
     }
 
-    @ViewBuilder
-    private func bodyContent(for header: MessageHeader) -> some View {
+    private func bodyPresentation(for header: MessageHeader) -> MessageDetailBodyPresentation {
         let html = messageBody?.html
         let remoteContentState = html.map {
             messageRemoteContentState(for: $0, header: header)
         }
-        let presentation = MessageDetailBodyPresentation.resolve(
+        return MessageDetailBodyPresentation.resolve(
             MessageDetailBodyPresentation.Context(
                 isLoading: isLoading,
                 errorMessage: errorMessage,
@@ -2048,6 +2194,39 @@ public struct MessageDetailView: View {
                 isRemoteContentBlocked: remoteContentState?.isBlocked == true
             )
         )
+    }
+
+    #if os(iOS)
+    /// The original/dark rendering switch only applies to the rich HTML body,
+    /// the one place the old inline toggle appeared.
+    private func showsHTMLRenderingToggle(for header: MessageHeader) -> Bool {
+        if case .richHTML = bodyPresentation(for: header) { return true }
+        return false
+    }
+
+    /// Overflow-menu entry for the rendering-mode switch: same action and
+    /// labels as the thread card's "Message display" menu.
+    @ViewBuilder
+    private func htmlRenderingModeMenuButton(for header: MessageHeader) -> some View {
+        let mode = htmlRenderingMode(for: header)
+        Button {
+            toggleHTMLRenderingMode(for: header)
+        } label: {
+            Label(
+                mode.toggleAccessibilityLabel,
+                systemImage: mode == .dark ? "sun.max" : "moon.stars"
+            )
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private func bodyContent(for header: MessageHeader) -> some View {
+        let html = messageBody?.html
+        let remoteContentState = html.map {
+            messageRemoteContentState(for: $0, header: header)
+        }
+        let presentation = bodyPresentation(for: header)
 
         Group {
             switch presentation {
@@ -2157,6 +2336,7 @@ public struct MessageDetailView: View {
         let senderEmail = header.from.email
         let remoteContentState = messageRemoteContentState(for: html, header: header)
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            #if os(macOS)
             HStack {
                 Spacer(minLength: BrevSpacing.sm)
                 HTMLBodyRenderingModeToggleButton(
@@ -2165,6 +2345,7 @@ public struct MessageDetailView: View {
                     toggleHTMLRenderingMode(for: header)
                 }
             }
+            #endif
 
             if remoteContentState.isBlocked {
                 remoteContentControls(

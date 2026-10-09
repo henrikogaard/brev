@@ -240,12 +240,24 @@ struct ThreadMessageCard: View {
                 BrevAvatarView(email: header.from.email, displayName: header.from.name, size: 32)
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                Text(header.from.displayName)
-                    .font(mailboxFontFamily.font(
-                        size: (mailboxTextSize.listTitlePointSize + 3) * scaledBodyMetric / 100,
-                        weight: .semibold
-                    ))
-                    .foregroundStyle(theme.textPrimary.color)
+                // Apple Mail style: the name and a short date share one line;
+                // the date drops beneath at accessibility sizes.
+                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+                    Text(header.from.displayName)
+                        .font(mailboxFontFamily.font(
+                            size: (mailboxTextSize.listTitlePointSize + 3) * scaledBodyMetric / 100,
+                            weight: .semibold
+                        ))
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                    if !dynamicTypeSize.isAccessibilitySize {
+                        Spacer(minLength: BrevSpacing.xs)
+                        phoneDateText
+                    }
+                }
+                if dynamicTypeSize.isAccessibilitySize {
+                    phoneDateText
+                }
                 if isExpanded {
                     Text(verbatim: header.from.email)
                         .font(.subheadline)
@@ -257,11 +269,6 @@ struct ThreadMessageCard: View {
                         .foregroundStyle(theme.textSecondary.color)
                         .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 }
-                Text(dateTextOverride ?? MessageListDatePresentation.label(
-                    for: header.date, showsAbsoluteArrivalTime: true
-                ))
-                .font(.caption)
-                .foregroundStyle(theme.textTertiary.color)
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -277,6 +284,16 @@ struct ThreadMessageCard: View {
                 RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2)
             }
         }
+    }
+
+    /// Short date for the phone card header; an explicit override (previews,
+    /// tests) wins so deterministic text stays deterministic.
+    private var phoneDateText: some View {
+        Text(dateTextOverride ?? MessageReaderHeaderPresentation.shortDate(for: header.date))
+            .font(.caption)
+            .foregroundStyle(theme.textTertiary.color)
+            .lineLimit(1)
+            .fixedSize()
     }
     #endif
 
