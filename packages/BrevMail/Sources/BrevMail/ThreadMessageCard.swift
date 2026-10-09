@@ -71,7 +71,7 @@ struct ThreadMessageCard: View {
 
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
-    @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
+    @SectionFontFamily(.reader) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
 
     private let bodyRenderer = BodyRenderer()
@@ -541,10 +541,6 @@ struct ThreadMessageCard: View {
                 }
             }
         }
-    }
-
-    private var mailboxFontFamily: MailboxFontFamily {
-        MailboxFontFamily(rawValue: fontFamilyRaw) ?? .system
     }
 
     private var mailboxTextSize: MailboxTextSize {

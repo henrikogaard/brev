@@ -84,7 +84,8 @@ the split-view root can squeeze native toolbar buttons into narrow pills.
 Density remains independent from text size and applies to mail rows, reader
 and compose spacing, settings rows/groups, and native control size. Existing
 preference keys and values are preserved. The message font family continues
-to affect mail content only. This extends the existing shared presentation
+to affect mail content only. (Superseded for font family by ADR-0086:
+sidebar, message list and reader each pick a family in Appearance > Fonts.) This extends the existing shared presentation
 preferences without changing package boundaries or privacy behavior.
 
 ### Dependency direction

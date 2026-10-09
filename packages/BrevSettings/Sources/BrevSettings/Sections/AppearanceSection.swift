@@ -63,6 +63,7 @@ struct AppearanceSection: View {
                 #if os(macOS)
                 DesktopInterfaceSettings(settingsStore: settingsStore)
                 #endif
+                FontSectionSettings(settingsStore: settingsStore)
                 themeGroup
                 #if os(iOS)
                 SettingsMailPreview(settings: mailboxSettings)
@@ -145,11 +146,11 @@ struct AppearanceSection: View {
     private var resetMessage: String {
         #if os(macOS)
         String(
-            localized: "Restores the default themes, accent, window style, text size, density, and app icon.",
+            localized: "Restores the default themes, accent, window style, text size, density, fonts, and app icon.",
             bundle: .module
         )
         #else
-        String(localized: "Restores the default themes, accent, and app icon.", bundle: .module)
+        String(localized: "Restores the default themes, accent, fonts, and app icon.", bundle: .module)
         #endif
     }
 
@@ -715,6 +716,11 @@ enum AppearanceReset {
         store.save(WindowAppearancePreferences.defaults)
         store.save(AppIconVariant.defaultVariant)
         store.defaults.set(true, forKey: AppearancePreferenceKey.transparentMainTitlebar)
+        for section in BrevFontSection.allCases {
+            store.defaults.removeObject(forKey: section.preferenceKey)
+        }
+        // Without this, cleared list and reader fonts fall back to the old message font.
+        store.defaults.removeObject(forKey: MailboxViewPreferenceKey.fontFamily)
         #if os(macOS)
         store.defaults.removeObject(forKey: MailboxViewPreferenceKey.textSize)
         store.defaults.removeObject(forKey: MailboxViewPreferenceKey.listDensity)

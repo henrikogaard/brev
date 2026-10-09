@@ -364,6 +364,17 @@
         }
       }
     },
+    "Message list": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingsliste"
+          }
+        }
+      }
+    },
     "Monospaced": {
       "extractionState": "manual",
       "localizations": {
@@ -514,6 +525,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Les en samtale fra topp til bunn, eldste svar først."
+          }
+        }
+      }
+    },
+    "Reading and compose": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lesing og skriving"
           }
         }
       }

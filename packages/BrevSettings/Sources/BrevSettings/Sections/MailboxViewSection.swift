@@ -18,6 +18,9 @@ import SwiftUI
 struct MailboxViewSection: View {
     @Environment(\.brevTheme) private var theme
     @State private var mailboxSettings: MailboxViewSettings
+    #if os(iOS)
+    @SectionFontFamily(.reader) private var readerFamily
+    #endif
     @State private var inboxClassificationSettings: InboxClassificationSettings
     @State private var folderPreferences: FolderPreferences
 
@@ -145,17 +148,6 @@ struct MailboxViewSection: View {
                     }
                 }
 
-                SettingsPickerRow(
-                    symbolName: "textformat",
-                    title: String(localized: "Message font", bundle: .module),
-                    subtitle: String(localized: "Applies to mailbox previews, readable bodies, and compose.", bundle: .module),
-                    selection: mailboxBinding(for: \.fontFamily)
-                ) {
-                    ForEach(MailboxFontFamily.allCases) { fontFamily in
-                        Text(fontFamily.title).tag(fontFamily)
-                    }
-                }
-
                 #if os(iOS)
                 SettingsSegmentedRow(
                     symbolName: "textformat.size",
@@ -167,9 +159,9 @@ struct MailboxViewSection: View {
                         Text(textSize.title).tag(textSize)
                     }
                 }
-                #endif
 
                 fontPreview
+                #endif
 
                 SettingsInfoCallout(
                     symbolName: "shield",
@@ -314,13 +306,14 @@ struct MailboxViewSection: View {
         )
     }
 
+    #if os(iOS)
     private var fontPreview: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             Text("Preview", bundle: .module)
                 .brevFont(.caption)
                 .foregroundStyle(theme.textTertiary.color)
             Text("Brev keeps message text calm, readable, and easy to scan.", bundle: .module)
-                .font(mailboxSettings.fontFamily.font(size: mailboxSettings.textSize.bodyPointSize))
+                .font(readerFamily.font(size: mailboxSettings.textSize.bodyPointSize))
                 .foregroundStyle(theme.textPrimary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
@@ -328,6 +321,7 @@ struct MailboxViewSection: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .brevQuietSurface(cornerRadius: BrevRadius.sm)
     }
+    #endif
 
     private func mailboxBinding<Value>(
         for keyPath: WritableKeyPath<MailboxViewSettings, Value>

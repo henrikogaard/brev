@@ -64,6 +64,10 @@ extension SettingsSection {
                 String(localized: "Themes", bundle: .module),
                 String(localized: "Window background opacity", bundle: .module),
                 String(localized: "Sidebar background opacity", bundle: .module),
+                String(localized: "Fonts", bundle: .module),
+                // Former Mailbox View row name, kept so old searches still land on fonts.
+                String(localized: "Message font", bundle: .module),
+                String(localized: "Use One Font Everywhere", bundle: .module),
             ]
         case .mailboxView: return [
                 String(localized: "Browser", bundle: .module),
@@ -80,7 +84,6 @@ extension SettingsSection {
                 String(localized: "Reading", bundle: .module),
                 String(localized: "Use rich HTML renderer", bundle: .module),
                 String(localized: "Conversation order", bundle: .module),
-                String(localized: "Message font", bundle: .module),
                 String(localized: "Text size", bundle: .module),
                 String(localized: "Mailbox list", bundle: .module),
                 String(localized: "Group conversations", bundle: .module),
