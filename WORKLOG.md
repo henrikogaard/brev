@@ -5379,3 +5379,10 @@ buttons, and package-aware localization.
 - Merged: #188 (external, kdegeek; main merged into the branch to resolve CHANGELOG/WORKLOG, 93/93 IMAPSessionClientTests pass locally; review note left about draining to the tagged line before throwing on an untagged `* ` line). `gh pr merge --auto` merged it immediately because main has no required checks. #203 and #204 (CHANGELOG/WORKLOG-only conflicts resolved; prior PR CI green). #187 (kept main's macOS BrevApp.swift since #191 already themes the PIM windows; only the iOS covers needed the fix; MailStatusCopyLocalization tests pass).
 - Skipped: Devin's in-progress runtime check of #203 quick reply in the running test apps did not finish before the crash and was not redone; post-merge CI on main gates the release tag.
 - Release: bumped marketing version 0.2.4 → 0.2.5 in BrevConstants and both project files; moved Unreleased entries under 0.2.5. Tag `v0.2.5` follows a green Build on this commit.
+
+## 2026-10-09 — Claude Code — ADR-0086 per-section font family (Proposed)
+
+- Goal: Henrik asked for a font choice per UI section after finding that only one "Message font" exists (it was never per-section; ADR-0012 moved text size to Appearance in #162).
+- Change: drafted ADR-0086 (Proposed): four sections (sidebar, message list, reader, compose) each pick one `MailboxFontFamily`; read-time fallback to `mailbox.fontFamily`; section set through the SwiftUI environment at pane roots; one Fonts group in Appearance. Indexed in `ADRs/README.md`. No code.
+- Verification: docs only; no build or tests needed.
+- Next: Henrik accepts or edits the ADR and answers its two open questions; implementation follows on a separate branch.
