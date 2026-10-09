@@ -5445,3 +5445,11 @@ buttons, and package-aware localization.
 - Measured (release build, throwaway benchmark, not committed): pin refresh over 10k headers 2.68 ms → <0.01 ms with no pins, 3.07 ms → 0.02 ms with 20 pins.
 - Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
 - Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
+
+## 2026-10-09 — Claude Code — reader pane sets its font section (ADR-0086)
+
+- Goal: put `brevFontSection(.reader)` back on the reader, now that the blank-body "regression" that kept it out turned out to be an occluded-window capture artifact (see #214).
+- Changes: `.brevFontSection(.reader)` on the macOS/iPad reader pane root and the iOS compact reader root in `BrevMailRootView` (inside the toolbar modifiers, like sidebar and list), and on the detached reader window root. ADR-0086 decision 4 updated; CHANGELOG entry under Unreleased.
+- Verification: swiftformat/swiftlint clean on the touched files; macOS mock test build installs; BrevIOS builds for the iOS Simulator. Visible launch with `-font.reader serif`: reader title, metadata and thread cards are serif, list and sidebar stay System, body renders.
+- Not verified: the 10-launch visible blank-body count. The screen locked mid-run (from about 15:43), so 9 of 10 launches never became visible (WebKit activity state 184 → 56) and showed the known hidden-window blank. Rerun with the screen unlocked.
+- No snapshot test: the change is pane-root wiring in `BrevMailRootView`, which has no snapshot coverage; `brevFont` itself already reads the environment.

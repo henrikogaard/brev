@@ -6,6 +6,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
 - Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
 - Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
