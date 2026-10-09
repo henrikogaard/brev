@@ -6,13 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
 - Accessibility: all 37 built-in themes now meet WCAG contrast for accent, warning and danger text (4.5:1) and for success and info glyphs (3:1). 31 palette colours across 15 themes (Brev Paper, Brev Forest, Nord, Nordic, Gruvbox, Solarized, Catppuccin Latte, One Dark Pro, Blurple Night, Pearl Light, Tender and Tomorrow) were adjusted in lightness only. Outlined buttons use a 3:1 outline, and selected filter chips keep readable text on their accent tint.
 - Accessibility: icon buttons, filter chips, status banners and buttons grow with Dynamic Type and keep a 44 pt touch target on iPhone and iPad. A new Reduce Motion helper is available for animations.
 - iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
 - iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
 - Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
-- Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
-- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
 ## [0.2.6] - 2026-10-09
 
@@ -30,6 +29,8 @@ All notable changes to Brev are documented here.
 - iOS: the snooze sheet now looks like a native iOS sheet. It has a navigation bar with Cancel, an inset-grouped list that follows the active Brev theme, quick options that show their wake time (with new "This evening" and "This weekend" options when they apply), and a "Choose date & time…" screen with a graphical calendar and the Snooze button in the navigation bar. The sheet follows the app's dark mode, and the wake time wraps below the title at large text sizes. macOS keeps its existing layout.
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
+- Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
+- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
 ## [0.2.5] - 2026-10-08
 
