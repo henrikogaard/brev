@@ -83,6 +83,7 @@ public struct DetachedReaderWindowView: View {
                             dismissWindow(value: payload)
                         }
                     }
+                    .brevFontSection(.reader)
                     .brevMailPaneSurface(.content)
                 } else if isResolving {
                     ProgressView()
