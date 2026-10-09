@@ -5453,6 +5453,15 @@ buttons, and package-aware localization.
 - iOS TestFlight 0.2.6 (9) was archived from 78f33e29; #211/#212 are release-infra and macOS-only, so the iOS content matches.
 - Caveat from #211: the macos-26 release toolchain had not compiled in CI before this release; a toolchain failure fails the Release run closed (no GitHub Release or appcast item).
 
+## 2026-10-09 — Claude Code — blank reader HTML body after launch (no code change)
+
+- Goal: fix the macOS reader's HTML body rendering blank right after launch (mock build, "Stavanger rollout" thread; reported 1/5 with System font, 2/5 with serif, 5/6 with `brevFontSection(.reader)`).
+- Finding: not a Brev bug. WebKit's unified-log activity state for the reported runs (12:48–13:02) shows the body page never had `IsVisible` in all 9 blank launches (state 184 → 56: in window, occluded, visually idle). WebKit then suspended the page's WebContent process (`freezeLayerTree` reason 4) and dropped its layers. cua-driver still captures the occluded window, so the SwiftUI chrome looks normal and the web body is an empty box. Every launch where the window was visible rendered.
+- Repro: `open -j` (launch hidden) gives a blank body 5/5 on clean `origin/main`; bringing the same window forward renders it within 4 s 5/5. Visible launches rendered 0 blank out of ~95 across `origin/main`, `faafd40e` (0.2.5), serif/System fonts, a CPU-saturated host, background launch, AX-tree capture, and a local repro build with `brevFontSection(.reader)` on the reader pane.
+- Consequence: the 2026-10-09 #207 entry's "pre-existing blank reader body" and the 5/6 rate with `brevFontSection(.reader)` came from occluded-window captures. Dropping the reader environment font for that reason was not necessary.
+- Verification tip: before trusting a screenshot of a Brev web body, make sure the window was visible on screen during load (not hidden, covered, or on an idle display).
+- Verification: no code changed, so no tests run.
+
 ## 2026-10-09 — Claude Code — reader pane sets its font section (ADR-0086)
 
 - Goal: put `brevFontSection(.reader)` back on the reader, now that the blank-body "regression" that kept it out turned out to be an occluded-window capture artifact (see #214).
