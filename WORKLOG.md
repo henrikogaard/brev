@@ -5380,6 +5380,22 @@ buttons, and package-aware localization.
 - Skipped: Devin's in-progress runtime check of #203 quick reply in the running test apps did not finish before the crash and was not redone; post-merge CI on main gates the release tag.
 - Release: bumped marketing version 0.2.4 → 0.2.5 in BrevConstants and both project files; moved Unreleased entries under 0.2.5. Tag `v0.2.5` follows a green Build on this commit.
 
+## 2026-10-09 — Claude Code — iOS Apple Mail-style reader header
+
+- Goal: rethink the iOS reader top (Henrik approved an Apple Mail layout): related-mail bar off the top, compact header, Original toggle into the ••• menu. Branch `feature/ios-reader-header` from `origin/main` @ faafd40e.
+- Changed: `RelatedConversationBar` is macOS-only; iOS gets `RelatedConversationReaderPresentation` (menu items and footnote status per controller state), menu section and footnote views injected through a new `relatedConversationController` environment value from `BrevMailRootView`. `MessageDetailView` has an iOS `phoneHeader` (avatar, one-line sender, short date via `MessageReaderHeaderPresentation.shortDate`, "to" toggle, subject below, hairline) with From/To/Cc/Bcc/Date in the expanded details; the HTML rendering toggle is an overflow-menu item on iOS. `ThreadMessageCard` phone header shows name plus short date on one line; `ThreadConversationView`'s ••• menu carries the related-mail items and the footnote. ADR-0074 consent is unchanged: remote search still runs only from the explicit Load/Retry actions or the per-account preference. Added nb strings for the two new copy keys; recipient labels (To/Cc/Bcc) now resolve through the string catalog.
+- Verification: new Swift Testing suites (short date, related-mail menu/footnote presentation) failed to compile first, then passed; full `swift test --package-path packages/BrevMail` on macOS reports 83 snapshot issues both on this branch and on pristine `origin/main` (same host-renderer drift; 1962 vs 1946 tests, all new tests pass). iOS snapshots re-recorded on an iOS 27 simulator for the header, thread cards, thread view and the PhoneMailbox detached-reader/conversation references (the other PhoneMailbox references already mismatch from host-renderer drift and were left alone), plus new accessibility-size header and footnote baselines. `scripts/lint.sh` and `scripts/format.sh` clean. Both apps built (see PR). Runtime pass on a private iOS 27 simulator, dark + Norwegian, mock data: message, thread, ••• menu, Load related mail (temporary mock handler, reverted), Original toggle, expanded recipients.
+- Not reproduced: the blank grey avatar from the real TestFlight message. `BrevAvatarView` renders initials for that sender name in mock data and in the snapshot; the blank circle probably comes from a resolved contact/BIMI/favicon image on the real account.
+- Handoff: the mock demo account has no `.relatedConversationLoading`, so the related-mail menu items were exercised with a temporary local patch only. Screenshots in `docs/qa/ios-reader-header-2026-10-09/`.
+
+## 2026-10-09 — Claude Code — Mac toolbar band colour mismatch
+
+- Goal: Henrik reported the Mac top bar has a different colour from the themed glass panes, as if an extra background/accent layer sits on it.
+- Cause: `MailToolbarScrollUnderModifier` and `MailListHeaderModifier` (`MailWindowScrollEdgeBlur.swift`) overlaid `theme.bgPrimary` at 35% on top of the scroll edge blur. The pane below has no such wash, so the band read as a separate colour.
+- Change: remove the 35% overlay in both places; the band is blur-only, as `MailWindowScrollEdgeBlur`'s own doc describes. Reduce Transparency still uses the opaque theme fill.
+- Verification: swiftformat lint 0/1; swiftlint clean on the file; `script/build_and_run.sh install-run --mock` built and launched; window captures of the mock test app (solid default and `-window.translucencyMode glass`) show the toolbar band matching the panes. A window-only capture cannot show the desktop through glass, so Henrik should confirm on his wallpaper.
+- Skipped: no snapshot test, because the band depends on live window safe-area geometry (same reason as #202/#204).
+
 ## 2026-10-09 — Claude Code — ADR-0086 per-section font family (Proposed)
 
 - Goal: Henrik asked for a font choice per UI section after finding that only one "Message font" exists (it was never per-section; ADR-0012 moved text size to Appearance in #162).

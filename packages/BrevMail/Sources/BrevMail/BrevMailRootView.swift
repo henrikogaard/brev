@@ -1522,6 +1522,7 @@ public struct BrevMailRootView: View {
         )
     }
 
+    #if os(macOS)
     private func showsRelatedConversationBar(fallbackHeader: MessageHeader?) -> Bool {
         guard hasValidSelectedSourceBackend,
               navigation.selectedHeader ?? fallbackHeader != nil else { return false }
@@ -1529,6 +1530,7 @@ public struct BrevMailRootView: View {
             || relatedConversation.snapshot != nil
             || relatedConversation.isLoadingRemote
     }
+    #endif
 
     @ViewBuilder
     private func readingPaneContent(fallbackHeader: MessageHeader? = nil) -> some View {
@@ -1550,9 +1552,11 @@ public struct BrevMailRootView: View {
                 accountEmail: quickReplyBackend?.account.emailAddress
                     ?? selectedBackend.account.emailAddress
             )
+            #if os(macOS)
             if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
                 RelatedConversationBar(controller: relatedConversation)
             }
+            #endif
             Group {
                 if !hasValidSelectedSourceBackend {
                     Text("This mailbox is no longer connected.", bundle: .module)
@@ -1619,13 +1623,18 @@ public struct BrevMailRootView: View {
         // The compact iPhone reader is a sibling of the background workspace,
         // so install the owner here as well as on the root command context.
         .readerCommandHandler(handleDetachedMessageCommand)
-        .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
-            relatedConversation.updateAnchor(
-                header: navigation.selectedHeader ?? fallbackHeader,
-                sourceID: navigation.selectedSourceID,
-                backend: selectedBackend
-            )
-        }
+        #if os(iOS)
+            // The phone reader has no coverage bar: its overflow menu carries the
+            // related-mail actions and a footnote reports loading/failure.
+            .environment(\.relatedConversationController, relatedConversation)
+        #endif
+            .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
+                relatedConversation.updateAnchor(
+                    header: navigation.selectedHeader ?? fallbackHeader,
+                    sourceID: navigation.selectedSourceID,
+                    backend: selectedBackend
+                )
+            }
     }
 
     private var readingPaneDetailPane: some View {

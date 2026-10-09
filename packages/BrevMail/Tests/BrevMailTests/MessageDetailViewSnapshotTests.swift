@@ -77,6 +77,7 @@ struct MessageDetailViewSnapshotTests {
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
         .htmlBodyRenderTarget(.staticSnapshot)
+        .environment(\.messageReaderReferenceDate, Self.referenceDate)
 
         let host = UIHostingController(rootView: view)
         host.view.backgroundColor = .clear
@@ -90,6 +91,47 @@ struct MessageDetailViewSnapshotTests {
             of: host,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
             named: "header-present",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    /// Fixed "now" so the header's short date never ages out of the baseline.
+    private static let referenceDate = Date(timeIntervalSince1970: 1_779_960_600 + 40 * 86400)
+
+    @Test("Phone header wraps at accessibility text sizes")
+    func headerAccessibilityTextSize() {
+        let theme = BrevTheme.brevPaper
+        let header = MessageHeader(
+            id: "m2",
+            threadID: "thread-testflight",
+            folderID: "inbox",
+            from: Correspondent(name: "Henrik Ogard via TestFlight", email: "testflight_no_reply@email.apple.com"),
+            to: [Correspondent(email: "henrik@ogard.example")],
+            subject: "Brev Mail 0.2.5 (8) for iOS is now available to test.",
+            snippet: "",
+            date: Date(timeIntervalSince1970: 1_779_960_600),
+            isRead: true
+        )
+        let view = MessageDetailView(
+            backend: MockBackend(),
+            header: header
+        )
+        .frame(width: 390, height: 844)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+        .environment(\.messageReaderReferenceDate, Self.referenceDate)
+        .dynamicTypeSize(.accessibility3)
+
+        let host = UIHostingController(rootView: view)
+        host.view.backgroundColor = .clear
+        host.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        assertSnapshot(
+            of: host,
+            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            named: "header-accessibility",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }

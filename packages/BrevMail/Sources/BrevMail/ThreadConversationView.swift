@@ -38,6 +38,7 @@ public struct ThreadConversationView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     #if os(iOS)
+    @Environment(\.relatedConversationController) private var relatedConversation
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -194,6 +195,10 @@ public struct ThreadConversationView: View {
 
                     conversationMetadataRow
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
+
+                    #if os(iOS)
+                    RelatedConversationFootnote(horizontalPadding: BrevSpacing.md, bottomPadding: BrevSpacing.sm)
+                    #endif
 
                     if let aiSummaryState {
                         ThreadAISummaryPanel(
@@ -755,6 +760,9 @@ public struct ThreadConversationView: View {
     private var threadActionsMenu: some View {
         Menu {
             #if os(iOS)
+            if let relatedConversation {
+                RelatedConversationReaderMenuSection(controller: relatedConversation)
+            }
             // iPhone has no per-card overflow button, so Reply/Snooze/etc.
             // were only reachable by long-press. Surface the same inventory
             // here, acting on the thread's latest message.
