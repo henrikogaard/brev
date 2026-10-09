@@ -167,7 +167,6 @@ extension SnoozePickerView {
             .accessibilityHidden(true)
     }
 
-
     private func quickRow(_ suggestion: SnoozeSuggestion) -> some View {
         let option = suggestion.option
         let visual = SnoozeSchedule.label(
