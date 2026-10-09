@@ -18,9 +18,26 @@ import SwiftUI
 struct SettingsMailPreview: View {
     @Environment(\.brevTheme) private var theme
     @SectionFontFamily(.messageList) private var listFamily
+    /// Scales the preview's chosen point size and avatar with Dynamic Type,
+    /// so the preview follows the same text styles as the real list.
+    @ScaledMetric(relativeTo: .body) private var typeScale: CGFloat = 1
+    @ScaledMetric(relativeTo: .body) private var avatarSize: CGFloat = 30
     var settings: MailboxViewSettings = .defaults
 
     var body: some View {
+        #if os(iOS)
+        Group {
+            sample(sender: String(localized: "Alex Morgan", bundle: .module),
+                   subject: String(localized: "Plans for the weekend", bundle: .module), selected: true)
+            sample(sender: String(localized: "Design team", bundle: .module),
+                   subject: String(localized: "Updated project notes", bundle: .module), selected: false)
+        }
+        #else
+        macBody
+        #endif
+    }
+
+    private var macBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             Text("Mail preview", bundle: .module)
                 .brevFont(.footnote)
@@ -44,7 +61,7 @@ struct SettingsMailPreview: View {
             if settings.showSenderAvatars {
                 Text(String(sender.prefix(1)))
                     .brevFont(.body)
-                    .frame(width: 30, height: 30)
+                    .frame(width: avatarSize, height: avatarSize)
                     .background(theme.bgTertiary.color, in: Circle())
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
@@ -56,7 +73,7 @@ struct SettingsMailPreview: View {
                         .lineLimit(settings.previewLineCount.rawValue)
                 }
             }
-            .font(listFamily.font(size: settings.textSize.bodyPointSize))
+            .font(listFamily.font(size: settings.textSize.bodyPointSize * typeScale))
             Spacer(minLength: 0)
             Text("10:30", bundle: .module).brevFont(.footnote).foregroundStyle(theme.textSecondary.color)
         }
@@ -70,6 +87,9 @@ struct SettingsMailPreview: View {
                 Rectangle().fill(theme.textPrimary.color).frame(width: 2)
             }
         }
+        #if os(iOS)
+        .listRowInsets(EdgeInsets())
+        #endif
     }
 
     private var verticalPadding: CGFloat {

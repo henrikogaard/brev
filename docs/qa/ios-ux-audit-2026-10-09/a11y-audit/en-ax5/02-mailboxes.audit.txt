@@ -1,0 +1,2 @@
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Inbox' id='' frame=(26.0, 71.33333333333334, 49.66666666666666, 25.33333333333333)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Mailboxes' id='' frame=(140.33333333333331, 62.0, 121.0, 44.0)

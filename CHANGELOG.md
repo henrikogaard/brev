@@ -4,6 +4,13 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
+- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
+- iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
+- iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
+- iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
 ### Added
 
 - iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
@@ -11,6 +18,13 @@ All notable changes to Brev are documented here.
 ### Fixed
 
 - The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
+- iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
+- iOS Appearance: the mail preview text now follows Dynamic Type.
+- Accessibility: all 37 built-in themes now meet WCAG contrast for accent, warning and danger text (4.5:1) and for success and info glyphs (3:1). 31 palette colours across 15 themes (Brev Paper, Brev Forest, Nord, Nordic, Gruvbox, Solarized, Catppuccin Latte, One Dark Pro, Blurple Night, Pearl Light, Tender and Tomorrow) were adjusted in lightness only. Outlined buttons use a 3:1 outline, and selected filter chips keep readable text on their accent tint.
+- Accessibility: icon buttons, filter chips, status banners and buttons grow with Dynamic Type and keep a 44 pt touch target on iPhone and iPad. A new Reduce Motion helper is available for animations.
+- iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
+- iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
+- Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
 - iOS compose now behaves like iOS Mail when you close it. Cancel on a draft you have edited asks Delete Draft or Save Draft, and Cancel on an untouched compose or reply just closes it (a reply no longer leaves a stray draft). Swiping the sheet down on an edited draft is blocked and shows the same choice, and Cancel and swipe-down are disabled while a send is counting down. Discard Draft in the ••• menu now asks before deleting.
 - iOS compose opens with the keyboard up: New Message focuses To, a reply puts the cursor above the quoted message, and Return moves To, Cc, Bcc, Subject and the body in order.
 - iOS compose text follows Dynamic Type. The message body, which previously ignored the system text size and showed a reply's quote in a tiny default font, and the toolbar icons now scale. At the largest accessibility sizes the title yields so Cancel and Send stay on screen.

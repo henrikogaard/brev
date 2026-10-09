@@ -44,6 +44,56 @@ struct SectionScaffold<Content: View>: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        formBody
+        #else
+        scrollBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iPhone and iPad panes render as an inset-grouped `Form` like the iOS
+    /// Settings app: explanatory copy sits in section footers, not in cards.
+    private var formBody: some View {
+        ScrollViewReader { proxy in
+            Form {
+                if hasPaneHeader {
+                    Section {
+                        if let scopeAccessory {
+                            scopeAccessory
+                        }
+                    } footer: {
+                        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                            if let subtitle {
+                                Text(subtitle)
+                            }
+                            if let scopeCaption {
+                                Text(scopeCaption)
+                            }
+                        }
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                    }
+                    .listRowBackground(theme.bgPrimary.color)
+                }
+                content
+            }
+            .scrollContentBackground(.hidden)
+            .background(theme.bgSecondary.color.ignoresSafeArea())
+            .task(id: searchTarget) {
+                guard let searchTarget else { return }
+                await Task.yield()
+                proxy.scrollTo(searchTarget, anchor: .top)
+            }
+        }
+    }
+
+    private var hasPaneHeader: Bool {
+        subtitle != nil || scopeCaption != nil || scopeAccessory != nil
+    }
+    #endif
+
+    private var scrollBody: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 // Pane title, then groups. The gap below the title is wider
@@ -110,3 +160,24 @@ struct SectionScaffold<Content: View>: View {
         #endif
     }
 }
+
+#if os(iOS)
+extension View {
+    /// Theme chrome for a `Form` pushed below a settings pane (account
+    /// details, per-account switches): hidden system background over the
+    /// grouped theme surface, matching `SectionScaffold`.
+    func settingsFormChrome() -> some View {
+        modifier(SettingsFormChrome())
+    }
+}
+
+private struct SettingsFormChrome: ViewModifier {
+    @Environment(\.brevTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .scrollContentBackground(.hidden)
+            .background(theme.bgSecondary.color.ignoresSafeArea())
+    }
+}
+#endif

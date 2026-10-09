@@ -153,10 +153,9 @@ public enum CalendarEventPresentation {
             )
         } else if let count = rule.count {
             parts.append(
-                String(
-                    localized: "\(count) times",
-                    bundle: .module
-                )
+                count == 1
+                    ? String(localized: "1 time", bundle: .module)
+                    : String(localized: "\(count) times", bundle: .module)
             )
         }
         return parts.joined(separator: " ")
@@ -188,28 +187,30 @@ public enum CalendarEventPresentation {
         if minutes == 0 {
             return String(localized: "At start", bundle: .module)
         }
+        // Singular and plural are separate keys chosen here: SwiftPM test
+        // builds on older toolchains do not resolve catalog plural variations.
         if minutes < 60 {
-            return String(
-                localized: "\(minutes) minutes before",
-                bundle: .module
-            )
+            return minutesBeforeText(minutes)
         }
         if minutes < 60 * 24, minutes % 60 == 0 {
-            return String(
-                localized: "\(minutes / 60) hours before",
-                bundle: .module
-            )
+            let hours = minutes / 60
+            return hours == 1
+                ? String(localized: "1 hour before", bundle: .module)
+                : String(localized: "\(hours) hours before", bundle: .module)
         }
         if minutes % (60 * 24) == 0 {
-            return String(
-                localized: "\(minutes / (60 * 24)) days before",
-                bundle: .module
-            )
+            let days = minutes / (60 * 24)
+            return days == 1
+                ? String(localized: "1 day before", bundle: .module)
+                : String(localized: "\(days) days before", bundle: .module)
         }
-        return String(
-            localized: "\(minutes) minutes before",
-            bundle: .module
-        )
+        return minutesBeforeText(minutes)
+    }
+
+    private static func minutesBeforeText(_ minutes: Int) -> String {
+        minutes == 1
+            ? String(localized: "1 minute before", bundle: .module)
+            : String(localized: "\(minutes) minutes before", bundle: .module)
     }
 
     /// Status badge for cancelled/tentative events; nil for confirmed.

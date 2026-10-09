@@ -35,6 +35,98 @@ public struct SmartViewsSection: View {
     }
 
     public var body: some View {
+        #if os(iOS)
+        iOSBody
+        #else
+        macBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// Rows reorder by dragging in edit mode, like `MailboxFavoritesEditor`,
+    /// instead of per-row up and down buttons.
+    private var iOSBody: some View {
+        SectionScaffold(title: String(localized: "Smart Views", bundle: .module),
+                        subtitle: String(
+                            localized: "Choose what appears in the sidebar and arrange it in your preferred order.",
+                            bundle: .module
+                        )) {
+            Section {
+                Toggle(String(localized: "Show Smart Views in sidebar", bundle: .module), isOn: Binding(
+                    get: { settings.showInSidebar }, set: { value in update { $0.showInSidebar = value } }
+                ))
+                .id(String(localized: "Show Smart Views in sidebar", bundle: .module))
+                .tint(theme.accent.color)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+            Section {
+                ForEach(settings.orderedEntries) { entry in
+                    iOSRow(entry)
+                }
+                .onMove { source, destination in
+                    update { $0.moveEntries(from: source, to: destination) }
+                }
+            } header: {
+                Text("Display order", bundle: .module)
+                    .id(String(localized: "Display order", bundle: .module))
+                    .textCase(nil)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            } footer: {
+                Text("Tap Edit, then drag the handles to reorder.", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+            Section {
+                Button {
+                    editing = nil
+                    showsEditor = true
+                } label: {
+                    Label(String(localized: "New Smart View", bundle: .module), systemImage: "plus")
+                }
+                .foregroundStyle(theme.accent.color)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+        }
+        .toolbar { EditButton() }
+        .sheet(isPresented: $showsEditor) {
+            SavedSearchEditorView(editing: editing, mailboxes: mailboxes, settingsStore: settingsStore) {
+                showsEditor = false
+            }
+        }
+        .onChange(of: settingsData) { _, data in
+            settings = (try? JSONDecoder().decode(SmartMailboxSettings.self, from: data)) ?? .defaults
+        }
+    }
+
+    private func iOSRow(_ entry: SmartViewDisplayEntry) -> some View {
+        HStack(spacing: BrevSpacing.sm) {
+            Toggle(isOn: Binding(get: { entry.isEnabled }, set: { enabled in
+                update { $0.setEntry(entry, isEnabled: enabled) }
+            })) {
+                Label(entry.title, systemImage: entry.symbolName)
+                    .foregroundStyle(theme.textPrimary.color)
+            }
+            .tint(theme.accent.color)
+            .accessibilityLabel(String(localized: "Show \(entry.title)", bundle: .module))
+            if let mailbox = entry.mailbox {
+                Button {
+                    editing = mailbox
+                    showsEditor = true
+                } label: {
+                    Image(systemName: "info.circle")
+                        .frame(minWidth: 44, minHeight: 44)
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(theme.accent.color)
+                .accessibilityLabel(String(localized: "Edit \(entry.title)", bundle: .module))
+            }
+        }
+    }
+    #endif
+
+    private var macBody: some View {
         SectionScaffold(title: String(localized: "Smart Views", bundle: .module),
                         subtitle: String(
                             localized: "Choose what appears in the sidebar and arrange it in your preferred order.",

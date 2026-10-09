@@ -39,7 +39,7 @@ struct VIPAndRemindersSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 vipSendersGroup
                 blockedSendersGroup
                 followUpGroup
@@ -55,13 +55,13 @@ struct VIPAndRemindersSection: View {
             subtitle: String(localized: "Messages from VIP senders appear in the VIP smart view.", bundle: .module),
             symbolName: "star"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if vipSettings.senders.isEmpty {
                     Text("No VIP senders yet.", bundle: .module)
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(vipSettings.senders) { sender in
                             VIPSenderRow(sender: sender) {
                                 removeVIP(email: sender.email)
@@ -75,14 +75,14 @@ struct VIPAndRemindersSection: View {
                         TextField("email@example.com", text: $newVIPEmail)
                             .textFieldStyle(.roundedBorder)
                             .onSubmit { confirmAddVIP() }
-                        BrevButton(String(localized: "Add", bundle: .module), style: .secondary) { confirmAddVIP() }
-                        BrevButton(String(localized: "Cancel", bundle: .module), style: .tertiary) {
+                        SettingsButton(String(localized: "Add", bundle: .module), style: .secondary) { confirmAddVIP() }
+                        SettingsButton(String(localized: "Cancel", bundle: .module), style: .tertiary) {
                             isAddingVIP = false
                             newVIPEmail = ""
                             vipErrorMessage = nil
                         }
                     } else {
-                        BrevButton(String(localized: "Add VIP sender", bundle: .module), style: .secondary) {
+                        SettingsButton(String(localized: "Add VIP sender", bundle: .module), style: .secondary) {
                             isAddingVIP = true
                         }
                         Spacer(minLength: 0)
@@ -119,13 +119,13 @@ struct VIPAndRemindersSection: View {
             subtitle: String(localized: "Messages from these senders are filtered out of your mailbox.", bundle: .module),
             symbolName: "nosign"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if blockedSendersSettings.blockedEmails.isEmpty {
                     Text("No blocked senders.", bundle: .module)
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(blockedSendersSettings.blockedEmails, id: \.self) { email in
                             BlockedSenderRow(email: email) {
                                 unblockSender(email: email)
@@ -154,14 +154,14 @@ struct VIPAndRemindersSection: View {
             subtitle: String(localized: "Set reminders directly from the message reading pane or context menu.", bundle: .module),
             symbolName: "clock.badge.exclamationmark"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 let active = followUpSettings.activeReminders
                 if active.isEmpty {
                     Text("No active follow-up reminders.", bundle: .module)
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(active) { reminder in
                             FollowUpReminderRow(reminder: reminder) {
                                 completeReminder(id: reminder.id)
@@ -242,7 +242,7 @@ private struct BlockedSenderRow: View {
                 .brevFont(.subheadline)
                 .foregroundStyle(theme.textPrimary.color)
             Spacer()
-            BrevButton(String(localized: "Unblock", bundle: .module), style: .tertiary) { onUnblock() }
+            SettingsButton(String(localized: "Unblock", bundle: .module), style: .tertiary) { onUnblock() }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -279,7 +279,7 @@ private struct VIPSenderRow: View {
 
             Spacer()
 
-            BrevButton(String(localized: "Remove", bundle: .module), style: .tertiary) { onRemove() }
+            SettingsButton(String(localized: "Remove", bundle: .module), style: .tertiary) { onRemove() }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
@@ -318,8 +318,8 @@ private struct FollowUpReminderRow: View {
 
             Spacer()
 
-            BrevButton(String(localized: "Done", bundle: .module), style: .secondary) { onComplete() }
-            BrevButton(String(localized: "Dismiss", bundle: .module), style: .tertiary) { onDismiss() }
+            SettingsButton(String(localized: "Done", bundle: .module), style: .secondary) { onComplete() }
+            SettingsButton(String(localized: "Dismiss", bundle: .module), style: .tertiary) { onDismiss() }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)

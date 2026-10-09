@@ -40,7 +40,7 @@ struct TemplatesSection: View {
             title: String(localized: "Templates", bundle: .module),
             subtitle: String(localized: "Reusable compose text for repeated replies and common messages.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 templateListGroup
                 if isEditing, let draft = draftTemplate {
                     templateEditorGroup(draft: draft)
@@ -68,13 +68,13 @@ struct TemplatesSection: View {
             subtitle: String(localized: "Templates appear in the compose toolbar for quick insertion.", bundle: .module),
             symbolName: "doc.text"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if templateSettings.templates.isEmpty {
                     Text("No templates yet. Add one to speed up repetitive replies.", bundle: .module)
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(templateSettings.templates) { template in
                             TemplateRow(
                                 template: template,
@@ -91,10 +91,9 @@ struct TemplatesSection: View {
                     }
                 }
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "New template", bundle: .module), style: .secondary) { startNewTemplate() }
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "New template", bundle: .module), style: .secondary) { startNewTemplate() }
                         .disabled(isEditing)
-                    Spacer(minLength: 0)
                 }
 
                 SettingsInfoCallout(
@@ -121,7 +120,7 @@ struct TemplatesSection: View {
             subtitle: String(localized: "Give the template a name, optional account scope, and body.", bundle: .module),
             symbolName: "square.and.pencil"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 editorFieldLabel(
                     title: String(localized: "Name", bundle: .module),
                     subtitle: String(localized: "Shown in the compose picker.", bundle: .module)
@@ -175,11 +174,10 @@ struct TemplatesSection: View {
                         .stroke(theme.border.color, lineWidth: 1)
                 )
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Save", bundle: .module), style: .primary) { saveTemplate() }
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Save", bundle: .module), style: .primary) { saveTemplate() }
                         .disabled(draftTemplate?.name.isEmpty == true)
-                    BrevButton(String(localized: "Cancel", bundle: .module), style: .tertiary) { cancelEditing() }
-                    Spacer(minLength: 0)
+                    SettingsButton(String(localized: "Cancel", bundle: .module), style: .tertiary) { cancelEditing() }
                 }
             }
         }
@@ -301,7 +299,7 @@ struct TemplateRow: View {
                 HStack(spacing: BrevSpacing.sm) {
                     pinControl
                     Spacer(minLength: 0)
-                    BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                    SettingsButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
                     Menu {
                         Button(String(localized: "Move Template Up", bundle: .module), action: onMoveUp)
                             .disabled(!canMoveUp)
@@ -340,14 +338,14 @@ struct TemplateRow: View {
                 }
                 .disabled(!canMoveDown)
 
-                BrevButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
-                BrevButton(String(localized: "Delete", bundle: .module), style: .tertiary) { onDelete() }
+                SettingsButton(String(localized: "Edit", bundle: .module), style: .tertiary) { onEdit() }
+                SettingsButton(String(localized: "Delete", bundle: .module), style: .tertiary) { onDelete() }
             }
             #endif
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     private var pinControl: some View {

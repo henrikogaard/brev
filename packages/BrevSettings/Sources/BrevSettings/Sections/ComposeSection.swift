@@ -43,7 +43,7 @@ struct ComposeSection: View {
             subtitle: String(localized: "Local defaults for replies, forwarding, formatting, and send safety.", bundle: .module),
             showsTitle: false
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 defaultsGroup
                 safetyGroup
                 recipientSuggestionsGroup
@@ -58,7 +58,7 @@ struct ComposeSection: View {
             subtitle: String(localized: "Choose the behavior Brev should preselect in the composer.", bundle: .module),
             symbolName: "square.and.pencil"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsPickerRow(
                     symbolName: "textformat",
                     title: String(localized: "Message format", bundle: .module),
@@ -103,7 +103,7 @@ struct ComposeSection: View {
             subtitle: String(localized: "Keep small guardrails active while composing mail.", bundle: .module),
             symbolName: "checkmark.shield"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "paperclip.badge.ellipsis",
                     title: String(localized: "Attachment reminder", bundle: .module),
@@ -159,7 +159,7 @@ struct ComposeSection: View {
             ),
             symbolName: "person.crop.circle.badge.plus"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "person.crop.circle",
                     title: String(localized: "Use Contacts app", bundle: .module),

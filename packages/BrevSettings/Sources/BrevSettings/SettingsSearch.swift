@@ -12,6 +12,31 @@
 
 import SwiftUI
 
+/// Keeps settings search honest on iPhone: rows that only exist on Mac are
+/// not offered, and the badge row is found under its iPhone name.
+enum SettingsSearchPlatformAdjustment {
+    /// Titles with no iPhone counterpart: the sandbox cache path, the
+    /// capability roadmap and the Mac-only import tools.
+    private static var macOnlyTitles: Set<String> {
+        [
+            String(localized: "Cache location", bundle: .module),
+            String(localized: "Capabilities and roadmap", bundle: .module),
+            String(localized: "Available now", bundle: .module),
+            String(localized: "Import mail", bundle: .module)
+        ]
+    }
+
+    /// Applies the iPhone adjustments to a section's searchable titles.
+    static func iOSTitles(from titles: [String]) -> [String] {
+        let dockBadge = String(localized: "Show dock badge", bundle: .module)
+        let hidden = macOnlyTitles
+        return titles.compactMap { title in
+            if title == dockBadge { return String(localized: "App icon badge", bundle: .module) }
+            return hidden.contains(title) ? nil : title
+        }
+    }
+}
+
 struct SettingsSearchResult: Identifiable {
     let section: SettingsSection
     let title: String
@@ -37,7 +62,7 @@ extension SettingsSection {
         default: return baseSearchableControlTitles
         }
         #else
-        return baseSearchableControlTitles
+        return SettingsSearchPlatformAdjustment.iOSTitles(from: baseSearchableControlTitles)
         #endif
     }
 

@@ -76,7 +76,7 @@ public struct PerFolderSyncSection: View {
             title: String(localized: "Folder Sync", bundle: .module),
             subtitle: String(localized: "Choose offline retention and sidebar visibility for this mailbox.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 folderOverridesGroup
                 relatedMailGroup
                 attachmentIndexingGroup
@@ -111,7 +111,7 @@ public struct PerFolderSyncSection: View {
             ),
             symbolName: "arrow.triangle.branch"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if sourceID == nil {
                     SettingsInfoCallout(
                         symbolName: "tray",
@@ -171,7 +171,7 @@ public struct PerFolderSyncSection: View {
                     ),
                     symbolName: "doc.text.magnifyingglass"
                 ) {
-                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                    SettingsRowStack(spacing: BrevSpacing.md) {
                         if sourceID == nil {
                             SettingsInfoCallout(
                                 symbolName: "tray",
@@ -255,7 +255,7 @@ public struct PerFolderSyncSection: View {
         .padding(.horizontal, BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.xs)
         .frame(maxWidth: .infinity, minHeight: 36)
-        .brevQuietSurface(cornerRadius: BrevRadius.md)
+        .settingsInlineSurface(cornerRadius: BrevRadius.md)
         #else
         TextField(String(localized: "Filter folders", bundle: .module), text: $filter)
             .textFieldStyle(.roundedBorder)
@@ -263,7 +263,120 @@ public struct PerFolderSyncSection: View {
         #endif
     }
 
+    @ViewBuilder
     private var folderOverridesGroup: some View {
+        #if os(iOS)
+        iOSFolderSections
+        #else
+        macFolderOverridesGroup
+        #endif
+    }
+
+    #if os(iOS)
+    /// Folders as a plain list; each pushes a page with its own retention
+    /// picker and sidebar switch instead of a three-column table.
+    @ViewBuilder
+    private var iOSFolderSections: some View {
+        Section {
+            filterField
+            if isLoading {
+                ProgressView().tint(theme.accent.color)
+            }
+            refreshButton
+        }
+        .listRowBackground(theme.bgPrimary.color)
+
+        Section {
+            if folders.isEmpty {
+                Text(emptyFolderMessage)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textSecondary.color)
+            } else {
+                let rows = visibleRows
+                ForEach(rows) { row in
+                    NavigationLink {
+                        folderDetail(row.folder)
+                    } label: {
+                        folderSummary(row)
+                    }
+                }
+                if rows.isEmpty {
+                    Text("No matching folders", bundle: .module)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+            }
+        } header: {
+            Text("Folders", bundle: .module)
+                .id(String(localized: "Per-folder overrides", bundle: .module))
+                .textCase(nil)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        } footer: {
+            Text("Default follows the app's retention preference. Visibility only changes the sidebar.", bundle: .module)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .listRowBackground(theme.bgPrimary.color)
+    }
+
+    private func folderSummary(_ row: FolderSyncRow) -> some View {
+        let isHidden = sourceID.map {
+            FolderVisibilityPreferencesPolicy.isHidden(row.folder.id, sourceID: $0, preferences: visibilityPreferences)
+        } ?? false
+        let retention = settings.override(for: row.folder.id, sourceID: sourceID)?.retentionPolicy
+        return HStack(spacing: SettingsLayout.symbolSpacing) {
+            SettingsSymbol(symbolName: folderIcon(for: row.folder.role))
+            Text(row.folder.name)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .padding(.leading, CGFloat(min(row.depth, 6)) * 14)
+            Spacer(minLength: BrevSpacing.sm)
+            Text(isHidden ? String(localized: "Hidden", bundle: .module) : (retention?.displayName ?? String(
+                localized: "Default",
+                bundle: .module
+            )))
+            .brevFont(.footnote)
+            .foregroundStyle(theme.textSecondary.color)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private func folderDetail(_ folder: Folder) -> some View {
+        Form {
+            Section {
+                Toggle(isOn: mailboxListVisibilityBinding(for: folder)) {
+                    Text("Show in sidebar", bundle: .module)
+                        .foregroundStyle(theme.textPrimary.color)
+                }
+                .tint(theme.accent.color)
+                .disabled(sourceID == nil)
+                .accessibilityLabel(String(localized: "Show \(folder.name) in sidebar", bundle: .module))
+                Picker(selection: retentionBinding(for: folder)) {
+                    Text("Default", bundle: .module).tag(OfflineRetentionPolicy?.none)
+                    ForEach(OfflineRetentionPolicy.allCases) { policy in
+                        Text(policy.displayName).tag(Optional(policy))
+                    }
+                } label: {
+                    Text("Keep offline", bundle: .module)
+                        .foregroundStyle(theme.textPrimary.color)
+                }
+                .pickerStyle(.menu)
+                .tint(theme.textSecondary.color)
+                .accessibilityLabel(String(localized: "Offline retention for \(folder.name)", bundle: .module))
+            } footer: {
+                Text("Default follows the app's retention preference. Visibility only changes the sidebar.", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+        }
+        .settingsFormChrome()
+        .navigationTitle(folder.name)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    #endif
+
+    private var macFolderOverridesGroup: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
             ViewThatFits(in: .horizontal) {
                 if !dynamicTypeSize.isAccessibilitySize {
@@ -299,7 +412,7 @@ public struct PerFolderSyncSection: View {
                 .padding(.horizontal, BrevSpacing.md)
                 .padding(.vertical, BrevSpacing.sm)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .brevQuietSurface(cornerRadius: BrevRadius.md)
+                .settingsInlineSurface(cornerRadius: BrevRadius.md)
                 if visibleRows.isEmpty {
                     Text("No matching folders", bundle: .module)
                         .foregroundStyle(theme.textSecondary.color)
