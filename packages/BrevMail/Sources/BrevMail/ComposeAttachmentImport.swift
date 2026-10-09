@@ -117,11 +117,13 @@ enum ComposeAttachmentImport {
     }
 
     static func filePickerErrorMessage(for error: any Error) -> String {
-        "Couldn't choose attachment: \(localizedMessage(for: error, fallback: "Unknown error."))"
+        let reason = localizedMessage(for: error, fallback: String(localized: "Unknown error.", bundle: .module))
+        return String(localized: "Couldn't choose attachment: \(reason)", bundle: .module)
     }
 
     private static func attachmentReadErrorMessage(filename: String, error: any Error) -> String {
-        "Couldn't attach \"\(filename)\": \(localizedMessage(for: error, fallback: "Unknown error."))"
+        let reason = localizedMessage(for: error, fallback: String(localized: "Unknown error.", bundle: .module))
+        return String(localized: "Couldn't attach \"\(filename)\": \(reason)", bundle: .module)
     }
 
     /// Maximum attachment size accepted on import (25 MB), bounding memory use
@@ -129,7 +131,10 @@ enum ComposeAttachmentImport {
     static let maxAttachmentByteCount = 25 * 1024 * 1024
 
     static func attachmentBudgetExceededMessage(filename: String) -> String {
-        "Couldn't attach \"\(filename)\": the total attachments exceed the 25 MB limit."
+        String(
+            localized: "Couldn't attach \"\(filename)\": the total attachments exceed the 25 MB limit.",
+            bundle: .module
+        )
     }
 
     private static func coordinatedBoundedData(

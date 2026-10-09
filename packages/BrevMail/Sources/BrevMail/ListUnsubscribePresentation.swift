@@ -31,9 +31,9 @@ struct MessageListUnsubscribePresentation: Equatable {
     static func resolve(options: ListUnsubscribeOptions?) -> MessageListUnsubscribePresentation? {
         guard let options, !options.methods.isEmpty else { return nil }
         return MessageListUnsubscribePresentation(
-            title: "Unsubscribe available",
-            subtitle: "This message includes standard List-Unsubscribe headers.",
-            warning: "No unsubscribe request is sent until you choose one of these actions.",
+            title: String(localized: "Unsubscribe available", bundle: .module),
+            subtitle: String(localized: "This message includes standard List-Unsubscribe headers.", bundle: .module),
+            warning: String(localized: "No unsubscribe request is sent until you choose one of these actions.", bundle: .module),
             requiresExplicitConfirmation: options.requiresExplicitConfirmation,
             actions: options.methods.map { method in
                 MessageListUnsubscribeActionPresentation(
@@ -50,18 +50,18 @@ struct MessageListUnsubscribePresentation: Equatable {
     private static func title(for method: ListUnsubscribeMethod) -> String {
         switch method {
         case .https:
-            return "Open unsubscribe page"
+            return String(localized: "Open unsubscribe page", bundle: .module)
         case .mailto:
-            return "Draft unsubscribe email"
+            return String(localized: "Draft unsubscribe email", bundle: .module)
         }
     }
 
     private static func confirmationTitle(for method: ListUnsubscribeMethod) -> String {
         switch method {
         case .https:
-            return "Open unsubscribe page?"
+            return String(localized: "Open the unsubscribe page?", bundle: .module)
         case .mailto:
-            return "Draft unsubscribe email?"
+            return String(localized: "Draft an unsubscribe email?", bundle: .module)
         }
     }
 
@@ -69,20 +69,29 @@ struct MessageListUnsubscribePresentation: Equatable {
         switch method {
         case .https(_, let supportsOneClick):
             if supportsOneClick {
-                return "This message advertises one-click unsubscribe. Opening the page may send an unsubscribe request to the list provider."
+                return String(
+                    localized: "This message advertises one-click unsubscribe. Opening the page may send an unsubscribe request to the list provider.",
+                    bundle: .module
+                )
             }
-            return "Brev will open the unsubscribe page in your browser. The site may learn your IP address and request time."
+            return String(
+                localized: "Brev will open the unsubscribe page in your browser. The site may learn your IP address and request time.",
+                bundle: .module
+            )
         case .mailto:
-            return "Brev will open a draft addressed to the list provider. Review the message before sending."
+            return String(
+                localized: "Brev will open a draft addressed to the list provider. Review the message before sending.",
+                bundle: .module
+            )
         }
     }
 
     private static func confirmButtonTitle(for method: ListUnsubscribeMethod) -> String {
         switch method {
         case .https:
-            return "Open Page"
+            return String(localized: "Open Page", bundle: .module)
         case .mailto:
-            return "Draft Email"
+            return String(localized: "Draft Email", bundle: .module)
         }
     }
 }
