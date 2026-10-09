@@ -1654,6 +1654,8 @@ public struct BrevMailRootView: View {
             settleReaderPaneWidth(width)
         }
         #endif
+        // Before the toolbar modifiers, so window chrome stays System (ADR-0086).
+        .brevFontSection(.reader)
         .brevMailPaneSurface(.content)
         #if os(iOS)
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -1695,6 +1697,7 @@ public struct BrevMailRootView: View {
     private func compactReadingPaneDetailPane(fallbackHeader: MessageHeader) -> some View {
         readingPaneContent(fallbackHeader: fallbackHeader)
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .brevFontSection(.reader)
             .brevMailPaneSurface(.content)
             // The sibling-stack reader is its own navigation context, so it
             // mounts its own copy of the rail below its nav bar.

@@ -16,6 +16,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
 - The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 
 ## [0.2.6] - 2026-10-09
