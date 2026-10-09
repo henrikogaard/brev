@@ -15,6 +15,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iOS: the snooze sheet now looks like a native iOS sheet. It has a navigation bar with Cancel, an inset-grouped list that follows the active Brev theme, quick options that show their wake time (with new "This evening" and "This weekend" options when they apply), and a "Choose date & time…" screen with a graphical calendar and the Snooze button in the navigation bar. The sheet follows the app's dark mode, and the wake time wraps below the title at large text sizes. macOS keeps its existing layout.
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 
 ## [0.2.5] - 2026-10-08
