@@ -69,6 +69,20 @@ lookup — a ~512 KB avatar made every row's key comparison a large
 byte scan inside the actor. The digest pins no payload bytes and
 keeps lookups O(key size).
 
+### Display cache (amended 2026-10-09, PR #212)
+
+`BrevAvatarView` also reads a main-actor `AvatarDisplayImageCache`
+(`NSCache`, 256 entries) synchronously in `body`. It holds the last
+decoded `CGImage` per resolver, normalized email, preference set and
+pixel size. List rows lose their `@State` when recreated during
+scrolling; without this cache each recreated row drew initials for a
+frame and swapped in the photo after the resolve and decode hops. The
+view writes the cache after each decode that follows a resolve, and a
+decode with no image removes the entry, so a removed photo does not
+linger. Including the preference set in the key keeps a photo from a
+disabled source from showing. It is memory only and holds nothing the
+decode cache does not already hold.
+
 ### First-run onboarding
 
 On first launch, a privacy panel explains the avatar system and offers

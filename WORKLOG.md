@@ -5470,6 +5470,10 @@ buttons, and package-aware localization.
 - Blank-body count: 10 of 10 visible launches rendered (`-font.reader serif`, mock build from the branch merged with main, screen unlocked). An earlier run with the screen locked showed 9 of 10 blank because no launch became visible (WebKit activity state 184 → 56), the known hidden-window artifact.
 - No snapshot test: the change is pane-root wiring in `BrevMailRootView`, which has no snapshot coverage; `brevFont` itself already reads the environment.
 
+## 2026-10-09 — Claude Code — ADR-0003 note for #212
+
+- #212 touched `packages/BrevAvatars/Sources` (an ADR-required protected path) without an ADR change, and was merged while the `adr-required` check was red. This adds the missing ADR-0003 amendment describing `AvatarDisplayImageCache`. Lesson: check `adr-required` before merging, even though `main` has no required checks.
+
 ## 2026-10-09 — Claude Code — iOS compose slice (audit C1–C10)
 
 - Goal: slice 3 of the iOS UI/UX audit (`65b1ef26`, not added to this branch): compose cancel, focus, attachments and native compose sheets. Branch `fix/ios-compose-native` from `origin/main` @ 42656635.
