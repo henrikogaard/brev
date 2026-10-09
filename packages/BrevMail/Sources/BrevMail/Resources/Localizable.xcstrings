@@ -12768,6 +12768,28 @@
           }
         }
       }
+    },
+    "From %@, %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fra %@, %@"
+          }
+        }
+      }
+    },
+    "Shows or hides the sender address, recipients and full date": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser eller skjuler avsenderadresse, mottakere og full dato"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
