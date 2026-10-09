@@ -5446,6 +5446,13 @@ buttons, and package-aware localization.
 - Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
 - Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
 
+## 2026-10-09 — Claude Code — 0.2.6 release point moved past #211/#212
+
+- `chore(release): cut 0.2.6` (78f33e29) was never tagged: its push-event Build runs were cancelled repeatedly by later pushes to main (build.yml `cancel-in-progress`), and #211 landed after it, moving signed releases to the macOS 26 SDK. Tagging 78f33e29 would have released with the pre-#211 workflow and the old SDK.
+- This commit folds the #211/#212 Unreleased entries into 0.2.6. The PR-event Build on this exact commit satisfies release.yml's "green Build on the tag SHA" gate without racing main pushes; main is then fast-forwarded to it and `v0.2.6` tagged here.
+- iOS TestFlight 0.2.6 (9) was archived from 78f33e29; #211/#212 are release-infra and macOS-only, so the iOS content matches.
+- Caveat from #211: the macos-26 release toolchain had not compiled in CI before this release; a toolchain failure fails the Release run closed (no GitHub Release or appcast item).
+
 ## 2026-10-09 — Claude Code — ADR-0003 note for #212
 
 - #212 touched `packages/BrevAvatars/Sources` (an ADR-required protected path) without an ADR change, and was merged while the `adr-required` check was red. This adds the missing ADR-0003 amendment describing `AvatarDisplayImageCache`. Lesson: check `adr-required` before merging, even though `main` has no required checks.
