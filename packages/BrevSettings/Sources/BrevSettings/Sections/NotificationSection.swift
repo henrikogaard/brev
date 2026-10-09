@@ -18,6 +18,9 @@ import ServiceManagement
 #endif
 import SwiftUI
 import UserNotifications
+#if os(iOS)
+import UIKit
+#endif
 
 struct NotificationSection: View {
     @Environment(\.brevTheme) private var theme
@@ -32,13 +35,21 @@ struct NotificationSection: View {
 
     private let settingsStore: SettingsPersistenceStore
     private let accounts: [BrevAccount]
+    private let authorizationStatusProvider: () async -> BrevSettingsNotificationAuthStatus
 
+    /// - Parameter authorizationStatus: Reads the system permission; tests inject a fixed status
+    ///   because the notification center is unavailable in a test host.
     init(
         settingsStore: SettingsPersistenceStore = .standard,
-        accounts: [BrevAccount] = []
+        accounts: [BrevAccount] = [],
+        authorizationStatus: @escaping () async -> BrevSettingsNotificationAuthStatus = {
+            let systemSettings = await UNUserNotificationCenter.current().notificationSettings()
+            return BrevSettingsNotificationAuthStatus.map(systemSettings.authorizationStatus)
+        }
     ) {
         self.settingsStore = settingsStore
         self.accounts = accounts
+        authorizationStatusProvider = authorizationStatus
         _settings = State(initialValue: settingsStore.notificationSettings())
     }
 
@@ -47,7 +58,7 @@ struct NotificationSection: View {
             title: String(localized: "Notifications", bundle: .module),
             subtitle: String(localized: "Choose what deserves an interruption.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 notificationGroup
                 #if os(macOS)
                 backgroundMailGroup
@@ -71,7 +82,7 @@ struct NotificationSection: View {
             subtitle: String(localized: "Run checks while no window is open.", bundle: .module),
             symbolName: "envelope.badge"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "envelope.badge",
                     title: String(localized: "Keep checking mail in the background", bundle: .module),
@@ -102,7 +113,7 @@ struct NotificationSection: View {
                         isEnabled: launchAtLoginStatus != .requiresApproval
                     )
                     if launchAtLoginStatus == .requiresApproval {
-                        BrevButton(
+                        SettingsButton(
                             String(localized: "Open Login Items Settings…", bundle: .module),
                             style: .secondary
                         ) {
@@ -145,10 +156,10 @@ struct NotificationSection: View {
     private var notificationGroup: some View {
         SettingsGroup(
             title: String(localized: "Notifications", bundle: .module),
-            subtitle: String(localized: "Control how new messages alert you.", bundle: .module),
+            subtitle: notificationGroupFooter,
             symbolName: "bell"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 SettingsToggleRow(
                     symbolName: "bell.badge",
                     title: String(localized: "Enable notifications", bundle: .module),
@@ -160,7 +171,7 @@ struct NotificationSection: View {
 
                 SettingsToggleRow(
                     symbolName: "app.badge",
-                    title: String(localized: "Show dock badge", bundle: .module),
+                    title: NotificationPanePresentation.badgeToggleTitle(platform: .current),
                     subtitle: String(localized: "Show unread count on the app icon.", bundle: .module),
                     isOn: binding(for: \.badgeEnabled)
                 )
@@ -181,7 +192,8 @@ struct NotificationSection: View {
                     title: String(localized: "Notification sound", bundle: .module),
                     subtitle: String(localized: "Play a sound for incoming messages.", bundle: .module),
                     isOn: binding(for: \.soundEnabled),
-                    isEnabled: settings.notificationsEnabled
+                    isEnabled: NotificationPanePresentation
+                        .dependentRowsEnabled(notificationsEnabled: settings.notificationsEnabled)
                 )
 
                 SettingsToggleRow(
@@ -189,18 +201,29 @@ struct NotificationSection: View {
                     title: String(localized: "Show message previews", bundle: .module),
                     subtitle: String(localized: "Display sender and subject in notifications.", bundle: .module),
                     isOn: showPreviewsBinding,
-                    isEnabled: settings.notificationsEnabled
+                    isEnabled: NotificationPanePresentation
+                        .dependentRowsEnabled(notificationsEnabled: settings.notificationsEnabled)
                 )
 
                 testNotificationButton
 
+                #if os(macOS)
                 SettingsInfoCallout(
                     symbolName: "bell",
                     message: NotificationDeliveryExpectation.settingsCalloutMessage,
                     tone: .info
                 )
+                #endif
             }
         }
+    }
+
+    private var notificationGroupFooter: String {
+        #if os(iOS)
+        NotificationPanePresentation.deliveryFooter(platform: .iOS)
+        #else
+        String(localized: "Control how new messages alert you.", bundle: .module)
+        #endif
     }
 
     private var accountScopeGroup: some View {
@@ -209,7 +232,7 @@ struct NotificationSection: View {
             subtitle: String(localized: "Choose which accounts can produce notifications, badges, and sounds.", bundle: .module),
             symbolName: "person.2.badge.gearshape"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 if accounts.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "person.crop.circle.badge.questionmark",
@@ -221,12 +244,52 @@ struct NotificationSection: View {
                     )
                 } else {
                     ForEach(accounts) { account in
+                        #if os(iOS)
+                        NavigationLink {
+                            accountOverrideForm(account)
+                        } label: {
+                            accountOverrideLabel(account)
+                        }
+                        #else
                         accountOverrideCard(account)
+                        #endif
                     }
                 }
             }
         }
     }
+
+    #if os(iOS)
+    private func accountOverrideLabel(_ account: BrevAccount) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            Text(account.displayName.isEmpty ? account.emailAddress : account.displayName)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            Text(account.emailAddress)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// Per-account switches live one level down, as in iOS Settings, instead
+    /// of three toggles nested in a card for every account.
+    private func accountOverrideForm(_ account: BrevAccount) -> some View {
+        Form {
+            Section {
+                accountOverrideToggles(account)
+            } footer: {
+                Text("Choose which alerts this account can produce.", bundle: .module)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+        }
+        .settingsFormChrome()
+        .navigationTitle(account.displayName.isEmpty ? account.emailAddress : account.displayName)
+        .navigationBarTitleDisplayMode(.inline)
+    }
+    #endif
 
     private func accountOverrideCard(_ account: BrevAccount) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
@@ -239,6 +302,15 @@ struct NotificationSection: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
 
+            accountOverrideToggles(account)
+        }
+        .padding(BrevSpacing.md)
+        .settingsInlineSurface()
+    }
+
+    @ViewBuilder
+    private func accountOverrideToggles(_ account: BrevAccount) -> some View {
+        Group {
             SettingsToggleRow(
                 symbolName: "bell",
                 title: String(localized: "Notifications", bundle: .module),
@@ -272,17 +344,15 @@ struct NotificationSection: View {
                 )
             )
         }
-        .padding(BrevSpacing.md)
-        .brevQuietSurface()
     }
 
     private var quietHoursGroup: some View {
         SettingsGroup(
             title: String(localized: "Quiet hours", bundle: .module),
-            subtitle: String(localized: "Silence notifications during specific hours.", bundle: .module),
+            subtitle: quietHoursFooter,
             symbolName: "moon.zzz"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 SettingsToggleRow(
                     symbolName: "moon.zzz.fill",
                     title: String(localized: "Enable quiet hours", bundle: .module),
@@ -315,14 +385,24 @@ struct NotificationSection: View {
                         hourOptions
                     }
 
+                    #if os(macOS)
                     SettingsInfoCallout(
                         symbolName: "clock",
                         message: NotificationDeliveryExpectation.quietHoursCalloutMessage,
                         tone: .info
                     )
+                    #endif
                 }
             }
         }
+    }
+
+    private var quietHoursFooter: String {
+        #if os(iOS)
+        NotificationDeliveryExpectation.quietHoursCalloutMessage
+        #else
+        String(localized: "Silence notifications during specific hours.", bundle: .module)
+        #endif
     }
 
     @ViewBuilder
@@ -332,7 +412,62 @@ struct NotificationSection: View {
         }
     }
 
+    @ViewBuilder
     private var authorizationRow: some View {
+        #if os(iOS)
+        iOSAuthorizationRows
+        #else
+        macAuthorizationRow
+        #endif
+    }
+
+    #if os(iOS)
+    /// The permission state as a plain value row, followed by the one action
+    /// it allows: ask, or jump to the app's page in the Settings app.
+    @ViewBuilder
+    private var iOSAuthorizationRows: some View {
+        LabeledContent {
+            Text(authorizationStatus.displayTitle)
+                .foregroundStyle(theme.textSecondary.color)
+        } label: {
+            Text("Permission", bundle: .module)
+                .foregroundStyle(theme.textPrimary.color)
+        }
+        .brevFont(.body)
+        .accessibilityHint(NotificationPanePresentation.authorizationSubtitle(for: authorizationStatus, platform: .iOS))
+
+        switch NotificationPanePresentation.authorizationAction(for: authorizationStatus) {
+        case .requestAccess:
+            Button {
+                Task { await requestAuthorization() }
+            } label: {
+                Text(isRequestingAuthorization ? String(localized: "Requesting…", bundle: .module) : String(
+                    localized: "Allow Notifications",
+                    bundle: .module
+                ))
+            }
+            .foregroundStyle(theme.accent.color)
+            .disabled(isRequestingAuthorization)
+        case .openSettings:
+            Button {
+                openAppSettings()
+            } label: {
+                Text("Open Settings", bundle: .module)
+            }
+            .foregroundStyle(theme.accent.color)
+            .accessibilityHint(NotificationPanePresentation.authorizationSubtitle(for: .denied, platform: .iOS))
+        case .none:
+            EmptyView()
+        }
+    }
+
+    private func openAppSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        UIApplication.shared.open(url)
+    }
+    #endif
+
+    private var macAuthorizationRow: some View {
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .center, spacing: BrevSpacing.md) {
                 authorizationText
@@ -346,7 +481,7 @@ struct NotificationSection: View {
         }
         .padding(BrevSpacing.md)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .brevQuietSurface()
+        .settingsInlineSurface()
     }
 
     private var authorizationText: some View {
@@ -400,7 +535,23 @@ struct NotificationSection: View {
         }
     }
 
+    @ViewBuilder
     private var testNotificationButton: some View {
+        #if os(iOS)
+        if canFireTestNotification {
+            Button {
+                Task { await fireTestNotification() }
+            } label: {
+                Text("Test notification", bundle: .module)
+            }
+            .foregroundStyle(theme.accent.color)
+            if let lastTestResult {
+                Text(lastTestResult)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+        }
+        #else
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             Button {
                 Task { await fireTestNotification() }
@@ -415,6 +566,7 @@ struct NotificationSection: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
         }
+        #endif
     }
 
     private var canFireTestNotification: Bool {
@@ -440,8 +592,7 @@ struct NotificationSection: View {
     }
 
     private func refreshAuthorizationStatus() async {
-        let systemSettings = await UNUserNotificationCenter.current().notificationSettings()
-        authorizationStatus = BrevSettingsNotificationAuthStatus.map(systemSettings.authorizationStatus)
+        authorizationStatus = await authorizationStatusProvider()
     }
 
     private func fireTestNotification() async {
