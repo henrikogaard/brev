@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: the message reader header now follows Apple Mail. The avatar, a single-line sender name and a short date (time today, weekday this week, day and month this year) share the first row, the "to" line sits beneath, and the subject follows in semibold above a hairline. The sender address and full date moved into the expanded recipient details. Conversation cards use the same name and short date row.
+- iOS: the related-conversation bar no longer sits above the reader. "Load related mail", "Retry" and "Include Spam and Trash" moved into the reader's ••• menu, the Original/dark rendering switch moved there too, and a single footnote line reports loading, failed or partial lookups. macOS keeps the existing bar and body toggle.
+
 ### Fixed
 
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
