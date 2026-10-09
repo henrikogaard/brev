@@ -122,10 +122,13 @@ enum MessageDetailPresentation {
     static func readReceiptPrompt(for request: ReadReceiptRequest) -> MessageReadReceiptPrompt {
         _ = request
         return MessageReadReceiptPrompt(
-            title: "Read receipt requested",
-            subtitle: "The sender asked to be notified that you opened this message. Brev will only send a receipt if you choose to.",
-            sendTitle: "Send Receipt",
-            declineTitle: "Decline"
+            title: String(localized: "Read receipt requested", bundle: .module),
+            subtitle: String(
+                localized: "The sender asked to be notified that you opened this message. Brev will only send a receipt if you choose to.",
+                bundle: .module
+            ),
+            sendTitle: String(localized: "Send Receipt", bundle: .module),
+            declineTitle: String(localized: "Decline", bundle: .module)
         )
     }
 
@@ -133,7 +136,7 @@ enum MessageDetailPresentation {
         _ notification: ReadReceiptNotification
     ) -> MessageReadReceiptNotificationPresentation {
         MessageReadReceiptNotificationPresentation(
-            title: "Read receipt received",
+            title: String(localized: "Read receipt received", bundle: .module),
             subtitle: readReceiptNotificationSubtitle(notification),
             icon: "checkmark.seal"
         )
@@ -144,14 +147,17 @@ enum MessageDetailPresentation {
     ) -> MessageReadReceiptNotificationPresentation {
         if records.count == 1, let record = records.first {
             return MessageReadReceiptNotificationPresentation(
-                title: "Read receipt received",
+                title: String(localized: "Read receipt received", bundle: .module),
                 subtitle: sentReadReceiptNotificationSubtitle(record),
                 icon: "checkmark.seal"
             )
         }
         return MessageReadReceiptNotificationPresentation(
-            title: "Read receipts received",
-            subtitle: "\(records.count) recipients sent read receipts for this message.",
+            title: String(localized: "Read receipts received", bundle: .module),
+            subtitle: String(
+                localized: "\(records.count) recipients sent read receipts for this message.",
+                bundle: .module
+            ),
             icon: "checkmark.seal"
         )
     }
@@ -319,13 +325,15 @@ enum MessageDetailPresentation {
 
         switch (recipient, originalMessageID) {
         case (let recipient?, let originalMessageID?):
+            // Subject-verb-object order is the same in every shipped language, so this frame
+            // needs no catalog key (a key made only of specifiers cannot be a symbol).
             return "\(recipient) \(action) \(originalMessageID)."
         case (let recipient?, nil):
-            return "\(recipient) \(action) the message."
+            return String(localized: "\(recipient) \(action) the message.", bundle: .module)
         case (nil, let originalMessageID?):
-            return "The recipient \(action) \(originalMessageID)."
+            return String(localized: "The recipient \(action) \(originalMessageID).", bundle: .module)
         case (nil, nil):
-            return "The recipient \(action) the message."
+            return String(localized: "The recipient \(action) the message.", bundle: .module)
         }
     }
 
@@ -334,9 +342,9 @@ enum MessageDetailPresentation {
     ) -> String {
         let action = readReceiptDispositionAction(record.disposition)
         if let recipient = nonEmpty(record.finalRecipient) {
-            return "\(recipient) \(action) this message."
+            return String(localized: "\(recipient) \(action) this message.", bundle: .module)
         }
-        return "The recipient \(action) this message."
+        return String(localized: "The recipient \(action) this message.", bundle: .module)
     }
 
     private static func readReceiptDispositionAction(_ disposition: String) -> String {
@@ -344,9 +352,19 @@ enum MessageDetailPresentation {
             .split(separator: ";", omittingEmptySubsequences: true)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         guard let last = components.last, !last.isEmpty else {
-            return "reported receipt for"
+            return String(localized: "reported receipt for", bundle: .module)
         }
-        return last.lowercased()
+        // MDN disposition modifiers (RFC 8098 section 3.2.6.2) become part of a
+        // sentence, so the known ones are translated; anything else is shown as sent.
+        switch last.lowercased() {
+        case "displayed": return String(localized: "displayed", bundle: .module)
+        case "deleted": return String(localized: "Deleted", bundle: .module).lowercased()
+        case "dispatched": return String(localized: "dispatched", bundle: .module)
+        case "processed": return String(localized: "processed", bundle: .module)
+        case "denied": return String(localized: "denied", bundle: .module)
+        case "failed": return String(localized: "failed", bundle: .module)
+        default: return last.lowercased()
+        }
     }
 
     private static func nonEmpty(_ value: String?) -> String? {

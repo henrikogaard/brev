@@ -106,6 +106,46 @@ maintain at least 4.5:1 contrast against both `bgPrimary` and `bgSecondary`.
 Palette calibration may adjust those role values without adding a token or
 changing the theme schema; focused tests cover every built-in palette.
 
+(2026-10: contrast contract extended. The audit of all 37 built-ins
+found that the base text roles passed but derived styles did not: accent
+as text failed 4.5:1 in 6 themes, danger in 9, warning in 7, and every
+`border` was below 3:1. The contract is now, for every built-in theme and
+measured on both `bgPrimary` and `bgSecondary`:
+
+| Role | Used as | Minimum |
+|---|---|---|
+| `textSecondary`, `textTertiary` | small text | 4.5:1 (unchanged) |
+| `accent`, `warning`, `danger` | text and text-sized glyphs | 4.5:1 |
+| `success`, `info` | status glyphs (non-text, WCAG 1.4.11) | 3:1 |
+| `controlBorder` | outline that is the only cue to a control's boundary | 3:1 |
+
+`border` itself stays a quiet decorative hairline colour (card edges,
+dividers; exempt under WCAG 1.4.11 as decoration), so no theme's overall
+look is flattened. `BrevTheme.controlBorder` is a computed accessor, not a
+new token and not a schema change: it returns `border` when that already
+reaches 3:1 and otherwise mixes `border` toward `textPrimary` by the
+smallest amount that does. Outlined controls (`BrevButton` secondary, text
+fields) use it. `BuiltInThemeTests` enforces the whole table over
+`BrevTheme.brevBuiltIns`, so a new built-in cannot ship below it.
+Built-in palettes were recalibrated by changing only HSL lightness of the
+failing role, keeping hue and saturation; the per-theme changes are listed
+in the PR. Two further rules: text is never dimmed with `.opacity(_:)` to
+make it quieter (use `textTertiary`; opacity is allowed for disabled
+controls, which WCAG exempts), and text on an accent tint (selected
+`brevChip`) uses `BrevTheme.accentTextOnTint(opacity:)`, because accent
+text on its own 18% tint failed 4.5:1 in 15 themes. It returns `accent`
+when that already passes and otherwise mixes it toward `textPrimary` (or
+black/white when `textPrimary` is itself too weak on the tint, as in
+Solarized) by the smallest amount that does. User accent overrides keep
+going through `withReadableAccent()`.)
+
+(2026-10: shared controls scale and respect motion. `BrevIconButton`,
+`BrevButton`, `BrevChip` and `BrevStatusBanner` size their glyphs, padding
+and hit targets with `@ScaledMetric`, never below the 44 pt iOS floor
+(`BrevHitTarget`). `BrevMotion` / `brevWithAnimation` /
+`.brevAnimation(_:value:)` drop animations when Reduce Motion is on; new
+animated code uses them instead of `withAnimation` / `.animation`.)
+
 (2026-09: `BrevSelectionPalette` gained the focused-pane contract —
 `isActive: false` demotes the selected-row fill from `selection` to
 `bgSecondary` and dims the leading indicator. macOS call sites drive it
@@ -120,9 +160,10 @@ Recurring view recipes live in `BrevDesign` so call sites cannot drift
 on opacity, spacing, or hit-area values:
 
 - `BrevButton` — the only sanctioned button; keeps a 44 pt minimum
-  height on iOS (32 pt on macOS).
-- `BrevIconButton` — icon-only actions; 44 pt minimum hit area on iOS
-  regardless of glyph size, mandatory accessibility label.
+  height on iOS (32 pt on macOS) that grows with Dynamic Type.
+- `BrevIconButton` — icon-only actions; glyph and hit area scale with
+  Dynamic Type, 44 pt minimum hit area on iOS, mandatory accessibility
+  label.
 - `brevQuietSurface()` — the one "quiet card" recipe (secondary fill at
   0.42, border hairline at 0.45); replaces hand-rolled copies.
 - `brevChip(selected:)` — capsule styling for filter/toggle chips.
@@ -131,6 +172,17 @@ The public `BrevChipStyle(isSelected:)` and `BrevQuietSurface(cornerRadius:)`
 initializers document their selection and corner-radius inputs, and their
 modifier methods document the visual treatment. These API comments preserve
 the shared recipes above without changing theme tokens or rendering behavior.
+
+**iOS Settings forms (2026-10-09).** `BrevButton` and `brevQuietSurface()`
+remain the standalone recipes. Inside an iOS Settings pane the rows live in
+an inset-grouped `Form` whose `Section`s are themed with tokens only
+(`scrollContentBackground(.hidden)`, `theme.bgSecondary` behind the form,
+`theme.bgPrimary` row backgrounds), so a pane never draws a quiet card or a
+bordered `BrevButton` pill inside a row. `SettingsButton` is the pane-level
+wrapper: it delegates to `BrevButton` on macOS and renders a plain accent
+row on iOS (`Button(role: .destructive)` for destructive actions, with a
+`confirmationDialog` where the action is not already confirmed). macOS
+Settings keeps the card layout unchanged.
 
 ### Theme distribution
 

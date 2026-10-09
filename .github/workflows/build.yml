@@ -280,7 +280,7 @@ jobs:
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
 
-      - name: Test compact settings rows on iOS Simulator
+      - name: Test compact settings rows and forms on iOS Simulator
         if: steps.snapshot-runtime.outputs.run == 'true'
         working-directory: packages/BrevSettings
         run: |
@@ -291,6 +291,7 @@ jobs:
             -testLanguage en \
             -testRegion en_US \
             '-only-testing:BrevSettingsTests/CompactSettingsRowSnapshotTests' \
+            '-only-testing:BrevSettingsTests/SettingsFormSnapshotTests' \
             test
 
       - name: Report deferred iOS snapshot comparison

@@ -33,6 +33,18 @@ required=(
   "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactRows-width.compact-271.png"
   "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-320.png"
   "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/CompactSettingsRowSnapshotTests/compactSignature-width.signature-375.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.root-light.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.root-dark.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.root-ax3.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.accounts-light.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.accounts-dark.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.accounts-ax3.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.notifications-light.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.notifications-dark.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.notifications-ax3.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.appearance-light.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.appearance-dark.png"
+  "$repo_root/packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/forms.appearance-ax3.png"
 )
 
 for reference in "${required[@]}"; do

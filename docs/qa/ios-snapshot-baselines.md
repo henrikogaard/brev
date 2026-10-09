@@ -26,6 +26,7 @@ with `TEST_RUNNER_` so they reach the test process; compare again without them.
 | `ComposeViewSnapshotTests/replyCompose()` | `ComposeViewSnapshotTests/replyCompose.reply-compose.png` | #53: same toolbar changes; recipient chip, subject, sender and quoted body preserved. |
 | `MessageDetailViewSnapshotTests/noSelectionPlaceholder()` | `MessageDetailViewSnapshotTests/noSelectionPlaceholder.no-selection.png` | #53: reviewed theme contrast refresh; envelope and no-selection copy preserved. |
 | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()` | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender.header-present.png` | #53: reviewed secondary-text contrast and body sizing; subject, sender, recipients, date and snippet preserved. |
+| `SettingsFormSnapshotTests` (root, accounts, notifications, appearance × light, dark, accessibility 3) | `SettingsFormSnapshotTests/forms.<pane>-<variant>.png` | Settings panes as inset-grouped forms (iOS slice 7). Notifications renders the denied state with the Open Settings row. Reviewed in light, dark and AX3; no card-in-card surfaces. |
 
 Pushed-reader slice (iOS UX audit slice 1, 2026-10-09). Refreshed after
 visual review of each diff, all tied to the reader changes: the 44 pt sender

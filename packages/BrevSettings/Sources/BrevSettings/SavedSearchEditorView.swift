@@ -36,6 +36,127 @@ public struct SavedSearchEditorView: View {
     }
 
     public var body: some View {
+        #if os(iOS)
+        iOSBody
+        #else
+        macBody
+        #endif
+    }
+
+    #if os(iOS)
+    @State private var confirmsDelete = false
+
+    /// A navigation-bar sheet like iOS Mail's filters: Cancel and Save in the
+    /// bar, grouped `Form` sections, and a confirmed Delete at the bottom.
+    private var iOSBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "Smart View name", bundle: .module), text: $presentation.name)
+                        .accessibilityLabel(String(localized: "Name", bundle: .module))
+                    Picker(String(localized: "Show", bundle: .module), selection: $presentation.kind) {
+                        Text("Messages", bundle: .module).tag(SmartMailboxKind.messageSearch)
+                        Text("Attachments", bundle: .module).tag(SmartMailboxKind.attachmentSearch)
+                    }
+                    Toggle(String(localized: "Show in sidebar", bundle: .module), isOn: $presentation.isEnabled)
+                } header: {
+                    Text("Name", bundle: .module)
+                }
+                .listRowBackground(theme.bgPrimary.color)
+
+                if presentation.kind == .messageSearch {
+                    iOSMessageConditions
+                } else {
+                    iOSAttachmentConditions
+                }
+
+                if editingID != nil {
+                    Section {
+                        Button(String(localized: "Delete Smart View", bundle: .module), role: .destructive) {
+                            confirmsDelete = true
+                        }
+                    }
+                    .listRowBackground(theme.bgPrimary.color)
+                }
+            }
+            .settingsFormChrome()
+            .navigationTitle(editingID == nil ? String(localized: "New Smart View", bundle: .module)
+                : String(localized: "Edit Smart View", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(String(localized: "Cancel", bundle: .module), action: onFinished)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(String(localized: "Save", bundle: .module)) { save() }
+                        .disabled(!presentation.isValid)
+                }
+            }
+            .confirmationDialog(
+                String(localized: "Delete this Smart View?", bundle: .module),
+                isPresented: $confirmsDelete,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) { delete() }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text("Messages are not deleted. Only the saved search is removed.", bundle: .module)
+            }
+        }
+        .tint(theme.accent.color)
+    }
+
+    @ViewBuilder
+    private var iOSMessageConditions: some View {
+        Section {
+            Picker(String(localized: "Match conditions", bundle: .module), selection: $presentation.matchMode) {
+                Text("all", bundle: .module).tag(SmartViewMatchMode.all)
+                Text("any", bundle: .module).tag(SmartViewMatchMode.any)
+            }
+            .pickerStyle(.segmented)
+            ForEach($presentation.conditions) { $condition in
+                SmartViewConditionRow(condition: $condition, mailboxes: mailboxes) {
+                    presentation.conditions.removeAll { $0.id == condition.id }
+                }
+            }
+            Button {
+                presentation.conditions.append(.init())
+            } label: {
+                Label(String(localized: "Add condition", bundle: .module), systemImage: "plus")
+            }
+        } header: {
+            Text("Match all or any of these conditions", bundle: .module)
+        }
+        .listRowBackground(theme.bgPrimary.color)
+
+        Section {
+            Toggle(String(localized: "Include messages in Trash", bundle: .module), isOn: $presentation.includeTrash)
+            Toggle(String(localized: "Include messages in Sent", bundle: .module), isOn: $presentation.includeSent)
+        } footer: {
+            Text(
+                "Searches cached mail in the current profile. Message preview searches subject, people and preview text.",
+                bundle: .module
+            )
+        }
+        .listRowBackground(theme.bgPrimary.color)
+    }
+
+    @ViewBuilder
+    private var iOSAttachmentConditions: some View {
+        Section {
+            TextField(
+                String(localized: "Search attachment names and message metadata", bundle: .module),
+                text: $presentation.queryText
+            )
+            TextField(String(localized: "From", bundle: .module), text: $presentation.fromText)
+        } footer: {
+            Text("Uses cached attachment metadata. Attachment contents are not searched.", bundle: .module)
+        }
+        .listRowBackground(theme.bgPrimary.color)
+    }
+    #endif
+
+    private var macBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             Text(editingID == nil ? String(localized: "New Smart View", bundle: .module)
                 : String(localized: "Edit Smart View", bundle: .module))
@@ -167,6 +288,22 @@ private struct SmartViewConditionRow: View {
     let onRemove: () -> Void
 
     var body: some View {
+        rowLayout
+            .onChange(of: condition.field) { _, field in
+                condition.comparison = field.comparisons[0]
+                condition.value = field == .received ? "7" : ""
+                condition.sourceID = nil
+            }
+    }
+
+    @ViewBuilder
+    private var rowLayout: some View {
+        #if os(iOS)
+        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            HStack { fieldPicker; Spacer(minLength: 0); removeButton }
+            HStack { comparisonPicker; Spacer(minLength: 0); valueControl }
+        }
+        #else
         ViewThatFits(in: .horizontal) {
             HStack(spacing: BrevSpacing.xs) {
                 fieldPicker.frame(width: 155)
@@ -179,11 +316,7 @@ private struct SmartViewConditionRow: View {
                 HStack { comparisonPicker; valueControl }
             }
         }
-        .onChange(of: condition.field) { _, field in
-            condition.comparison = field.comparisons[0]
-            condition.value = field == .received ? "7" : ""
-            condition.sourceID = nil
-        }
+        #endif
     }
 
     private var fieldPicker: some View {
@@ -285,7 +418,7 @@ private struct SmartViewConditionRow: View {
                 .frame(minWidth: 44, minHeight: 44)
             #endif
         }
-        .buttonStyle(.plain)
+        .buttonStyle(.borderless)
         .accessibilityLabel(String(localized: "Remove condition", bundle: .module))
         .help(String(localized: "Remove condition", bundle: .module))
     }

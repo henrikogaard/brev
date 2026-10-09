@@ -39,7 +39,7 @@ struct SignatureSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 libraryGroup
                 accountDefaultsGroup
             }
@@ -55,7 +55,7 @@ struct SignatureSection: View {
             ),
             symbolName: "signature"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if settings.signatures.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "plus.circle",
@@ -76,7 +76,7 @@ struct SignatureSection: View {
                 } label: {
                     Label(String(localized: "Add Signature", bundle: .module), systemImage: "plus")
                 }
-                .buttonStyle(.bordered)
+                .settingsButtonStyle()
             }
         }
     }
@@ -152,7 +152,7 @@ struct SignatureSection: View {
                 .scrollContentBackground(.hidden)
                 .padding(BrevSpacing.sm)
                 .frame(minHeight: 120)
-                .brevQuietSurface()
+                .settingsInlineSurface()
 
             if !signature.isEnabled {
                 SettingsInfoCallout(
@@ -166,7 +166,7 @@ struct SignatureSection: View {
             }
         }
         .padding(BrevSpacing.md)
-        .brevQuietSurface()
+        .settingsInlineSurface()
     }
 
     private func signatureNameField(_ signature: SignatureSettings.Signature) -> some View {
@@ -192,7 +192,7 @@ struct SignatureSection: View {
             subtitle: String(localized: "Choose which signature opens by default for each mailbox.", bundle: .module),
             symbolName: "person.crop.circle.badge.checkmark"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if accounts.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "person.crop.circle.badge.questionmark",

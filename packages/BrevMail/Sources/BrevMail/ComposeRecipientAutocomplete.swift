@@ -33,8 +33,8 @@ enum RecipientAutocompleteSource: Equatable {
 
     var label: String {
         switch self {
-        case .appleContacts: return "Contacts"
-        case .recentRecipients: return "Recent"
+        case .appleContacts: return String(localized: "Contacts", bundle: .module)
+        case .recentRecipients: return String(localized: "Recent", bundle: .module)
         case .cardDAV: return "CardDAV"
         }
     }
@@ -101,7 +101,7 @@ enum ComposeRecipientAutocomplete {
             return RecipientAutocompleteSuggestion(
                 id: result.id,
                 title: email,
-                subtitle: "Contact",
+                subtitle: String(localized: "Contact", bundle: .module),
                 email: email,
                 source: candidate.source,
                 resultSourceLabel: result.sourceLabel

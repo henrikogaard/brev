@@ -6,6 +6,22 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
+- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
+- iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
+- iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
+- iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+
+### Fixed
+
+- The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
+- iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
+- iOS Appearance: the mail preview text now follows Dynamic Type.
+- Accessibility: all 37 built-in themes now meet WCAG contrast for accent, warning and danger text (4.5:1) and for success and info glyphs (3:1). 31 palette colours across 15 themes (Brev Paper, Brev Forest, Nord, Nordic, Gruvbox, Solarized, Catppuccin Latte, One Dark Pro, Blurple Night, Pearl Light, Tender and Tomorrow) were adjusted in lightness only. Outlined buttons use a 3:1 outline, and selected filter chips keep readable text on their accent tint.
+- Accessibility: icon buttons, filter chips, status banners and buttons grow with Dynamic Type and keep a 44 pt touch target on iPhone and iPad. A new Reduce Motion helper is available for animations.
+- iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
+- iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
+- Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
 - iOS: opening a message on iPhone now pushes the reader with the system animation, and swiping from the left edge goes back to the list (the Back button names the mailbox). The list behind it is no longer visible to VoiceOver.
 - iOS: the reader has the Apple Mail action bar. Archive (or Delete when the account has no Archive folder), Move, a Reply menu (Reply, Reply All, Forward) and New Message sit along the bottom; previous and next message chevrons sit in the navigation bar. The duplicate bottom ••• menu is gone: the one ••• menu in the navigation bar now holds the message actions, related mail, Original and "Ask AI", for single messages and conversations alike. The conversation header no longer shows the mailbox address, and expanded conversation cards show "to …" like the single-message header.
 
@@ -13,8 +29,6 @@ All notable changes to Brev are documented here.
 
 - iOS: archiving, deleting or moving a message from the reader now shows the "Archived/Deleted/Moved" toast with Undo above the bottom bar and announces it to VoiceOver, then shows the next message with a slide, or goes back to the list when none is left. Undo and Dismiss on toasts are 44 pt targets on iPhone.
 - iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
-- Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
-- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
 ## [0.2.6] - 2026-10-09
 
@@ -32,6 +46,8 @@ All notable changes to Brev are documented here.
 - iOS: the snooze sheet now looks like a native iOS sheet. It has a navigation bar with Cancel, an inset-grouped list that follows the active Brev theme, quick options that show their wake time (with new "This evening" and "This weekend" options when they apply), and a "Choose date & time…" screen with a graphical calendar and the Snooze button in the navigation bar. The sheet follows the app's dark mode, and the wake time wraps below the title at large text sizes. macOS keeps its existing layout.
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
+- Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
+- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
 ## [0.2.5] - 2026-10-08
 

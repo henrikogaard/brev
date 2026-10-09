@@ -47,7 +47,7 @@ struct AIWriterSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 SettingsGroup(
                     title: String(localized: "Availability", bundle: .module),
                     subtitle: String(localized: "Turn the compose shortcuts on or off.", bundle: .module),
@@ -82,7 +82,7 @@ struct AIWriterSection: View {
                             .brevFont(.footnote)
                             .foregroundStyle(theme.textSecondary.color)
 
-                        BrevButton(String(localized: "Reset AI consent", bundle: .module), style: .secondary) {
+                        SettingsButton(String(localized: "Reset AI consent", bundle: .module), style: .secondary) {
                             settings.resetConsent()
                             settingsStore.save(settings)
                         }

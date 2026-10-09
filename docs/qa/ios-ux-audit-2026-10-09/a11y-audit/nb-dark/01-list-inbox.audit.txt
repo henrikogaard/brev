@@ -1,0 +1,17 @@
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast nearly passed | Contrast is not high enough for SwiftUI.AccessibilityNode unless font size is larger. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast nearly passed | Contrast is not high enough for SwiftUI.AccessibilityNode unless font size is larger. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Henrik Øgård (work)' id='' frame=(143.33333333333334, 87.5, 115.00000000000003, 14.333333333333329)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Stavanger rollout — terminal go-live window' id='' frame=(63.0, 168.66666666666669, 300.3333333333333, 17.99999999999997)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='We can take the terminal offline Tuesday 06:00–09:00. Does that hold on your side?' id='' frame=(63.0, 188.66666666666666, 325.3333333333333, 18.0)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Innboks' id='' frame=(140.66666666666669, 66.16666666666667, 62.99999999999997, 20.33333333333333)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='5 uleste' id='' frame=(211.66666666666666, 71.16666666666667, 45.33333333333334, 14.333333333333329)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes. | element: 48 label='We can take the terminal offline Tuesday 06:00–09:00. Does that hold on your side?' id='' frame=(63.0, 188.66666666666666, 325.3333333333333, 18.0)

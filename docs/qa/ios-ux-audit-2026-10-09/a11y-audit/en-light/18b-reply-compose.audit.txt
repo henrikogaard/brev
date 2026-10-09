@@ -1,0 +1,5 @@
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 9 label='Attach' id='' frame=(8.0, 794.0, 44.0, 44.0)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes. | element: 9 label='Attach' id='' frame=(8.0, 794.0, 44.0, 44.0)
+[XCUIAccessibilityAuditType(rawValue: 8)] Label not human-readable | The accessibilityLabel of this SwiftUI.AccessibilityNode is not human-readable. | element: 48 label='notifications@github.com' id='' frame=(96.0, 146.16666666666669, 135.33333333333334, 15.666666666666657)

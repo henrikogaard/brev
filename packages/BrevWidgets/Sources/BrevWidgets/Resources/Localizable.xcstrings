@@ -2,25 +2,111 @@
   "sourceLanguage": "en",
   "strings": {
     "Mail": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "E-post"
+          }
+        }
+      }
     },
     "Unread count and latest messages from your unified inbox.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Antall uleste og siste meldinger fra den samlede innboksen."
+          }
+        }
+      }
     },
     "%lld unread": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unread"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld unread"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld ulest"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld uleste"
+                }
+              }
+            }
+          }
+        }
+      }
     },
     "Open Brev to see your mail.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne Brev for å se e-posten din."
+          }
+        }
+      }
     },
     "You're all caught up.": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du er ajour."
+          }
+        }
+      }
     },
     "Ina Berg": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ina Berg"
+          }
+        }
+      }
     },
     "Quarterly report": {
-      "extractionState": "manual"
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kvartalsrapport"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
