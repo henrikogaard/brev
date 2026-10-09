@@ -41,15 +41,20 @@ public enum BrevFont: Sendable, Hashable, CaseIterable {
     /// Resolves to a SwiftUI `Font`. Uses Apple's Dynamic Type ramp so
     /// accessibility scaling works out of the box.
     public var font: Font {
+        font(design: .default)
+    }
+
+    /// The token in a specific font design (ADR-0086 section families).
+    public func font(design: Font.Design) -> Font {
         switch self {
-        case .largeTitle: return .system(.largeTitle, design: .default).weight(.semibold)
-        case .title: return .system(.title2, design: .default).weight(.semibold)
-        case .headline: return .system(.headline, design: .default).weight(.semibold)
-        case .body: return .system(.body, design: .default)
-        case .callout: return .system(.callout, design: .default)
-        case .subheadline: return .system(.subheadline, design: .default).weight(.medium)
-        case .footnote: return .system(.footnote, design: .default)
-        case .caption: return .system(.caption, design: .default)
+        case .largeTitle: return .system(.largeTitle, design: design).weight(.semibold)
+        case .title: return .system(.title2, design: design).weight(.semibold)
+        case .headline: return .system(.headline, design: design).weight(.semibold)
+        case .body: return .system(.body, design: design)
+        case .callout: return .system(.callout, design: design)
+        case .subheadline: return .system(.subheadline, design: design).weight(.medium)
+        case .footnote: return .system(.footnote, design: design)
+        case .caption: return .system(.caption, design: design)
         }
     }
 }
@@ -64,21 +69,24 @@ public extension View {
 private struct BrevFontModifier: ViewModifier {
     let token: BrevFont
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
+    @Environment(\.brevFontFamily) private var family
 
     func body(content: Content) -> some View {
         #if os(macOS)
         let textSize = MailboxTextSize(rawValue: textSizeRaw) ?? .medium
-        content.font(token.desktopFont(textSize: textSize))
+        content.font(token.desktopFont(textSize: textSize, design: family.fontDesign))
         #else
-        content.font(token.font)
+        content.font(token.font(design: family.fontDesign))
         #endif
     }
 }
 
 #if os(macOS)
 extension BrevFont {
-    func desktopFont(textSize: MailboxTextSize) -> Font {
-        guard textSize != .medium else { return font }
+    func desktopFont(textSize: MailboxTextSize, design: Font.Design = .default) -> Font {
+        // Non-default designs take the explicit-size path: on macOS a text-style
+        // font did not visibly pick up `.rounded` in testing.
+        guard textSize != .medium || design != .default else { return font }
         let style: NSFont.TextStyle = switch self {
         case .largeTitle: .largeTitle
         case .title: .title2
@@ -94,8 +102,16 @@ extension BrevFont {
         case .subheadline: .medium
         default: .regular
         }
-        let adjustment: CGFloat = textSize == .small ? -1 : 2
-        return .system(size: NSFont.preferredFont(forTextStyle: style).pointSize + adjustment, weight: weight)
+        let adjustment: CGFloat = switch textSize {
+        case .small: -1
+        case .medium: 0
+        case .large: 2
+        }
+        return .system(
+            size: NSFont.preferredFont(forTextStyle: style).pointSize + adjustment,
+            weight: weight,
+            design: design
+        )
     }
 }
 #endif

@@ -17,6 +17,7 @@ import SwiftUI
 /// Local sample mail makes theme, text, and density choices visible immediately.
 struct SettingsMailPreview: View {
     @Environment(\.brevTheme) private var theme
+    @SectionFontFamily(.messageList) private var listFamily
     var settings: MailboxViewSettings = .defaults
 
     var body: some View {
@@ -55,7 +56,7 @@ struct SettingsMailPreview: View {
                         .lineLimit(settings.previewLineCount.rawValue)
                 }
             }
-            .font(settings.fontFamily.font(size: settings.textSize.bodyPointSize))
+            .font(listFamily.font(size: settings.textSize.bodyPointSize))
             Spacer(minLength: 0)
             Text("10:30", bundle: .module).brevFont(.footnote).foregroundStyle(theme.textSecondary.color)
         }

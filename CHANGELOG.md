@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Settings > Appearance > Fonts picks a font for the sidebar, the message list, and reading (compose uses the reading font), with a "Use One Font Everywhere" shortcut. Your current message font carries over to the list and reader. The Message font row in Mailbox View moved here, and Reset to Defaults now resets fonts too.
+
 ### Changed
 
 - iOS: the message reader header now follows Apple Mail. The avatar, a single-line sender name and a short date (time today, weekday this week, day and month this year) share the first row, the "to" line sits beneath, and the subject follows in semibold above a hairline. The sender address and full date moved into the expanded recipient details. Conversation cards use the same name and short date row.
@@ -11,6 +15,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
 
 ## [0.2.5] - 2026-10-08

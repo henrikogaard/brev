@@ -135,7 +135,7 @@ public struct MessageListView: View {
     @AppStorage(MailboxViewPreferenceKey.showAbsoluteArrivalTime) private var showAbsoluteArrivalTime = false
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
     @AppStorage(MailboxViewPreferenceKey.previewLineCount) private var previewLineCountRaw = MailboxPreviewLineCount.one.rawValue
-    @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
+    @SectionFontFamily(.messageList) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
@@ -559,10 +559,6 @@ public struct MessageListView: View {
 
     private var archiveFolder: Folder? {
         allFolders.first { $0.role == .archive }
-    }
-
-    private var mailboxFontFamily: MailboxFontFamily {
-        MailboxFontFamily(rawValue: fontFamilyRaw) ?? .system
     }
 
     private var mailboxTextSize: MailboxTextSize {

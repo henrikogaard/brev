@@ -84,8 +84,9 @@ private struct MailToolbarScrollUnderModifier: ViewModifier {
                     if reduceTransparency {
                         theme.bgPrimary.color
                     } else {
+                        // Blur only: a theme wash here paints the band a
+                        // different colour from the translucent pane below.
                         MailWindowScrollEdgeBlur(fadesAtBottom: false)
-                            .overlay(theme.bgPrimary.color.opacity(0.35))
                     }
                 }
                 .frame(height: toolbarHeight)
@@ -115,7 +116,6 @@ private struct MailListHeaderModifier<Header: View>: ViewModifier {
                             theme.bgPrimary.color
                         } else {
                             MailWindowScrollEdgeBlur(fadesAtBottom: false)
-                                .overlay(theme.bgPrimary.color.opacity(0.35))
                                 .allowsHitTesting(false)
                         }
                     }
