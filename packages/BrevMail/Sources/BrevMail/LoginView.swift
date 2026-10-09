@@ -63,13 +63,13 @@ public struct LoginView: View {
                     initialEmailAddress: failedEmail,
                     onClose: { isShowingIMAPSetup = false }
                 )
-                .brevTheme(theme)
+                .setupSheetAppearance(session: session, theme: theme)
             } else {
                 MailAccountSetupSheet(
                     session: session,
                     onClose: { isShowingIMAPSetup = false }
                 )
-                .brevTheme(theme)
+                .setupSheetAppearance(session: session, theme: theme)
             }
         }
     }
@@ -515,6 +515,20 @@ private extension View {
             .contentShape(Rectangle())
         #else
         self
+        #endif
+    }
+}
+
+private extension View {
+    /// Sheets get the persisted theme and color scheme on iOS, where a pinned
+    /// theme must also pin the sheet's color scheme; macOS keeps the plain
+    /// theme environment.
+    @ViewBuilder
+    func setupSheetAppearance(session: AppSession, theme: BrevTheme) -> some View {
+        #if os(iOS)
+        brevRootAppearance(session: session)
+        #else
+        brevTheme(theme)
         #endif
     }
 }

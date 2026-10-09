@@ -211,6 +211,25 @@ enum IMAPAccountSetupPresentation {
         isAdvancedSetupExpanded && visibility != .hidden
     }
 
+    /// Whether the iPhone toolbar "Add" action shows. While OAuth sign-in is
+    /// the primary path the password submit cannot succeed, so it would only
+    /// compete with the "Sign in with ..." button.
+    static func showsToolbarAddAction(showsOAuthPrimary: Bool) -> Bool {
+        !showsOAuthPrimary
+    }
+
+    /// Whether the iPhone "Test connection" button shows inside the scroll
+    /// content: only next to editable manual IMAP/SMTP server fields.
+    static func showsInlineTestConnection(
+        isAdvancedSetupExpanded: Bool,
+        visibility: ServerFieldVisibility
+    ) -> Bool {
+        showsAdvancedServerFields(
+            isAdvancedSetupExpanded: isAdvancedSetupExpanded,
+            visibility: visibility
+        ) && visibility == .editable
+    }
+
     enum ServerFieldVisibility: Equatable, Sendable {
         case hidden
         case summaryOnly
