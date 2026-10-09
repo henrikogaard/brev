@@ -234,6 +234,17 @@
         }
       }
     },
+    "%@, and 1 more host": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@ og 1 vert til"
+          }
+        }
+      }
+    },
     "%@, but Brev couldn't save a copy to Sent.": {
       "extractionState": "manual",
       "localizations": {
@@ -1274,6 +1285,28 @@
         }
       }
     },
+    "1 hour before": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 time før"
+          }
+        }
+      }
+    },
+    "1 likely tracking pixel": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 sannsynlig sporingspiksel"
+          }
+        }
+      }
+    },
     "1 message": {
       "extractionState": "manual",
       "localizations": {
@@ -1285,6 +1318,39 @@
         }
       }
     },
+    "1 minute before": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 minutt før"
+          }
+        }
+      }
+    },
+    "1 other remote asset": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 annen ekstern ressurs"
+          }
+        }
+      }
+    },
+    "1 remote asset": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 ekstern ressurs"
+          }
+        }
+      }
+    },
     "1 scheduled message remains in Outbox. Waiting mail is checked when Brev is next opened; messages needing review will not retry automatically.": {
       "extractionState": "manual",
       "localizations": {
@@ -1292,6 +1358,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Én planlagt melding ligger igjen i Utboks. Ventende e-post sjekkes neste gang Brev åpnes; meldinger som trenger gjennomgang prøves ikke på nytt automatisk."
+          }
+        }
+      }
+    },
+    "1 time": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "1 gang"
           }
         }
       }

@@ -83,17 +83,25 @@ enum MessageRemoteContentPrivacyPresentation {
         let blockedSummary: String
         if report.hasLikelyTrackers {
             let trackerCount = report.likelyTrackerCount
-            let trackerText = String(localized: "\(trackerCount) likely tracking pixels", bundle: .module)
+            // Singular and plural are separate keys chosen here: SwiftPM test
+            // builds on older toolchains do not resolve catalog plural variations.
+            let trackerText = trackerCount == 1
+                ? String(localized: "1 likely tracking pixel", bundle: .module)
+                : String(localized: "\(trackerCount) likely tracking pixels", bundle: .module)
             let otherAssetCount = report.assetCount - report.likelyTrackerCount
             if otherAssetCount > 0 {
-                let otherAssetText = String(localized: "\(otherAssetCount) other remote assets", bundle: .module)
+                let otherAssetText = otherAssetCount == 1
+                    ? String(localized: "1 other remote asset", bundle: .module)
+                    : String(localized: "\(otherAssetCount) other remote assets", bundle: .module)
                 blockedSummary = String(localized: "Brev blocked \(trackerText) and \(otherAssetText).", bundle: .module)
             } else {
                 blockedSummary = String(localized: "Brev blocked \(trackerText).", bundle: .module)
             }
         } else {
             let assetCount = report.assetCount
-            let assetText = String(localized: "\(assetCount) remote assets", bundle: .module)
+            let assetText = assetCount == 1
+                ? String(localized: "1 remote asset", bundle: .module)
+                : String(localized: "\(assetCount) remote assets", bundle: .module)
             blockedSummary = String(localized: "Brev blocked \(assetText).", bundle: .module)
         }
 
@@ -114,7 +122,9 @@ enum MessageRemoteContentPrivacyPresentation {
         }
         let leading = hosts.prefix(3).joined(separator: ", ")
         let remaining = hosts.count - 3
-        return String(localized: "\(leading), and \(remaining) more hosts", bundle: .module)
+        return remaining == 1
+            ? String(localized: "\(leading), and 1 more host", bundle: .module)
+            : String(localized: "\(leading), and \(remaining) more hosts", bundle: .module)
     }
 
     private static func list(_ values: [String]) -> String {
