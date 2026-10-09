@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.
+
 ### Changed
 
 - iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
@@ -11,6 +15,7 @@ All notable changes to Brev are documented here.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+- Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
 ### Added
 
 - iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
@@ -33,6 +38,8 @@ All notable changes to Brev are documented here.
 - Reply attribution lines are localized and use your local time ("Den 9. okt. 2026 kl. 10:13 skrev …:") instead of English text in UTC. Signature placement still recognises English lines in older drafts.
 - iOS recipient chips read as one VoiceOver element with Remove as an action instead of two stops.
 - iOS compose no longer logs "Modifying state during view update" while the body editor is created or its text is replaced.
+
+- The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 
 ## [0.2.6] - 2026-10-09
 

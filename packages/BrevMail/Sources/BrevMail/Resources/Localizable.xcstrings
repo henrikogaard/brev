@@ -308,13 +308,43 @@
         }
       }
     },
-    "%lld attachment%@": {
+    "%lld attachments": {
       "extractionState": "manual",
       "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld attachment"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld attachments"
+                }
+              }
+            }
+          }
+        },
         "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vedlegg"
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vedlegg"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vedlegg"
+                }
+              }
+            }
           }
         }
       }
@@ -3186,6 +3216,17 @@
         }
       }
     },
+    "Clear Selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern markering"
+          }
+        }
+      }
+    },
     "Clear search": {
       "extractionState": "manual",
       "localizations": {
@@ -3248,6 +3289,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skjul smartvisninger"
+          }
+        }
+      }
+    },
+    "Collapse message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul melding"
           }
         }
       }
@@ -4689,6 +4741,17 @@
         }
       }
     },
+    "Delete Selected Messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett valgte meldinger"
+          }
+        }
+      }
+    },
     "Delete Smart View": {
       "extractionState": "manual",
       "localizations": {
@@ -4795,6 +4858,72 @@
           "stringUnit": {
             "state": "translated",
             "value": "Leverer"
+          }
+        }
+      }
+    },
+    "Down One Page": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Én side ned"
+          }
+        }
+      }
+    },
+    "Expand message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid melding"
+          }
+        }
+      }
+    },
+    "First Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Første melding"
+          }
+        }
+      }
+    },
+    "Last Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siste melding"
+          }
+        }
+      }
+    },
+    "Message List": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingsliste"
+          }
+        }
+      }
+    },
+    "Up One Page": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Én side opp"
           }
         }
       }
