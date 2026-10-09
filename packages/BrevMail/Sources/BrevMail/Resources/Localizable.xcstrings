@@ -100,6 +100,47 @@
         }
       }
     },
+    "%lld attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld attachment"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld attachments"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vedlegg"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld vedlegg"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld Filters": {
       "extractionState": "manual",
       "localizations": {
@@ -107,17 +148,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "%lld filtre"
-          }
-        }
-      }
-    },
-    "%lld attachment%@": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "%lld vedlegg"
           }
         }
       }
@@ -2355,6 +2385,17 @@
         }
       }
     },
+    "Clear Selection": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern markering"
+          }
+        }
+      }
+    },
     "Close": {
       "extractionState": "manual",
       "localizations": {
@@ -2395,6 +2436,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Lukk alle"
+          }
+        }
+      }
+    },
+    "Collapse message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjul melding"
           }
         }
       }
@@ -3762,6 +3814,17 @@
         }
       }
     },
+    "Delete Selected Messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett valgte meldinger"
+          }
+        }
+      }
+    },
     "Delete Smart View": {
       "extractionState": "manual",
       "localizations": {
@@ -3945,6 +4008,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Dobbelttrykk for å %@ denne delen"
+          }
+        }
+      }
+    },
+    "Down One Page": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Én side ned"
           }
         }
       }
@@ -4475,6 +4549,17 @@
         }
       }
     },
+    "Expand message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid melding"
+          }
+        }
+      }
+    },
     "Expand Smart Views": {
       "extractionState": "manual",
       "localizations": {
@@ -4723,6 +4808,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fullfører gjeldende handling …"
+          }
+        }
+      }
+    },
+    "First Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Første melding"
           }
         }
       }
@@ -5704,6 +5800,17 @@
         }
       }
     },
+    "Last Message": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Siste melding"
+          }
+        }
+      }
+    },
     "Last name": {
       "extractionState": "manual",
       "localizations": {
@@ -6294,6 +6401,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meldingshandlinger"
+          }
+        }
+      }
+    },
+    "Message List": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldingsliste"
           }
         }
       }
@@ -11220,6 +11338,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Skriv %@ for å bekrefte."
+          }
+        }
+      }
+    },
+    "Up One Page": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Én side opp"
           }
         }
       }

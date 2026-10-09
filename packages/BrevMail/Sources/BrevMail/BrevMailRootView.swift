@@ -2683,6 +2683,7 @@ public struct BrevMailRootView: View {
                             Image(systemName: "ellipsis.circle")
                         }
                         .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+                        .help(String(localized: "More message actions", bundle: .module))
                     }
                 }
             } else {
@@ -2801,6 +2802,7 @@ public struct BrevMailRootView: View {
                     Image(systemName: "ellipsis.circle")
                 }
                 .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+                .help(String(localized: "More message actions", bundle: .module))
             }
         }
         #endif
