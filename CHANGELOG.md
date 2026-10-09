@@ -15,6 +15,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
 

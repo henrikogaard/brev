@@ -25,7 +25,9 @@ env:
 
 jobs:
   stable:
-    runs-on: macos-15
+    # macOS 26 SDK: older SDKs ship the app in compatibility mode without
+    # the current system design (ADR-0080). release-artifact-verify.sh enforces it.
+    runs-on: macos-26
     timeout-minutes: 60
     environment: release-signing
     steps:

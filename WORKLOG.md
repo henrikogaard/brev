@@ -5415,3 +5415,11 @@ buttons, and package-aware localization.
 - Changes: the iOS add-account sheet now applies `.brevRootAppearance(session:)` (same cause as the PIM covers in #187); the login-screen setup sheet does the same on iOS. On iOS, Add moved to the navigation bar and is hidden while OAuth sign-in is the primary path; the bottom button stack is gone, status stays pinned, and Test connection shows only next to editable manual server fields (`IMAPAccountSetupPresentation.showsToolbarAddAction` / `showsInlineTestConnection`). Provider shortcuts use `BrevButton` secondary; scroll padding moved inside the scroll view so content scrolls under the nav bar. macOS layout unchanged.
 - Verification: see the PR description (BrevMail presentation tests, lint, format, iOS 27 simulator dark-mode `nb` screenshots in `docs/qa/ios-account-setup-2026-10-09/`).
 - Handoff: no snapshot added; the sheet has no iOS snapshot pattern (existing LoginView snapshots are macOS-only).
+
+## 2026-10-09 — Claude Code — Release builds use the macOS 26 SDK
+
+- Goal: Henrik's installed Brev.app has no glass circles behind toolbar buttons, unlike local test builds.
+- Cause: `/Applications/Brev.app` 0.2.5 has `DTSDKName` macosx15.5 / Xcode 16.4 because `release.yml` and `nightly.yml` ran on `macos-15`. macOS 26+ runs older-SDK apps in compatibility mode without the current design. Local test builds (Xcode 27, macosx27.0) show it. Not a macOS version or user setting.
+- Change: `release.yml` and `nightly.yml` run on `macos-26` (runner-diagnostics 2026-10-07 showed it starts in `release-signing` with Xcode 26.6). `scripts/release-artifact-verify.sh` fails a DMG whose app SDK is older than macosx26; `scripts/test-release-dmg.sh` covers the new defect. ADR-0080 amended. `build.yml` unchanged (still macos-15).
+- Verification: `scripts/test-release-dmg.sh` failed on the new old-SDK case before the guard and passes after; actionlint clean on both workflows.
+- Not verified: no Xcode 26.6 locally (only 27.0), so the first compile with the release toolchain is the next nightly after merge. Cut 0.2.6 only after that nightly is green.
