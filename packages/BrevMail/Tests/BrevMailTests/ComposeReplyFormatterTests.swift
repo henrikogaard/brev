@@ -136,22 +136,39 @@ struct ComposeReplyFormatterTests {
         defaults.removePersistentDomain(forName: suiteName)
     }
 
-    @Test("attribution line is localized and uses the reader's local time")
-    func attributionIsLocalizedAndLocalTime() {
+    @Test("attribution line shows the reader's local date and time")
+    func attributionUsesLocalDateAndTime() {
         let header = Self.makeHeader()
+        let oslo = TimeZone(identifier: "Europe/Oslo")!
+
+        let english = ComposeReplyFormatter.quoteMarker(for: header, locale: Self.english, timeZone: oslo)
+        #expect(english == "On 28 May 2026 at 11:30, Alex Chen <alex@example.org> wrote:")
+
+        // Date and time formatting is code, not catalog: it follows the locale
+        // and zone whether or not a compiled catalog supplies the wording.
         let norwegian = ComposeReplyFormatter.quoteMarker(
             for: header,
             locale: Locale(identifier: "nb"),
-            timeZone: TimeZone(identifier: "Europe/Oslo")!
+            timeZone: oslo
         )
-        #expect(norwegian == "Den 28. mai 2026 kl. 11:30 skrev Alex Chen <alex@example.org>:")
+        #expect(norwegian.contains("28. mai 2026"))
+        #expect(norwegian.contains("11:30"))
+        #expect(norwegian.contains("Alex Chen <alex@example.org>"))
 
-        let english = ComposeReplyFormatter.quoteMarker(
-            for: header,
-            locale: Self.english,
-            timeZone: TimeZone(identifier: "Europe/Oslo")!
-        )
-        #expect(english == "On 28 May 2026 at 11:30, Alex Chen <alex@example.org> wrote:")
+        let utc = ComposeReplyFormatter.quoteMarker(for: header, locale: Self.english, timeZone: Self.utc)
+        #expect(utc.contains("9:30"))
+    }
+
+    @Test("the catalog carries the Norwegian attribution wording")
+    func catalogHasNorwegianAttribution() throws {
+        // Read the catalog source instead of resolving at runtime: `swift test`
+        // on some runners copies the .xcstrings without compiling it.
+        let strings = try Self.loadCatalogStrings()
+        let entry = try #require(strings["On %@ at %@, %@ wrote:"] as? [String: Any])
+        let localizations = try #require(entry["localizations"] as? [String: Any])
+        let nb = try #require(localizations["nb"] as? [String: Any])
+        let unit = try #require(nb["stringUnit"] as? [String: Any])
+        #expect(unit["value"] as? String == "Den %1$@ kl. %2$@ skrev %3$@:")
     }
 
     @Test("the quote marker is the first line of the reply body in every language")
@@ -199,6 +216,25 @@ struct ComposeReplyFormatterTests {
         ))
         #expect(!ComposeReplyFormatter.isAttributionLine("On my way, see you soon"))
         #expect(!ComposeReplyFormatter.isAttributionLine("Den lange veien hjem"))
+    }
+
+    private enum CatalogError: Error {
+        case notFound
+    }
+
+    private static func loadCatalogStrings() throws -> [String: Any] {
+        let relativePath = "packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings"
+        var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
+        for _ in 0 ..< 7 {
+            let candidate = directory.appendingPathComponent(relativePath)
+            if FileManager.default.fileExists(atPath: candidate.path) {
+                let data = try Data(contentsOf: candidate)
+                let root = try #require(try JSONSerialization.jsonObject(with: data) as? [String: Any])
+                return try #require(root["strings"] as? [String: Any])
+            }
+            directory.deleteLastPathComponent()
+        }
+        throw CatalogError.notFound
     }
 
     private static let english = Locale(identifier: "en_GB")
