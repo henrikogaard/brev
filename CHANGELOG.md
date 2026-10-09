@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Mac reader attachments behave like Apple Mail: drag a row to Finder, a compose window or another app to copy the file with its original name, double-click a row to open it in its default app, and see the filename and size when you hover. Messages with two or more attachments get a "Save All…" button that saves them into a folder you choose without overwriting existing files.
+
 ### Fixed
 
 - Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
