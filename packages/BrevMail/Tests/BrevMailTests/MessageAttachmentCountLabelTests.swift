@@ -19,11 +19,21 @@ struct MessageAttachmentCountLabelTests {
     /// The compiled `<language>.lproj` of the module bundle, so each
     /// translation resolves regardless of the test process's own language.
     private static func languageBundle(_ language: String) throws -> Bundle {
-        let path = try #require(Bundle.module.path(forResource: language, ofType: "lproj"))
-        return try #require(Bundle(path: path))
+        try #require(LocalizationCatalogTestSupport.compiledLanguageBundle(language))
     }
 
-    @Test("English uses the singular for one attachment and the plural otherwise")
+    @Test("the catalog carries English and Norwegian plural forms")
+    func catalogPluralForms() throws {
+        let english = try LocalizationCatalogTestSupport.pluralForms(key: "%lld attachments", language: "en")
+        #expect(english == ["one": "%lld attachment", "other": "%lld attachments"])
+        let norwegian = try LocalizationCatalogTestSupport.pluralForms(key: "%lld attachments", language: "nb")
+        #expect(norwegian == ["one": "%lld vedlegg", "other": "%lld vedlegg"])
+    }
+
+    @Test(
+        "English uses the singular for one attachment and the plural otherwise",
+        .enabled(if: LocalizationCatalogTestSupport.hasCompiledCatalogs)
+    )
     func englishPlurals() throws {
         let bundle = try Self.languageBundle("en")
         #expect(MessageAttachmentCountLabel.title(count: 1, bundle: bundle) == "1 attachment")
@@ -31,7 +41,10 @@ struct MessageAttachmentCountLabelTests {
         #expect(MessageAttachmentCountLabel.title(count: 0, bundle: bundle) == "0 attachments")
     }
 
-    @Test("Norwegian resolves the same count through its own catalog entry")
+    @Test(
+        "Norwegian resolves the same count through its own catalog entry",
+        .enabled(if: LocalizationCatalogTestSupport.hasCompiledCatalogs)
+    )
     func norwegianPlurals() throws {
         let bundle = try Self.languageBundle("nb")
         #expect(MessageAttachmentCountLabel.title(count: 1, bundle: bundle) == "1 vedlegg")
