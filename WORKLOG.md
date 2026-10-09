@@ -5429,3 +5429,11 @@ buttons, and package-aware localization.
 - Changes: bumped marketing version 0.2.5 → 0.2.6 in BrevConstants and both project files; moved Unreleased entries under 0.2.6. Tag `v0.2.6` follows a green Build on this commit.
 - iOS: TestFlight 0.2.6 (9) is archived from this commit with explicit MARKETING_VERSION/CURRENT_PROJECT_VERSION overrides and provider settings injected through a private temporary xcconfig (values never logged); build 8 (0.2.5) was uploaded outside this session.
 - Skipped: physical-device cold launch (maintainer QA after TestFlight processing).
+
+## 2026-10-09 — Claude Code — Release builds use the macOS 26 SDK
+
+- Goal: Henrik's installed Brev.app has no glass circles behind toolbar buttons, unlike local test builds.
+- Cause: `/Applications/Brev.app` 0.2.5 has `DTSDKName` macosx15.5 / Xcode 16.4 because `release.yml` and `nightly.yml` ran on `macos-15`. macOS 26+ runs older-SDK apps in compatibility mode without the current design. Local test builds (Xcode 27, macosx27.0) show it. Not a macOS version or user setting.
+- Change: `release.yml` and `nightly.yml` run on `macos-26` (runner-diagnostics 2026-10-07 showed it starts in `release-signing` with Xcode 26.6). `scripts/release-artifact-verify.sh` fails a DMG whose app SDK is older than macosx26; `scripts/test-release-dmg.sh` covers the new defect. ADR-0080 amended. `build.yml` unchanged (still macos-15).
+- Verification: `scripts/test-release-dmg.sh` failed on the new old-SDK case before the guard and passes after; actionlint clean on both workflows.
+- Not verified: no Xcode 26.6 locally (only 27.0), so the first compile with the release toolchain is the next nightly after merge. Cut 0.2.6 only after that nightly is green.

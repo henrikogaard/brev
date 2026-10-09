@@ -103,7 +103,11 @@ hdiutil attach "$DMG_PATH" -readonly -nobrowse -mountpoint "$MOUNT_DIR" >/dev/nu
 python3 - "$MOUNT_DIR" <<'PY'
 import os
 import pathlib
+import plistlib
+import re
 import sys
+
+MIN_SDK_MAJOR = 26
 
 root = pathlib.Path(sys.argv[1])
 visible = {item.name for item in root.iterdir() if not item.name.startswith(".")}
@@ -117,6 +121,15 @@ link = root / "Applications"
 if not link.is_symlink() or os.readlink(link) != "/Applications":
     sys.exit("DMG must contain an Applications symlink pointing to /Applications")
 print("    OK: app bundle and Applications shortcut; no export logs/plists")
+
+# Apps linked against an SDK older than macOS 26 run in compatibility mode on
+# macOS 26+ and lose the system design, e.g. toolbar item glass (ADR-0080).
+with open(app / "Contents/Info.plist", "rb") as handle:
+    sdk = plistlib.load(handle).get("DTSDKName", "")
+match = re.fullmatch(r"macosx(\d+)(?:\.\d+)*", sdk)
+if not match or int(match.group(1)) < MIN_SDK_MAJOR:
+    sys.exit(f"App was built with the {sdk or 'unknown'} SDK; release builds need macosx{MIN_SDK_MAJOR} or newer")
+print(f"    OK: built with the {sdk} SDK")
 PY
 hdiutil detach "$MOUNT_DIR" >/dev/null
 rmdir "$MOUNT_DIR"
