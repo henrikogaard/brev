@@ -5446,6 +5446,30 @@ buttons, and package-aware localization.
 - Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
 - Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
 
+## 2026-10-09 — Claude Code — 0.2.6 release point moved past #211/#212
+
+- `chore(release): cut 0.2.6` (78f33e29) was never tagged: its push-event Build runs were cancelled repeatedly by later pushes to main (build.yml `cancel-in-progress`), and #211 landed after it, moving signed releases to the macOS 26 SDK. Tagging 78f33e29 would have released with the pre-#211 workflow and the old SDK.
+- This commit folds the #211/#212 Unreleased entries into 0.2.6. The PR-event Build on this exact commit satisfies release.yml's "green Build on the tag SHA" gate without racing main pushes; main is then fast-forwarded to it and `v0.2.6` tagged here.
+- iOS TestFlight 0.2.6 (9) was archived from 78f33e29; #211/#212 are release-infra and macOS-only, so the iOS content matches.
+- Caveat from #211: the macos-26 release toolchain had not compiled in CI before this release; a toolchain failure fails the Release run closed (no GitHub Release or appcast item).
+
+## 2026-10-09 — Claude Code — blank reader HTML body after launch (no code change)
+
+- Goal: fix the macOS reader's HTML body rendering blank right after launch (mock build, "Stavanger rollout" thread; reported 1/5 with System font, 2/5 with serif, 5/6 with `brevFontSection(.reader)`).
+- Finding: not a Brev bug. WebKit's unified-log activity state for the reported runs (12:48–13:02) shows the body page never had `IsVisible` in all 9 blank launches (state 184 → 56: in window, occluded, visually idle). WebKit then suspended the page's WebContent process (`freezeLayerTree` reason 4) and dropped its layers. cua-driver still captures the occluded window, so the SwiftUI chrome looks normal and the web body is an empty box. Every launch where the window was visible rendered.
+- Repro: `open -j` (launch hidden) gives a blank body 5/5 on clean `origin/main`; bringing the same window forward renders it within 4 s 5/5. Visible launches rendered 0 blank out of ~95 across `origin/main`, `faafd40e` (0.2.5), serif/System fonts, a CPU-saturated host, background launch, AX-tree capture, and a local repro build with `brevFontSection(.reader)` on the reader pane.
+- Consequence: the 2026-10-09 #207 entry's "pre-existing blank reader body" and the 5/6 rate with `brevFontSection(.reader)` came from occluded-window captures. Dropping the reader environment font for that reason was not necessary.
+- Verification tip: before trusting a screenshot of a Brev web body, make sure the window was visible on screen during load (not hidden, covered, or on an idle display).
+- Verification: no code changed, so no tests run.
+
+## 2026-10-09 — Claude Code — reader pane sets its font section (ADR-0086)
+
+- Goal: put `brevFontSection(.reader)` back on the reader, now that the blank-body "regression" that kept it out turned out to be an occluded-window capture artifact (see #214).
+- Changes: `.brevFontSection(.reader)` on the macOS/iPad reader pane root and the iOS compact reader root in `BrevMailRootView` (inside the toolbar modifiers, like sidebar and list), and on the detached reader window root. ADR-0086 decision 4 updated; CHANGELOG entry under Unreleased.
+- Verification: swiftformat/swiftlint clean on the touched files; macOS mock test build installs; BrevIOS builds for the iOS Simulator. Visible launch with `-font.reader serif`: reader title, metadata and thread cards are serif, list and sidebar stay System, body renders.
+- Blank-body count: 10 of 10 visible launches rendered (`-font.reader serif`, mock build from the branch merged with main, screen unlocked). An earlier run with the screen locked showed 9 of 10 blank because no launch became visible (WebKit activity state 184 → 56), the known hidden-window artifact.
+- No snapshot test: the change is pane-root wiring in `BrevMailRootView`, which has no snapshot coverage; `brevFont` itself already reads the environment.
+
 ## 2026-10-09 — Claude Code — macOS reader attachment drag-out, Save All, double-click open
 
 - Goal: Apple Mail parity for reader attachment rows on macOS. Branch `feature/macos-attachment-drag-save-all`, target `main`.
