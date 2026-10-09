@@ -19,8 +19,15 @@ struct MessageBulkSelectionPresentationTests {
     /// The compiled `<language>.lproj` of the module bundle, so each
     /// translation resolves regardless of the test process's own language.
     private static func languageBundle(_ language: String) throws -> Bundle {
-        let path = try #require(Bundle.module.path(forResource: language, ofType: "lproj"))
-        return try #require(Bundle(path: path))
+        try #require(LocalizationCatalogTestSupport.compiledLanguageBundle(language))
+    }
+
+    @Test("the catalog carries English and Norwegian plural headings")
+    func catalogPluralForms() throws {
+        let english = try LocalizationCatalogTestSupport.pluralForms(key: "%lld messages selected", language: "en")
+        #expect(english == ["one": "%lld message selected", "other": "%lld messages selected"])
+        let norwegian = try LocalizationCatalogTestSupport.pluralForms(key: "%lld messages selected", language: "nb")
+        #expect(norwegian == ["one": "%lld melding valgt", "other": "%lld meldinger valgt"])
     }
 
     @Test("the pane replaces the reader from two checked messages")
@@ -31,14 +38,14 @@ struct MessageBulkSelectionPresentationTests {
         #expect(MessageBulkSelectionPresentation.showsPane(forSelectionCount: 40))
     }
 
-    @Test("English heading follows plural rules")
+    @Test("English heading follows plural rules", .enabled(if: LocalizationCatalogTestSupport.hasCompiledCatalogs))
     func englishHeading() throws {
         let bundle = try Self.languageBundle("en")
         #expect(MessageBulkSelectionPresentation.title(count: 1, bundle: bundle) == "1 message selected")
         #expect(MessageBulkSelectionPresentation.title(count: 3, bundle: bundle) == "3 messages selected")
     }
 
-    @Test("Norwegian heading follows plural rules")
+    @Test("Norwegian heading follows plural rules", .enabled(if: LocalizationCatalogTestSupport.hasCompiledCatalogs))
     func norwegianHeading() throws {
         let bundle = try Self.languageBundle("nb")
         #expect(MessageBulkSelectionPresentation.title(count: 1, bundle: bundle) == "1 melding valgt")
