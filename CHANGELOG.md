@@ -19,8 +19,6 @@ All notable changes to Brev are documented here.
 - Reply attribution lines are localized and use your local time ("Den 9. okt. 2026 kl. 10:13 skrev …:") instead of English text in UTC. Signature placement still recognises English lines in older drafts.
 - iOS recipient chips read as one VoiceOver element with Remove as an action instead of two stops.
 - iOS compose no longer logs "Modifying state during view update" while the body editor is created or its text is replaced.
-- Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
-- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 
 ## [0.2.6] - 2026-10-09
 
