@@ -65,13 +65,13 @@ struct MessageRemoteContentPrivacyCopy: Equatable, Sendable {
 }
 
 enum MessageRemoteContentPrivacyPresentation {
-    static let downloadImagesActionTitle = "Download images"
+    static var downloadImagesActionTitle: String { String(localized: "Download images", bundle: .module) }
 
     static func resolve(_ state: MessageRemoteContentRenderState) -> MessageRemoteContentPrivacyCopy {
         let report = state.report
         let title = report.hasLikelyTrackers
-            ? "Tracking pixels blocked"
-            : "Remote content blocked"
+            ? String(localized: "Tracking pixels blocked", bundle: .module)
+            : String(localized: "Remote content blocked", bundle: .module)
         return MessageRemoteContentPrivacyCopy(
             title: title,
             explanation: explanation(for: report),
@@ -82,55 +82,61 @@ enum MessageRemoteContentPrivacyPresentation {
     private static func explanation(for report: MessageRemoteContentAssetReport) -> String {
         let blockedSummary: String
         if report.hasLikelyTrackers {
-            let trackerText = pluralized(
-                count: report.likelyTrackerCount,
-                singular: "likely tracking pixel",
-                plural: "likely tracking pixels"
-            )
+            let trackerCount = report.likelyTrackerCount
+            // Singular and plural are separate keys chosen here: SwiftPM test
+            // builds on older toolchains do not resolve catalog plural variations.
+            let trackerText = trackerCount == 1
+                ? String(localized: "1 likely tracking pixel", bundle: .module)
+                : String(localized: "\(trackerCount) likely tracking pixels", bundle: .module)
             let otherAssetCount = report.assetCount - report.likelyTrackerCount
             if otherAssetCount > 0 {
-                let otherAssetText = pluralized(
-                    count: otherAssetCount,
-                    singular: "other remote asset",
-                    plural: "other remote assets"
-                )
-                blockedSummary = "Brev blocked \(trackerText) and \(otherAssetText)."
+                let otherAssetText = otherAssetCount == 1
+                    ? String(localized: "1 other remote asset", bundle: .module)
+                    : String(localized: "\(otherAssetCount) other remote assets", bundle: .module)
+                blockedSummary = String(localized: "Brev blocked \(trackerText) and \(otherAssetText).", bundle: .module)
             } else {
-                blockedSummary = "Brev blocked \(trackerText)."
+                blockedSummary = String(localized: "Brev blocked \(trackerText).", bundle: .module)
             }
         } else {
-            let assetText = pluralized(
-                count: report.assetCount,
-                singular: "remote asset",
-                plural: "remote assets"
-            )
-            blockedSummary = "Brev blocked \(assetText)."
+            let assetCount = report.assetCount
+            let assetText = assetCount == 1
+                ? String(localized: "1 remote asset", bundle: .module)
+                : String(localized: "\(assetCount) remote assets", bundle: .module)
+            blockedSummary = String(localized: "Brev blocked \(assetText).", bundle: .module)
         }
 
         let hosts = hostSummary(report.hosts)
-        return "\(blockedSummary) Loading remote content would contact \(hosts), which can reveal your IP address and when you opened this message."
-    }
-
-    private static func pluralized(count: Int, singular: String, plural: String) -> String {
-        "\(count) \(count == 1 ? singular : plural)"
+        return String(
+            localized: "\(blockedSummary) Loading remote content would contact \(hosts), which can reveal your IP address and when you opened this message.",
+            bundle: .module
+        )
     }
 
     private static func hostSummary(_ hosts: [String]) -> String {
-        guard !hosts.isEmpty else { return "the remote hosts" }
+        guard !hosts.isEmpty else { return String(localized: "the remote hosts", bundle: .module) }
         if hosts.count == 1 {
             return hosts[0]
         }
         if hosts.count <= 3 {
             return list(hosts)
         }
-        return "\(hosts.prefix(3).joined(separator: ", ")), and \(hosts.count - 3) more host\(hosts.count - 3 == 1 ? "" : "s")"
+        let leading = hosts.prefix(3).joined(separator: ", ")
+        let remaining = hosts.count - 3
+        return remaining == 1
+            ? String(localized: "\(leading), and 1 more host", bundle: .module)
+            : String(localized: "\(leading), and \(remaining) more hosts", bundle: .module)
     }
 
     private static func list(_ values: [String]) -> String {
         guard let last = values.last else { return "" }
         let leading = values.dropLast()
         if leading.isEmpty { return last }
-        if leading.count == 1 { return "\(leading[leading.startIndex]) and \(last)" }
-        return "\(leading.joined(separator: ", ")), and \(last)"
+        let first = leading[leading.startIndex]
+        if leading.count == 1 {
+            return String(localized: "\(first) and \(last)", bundle: .module)
+        }
+        // Callers pass at most three hosts, so the list here is exactly three.
+        let second = leading[leading.index(after: leading.startIndex)]
+        return String(localized: "\(first), \(second), and \(last)", bundle: .module)
     }
 }

@@ -12441,7 +12441,7 @@
       },
       "extractionState": "manual"
     },
-    "Rules & Organisation": {
+    "Rules & Organization": {
       "localizations": {
         "nb": {
           "stringUnit": {
@@ -12898,6 +12898,336 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fargen din lagres uendret. Kontroller justeres for kontrast ved behov."
+          }
+        }
+      }
+    },
+    "Account type": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontotype"
+          }
+        }
+      }
+    },
+    "Allow Notifications": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillat varsler"
+          }
+        }
+      }
+    },
+    "App icon badge": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merke på appikon"
+          }
+        }
+      }
+    },
+    "Brev alerts you while it is open or refreshing in the background. iOS decides when background refresh runs, so alerts can arrive late when Brev is closed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev varsler deg mens appen er åpen eller oppdaterer i bakgrunnen. iOS bestemmer når bakgrunnsoppdatering kjører, så varsler kan komme sent når Brev er lukket."
+          }
+        }
+      }
+    },
+    "Brev forgets this restored account. You can add it again later.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev glemmer denne gjenopprettede kontoen. Du kan legge den til igjen senere."
+          }
+        }
+      }
+    },
+    "Brev opens the default mailbox first.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev åpner standardpostkassen først."
+          }
+        }
+      }
+    },
+    "Choose which alerts this account can produce.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvilke varsler denne kontoen kan gi."
+          }
+        }
+      }
+    },
+    "Choose which mailboxes appear in Mail. At least one stays on.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg hvilke postkasser som vises i Mail. Minst én må være på."
+          }
+        }
+      }
+    },
+    "Delete Smart View": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slett smartvisning"
+          }
+        }
+      }
+    },
+    "Delete this AI provider?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette denne AI-leverandøren?"
+          }
+        }
+      }
+    },
+    "Delete this Smart View?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette denne smartvisningen?"
+          }
+        }
+      }
+    },
+    "Edit %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Rediger %@"
+          }
+        }
+      }
+    },
+    "Hidden": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skjult"
+          }
+        }
+      }
+    },
+    "Make default account": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Sett som standardkonto"
+          }
+        }
+      }
+    },
+    "Match all or any of these conditions": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Samsvar med alle eller noen av disse vilkårene"
+          }
+        }
+      }
+    },
+    "Messages are not deleted. Only the saved search is removed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Meldinger slettes ikke. Bare det lagrede søket fjernes."
+          }
+        }
+      }
+    },
+    "Open Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne innstillinger"
+          }
+        }
+      }
+    },
+    "Opens the list of sync conflicts.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpner listen over synkroniseringskonflikter."
+          }
+        }
+      }
+    },
+    "Permission": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tillatelse"
+          }
+        }
+      }
+    },
+    "Remote content from this sender is blocked again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Eksternt innhold fra denne avsenderen blokkeres igjen."
+          }
+        }
+      }
+    },
+    "Remove restored account?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjerne gjenopprettet konto?"
+          }
+        }
+      }
+    },
+    "Remove this allowlist entry?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjerne denne tillatelseslisteoppføringen?"
+          }
+        }
+      }
+    },
+    "Show %@ in Mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis %@ i Mail"
+          }
+        }
+      }
+    },
+    "Show in Mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis i Mail"
+          }
+        }
+      }
+    },
+    "Sign out of %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logg ut av %@"
+          }
+        }
+      }
+    },
+    "Sign out of this account?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Logge ut av denne kontoen?"
+          }
+        }
+      }
+    },
+    "Size on disk for this account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Størrelse på disk for denne kontoen."
+          }
+        }
+      }
+    },
+    "Tap Edit, then drag the handles to reorder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Trykk Rediger, og dra i håndtakene for å endre rekkefølge."
+          }
+        }
+      }
+    },
+    "Turn on Allow Notifications for Brev in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slå på Tillat varsler for Brev i Innstillinger."
+          }
+        }
+      }
+    },
+    "You will need to sign in again to read this account's mail in Brev.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du må logge inn igjen for å lese e-posten til denne kontoen i Brev."
           }
         }
       }

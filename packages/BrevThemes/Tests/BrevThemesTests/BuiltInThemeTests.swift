@@ -41,6 +41,71 @@ struct BuiltInThemeTests {
         }
     }
 
+    @Test("built-in accent, warning and danger stay readable as text on primary and secondary surfaces",
+          arguments: BrevTheme.brevBuiltIns)
+    func builtInStatusTextContrast(theme: BrevTheme) {
+        for background in [theme.bgPrimary, theme.bgSecondary] {
+            for (role, foreground) in [
+                ("accent", theme.accent),
+                ("warning", theme.warning),
+                ("danger", theme.danger)
+            ] {
+                #expect(foreground.contrastRatio(against: background) >= 4.5,
+                        "\(theme.id) \(role): \(foreground.hex) on \(background.hex)")
+            }
+        }
+    }
+
+    @Test("built-in success and info glyph colors meet the 3:1 non-text contrast",
+          arguments: BrevTheme.brevBuiltIns)
+    func builtInStatusGlyphContrast(theme: BrevTheme) {
+        for background in [theme.bgPrimary, theme.bgSecondary] {
+            for (role, foreground) in [("success", theme.success), ("info", theme.info)] {
+                #expect(foreground.contrastRatio(against: background) >= 3,
+                        "\(theme.id) \(role): \(foreground.hex) on \(background.hex)")
+            }
+        }
+    }
+
+    @Test("control borders meet the 3:1 non-text contrast on every built-in theme",
+          arguments: BrevTheme.brevBuiltIns)
+    func builtInControlBorderContrast(theme: BrevTheme) {
+        for background in [theme.bgPrimary, theme.bgSecondary] {
+            #expect(theme.controlBorder.contrastRatio(against: background) >= 3,
+                    "\(theme.id): \(theme.controlBorder.hex) on \(background.hex)")
+        }
+    }
+
+    @Test("control border only strengthens a border that is below 3:1",
+          arguments: BrevTheme.brevBuiltIns)
+    func controlBorderOnlyStrengthensWhenNeeded(theme: BrevTheme) {
+        let borderPasses = [theme.bgPrimary, theme.bgSecondary]
+            .allSatisfy { theme.border.contrastRatio(against: $0) >= 3 }
+        if borderPasses {
+            #expect(theme.controlBorder == theme.border, "\(theme.id)")
+        } else {
+            #expect(theme.controlBorder != theme.border, "\(theme.id)")
+        }
+    }
+
+    @Test("accent text on its own tint reaches 4.5:1 on every built-in theme",
+          arguments: BrevTheme.brevBuiltIns)
+    func accentTextOnTintContrast(theme: BrevTheme) {
+        let opacity = 0.18
+        let text = theme.accentTextOnTint(opacity: opacity)
+        for surface in [theme.bgPrimary, theme.bgSecondary] {
+            let tinted = surface.blended(with: theme.accent, amount: opacity)
+            #expect(text.contrastRatio(against: tinted) >= 4.5,
+                    "\(theme.id): \(text.hex) on \(tinted.hex)")
+        }
+    }
+
+    @Test("accent text on tint keeps the accent when it is already readable")
+    func accentTextOnTintKeepsReadableAccent() {
+        let theme = BrevTheme.brevMonoLight
+        #expect(theme.accentTextOnTint(opacity: 0.18) == theme.accent)
+    }
+
     private static func contrast(_ first: BrevColor, _ second: BrevColor) -> Double {
         func luminance(_ color: BrevColor) -> Double {
             let rgb = UInt32(color.hex.dropFirst(), radix: 16)!

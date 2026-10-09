@@ -38,7 +38,7 @@ struct PreferenceSyncSection: View {
             ),
             symbolName: "icloud"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsToggleRow(
                     symbolName: "arrow.triangle.2.circlepath.icloud",
                     title: String(localized: "Sync preferences with iCloud", bundle: .module),

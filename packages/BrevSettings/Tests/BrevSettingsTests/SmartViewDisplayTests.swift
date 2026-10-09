@@ -40,4 +40,22 @@ struct SmartViewDisplayTests {
         #expect(settings.orderedEntries.first?.id == "builtin:vip")
         #expect(settings.orderedEntries.count == 6)
     }
+
+    @Test("dragging a row to a new position reorders entries, as List.onMove reports it")
+    func dragReorder() {
+        var settings = SmartMailboxSettings(mailboxes: [
+            .init(id: "custom", name: "Invoices", query: .init(text: "invoice"), isEnabled: true)
+        ])
+        let before = settings.orderedEntries.map(\.id)
+        // List.onMove reports the destination as an index in the original order.
+        settings.moveEntries(from: IndexSet(integer: 0), to: 3)
+        var expected = before
+        let moved = expected.remove(at: 0)
+        expected.insert(moved, at: 2)
+        #expect(settings.orderedEntries.map(\.id) == expected)
+
+        settings.moveEntries(from: IndexSet(integer: 4), to: 0)
+        #expect(settings.orderedEntries.first?.id == expected[4])
+        #expect(settings.orderedEntries.count == before.count)
+    }
 }

@@ -27,6 +27,14 @@ struct MailSummaryWidgetView: View {
     private var family: WidgetFamily { familyOverride ?? environmentFamily }
 
     var body: some View {
+        content
+            // iOS 17+/macOS 14+ render a "please adopt containerBackground"
+            // placeholder instead of the widget without this.
+            .containerBackground(.fill.tertiary, for: .widget)
+    }
+
+    @ViewBuilder
+    private var content: some View {
         switch family {
         case .systemMedium:
             mediumBody
@@ -109,6 +117,7 @@ struct MailSummaryWidgetView: View {
                     Text(preview.senderName)
                         .font(.subheadline.weight(.medium))
                         .lineLimit(1)
+                        .privacySensitive()
                     if showsAccount, let accountName = preview.accountName {
                         Text(accountName)
                             .font(.caption2)
@@ -124,6 +133,7 @@ struct MailSummaryWidgetView: View {
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
+                    .privacySensitive()
             }
         }
     }
@@ -137,4 +147,18 @@ struct MailSummaryWidgetView: View {
         return letters.map(String.init).joined().uppercased()
     }
 }
+
+#if DEBUG
+#Preview("Small", as: .systemSmall) {
+    MailSummaryWidget()
+} timeline: {
+    MailSummaryEntry(snapshot: WidgetSnapshot(
+        generatedAt: .now,
+        totalUnread: 7,
+        previews: [
+            WidgetMessagePreview(senderName: "Ina Nordmann", subject: "Re: Release checklist", receivedAt: .now)
+        ]
+    ))
+}
+#endif
 #endif
