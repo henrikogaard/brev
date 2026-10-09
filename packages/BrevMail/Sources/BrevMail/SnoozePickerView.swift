@@ -25,6 +25,7 @@ struct SnoozePickerView: View {
     @Environment(\.locale) private var locale
     #if os(iOS)
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 28
     #endif
 
     let header: MessageHeader
@@ -129,7 +130,6 @@ extension SnoozePickerView {
                                 .brevFont(.body)
                                 .foregroundStyle(theme.textPrimary.color)
                         }
-                        .frame(minHeight: 44)
                     }
                     .listRowBackground(theme.bgSecondary.color)
                     .listRowSeparatorTint(theme.separator.color)
@@ -163,11 +163,10 @@ extension SnoozePickerView {
     private func rowIcon(_ symbolName: String) -> some View {
         Image(systemName: symbolName)
             .foregroundStyle(theme.accent.color)
-            .frame(width: Self.iconWidth)
+            .frame(width: iconWidth)
             .accessibilityHidden(true)
     }
 
-    private static let iconWidth: CGFloat = 28
 
     private func quickRow(_ suggestion: SnoozeSuggestion) -> some View {
         let option = suggestion.option
@@ -188,9 +187,10 @@ extension SnoozePickerView {
                     Text(option.title)
                         .brevFont(.body)
                         .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
                     Spacer(minLength: BrevSpacing.sm)
                     Text(visual)
-                        .brevFont(.body)
+                        .brevFont(.subheadline)
                         .foregroundStyle(theme.textSecondary.color)
                 }
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
@@ -199,15 +199,16 @@ extension SnoozePickerView {
                         Text(option.title)
                             .brevFont(.body)
                             .foregroundStyle(theme.textPrimary.color)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
                     Text(visual)
-                        .brevFont(.body)
+                        .brevFont(.subheadline)
                         .foregroundStyle(theme.textSecondary.color)
-                        .padding(.leading, Self.iconWidth + BrevSpacing.md)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.leading, iconWidth + BrevSpacing.md)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .frame(minHeight: 44)
         }
         .listRowBackground(theme.bgSecondary.color)
         .listRowSeparatorTint(theme.separator.color)
@@ -239,7 +240,6 @@ extension SnoozePickerView {
                 )
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
-                .frame(minHeight: 44)
                 .listRowBackground(theme.bgSecondary.color)
             }
         }

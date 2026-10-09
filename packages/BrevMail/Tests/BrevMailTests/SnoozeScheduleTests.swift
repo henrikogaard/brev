@@ -95,7 +95,7 @@ struct SnoozeScheduleTests {
         #expect(!SnoozeSchedule.isValidCustomWake(Self.date(5, 9), now: now))
     }
 
-    @Test("Compact labels use a relative day, then weekday, then date")
+    @Test("Compact labels show the time alone for today and tomorrow, then weekday, then date")
     func compactLabels() {
         let now = Self.date(5, 10)
         func label(_ date: Date, _ locale: Locale = Self.en) -> String {
@@ -104,9 +104,9 @@ struct SnoozeScheduleTests {
             )
         }
 
-        #expect(label(Self.date(5, 18)).hasPrefix("Today"))
-        #expect(label(Self.date(5, 18)).contains("6:00"))
-        #expect(label(Self.date(6, 9)).hasPrefix("Tomorrow"))
+        #expect(!label(Self.date(5, 18)).contains("Today"))
+        #expect(label(Self.date(5, 18)).hasPrefix("6:00"))
+        #expect(label(Self.date(6, 9)).hasPrefix("9:00"))
         #expect(label(Self.date(10, 9)).hasPrefix("Sat"))
         #expect(!label(Self.date(10, 9)).contains("Oct"))
         #expect(label(Self.date(12, 9)).contains("Oct"))

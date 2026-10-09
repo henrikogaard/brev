@@ -87,15 +87,15 @@ enum SnoozeSchedule {
 
     /// How a wake time is worded next to a row.
     enum LabelStyle {
-        /// Short visual label such as "tomorrow 09:00" or "Mon 09:00".
+        /// Short visual label such as "09:00" or "Mon 09:00".
         case compact
         /// VoiceOver wording that spells the weekday out, such as "Friday 09:00".
         case spoken
     }
 
-    /// Locale-aware label for a wake time: a relative day for today and
-    /// tomorrow (compact only), a weekday within the next week and a date
-    /// beyond that, followed by the time.
+    /// Locale-aware label for a wake time: a weekday within the next week and
+    /// a date beyond that, followed by the time. The compact style shows only
+    /// the time for today and tomorrow, because the option titles name the day.
     static func label(
         for date: Date,
         now: Date,
@@ -119,10 +119,12 @@ enum SnoozeSchedule {
 
         let day: String
         switch (style, dayDistance) {
-        case (.compact, 0), (.spoken, 0):
+        case (.compact, 0 ... 1):
+            // The row titles already say "today" or "tomorrow"; repeating it
+            // wraps the row on narrow phones.
+            return time
+        case (.spoken, 0):
             day = String(localized: "Today", bundle: .module, locale: locale)
-        case (.compact, 1):
-            day = String(localized: "Tomorrow", bundle: .module, locale: locale)
         case (.compact, 2 ... 6):
             day = date.formatted(base.weekday(.abbreviated))
         case (.spoken, 1 ... 6):
