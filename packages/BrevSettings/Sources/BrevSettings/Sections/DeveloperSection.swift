@@ -34,7 +34,7 @@ struct DeveloperSection: View {
                 subtitle: String(localized: "Debug-build controls for local development.", bundle: .module),
                 symbolName: "hammer"
             ) {
-                VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                SettingsRowStack(spacing: BrevSpacing.md) {
                     SettingsToggleRow(
                         symbolName: "shippingbox",
                         title: String(localized: "Demo mailbox mode", bundle: .module),

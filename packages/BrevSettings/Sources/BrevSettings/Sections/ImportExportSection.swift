@@ -153,8 +153,10 @@ struct ImportExportSection: View {
             title: String(localized: "Import / Export", bundle: .module),
             subtitle: String(localized: "Import mail into a mailbox or save a folder to files.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
+                #if os(macOS)
                 importGroup
+                #endif
                 exportGroup
                 backupGroup
                 privacyNote
@@ -297,7 +299,7 @@ struct ImportExportSection: View {
             subtitle: String(localized: "Import MBOX archives or Maildir folders into Brev.", bundle: .module),
             symbolName: "tray.and.arrow.down"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 destinationPicker
 
                 HStack(spacing: BrevSpacing.sm) {
@@ -410,7 +412,7 @@ struct ImportExportSection: View {
             ),
             symbolName: "tray.and.arrow.up"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if exportMailboxes.count > 1 {
                     Picker(String(localized: "Mailbox", bundle: .module), selection: $exportMailboxID) {
                         ForEach(exportMailboxes) { mailbox in
@@ -475,7 +477,7 @@ struct ImportExportSection: View {
             ),
             symbolName: "archivebox"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 HStack(spacing: BrevSpacing.sm) {
                     Button(String(localized: "Back up settings and accounts…", bundle: .module)) {
                         startBackupExport()

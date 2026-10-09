@@ -281,27 +281,18 @@ public struct SettingsView: View {
                 if !normalizedSearchText.isEmpty {
                     ForEach(searchResults) { result in
                         NavigationLink {
-                            scopedDetail(for: result.section)
+                            compactPane(for: result.section)
                                 .environment(\.settingsSearchTarget, result.target)
-                                .navigationTitle(result.section.title)
-                                .onAppear { navigation.select(result.section) }
-                            #if os(iOS)
-                                .toolbar { settingsDismissToolbar }
-                            #endif
                         } label: {
                             VStack(alignment: .leading) {
                                 Text(result.title)
                                 Text(result.section.category.title + " › " + result.section.title).brevFont(.footnote)
                             }
                         }
+                        .listRowBackground(theme.bgPrimary.color)
                     }
                 } else {
-                    Section {
-                        compactCategoryRows(supplementary: false)
-                    }
-                    Section {
-                        compactCategoryRows(supplementary: true)
-                    }
+                    compactRootSections
                 }
                 if filteredSettingsGroups.isEmpty {
                     settingsSearchEmptyState
@@ -329,40 +320,39 @@ public struct SettingsView: View {
         }
     }
 
+    /// One root list in the iOS Settings style: a section per category, each
+    /// row pushing straight to its pane. Multi-pane categories keep their name
+    /// as the section header; single-pane categories need none.
     @ViewBuilder
-    private func compactCategoryRows(supplementary: Bool) -> some View {
-        ForEach(navigation.availability.visibleCategories.filter { $0.isSupplementary == supplementary }) { category in
-            NavigationLink {
-                if category.sections(in: navigation.availability).count == 1,
-                   let section = category.sections(in: navigation.availability).first {
-                    scopedDetail(for: section).navigationTitle(category.title)
-                        .onAppear { navigation.select(section) }
-                    #if os(iOS)
-                        .toolbar { settingsDismissToolbar }
-                    #endif
-                } else {
-                    List(category.sections(in: navigation.availability)) { section in
-                        NavigationLink {
-                            scopedDetail(for: section).navigationTitle(section.title)
-                                .onAppear { navigation.select(section) }
-                            #if os(iOS)
-                                .toolbar { settingsDismissToolbar }
-                            #endif
-                        } label: { sectionRow(section) }
-                            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
-                            .listRowBackground(theme.bgPrimary.color)
+    private var compactRootSections: some View {
+        ForEach(navigation.availability.visibleCategories) { category in
+            let sections = category.sections(in: navigation.availability)
+            Section {
+                ForEach(sections) { section in
+                    NavigationLink {
+                        compactPane(for: section)
+                    } label: {
+                        sectionRow(section)
                     }
-                    .scrollContentBackground(.hidden)
-                    .background(theme.bgSecondary.color.ignoresSafeArea())
-                    .navigationTitle(category.title)
-                    #if os(iOS)
-                        .toolbar { settingsDismissToolbar }
-                    #endif
+                    .listRowBackground(theme.bgPrimary.color)
                 }
-            } label: { categoryRow(category) }
-                .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
-                .listRowBackground(theme.bgPrimary.color)
+            } header: {
+                if sections.count > 1 {
+                    Text(category.title)
+                        .textCase(nil)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+            }
         }
+    }
+
+    private func compactPane(for section: SettingsSection) -> some View {
+        scopedDetail(for: section)
+            .navigationTitle(section.title)
+            .onAppear { navigation.select(section) }
+        #if os(iOS)
+            .toolbar { settingsDismissToolbar }
+        #endif
     }
 
     @ViewBuilder

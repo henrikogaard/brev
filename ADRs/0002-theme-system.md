@@ -132,6 +132,17 @@ initializers document their selection and corner-radius inputs, and their
 modifier methods document the visual treatment. These API comments preserve
 the shared recipes above without changing theme tokens or rendering behavior.
 
+**iOS Settings forms (2026-10-09).** `BrevButton` and `brevQuietSurface()`
+remain the standalone recipes. Inside an iOS Settings pane the rows live in
+an inset-grouped `Form` whose `Section`s are themed with tokens only
+(`scrollContentBackground(.hidden)`, `theme.bgSecondary` behind the form,
+`theme.bgPrimary` row backgrounds), so a pane never draws a quiet card or a
+bordered `BrevButton` pill inside a row. `SettingsButton` is the pane-level
+wrapper: it delegates to `BrevButton` on macOS and renders a plain accent
+row on iOS (`Button(role: .destructive)` for destructive actions, with a
+`confirmationDialog` where the action is not already confirmed). macOS
+Settings keeps the card layout unchanged.
+
 ### Theme distribution
 
 Three tiers:

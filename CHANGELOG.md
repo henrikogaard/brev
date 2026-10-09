@@ -4,8 +4,18 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list (Accounts, Calendar & Contacts, Appearance and so on) whose rows push straight to their pane; the extra category level and the clipped "Accounts & Connectio…" title are gone.
+- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
+- iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
+- iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
+- iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+
 ### Fixed
 
+- iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
+- iOS Appearance: the mail preview text now follows Dynamic Type.
 - Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
 - Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 

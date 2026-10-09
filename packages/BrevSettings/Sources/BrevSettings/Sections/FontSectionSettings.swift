@@ -45,7 +45,7 @@ struct FontSectionSettings: View {
             ),
             symbolName: "textformat"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 ForEach(BrevFontSection.allCases) { section in
                     SettingsPickerRow(
                         symbolName: section.symbolName,
@@ -91,7 +91,7 @@ struct FontSectionSettings: View {
         }
         .padding(BrevSpacing.sm)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     private func family(for section: BrevFontSection) -> MailboxFontFamily {
