@@ -320,15 +320,15 @@ public struct SettingsView: View {
         }
     }
 
-    /// One root list in the iOS Settings style: a section per category, each
-    /// row pushing straight to its pane. Multi-pane categories keep their name
-    /// as the section header; single-pane categories need none.
+    /// One root list in the iOS Settings style: the task groups the sidebar
+    /// already uses (App, Reading & Composing, ...), every one with a header,
+    /// each row pushing straight to its pane. Rows keep the system list
+    /// metrics; the list's own minimum row height keeps them at least 44 pt.
     @ViewBuilder
     private var compactRootSections: some View {
-        ForEach(navigation.availability.visibleCategories) { category in
-            let sections = category.sections(in: navigation.availability)
+        ForEach(navigation.availability.groupedVisibleSections(matching: ""), id: \.group) { entry in
             Section {
-                ForEach(sections) { section in
+                ForEach(entry.sections) { section in
                     NavigationLink {
                         compactPane(for: section)
                     } label: {
@@ -337,8 +337,8 @@ public struct SettingsView: View {
                     .listRowBackground(theme.bgPrimary.color)
                 }
             } header: {
-                if sections.count > 1 {
-                    Text(category.title)
+                if let label = entry.group.headerLabel {
+                    Text(label)
                         .textCase(nil)
                         .foregroundStyle(theme.textSecondary.color)
                 }
@@ -498,7 +498,6 @@ public struct SettingsView: View {
                     } label: {
                         pluginSettingsRow(contribution)
                     }
-                    .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
                     .listRowBackground(theme.bgPrimary.color)
                     #else
                     Button {
@@ -541,7 +540,9 @@ public struct SettingsView: View {
                 .brevFont(.body)
                 .foregroundStyle(theme.textPrimary.color)
         }
+        #if os(macOS)
         .settingsTouchTarget()
+        #endif
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
     }
@@ -902,7 +903,6 @@ public struct SettingsView: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
-        .settingsTouchTarget()
     }
 
     private var searchResults: [SettingsSearchResult] {

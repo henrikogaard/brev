@@ -23,9 +23,9 @@ no visible cause) and "Contrast nearly passed":
 
 | Pane | Remaining |
 | --- | --- |
-| Settings root | none (AX3: one contrast item; the original audit also reported one at AX5) |
+| Settings root | one "Contrast failed" on an unlabeled node, only at the initial scroll position (it does not reproduce after scrolling; the bottom search field's glass overlaps a section header there). The original audit also reported one contrast item at AX5. Hit areas pass. |
 | Accounts | "Text clipped" on the Add account row, not visible in the screenshots at default or AX3 size |
-| Account page, Notifications, Appearance | none |
+| Account page, Notifications, Appearance | none (hit areas pass) |
 | Calendar & Contacts, Signature | "Text clipped" on the Add DAV Source / Add Signature rows, same pattern |
 | Folder Sync | "Text clipped" on Refresh and the filter field |
 | Import / Export | contrast on the disabled Export as MBOX / EML rows; clipped Select folder row |
@@ -35,3 +35,11 @@ no visible cause) and "Contrast nearly passed":
 The before-state of this audit (T1 to T9) had 5 contrast failures on
 Notifications, an unlabeled switch per mailbox and 8 items on Appearance;
 Notifications and Appearance now report none besides the Dynamic Type note.
+
+## Row heights
+
+Rows use the system list metrics (no extra padding or minimum-height frames):
+52 pt for single-line rows on iOS 27, 40 pt section headers, and taller only
+for two-line or multi-line content. Measured from the accessibility tree:
+`02-settings-root` 52, `04-notifications` 52, `03b-account-detail` 52 (68 for
+two-line rows). Before this follow-up the root rows were 74 pt.

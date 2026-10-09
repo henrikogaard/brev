@@ -6,7 +6,7 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
-- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list (Accounts, Calendar & Contacts, Appearance and so on) whose rows push straight to their pane; the extra category level and the clipped "Accounts & Connectio…" title are gone.
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
 - iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.

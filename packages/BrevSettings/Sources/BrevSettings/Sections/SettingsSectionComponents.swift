@@ -481,7 +481,9 @@ struct SettingsInfoCallout: View {
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
+        #if os(macOS)
         .padding(BrevSpacing.sm)
+        #endif
         // The frame must precede the surface: applied after it, the surface
         // still hugged the text and each note ended at a different x.
         .frame(maxWidth: .infinity, alignment: .leading)
