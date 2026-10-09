@@ -59,14 +59,21 @@ struct AppearanceSection: View {
             title: String(localized: "Appearance", bundle: .module),
             subtitle: appearanceSubtitle
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 #if os(macOS)
                 DesktopInterfaceSettings(settingsStore: settingsStore)
                 #endif
                 FontSectionSettings(settingsStore: settingsStore)
                 themeGroup
                 #if os(iOS)
-                SettingsMailPreview(settings: mailboxSettings)
+                Section {
+                    SettingsMailPreview(settings: mailboxSettings)
+                } header: {
+                    Text("Mail preview", bundle: .module)
+                        .textCase(nil)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
                 #endif
                 if appearanceControls.showsWindowTranslucencyControls {
                     WindowAppearanceControls(
@@ -118,15 +125,44 @@ struct AppearanceSection: View {
         }
     }
 
+    @ViewBuilder
     private var resetRow: some View {
+        #if os(iOS)
+        Section {
+            Button(role: .destructive) {
+                isResetConfirmationPresented = true
+            } label: {
+                Text("Reset to Defaults", bundle: .module)
+            }
+            .confirmationDialog(
+                String(localized: "Reset appearance to defaults?", bundle: .module),
+                isPresented: $isResetConfirmationPresented,
+                titleVisibility: .visible
+            ) {
+                Button(String(localized: "Reset Appearance", bundle: .module), role: .destructive) {
+                    resetToDefaults()
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            } message: {
+                Text(resetMessage)
+            }
+        } footer: {
+            Text(resetMessage)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .listRowBackground(theme.bgPrimary.color)
+        #else
+        macResetRow
+        #endif
+    }
+
+    private var macResetRow: some View {
         HStack {
             Spacer(minLength: 0)
             Button(String(localized: "Reset to Defaults", bundle: .module)) {
                 isResetConfirmationPresented = true
             }
-            #if os(iOS)
-            .buttonStyle(.bordered)
-            #endif
             .help(resetMessage)
             .confirmationDialog(
                 String(localized: "Reset appearance to defaults?", bundle: .module),
@@ -187,7 +223,7 @@ struct AppearanceSection: View {
             subtitle: String(localized: "Choose how Brev follows your system and colors its controls.", bundle: .module),
             symbolName: "paintpalette"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 SettingsSegmentedRow(
                     symbolName: "circle.lefthalf.filled",
                     title: String(localized: "Mode", bundle: .module),
@@ -208,6 +244,50 @@ struct AppearanceSection: View {
 
     @ViewBuilder
     private var accentColorRow: some View {
+        #if os(iOS)
+        iOSAccentRows
+        #else
+        macAccentColorRow
+        #endif
+    }
+
+    #if os(iOS)
+    /// Accent source as a native menu row; the custom color and the way back
+    /// to the theme accent follow as plain rows.
+    @ViewBuilder
+    private var iOSAccentRows: some View {
+        Picker(selection: accentSourceBinding) {
+            ForEach(AppearanceAccentSource.availableSources) { source in
+                Text(source.title).tag(source)
+            }
+        } label: {
+            Text("Accent", bundle: .module)
+                .foregroundStyle(theme.textPrimary.color)
+        }
+        .pickerStyle(.menu)
+        .tint(theme.textSecondary.color)
+        .id(String(localized: "Accent source", bundle: .module))
+        .accessibilityLabel(String(localized: "Accent source", bundle: .module))
+        .accessibilityHint(accentColorSubtitle)
+        if themeSettings.accentSource == .custom {
+            ColorPicker(
+                String(localized: "Accent color", bundle: .module),
+                selection: accentColorBinding,
+                supportsOpacity: false
+            )
+            .id(String(localized: "Accent color", bundle: .module))
+        }
+        if themeSettings.accentSource != .theme {
+            Button(String(localized: "Follow theme", bundle: .module)) {
+                updateThemeSettings { $0.accentSource = .theme }
+            }
+            .foregroundStyle(theme.accent.color)
+        }
+    }
+    #endif
+
+    @ViewBuilder
+    private var macAccentColorRow: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                 accentColorLabel
@@ -286,7 +366,7 @@ struct AppearanceSection: View {
             #if os(macOS)
             String(localized: "Uses the macOS accent, adjusted for readable controls.", bundle: .module)
             #else
-            String(localized: "System accent is available on Mac. This device uses the theme accent.", bundle: .module)
+            String(localized: "Follows \(effectiveBaseTheme.name) and changes with your theme.", bundle: .module)
             #endif
         case .custom:
             String(localized: "Your color is saved unchanged. Controls adjust for contrast when needed.", bundle: .module)
@@ -321,6 +401,49 @@ struct AppearanceSection: View {
 
     @ViewBuilder
     private var themePairRow: some View {
+        #if os(iOS)
+        iOSThemePairRow
+        #else
+        macThemePairRow
+        #endif
+    }
+
+    #if os(iOS)
+    /// One tappable row with a disclosure chevron instead of a "Choose…" link.
+    private var iOSThemePairRow: some View {
+        Button {
+            isThemePickerPresented = true
+        } label: {
+            HStack(spacing: BrevSpacing.md) {
+                Text("Themes", bundle: .module)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.sm)
+                VStack(alignment: .trailing, spacing: BrevSpacing.xxs) {
+                    Text(themeSettings.selectedTheme(for: .light).name)
+                    Text(themeSettings.selectedTheme(for: .dark).name)
+                }
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+                Image(systemName: "chevron.right")
+                    .imageScale(.small)
+                    .foregroundStyle(theme.textTertiary.color)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .accessibilityLabel(String(localized: "Choose light and dark themes", bundle: .module))
+        .accessibilityValue(
+            String(
+                localized: "Light \(themeSettings.selectedTheme(for: .light).name), dark \(themeSettings.selectedTheme(for: .dark).name)",
+                bundle: .module
+            )
+        )
+    }
+    #endif
+
+    @ViewBuilder
+    private var macThemePairRow: some View {
         if dynamicTypeSize.isAccessibilitySize {
             VStack(alignment: .leading, spacing: BrevSpacing.md) {
                 themePairLabel

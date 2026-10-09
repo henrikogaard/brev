@@ -86,6 +86,8 @@ public enum BrevStatusBannerStyle: Sendable, Hashable, CaseIterable {
 ///     main-bundle lookup path.
 public struct BrevStatusBanner: View {
     @Environment(\.brevTheme) private var theme
+    @ScaledMetric(relativeTo: .subheadline) private var iconWidth: CGFloat = 20
+    @ScaledMetric(relativeTo: .footnote) private var actionHeight: CGFloat = 44
 
     private let style: BrevStatusBannerStyle
     private let title: LocalizedStringKey
@@ -114,6 +116,7 @@ public struct BrevStatusBanner: View {
             Image(systemName: style.symbolName)
                 .foregroundStyle(style.accentColor(in: theme))
                 .brevFont(.subheadline)
+                .frame(minWidth: iconWidth)
                 .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
@@ -132,7 +135,11 @@ public struct BrevStatusBanner: View {
                     Button(action: actionHandler) { Text(actionLabel, bundle: bundle) }
                         .buttonStyle(.borderless)
                         .brevFont(.footnote)
-                        .foregroundStyle(style.accentColor(in: theme))
+                        // Action text is body-size interactive text: the tinted
+                        // status colors are only guaranteed 3:1 (success, info),
+                        // so the action uses the theme accent (>= 4.5:1).
+                        .foregroundStyle(theme.accent.color)
+                        .modifier(ActionHitArea(scaledHeight: actionHeight))
                 }
             }
 
@@ -148,5 +155,21 @@ public struct BrevStatusBanner: View {
                 .frame(height: 0.5)
         }
         .accessibilityElement(children: .contain)
+    }
+}
+
+/// Gives the inline action a 44 pt (Dynamic Type scaled) touch target on iOS;
+/// macOS keeps the compact inline link.
+private struct ActionHitArea: ViewModifier {
+    let scaledHeight: CGFloat
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .frame(minHeight: BrevHitTarget.resolved(scaled: scaledHeight), alignment: .leading)
+            .contentShape(Rectangle())
+        #else
+        content
+        #endif
     }
 }

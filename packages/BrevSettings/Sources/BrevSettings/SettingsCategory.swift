@@ -26,7 +26,7 @@ enum SettingsCategory: String, CaseIterable, Identifiable {
         case .mailboxesReading: String(localized: "Mailboxes & Reading", bundle: .module)
         case .writing: String(localized: "Writing", bundle: .module)
         case .notifications: String(localized: "Notifications", bundle: .module)
-        case .rulesOrganization: String(localized: "Rules & Organisation", bundle: .module)
+        case .rulesOrganization: String(localized: "Rules & Organization", bundle: .module)
         case .privacySecurity: String(localized: "Privacy & Security", bundle: .module)
         case .syncStorage: String(localized: "Sync & Storage", bundle: .module)
         case .aboutUpdates: String(localized: "About & Updates", bundle: .module)

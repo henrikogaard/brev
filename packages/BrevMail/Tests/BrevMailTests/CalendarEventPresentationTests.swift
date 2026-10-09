@@ -216,7 +216,7 @@ struct CalendarEventPresentationTests {
         #expect(
             CalendarEventPresentation.reminderText(
                 for: PIMEventReminder(minutesBefore: 1440)
-            ) == "1 days before"
+            ) == "1 day before"
         )
         #expect(
             CalendarEventPresentation.reminderText(

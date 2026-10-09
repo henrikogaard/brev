@@ -68,6 +68,17 @@ enum AccountRowLayoutPolicy {
 }
 
 enum AccountsSectionPresentation {
+    /// Human name first; the address only when the account has no display name.
+    static func title(for account: BrevAccount) -> String {
+        account.displayName.isEmpty ? account.emailAddress : account.displayName
+    }
+
+    /// Whether an account offers per-mailbox switches (several mailboxes, or
+    /// a load in flight or failed that the user should see).
+    static func showsMailboxControls(mailboxCount: Int, isLoading: Bool, hasError: Bool) -> Bool {
+        isLoading || hasError || mailboxCount > 1
+    }
+
     static func showsAddAccountAction(isAddAccountAvailable: Bool) -> Bool {
         isAddAccountAvailable
     }
@@ -140,7 +151,34 @@ enum AccountsSectionPresentation {
     }
 }
 
+/// One checkmark row in the "Default mailbox" list of an account.
+struct AccountDefaultMailboxChoice: Equatable {
+    let mailboxID: String
+    let title: String
+    let isSelected: Bool
+}
+
 enum AccountMailboxSelectionPresentation {
+    /// Enabled mailboxes of one account as a pick-one list; the default carries
+    /// the checkmark. A disabled mailbox can never be the default, so it is absent.
+    static func defaultChoices(
+        accountID: BrevAccount.ID,
+        mailboxes: [Mailbox],
+        availableSourceIDs: [MailSourceID],
+        preferences: MailboxSourcePreferences
+    ) -> [AccountDefaultMailboxChoice] {
+        mailboxes.compactMap { mailbox in
+            let sourceID = MailSourceID(accountID: accountID, mailboxID: mailbox.id)
+            let row = Self.row(sourceID: sourceID, availableSourceIDs: availableSourceIDs, preferences: preferences)
+            guard row.isEnabled else { return nil }
+            return AccountDefaultMailboxChoice(
+                mailboxID: mailbox.id,
+                title: mailbox.displayName.isEmpty ? mailbox.email : mailbox.displayName,
+                isSelected: row.isDefault
+            )
+        }
+    }
+
     static func row(
         sourceID: MailSourceID,
         availableSourceIDs: [MailSourceID],
@@ -172,6 +210,7 @@ enum AccountMailboxSelectionPresentation {
 
 struct AccountsSection: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let accounts: [BrevAccount]
     let currentAccountID: BrevAccount.ID?
     let backendProvider: @MainActor (BrevAccount.ID) -> (any MailBackend)?
@@ -201,6 +240,10 @@ struct AccountsSection: View {
     @State private var isAddingAccount = false
     @State private var signingOutAccountIDs: Set<BrevAccount.ID> = []
     @State private var accountPendingRemoval: BrevAccount?
+    #if os(iOS)
+    @State private var accountPendingSignOut: BrevAccount?
+    @State private var restoredEntryPendingRemoval: AccountBackupEntry?
+    #endif
     /// Sources linked to `accountPendingRemoval`, loaded before the
     /// removal dialog opens so the dialog can name them.
     @State private var linkedSourcesForRemoval: [PIMSource] = []
@@ -241,7 +284,7 @@ struct AccountsSection: View {
 
     var body: some View {
         SectionScaffold(title: String(localized: "Accounts", bundle: .module)) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 accountListGroup
                 restoredAccountsGroup
                 fetchScheduleGroup
@@ -269,6 +312,21 @@ struct AccountsSection: View {
             Text(AccountsSectionPresentation.removalMessage(linkedSources: linkedSourcesForRemoval))
                 .accessibilityLabel(String(localized: "Remove account \(account.emailAddress) from Brev", bundle: .module))
         }
+        #if os(iOS)
+        .confirmationDialog(
+            String(localized: "Remove restored account?", bundle: .module),
+            isPresented: restoredRemovalBinding,
+            presenting: restoredEntryPendingRemoval
+        ) { entry in
+            Button(String(localized: "Remove \(entry.account.emailAddress)", bundle: .module), role: .destructive) {
+                pendingRestoredStore.remove(accountID: entry.account.id)
+                reloadPendingRestoredAccounts()
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: { _ in
+            Text("Brev forgets this restored account. You can add it again later.", bundle: .module)
+        }
+        #endif
         .sheet(item: conflictReviewBinding) { account in
             ConflictReviewSheet(
                 conflicts: conflictListBinding(for: account.id),
@@ -307,13 +365,22 @@ struct AccountsSection: View {
             subtitle: String(localized: "Manage the mail accounts connected to Brev.", bundle: .module),
             symbolName: "person.crop.circle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack {
                 if accounts.isEmpty {
                     Text("No accounts signed in.", bundle: .module)
                         .brevFont(.body)
                         .foregroundStyle(theme.textSecondary.color)
                 } else {
-                    VStack(spacing: BrevSpacing.xs) {
+                    #if os(iOS)
+                    ForEach(accounts) { account in
+                        NavigationLink {
+                            accountDetail(account)
+                        } label: {
+                            accountSummaryRow(account)
+                        }
+                    }
+                    #else
+                    SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(accounts) { account in
                             AccountRow(
                                 account: account,
@@ -340,6 +407,7 @@ struct AccountsSection: View {
                             )
                         }
                     }
+                    #endif
                 }
 
                 if AccountsSectionPresentation.showsAddAccountAction(
@@ -351,12 +419,10 @@ struct AccountsSection: View {
                     } label: {
                         Label(addAccountPresentation.title, systemImage: "plus.circle.fill")
                     }
-                    .buttonStyle(.plain)
-                    .foregroundStyle(theme.accent.color)
-                    .frame(minHeight: 44)
+                    .foregroundStyle((addAccountPresentation.isDisabled ? theme.textSecondary : theme.accent).color)
                     .disabled(addAccountPresentation.isDisabled)
                     #else
-                    BrevButton(addAccountPresentation.title, style: .secondary) {
+                    SettingsButton(addAccountPresentation.title, style: .secondary) {
                         startAddAccount()
                     }
                     .disabled(addAccountPresentation.isDisabled)
@@ -386,11 +452,17 @@ struct AccountsSection: View {
                 ),
                 symbolName: "person.badge.clock"
             ) {
-                VStack(spacing: BrevSpacing.xs) {
+                #if os(iOS)
+                ForEach(visibleEntries) { entry in
+                    restoredAccountRows(entry)
+                }
+                #else
+                SettingsRowStack(spacing: BrevSpacing.xs) {
                     ForEach(visibleEntries) { entry in
                         restoredAccountRow(entry)
                     }
                 }
+                #endif
             }
         }
     }
@@ -420,6 +492,272 @@ struct AccountsSection: View {
         }
         .padding(.vertical, BrevSpacing.xxs)
     }
+
+    #if os(iOS)
+    /// Restored accounts as plain rows: identity, then Sign in and a confirmed Remove.
+    @ViewBuilder
+    private func restoredAccountRows(_ entry: AccountBackupEntry) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            Text(entry.account.displayName.isEmpty ? entry.account.emailAddress : entry.account.displayName)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            Text(entry.account.emailAddress)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+        .accessibilityElement(children: .combine)
+        Button(String(localized: "Sign in", bundle: .module)) {
+            onSignInRestoredAccount(entry)
+        }
+        .foregroundStyle(theme.accent.color)
+        Button(String(localized: "Remove", bundle: .module), role: .destructive) {
+            restoredEntryPendingRemoval = entry
+        }
+    }
+
+    /// Summary row in the account list: name first, address beneath, a plain
+    /// "Default" tag instead of a chip.
+    @ViewBuilder
+    private func accountSummaryRow(_ account: BrevAccount) -> some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            // At accessibility sizes the avatar and the trailing tag would
+            // squeeze the address into a column, so everything stacks.
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                accountSummaryText(account)
+                if account.id == currentAccountID {
+                    Text("Default", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        } else {
+            HStack(spacing: BrevSpacing.md) {
+                Circle()
+                    .fill(theme.accent.color.opacity(0.15))
+                    .frame(width: 36, height: 36)
+                    .overlay {
+                        Text(String(AccountsSectionPresentation.title(for: account).prefix(1)))
+                            .brevFont(.callout)
+                            .foregroundStyle(theme.accent.color)
+                    }
+                    .accessibilityHidden(true)
+                accountSummaryText(account)
+                Spacer(minLength: BrevSpacing.sm)
+                if account.id == currentAccountID {
+                    Text("Default", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+            }
+            .accessibilityElement(children: .combine)
+        }
+    }
+
+    private func accountSummaryText(_ account: BrevAccount) -> some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            Text(AccountsSectionPresentation.title(for: account))
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+            Text(account.emailAddress)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textSecondary.color)
+        }
+    }
+
+    /// One account's page: identity, per-mailbox switches, a checkmark list for
+    /// the default mailbox, then sign out and remove (both confirmed).
+    private func accountDetail(_ account: BrevAccount) -> some View {
+        let mailboxes = mailboxesByAccountID[account.id] ?? []
+        let isCurrent = account.id == currentAccountID
+        return Form {
+            Section {
+                accountSummaryRow(account)
+                LabeledContent {
+                    Text(account.backendDisplayName).foregroundStyle(theme.textSecondary.color)
+                } label: {
+                    Text("Account type", bundle: .module).foregroundStyle(theme.textPrimary.color)
+                }
+                .brevFont(.body)
+                if !isCurrent {
+                    let presentation = setDefaultPresentation(for: account)
+                    Button(String(localized: "Make default account", bundle: .module)) {
+                        startSetDefault(account)
+                    }
+                    .foregroundStyle((presentation.isDisabled ? theme.textSecondary : theme.accent).color)
+                    .disabled(presentation.isDisabled)
+                }
+            }
+            .listRowBackground(theme.bgPrimary.color)
+
+            if let conflictTitle = ConflictReviewPresentation.reviewButtonTitle(
+                conflictCount: conflictsByAccountID[account.id]?.count ?? 0
+            ) {
+                Section {
+                    Button {
+                        conflictReviewAccountID = account.id
+                    } label: {
+                        Label(conflictTitle, systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(theme.warning.color)
+                    }
+                    .accessibilityHint(String(localized: "Opens the list of sync conflicts.", bundle: .module))
+                }
+                .listRowBackground(theme.bgPrimary.color)
+            }
+
+            mailboxSections(for: account, mailboxes: mailboxes)
+
+            Section {
+                let signOut = signOutPresentation(for: account)
+                Button(signOut.title) { accountPendingSignOut = account }
+                    .foregroundStyle((signOut.isDisabled ? theme.textSecondary : theme.accent).color)
+                    .disabled(signOut.isDisabled)
+                let remove = removePresentation
+                Button(remove.title, role: .destructive) { prepareRemoval(account) }
+                    .disabled(remove.isDisabled)
+            }
+            .listRowBackground(theme.bgPrimary.color)
+        }
+        .settingsFormChrome()
+        .navigationTitle(AccountsSectionPresentation.title(for: account))
+        .navigationBarTitleDisplayMode(.inline)
+        .dismissesWhen(absent: accounts.contains { $0.id == account.id })
+        .confirmationDialog(
+            String(localized: "Sign out of this account?", bundle: .module),
+            isPresented: signOutConfirmationBinding,
+            presenting: accountPendingSignOut
+        ) { account in
+            Button(String(localized: "Sign out of \(account.emailAddress)", bundle: .module), role: .destructive) {
+                startSignOut(account)
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+        } message: { _ in
+            Text("You will need to sign in again to read this account's mail in Brev.", bundle: .module)
+        }
+    }
+
+    @ViewBuilder
+    private func mailboxSections(for account: BrevAccount, mailboxes: [Mailbox]) -> some View {
+        let isLoading = loadingMailboxAccountIDs.contains(account.id)
+        let loadError = mailboxLoadErrorsByAccountID[account.id]
+        if AccountsSectionPresentation.showsMailboxControls(
+            mailboxCount: mailboxes.count,
+            isLoading: isLoading,
+            hasError: loadError != nil
+        ) {
+            if isLoading {
+                Section {
+                    HStack(spacing: BrevSpacing.sm) {
+                        ProgressView().tint(theme.accent.color)
+                        Text("Loading mailboxes…", bundle: .module)
+                            .brevFont(.body)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                }
+                .listRowBackground(theme.bgPrimary.color)
+            } else if let loadError {
+                Section {
+                    Label(loadError, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                .listRowBackground(theme.bgPrimary.color)
+            } else {
+                Section {
+                    ForEach(mailboxes) { mailbox in
+                        let presentation = AccountMailboxSelectionPresentation.row(
+                            sourceID: sourceID(for: mailbox, account: account),
+                            availableSourceIDs: availableSourceIDs,
+                            preferences: mailboxPreferences
+                        )
+                        let title = mailbox.displayName.isEmpty ? mailbox.email : mailbox.displayName
+                        Toggle(isOn: Binding(
+                            get: { presentation.isEnabled },
+                            set: { setMailbox(mailbox, for: account, isEnabled: $0) }
+                        )) {
+                            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                                Text(title)
+                                    .brevFont(.body)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                if !mailbox.displayName.isEmpty {
+                                    Text(mailbox.email)
+                                        .brevFont(.footnote)
+                                        .foregroundStyle(theme.textSecondary.color)
+                                }
+                            }
+                        }
+                        .tint(theme.accent.color)
+                        .disabled(!presentation.canToggle)
+                        .accessibilityLabel(String(localized: "Show \(title) in Mail", bundle: .module))
+                    }
+                } header: {
+                    Text("Show in Mail", bundle: .module)
+                        .textCase(nil)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                } footer: {
+                    Text("Choose which mailboxes appear in Mail. At least one stays on.", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                .listRowBackground(theme.bgPrimary.color)
+
+                let choices = AccountMailboxSelectionPresentation.defaultChoices(
+                    accountID: account.id,
+                    mailboxes: mailboxes,
+                    availableSourceIDs: availableSourceIDs,
+                    preferences: mailboxPreferences
+                )
+                Section {
+                    ForEach(choices, id: \.mailboxID) { choice in
+                        Button {
+                            if let mailbox = mailboxes.first(where: { $0.id == choice.mailboxID }) {
+                                setDefaultMailbox(mailbox, for: account)
+                            }
+                        } label: {
+                            HStack {
+                                Text(choice.title)
+                                    .brevFont(.body)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                Spacer(minLength: BrevSpacing.sm)
+                                if choice.isSelected {
+                                    Image(systemName: "checkmark")
+                                        .foregroundStyle(theme.accent.color)
+                                        .accessibilityHidden(true)
+                                }
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .accessibilityAddTraits(choice.isSelected ? .isSelected : [])
+                    }
+                } header: {
+                    Text("Default mailbox", bundle: .module)
+                        .textCase(nil)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                } footer: {
+                    Text("Brev opens the default mailbox first.", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                .listRowBackground(theme.bgPrimary.color)
+            }
+        }
+    }
+
+    private var signOutConfirmationBinding: Binding<Bool> {
+        Binding(
+            get: { accountPendingSignOut != nil },
+            set: { if !$0 { accountPendingSignOut = nil } }
+        )
+    }
+
+    private var restoredRemovalBinding: Binding<Bool> {
+        Binding(
+            get: { restoredEntryPendingRemoval != nil },
+            set: { if !$0 { restoredEntryPendingRemoval = nil } }
+        )
+    }
+    #endif
 
     private func reloadPendingRestoredAccounts() {
         pendingRestoredEntries = pendingRestoredStore.entries()
@@ -778,7 +1116,7 @@ private struct AccountRow: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
-        .brevQuietSurface()
+        .settingsInlineSurface()
     }
 
     private func conflictBanner(title: String) -> some View {
@@ -791,7 +1129,7 @@ private struct AccountRow: View {
                 .brevFont(.caption)
                 .foregroundStyle(theme.warning.color)
             Spacer(minLength: BrevSpacing.sm)
-            BrevButton(title, style: .tertiary) {
+            SettingsButton(title, style: .tertiary) {
                 onReviewConflicts()
             }
             .controlSize(.small)
@@ -1059,3 +1397,24 @@ private struct AccountRow: View {
         .brevFont(.footnote)
     }
 }
+
+#if os(iOS)
+private extension View {
+    /// Pops the pushed page when the thing it describes disappears (an account
+    /// removed from the detail page), instead of leaving a stale form behind.
+    func dismissesWhen(absent isPresent: Bool) -> some View {
+        modifier(DismissWhenAbsent(isPresent: isPresent))
+    }
+}
+
+private struct DismissWhenAbsent: ViewModifier {
+    @Environment(\.dismiss) private var dismiss
+    let isPresent: Bool
+
+    func body(content: Content) -> some View {
+        content.onChange(of: isPresent) { _, present in
+            if !present { dismiss() }
+        }
+    }
+}
+#endif

@@ -121,7 +121,7 @@ struct PIMSourcesSettingsView: View {
             ),
             symbolName: "person.crop.rectangle.stack"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            SettingsRowStack(spacing: BrevSpacing.sm) {
                 if let lastError = model.lastError {
                     SettingsInfoCallout(
                         symbolName: "exclamationmark.triangle",
@@ -152,7 +152,7 @@ struct PIMSourcesSettingsView: View {
                             systemImage: "plus"
                         )
                     }
-                    .buttonStyle(.bordered)
+                    .settingsButtonStyle()
                     .accessibilityHint(String(
                         localized: "Connect a CalDAV or CardDAV source",
                         bundle: .module
@@ -538,7 +538,7 @@ struct PIMSourcesSettingsView: View {
                                 } label: {
                                     Text(googleKindButtonTitle(kind))
                                 }
-                                .buttonStyle(.bordered)
+                                .settingsButtonStyle()
                                 .controlSize(.small)
                                 .disabled(model.pendingGoogleAccountID == account.id)
                             }
@@ -582,7 +582,7 @@ struct PIMSourcesSettingsView: View {
                         .foregroundStyle(theme.textTertiary.color)
                         .padding(.horizontal, BrevSpacing.xxs)
                         .padding(.vertical, 1)
-                        .brevQuietSurface(cornerRadius: BrevRadius.sm)
+                        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
                 }
                 Text(String(
                     localized: "Enable PIM features on a connected Google account with feature-triggered authorization.",

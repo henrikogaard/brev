@@ -1,0 +1,6 @@
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: 9 label='Cancel' id='' frame=(20.0, 82.0, 76.66666666666667, 36.0)
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: 9 label='Add' id='' frame=(326.0, 82.0, 56.0, 36.0)
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast nearly passed | Contrast is not high enough for SwiftUI.AccessibilityNode unless font size is larger. | element: 9 label='Find settings' id='' frame=(28.0, 331.3333333333333, 135.0, 44.0)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 9 label='Add' id='' frame=(326.0, 82.0, 56.0, 36.0)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 9 label='Cancel' id='' frame=(20.0, 82.0, 76.66666666666667, 36.0)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this SwiftUI.UIKitTextField may be clipped at larger Dynamic Type sizes. | element: 49 label='' id='' frame=(40.0, 286.3333333333333, 322.0, 22.0)

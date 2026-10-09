@@ -1,0 +1,1 @@
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
