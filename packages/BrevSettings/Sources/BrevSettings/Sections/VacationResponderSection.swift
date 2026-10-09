@@ -48,7 +48,7 @@ public struct VacationResponderSection: View {
             title: String(localized: "Auto-Reply", bundle: .module),
             subtitle: String(localized: "Send an automatic reply while you are away.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 if accounts.isEmpty {
                     SettingsInfoCallout(
                         symbolName: "person.crop.circle.badge.questionmark",
@@ -70,12 +70,20 @@ public struct VacationResponderSection: View {
     @ViewBuilder
     private func accountCard(for account: BrevAccount) -> some View {
         let backend = backendProvider(account.id)
+        #if os(iOS)
+        Section {
+            accountHeader(account)
+        }
+        .listRowBackground(theme.bgPrimary.color)
+        vacationCard(account: account, backend: backend)
+        #else
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             accountHeader(account)
             vacationCard(account: account, backend: backend)
         }
         .padding(BrevSpacing.md)
-        .brevQuietSurface()
+        .settingsInlineSurface()
+        #endif
     }
 
     private func accountHeader(_ account: BrevAccount) -> some View {
@@ -147,7 +155,7 @@ private struct VacationResponderPane: View {
             subtitle: String(localized: "Provider-side automatic reply for this account.", bundle: .module),
             symbolName: "airplane.departure"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if isLoading && settings.isEmpty {
                     HStack(spacing: BrevSpacing.sm) {
                         ProgressView().controlSize(.small)
@@ -177,8 +185,8 @@ private struct VacationResponderPane: View {
                     )
                 }
 
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(
+                SettingsButtonRow {
+                    SettingsButton(
                         isSaving ? String(localized: "Saving…", bundle: .module) : String(
                             localized: "Save vacation responder",
                             bundle: .module
@@ -189,7 +197,7 @@ private struct VacationResponderPane: View {
                     }
                     .disabled(isVacationBusy || !draft.canSave)
 
-                    BrevButton(
+                    SettingsButton(
                         isLoading ? String(localized: "Refreshing…", bundle: .module) : String(
                             localized: "Refresh",
                             bundle: .module
@@ -200,7 +208,7 @@ private struct VacationResponderPane: View {
                     }
                     .disabled(isVacationBusy)
 
-                    BrevButton(
+                    SettingsButton(
                         isResettingCounter ? String(localized: "Resetting…", bundle: .module) : String(
                             localized: "Reset counter",
                             bundle: .module
@@ -211,12 +219,10 @@ private struct VacationResponderPane: View {
                     }
                     .disabled(isVacationBusy || draft.id == nil)
 
-                    BrevButton(String(localized: "Disable", bundle: .module), style: .destructive) {
+                    SettingsButton(String(localized: "Disable", bundle: .module), style: .destructive) {
                         Task { await disable() }
                     }
                     .disabled(isVacationBusy || draft.id == nil)
-
-                    Spacer(minLength: 0)
                 }
             }
         }
@@ -236,7 +242,20 @@ private struct VacationResponderPane: View {
         )
     }
 
+    @ViewBuilder
     private func scheduleDateRow(symbolName: String, title: String, selection: Binding<Date>) -> some View {
+        #if os(iOS)
+        DatePicker(selection: selection, displayedComponents: [.date, .hourAndMinute]) {
+            Text(title)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+        }
+        #else
+        macScheduleDateRow(symbolName: symbolName, title: title, selection: selection)
+        #endif
+    }
+
+    private func macScheduleDateRow(symbolName: String, title: String, selection: Binding<Date>) -> some View {
         HStack(alignment: .center, spacing: BrevSpacing.md) {
             HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
                 SettingsSymbol(symbolName: symbolName)
@@ -251,7 +270,7 @@ private struct VacationResponderPane: View {
     }
 
     private var scheduleRows: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+        SettingsRowStack(spacing: BrevSpacing.sm) {
             scheduleDateRow(
                 symbolName: "calendar",
                 title: String(localized: "Active from", bundle: .module),
@@ -291,7 +310,7 @@ private struct VacationResponderPane: View {
                 .frame(minHeight: 120)
                 .scrollContentBackground(.hidden)
                 .padding(BrevSpacing.xs)
-                .brevQuietSurface(cornerRadius: BrevRadius.sm)
+                .settingsInlineSurface(cornerRadius: BrevRadius.sm)
             if draft.isEnabled, let validationError = draft.firstValidationError {
                 Text(validationError)
                     .brevFont(.caption)

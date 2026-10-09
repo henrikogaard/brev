@@ -30,9 +30,9 @@ struct ListUnsubscribePresentationTests {
         #expect(presentation?.actions.map(\.title) == ["Open unsubscribe page", "Draft unsubscribe email"])
         #expect(presentation?.requiresExplicitConfirmation == true)
         #expect(presentation?.warning?.contains("No unsubscribe request is sent") == true)
-        #expect(presentation?.actions.first?.confirmationTitle == "Open unsubscribe page?")
+        #expect(presentation?.actions.first?.confirmationTitle == "Open the unsubscribe page?")
         #expect(presentation?.actions.first?.confirmationMessage.contains("one-click unsubscribe") == true)
-        #expect(presentation?.actions.last?.confirmationTitle == "Draft unsubscribe email?")
+        #expect(presentation?.actions.last?.confirmationTitle == "Draft an unsubscribe email?")
         #expect(presentation?.actions.last?.confirmationMessage.contains("Review the message before sending") == true)
     }
 

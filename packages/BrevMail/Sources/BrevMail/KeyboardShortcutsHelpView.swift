@@ -134,6 +134,40 @@ enum MailKeyboardShortcutInventory {
                 shortcut: "⌘⇧Z"
             ),
         ]
+        // Keys the focused message list handles itself (macOS). They are
+        // bare keys, so they only act while the list holds keyboard focus.
+        let messageList: [MailKeyboardShortcut] = [
+            .init(
+                action: String(localized: "Delete Selected Messages", bundle: .module),
+                shortcut: "⌫",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Clear Selection", bundle: .module),
+                shortcut: "Escape",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "First Message", bundle: .module),
+                shortcut: "Home",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Last Message", bundle: .module),
+                shortcut: "End",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Up One Page", bundle: .module),
+                shortcut: "Page Up",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Down One Page", bundle: .module),
+                shortcut: "Page Down",
+                isMacOSOnly: true
+            ),
+        ]
         let mailbox: [MailKeyboardShortcut] = [
             .init(
                 action: String(localized: "Get New Mail", bundle: .module),
@@ -179,6 +213,7 @@ enum MailKeyboardShortcutInventory {
             .init(title: String(localized: "Messages", bundle: .module), entries: messages),
             .init(title: String(localized: "Message Actions", bundle: .module), entries: actions),
             .init(title: String(localized: "Navigation", bundle: .module), entries: navigation),
+            .init(title: String(localized: "Message List", bundle: .module), entries: messageList),
             .init(title: String(localized: "Mailbox", bundle: .module), entries: mailbox),
         ]
         #if os(macOS)

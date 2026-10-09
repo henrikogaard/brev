@@ -220,7 +220,7 @@ struct CalendarContactsSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 if let model {
                     PIMSourcesSettingsView(
                         model: model,
@@ -228,7 +228,9 @@ struct CalendarContactsSection: View {
                     )
                 }
 
+                #if os(macOS)
                 capabilityDisclosure
+                #endif
             }
         }
         .task {
@@ -249,7 +251,7 @@ struct CalendarContactsSection: View {
             String(localized: "Capabilities and roadmap", bundle: .module),
             isExpanded: $showsCapabilities
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 capabilityGroup(
                     title: String(localized: "Available now", bundle: .module),
                     subtitle: String(localized: "Backed by your connected sources.", bundle: .module),
@@ -336,7 +338,7 @@ struct CalendarContactsSection: View {
             .foregroundStyle(theme.textTertiary.color)
             .padding(.horizontal, BrevSpacing.xxs)
             .padding(.vertical, 1)
-            .brevQuietSurface(cornerRadius: BrevRadius.sm)
+            .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     private func statusColor(for status: CalendarContactsCapabilityStatus) -> Color {

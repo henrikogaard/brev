@@ -76,7 +76,7 @@ struct UpdatesSection: View {
             title: String(localized: "Updates", bundle: .module),
             subtitle: String(localized: "Manage direct-download macOS update checks.", bundle: .module)
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 cadenceGroup
                 releaseRingGroup
                 githubReleaseGroup
@@ -95,7 +95,7 @@ struct UpdatesSection: View {
             subtitle: String(localized: "Choose when Brev checks the signed Sparkle appcast.", bundle: .module),
             symbolName: "clock.arrow.circlepath"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsPickerRow(
                     symbolName: "timer",
                     title: String(localized: "Update checks", bundle: .module),
@@ -125,7 +125,7 @@ struct UpdatesSection: View {
             subtitle: String(localized: "The ring is fixed per build; Stable and Nightly are separate apps.", bundle: .module),
             symbolName: "shippingbox"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                     Text(ring.title)
                         .brevFont(.body)
@@ -159,7 +159,7 @@ struct UpdatesSection: View {
             subtitle: String(localized: "Check the public GitHub release feed for the latest version.", bundle: .module),
             symbolName: "arrow.down.circle.dotted"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 githubUpdateStateView
 
                 HStack(spacing: BrevSpacing.sm) {
@@ -174,7 +174,7 @@ struct UpdatesSection: View {
                             systemImage: "arrow.triangle.2.circlepath"
                         )
                     }
-                    .buttonStyle(.bordered)
+                    .settingsButtonStyle()
                     .disabled(githubUpdateState == .checking)
                     Spacer(minLength: 0)
                 }
@@ -231,13 +231,13 @@ struct UpdatesSection: View {
             subtitle: String(localized: "Ask Sparkle to check the update feed now.", bundle: .module),
             symbolName: "arrow.down.circle"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 Button {
                     updateActions.performManualCheckIfAvailable()
                 } label: {
                     Label(String(localized: "Check for Updates", bundle: .module), systemImage: "arrow.triangle.2.circlepath")
                 }
-                .buttonStyle(.borderedProminent)
+                .settingsButtonStyle(prominent: true)
                 .tint(theme.accent.color)
                 .disabled(!updateActions.isManualCheckAvailable)
 

@@ -36,35 +36,42 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
     private func setupUI() {
         view.backgroundColor = .systemBackground
 
-        avatarView.backgroundColor = .systemGreen
+        // Neutral system fill: the extension is dependency-free (no BrevThemes), and a
+        // hard-coded accent hue would ignore the user's theme and appearance.
+        avatarView.backgroundColor = .systemGray5
         avatarView.layer.cornerRadius = 20
         avatarView.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(avatarView)
 
-        avatarLabel.font = .systemFont(ofSize: 18, weight: .semibold)
-        avatarLabel.textColor = .white
+        avatarLabel.font = Self.scaledFont(.headline, weight: .semibold, maximumPointSize: 24)
+        avatarLabel.adjustsFontForContentSizeCategory = true
+        avatarLabel.textColor = .label
         avatarLabel.textAlignment = .center
         avatarLabel.translatesAutoresizingMaskIntoConstraints = false
         avatarView.addSubview(avatarLabel)
 
-        senderLabel.font = .systemFont(ofSize: 15, weight: .semibold)
+        senderLabel.font = Self.scaledFont(.subheadline, weight: .semibold)
+        senderLabel.adjustsFontForContentSizeCategory = true
         senderLabel.textColor = .label
         senderLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(senderLabel)
 
-        dateLabel.font = .systemFont(ofSize: 12)
+        dateLabel.font = Self.scaledFont(.caption1)
+        dateLabel.adjustsFontForContentSizeCategory = true
         dateLabel.textColor = .secondaryLabel
         dateLabel.textAlignment = .right
         dateLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(dateLabel)
 
-        subjectLabel.font = .systemFont(ofSize: 14, weight: .medium)
+        subjectLabel.font = Self.scaledFont(.subheadline, weight: .medium)
+        subjectLabel.adjustsFontForContentSizeCategory = true
         subjectLabel.textColor = .label
         subjectLabel.numberOfLines = 2
         subjectLabel.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(subjectLabel)
 
-        snippetLabel.font = .systemFont(ofSize: 13)
+        snippetLabel.font = Self.scaledFont(.footnote)
+        snippetLabel.adjustsFontForContentSizeCategory = true
         snippetLabel.textColor = .secondaryLabel
         snippetLabel.numberOfLines = 3
         snippetLabel.translatesAutoresizingMaskIntoConstraints = false
@@ -142,4 +149,19 @@ final class NotificationViewController: UIViewController, UNNotificationContentE
     }
 
     private static let iso8601Formatter = ISO8601DateFormatter()
+
+    /// A system font that follows Dynamic Type for `style`.
+    private static func scaledFont(
+        _ style: UIFont.TextStyle,
+        weight: UIFont.Weight = .regular,
+        maximumPointSize: CGFloat? = nil
+    ) -> UIFont {
+        let base = UIFont.preferredFont(forTextStyle: style)
+        let font = UIFont.systemFont(ofSize: base.pointSize, weight: weight)
+        let metrics = UIFontMetrics(forTextStyle: style)
+        if let maximumPointSize {
+            return metrics.scaledFont(for: font, maximumPointSize: maximumPointSize)
+        }
+        return metrics.scaledFont(for: font)
+    }
 }

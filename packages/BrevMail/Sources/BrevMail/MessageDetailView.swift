@@ -1814,7 +1814,7 @@ public struct MessageDetailView: View {
     private func attachmentsSection(_ attachments: [Attachment]) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             HStack(spacing: BrevSpacing.sm) {
-                Text("\(attachments.count) attachment\(attachments.count == 1 ? "" : "s")", bundle: .module)
+                Text(MessageAttachmentCountLabel.title(count: attachments.count))
                     .brevFont(.caption)
                     .foregroundStyle(theme.textTertiary.color)
                 #if os(macOS)

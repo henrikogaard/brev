@@ -1,0 +1,2 @@
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Example Plugin' id='' frame=(60.0, 740.1666666666666, 116.0, 20.33333333333337)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='Utvidelser' id='' frame=(16.0, 688.6666666666666, 370.0, 35.66666666666674)
