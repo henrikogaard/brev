@@ -5379,3 +5379,11 @@ buttons, and package-aware localization.
 - Merged: #188 (external, kdegeek; main merged into the branch to resolve CHANGELOG/WORKLOG, 93/93 IMAPSessionClientTests pass locally; review note left about draining to the tagged line before throwing on an untagged `* ` line). `gh pr merge --auto` merged it immediately because main has no required checks. #203 and #204 (CHANGELOG/WORKLOG-only conflicts resolved; prior PR CI green). #187 (kept main's macOS BrevApp.swift since #191 already themes the PIM windows; only the iOS covers needed the fix; MailStatusCopyLocalization tests pass).
 - Skipped: Devin's in-progress runtime check of #203 quick reply in the running test apps did not finish before the crash and was not redone; post-merge CI on main gates the release tag.
 - Release: bumped marketing version 0.2.4 → 0.2.5 in BrevConstants and both project files; moved Unreleased entries under 0.2.5. Tag `v0.2.5` follows a green Build on this commit.
+
+## 2026-10-09 — Claude Code — Mac toolbar band colour mismatch
+
+- Goal: Henrik reported the Mac top bar has a different colour from the themed glass panes, as if an extra background/accent layer sits on it.
+- Cause: `MailToolbarScrollUnderModifier` and `MailListHeaderModifier` (`MailWindowScrollEdgeBlur.swift`) overlaid `theme.bgPrimary` at 35% on top of the scroll edge blur. The pane below has no such wash, so the band read as a separate colour.
+- Change: remove the 35% overlay in both places; the band is blur-only, as `MailWindowScrollEdgeBlur`'s own doc describes. Reduce Transparency still uses the opaque theme fill.
+- Verification: swiftformat lint 0/1; swiftlint clean on the file; `script/build_and_run.sh install-run --mock` built and launched; window captures of the mock test app (solid default and `-window.translucencyMode glass`) show the toolbar band matching the panes. A window-only capture cannot show the desktop through glass, so Henrik should confirm on his wallpaper.
+- Skipped: no snapshot test, because the band depends on live window safe-area geometry (same reason as #202/#204).

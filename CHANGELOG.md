@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
+
 ## [0.2.5] - 2026-10-08
 
 ### Added
