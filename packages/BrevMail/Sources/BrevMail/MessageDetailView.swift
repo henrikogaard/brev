@@ -1151,7 +1151,12 @@ public struct MessageDetailView: View {
         let shortDate = MessageReaderHeaderPresentation.shortDate(for: header.date, now: referenceDate ?? Date())
         let recipientSummary = recipientLine(header.to.isEmpty ? header.cc : header.to)
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            HStack(alignment: .top, spacing: BrevSpacing.sm) {
+            // The name and "to" rows each keep a 44 pt frame for hit targets,
+            // but sit flush against each other (name bottom-aligned, "to"
+            // top-aligned) so they read as one tight two-line block with the
+            // avatar centred on it; the spare frame height overlaps into the
+            // surrounding whitespace via the negative padding below.
+            HStack(alignment: isLargeText ? .top : .center, spacing: BrevSpacing.sm) {
                 if showSenderAvatars {
                     BrevAvatarView(
                         email: header.from.email,
@@ -1160,7 +1165,7 @@ public struct MessageDetailView: View {
                     )
                     .accessibilityHidden(true)
                 }
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: isLargeText ? 2 : 0) {
                     phoneSenderRow(
                         header: header,
                         shortDate: shortDate,
@@ -1191,7 +1196,7 @@ public struct MessageDetailView: View {
                             .foregroundStyle(theme.textSecondary.color)
                             // Keep the tap target at the 44 pt minimum however
                             // small the caption renders.
-                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: isLargeText ? .leading : .topLeading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -1205,6 +1210,7 @@ public struct MessageDetailView: View {
                         ))
                     }
                 }
+                .padding(.vertical, isLargeText ? 0 : -Self.phoneHeaderRowOverlap)
             }
             if isRecipientsExpanded {
                 recipientDetail(header: header)
@@ -1221,6 +1227,10 @@ public struct MessageDetailView: View {
     #endif
 
     #if os(iOS)
+    /// How far each 44 pt header row's frame may overlap the whitespace above
+    /// and below the block, so the visible lines stay tight.
+    private static let phoneHeaderRowOverlap: CGFloat = 12
+
     /// Name and short date on one line (the date drops below at accessibility
     /// sizes). A 44 pt row; when the shared contacts infrastructure exists the
     /// row opens the sender's contact card, as iOS Mail does.
@@ -1249,7 +1259,7 @@ public struct MessageDetailView: View {
                     .fixedSize()
             }
         }
-        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: isLargeText ? .leading : .bottomLeading)
         .contentShape(Rectangle())
         // One VoiceOver stop for sender and date, reading the full
         // date rather than the abbreviated visual one.
