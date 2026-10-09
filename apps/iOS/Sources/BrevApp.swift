@@ -262,6 +262,9 @@ struct BrevApp: App {
                 ) {
                     isShowingAddAccountSheet = false
                 }
+                // The sheet is presented from outside `.brevRootAppearance`, so
+                // it must resolve the persisted theme and color scheme itself.
+                .brevRootAppearance(session: session)
             }
             .fullScreenCover(isPresented: $showCalendar) {
                 // No NavigationStack wrapper: the root view is itself a

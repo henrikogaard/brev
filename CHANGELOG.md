@@ -16,6 +16,7 @@ All notable changes to Brev are documented here.
 ### Fixed
 
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
+- iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
 
 ## [0.2.5] - 2026-10-08
 

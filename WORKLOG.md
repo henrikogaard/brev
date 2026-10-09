@@ -5408,3 +5408,10 @@ buttons, and package-aware localization.
 - BrevDesign `SplitViewTransparencyPassStateTests` "settled pass re-arms itself" is timing-flaky on clean `origin/main` too (1/4 runs).
 - Not verified: the macOS Fonts group in Settings was not seen live (Brev cannot be driven in the background); fonts were exercised through launch arguments instead.
 - Merge (Henrik asked to merge #206 and #207): #206 squash-merged as e7475081 after a CHANGELOG/WORKLOG-only conflict with #209 (its one red check was the BrevSyncEngine search timing test, 0.103 s vs 0.098 s). #207 merged origin/main (CHANGELOG/WORKLOG only); after the merge BrevMail builds for iOS 27 and macOS, and the focused BrevMail reader-header, BrevSettings and BrevDesign font tests pass. CI on the final #207 commit was not waited for.
+
+## 2026-10-09 — Claude Code — iOS add-account sheet theme and layout
+
+- Goal: fix the iOS add-account sheet rendering the light theme in dark mode and tidy its layout.
+- Changes: the iOS add-account sheet now applies `.brevRootAppearance(session:)` (same cause as the PIM covers in #187); the login-screen setup sheet does the same on iOS. On iOS, Add moved to the navigation bar and is hidden while OAuth sign-in is the primary path; the bottom button stack is gone, status stays pinned, and Test connection shows only next to editable manual server fields (`IMAPAccountSetupPresentation.showsToolbarAddAction` / `showsInlineTestConnection`). Provider shortcuts use `BrevButton` secondary; scroll padding moved inside the scroll view so content scrolls under the nav bar. macOS layout unchanged.
+- Verification: see the PR description (BrevMail presentation tests, lint, format, iOS 27 simulator dark-mode `nb` screenshots in `docs/qa/ios-account-setup-2026-10-09/`).
+- Handoff: no snapshot added; the sheet has no iOS snapshot pattern (existing LoginView snapshots are macOS-only).

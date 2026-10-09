@@ -52,6 +52,32 @@ struct IMAPAccountSetupPresentationTests {
         ))
     }
 
+    @Test("iPhone toolbar Add hides while OAuth sign-in is the primary path")
+    func toolbarAddHidesOnOAuthPath() {
+        #expect(!IMAPAccountSetupPresentation.showsToolbarAddAction(showsOAuthPrimary: true))
+        #expect(IMAPAccountSetupPresentation.showsToolbarAddAction(showsOAuthPrimary: false))
+    }
+
+    @Test("inline Test connection appears only with expanded editable server fields")
+    func inlineTestConnectionNeedsEditableServerFields() {
+        #expect(IMAPAccountSetupPresentation.showsInlineTestConnection(
+            isAdvancedSetupExpanded: true,
+            visibility: .editable
+        ))
+        #expect(!IMAPAccountSetupPresentation.showsInlineTestConnection(
+            isAdvancedSetupExpanded: false,
+            visibility: .editable
+        ))
+        #expect(!IMAPAccountSetupPresentation.showsInlineTestConnection(
+            isAdvancedSetupExpanded: true,
+            visibility: .summaryOnly
+        ))
+        #expect(!IMAPAccountSetupPresentation.showsInlineTestConnection(
+            isAdvancedSetupExpanded: true,
+            visibility: .hidden
+        ))
+    }
+
     @Test("manual server details remain gated by Advanced setup")
     func manualServerDetailsRemainAdvanced() {
         #expect(!IMAPAccountSetupPresentation.showsAdvancedServerFields(

@@ -83,6 +83,20 @@ public struct IMAPAccountSetupSheet: View {
                             onClose()
                         }
                     }
+                    if IMAPAccountSetupPresentation.showsToolbarAddAction(
+                        showsOAuthPrimary: showsOAuthPrimary
+                    ) {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button(
+                                session.isSigningIn
+                                    ? String(localized: "Adding...", bundle: .module)
+                                    : String(localized: "Add", bundle: .module)
+                            ) {
+                                addAccount()
+                            }
+                            .disabled(!canAddAccount || session.isSigningIn || isTestingConnection)
+                        }
+                    }
                 }
         }
         #else
@@ -90,43 +104,36 @@ public struct IMAPAccountSetupSheet: View {
         #endif
     }
 
-    private var setupContent: some View {
-        VStack(spacing: BrevSpacing.lg) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: BrevSpacing.lg) {
-                    header
-                    accountFields
-                    advancedSetupSection
-                    if didStartDiscoveryProbe || setupPath != .undiscovered {
-                        statusAndGuidanceSection
-                    }
-                }
-                .frame(maxWidth: setupContentMaxWidth, alignment: .leading)
-                .frame(maxWidth: .infinity)
+    private var scrollableContent: some View {
+        VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+            header
+            accountFields
+            advancedSetupSection
+            if didStartDiscoveryProbe || setupPath != .undiscovered {
+                statusAndGuidanceSection
             }
-
-            // Pin the latest status next to the actions: the scrollable
-            // status section is gated on discovery and sits below the fold
-            // on iPhone, so a connect failure must render here to be seen.
-            if let actionStatus {
-                BrevInlineStatus(
-                    message: actionStatus.message,
-                    tone: actionStatus.tone,
-                    lineLimit: nil
-                )
-                .frame(maxWidth: setupContentMaxWidth, alignment: .leading)
-            }
-
-            actions
-                .frame(maxWidth: setupContentMaxWidth)
         }
-        .padding(.horizontal, BrevSpacing.lg)
-        .padding(.vertical, BrevSpacing.xl)
-        #if os(iOS)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        #else
-            .frame(minWidth: 520, idealWidth: 560, minHeight: 420)
-        #endif
+        .frame(maxWidth: setupContentMaxWidth, alignment: .leading)
+        .frame(maxWidth: .infinity)
+    }
+
+    /// The latest status, pinned outside the scroll content: the scrollable
+    /// status section is gated on discovery and sits below the fold on
+    /// iPhone, so a connect failure must render here to be seen.
+    @ViewBuilder
+    private var pinnedActionStatus: some View {
+        if let actionStatus {
+            BrevInlineStatus(
+                message: actionStatus.message,
+                tone: actionStatus.tone,
+                lineLimit: nil
+            )
+            .frame(maxWidth: setupContentMaxWidth, alignment: .leading)
+        }
+    }
+
+    private var setupContent: some View {
+        platformLayout
             .background(theme.bgPrimary.color)
             .task {
                 // Re-auth only: one-shot discover for the known failed address.
@@ -146,6 +153,44 @@ public struct IMAPAccountSetupSheet: View {
             .onDisappear {
                 cancelOAuthSignIn()
             }
+    }
+
+    @ViewBuilder
+    private var platformLayout: some View {
+        #if os(iOS)
+        // Padding lives inside the scroll view so content scrolls under the
+        // navigation bar edge instead of being clipped below it. Add and
+        // Cancel are in the navigation bar; only the status stays pinned.
+        ScrollView {
+            scrollableContent
+                .padding(.horizontal, BrevSpacing.lg)
+                .padding(.vertical, BrevSpacing.xl)
+        }
+        .scrollDismissesKeyboard(.interactively)
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if actionStatus != nil {
+                pinnedActionStatus
+                    .padding(.horizontal, BrevSpacing.lg)
+                    .padding(.vertical, BrevSpacing.sm)
+                    .frame(maxWidth: .infinity)
+                    .background(theme.bgPrimary.color)
+            }
+        }
+        #else
+        VStack(spacing: BrevSpacing.lg) {
+            ScrollView {
+                scrollableContent
+            }
+
+            pinnedActionStatus
+
+            actions
+                .frame(maxWidth: setupContentMaxWidth)
+        }
+        .padding(.horizontal, BrevSpacing.lg)
+        .padding(.vertical, BrevSpacing.xl)
+        .frame(minWidth: 520, idealWidth: 560, minHeight: 420)
+        #endif
     }
 
     private var setupTitle: String {
@@ -280,17 +325,22 @@ public struct IMAPAccountSetupSheet: View {
                         .brevFont(.caption)
                         .foregroundStyle(theme.textTertiary.color)
 
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: BrevSpacing.sm) {
-                            advancedSetupShortcuts
-                        }
-                        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                            advancedSetupShortcuts
-                        }
+                    // One row; wraps only when the buttons no longer fit.
+                    FlowLayout(spacing: BrevSpacing.sm) {
+                        advancedSetupShortcuts
                     }
 
                     if showsAdvancedServerFields {
                         serverFields
+                        #if os(iOS)
+                        if IMAPAccountSetupPresentation.showsInlineTestConnection(
+                            isAdvancedSetupExpanded: isAdvancedSetupExpanded,
+                            visibility: serverFieldVisibility
+                        ) {
+                            testConnectionButton
+                                .frame(maxWidth: .infinity)
+                        }
+                        #endif
                         if serverFieldVisibility == .editable {
                             manageSieveSection
                         }
@@ -304,13 +354,32 @@ public struct IMAPAccountSetupSheet: View {
     @ViewBuilder
     private var advancedSetupShortcuts: some View {
         ForEach(IMAPAccountSetupPresentation.SkipShortcut.allCases) { shortcut in
-            Button(shortcut.title) {
+            #if os(iOS)
+            // Compact variant of the secondary BrevButton so all three
+            // shortcuts fit one row on iPhone widths.
+            Button {
+                applySkip(shortcut)
+            } label: {
+                Text(verbatim: shortcut.title)
+                    .brevFont(.subheadline)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .padding(.horizontal, BrevSpacing.md)
+                    .frame(minHeight: 44)
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrevRadius.md)
+                            .stroke(theme.border.color, lineWidth: 1)
+                    }
+                    .contentShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            }
+            .buttonStyle(.plain)
+            .disabled(isDiscovering || session.isSigningIn)
+            .opacity(isDiscovering || session.isSigningIn ? 0.5 : 1)
+            #else
+            BrevButton(verbatim: shortcut.title, style: .secondary) {
                 applySkip(shortcut)
             }
-            .buttonStyle(.bordered)
-            .controlSize(.regular)
             .disabled(isDiscovering || session.isSigningIn)
-            .imapSetupTouchTarget()
+            #endif
         }
     }
 
@@ -580,15 +649,21 @@ public struct IMAPAccountSetupSheet: View {
         )
     }
 
-    private var actions: some View {
-        #if os(iOS)
-        VStack(spacing: BrevSpacing.sm) {
-            addAccountButton
-                .frame(maxWidth: .infinity)
-            testConnectionButton
-                .frame(maxWidth: .infinity)
+    private var testConnectionButton: some View {
+        BrevButton(
+            verbatim: isTestingConnection
+                ? String(localized: "Testing...", bundle: .module)
+                : String(localized: "Test connection", bundle: .module),
+            style: .secondary
+        ) {
+            testConnection()
         }
-        #else
+        .disabled(!canTestConnection)
+        .imapSetupTouchTarget()
+    }
+
+    #if os(macOS)
+    private var actions: some View {
         ViewThatFits(in: .horizontal) {
             HStack(spacing: BrevSpacing.sm) {
                 cancelButton
@@ -606,7 +681,6 @@ public struct IMAPAccountSetupSheet: View {
                     .frame(maxWidth: .infinity)
             }
         }
-        #endif
     }
 
     private var cancelButton: some View {
@@ -614,19 +688,6 @@ public struct IMAPAccountSetupSheet: View {
             cancelOAuthSignIn()
             onClose()
         }
-        .imapSetupTouchTarget()
-    }
-
-    private var testConnectionButton: some View {
-        BrevButton(
-            verbatim: isTestingConnection
-                ? String(localized: "Testing...", bundle: .module)
-                : String(localized: "Test connection", bundle: .module),
-            style: .secondary
-        ) {
-            testConnection()
-        }
-        .disabled(!canTestConnection)
         .imapSetupTouchTarget()
     }
 
@@ -641,6 +702,7 @@ public struct IMAPAccountSetupSheet: View {
         .disabled(!canAddAccount || session.isSigningIn || isTestingConnection)
         .imapSetupTouchTarget()
     }
+    #endif
 
     private func startOAuthSignIn(
         _ operation: @escaping @MainActor () async -> Void
@@ -766,8 +828,16 @@ public struct IMAPAccountSetupSheet: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
             fieldLabel(title)
+            #if os(iOS)
+            // The system rounded-border style paints near-black boxes inside
+            // the themed card in dark mode; use theme surfaces instead.
+            content()
+                .textFieldStyle(.plain)
+                .setupFieldSurface(theme: theme)
+            #else
             content()
                 .textFieldStyle(.roundedBorder)
+            #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
@@ -1232,6 +1302,19 @@ private extension View {
         #else
         self
         #endif
+    }
+
+    func setupFieldSurface(theme: BrevTheme) -> some View {
+        brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
+            .padding(.horizontal, BrevSpacing.md)
+            .frame(minHeight: 44)
+            .background(theme.bgPrimary.color)
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.md))
+            .overlay {
+                RoundedRectangle(cornerRadius: BrevRadius.md)
+                    .stroke(theme.border.color, lineWidth: 1)
+            }
     }
 
     func setupSectionSurface(theme: BrevTheme) -> some View {
