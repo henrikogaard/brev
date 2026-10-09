@@ -1467,6 +1467,8 @@ public struct BrevMailRootView: View {
                 folderNameDraft = ""
             }
         )
+        // Before the toolbar modifiers, so window chrome stays System (ADR-0086).
+        .brevFontSection(.sidebar)
         .brevMailPaneSurface(.sidebar)
         #if os(iOS)
             .navigationTitle(Text("Mailboxes", bundle: .module))
@@ -1881,6 +1883,7 @@ public struct BrevMailRootView: View {
                 }
             }
         }
+        .brevFontSection(.messageList)
         .brevMailPaneSurface(.content)
         // iOS gives search a capsule inside the bottom bar (see
         // `toolbarList`), the Apple Mail idiom, so

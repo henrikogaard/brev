@@ -1,6 +1,6 @@
 # ADR-0086: Per-section font family
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-09
 - **Deciders:** Henrik
 - **Related:** ADR-0002 (theme), ADR-0012 (settings surface, "Desktop text
@@ -34,46 +34,57 @@ Constraints:
 
 ## Decision
 
-1. **Four sections, one family each.** Add a `BrevFontSection` enum in
+1. **Three sections, one family each.** Add a `BrevFontSection` enum in
    BrevDesign with these cases:
 
    | Section | Covers | Key |
    |---|---|---|
    | `sidebar` | Mail folder sidebar: accounts, favorites, smart views, folders | `font.sidebar` |
-   | `messageList` | List rows and the in-pane list header | `font.messageList` |
-   | `reader` | Reader header, thread cards, message body (plain and HTML) | `font.reader` |
-   | `compose` | Compose fields and body editor | `font.compose` |
+   | `messageList` | List rows, group headers, in-pane list header and footer | `font.messageList` |
+   | `reader` | Reader header, thread cards, message body (plain and HTML), and the compose body editor | `font.reader` |
 
-   Each key stores a `MailboxFontFamily` raw value. Settings, toolbars,
-   menus, dialogs and system chrome keep the system design.
+   Each key stores a `MailboxFontFamily` raw value. Compose has no picker
+   of its own: its body follows the reader, as it followed the single
+   message font before. Settings, window toolbars (including the mailbox
+   title), compose fields, menus, dialogs and system chrome keep the
+   system design.
 
 2. **Same four families.** Sections offer the existing `MailboxFontFamily`
    cases only. No installed-font picker in this ADR.
 
 3. **Legacy fallback, no write migration.** Resolve each section as:
-   `font.<section>` if set, else `mailbox.fontFamily` for `messageList`,
-   `reader` and `compose`, else `.system`. `sidebar` falls back to
+   `font.<section>` if set, else `mailbox.fontFamily` for `messageList` and
+   `reader`, else `.system`. `sidebar` falls back to
    `.system`, because it has never followed the message font. Nothing is
    rewritten on upgrade, so a downgrade still reads the legacy key. One
    resolver, `BrevFontSection.resolvedFamily(in: UserDefaults)`, owns this
    rule and gets unit tests.
 
-4. **Environment, not per-view storage.** Add a `brevFontSection(_:)` view
-   modifier that sets the section in the SwiftUI environment at each pane
-   root, next to the existing `brevDesktopSizing()` calls in
-   `BrevMailRootView` and `ComposeView`. `BrevFontModifier` reads the
-   section from the environment and applies that section's family design
-   to the token (both the Dynamic Type path and the macOS `desktopFont`
-   path). Views outside a section keep `.default`. The list, reader and
-   compose call sites that read `mailbox.fontFamily` through `@AppStorage`
-   today switch to their section's resolved family.
+4. **Environment for tokens, one property wrapper for content.** A
+   `brevFontSection(_:)` modifier on the sidebar and message list pane
+   roots in `BrevMailRootView` puts the resolved family in the SwiftUI
+   environment (`\.brevFontFamily`). The reader pane does not set it. A
+   blank HTML body after launch already happens on `main` (about 1 in 5
+   mock launches), but setting a non-system design on the reader pane's
+   tokens made it far more frequent (5 of 6). The reader's text already
+   takes the family directly (below), so the pane-wide value adds little. It sits inside the toolbar modifiers, so window
+   toolbars stay System. `BrevFontModifier` applies that family's design to
+   every `brevFont` token (Dynamic Type and the macOS `desktopFont` path).
+   Views outside a section keep `.default`. Content views that size their
+   own text (list rows, reader, thread cards, compose body) read
+   `@SectionFontFamily(.messageList | .reader)` instead of the legacy
+   `@AppStorage`, so detached reader and compose windows get the right
+   family without a pane root.
 
 5. **One Settings group.** Settings > Appearance gets a **Fonts** group with
-   four pickers (Sidebar, Message list, Reader, Compose) and a "Use one font
-   everywhere" shortcut that writes all four keys at once. The group sits
+   three pickers (Sidebar, Message list, Reading and compose), a live
+   preview line per section, and a "Use one font everywhere" menu that
+   writes all three keys at once. The group sits
    beside Text and spacing on macOS and in Appearance on iOS. The "Message
    font" row in Mailbox View is removed, and Settings search routes "font"
-   to the new group. Appearance > Reset to Defaults clears all four keys.
+   to the new group. Appearance > Reset to Defaults clears all three keys and the legacy
+   `mailbox.fontFamily`; without that, cleared list and reader keys would
+   fall back to the old message font.
 
 6. **ADR-0012 amendment.** The "mail content only" sentence in ADR-0012 is
    superseded by this ADR for the sidebar. Text size and density rules are
@@ -91,11 +102,13 @@ Constraints:
   `ui-serif`/`ui-rounded`/`ui-monospace` CSS. An arbitrary font needs
   availability checks, missing-weight fallbacks, iOS font installation and
   a CSS family that may not exist in WebKit. Rejected for now.
-- **Environment over `@AppStorage` in every view.** Today five views each
-  read `mailbox.fontFamily`. Four sections through `@AppStorage` would
-  spread key knowledge across more files. One environment value set at the
-  pane root keeps the key in BrevDesign and lets previews and snapshot
-  tests set a section without touching `UserDefaults`.
+- **Environment for tokens.** `brevFont` is used in hundreds of places;
+  an environment value set at the pane root reaches all of them without
+  touching each call site, and lets previews set a family directly.
+- **Property wrapper for content views.** The five views that already
+  read the font key keep reading defaults, through one wrapper that owns
+  the key and fallback rule. Reading defaults (not the environment) keeps
+  detached reader and compose windows correct; they have no pane root.
 - **Read-time fallback over a one-off migration.** A migration needs
   version tracking and breaks downgrade. The fallback is a few lines and
   testable.
@@ -111,16 +124,15 @@ Constraints:
 
 ### Accepted
 
-- Four new `UserDefaults` keys, all local. No network, no privacy change,
+- Three new `UserDefaults` keys, all local. No network, no privacy change,
   no Realm change, no backend change.
 - `BrevFontModifier` gains one environment read. Cost is negligible next to
   the existing `@AppStorage` read for text size.
 - Settings moves the font control from Mailbox View to Appearance, the
   second move in a month (after ADR-0012). Settings search covers both
   names.
-- Snapshot tests: new references for the Fonts settings group and for one
-  sidebar row, one list row and one reader header in a non-system family.
-  New macOS pixel suites join the macOS<26 skip list per AGENTS.md.
+- The iOS accessible Appearance snapshot gains the Fonts group and is
+  re-recorded. Resolver, reset and apply-to-all rules have unit tests.
 - iOS and macOS both get the feature; on iOS the sidebar section is the
   folder list.
 
@@ -135,12 +147,11 @@ Constraints:
 - **Mixed families can look busy.** Accepted; the default stays System
   everywhere and "Use one font everywhere" is one click.
 
-## Open questions for acceptance
+## Acceptance notes (2026-10-09)
 
-- Should compose follow the reader by default instead of having its own
-  picker (three pickers, not four)?
-- Should the mailbox title in the macOS toolbar follow the list section,
-  or stay system like other toolbar text?
+Henrik accepted with two choices: compose follows the reader (three
+pickers, not four), and the mailbox title in the macOS toolbar stays
+System like other toolbar text.
 
 ## References
 

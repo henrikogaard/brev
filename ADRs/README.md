@@ -96,7 +96,7 @@ repository checks.
 | 83 | Home-screen widgets share a snapshot file, never the Realm store | Accepted |
 | 84 | Offline PIM writes queue and replay on reconnect | Proposed |
 | 85 | Desktop starts in Compact list density | Accepted |
-| 86 | Per-section font family | Proposed |
+| 86 | Per-section font family | Accepted |
 
 ## Conventions
 

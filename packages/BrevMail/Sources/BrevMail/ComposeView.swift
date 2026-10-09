@@ -290,7 +290,8 @@ public struct ComposeView: View {
     @AppStorage(ComposeBodyAppearance.storageKey) private var bodyAppearanceRaw = ComposeBodyAppearance.system.rawValue
     @AppStorage("compose.messageFormat") private var composeMessageFormatRaw = "automatic"
     @AppStorage(ComposeTextCheckingPolicy.storageKey) private var textCheckingEnabled = ComposeTextCheckingPolicy.defaultIsEnabled
-    @AppStorage(MailboxViewPreferenceKey.fontFamily) private var mailboxFontFamilyRaw = MailboxFontFamily.system.rawValue
+    // Compose follows the reader's font (ADR-0086).
+    @SectionFontFamily(.reader) private var composeFontFamily
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
     @AppStorage(MailboxViewPreferenceKey.textSize) private var mailboxTextSizeRaw = MailboxTextSize.medium.rawValue
@@ -1875,7 +1876,7 @@ public struct ComposeView: View {
             appearance: bodyAppearance,
             htmlPublicationFlushBox: htmlPublicationFlushBox,
             textCheckingConfiguration: ComposeTextCheckingPolicy.configuration(isEnabled: textCheckingEnabled),
-            fontFamily: MailboxFontFamily(rawValue: mailboxFontFamilyRaw) ?? .system,
+            fontFamily: composeFontFamily,
             textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium,
             inlineImageRegistry: inlineImageRegistry,
             onRequestLinkSheet: { input in
@@ -1901,7 +1902,7 @@ public struct ComposeView: View {
 
     #if os(macOS)
     private var composeHTMLPreview: some View {
-        let fontFamily = MailboxFontFamily(rawValue: mailboxFontFamilyRaw) ?? .system
+        let fontFamily = composeFontFamily
         let textSize = MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
         let html = ComposeHTMLPreviewSource.html(richHTML: bodyHTML, plainBody: bodyText)
         return ScrollView {

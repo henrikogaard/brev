@@ -639,6 +639,17 @@
         }
       }
     },
+    "Fonts": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Skrifter"
+          }
+        }
+      }
+    },
     "Manage key material": {
       "extractionState": "manual",
       "localizations": {
@@ -646,6 +657,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Administrer nøkkelmateriale"
+          }
+        }
+      }
+    },
+    "Pick a font for each part of the mail window. Compose uses the reading font.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg skrift for hver del av e-postvinduet. Skriving bruker leseskriften."
           }
         }
       }
@@ -683,24 +705,24 @@
         }
       }
     },
-    "Restores the default themes, accent, and app icon.": {
+    "Restores the default themes, accent, fonts, and app icon.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gjenoppretter standardtemaer, aksentfarge og appikon."
+            "value": "Gjenoppretter standardtemaer, aksentfarge, skrifter og appikon."
           }
         }
       }
     },
-    "Restores the default themes, accent, window style, text size, density, and app icon.": {
+    "Restores the default themes, accent, window style, text size, density, fonts, and app icon.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Gjenoppretter standardtemaer, aksentfarge, vindusstil, tekststørrelse, tetthet og appikon."
+            "value": "Gjenoppretter standardtemaer, aksentfarge, vindusstil, tekststørrelse, tetthet, skrifter og appikon."
           }
         }
       }
@@ -734,6 +756,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Oppgaveblæddring"
+          }
+        }
+      }
+    },
+    "Use One Font Everywhere": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bruk samme skrift overalt"
           }
         }
       }
@@ -1356,17 +1389,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Gjelder alle postkasser"
-          }
-        }
-      }
-    },
-    "Applies to mailbox previews, readable bodies, and compose.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gjelder postkasseforhåndsvisninger, lesbare brødtekster og skriving."
           }
         }
       }

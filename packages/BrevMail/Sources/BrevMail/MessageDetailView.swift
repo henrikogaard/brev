@@ -147,7 +147,7 @@ public struct MessageDetailView: View {
     @AppStorage(MailboxViewPreferenceKey.useRichRenderer) private var useRichRenderer = true
     @AppStorage(MailboxViewPreferenceKey.allowRemoteContent) private var allowRemoteContentDefault = false
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
-    @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
+    @SectionFontFamily(.reader) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     /// Persisted local workflow state (snooze/done/notes) — drives the
@@ -337,10 +337,6 @@ public struct MessageDetailView: View {
         .frame(maxWidth: 320)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(BrevSpacing.xl)
-    }
-
-    private var mailboxFontFamily: MailboxFontFamily {
-        MailboxFontFamily(rawValue: fontFamilyRaw) ?? .system
     }
 
     private var mailboxTextSize: MailboxTextSize {

@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevDesign
 @testable import BrevSettings
 import BrevThemes
 import Foundation
@@ -334,6 +335,32 @@ struct AppearanceThemeSettingsTests {
         #expect(store.appearanceThemeSettings() == AppearanceThemeSettings.defaults)
         #expect(store.appIconVariant() == AppIconVariant.defaultVariant)
         #expect(defaults.bool(forKey: AppearancePreferenceKey.transparentMainTitlebar))
+    }
+
+    @Test("Reset to Defaults clears every section font and the legacy message font")
+    func resetClearsSectionFonts() throws {
+        let defaults = try Self.makeDefaults()
+        let store = SettingsPersistenceStore(defaults: defaults)
+        defaults.set(MailboxFontFamily.monospaced.rawValue, forKey: MailboxViewPreferenceKey.fontFamily)
+        FontSectionSettings.applyToAll(.serif, in: defaults)
+
+        AppearanceReset.apply(to: store)
+
+        for section in BrevFontSection.allCases {
+            #expect(defaults.object(forKey: section.preferenceKey) == nil)
+            #expect(section.resolvedFamily(in: defaults) == .system)
+        }
+    }
+
+    @Test("Use one font everywhere writes every section")
+    func applyToAllWritesEverySection() throws {
+        let defaults = try Self.makeDefaults()
+
+        FontSectionSettings.applyToAll(.rounded, in: defaults)
+
+        for section in BrevFontSection.allCases {
+            #expect(section.resolvedFamily(in: defaults) == .rounded)
+        }
     }
 
     private static func makeDefaults() throws -> UserDefaults {

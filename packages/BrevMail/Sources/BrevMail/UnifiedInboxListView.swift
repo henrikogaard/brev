@@ -113,7 +113,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.showSenderAvatars) private var showSenderAvatars = true
     @AppStorage(MailboxViewPreferenceKey.showAbsoluteArrivalTime) private var showAbsoluteArrivalTime = false
     @AppStorage(MailboxViewPreferenceKey.previewLineCount) private var previewLineCountRaw = MailboxPreviewLineCount.one.rawValue
-    @AppStorage(MailboxViewPreferenceKey.fontFamily) private var fontFamilyRaw = MailboxFontFamily.system.rawValue
+    @SectionFontFamily(.messageList) private var mailboxFontFamily
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
@@ -743,10 +743,6 @@ struct UnifiedInboxListView: View {
             return .search
         }
         return trimmedSearchText.isEmpty ? .active : .search
-    }
-
-    private var mailboxFontFamily: MailboxFontFamily {
-        MailboxFontFamily(rawValue: fontFamilyRaw) ?? .system
     }
 
     private var mailboxTextSize: MailboxTextSize {

@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- Settings > Appearance > Fonts picks a font for the sidebar, the message list, and reading (compose uses the reading font), with a "Use One Font Everywhere" shortcut. Your current message font carries over to the list and reader. The Message font row in Mailbox View moved here, and Reset to Defaults now resets fonts too.
+
 ## [0.2.5] - 2026-10-08
 
 ### Added
