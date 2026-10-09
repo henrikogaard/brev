@@ -161,7 +161,26 @@ public final class MailNavigationState {
     /// `MessageListView` after each load so the detail pane can look
     /// up the selected message and thread peers without re-fetching
     /// headers from the backend. Cleared when the folder changes.
-    public var currentFolderHeaders: [MessageHeader]
+    public var currentFolderHeaders: [MessageHeader] {
+        didSet { headerIndexByIDCache = nil }
+    }
+
+    /// Lazily built position of each header ID (first occurrence wins, as
+    /// with `first(where:)`). The reader reads `selectedHeader` several times
+    /// per render; a linear scan of a 10k-message folder each time added up.
+    @ObservationIgnored private var headerIndexByIDCache: [MessageHeader.ID: Int]?
+
+    private func currentFolderIndex(of id: MessageHeader.ID) -> Int? {
+        if headerIndexByIDCache == nil {
+            var index: [MessageHeader.ID: Int] = [:]
+            index.reserveCapacity(currentFolderHeaders.count)
+            for (position, header) in currentFolderHeaders.enumerated() where index[header.id] == nil {
+                index[header.id] = position
+            }
+            headerIndexByIDCache = index
+        }
+        return headerIndexByIDCache?[id]
+    }
 
     /// Monotonic token incremented whenever the UI asks to move keyboard
     /// focus into the message list (macOS: activating a mailbox from the
@@ -217,8 +236,8 @@ public final class MailNavigationState {
 
     /// Convenience lookup used by the detail pane.
     public var selectedHeader: MessageHeader? {
-        guard let id = selectedMessageID else { return nil }
-        return currentFolderHeaders.first { $0.id == id }
+        guard let id = selectedMessageID, let index = currentFolderIndex(of: id) else { return nil }
+        return currentFolderHeaders[index]
     }
 
     /// The virtual collection being browsed while the reader targets a physical source.
@@ -406,7 +425,7 @@ public final class MailNavigationState {
     /// optimistic updates (mark read, toggle flag) so the list
     /// reflects the change without re-fetching.
     public func updateHeader(id: MessageHeader.ID, _ mutate: (inout MessageHeader) -> Void) {
-        guard let index = currentFolderHeaders.firstIndex(where: { $0.id == id }) else {
+        guard let index = currentFolderIndex(of: id) else {
             return
         }
         mutate(&currentFolderHeaders[index])
@@ -427,9 +446,7 @@ public final class MailNavigationState {
         _ headers: [MessageHeader],
         selectFirstIfNeeded: Bool = false
     ) {
-        let selectedIndex = selectedMessageID.flatMap { selected in
-            currentFolderHeaders.firstIndex(where: { $0.id == selected })
-        }
+        let selectedIndex = selectedMessageID.flatMap { currentFolderIndex(of: $0) }
         currentFolderHeaders = headers
         if let restored = restoredSelectionHeader, restored.id == selectedMessageID {
             if !headers.contains(where: { $0.id == restored.id }) {

@@ -26,6 +26,40 @@ enum MailPinnedMessages {
         return Data(value.utf8).base64EncodedString()
     }
 
+    /// Message IDs pinned in `sourceID`, decoded from the stored keys once.
+    /// Cheaper than encoding a key for every loaded header: work scales with
+    /// the pin count (at most 500), not the folder size.
+    static func messageIDs(in raw: String, sourceID: MailSourceID) -> Set<MessageHeader.ID> {
+        guard !raw.isEmpty else { return [] }
+        var ids = Set<MessageHeader.ID>()
+        for line in raw.split(separator: "\n") {
+            guard let data = Data(base64Encoded: String(line)),
+                  let decoded = String(data: data, encoding: .utf8),
+                  let components = lengthPrefixedComponents(decoded),
+                  components.count == 3,
+                  components[0] == sourceID.accountID,
+                  components[1] == sourceID.mailboxID else { continue }
+            ids.insert(components[2])
+        }
+        return ids
+    }
+
+    /// Inverse of the `"<utf8 length>:<value>"` concatenation in `key`.
+    private static func lengthPrefixedComponents(_ value: String) -> [String]? {
+        var bytes = Substring(value).utf8[...]
+        var components: [String] = []
+        while !bytes.isEmpty {
+            guard let colon = bytes.firstIndex(of: UInt8(ascii: ":")),
+                  let length = Int(String(decoding: bytes[..<colon], as: UTF8.self)),
+                  length >= 0 else { return nil }
+            let start = bytes.index(after: colon)
+            guard let end = bytes.index(start, offsetBy: length, limitedBy: bytes.endIndex) else { return nil }
+            components.append(String(decoding: bytes[start ..< end], as: UTF8.self))
+            bytes = bytes[end...]
+        }
+        return components
+    }
+
     static func toggling(sourceID: MailSourceID, messageID: MessageHeader.ID, in raw: String) throws -> String {
         var keys = Set(raw.split(separator: "\n").map(String.init))
         let id = key(sourceID: sourceID, messageID: messageID)

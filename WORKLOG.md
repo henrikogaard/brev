@@ -5416,6 +5416,43 @@ buttons, and package-aware localization.
 - Verification: see the PR description (BrevMail presentation tests, lint, format, iOS 27 simulator dark-mode `nb` screenshots in `docs/qa/ios-account-setup-2026-10-09/`).
 - Handoff: no snapshot added; the sheet has no iOS snapshot pattern (existing LoginView snapshots are macOS-only).
 
+## 2026-10-09 — Claude Code — Native iOS snooze picker sheet
+
+- Goal: Henrik said the iOS snooze popup looked horrible. Rebuild it as a native iOS sheet. Branch `fix/ios-snooze-picker` from `origin/main` @ faafd40e.
+- Changed: `SnoozePickerView` iOS path is now a `NavigationStack` with an inline "Snooze" title, Cancel as `.cancellationAction`, an inset-grouped themed `List` (subject as a footnote header, quick rows with icon, title and right-aligned wake time, a "Choose date & time…" row that pushes a graphical date picker plus time row with Snooze as `.confirmationAction`), `.medium`/`.large` detents (large for the custom screen and at accessibility sizes), a visible drag indicator and a themed sheet background. Rows are single accessibility elements ("Tomorrow morning, Tuesday 9:00 AM"); the wake time drops below the title when it does not fit. New `SnoozeSchedule` helper holds the date logic (injected `now` and `Calendar`) and adds "This evening" (18:00, before 17:00) and "This weekend" (Saturday 09:00, Monday to Thursday). Visual time labels drop "today"/"tomorrow" because the titles already say it. macOS keeps its original layout and its original three options; only the row model is shared. Call sites keep `.brevTheme(theme)`, which already pins the colour scheme and sits under the app's `.brevRootAppearance`; the sheet rendered dark in dark mode in the two call-site paths exercised (reader, list).
+- Verification: `SnoozeScheduleTests` (8) written and run; a first version of the compact label test failed (DateFormatter relative dates ignore the injected `now`), which led to the catalog-based wording. New iOS snapshot suite `SnoozePickerSnapshotTests` (light, dark, accessibility) recorded and re-run green on an iOS 27 simulator; added to the CI iOS snapshot list. `scripts/lint.sh`, `scripts/format.sh`, macOS `swift build`, iOS `BrevIOS` build clean. Runtime pass on a private iOS 27 simulator, mock data, Norwegian: dark and light, reader-path and list-path sheets, custom date screen and accessibility text size, using temporary local launch hooks (removed; grep confirms none remain) because the simulator control tool was not granted. Before/after screenshots in `docs/qa/ios-snooze-picker-2026-10-09/`.
+- Not verified: tapping through the real reader ••• menu and swipe actions (hooks set the same state those actions set); the Unified Inbox call site (same view, same `.brevTheme(theme)`); VoiceOver output (label wording is set in code, not heard).
+
+## 2026-10-09 — Claude Code — Stable release 0.2.6 prep and iOS TestFlight 0.2.6 (9)
+
+- Goal: ship the merged iOS polish (#208 add-account sheet theme/layout, #209 Apple Mail–style reader header, #210 native snooze picker) plus #206/#207 as 0.2.6, and upload the matching iOS build to internal TestFlight.
+- Changes: bumped marketing version 0.2.5 → 0.2.6 in BrevConstants and both project files; moved Unreleased entries under 0.2.6. Tag `v0.2.6` follows a green Build on this commit.
+- iOS: TestFlight 0.2.6 (9) is archived from this commit with explicit MARKETING_VERSION/CURRENT_PROJECT_VERSION overrides and provider settings injected through a private temporary xcconfig (values never logged); build 8 (0.2.5) was uploaded outside this session.
+- Skipped: physical-device cold launch (maintainer QA after TestFlight processing).
+
+## 2026-10-09 — Claude Code — Release builds use the macOS 26 SDK
+
+- Goal: Henrik's installed Brev.app has no glass circles behind toolbar buttons, unlike local test builds.
+- Cause: `/Applications/Brev.app` 0.2.5 has `DTSDKName` macosx15.5 / Xcode 16.4 because `release.yml` and `nightly.yml` ran on `macos-15`. macOS 26+ runs older-SDK apps in compatibility mode without the current design. Local test builds (Xcode 27, macosx27.0) show it. Not a macOS version or user setting.
+- Change: `release.yml` and `nightly.yml` run on `macos-26` (runner-diagnostics 2026-10-07 showed it starts in `release-signing` with Xcode 26.6). `scripts/release-artifact-verify.sh` fails a DMG whose app SDK is older than macosx26; `scripts/test-release-dmg.sh` covers the new defect. ADR-0080 amended. `build.yml` unchanged (still macos-15).
+- Verification: `scripts/test-release-dmg.sh` failed on the new old-SDK case before the guard and passes after; actionlint clean on both workflows.
+- Not verified: no Xcode 26.6 locally (only 27.0), so the first compile with the release toolchain is the next nightly after merge. Cut 0.2.6 only after that nightly is green.
+
+## 2026-10-09 — Claude Code — macOS list and avatar hot paths
+
+- Goal: Henrik asked for better macOS performance. A read-only survey ranked suspects; this PR takes the three that are small, certain and testable.
+- Changes: `MailPinnedMessages.messageIDs(in:sourceID:)` decodes the at most 500 stored pin keys once instead of base64-encoding a key for every loaded header (`MessageListView.refreshPinnedMessageIDSet`). `MailNavigationState` keeps a lazily rebuilt ID→index map (`@ObservationIgnored`, invalidated on any `currentFolderHeaders` change) for `selectedHeader`, `updateHeader` and `replaceCurrentFolderHeaders`. `AvatarDisplayImageCache` (main actor, NSCache, keyed by resolver, normalized email, preferences and pixel size) lets recreated `BrevAvatarView` rows draw the last decoded photo on their first frame.
+- Measured (release build, throwaway benchmark, not committed): pin refresh over 10k headers 2.68 ms → <0.01 ms with no pins, 3.07 ms → 0.02 ms with 20 pins.
+- Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
+- Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
+
+## 2026-10-09 — Claude Code — 0.2.6 release point moved past #211/#212
+
+- `chore(release): cut 0.2.6` (78f33e29) was never tagged: its push-event Build runs were cancelled repeatedly by later pushes to main (build.yml `cancel-in-progress`), and #211 landed after it, moving signed releases to the macOS 26 SDK. Tagging 78f33e29 would have released with the pre-#211 workflow and the old SDK.
+- This commit folds the #211/#212 Unreleased entries into 0.2.6. The PR-event Build on this exact commit satisfies release.yml's "green Build on the tag SHA" gate without racing main pushes; main is then fast-forwarded to it and `v0.2.6` tagged here.
+- iOS TestFlight 0.2.6 (9) was archived from 78f33e29; #211/#212 are release-infra and macOS-only, so the iOS content matches.
+- Caveat from #211: the macos-26 release toolchain had not compiled in CI before this release; a toolchain failure fails the Release run closed (no GitHub Release or appcast item).
+
 ## 2026-10-09 — Claude Code — blank reader HTML body after launch (no code change)
 
 - Goal: fix the macOS reader's HTML body rendering blank right after launch (mock build, "Stavanger rollout" thread; reported 1/5 with System font, 2/5 with serif, 5/6 with `brevFontSection(.reader)`).

@@ -17,7 +17,8 @@ while [[ $# -gt 0 ]]; do
   esac
 done
 mkdir -p "$export_dir/$TEST_APP/Contents"
-printf '<plist version="1.0"><dict/></plist>\n' > "$export_dir/$TEST_APP/Contents/Info.plist"
+printf '<plist version="1.0"><dict><key>DTSDKName</key><string>macosx26.6</string></dict></plist>\n' \
+  > "$export_dir/$TEST_APP/Contents/Info.plist"
 touch "$export_dir/DistributionSummary.plist" "$export_dir/ExportOptions.plist" "$export_dir/Packaging.log"
 SH
 chmod +x "$WORK/bin/xcodebuild"
@@ -53,14 +54,21 @@ bash "$WORK/scripts/release-artifact-verify.sh" \
 
 # A valid checksum alone must not allow the original broken installer through.
 mkdir -p "$WORK/bad/Brev.app/Contents"
-printf '<plist version="1.0"><dict/></plist>\n' > "$WORK/bad/Brev.app/Contents/Info.plist"
-for defect in missing-shortcut wrong-shortcut export-log; do
+printf '<plist version="1.0"><dict><key>DTSDKName</key><string>macosx26.6</string></dict></plist>\n' \
+  > "$WORK/bad/Brev.app/Contents/Info.plist"
+for defect in missing-shortcut wrong-shortcut export-log old-sdk; do
   case "$defect" in
     wrong-shortcut) ln -s /tmp "$WORK/bad/Applications" ;;
     export-log)
       rm "$WORK/bad/Applications"
       ln -s /Applications "$WORK/bad/Applications"
       touch "$WORK/bad/Packaging.log"
+      ;;
+    old-sdk)
+      # A macOS 15 SDK build ships without the macOS 26 design (ADR-0080).
+      rm "$WORK/bad/Packaging.log"
+      printf '<plist version="1.0"><dict><key>DTSDKName</key><string>macosx15.5</string></dict></plist>\n' \
+        > "$WORK/bad/Brev.app/Contents/Info.plist"
       ;;
   esac
   hdiutil create -volname "Brev Broken Test" -srcfolder "$WORK/bad" \
@@ -71,6 +79,7 @@ for defect in missing-shortcut wrong-shortcut export-log; do
     echo "ERROR: accepted $defect DMG" >&2
     exit 1
   fi
-  grep -Eq 'Unexpected DMG contents|DMG must contain an Applications symlink' "$WORK/$defect.log"
+  grep -Eq 'Unexpected DMG contents|DMG must contain an Applications symlink|built with the macosx15.5 SDK' \
+    "$WORK/$defect.log"
 done
 echo "test-release-dmg.sh: OK"

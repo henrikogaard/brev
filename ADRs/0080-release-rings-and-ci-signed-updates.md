@@ -119,6 +119,19 @@ custom
 targets do not support the release provisioning profile and must remain
 outside that app-only signing scope.
 
+#### Build runner and SDK (amended 2026-10-09)
+
+Both signing workflows run on `macos-26` (Xcode 26.x), not `macos-15`.
+Release 0.2.5 was built on `macos-15` with Xcode 16.4 and the macOS 15.5
+SDK. macOS 26 and later run such apps in compatibility mode without the
+current system design, so the shipped app lacked the toolbar item glass
+that local Xcode 27 builds show. The deployment target stays macOS 14;
+only the build SDK changes. `scripts/release-artifact-verify.sh` now fails
+any DMG whose app `DTSDKName` is older than `macosx26`, so a runner
+downgrade cannot ship silently. `build.yml` stays on `macos-15` for now;
+it checks the code compiles with the oldest supported toolchain, and the
+nightly is the first job that builds with the release SDK.
+
 ### 3. Hosting: GitHub Releases and GitHub Pages
 
 `updates.brevmail.eu` is retired as the update host. Both feeds and all
