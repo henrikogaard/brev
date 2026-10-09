@@ -35,7 +35,12 @@ struct RecipientChipField<Accessory: View>: View {
     let onInputTextChanged: (String) -> Void
     let onSuggestionSelected: (RecipientAutocompleteSuggestion) -> Void
     let trailingAccessory: Accessory
-    @FocusState private var isFocused: Bool
+    /// Compose-level focus, so the container can focus this field when the
+    /// sheet opens and move on from it with Return. Nil outside compose.
+    let focusedField: FocusState<ComposeFocusField?>.Binding?
+    let field: ComposeFocusField
+    let onSubmit: (() -> Void)?
+    @FocusState private var ownFocus: Bool
     /// Escape hides the suggestion list once; typing again reopens it.
     @State private var suggestionsDismissed = false
 
@@ -47,8 +52,14 @@ struct RecipientChipField<Accessory: View>: View {
         suggestions: [RecipientAutocompleteSuggestion] = [],
         onInputTextChanged: @escaping (String) -> Void = { _ in },
         onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in },
+        focusedField: FocusState<ComposeFocusField?>.Binding? = nil,
+        field: ComposeFocusField = .to,
+        onSubmit: (() -> Void)? = nil,
         @ViewBuilder trailingAccessory: () -> Accessory
     ) {
+        self.focusedField = focusedField
+        self.field = field
+        self.onSubmit = onSubmit
         self.label = label
         self.labelWidth = labelWidth
         self.suggestions = suggestions
@@ -78,7 +89,20 @@ struct RecipientChipField<Accessory: View>: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
-        .onTapGesture { isFocused = true }
+        .onTapGesture { setFocused() }
+    }
+
+    private var isFocused: Bool {
+        if let focusedField { return focusedField.wrappedValue == field }
+        return ownFocus
+    }
+
+    private func setFocused() {
+        if let focusedField {
+            focusedField.wrappedValue = field
+        } else {
+            ownFocus = true
+        }
     }
 
     private var labelView: some View {
@@ -98,7 +122,7 @@ struct RecipientChipField<Accessory: View>: View {
                     .textFieldStyle(.plain)
                     .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
-                    .focused($isFocused)
+                    .modifier(RecipientFocusModifier(own: $ownFocus, external: focusedField, field: field))
                     .accessibilityLabel(label)
                     .frame(minWidth: 120)
                     .autocorrectionDisabled()
@@ -106,8 +130,12 @@ struct RecipientChipField<Accessory: View>: View {
                     .keyboardType(.emailAddress)
                     .textContentType(.emailAddress)
                     .textInputAutocapitalization(.never)
+                    .submitLabel(onSubmit == nil ? .return : .next)
                 #endif
-                    .onSubmit { commitInput() }
+                    .onSubmit {
+                        commitInput()
+                        onSubmit?()
+                    }
                     .onChange(of: inputText) { _, newValue in
                         suggestionsDismissed = false
                         switch RecipientChipFieldPresentation.commitAction(afterTyping: newValue) {
@@ -173,6 +201,9 @@ struct RecipientChipField<Accessory: View>: View {
         }
         .padding(.horizontal, BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.xxs)
+        .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
+            recipients.removeAll { $0 == address }
+        })
         .background(
             RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
@@ -220,6 +251,46 @@ struct RecipientChipField<Accessory: View>: View {
     }
 }
 
+/// iOS: one VoiceOver stop per recipient, the address, with Remove as a custom
+/// action instead of a second focusable button. macOS keeps the button.
+private struct RecipientChipAccessibility: ViewModifier {
+    let address: String
+    let isValid: Bool
+    let remove: () -> Void
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(address)
+            .accessibilityHint(
+                isValid ? "" : String(localized: "\(address) doesn't look like a valid email address", bundle: .module)
+            )
+            .accessibilityAction(named: Text("Remove \(address)", bundle: .module), remove)
+        #else
+        content
+        #endif
+    }
+}
+
+/// Routes a recipient text field's focus to the compose-level focus state when
+/// one is supplied, otherwise to the field's own.
+private struct RecipientFocusModifier: ViewModifier {
+    var own: FocusState<Bool>.Binding
+    var external: FocusState<ComposeFocusField?>.Binding?
+    var field: ComposeFocusField
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if let external {
+            content.focused(external, equals: field)
+        } else {
+            content.focused(own)
+        }
+    }
+}
+
 extension RecipientChipField where Accessory == EmptyView {
     init(
         label: String,
@@ -228,7 +299,10 @@ extension RecipientChipField where Accessory == EmptyView {
         inputText: Binding<String>,
         suggestions: [RecipientAutocompleteSuggestion] = [],
         onInputTextChanged: @escaping (String) -> Void = { _ in },
-        onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in }
+        onSuggestionSelected: @escaping (RecipientAutocompleteSuggestion) -> Void = { _ in },
+        focusedField: FocusState<ComposeFocusField?>.Binding? = nil,
+        field: ComposeFocusField = .to,
+        onSubmit: (() -> Void)? = nil
     ) {
         self.init(
             label: label,
@@ -237,7 +311,10 @@ extension RecipientChipField where Accessory == EmptyView {
             inputText: inputText,
             suggestions: suggestions,
             onInputTextChanged: onInputTextChanged,
-            onSuggestionSelected: onSuggestionSelected
+            onSuggestionSelected: onSuggestionSelected,
+            focusedField: focusedField,
+            field: field,
+            onSubmit: onSubmit
         ) {
             EmptyView()
         }

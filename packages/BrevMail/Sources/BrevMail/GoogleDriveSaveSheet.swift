@@ -50,12 +50,9 @@ struct GoogleDriveSaveSheet: View {
     @State private var uploadTask: Task<Void, Never>?
 
     var body: some View {
-        VStack(spacing: 0) {
-            header
-            BrevDivider()
+        GoogleDriveSheetChrome(title: "Save to Google Drive") {
             content
         }
-        .frame(minWidth: 560, minHeight: 420)
         .task { await advanceIfEnabled() }
         .alert(
             String(localized: "A file with this name exists", bundle: .module),
@@ -79,26 +76,6 @@ struct GoogleDriveSaveSheet: View {
                 bundle: .module
             )
         }
-    }
-
-    private var header: some View {
-        HStack {
-            Text("Save to Google Drive", bundle: .module)
-                .brevFont(.title)
-                .foregroundStyle(theme.textPrimary.color)
-            Spacer()
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark.circle.fill")
-                    .foregroundStyle(theme.textTertiary.color)
-            }
-            .buttonStyle(.borderless)
-            .accessibilityLabel(
-                String(localized: "Close", bundle: .module)
-            )
-        }
-        .padding(BrevSpacing.md)
     }
 
     @ViewBuilder

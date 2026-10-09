@@ -87,6 +87,14 @@ struct ComposeViewSnapshotTests {
 
     @Test("Reply compose renders with prefilled subject and recipients in default theme")
     func replyCompose() {
+        // The attribution line is localized and shown in local time; pin both
+        // so the baseline does not depend on the machine's region or zone.
+        ComposeReplyFormatter.localeOverride = Locale(identifier: "en_GB")
+        ComposeReplyFormatter.timeZoneOverride = TimeZone(identifier: "UTC")
+        defer {
+            ComposeReplyFormatter.localeOverride = nil
+            ComposeReplyFormatter.timeZoneOverride = nil
+        }
         let theme = BrevTheme.brevPaper
         let backend = MockBackend()
         let header = MessageHeader(

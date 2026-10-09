@@ -16,6 +16,9 @@ All notable changes to Brev are documented here.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
 - Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
+### Added
+
+- iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
 
 ### Fixed
 
@@ -27,6 +30,14 @@ All notable changes to Brev are documented here.
 - iOS: the Mail widget showed Apple's "please adopt containerBackground" placeholder instead of your mail; it now draws normally and hides sender and subject when the device is locked or content is hidden.
 - iOS: the notification content extension scales with Dynamic Type, uses a neutral avatar colour and no longer repeats the sender, subject and body above itself.
 - Norwegian: the widget and the share extension are translated; counts read correctly ("I går, 1 melding", "1 filter aktivt", "1 vedlegg"); unsubscribe, remote-content, read-receipt, attachment-action, recipient-source and attachment-status messages are translated. English "1 days before" for a one-day calendar reminder now reads "1 day before".
+- iOS compose now behaves like iOS Mail when you close it. Cancel on a draft you have edited asks Delete Draft or Save Draft, and Cancel on an untouched compose or reply just closes it (a reply no longer leaves a stray draft). Swiping the sheet down on an edited draft is blocked and shows the same choice, and Cancel and swipe-down are disabled while a send is counting down. Discard Draft in the ••• menu now asks before deleting.
+- iOS compose opens with the keyboard up: New Message focuses To, a reply puts the cursor above the quoted message, and Return moves To, Cc, Bcc, Subject and the body in order.
+- iOS compose text follows Dynamic Type. The message body, which previously ignored the system text size and showed a reply's quote in a tiny default font, and the toolbar icons now scale. At the largest accessibility sizes the title yields so Cancel and Send stay on screen.
+- iOS Insert Link, Schedule Send and Templates are native sheets with Cancel/Done in the navigation bar. The link field uses the URL keyboard, Schedule Send scrolls on small phones, and templates are searchable with the system search field.
+- iOS Google Drive sheets no longer impose a 560 pt minimum width that made them wider than an iPhone screen; they get a navigation bar with Cancel and a scalable icon.
+- Reply attribution lines are localized and use your local time ("Den 9. okt. 2026 kl. 10:13 skrev …:") instead of English text in UTC. Signature placement still recognises English lines in older drafts.
+- iOS recipient chips read as one VoiceOver element with Remove as an action instead of two stops.
+- iOS compose no longer logs "Modifying state during view update" while the body editor is created or its text is replaced.
 
 - The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 
