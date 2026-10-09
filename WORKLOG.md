@@ -5445,3 +5445,11 @@ buttons, and package-aware localization.
 - Measured (release build, throwaway benchmark, not committed): pin refresh over 10k headers 2.68 ms → <0.01 ms with no pins, 3.07 ms → 0.02 ms with 20 pins.
 - Verification: new tests for pin decoding (incl. parity with the old key check), selectedHeader behaviour (replace, in-place edit, duplicate IDs) and the avatar display cache. BrevAvatars 41/41 pass. BrevMail list/navigation filter: the only failures are 10 pixel snapshots that fail identically on clean origin/main on this host. swiftformat/swiftlint clean.
 - Deferred (bigger, need design): whole-folder JSON header cache decode/rewrite on folder open (move paging to the SQLite `message_headers` table); per-row selection invalidation; remote-content regex scan on the main actor; retention sweep before startup-ready; first rich-HTML open never re-measured after the #98 prewarm.
+
+## 2026-10-09 — Agent — iOS UI/UX and accessibility audit (no code change)
+
+- Goal: audit every reachable iOS surface against the iOS HIG / iOS Mail and produce findings plus PR slices.
+- Changes: new `docs/qa/ios-ux-audit-2026-10-09/` (README with findings table and 8 PR slices, 62 screenshots, per-screen `performAccessibilityAudit` output, theme contrast table). No product code touched.
+- Verification: temporary XCUITest walker (removed, never committed) on own iPhone 17 Pro and iPad Pro 11 iOS 27 simulators (deleted afterwards), mock backend only; variants en/nb, light/dark, AX3/AX5, four built-in themes.
+- Skipped: VoiceOver speech, Reduce Motion/Transparency/Bold Text toggles, PIM screens with data, attachments/HTML/banners, widgets and extensions (see README section 4).
+- Handoff: local branch `audit/ios-ux-2026-10-09` also carries an unpushed local merge of `origin/fix/ios-account-setup-sheet` (#208); cherry-pick the audit commit if #208 is not merged first.

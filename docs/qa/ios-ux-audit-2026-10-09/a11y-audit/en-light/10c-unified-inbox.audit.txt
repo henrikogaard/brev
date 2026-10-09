@@ -1,0 +1,11 @@
+[XCUIAccessibilityAuditType(rawValue: 4)] Hit area is too small | The size of this SwiftUI.AccessibilityNode is too small for user to interact. | element: 1 label='Unified Inbox, 38 messages, 16 unread' id='' frame=(0.0, 765.3333129882812, 402.0, 18.5)
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 1)] Contrast failed | Contrast failed for SwiftUI.AccessibilityNode | element: nil
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='All Inboxes' id='' frame=(72.00000000000003, 73.83333333333334, 86.33333333333334, 20.33333333333333)
+[XCUIAccessibilityAuditType(rawValue: 65536)] Dynamic Type font sizes are partially unsupported | User will not be able to change the font size of this SwiftUI.AccessibilityNode | element: 48 label='16 unread' id='' frame=(166.33333333333337, 78.83333333333334, 57.99999999999997, 14.333333333333329)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes. | element: 48 label='All Inboxes' id='' frame=(72.00000000000003, 73.83333333333334, 86.33333333333334, 20.33333333333333)
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
+[XCUIAccessibilityAuditType(rawValue: 131072)] Text clipped | Text of this element may be clipped at larger Dynamic Type sizes. | element: nil
