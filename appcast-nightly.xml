@@ -1,5 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.2-nightly.20261008</title><pubDate>Thu, 08 Oct 2026 03:16:16 GMT</pubDate><sparkle:version>2026100803</sparkle:version><sparkle:shortVersionString>0.2.2-nightly.20261008</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at f7763af03a9a06c1eeaefa017dc7d3a1759f1f89.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.5-nightly.20261009</title><pubDate>Fri, 09 Oct 2026 03:18:57 GMT</pubDate><sparkle:version>2026100903</sparkle:version><sparkle:shortVersionString>0.2.5-nightly.20261009</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at faafd40e9543618cadb3d7e6a8eccbd6b15326fe.
+
+- chore(release): cut 0.2.5 (faafd40)
+- docs(qa): PIM stub-DAV evidence 2.7/2.8/4.3 + fix iOS PIM theme (#187) (3190ab7)
+- fix(macos): replace category pills with tabs on shared blur (#204) (4b2f1dd)
+- feat(mail): sidebar account rows, unread pill and reader quick reply (#203) (b9bf110)
+- fix(imap): accept UID metadata after body literals (#188) (a824383)
+- chore(release): cut 0.2.4 (4d89d06)
+- fix(macos): blur mail content under toolbar, compact mailbox title (#202) (233f335)
+- fix(release): package clean DMGs with Applications shortcut (eb46aa1)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261009.dmg" length="31467709" type="application/octet-stream" sparkle:edSignature="o1nHEUXLge3TfRi26zI+YBxMIvjZxst1+lpHlb18hVOLcVXhtNTWOztcUqg3pDottGX1w931E+egTcee0/JDDg==" /></item><item><title>0.2.2-nightly.20261008</title><pubDate>Thu, 08 Oct 2026 03:16:16 GMT</pubDate><sparkle:version>2026100803</sparkle:version><sparkle:shortVersionString>0.2.2-nightly.20261008</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at f7763af03a9a06c1eeaefa017dc7d3a1759f1f89.
 
 - chore(release): cut 0.2.2 (f7763af)
 - fix(release): grant Sparkle installer mach-lookup in sandboxed builds (#200) (c0b8689)
@@ -71,8 +80,8 @@
 - docs(adr): add ADR-0081 proposing a first-class JMAP mail backend (#137) (5c2c0b1)
 - feat(calendar): schedule PIM sync on the fetch cadence (O3) (#135) (864313a)
 - fix(backend): pass additionalScopes through iOS Google OAuth arm (#134) (9be3e89)
-- fix(ci): restore TaskDetailSnapshotTests in macOS&lt;26 snapshot-skip list (#136) (333754c)
-- fix(ci): drop duplicated macOS&lt;26 snapshot-skip regex from #131 union merge (e06fab9)
+- fix(ci): restore TaskDetailSnapshotTests in macOS&amp;lt;26 snapshot-skip list (#136) (333754c)
+- fix(ci): drop duplicated macOS&amp;lt;26 snapshot-skip regex from #131 union merge (e06fab9)
 - feat(mail): move iOS mailbox search to a bottom glass capsule (#133) (2bb8d60)
 - fix(qa): seed stub DAV events/tasks at floating local times (#132) (07ef973)
 - fix(mail): macOS chrome polish — scope menu, text Send, From gutter; DAV username field (#131) (eb06624)
@@ -112,7 +121,7 @@
 - fix(compose): drop duplicate quoteMarker declaration from stacked squash merge (2435e40)
 - chore(worklog): drop stray merge-base marker (92ce046)
 - fix(compose): Apple Mail-style composer chrome — circular send, pill cluster, muted quote, subject prefix collapse (#94) (f49fc8d)
-- fix(ui): round-2 UI/UX + accessibility pass — keyboard nav, dark panes, sidebar polish (#93) (bc556b0)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261008.dmg" length="31994063" type="application/octet-stream" sparkle:edSignature="SvADCiRJ3mhdn8eyUXUOMHhx5Em8YmVyrgNJC5olCowxg8Y4roVmoMJZSICXJiLkf/+dLRVGWo/sbSAfM7M4CA==" /></item><item><title>0.1.0-nightly.20260923</title><pubDate>Wed, 23 Sep 2026 23:43:42 GMT</pubDate><sparkle:version>2026092323</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260923</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 3db8a9bf5c62f0675eca9609b874844845a9ad43.
+- fix(ui): round-2 UI/UX + accessibility pass — keyboard nav, dark panes, sidebar polish (#93) (bc556b0)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261008.dmg" length="31994063" type="application/octet-stream" sparkle:edSignature="SvADCiRJ3mhdn8eyUXUOMHhx5Em8YmVyrgNJC5olCowxg8Y4roVmoMJZSICXJiLkf/+dLRVGWo/sbSAfM7M4CA==" /></item><item><title>0.1.0-nightly.20260923</title><pubDate>Wed, 23 Sep 2026 23:43:42 GMT</pubDate><sparkle:version>2026092323</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260923</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 3db8a9bf5c62f0675eca9609b874844845a9ad43.
 
 - docs(qa): round-2 UI/UX + accessibility audit and improvement roadmap (#92) (3db8a9b)
 - fix(calendar): write DAV items at their stored href, supersede stale hrefs (#91) (4617777)
