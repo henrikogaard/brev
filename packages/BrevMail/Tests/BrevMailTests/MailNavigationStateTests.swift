@@ -625,6 +625,28 @@ struct MailNavigationStateTests {
         #expect(state.composePresentationID == 1)
     }
 
+    @Test("selectedHeader follows replacements, in-place edits and duplicate IDs")
+    func selectedHeaderStaysCurrent() {
+        let state = MailNavigationState()
+        let first = Self.makeHeader(id: "a")
+        var duplicate = Self.makeHeader(id: "a")
+        duplicate.isFlagged = true
+        state.currentFolderHeaders = [Self.makeHeader(id: "x"), first, duplicate]
+        state.selectedMessageID = "a"
+        #expect(state.selectedHeader?.isFlagged == false)
+
+        state.updateHeader(id: "a") { $0.isRead = true }
+        #expect(state.selectedHeader?.isRead == true)
+
+        state.currentFolderHeaders = [Self.makeHeader(id: "b")]
+        #expect(state.selectedHeader == nil)
+        state.selectedMessageID = "b"
+        #expect(state.selectedHeader?.id == "b")
+
+        state.currentFolderHeaders[0].isFlagged = true
+        #expect(state.selectedHeader?.isFlagged == true)
+    }
+
     private static func makeHeader(id: MessageHeader.ID) -> MessageHeader {
         MessageHeader(
             id: id,

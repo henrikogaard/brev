@@ -1843,11 +1843,10 @@ public struct MessageListView: View {
     }
 
     /// Re-parses the pinned-message identifier list from its stored string form.
+    /// Holds every pin for this source, loaded or not; callers only test
+    /// membership against loaded headers.
     private func refreshPinnedMessageIDSet() {
-        let keys = Set(pinnedMessageIDsRaw.split(separator: "\n").map(String.init))
-        pinnedMessageIDSet = Set(headers.filter {
-            keys.contains(MailPinnedMessages.key(sourceID: workflowSourceID, messageID: $0.id))
-        }.map(\.id))
+        pinnedMessageIDSet = MailPinnedMessages.messageIDs(in: pinnedMessageIDsRaw, sourceID: workflowSourceID)
     }
 
     private func reload() async {

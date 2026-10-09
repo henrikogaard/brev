@@ -69,11 +69,12 @@ public struct BrevAvatarView: View {
         .task(id: avatarImageRequest) {
             decodedImage = await AvatarImageDecoder.shared.thumbnail(
                 from: avatar?.imageData,
-                maximumPixelDimension: AvatarImageDecodingPolicy.maximumPixelDimension(
-                    displaySize: size,
-                    displayScale: displayScale
-                )
+                maximumPixelDimension: pixelDimension
             )
+            // Revision 0 runs before the first resolve and knows nothing yet.
+            if avatarImageRevision > 0 {
+                AvatarDisplayImageCache.shared.store(decodedImage, for: displayCacheKey)
+            }
         }
     }
 
@@ -87,6 +88,19 @@ public struct BrevAvatarView: View {
                 useBIMI: useBIMI,
                 useFavicon: useFavicon
             )
+        )
+    }
+
+    private var pixelDimension: Int {
+        AvatarImageDecodingPolicy.maximumPixelDimension(displaySize: size, displayScale: displayScale)
+    }
+
+    private var displayCacheKey: AvatarDisplayImageCache.Key {
+        AvatarDisplayImageCache.Key(
+            resolverID: ObjectIdentifier(resolver).hashValue,
+            email: email,
+            preferences: resolutionRequest.preferences,
+            pixelDimension: pixelDimension
         )
     }
 
@@ -126,8 +140,8 @@ public struct BrevAvatarView: View {
 
     @ViewBuilder
     private var imageLayer: some View {
-        if let decodedImage {
-            Image(decorative: decodedImage, scale: 1)
+        if let image = decodedImage ?? AvatarDisplayImageCache.shared.image(for: displayCacheKey) {
+            Image(decorative: image, scale: 1)
                 .resizable()
                 .aspectRatio(contentMode: .fill)
                 .frame(width: size, height: size)

@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import Foundation
 @testable import BrevMail
 import Testing
 
@@ -35,5 +36,32 @@ struct MailPinnedMessagesTests {
         let remaining = try MailPinnedMessages.toggling(sourceID: work, messageID: "INBOX:1", in: both)
         #expect(remaining == MailPinnedMessages.key(sourceID: personal, messageID: "INBOX:1"))
         #expect(MailPinnedMessages.key(sourceID: work, messageID: "INBOX:1") != remaining)
+    }
+
+    @Test("decoding stored pins returns only the current source's message IDs")
+    func decodesPinsForOneSource() throws {
+        let work = MailSourceID(accountID: "work", mailboxID: "inbox")
+        let personal = MailSourceID(accountID: "personal", mailboxID: "inbox")
+        var raw = try MailPinnedMessages.toggling(sourceID: work, messageID: "INBOX:1", in: "")
+        raw = try MailPinnedMessages.toggling(sourceID: work, messageID: "INBOX:2:with:colons", in: raw)
+        raw = try MailPinnedMessages.toggling(sourceID: personal, messageID: "INBOX:1", in: raw)
+        raw += "\nnot-base64!\n" + Data("3:abc".utf8).base64EncodedString()
+
+        #expect(MailPinnedMessages.messageIDs(in: raw, sourceID: work) == ["INBOX:1", "INBOX:2:with:colons"])
+        #expect(MailPinnedMessages.messageIDs(in: raw, sourceID: personal) == ["INBOX:1"])
+        #expect(MailPinnedMessages.messageIDs(in: "", sourceID: work).isEmpty)
+    }
+
+    @Test("decoded pins match the per-header key check they replace")
+    func decodingMatchesKeyCheck() throws {
+        let source = MailSourceID(accountID: "ä-account", mailboxID: "box:1")
+        let ids = (0 ..< 50).map { "INBOX:\($0)" }
+        var raw = ""
+        for id in ids where Int(id.dropFirst(6))! % 3 == 0 {
+            raw = try MailPinnedMessages.toggling(sourceID: source, messageID: id, in: raw)
+        }
+        let keys = Set(raw.split(separator: "\n").map(String.init))
+        let expected = Set(ids.filter { keys.contains(MailPinnedMessages.key(sourceID: source, messageID: $0)) })
+        #expect(MailPinnedMessages.messageIDs(in: raw, sourceID: source) == expected)
     }
 }
