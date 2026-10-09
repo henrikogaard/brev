@@ -11,8 +11,8 @@
  */
 
 import BrevBackend
-import Foundation
 @testable import BrevMail
+import Foundation
 import Testing
 
 struct MailPinnedMessagesTests {
