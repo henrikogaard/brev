@@ -5379,3 +5379,10 @@ buttons, and package-aware localization.
 - Merged: #188 (external, kdegeek; main merged into the branch to resolve CHANGELOG/WORKLOG, 93/93 IMAPSessionClientTests pass locally; review note left about draining to the tagged line before throwing on an untagged `* ` line). `gh pr merge --auto` merged it immediately because main has no required checks. #203 and #204 (CHANGELOG/WORKLOG-only conflicts resolved; prior PR CI green). #187 (kept main's macOS BrevApp.swift since #191 already themes the PIM windows; only the iOS covers needed the fix; MailStatusCopyLocalization tests pass).
 - Skipped: Devin's in-progress runtime check of #203 quick reply in the running test apps did not finish before the crash and was not redone; post-merge CI on main gates the release tag.
 - Release: bumped marketing version 0.2.4 → 0.2.5 in BrevConstants and both project files; moved Unreleased entries under 0.2.5. Tag `v0.2.5` follows a green Build on this commit.
+
+## 2026-10-09 — Claude Code — iOS add-account sheet theme and layout
+
+- Goal: fix the iOS add-account sheet rendering the light theme in dark mode and tidy its layout.
+- Changes: the iOS add-account sheet now applies `.brevRootAppearance(session:)` (same cause as the PIM covers in #187); the login-screen setup sheet does the same on iOS. On iOS, Add moved to the navigation bar and is hidden while OAuth sign-in is the primary path; the bottom button stack is gone, status stays pinned, and Test connection shows only next to editable manual server fields (`IMAPAccountSetupPresentation.showsToolbarAddAction` / `showsInlineTestConnection`). Provider shortcuts use `BrevButton` secondary; scroll padding moved inside the scroll view so content scrolls under the nav bar. macOS layout unchanged.
+- Verification: see the PR description (BrevMail presentation tests, lint, format, iOS 27 simulator dark-mode `nb` screenshots in `docs/qa/ios-account-setup-2026-10-09/`).
+- Handoff: no snapshot added; the sheet has no iOS snapshot pattern (existing LoginView snapshots are macOS-only).
