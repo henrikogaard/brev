@@ -496,6 +496,25 @@ public final class MailNavigationState {
         }
     }
 
+    /// The loaded header before the selected one, or `nil` at the first
+    /// message, with nothing selected, or when the selection is not loaded.
+    public var previousHeaderID: MessageHeader.ID? {
+        adjacentHeaderID(offset: -1)
+    }
+
+    /// The loaded header after the selected one, or `nil` at the last
+    /// message, with nothing selected, or when the selection is not loaded.
+    public var nextHeaderID: MessageHeader.ID? {
+        adjacentHeaderID(offset: 1)
+    }
+
+    private func adjacentHeaderID(offset: Int) -> MessageHeader.ID? {
+        guard let selected = selectedMessageID,
+              let index = currentFolderIndex(of: selected)
+        else { return nil }
+        return currentFolderHeaders[safe: index + offset]?.id
+    }
+
     /// Move the reading-pane selection to the next loaded header. If
     /// nothing is selected yet, start at the first loaded header.
     public func selectNextHeader() {

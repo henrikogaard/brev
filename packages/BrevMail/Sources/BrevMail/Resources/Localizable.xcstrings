@@ -1378,6 +1378,17 @@
         }
       }
     },
+    "Ask AI": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Spør AI"
+          }
+        }
+      }
+    },
     "Ask for a sender-scoped mailbox action": {
       "extractionState": "manual",
       "localizations": {
@@ -1506,17 +1517,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Tilgjengelig"
-          }
-        }
-      }
-    },
-    "Back to messages": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Tilbake til meldinger"
           }
         }
       }

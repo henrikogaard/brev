@@ -4,8 +4,15 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS: opening a message on iPhone now pushes the reader with the system animation, and swiping from the left edge goes back to the list (the Back button names the mailbox). The list behind it is no longer visible to VoiceOver.
+- iOS: the reader has the Apple Mail action bar. Archive (or Delete when the account has no Archive folder), Move, a Reply menu (Reply, Reply All, Forward) and New Message sit along the bottom; previous and next message chevrons sit in the navigation bar. The duplicate bottom ••• menu is gone: the one ••• menu in the navigation bar now holds the message actions, related mail, Original and "Ask AI", for single messages and conversations alike. The conversation header no longer shows the mailbox address, and expanded conversation cards show "to …" like the single-message header.
+
 ### Fixed
 
+- iOS: archiving, deleting or moving a message from the reader now shows the "Archived/Deleted/Moved" toast with Undo above the bottom bar and announces it to VoiceOver, then shows the next message with a slide, or goes back to the list when none is left. Undo and Dismiss on toasts are 44 pt targets on iPhone.
+- iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
 - Mac message list does less work on the main thread: pinned-message state no longer re-encodes every loaded message on each list change (about 3 ms to 0.02 ms per change in a 10,000-message folder), the reader finds the selected message without scanning the folder, and sender photos stay visible while rows scroll instead of flashing initials first.
 - Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 

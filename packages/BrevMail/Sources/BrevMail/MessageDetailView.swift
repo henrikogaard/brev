@@ -46,6 +46,7 @@ public struct MessageDetailView: View {
     @Environment(\.openURL) private var openURL
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.relatedConversationController) private var relatedConversation
+    @Environment(\.readerAskAIAction) private var askAIAction
     @Environment(\.messageReaderReferenceDate) private var referenceDate
     private let backend: any MailBackend
     private let sourceID: MailSourceID?
@@ -689,23 +690,38 @@ public struct MessageDetailView: View {
         #endif
         .toolbar {
             #if os(iOS)
-            // The consolidated reader overflow menu — one inventory, shared
-            // with the reader body context menu and the detached-window
-            // overflow (`MessageCommandPresentation.readerMenu`). Icon matches
-            // the root toolbar's "More" affordance (ellipsis.circle).
+            // The one reader overflow menu on the phone — the shared
+            // capability-gated inventory (`MessageCommandPresentation.readerMenu`)
+            // plus related mail, the Original toggle and Ask AI, in the order
+            // `CompactReaderChromePolicy.overflowSections` defines. The bottom
+            // bar no longer carries a second menu.
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    // Related-mail actions and the original/dark body toggle
-                    // live here on the phone instead of in bars above and
-                    // inside the message body.
-                    if let relatedConversation {
-                        RelatedConversationReaderMenuSection(controller: relatedConversation)
+                    ForEach(
+                        CompactReaderChromePolicy.overflowSections(
+                            hasRelatedMail: relatedConversation != nil,
+                            showsRenderingToggle: showsHTMLRenderingToggle(for: header),
+                            canAskAI: askAIAction != nil
+                        ),
+                        id: \.self
+                    ) { section in
+                        switch section {
+                        case .relatedMail:
+                            if let relatedConversation {
+                                RelatedConversationReaderMenuSection(controller: relatedConversation)
+                            }
+                        case .renderingToggle:
+                            htmlRenderingModeMenuButton(for: header)
+                            Divider()
+                        case .messageActions:
+                            readerMenuButtons(for: header)
+                        case .askAI:
+                            if let askAIAction {
+                                Divider()
+                                ReaderAskAIMenuButton(action: askAIAction)
+                            }
+                        }
                     }
-                    if showsHTMLRenderingToggle(for: header) {
-                        htmlRenderingModeMenuButton(for: header)
-                        Divider()
-                    }
-                    readerMenuButtons(for: header)
                 } label: {
                     Label(
                         String(localized: "More message actions", bundle: .module),
@@ -1145,31 +1161,12 @@ public struct MessageDetailView: View {
                     .accessibilityHidden(true)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
-                        Text(header.from.displayName)
-                            .font(mailboxFontFamily.font(
-                                size: (mailboxTextSize.listTitlePointSize + 2) * scale,
-                                weight: .semibold
-                            ))
-                            .foregroundStyle(theme.textPrimary.color)
-                            .lineLimit(isLargeText ? nil : 1)
-                            .truncationMode(.tail)
-                        if !isLargeText {
-                            Spacer(minLength: BrevSpacing.xs)
-                            Text(shortDate)
-                                .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
-                                .foregroundStyle(theme.textTertiary.color)
-                                .lineLimit(1)
-                                .fixedSize()
-                        }
-                    }
-                    // One VoiceOver stop for sender and date, reading the full
-                    // date rather than the abbreviated visual one.
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(MessageReaderHeaderPresentation.accessibilityLabel(
-                        senderName: header.from.displayName,
-                        fullDate: dateLabel
-                    ))
+                    phoneSenderRow(
+                        header: header,
+                        shortDate: shortDate,
+                        scale: scale,
+                        isLargeText: isLargeText
+                    )
                     if isLargeText {
                         // At accessibility sizes the date drops beneath the
                         // name instead of squeezing it into a sliver.
@@ -1192,6 +1189,9 @@ public struct MessageDetailView: View {
                             }
                             .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
                             .foregroundStyle(theme.textSecondary.color)
+                            // Keep the tap target at the 44 pt minimum however
+                            // small the caption renders.
+                            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                             .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -1216,6 +1216,58 @@ public struct MessageDetailView: View {
                 ))
                 .foregroundStyle(theme.textPrimary.color)
                 .accessibilityAddTraits(.isHeader)
+        }
+    }
+    #endif
+
+    #if os(iOS)
+    /// Name and short date on one line (the date drops below at accessibility
+    /// sizes). A 44 pt row; when the shared contacts infrastructure exists the
+    /// row opens the sender's contact card, as iOS Mail does.
+    @ViewBuilder
+    private func phoneSenderRow(
+        header: MessageHeader,
+        shortDate: String,
+        scale: CGFloat,
+        isLargeText: Bool
+    ) -> some View {
+        let row = HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
+            Text(header.from.displayName)
+                .font(mailboxFontFamily.font(
+                    size: (mailboxTextSize.listTitlePointSize + 2) * scale,
+                    weight: .semibold
+                ))
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(isLargeText ? nil : 1)
+                .truncationMode(.tail)
+            if !isLargeText {
+                Spacer(minLength: BrevSpacing.xs)
+                Text(shortDate)
+                    .font(mailboxFontFamily.font(size: (mailboxTextSize.captionPointSize + 1) * scale))
+                    .foregroundStyle(theme.textTertiary.color)
+                    .lineLimit(1)
+                    .fixedSize()
+            }
+        }
+        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+        .contentShape(Rectangle())
+        // One VoiceOver stop for sender and date, reading the full
+        // date rather than the abbreviated visual one.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(MessageReaderHeaderPresentation.accessibilityLabel(
+            senderName: header.from.displayName,
+            fullDate: dateLabel
+        ))
+        if let contactActions, contactActions.isAvailable {
+            Button {
+                Task { await openParticipantContact(header.from) }
+            } label: {
+                row
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(String(localized: "Opens the contact card", bundle: .module))
+        } else {
+            row
         }
     }
     #endif

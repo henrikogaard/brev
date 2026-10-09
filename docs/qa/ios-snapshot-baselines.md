@@ -27,6 +27,18 @@ with `TEST_RUNNER_` so they reach the test process; compare again without them.
 | `MessageDetailViewSnapshotTests/noSelectionPlaceholder()` | `MessageDetailViewSnapshotTests/noSelectionPlaceholder.no-selection.png` | #53: reviewed theme contrast refresh; envelope and no-selection copy preserved. |
 | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()` | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender.header-present.png` | #53: reviewed secondary-text contrast and body sizing; subject, sender, recipients, date and snippet preserved. |
 
+Pushed-reader slice (iOS UX audit slice 1, 2026-10-09). Refreshed after
+visual review of each diff, all tied to the reader changes: the 44 pt sender
+and "to" rows, the "to …" line replacing the raw address on expanded
+conversation cards, and the conversation header losing the mailbox address
+row. `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()`,
+`BrevMailSnapshotTests/threadMessageCardExpandedRenders()`,
+`BrevMailSnapshotTests/threadConversationViewRendersDeterministically()`,
+`PhoneMailboxSnapshotTests/detachedReader()` and
+`PhoneMailboxSnapshotTests/conversation(accessibility:)` were re-recorded. New
+suite `CompactReaderSnapshotTests` (expanded card light and dark, collapsed card
+at AX3, quick-reply bar light and dark, undo toast) joins the required lane.
+
 The required lane intentionally stays small and deterministic. It is the
 blocking signal for stable UIKit snapshots, not a claim that every snapshot
 suite is currently baseline-complete.
