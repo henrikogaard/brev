@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
+
 ## [0.2.6] - 2026-10-09
 
 ### Added
@@ -18,7 +22,6 @@ All notable changes to Brev are documented here.
 ### Fixed
 
 - iOS: the snooze sheet now looks like a native iOS sheet. It has a navigation bar with Cancel, an inset-grouped list that follows the active Brev theme, quick options that show their wake time (with new "This evening" and "This weekend" options when they apply), and a "Choose date & time…" screen with a graphical calendar and the Snooze button in the navigation bar. The sheet follows the app's dark mode, and the wake time wraps below the title at large text sizes. macOS keeps its existing layout.
-- Mac releases are built with the macOS 26 SDK, so the app uses the current macOS design (toolbar buttons get their glass backgrounds) instead of running in compatibility mode.
 - Mac toolbar band and Inbox category bar no longer carry an extra theme-colour layer, so they match the translucent panes beneath them.
 - iOS add-account sheet follows the app theme and dark mode instead of rendering the light theme (white background, invisible title). Add now sits in the navigation bar, Test connection appears only with manual server fields, and the provider shortcuts use themed buttons.
 
