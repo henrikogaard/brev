@@ -51,6 +51,135 @@ struct MessageTaskSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard form sheet with Cancel / Create in the navigation bar.
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "Task title", bundle: .module), text: $draft.title)
+                        .brevFont(.body)
+                        .accessibilityLabel(Text("Title", bundle: .module))
+                    Picker(selection: $draft.target) {
+                        ForEach(targets) { target in
+                            Text(target.title).tag(target)
+                        }
+                    } label: {
+                        Text("Target", bundle: .module)
+                    }
+                    .brevFont(.body)
+                }
+                .brevSheetRow()
+
+                Section {
+                    Toggle(isOn: $includesDueDate) {
+                        Text("Add due date", bundle: .module)
+                    }
+                    .onChange(of: includesDueDate) { _, newValue in
+                        draft.dueDate = newValue ? selectedDueDate : nil
+                    }
+                    if includesDueDate {
+                        DatePicker(
+                            String(localized: "Due date", bundle: .module),
+                            selection: $selectedDueDate,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .onChange(of: selectedDueDate) { _, newValue in
+                            draft.dueDate = newValue
+                        }
+                    }
+                }
+                .brevFont(.body)
+                .brevSheetRow()
+
+                Section {
+                    TextEditor(text: $draft.notes)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel(Text("Notes", bundle: .module))
+                } header: {
+                    sectionHeader("Notes")
+                }
+                .brevSheetRow()
+
+                Section {
+                    Text(draft.deepLink.absoluteString)
+                        .brevFont(.caption)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textSelection(.enabled)
+                        .lineLimit(2)
+                    if draft.target.kind == .systemShare {
+                        ShareLink(item: MessageTaskSharePayload.text(for: draft)) {
+                            Label {
+                                Text("Share", bundle: .module)
+                            } icon: {
+                                Image(systemName: "square.and.arrow.up")
+                            }
+                        }
+                    }
+                } header: {
+                    sectionHeader("Link")
+                }
+                .brevSheetRow()
+
+                if statusMessage != nil || errorMessage != nil {
+                    Section {
+                        if let statusMessage {
+                            BrevInlineStatus(message: statusMessage, tone: .success)
+                        }
+                        if let errorMessage {
+                            BrevInlineStatus(message: errorMessage, tone: .danger)
+                        }
+                    }
+                    .brevSheetRow()
+                }
+            }
+            .navigationTitle(Text("Create Task", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        // Once the task exists there is nothing left to cancel.
+                        Text(statusMessage == nil ? LocalizedStringKey("Cancel") : LocalizedStringKey("Done"), bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await createTask() }
+                    } label: {
+                        Text(isCreating ? LocalizedStringKey("Creating...") : LocalizedStringKey("Create"), bundle: .module)
+                    }
+                    .disabled(
+                        isCreating || !draft.isCreateEnabled
+                            || draft.target.kind == .systemShare
+                    )
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func sectionHeader(_ key: LocalizedStringKey) -> some View {
+        Text(key, bundle: .module)
+            .brevFont(.footnote)
+            .foregroundStyle(theme.textSecondary.color)
+            .textCase(nil)
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             BrevDivider()
@@ -58,9 +187,7 @@ struct MessageTaskSheet: View {
             BrevDivider()
             footer
         }
-        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 440, idealHeight: 520)
-        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -192,6 +319,8 @@ struct MessageTaskSheet: View {
         }
     }
 
+    #endif
+
     private func createTask() async {
         isCreating = true
         errorMessage = nil
@@ -220,6 +349,40 @@ struct MessageTaskUnavailableSheet: View {
     let onClose: () -> Void
 
     var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            List {
+                BrevInlineStatus(
+                    message: String(
+                        localized: "Open the message again before creating a task.",
+                        bundle: .module
+                    ),
+                    tone: .info
+                )
+                .brevSheetRow()
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(Text("Create Task", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Done", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
             HStack(spacing: BrevSpacing.sm) {
                 Image(systemName: "checklist")
@@ -250,9 +413,8 @@ struct MessageTaskUnavailableSheet: View {
             .keyboardShortcut(.cancelAction)
         }
         .padding(BrevSpacing.md)
-        #if os(macOS)
-            .frame(minWidth: 340, idealWidth: 400)
-        #endif
-            .background(theme.bgPrimary.color)
+        .frame(minWidth: 340, idealWidth: 400)
+        .background(theme.bgPrimary.color)
     }
+    #endif
 }

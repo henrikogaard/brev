@@ -902,7 +902,8 @@ public struct BrevMailRootView: View {
                     sourceSections: initialMailboxSelectionSourceSections,
                     initialPreferences: mailboxSourcePreferences,
                     theme: theme,
-                    onSave: saveInitialMailboxSelection
+                    onSave: saveInitialMailboxSelection,
+                    onSkip: finishInitialMailboxSelection
                 )
             )
             .alert(folderNamePromptTitle, isPresented: isFolderNamePromptPresented) {
@@ -982,7 +983,7 @@ public struct BrevMailRootView: View {
                         pendingReaderSnoozeTarget = nil
                     }
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
             }
             .alert(
                 String(localized: "Block Sender?", bundle: .module),
@@ -1194,32 +1195,47 @@ public struct BrevMailRootView: View {
                 // mailbox chat half of the shared column presents as a sheet
                 // instead, with the same scope/search wiring the macOS
                 // inspector uses.
-                MailboxChatPanel(
-                    scope: MailContextColumnScopePolicy.chatScope(
-                        selectedHeader: navigation.selectedHeader,
-                        focusedFolder: selectedFolder
-                    ),
-                    sourceID: navigation.selectedSourceID,
-                    aiBackend: selectedAIBackend,
-                    actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
-                    focusedFolder: selectedFolder,
-                    actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
-                    executeAction: { plan in
-                        try await executeMailboxAction(plan: plan)
-                    },
-                    search: { query, sourceID in
-                        if let sourceID {
-                            return try await selectedBackend.search(query, sourceID: sourceID)
+                NavigationStack {
+                    MailboxChatPanel(
+                        scope: MailContextColumnScopePolicy.chatScope(
+                            selectedHeader: navigation.selectedHeader,
+                            focusedFolder: selectedFolder
+                        ),
+                        sourceID: navigation.selectedSourceID,
+                        senderDisplayName: navigation.selectedHeader?.from.name,
+                        aiBackend: selectedAIBackend,
+                        actionFolders: mailboxActionFolders(for: navigation.selectedSourceID),
+                        focusedFolder: selectedFolder,
+                        actionSourceScope: mailboxActionSourceScope(for: navigation.selectedSourceID),
+                        executeAction: { plan in
+                            try await executeMailboxAction(plan: plan)
+                        },
+                        search: { query, sourceID in
+                            if let sourceID {
+                                return try await selectedBackend.search(query, sourceID: sourceID)
+                            }
+                            return try await selectedBackend.search(query)
+                        },
+                        onOpenCitation: { citation in
+                            openMailContextMessage(citation.recentItem)
+                        },
+                        onOpenSettings: onOpenSettings
+                    )
+                    .navigationTitle(Text("Ask AI", bundle: .module))
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button {
+                                isMailContextSheetPresented = false
+                            } label: {
+                                Text("Done", bundle: .module)
+                            }
                         }
-                        return try await selectedBackend.search(query)
-                    },
-                    onOpenCitation: { citation in
-                        openMailContextMessage(citation.recentItem)
-                    },
-                    onOpenSettings: onOpenSettings
-                )
-                .brevMailPaneSurface(.sidebar)
-                .brevTheme(theme)
+                    }
+                }
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
+                .brevSheetAppearance(theme)
             }
         #endif
     }
@@ -1991,14 +2007,15 @@ public struct BrevMailRootView: View {
         }
         .brevFontSection(.messageList)
         .brevMailPaneSurface(.messageList)
-        // iOS gives search a capsule inside the bottom bar (see
-        // `toolbarList`), the Apple Mail idiom, so
-        // the navigation bar keeps only the back button and the mailbox
-        // actions. macOS puts its own `NSSearchField` in this column's toolbar
+        // iOS uses the system search field (`.searchable`) with a scope bar, tokens and
+        // local suggestions, placed in the bottom bar next to Compose (see
+        // `toolbarList`), so the navigation bar keeps only the back button and the
+        // mailbox actions. macOS puts its own `NSSearchField` in this column's toolbar
         // section (see `toolbarList`), not via `.searchable`, whose
         // window-level item re-lays out and collapses to a magnifying glass on
         // its own whenever the AI Sidebar column appears.
         #if os(iOS)
+            .mailListSearch(navigation: navigation, configuration: listSearchConfiguration)
             .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
             .mailListNavigationSubtitle(selectedMessageDestinationSubtitle)
             .navigationBarBackButtonHidden(navigation.isInSelectionMode)
@@ -2315,20 +2332,15 @@ public struct BrevMailRootView: View {
         // stats label and Compose rather than floating over the rows.
         // Selection mode replaces the whole bar with the bulk actions.
         if !navigation.isInSelectionMode {
-            ToolbarItem(placement: .bottomBar) {
-                MessageListSearchField(
-                    text: $navigation.searchText,
-                    prompt: String(localized: "Search messages", bundle: .module),
-                    focusRequestID: navigation.searchFocusRequestID
-                )
-                // Toolbar items size to fit, so give the capsule a floor that
-                // fills most of an iPhone bar; wider columns keep it at that
-                // width with Compose pinned right — same as Apple Mail on iPad.
-                .frame(minWidth: 240, maxWidth: .infinity)
+            #if compiler(>=6.2)
+            if #available(iOS 26.0, *) {
+                DefaultToolbarItem(kind: .search, placement: .bottomBar)
+            } else {
+                ToolbarItem(placement: .bottomBar) { Spacer() }
             }
-            ToolbarItem(placement: .bottomBar) {
-                Spacer()
-            }
+            #else
+            ToolbarItem(placement: .bottomBar) { Spacer() }
+            #endif
             ToolbarItem(placement: .bottomBar) {
                 composeToolbarButton
             }
@@ -2337,6 +2349,45 @@ public struct BrevMailRootView: View {
     }
 
     #if os(iOS)
+    /// What the system search field offers for the list on screen.
+    private var listSearchConfiguration: MailListSearchConfiguration {
+        if navigation.isAllAttachmentsSelected {
+            return MailListSearchConfiguration(
+                showsMailboxScope: false,
+                offersFieldTokens: false,
+                offersSuggestions: false,
+                availableExecutions: []
+            )
+        }
+        if selectedSavedSearch != nil {
+            return MailListSearchConfiguration(
+                showsMailboxScope: false,
+                offersFieldTokens: false,
+                offersSuggestions: true,
+                availableExecutions: []
+            )
+        }
+        if navigation.isUnifiedInboxSelected || navigation.isSmartViewSelected {
+            let backendsByAccountID = Dictionary(backends.map { ($0.account.id, $0) }) { _, latest in latest }
+            return MailListSearchConfiguration(
+                showsMailboxScope: false,
+                offersFieldTokens: false,
+                offersSuggestions: true,
+                availableExecutions: UnifiedInboxSearchPolicy.availableExecutions(from: visibleSourceSections) {
+                    backendsByAccountID[$0.accountID]?.capabilities ?? []
+                }
+            )
+        }
+        return MailListSearchConfiguration(
+            showsMailboxScope: true,
+            offersFieldTokens: true,
+            offersSuggestions: true,
+            availableExecutions: MessageListSearchExecutionPolicy.availableExecutions(
+                capabilities: selectedBackend.capabilities
+            )
+        )
+    }
+
     /// Enters the list's selection mode (audit L1); Cancel and the bulk actions live with the list.
     private var selectToolbarButton: some View {
         Button {
@@ -4212,7 +4263,7 @@ public struct BrevMailRootView: View {
             ThemePickerView(onClose: onClose) { newTheme in
                 onChangeTheme(newTheme)
             }
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .compose:
             let completionRequest = activeComposeCompletionRequest
             let composePresentationID = navigation.composePresentationID
@@ -4272,7 +4323,7 @@ public struct BrevMailRootView: View {
                     )
                 }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .profiles:
             MailProfileManagementSheet(
                 availableSources: sourceSections,
@@ -4282,7 +4333,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: onClose
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .moveTo(let messageIDs, let sourceID, let currentFolderID):
             let resolvedSourceID = sourceID ?? navigation.selectedSourceID
             let currentFolderID = currentFolderID ?? (sourceID == nil ? navigation.selectedFolderID : nil)
@@ -4299,7 +4350,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: onClose
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .copyTo(let messageIDs, let sourceID, let currentFolderID):
             let resolvedSourceID = sourceID ?? navigation.selectedSourceID
             let currentFolderID = currentFolderID ?? (sourceID == nil ? navigation.selectedFolderID : nil)
@@ -4316,7 +4367,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: onClose
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .copyToLocal(let messageIDs, let sourceID, let fromFolderID):
             if let localBackend {
                 LocalFolderDestinationSheet(
@@ -4331,7 +4382,7 @@ public struct BrevMailRootView: View {
                     },
                     onClose: onClose
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
             }
         case .moveToLocal(let messageIDs, let sourceID, let fromFolderID):
             if let localBackend {
@@ -4347,7 +4398,7 @@ public struct BrevMailRootView: View {
                     },
                     onClose: onClose
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
             }
         case .outbox:
             let activeBackend = selectedBackend
@@ -4355,7 +4406,7 @@ public struct BrevMailRootView: View {
                 backend: activeBackend,
                 onClose: onClose
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
             .task { await refreshOutboxCount() }
         case .keyboardShortcuts:
             // iPadOS Help menu surface (#79); the view has no dismiss
@@ -4363,14 +4414,14 @@ public struct BrevMailRootView: View {
             NavigationStack {
                 KeyboardShortcutsHelpView()
                     .toolbar {
-                        ToolbarItem(placement: .cancellationAction) {
+                        ToolbarItem(placement: .confirmationAction) {
                             Button(String(localized: "Done", bundle: .module)) {
                                 onClose?()
                             }
                         }
                     }
             }
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .mailboxAssistant:
             MailboxActionAgentSheet(
                 resolve: { request in
@@ -4381,7 +4432,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: onClose
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .createTask(let header, let sourceID):
             let accountID = sourceID?.accountID ?? selectedBackend.account.id
             if let draft = MessageTaskDraftBuilder.draft(for: header, accountID: accountID) {
@@ -4408,11 +4459,11 @@ public struct BrevMailRootView: View {
                     },
                     onClose: { onClose?() }
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
                 .task { await taskEditing?.load() }
             } else {
                 MessageTaskUnavailableSheet(onClose: { onClose?() })
-                    .brevTheme(theme)
+                    .brevSheetAppearance(theme)
             }
         case .createRule(let header, _):
             // Prefilled LOCAL rule (ADR-0032); server sync stays the separate
@@ -4431,7 +4482,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: { onClose?() }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .createMeeting(let header, let sourceID):
             // #10: prefer the shared calendar editor when the session has a
             // writable PIM calendar; the EventKit sheet stays the fallback.
@@ -4442,7 +4493,7 @@ public struct BrevMailRootView: View {
                 accountID: accountID,
                 onClose: { onClose?() }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .messageNote(let header, let payloadSourceID):
             if let messageID = sourceMessageID(for: header, payloadSourceID: payloadSourceID) {
                 let state = localMessageWorkflowStateBinding.wrappedValue
@@ -4467,7 +4518,7 @@ public struct BrevMailRootView: View {
                     },
                     onClose: { onClose?() }
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
             } else {
                 EmptyView()
             }
@@ -4520,10 +4571,10 @@ public struct BrevMailRootView: View {
                 },
                 onCancel: { onClose?() }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .messageProperties(let header):
             MessagePropertiesSheet(header: header, onClose: { onClose?() })
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
         case .viewSource(let header, let payloadSourceID):
             let sourceID = payloadSourceID ?? navigation.selectedSourceID
             let backend = backend(for: sourceID)
@@ -4538,7 +4589,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: { onClose?() }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         case .showHeaders(let header, let payloadSourceID):
             let sourceID = payloadSourceID ?? navigation.selectedSourceID
             let backend = backend(for: sourceID)
@@ -4553,7 +4604,7 @@ public struct BrevMailRootView: View {
                 },
                 onClose: { onClose?() }
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         }
     }
 

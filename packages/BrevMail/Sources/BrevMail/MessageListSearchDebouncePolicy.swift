@@ -34,11 +34,13 @@ enum MessageListSearchFieldPolicy {
     static func configuration(platform: MessageListSearchFieldPlatform) -> MessageListSearchFieldConfiguration {
         switch platform {
         case .iOS:
+            // The system search field (`.searchable`): the OS owns the height, Cancel,
+            // scope bar, tokens and suggestions (audit Q1).
             MessageListSearchFieldConfiguration(
-                placement: .inPaneField,
+                placement: .nativeSearchable,
                 disablesAutocorrection: true,
                 hidesInputAssistant: true,
-                chromeHeight: 44
+                chromeHeight: nil
             )
         case .macOS:
             // A plain toolbar item in the message list column's own section,

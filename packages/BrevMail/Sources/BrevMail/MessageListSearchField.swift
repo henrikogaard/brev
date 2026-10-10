@@ -11,152 +11,186 @@
  */
 
 #if os(iOS)
+import BrevBackend
 import BrevDesign
 import BrevThemes
 import SwiftUI
 import UIKit
 
-struct MessageListSearchField: View {
-    @Environment(\.brevTheme) private var theme
+/// What the system search field offers for the visible list (audit Q1, Q2).
+struct MailListSearchConfiguration: Equatable {
+    /// "Current mailbox" / "All mailboxes" scope bar. Only folder lists have a folder to scope to.
+    var showsMailboxScope: Bool
+    /// "From" and "Subject" field tokens, which the folder list's field scope implements.
+    var offersFieldTokens: Bool
+    /// Quick filters, senders and recents. Off for the attachments pane, which has its own query.
+    var offersSuggestions: Bool
+    /// Search locations the backend supports (local, automatic, server).
+    var availableExecutions: [SearchExecution]
+}
 
-    @Binding var text: String
-    let prompt: String
-    /// Changes to this value pull focus into the field. Supplied by
-    /// `MailNavigationState.searchFocusRequestID`, so Focus Search (⌘/) works
-    /// with the in-pane field the same way it does with the macOS toolbar one.
-    var focusRequestID = 0
-    private let configuration = MessageListSearchFieldPolicy.configuration(platform: .iOS)
-    @AppStorage(MailboxViewPreferenceKey.listDensity)
-    private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
-
-    /// Compact density trims the band's height so a tighter list also gets a
-    /// tighter search row; the field stays comfortably tappable either way.
-    private var chromeHeight: CGFloat {
-        let density = MailboxListDensity(rawValue: listDensityRaw) ?? .comfortable
-        return max(44, density == .compact ? 32 : configuration.chromeHeight ?? 40)
-    }
-
-    var body: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: "magnifyingglass")
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(theme.textTertiary.color)
-                .accessibilityHidden(true)
-
-            KeyboardSafeSearchTextField(
-                text: $text,
-                prompt: prompt,
-                focusRequestID: focusRequestID,
-                theme: theme
-            )
-            .frame(minHeight: 44)
-
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 16, weight: .regular))
-                        .symbolRenderingMode(.hierarchical)
-                        .foregroundStyle(theme.textTertiary.color)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Clear search", bundle: .module))
-            }
-        }
-        .padding(.leading, BrevSpacing.md)
-        .padding(.trailing, text.isEmpty ? BrevSpacing.md : BrevSpacing.xs)
-        .frame(height: chromeHeight)
-        .brevGlassSurface(role: .card, in: Capsule())
-        .background {
-            BrevWindowSurfaceBackground(role: .card)
-                .clipShape(Capsule())
-        }
-        .overlay {
-            Capsule()
-                .strokeBorder(theme.border.color, lineWidth: 1)
-        }
-        .clipShape(Capsule())
-        .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+extension View {
+    /// Gives a mail list the system search field: scopes, tokens and local suggestions.
+    func mailListSearch(
+        navigation: MailNavigationState,
+        configuration: MailListSearchConfiguration
+    ) -> some View {
+        modifier(MailListSearchModifier(navigation: navigation, configuration: configuration))
     }
 }
 
-private struct KeyboardSafeSearchTextField: UIViewRepresentable {
-    @Binding var text: String
-    let prompt: String
-    let focusRequestID: Int
-    let theme: BrevTheme
+private struct MailListSearchModifier: ViewModifier {
+    @Bindable var navigation: MailNavigationState
+    let configuration: MailListSearchConfiguration
 
-    func makeUIView(context: Context) -> UITextField {
-        let textField = UITextField()
-        textField.delegate = context.coordinator
-        textField.font = .preferredFont(forTextStyle: .body)
-        textField.adjustsFontForContentSizeCategory = true
-        textField.borderStyle = .none
-        textField.clearButtonMode = .never
-        textField.returnKeyType = .search
-        textField.autocorrectionType = .no
-        textField.spellCheckingType = .no
-        textField.smartDashesType = .no
-        textField.smartQuotesType = .no
-        textField.smartInsertDeleteType = .no
-        textField.textContentType = nil
-        textField.accessibilityLabel = prompt
-        textField.inputAssistantItem.leadingBarButtonGroups = []
-        textField.inputAssistantItem.trailingBarButtonGroups = []
-        textField.addTarget(
-            context.coordinator,
-            action: #selector(Coordinator.textDidChange(_:)),
-            for: .editingChanged
+    @State private var isPresented = false
+    @State private var recents = MailRecentSearches.load()
+
+    private var mailboxScope: Binding<MailSearchMailboxScope> {
+        Binding(
+            get: { MailSearchMailboxScope(searchesAllFolders: navigation.searchAllMailboxes) },
+            set: { navigation.searchAllMailboxes = $0.searchesAllFolders }
         )
-        return textField
     }
 
-    func updateUIView(_ textField: UITextField, context: Context) {
-        if textField.text != text {
-            textField.text = text
+    /// Before iOS 26 the field would otherwise hide above the list until pulled down.
+    private var placement: SearchFieldPlacement {
+        if #available(iOS 26.0, *) { .automatic } else { .navigationBarDrawer(displayMode: .always) }
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .searchable(
+                text: $navigation.searchFreeText,
+                tokens: $navigation.searchTokens,
+                isPresented: $isPresented,
+                placement: placement,
+                prompt: Text("Search messages", bundle: .module)
+            ) { token in
+                Label(token.title, systemImage: token.symbolName)
+            }
+            .searchScopes(mailboxScope, activation: .onSearchPresentation) {
+                if configuration.showsMailboxScope {
+                    Text("Current mailbox", bundle: .module).tag(MailSearchMailboxScope.currentMailbox)
+                    Text("All mailboxes", bundle: .module).tag(MailSearchMailboxScope.allMailboxes)
+                }
+            }
+            .searchSuggestions { suggestionRows }
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
+            .onSubmit(of: .search) { submit() }
+            // Focus Search (the keyboard shortcut) presents the field the way tapping it does.
+            .onChange(of: navigation.searchFocusRequestID) { isPresented = true }
+            // Cancel dismisses search and takes the query, its tokens and the scope with it.
+            .onChange(of: isPresented) { _, presented in
+                if !presented { navigation.clearSearch() }
+            }
+    }
+
+    private func submit() {
+        navigation.commitSearch()
+        if configuration.offersSuggestions {
+            recents = MailRecentSearches.adding(navigation.searchFreeText, to: recents)
+            MailRecentSearches.save(recents)
         }
-        textField.placeholder = prompt
-        textField.textColor = UIColor(theme.textPrimary.color)
-        textField.tintColor = UIColor(theme.accent.color)
-        textField.attributedPlaceholder = NSAttributedString(
-            string: prompt,
-            attributes: [.foregroundColor: UIColor(theme.textTertiary.color)]
+    }
+
+    private var suggestions: MailSearchSuggestionSet {
+        guard configuration.offersSuggestions else { return MailSearchSuggestionSet() }
+        return MailSearchSuggestions.make(
+            typedText: navigation.searchFreeText,
+            tokens: navigation.searchTokens,
+            headers: navigation.currentFolderHeaders,
+            recents: recents,
+            offersFieldTokens: configuration.offersFieldTokens
         )
-        textField.inputAssistantItem.leadingBarButtonGroups = []
-        textField.inputAssistantItem.trailingBarButtonGroups = []
-        guard focusRequestID != context.coordinator.lastHandledFocusRequestID else { return }
-        context.coordinator.lastHandledFocusRequestID = focusRequestID
-        guard focusRequestID > 0 else { return }
-        // Deferred: the field may still be joining the window when the
-        // shortcut fires.
-        DispatchQueue.main.async {
-            textField.becomeFirstResponder()
+    }
+
+    @ViewBuilder
+    private var suggestionRows: some View {
+        let set = suggestions
+        if !set.recents.isEmpty {
+            Section {
+                ForEach(set.recents, id: \.self) { recent in
+                    Label(recent, systemImage: "clock")
+                        .searchCompletion(recent)
+                }
+            } header: {
+                HStack {
+                    Text("Recent searches", bundle: .module)
+                    Spacer()
+                    Button {
+                        recents = []
+                        MailRecentSearches.save([])
+                    } label: {
+                        Text("Clear", bundle: .module)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel(String(localized: "Clear recent searches", bundle: .module))
+                }
+            }
+        }
+        if !set.fieldTokens.isEmpty {
+            Section {
+                ForEach(set.fieldTokens) { token in
+                    Button {
+                        MailSearchTokens.add(token, to: &navigation.searchTokens)
+                    } label: {
+                        Label(fieldTokenTitle(token), systemImage: token.symbolName)
+                    }
+                }
+            }
+        }
+        if !set.quickFilters.isEmpty {
+            Section {
+                ForEach(set.quickFilters) { token in
+                    Label(token.title, systemImage: token.symbolName)
+                        .searchCompletion(token)
+                }
+            } header: {
+                Text("Suggested filters", bundle: .module)
+            }
+        }
+        if !set.senders.isEmpty {
+            Section {
+                ForEach(set.senders) { sender in
+                    Label(sender.displayName, systemImage: "person.crop.circle")
+                        .searchCompletion(sender.token)
+                }
+            } header: {
+                Text("Senders", bundle: .module)
+            }
+        }
+        if navigation.searchFreeText.isEmpty, configuration.availableExecutions.count > 1 {
+            Section {
+                ForEach(configuration.availableExecutions, id: \.self) { execution in
+                    Button {
+                        navigation.hasUserSelectedSearchExecution = true
+                        navigation.searchExecution = execution
+                    } label: {
+                        HStack {
+                            Label(execution.messageListTitle, systemImage: execution.messageListSymbolName)
+                            Spacer()
+                            if execution == navigation.searchExecution {
+                                Image(systemName: "checkmark").accessibilityHidden(true)
+                            }
+                        }
+                    }
+                    .accessibilityAddTraits(execution == navigation.searchExecution ? .isSelected : [])
+                }
+            } header: {
+                Text("Search location", bundle: .module)
+            }
         }
     }
 
-    func makeCoordinator() -> Coordinator {
-        Coordinator(text: $text)
-    }
-
-    final class Coordinator: NSObject, UITextFieldDelegate {
-        @Binding private var text: String
-        var lastHandledFocusRequestID = 0
-
-        init(text: Binding<String>) {
-            _text = text
-        }
-
-        @objc
-        func textDidChange(_ textField: UITextField) {
-            text = textField.text ?? ""
-        }
-
-        func textFieldShouldReturn(_ textField: UITextField) -> Bool {
-            textField.resignFirstResponder()
-            return true
+    /// "Search in From" / "Search in Subject": the typed text becomes that field's value.
+    private func fieldTokenTitle(_ token: MailSearchToken) -> String {
+        switch token {
+        case .field(.from): String(localized: "Search in From", bundle: .module)
+        case .field(.subject): String(localized: "Search in Subject", bundle: .module)
+        default: token.title
         }
     }
 }
