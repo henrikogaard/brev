@@ -30,8 +30,11 @@ struct MailPaneSurfacePolicy: Equatable, Sendable {
         role: .sidebar,
         fillsPane: true,
         ignoresTitlebarSafeArea: true,
-        navigationTitleStyle: .inline,
-        navigationBarBackgroundRole: .sidebar
+        // The Mailboxes screen carries a large title on iOS; macOS ignores this.
+        // No opaque navigation bar fill either: with one, iOS draws the large
+        // title behind it and the title disappears.
+        navigationTitleStyle: .automatic,
+        navigationBarBackgroundRole: nil
     )
     static let content = MailPaneSurfacePolicy(
         role: .content,

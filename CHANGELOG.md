@@ -16,6 +16,7 @@ All notable changes to Brev are documented here.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
 - Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
+- iOS Mailboxes is a native inset-grouped list like iOS Mail: Favourites, Smart Views, Calendar/Contacts/Tasks, then one collapsible section per account. Rows share one style with the unread count as trailing secondary text, the title is a large "Mailboxes" (or the active profile name), the profile switcher moved to a toolbar menu, and Edit opens the favourites editor. The leading "Inbox ›" shortcut is gone; open a mailbox and Back reads "Mailboxes". Long account names wrap instead of truncating.
 ### Added
 
 - iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
@@ -45,6 +46,8 @@ All notable changes to Brev are documented here.
 
 - iOS: archiving, deleting or moving a message from the reader now shows the "Archived/Deleted/Moved" toast with Undo above the bottom bar and announces it to VoiceOver, then shows the next message with a slide, or goes back to the list when none is left. Undo and Dismiss on toasts are 44 pt targets on iPhone.
 - iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
+- iOS Mailboxes VoiceOver: counts read as "16 unread", the selected mailbox is marked selected, section titles are headers, and a collapsed account announces its unread count with its state.
+- iPad: Reply, Reply All, Forward and New Message open compose as a form sheet over the current window instead of a separate full-window scene, and a relaunch no longer restores a stray compose window. The detached reader and compose windows now follow the app theme and color scheme.
 
 - The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 

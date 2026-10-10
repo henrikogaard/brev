@@ -1208,6 +1208,47 @@
         }
       }
     },
+    "%lld waiting to send": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld waiting to send"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld waiting to send"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld venter på å bli sendt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld venter på å bli sendt"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld years ago": {
       "extractionState": "manual",
       "localizations": {
@@ -4913,6 +4954,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meldingsliste"
+          }
+        }
+      }
+    },
+    "Reorder or hide your favourites.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Endre rekkefølge på eller skjul favorittene dine."
           }
         }
       }
@@ -10159,17 +10211,6 @@
         }
       }
     },
-    "Return to the selected mailbox.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Gå tilbake til den valgte postkassen."
-          }
-        }
-      }
-    },
     "Review": {
       "extractionState": "manual",
       "localizations": {
@@ -11210,17 +11251,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Vis i sidepanelet"
-          }
-        }
-      }
-    },
-    "Show messages": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Vis meldinger"
           }
         }
       }

@@ -169,3 +169,12 @@ Recorded on the iOS 27.0 (24A434) simulator, iPhone 17 Pro. On that runtime
 to compare locally; they were left untouched and still need a runtime-matched
 refresh.
 
+
+Mailboxes list slice (iOS UX audit slice 8a, 2026-10-10). The sidebar became a
+native inset-grouped list with a large title, so the five phone sidebar
+references were re-recorded after visual review with `-testLanguage en
+-testRegion en_US`: `PhoneMailboxSnapshotTests/accessibleFavorites()`,
+`mailboxes(dark:)` and `twoAccountMailboxes(dark:)` (both appearances). Two
+cases are new: `mailboxesAccessibility5()` (AX5, apps and an expanded account)
+and `ipadSidebarLongAccountName()` (a long account name wraps instead of
+truncating).

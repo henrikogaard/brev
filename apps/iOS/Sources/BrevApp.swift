@@ -408,12 +408,16 @@ struct BrevApp: App {
                     canFileLocally: session.localBackend != nil
                 )
                 .environment(\.openURL, browserOpenURLAction)
+                // A detached scene is its own root, so it resolves the persisted
+                // theme and color scheme itself like the main and PIM scenes.
+                .brevRootAppearance(session: session)
             }
         }
 
         // iPad detached compose window — opened via openWindow(value:) in
-        // BrevMailRootView when the user composes/replies/forwards on a
-        // regular-width iPad scene (ADR-0033).
+        // BrevMailRootView only on an explicit request. Reply and New Message
+        // present a form sheet over the main window, so nothing creates this
+        // scene and a relaunch no longer brings a stray compose window back.
         WindowGroup(for: ComposeWindowPayload.self) { $payload in
             if let payload {
                 DetachedComposeWindowView(
@@ -433,6 +437,7 @@ struct BrevApp: App {
                         AppSessionFactory.trustedEncryptionIdentityCount(for: account)
                     }
                 )
+                .brevRootAppearance(session: session)
             }
         }
     }

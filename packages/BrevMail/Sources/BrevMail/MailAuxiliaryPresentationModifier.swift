@@ -30,7 +30,25 @@ struct MailAuxiliaryPresentationModifier: ViewModifier {
             makeContent(sheet) {
                 self.sheet = nil
             }
+            .modifier(MailComposeSheetSizing(isCompose: sheet == .compose))
         }
         #endif
     }
 }
+
+#if os(iOS)
+/// Compose is a form sheet on iPad, the way iPadOS Mail presents it, instead of
+/// a page sheet that spans the whole split view. iPhone sheets stay full height.
+private struct MailComposeSheetSizing: ViewModifier {
+    let isCompose: Bool
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if isCompose, #available(iOS 18.0, *) {
+            content.presentationSizing(.form)
+        } else {
+            content
+        }
+    }
+}
+#endif
