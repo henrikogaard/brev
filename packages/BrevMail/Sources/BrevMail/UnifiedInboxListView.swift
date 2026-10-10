@@ -267,6 +267,9 @@ struct UnifiedInboxListView: View {
                 InboxCategoryBar(activeCategory: $activeInboxCategory)
             }
             #endif
+            // iOS keeps search chrome in the system search field and reports status in a
+            // footnote under the results (audit Q2); macOS keeps its bands.
+            #if os(macOS)
             if !trimmedSearchText.isEmpty {
                 CollapsibleOptionsStrip(
                     isExpanded: $isSearchOptionsExpanded,
@@ -287,6 +290,7 @@ struct UnifiedInboxListView: View {
                     Task { await reloadVisibleItems() }
                 }
             }
+            #endif
             Group {
                 if let errorMessage {
                     MessageListEmptyStateView(status: MessageListPresentation.errorStatus(errorMessage)) {
@@ -399,6 +403,9 @@ struct UnifiedInboxListView: View {
                     #endif
                 }
             }
+            #if os(iOS)
+            .safeAreaInset(edge: .bottom, spacing: 0) { searchStatusFootnote }
+            #endif
             #if os(macOS)
             .mailListHeader {
                 VStack(spacing: 0) {
@@ -909,6 +916,29 @@ struct UnifiedInboxListView: View {
             navigation.searchExecution = newValue
         }
     }
+
+    #if os(iOS)
+    /// The single status line under the results; present only while the search has
+    /// something worth saying (see `MailSearchFooterPolicy`).
+    @ViewBuilder
+    private var searchStatusFootnote: some View {
+        let checksAttachments = MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+            queries: activeAttachmentSearchQueries,
+            isLoading: searchProgress.isSearching
+        )
+        if !trimmedSearchText.isEmpty,
+           searchProgress.request != nil,
+           MailSearchFooterPolicy.shouldShow(
+               progress: searchProgress,
+               execution: navigation.searchExecution,
+               checksAttachments: checksAttachments
+           ) {
+            MailSearchStatusView(progress: searchProgress, checksAttachments: checksAttachments) {
+                Task { await reloadVisibleItems() }
+            }
+        }
+    }
+    #endif
 
     private var unifiedSearchExecutionBar: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
