@@ -24,45 +24,6 @@ import Testing
 @Suite("Related conversation bar snapshots")
 @MainActor
 struct RelatedConversationBarSnapshotTests {
-    /// Before any lookup: the bar explains the feature and offers the
-    /// explicit opt-in action.
-    @Test("prompt state offers the Load related mail action")
-    func promptOffersLoadAction() async throws {
-        let backend = MockBackend(
-            account: Self.account,
-            extendedCapabilities: [.cachedConversations, .relatedConversationLoading]
-        )
-        let controller = try makeController()
-        controller.updateAnchor(
-            header: Self.header(id: "inbox-1"),
-            sourceID: Self.source,
-            backend: backend
-        )
-        await controller.awaitSettled()
-        assertBar(controller: controller, named: "prompt-load-action")
-    }
-
-    /// A cached-only snapshot reports its coverage without a remote
-    /// affordance when the backend cannot load remotely.
-    @Test("cached snapshot reports cached coverage")
-    func cachedCoverage() async throws {
-        let backend = MockBackend(
-            account: Self.account,
-            extendedCapabilities: [.cachedConversations]
-        )
-        backend.cachedConversationHandler = { anchor, _ in
-            try Self.snapshot(anchor: anchor, members: [anchor])
-        }
-        let controller = try makeController()
-        controller.updateAnchor(
-            header: Self.header(id: "inbox-1"),
-            sourceID: Self.source,
-            backend: backend
-        )
-        await controller.awaitSettled()
-        assertBar(controller: controller, named: "cached-coverage")
-    }
-
     /// Partial coverage surfaces Retry and the Spam/Trash inclusion action.
     @Test("partial coverage surfaces retry and scope actions")
     func partialCoverage() async throws {

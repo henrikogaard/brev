@@ -1570,9 +1570,7 @@ public struct BrevMailRootView: View {
     private func showsRelatedConversationBar(fallbackHeader: MessageHeader?) -> Bool {
         guard hasValidSelectedSourceBackend,
               navigation.selectedHeader ?? fallbackHeader != nil else { return false }
-        return relatedConversation.canLoadRelated
-            || relatedConversation.snapshot != nil
-            || relatedConversation.isLoadingRemote
+        return !RelatedConversationBarPresentation(controller: relatedConversation).isEmpty
     }
     #endif
 

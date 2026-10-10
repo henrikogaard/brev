@@ -5677,3 +5677,10 @@ buttons, and package-aware localization.
 - Goal: ship the iOS UX pass slices merged since 0.2.6 (#222, #219, #224–#231, #233–#235 and others) as Mac `v0.2.7`. iOS TestFlight is launched by Henrik from another Mac (this Mac has no `.env.local`).
 - Changes: marketing version 0.2.6 → 0.2.7 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.7. Tag `v0.2.7` follows a green PR-event Build on this commit; main is fast-forwarded to it so the tag SHA has that Build.
 - Verification: see PR; release workflow run is recorded in the handoff.
+
+## 2026-10-11 — Claude Code — Quiet Mac related-mail bar
+
+- Goal: Henrik found "Viser bufret samtale." plus two buttons above every Mac reader message off.
+- Change: new `RelatedConversationBarPresentation` (status loading/failed/partial or none; actions Retry, Load related mail, Spam and Trash in the old order). No sentence for cached/complete, Spam and Trash only after a lookup result, bar not rendered when empty (`BrevMailRootView.showsRelatedConversationBar`). Removed three unused strings; improved two nb translations. Phone reader unchanged.
+- Verification: 9 new presentation tests (red first, then green); BrevMail iOS build, lint, format. Removed the two idle-state bar snapshots (their output changes); the partial, failed and accessibility baselines are untouched.
+- Not verified: pixel snapshots (all five bar baselines already fail on this macOS 27 host, so none could be re-recorded here; CI's macOS 26 job compares the remaining three), the bar visually in the running Mac app.
