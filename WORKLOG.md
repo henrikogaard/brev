@@ -5641,6 +5641,23 @@ buttons, and package-aware localization.
 - Change: the search observer now watches `SearchChangeTrigger(text:filterKey:)` and asks `MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText:newSearchText:)`. Without search text before and after, an options-only change does not reload; entering, changing or clearing text, and option changes while searching, reload as before.
 - Verification: hosted test "a search option change with empty search text does not refetch the folder" failed before the change (2 fetches) and passes after; 3 new policy tests; `swift test --filter "MessageList|MailSearch|UnifiedInbox"` 271 tests green (snapshots skipped); iOS `BrevMail` build succeeds; swiftlint strict and swiftformat clean on touched files. Merged current main (#230 search rework) first.
 
+## 2026-10-09 — Claude Code — ADR-0087 IMAP header pages from SQLite (Proposed)
+
+- Goal: Henrik chose to design the folder-switch speed-up (whole-folder JSON header cache) before building it.
+- Change: drafted ADR-0087 (Proposed): SQLite becomes the IMAP header store, paging metadata moves to `folder_sync_state` plus an `imap_page_windows` table, full-folder consumers become queries, memory-only fallback without an index, lazy per-folder migration, storage UI reads SQLite, and a measure-first rollout with targets. Amends ADR-0029, ADR-0030 and ADR-0082 §3 once accepted. No code.
+- Evidence: a read-only code survey (callers, schema v6, nullability, encryption, tests, local cache sizes 0.5–0.8 KB/header). Cold folder open and SQLite page reads at 10k/50k are still unmeasured; step 1 of the rollout measures them.
+- Next: Henrik accepts or edits; implementation is four stacked PRs.
+
+## 2026-10-10 — Claude Code — PR #217 review follow-up (ADR-0087, still Proposed)
+
+- Codex review (P2): the consumer table kept "Existing `allIndexedHeaders` path" for attachment enumeration, which pages every header into memory and filters there (`IMAPSMTPBackend` cached-attachment enumeration), contradicting decision 3 ("no consumer scans a whole folder").
+- Change: that row now calls for a selective engine query for attachment-bearing or cached-body rows, with a short paragraph explaining why. Status is unchanged (Proposed); no code. Merged current main.
+
+## 2026-10-10 — Claude Code — ADR-0087 accepted
+
+- Henrik approved ADR-0087 on 2026-10-10. Status changed Proposed → Accepted in the ADR and the index; ADR-0029, ADR-0030 and ADR-0082 carry an "Amended by ADR-0087" line and the index rows say so.
+- No code in this PR. Implementation follows the ADR's rollout: measure first (cold open and SQLite page reads at 10k/50k), then the four stacked PRs; the cutover ships only if it meets the ADR's targets.
+
 ## 2026-10-10 — Claude Code — Slice 8b runtime QA evidence (PR #234)
 
 - Goal: capture simulator evidence for P1-P4. Added `docs/qa/ios-slice8b-pim-2026-10-10/` (empty states en light/dark, nb light, en AX3; Settings page from the empty state; a11y audit text; snapshot references).

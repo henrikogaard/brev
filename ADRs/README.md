@@ -39,8 +39,8 @@ repository checks.
 | 26 | Supervised mailbox action agent | Proposed |
 | 27 | Manual thread summary AI | Proposed |
 | 28 | Mail provider architecture and invariants | Accepted |
-| 29 | IMAP/SMTP backend foundation | Accepted |
-| 30 | Full IMAP sync and cache engine | Proposed |
+| 29 | IMAP/SMTP backend foundation | Accepted (amended by ADR-0087) |
+| 30 | Full IMAP sync and cache engine | Proposed (amended by ADR-0087) |
 | 31 | UI Extension Plugin API | Accepted |
 | 32 | Server-side filters with ManageSieve | Proposed |
 | 33 | iPad multi-window / auxiliary presentation | Accepted |
@@ -92,11 +92,12 @@ repository checks.
 | 79 | Native Microsoft 365 mail through Microsoft Graph | Proposed |
 | 80 | Stable and Nightly release rings with CI-signed updates | Accepted |
 | 81 | JMAP mail backend | Proposed |
-| 82 | Encryption at rest for the local mail store | Accepted |
+| 82 | Encryption at rest for the local mail store | Accepted (amended by ADR-0087) |
 | 83 | Home-screen widgets share a snapshot file, never the Realm store | Accepted |
 | 84 | Offline PIM writes queue and replay on reconnect | Proposed |
 | 85 | Desktop starts in Compact list density | Accepted |
 | 86 | Per-section font family | Accepted |
+| 87 | Serve IMAP header pages from SQLite and retire whole-folder JSON | Accepted |
 
 ## Conventions
 

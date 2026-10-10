@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-06-06
 - **Deciders:** Henrik
+- **Amended by:** ADR-0087 (header cache semantics: SQLite becomes the IMAP header store)
 
 ## Context
 
