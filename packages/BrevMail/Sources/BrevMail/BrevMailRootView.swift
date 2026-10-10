@@ -1496,8 +1496,11 @@ public struct BrevMailRootView: View {
         .brevFontSection(.sidebar)
         .brevMailPaneSurface(.sidebar)
         #if os(iOS)
-            .navigationTitle(Text("Mailboxes", bundle: .module))
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(Text(verbatim: FolderSidebarPresentation.navigationTitle(
+                activeProfileID: normalizedActiveProfileID,
+                profiles: profiles
+            )))
+            .navigationBarTitleDisplayMode(.large)
             .safeAreaInset(edge: .top, spacing: 0) {
                 // Compact shows a single column; the message-list copy covers
                 // regular width, so mounting here too would duplicate it.
@@ -2086,31 +2089,6 @@ public struct BrevMailRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarSidebar: some ToolbarContent {
-        #if os(iOS)
-        if MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: toolbarPlatform,
-            horizontalSizeClass: horizontalSizeClass,
-            hasSelectedDestination: hasSelectedMessageDestination
-        ) {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    openSelectedMessagesOnCompact()
-                } label: {
-                    // A Label(titleAndIcon) renders icon-only in the leading
-                    // slot, so draw the "Inbox ›" text + chevron explicitly.
-                    HStack(spacing: BrevSpacing.xxs) {
-                        Text(selectedMessageDestinationTitle)
-                            .lineLimit(1)
-                        Image(systemName: "chevron.forward")
-                            .brevFont(.footnote).fontWeight(.semibold)
-                    }
-                }
-                .accessibilityLabel(String(localized: "Show messages", bundle: .module))
-                .accessibilityHint(String(localized: "Return to the selected mailbox.", bundle: .module))
-            }
-        }
-        #endif
-
         if MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .sidebar,
             platform: toolbarPlatform
@@ -3721,13 +3699,14 @@ public struct BrevMailRootView: View {
     }
 
     #if os(iOS)
-    /// Returns `true` when the current device + width warrants a detached
-    /// compose window instead of a modal sheet (iPad at regular width only).
+    /// Returns `true` only when compose should leave the current window. No
+    /// call site asks for that yet, so Reply and New Message present a form
+    /// sheet over the split view on iPad, as iPadOS Mail does.
     private var shouldDetachCompose: Bool {
-        MailDetachWindowPolicy.shouldDetach(
-            idiom: UIDevice.current.userInterfaceIdiom,
-            horizontalSizeClass: horizontalSizeClass
-        )
+        MailRootComposePresentationPolicy.surface(
+            idiom: MailWindowIdiom(UIDevice.current.userInterfaceIdiom),
+            isRegularWidth: horizontalSizeClass == .regular
+        ) == .detachedWindow
     }
     #endif
 

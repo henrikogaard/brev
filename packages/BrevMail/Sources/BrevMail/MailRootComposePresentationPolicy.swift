@@ -14,7 +14,28 @@ import BrevBackend
 import CoreGraphics
 import SwiftUI
 
+/// Where a compose request is shown.
+enum MailRootComposeSurface: Equatable, Sendable {
+    /// A sheet over the current window. On iPad regular width it is a form sheet.
+    case sheet
+    /// A separate scene, only for an explicit "Open in New Window".
+    case detachedWindow
+}
+
 enum MailRootComposePresentationPolicy {
+    /// Compose presents as a sheet over the current window on every idiom, as
+    /// iPadOS Mail does, so a stray scene is never created or restored. A
+    /// detached window needs an explicit request and a regular-width iPad.
+    static func surface(
+        idiom: MailWindowIdiom,
+        isRegularWidth: Bool,
+        requestedNewWindow: Bool = false
+    ) -> MailRootComposeSurface {
+        requestedNewWindow && MailDetachWindowPolicy.shouldDetach(idiom: idiom, isRegularWidth: isRegularWidth)
+            ? .detachedWindow
+            : .sheet
+    }
+
     static func canPresentCompose(
         hasPresentedSheet: Bool,
         activeFolderLoadRequest: MailRootFolderLoadRequest?,
@@ -225,20 +246,6 @@ enum MailRootSettingsToolbarPolicy {
         case .messageList, .detail:
             false
         }
-    }
-}
-
-/// Controls the compact-only route from the mailbox sidebar to its message list.
-enum MailRootSidebarToolbarPolicy {
-    /// Shows the escape only for compact iOS layouts with a selected destination.
-    static func showsMessageListButton(
-        platform: MailRootToolbarPlatform,
-        horizontalSizeClass: UserInterfaceSizeClass?,
-        hasSelectedDestination: Bool
-    ) -> Bool {
-        platform == .iOS
-            && horizontalSizeClass != .regular
-            && hasSelectedDestination
     }
 }
 
