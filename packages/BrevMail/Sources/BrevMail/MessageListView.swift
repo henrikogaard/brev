@@ -245,6 +245,12 @@ public struct MessageListView: View {
             .onChange(of: localMessageWorkflowState) {
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
+            // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
+            // already loaded the folder or run the search, and fetched the first page twice.
+            // `searchWork` cancels the previous run, as the task's id change did.
+            .onChange(of: "\(navigation.searchText)|\(searchFilterKey)") {
+                Task { await reloadForSearchChange() }
+            }
         #if os(iOS)
             .toolbar { selectionToolbar(visibleHeaders: presentationSnapshot.headers) }
         #endif
@@ -291,7 +297,6 @@ public struct MessageListView: View {
                 refreshPinnedMessageIDSet()
                 scheduleDebouncedThreadCountsRebuild()
             }
-            .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
             .onDisappear { searchWork.cancel() }
             .onChange(of: groupByThread) {
                 activeMutationRequest = nil
