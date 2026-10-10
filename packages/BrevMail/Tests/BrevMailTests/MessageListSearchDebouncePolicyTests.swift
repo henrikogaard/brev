@@ -80,14 +80,14 @@ struct MessageListSearchDebouncePolicyTests {
         )
     }
 
-    @Test("iOS search uses in-pane field without keyboard assistant")
-    func iOSSearchUsesInPaneFieldWithoutKeyboardAssistant() {
+    @Test("iOS search uses the system search field without autocorrection")
+    func iOSSearchUsesSystemSearchField() {
         let configuration = MessageListSearchFieldPolicy.configuration(platform: .iOS)
 
-        #expect(configuration.placement == .inPaneField)
+        #expect(configuration.placement == .nativeSearchable)
         #expect(configuration.disablesAutocorrection)
         #expect(configuration.hidesInputAssistant)
-        #expect(configuration.chromeHeight == 44)
+        #expect(configuration.chromeHeight == nil)
     }
 
     @Test("category chrome preserves native platform density")

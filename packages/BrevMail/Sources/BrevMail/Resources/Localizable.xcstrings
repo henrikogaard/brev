@@ -3394,6 +3394,17 @@
         }
       }
     },
+    "Clear recent searches": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern nylige søk"
+          }
+        }
+      }
+    },
     "Clear Selection": {
       "extractionState": "manual",
       "localizations": {
@@ -4689,6 +4700,17 @@
         }
       }
     },
+    "Current mailbox": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjeldende postkasse"
+          }
+        }
+      }
+    },
     "Custom Smart Views": {
       "extractionState": "manual",
       "localizations": {
@@ -5271,6 +5293,17 @@
         }
       }
     },
+    "Last month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige måned"
+          }
+        }
+      }
+    },
     "Make %@ the default": {
       "extractionState": "manual",
       "localizations": {
@@ -5392,6 +5425,17 @@
         }
       }
     },
+    "Recent searches": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nylige søk"
+          }
+        }
+      }
+    },
     "Skip": {
       "extractionState": "manual",
       "localizations": {
@@ -5410,6 +5454,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Endre rekkefølge på eller skjul favorittene dine."
+          }
+        }
+      }
+    },
+    "Search in From": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i Fra"
+          }
+        }
+      }
+    },
+    "Search in Subject": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i Emne"
           }
         }
       }
@@ -5502,6 +5568,17 @@
         }
       }
     },
+    "Senders": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsendere"
+          }
+        }
+      }
+    },
     "Setting up your mailbox. Cached mail will appear as soon as the first page is ready.": {
       "extractionState": "manual",
       "localizations": {
@@ -5535,6 +5612,17 @@
         }
       }
     },
+    "Suggested filters": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foreslåtte filtre"
+          }
+        }
+      }
+    },
     "Sync interrupted": {
       "extractionState": "manual",
       "localizations": {
@@ -5564,6 +5652,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Synkronisering satt på pause"
+          }
+        }
+      }
+    },
+    "This month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne måneden"
           }
         }
       }
