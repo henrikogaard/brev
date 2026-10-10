@@ -15,6 +15,9 @@ All notable changes to Brev are documented here.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.
+
+- Mac message list multi-select: Command-click toggles a message, Shift-click selects the range from the last selected message, Shift-Up and Shift-Down extend it, and Edit > Select All Messages (Command-A, while the list has focus) selects every message in view. With two or more messages selected the reading pane shows how many are selected, with Mark Read, Mark Unread, Flag, Archive and Delete buttons.
+- Mac message list: a plain click or arrow key now returns to a single selected message instead of toggling checked messages.
 - Mac thread cards highlight on hover, show an "Expand message" or "Collapse message" tooltip, and have a clearer expand chevron. The reader's "More message actions" menu now has a tooltip.
 - iOS message list: a Select button in the navigation bar enters selection mode like iOS Mail. Select All and Cancel replace the bar's buttons, Mark, Move, Archive and Delete sit in the bottom bar with 44 pt targets that grow with Dynamic Type, and any action ends the mode. The long-press "Select" still works, and unticking the last row no longer drops you out of selection mode.
 - iOS message list: unread rows show a leading accent dot and a semibold sender; read rows have neither. Swipe right toggles read; swipe left shows More, Flag and Archive (Delete when the account has no Archive folder), with a full swipe archiving. More opens an action sheet (Reply, Reply All, Forward, Snooze, Move, Junk). The long-press menu leads with Reply, Mark and Move/Archive/Delete and folds everything else under More.
@@ -24,6 +27,8 @@ All notable changes to Brev are documented here.
 ### Added
 
 - iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
+
+- Mac reader attachments behave like Apple Mail: drag a row to Finder, a compose window or another app to copy the file with its original name, double-click a row to open it in its default app, and see the filename and size when you hover. Messages with two or more attachments get a "Save All…" button that saves them into a folder you choose without overwriting existing files.
 
 ### Fixed
 
@@ -57,6 +62,7 @@ All notable changes to Brev are documented here.
 - iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
 - iOS Mailboxes VoiceOver: counts read as "16 unread", the selected mailbox is marked selected, section titles are headers, and a collapsed account announces its unread count with its state.
 - iPad: Reply, Reply All, Forward and New Message open compose as a form sheet over the current window instead of a separate full-window scene, and a relaunch no longer restores a stray compose window. The detached reader and compose windows now follow the app theme and color scheme.
+
 
 - The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 

@@ -650,6 +650,47 @@
         }
       }
     },
+    "%lld messages selected": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld message selected"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld messages selected"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld melding valgt"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld meldinger valgt"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld messages shown": {
       "extractionState": "manual",
       "localizations": {
@@ -3126,6 +3167,17 @@
         }
       }
     },
+    "Choose a folder for the attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en mappe for vedleggene"
+          }
+        }
+      }
+    },
     "Choose a folder from the sidebar.": {
       "extractionState": "manual",
       "localizations": {
@@ -5046,6 +5098,28 @@
         }
       }
     },
+    "Extend Selection Down": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid markeringen ned"
+          }
+        }
+      }
+    },
+    "Extend Selection Up": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Utvid markeringen opp"
+          }
+        }
+      }
+    },
     "First Message": {
       "extractionState": "manual",
       "localizations": {
@@ -5189,6 +5263,50 @@
         }
       }
     },
+    "Save All…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre alle…"
+          }
+        }
+      }
+    },
+    "Save all attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre alle vedlegg"
+          }
+        }
+      }
+    },
+    "Saved %lld attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret %lld vedlegg"
+          }
+        }
+      }
+    },
+    "Saved %lld of %lld attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret %lld av %lld vedlegg"
+          }
+        }
+      }
+    },
     "Select All": {
       "extractionState": "manual",
       "localizations": {
@@ -5196,6 +5314,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Velg alle"
+          }
+        }
+      }
+    },
+    "Select All Messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg alle meldinger"
           }
         }
       }

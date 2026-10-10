@@ -1710,7 +1710,15 @@ public struct BrevMailRootView: View {
             Color.clear
         }
         #else
-        readingPaneContent()
+        if MessageBulkSelectionPresentation.showsPane(forSelectionCount: navigation.bulkSelection.count) {
+            MessageBulkSelectionPane(
+                count: navigation.bulkSelection.count,
+                actions: navigation.bulkSelectionActions,
+                isDisabled: isCommandMutationBlocked
+            )
+        } else {
+            readingPaneContent()
+        }
         #endif
     }
 

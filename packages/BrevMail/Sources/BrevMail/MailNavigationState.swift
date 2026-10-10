@@ -271,6 +271,11 @@ public final class MailNavigationState {
         bulkSelection.removeAll()
     }
 
+    /// Bulk handlers the message list publishes for the reader pane's
+    /// "N messages selected" buttons. Not observed: the list refreshes it
+    /// whenever the selection changes, which is also when the pane renders.
+    @ObservationIgnored var bulkSelectionActions: MailBulkSelectionActions?
+
     /// Incremented when a command or toolbar action asks the current
     /// message list to reload its visible folder.
     public var reloadRequestID: Int
