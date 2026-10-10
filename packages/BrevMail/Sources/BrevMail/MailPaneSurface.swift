@@ -279,7 +279,9 @@ extension View {
     /// the title.
     @ViewBuilder
     func mailListNavigationSubtitle(_ subtitle: String?) -> some View {
-        #if os(iOS)
+        // `navigationSubtitle` is iOS 26 SDK API; CI still builds with Xcode 16
+        // (iOS 18 SDK), where it is marked unavailable on iOS.
+        #if os(iOS) && compiler(>=6.2)
         if #available(iOS 26.0, *) {
             navigationSubtitle(subtitle ?? "")
         } else {
