@@ -28,6 +28,8 @@ public struct CalendarEventEditorView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dismiss) private var dismiss
     @Environment(\.calendar) private var calendar
+    /// The weekday toggle's circle, scaled with Dynamic Type.
+    @ScaledMetric(relativeTo: .callout) private var weekdayCircleSize: CGFloat = 36
 
     /// The editing model that owns writable targets and mutations.
     let editing: CalendarEditingModel
@@ -303,21 +305,7 @@ public struct CalendarEventEditorView: View {
                         draft.repeatWeekdays.insert(day)
                     }
                 } label: {
-                    Text(day.rawValue)
-                        .brevFont(.caption)
-                        .frame(width: 30, height: 30)
-                        .background(
-                            Circle().fill(
-                                selected
-                                    ? theme.accent.color
-                                    : theme.bgSecondary.color
-                            )
-                        )
-                        .foregroundStyle(
-                            selected
-                                ? theme.bgPrimary.color
-                                : theme.textPrimary.color
-                        )
+                    weekdayLabel(day, selected: selected)
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(weekdayName(day))
@@ -326,6 +314,32 @@ public struct CalendarEventEditorView: View {
                 )
             }
         }
+    }
+
+    /// The weekday toggle's face. iOS shows the localized initial in a
+    /// full-height touch target (audit P3); macOS keeps the ICS code.
+    @ViewBuilder
+    private func weekdayLabel(_ day: ICSParser.Weekday, selected: Bool) -> some View {
+        #if os(iOS)
+        Text(String(weekdayName(day).prefix(1)).uppercased())
+            .brevFont(.callout)
+            .lineLimit(1)
+            .frame(width: weekdayCircleSize, height: weekdayCircleSize)
+            .background(
+                Circle().fill(selected ? theme.accent.color : theme.bgSecondary.color)
+            )
+            .foregroundStyle(selected ? theme.bgPrimary.color : theme.textPrimary.color)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        #else
+        Text(day.rawValue)
+            .brevFont(.caption)
+            .frame(width: 30, height: 30)
+            .background(
+                Circle().fill(selected ? theme.accent.color : theme.bgSecondary.color)
+            )
+            .foregroundStyle(selected ? theme.bgPrimary.color : theme.textPrimary.color)
+        #endif
     }
 
     private func weekdayName(_ day: ICSParser.Weekday) -> String {

@@ -12,6 +12,7 @@
 
 import BrevCalendar
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import SwiftUI
 
@@ -35,6 +36,9 @@ public struct CalendarRootView: View {
     /// Dismisses the hosting surface (iOS presents the view in a full-screen
     /// cover); nil hides the Done affordance.
     private let onDismiss: (() -> Void)?
+    /// Opens the Settings pane that connects sources from the empty state;
+    /// nil (default) shows no button.
+    private let onOpenSettings: ((SettingsSection) -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .doubleColumn
     /// Drives iOS push navigation onto the detail column on selection.
@@ -65,14 +69,18 @@ public struct CalendarRootView: View {
     ///   a read-only calendar.
     /// - Parameter onDismiss: Dismiss action for a host that presents the
     ///   view modally; nil (default) shows no Done button.
+    /// - Parameter onOpenSettings: Opens the given Settings pane from the
+    ///   "no sources" empty state; nil (default) shows no button.
     public init(
         model: CalendarBrowsingModel,
         editing: CalendarEditingModel? = nil,
-        onDismiss: (() -> Void)? = nil
+        onDismiss: (() -> Void)? = nil,
+        onOpenSettings: ((SettingsSection) -> Void)? = nil
     ) {
         _model = State(initialValue: model)
         self.editing = editing
         self.onDismiss = onDismiss
+        self.onOpenSettings = onOpenSettings
     }
 
     public var body: some View {
@@ -81,9 +89,11 @@ public struct CalendarRootView: View {
             preferredCompactColumn: $preferredCompactColumn
         ) {
             leadingColumn
-                .navigationTitle(
-                    String(localized: "Calendar", bundle: .module)
-                )
+            #if os(macOS)
+            .navigationTitle(
+                String(localized: "Calendar", bundle: .module)
+            )
+            #endif
         } detail: {
             detailColumn
         }
@@ -93,13 +103,14 @@ public struct CalendarRootView: View {
         // the screen pushes the nav bar offscreen-left.
         .frame(minWidth: 760, minHeight: 480)
         #endif
-        .searchable(
+        .modifier(PIMSearchableModifier(
             text: Bindable(model).searchText,
             prompt: String(
                 localized: "Search events",
                 bundle: .module
-            )
-        )
+            ),
+            isEnabled: showsSearch
+        ))
         .task { await model.load() }
         .task { await editing?.load() }
         .task { await model.observeSourceChanges() }
@@ -112,8 +123,19 @@ public struct CalendarRootView: View {
         .sheet(item: $editorRequest) { request in
             if let editing {
                 editorSheet(for: request, editing: editing)
+                    .pimEditorSheetAppearance(theme)
             }
         }
+    }
+
+    /// The search field needs events to search; with no source connected
+    /// it is hidden on iOS.
+    private var showsSearch: Bool {
+        #if os(iOS)
+        model.hasSources
+        #else
+        true
+        #endif
     }
 
     // MARK: - Leading column
@@ -132,11 +154,17 @@ public struct CalendarRootView: View {
             if let deepLinkNotice = model.deepLinkNotice {
                 errorBanner(deepLinkNotice)
             }
+            #if os(macOS)
             if model.hasSources {
                 navigationHeader
             }
+            #endif
             content
         }
+        #if os(iOS)
+        .navigationTitle(iOSNavigationTitle)
+        .navigationBarTitleDisplayMode(.inline)
+        #endif
         .toolbar { toolbarContent }
         // The calendar grid lives in this column — it needs real width on
         // macOS or day/week/month cells collapse to chips. iOS compact
@@ -153,17 +181,11 @@ public struct CalendarRootView: View {
                     String(localized: "Loading events", bundle: .module)
                 )
         } else if !model.hasSources {
-            emptyState(
+            PIMNoSourcesView(
+                kind: .calendar,
                 symbol: "calendar.badge.plus",
-                title: String(
-                    localized: "No calendars connected",
-                    bundle: .module
-                ),
-                message: String(
-                    localized:
-                    "Connect a calendar in Settings → Calendar & Contacts to see events here.",
-                    bundle: .module
-                )
+                onOpenSettings: onOpenSettings,
+                fillsBackgroundOnMac: true
             )
         } else if model.days.isEmpty, model.viewMode == .agenda {
             emptyState(
@@ -409,14 +431,170 @@ public struct CalendarRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        #if os(iOS)
+        iOSToolbarContent
+        #else
         if let onDismiss {
             ToolbarItem(placement: .cancellationAction) {
                 Button(String(localized: "Done", bundle: .module), action: onDismiss)
             }
         }
+        #endif
     }
 
-    // MARK: - Navigation header
+    // MARK: - iOS chrome
+
+    #if os(iOS)
+    /// The range title (month, week or day) while a date layout is active;
+    /// the surface name for the agenda.
+    private var iOSNavigationTitle: String {
+        model.hasSources && model.showsDateNavigation
+            ? model.rangeTitle
+            : String(localized: "Calendar", bundle: .module)
+    }
+
+    private var showsAddEvent: Bool {
+        guard let editing else { return false }
+        return editing.canAuthor && editing.defaultTarget != nil
+    }
+
+    /// Layout menu and range title up top, Today / previous / next / sync in
+    /// the bottom bar, + and Done trailing, as in iOS Calendar (audit P2).
+    @ToolbarContentBuilder
+    private var iOSToolbarContent: some ToolbarContent {
+        if model.hasSources {
+            ToolbarItem(placement: .topBarLeading) {
+                layoutMenu
+            }
+            if model.showsDateNavigation {
+                ToolbarItem(placement: .principal) {
+                    Text(model.rangeTitle)
+                        .brevFont(.headline)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                        .multilineTextAlignment(.center)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .accessibilityAddTraits(.isHeader)
+                }
+            }
+        }
+        if model.hasSources, showsAddEvent {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    Task { await presentNewEvent() }
+                } label: {
+                    Image(systemName: "plus")
+                        .frame(
+                            minWidth: CalendarNavigationPresentation.minimumControlSize,
+                            minHeight: CalendarNavigationPresentation.minimumControlSize
+                        )
+                        .contentShape(Rectangle())
+                }
+                .accessibilityLabel(
+                    String(localized: "newEvent.lower", bundle: .module)
+                )
+            }
+        }
+        if let onDismiss {
+            ToolbarItem(placement: .topBarTrailing) {
+                PIMDoneButton(action: onDismiss)
+            }
+        }
+        if model.hasSources {
+            ToolbarItemGroup(placement: .bottomBar) {
+                if model.showsDateNavigation {
+                    Button {
+                        model.goToToday()
+                    } label: {
+                        Text("Today", bundle: .module)
+                            .frame(minHeight: CalendarNavigationPresentation.minimumControlSize)
+                    }
+                    Spacer()
+                    stepButton(
+                        systemName: "chevron.left",
+                        label: CalendarNavigationPresentation.previousLabel(for: model.viewMode),
+                        action: model.goToPrevious
+                    )
+                    stepButton(
+                        systemName: "chevron.right",
+                        label: CalendarNavigationPresentation.nextLabel(for: model.viewMode),
+                        action: model.goToNext
+                    )
+                }
+                Spacer()
+                syncButton
+            }
+        }
+    }
+
+    /// The Day / Week / Month / Agenda picker, shown as a menu so it keeps
+    /// its width at any Dynamic Type size.
+    private var layoutMenu: some View {
+        Menu {
+            Picker(
+                String(localized: "Layout", bundle: .module),
+                selection: Bindable(model).viewMode
+            ) {
+                ForEach(CalendarBrowsingModel.ViewMode.allCases, id: \.self) { mode in
+                    Text(mode.title).tag(mode)
+                }
+            }
+        } label: {
+            Text(model.viewMode.title)
+                .frame(minHeight: CalendarNavigationPresentation.minimumControlSize)
+        }
+        .menuIndicator(.visible)
+        .accessibilityLabel(
+            String(localized: "Calendar layout", bundle: .module)
+        )
+        .accessibilityValue(model.viewMode.title)
+    }
+
+    private func stepButton(
+        systemName: String,
+        label: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemName)
+                .frame(
+                    minWidth: CalendarNavigationPresentation.minimumControlSize,
+                    minHeight: CalendarNavigationPresentation.minimumControlSize
+                )
+                .contentShape(Rectangle())
+        }
+        .accessibilityLabel(label)
+    }
+
+    private var syncButton: some View {
+        Button {
+            Task { await model.syncAll() }
+        } label: {
+            Group {
+                if model.syncingSourceIDs.isEmpty {
+                    Image(systemName: "arrow.triangle.2.circlepath")
+                } else {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+            }
+            .frame(
+                minWidth: CalendarNavigationPresentation.minimumControlSize,
+                minHeight: CalendarNavigationPresentation.minimumControlSize
+            )
+            .contentShape(Rectangle())
+        }
+        .disabled(!model.canSyncAny)
+        .accessibilityLabel(
+            String(localized: "Sync calendars now", bundle: .module)
+        )
+    }
+    #endif
+
+    // MARK: - Navigation header (macOS)
+
+    #if os(macOS)
 
     /// In-view replacement for `.principal`/`.primaryAction` toolbar items:
     /// on macOS sidebar toolbars only propagate to the window titlebar when
@@ -509,4 +687,5 @@ public struct CalendarRootView: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.xs)
     }
+    #endif
 }

@@ -12,6 +12,7 @@
 
 import BrevCalendar
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import SwiftUI
 
@@ -34,6 +35,9 @@ public struct ContactsRootView: View {
     /// Dismisses the hosting surface (iOS presents the view in a full-screen
     /// cover); nil hides the Done affordance.
     private let onDismiss: (() -> Void)?
+    /// Opens the Settings pane that connects sources from the empty state;
+    /// nil (default) shows no button.
+    private let onOpenSettings: ((SettingsSection) -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
@@ -61,14 +65,18 @@ public struct ContactsRootView: View {
     ///   a read-only contacts list.
     /// - Parameter onDismiss: Dismiss action for a host that presents the
     ///   view modally; nil (default) shows no Done button.
+    /// - Parameter onOpenSettings: Opens the given Settings pane from the
+    ///   "no sources" empty state; nil (default) shows no button.
     public init(
         model: ContactsBrowsingModel,
         editing: ContactsEditingModel? = nil,
-        onDismiss: (() -> Void)? = nil
+        onDismiss: (() -> Void)? = nil,
+        onOpenSettings: ((SettingsSection) -> Void)? = nil
     ) {
         _model = State(initialValue: model)
         self.editing = editing
         self.onDismiss = onDismiss
+        self.onOpenSettings = onOpenSettings
     }
 
     public var body: some View {
@@ -89,13 +97,14 @@ public struct ContactsRootView: View {
         // the screen pushes the nav bar offscreen-left.
         .frame(minWidth: 760, minHeight: 480)
         #endif
-        .searchable(
+        .modifier(PIMSearchableModifier(
             text: Bindable(model).searchText,
             prompt: String(
                 localized: "Search contacts",
                 bundle: .module
-            )
-        )
+            ),
+            isEnabled: showsSearch
+        ))
         .task { await model.load() }
         .task { await editing?.load() }
         .task { await model.observeSourceChanges() }
@@ -108,8 +117,19 @@ public struct ContactsRootView: View {
         .sheet(item: $editorRequest) { request in
             if let editing {
                 editorSheet(for: request, editing: editing)
+                    .pimEditorSheetAppearance(theme)
             }
         }
+    }
+
+    /// The search field needs contacts to search; with no source connected
+    /// it is hidden on iOS.
+    private var showsSearch: Bool {
+        #if os(iOS)
+        model.hasSources
+        #else
+        true
+        #endif
     }
 
     // MARK: - List column
@@ -146,17 +166,10 @@ public struct ContactsRootView: View {
                     String(localized: "Loading contacts", bundle: .module)
                 )
         } else if !model.hasSources {
-            emptyState(
+            PIMNoSourcesView(
+                kind: .contacts,
                 symbol: "person.crop.circle.badge.plus",
-                title: String(
-                    localized: "No contacts sources connected",
-                    bundle: .module
-                ),
-                message: String(
-                    localized:
-                    "Connect a contacts source in Settings → Calendar & Contacts to see people here.",
-                    bundle: .module
-                )
+                onOpenSettings: onOpenSettings
             )
         } else if model.sections.isEmpty {
             emptyState(
@@ -361,11 +374,13 @@ public struct ContactsRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        #if os(macOS)
         if let onDismiss {
             ToolbarItem(placement: .cancellationAction) {
                 Button(String(localized: "Done", bundle: .module), action: onDismiss)
             }
         }
+        #endif
         if !model.allCollections.isEmpty {
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
@@ -453,5 +468,12 @@ public struct ContactsRootView: View {
                 String(localized: "Sync contacts now", bundle: .module)
             )
         }
+        #if os(iOS)
+        if let onDismiss {
+            ToolbarItem(placement: .primaryAction) {
+                PIMDoneButton(action: onDismiss)
+            }
+        }
+        #endif
     }
 }

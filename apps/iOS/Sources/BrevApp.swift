@@ -37,6 +37,10 @@ struct BrevApp: App {
     @Environment(\.scenePhase) private var scenePhase
     @State private var session: AppSession
     @State private var showSettings = false
+    /// The Settings pane to open first, and whether compact Settings pushes it
+    /// immediately. Set by the PIM covers' empty-state button (audit P1).
+    @State private var settingsInitialSection: SettingsSection = .accounts
+    @State private var settingsPushesInitialSection = false
     @State private var showCalendar = false
     @State private var showContacts = false
     @State private var showTasks = false
@@ -92,6 +96,21 @@ struct BrevApp: App {
         )
     }
 
+    /// Closes the Calendar, Contacts or Tasks cover and opens Settings on the
+    /// pane that connects sources. Settings is a sheet on the same view as the
+    /// covers, so it waits for the cover's dismissal to finish.
+    private func openSettingsFromPIMCover(_ section: SettingsSection) {
+        settingsInitialSection = section
+        settingsPushesInitialSection = true
+        showCalendar = false
+        showContacts = false
+        showTasks = false
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(600))
+            showSettings = true
+        }
+    }
+
     /// Settings open as a sheet over the mailbox, so the list selection and
     /// scroll position underneath survive opening and closing Settings. The
     /// sheet resolves the persisted theme itself because it is presented from
@@ -101,6 +120,8 @@ struct BrevApp: App {
             accountStore: session.accountStore,
             activeTheme: $session.theme,
             activeAppIcon: appIconBinding,
+            initialSection: settingsInitialSection,
+            pushesInitialSection: settingsPushesInitialSection,
             initialAccounts: session.visibleBackends.map(\.account),
             initialCurrentAccountID: session.backend?.account.id,
             mailboxContext: settingsMailboxContext,
@@ -262,7 +283,10 @@ struct BrevApp: App {
                     )
                 },
                 set: { showSettings = $0 }
-            )) {
+            ), onDismiss: {
+                settingsInitialSection = .accounts
+                settingsPushesInitialSection = false
+            }) {
                 settingsSheet
             }
             .alert(
@@ -301,7 +325,8 @@ struct BrevApp: App {
                         collectionService: session.pimCollectionService,
                         driveFeature: session.googleDriveFeature
                     ),
-                    onDismiss: { showCalendar = false }
+                    onDismiss: { showCalendar = false },
+                    onOpenSettings: openSettingsFromPIMCover
                 )
                 .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)
@@ -314,7 +339,8 @@ struct BrevApp: App {
                         coordinator: session.pimSourceCoordinator,
                         collectionService: session.pimCollectionService
                     ),
-                    onDismiss: { showContacts = false }
+                    onDismiss: { showContacts = false },
+                    onOpenSettings: openSettingsFromPIMCover
                 )
                 .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)
@@ -327,7 +353,8 @@ struct BrevApp: App {
                         coordinator: session.pimSourceCoordinator,
                         collectionService: session.pimCollectionService
                     ),
-                    onDismiss: { showTasks = false }
+                    onDismiss: { showTasks = false },
+                    onOpenSettings: openSettingsFromPIMCover
                 )
                 .brevRootAppearance(session: session)
                 .environment(\.openURL, browserOpenURLAction)

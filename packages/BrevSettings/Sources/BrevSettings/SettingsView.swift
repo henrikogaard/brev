@@ -31,6 +31,8 @@ public struct SettingsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var navigation: SettingsNavigationState
+    /// The pane the compact stack pushes on first appearance (deep link).
+    @State private var compactDeepLinkedSection: SettingsSection?
     @State private var selectedPluginContribution: RegisteredContribution?
     @State private var accounts: [BrevAccount] = []
     @State private var currentAccountID: BrevAccount.ID?
@@ -73,6 +75,7 @@ public struct SettingsView: View {
         activeAppIcon: Binding<AppIconVariant> = .constant(AppIconVariant.defaultVariant),
         sectionAvailability: SettingsSectionAvailability = .v1Default,
         initialSection: SettingsSection = .accounts,
+        pushesInitialSection: Bool = false,
         initialAccounts: [BrevAccount] = [],
         initialCurrentAccountID: BrevAccount.ID? = nil,
         mailboxContext: SettingsMailboxContext = .init(),
@@ -124,6 +127,9 @@ public struct SettingsView: View {
                 selected: initialSection,
                 availability: sectionAvailability
             )
+        )
+        _compactDeepLinkedSection = State(
+            initialValue: pushesInitialSection ? sectionAvailability.fallback(for: initialSection) : nil
         )
         self.allFolders = allFolders
         self.currentFolderSourceID = currentFolderSourceID
@@ -302,6 +308,9 @@ public struct SettingsView: View {
                 }
             }
             .navigationTitle(String(localized: "Settings", bundle: .module))
+            .navigationDestination(item: $compactDeepLinkedSection) { section in
+                compactPane(for: section)
+            }
             .searchable(
                 text: $searchText,
                 placement: .automatic,

@@ -1,5 +1,28 @@
 # Worklog
 
+## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
+
+- Goal: native iPhone Calendar, Contacts and Tasks chrome, empty states and
+  task editor (`fix/ios-pim-native`).
+- Changed: shared "no sources" state with a button that opens Settings →
+  Calendar & Contacts (new `SettingsView(pushesInitialSection:)` entry point,
+  `BrevApp.openSettingsFromPIMCover`); Calendar layout menu, range title, +,
+  Today, previous/next and sync moved into the navigation and bottom bars;
+  month cells are single buttons with event dots and a label listing events;
+  event blocks speak title, time and place; Dynamic Type scaling for the grids;
+  `TaskEditorView` is a Form sheet on iOS; task rows split the completion
+  switch from the text, 44 pt target, "Overdue" word; task delete asks first;
+  Done is trailing and textPrimary on all three covers; PIM editor sheets use
+  `brevSheetAppearance`. macOS windows unchanged (month grid and task editor
+  macOS renders byte-identical to main).
+- Verified: presentation tests (macOS `swift test`), iOS package build,
+  iOS snapshots recorded on iOS 27, simulator walk-through with a seeded cache.
+- Checkpoint commit: nb/dark/AX3 simulator screenshots, per-screen audit
+  results and docs/qa evidence folder still to do.
+- Observation (pre-existing, not fixed): tapping "Add DAV Source…" in
+  Settings → Calendar & Contacts closes the whole Settings sheet in the iOS
+  mock-mode simulator, also on main.
+
 ## 2026-10-03 — Agent — Issue #11 stub-DAV rows 2.7/2.8/4.3
 
 - Goal: close the stub-matrix rows left open by the #3 reconciliation
@@ -5634,3 +5657,9 @@ buttons, and package-aware localization.
 
 - Henrik approved ADR-0087 on 2026-10-10. Status changed Proposed → Accepted in the ADR and the index; ADR-0029, ADR-0030 and ADR-0082 carry an "Amended by ADR-0087" line and the index rows say so.
 - No code in this PR. Implementation follows the ADR's rollout: measure first (cold open and SQLite page reads at 10k/50k), then the four stacked PRs; the cutover ships only if it meets the ADR's targets.
+
+## 2026-10-10 — Claude Code — Slice 8b runtime QA evidence (PR #234)
+
+- Goal: capture simulator evidence for P1-P4. Added `docs/qa/ios-slice8b-pim-2026-10-10/` (empty states en light/dark, nb light, en AX3; Settings page from the empty state; a11y audit text; snapshot references).
+- Verification: temporary XCUITest outside the repo on own iPhone 17 Pro iOS 27 simulator (deleted after). No product code changed.
+- Not verified: screens behind a connected source (month, week, task editor, delete confirmation, Contacts editor): Add DAV Source dismisses the whole Settings sheet in mock mode (pre-existing), so only snapshot-test renderings exist.

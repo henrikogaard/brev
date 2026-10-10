@@ -1,0 +1,6 @@
+contrast | Contrast failed | Done | Contrast failed for SwiftUI.AccessibilityNode
+dynamicType | Dynamic Type font sizes are partially unsupported | Connect a contacts source in Settings → Calendar & Contacts to see people here. | User will not be able to change the font size of this SwiftUI.AccessibilityNode
+dynamicType | Dynamic Type font sizes are partially unsupported | Done | User will not be able to change the font size of this SwiftUI.AccessibilityNode
+dynamicType | Dynamic Type font sizes are partially unsupported | Open Calendar & Contacts Settings | User will not be able to change the font size of this SwiftUI.AccessibilityNode
+dynamicType | Dynamic Type font sizes are partially unsupported | No contacts sources connected | User will not be able to change the font size of this SwiftUI.AccessibilityNode
+textClipped | Text clipped | Connect a contacts source in Settings → Calendar & Contacts to see people here. | Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes.

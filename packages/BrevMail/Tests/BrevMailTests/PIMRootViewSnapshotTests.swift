@@ -46,7 +46,7 @@ struct PIMRootViewSnapshotTests {
     @Test("Calendar cover lays out within iPhone bounds")
     func calendarCoverCompact() {
         snapshot(
-            CalendarRootView(model: CalendarBrowsingModel(), onDismiss: {}),
+            CalendarRootView(model: CalendarBrowsingModel(), onDismiss: {}, onOpenSettings: { _ in }),
             named: "calendar-cover-compact"
         )
     }
@@ -54,7 +54,7 @@ struct PIMRootViewSnapshotTests {
     @Test("Contacts cover lays out within iPhone bounds")
     func contactsCoverCompact() {
         snapshot(
-            ContactsRootView(model: ContactsBrowsingModel(), onDismiss: {}),
+            ContactsRootView(model: ContactsBrowsingModel(), onDismiss: {}, onOpenSettings: { _ in }),
             named: "contacts-cover-compact"
         )
     }
@@ -62,7 +62,7 @@ struct PIMRootViewSnapshotTests {
     @Test("Tasks cover lays out within iPhone bounds")
     func tasksCoverCompact() {
         snapshot(
-            TasksRootView(model: TasksBrowsingModel(), onDismiss: {}),
+            TasksRootView(model: TasksBrowsingModel(), onDismiss: {}, onOpenSettings: { _ in }),
             named: "tasks-cover-compact"
         )
     }

@@ -24,6 +24,10 @@ import SwiftUI
 public struct CalendarWeekView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.calendar) private var calendar
+    /// Hour height, ruler width and today circle scale with Dynamic Type.
+    @ScaledMetric(relativeTo: .caption) private var hourHeight: CGFloat = 28
+    @ScaledMetric(relativeTo: .caption) private var rulerWidth: CGFloat = 48
+    @ScaledMetric(relativeTo: .subheadline) private var dayCircleSize: CGFloat = 28
 
     /// The week's seven day-starts, first-weekday aware.
     let days: [Date]
@@ -73,7 +77,7 @@ public struct CalendarWeekView: View {
                             placements: lanesFor(day),
                             collectionFor: collectionFor,
                             selectedEventID: $selectedEventID,
-                            hourHeight: 28,
+                            hourHeight: hourHeight,
                             showsHourLabels: false
                         )
                     }
@@ -91,7 +95,7 @@ public struct CalendarWeekView: View {
         HStack(spacing: 0) {
             // Matches the hour ruler's width so columns align.
             Color.clear
-                .frame(width: 48, height: 1)
+                .frame(width: rulerWidth, height: 1)
                 .accessibilityHidden(true)
             ForEach(days, id: \.self) { day in
                 Button {
@@ -110,7 +114,9 @@ public struct CalendarWeekView: View {
                                     ? theme.bgPrimary.color
                                     : theme.textPrimary.color
                             )
-                            .frame(width: 28, height: 28)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.6)
+                            .frame(minWidth: dayCircleSize, minHeight: dayCircleSize)
                             .background(
                                 Circle().fill(
                                     isToday(day)
@@ -144,7 +150,7 @@ public struct CalendarWeekView: View {
     private var allDayRow: some View {
         HStack(alignment: .top, spacing: 0) {
             Color.clear
-                .frame(width: 48, height: 1)
+                .frame(width: rulerWidth, height: 1)
                 .accessibilityHidden(true)
             ForEach(days, id: \.self) { day in
                 VStack(spacing: BrevSpacing.xxs) {
@@ -177,10 +183,10 @@ public struct CalendarWeekView: View {
                 Text(hourText(hour))
                     .brevFont(.caption)
                     .foregroundStyle(theme.textTertiary.color)
-                    .frame(height: 28, alignment: .top)
+                    .frame(height: hourHeight, alignment: .top)
             }
         }
-        .frame(width: 48)
+        .frame(width: rulerWidth)
         .accessibilityHidden(true)
     }
 

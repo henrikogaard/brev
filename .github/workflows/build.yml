@@ -283,6 +283,7 @@ jobs:
             '-only-testing:BrevMailTests/SnoozePickerSnapshotTests' \
             '-only-testing:BrevMailTests/NativeUtilitySheetsSnapshotTests' \
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
+            '-only-testing:BrevMailTests/PIMNativeChromeSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
 
       - name: Test compact settings rows and forms on iOS Simulator
