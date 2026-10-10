@@ -4917,6 +4917,17 @@
         }
       }
     },
+    "Deselect All": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern alle valg"
+          }
+        }
+      }
+    },
     "Down One Page": {
       "extractionState": "manual",
       "localizations": {
@@ -5038,6 +5049,17 @@
         }
       }
     },
+    "Mark": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Merk"
+          }
+        }
+      }
+    },
     "Message List": {
       "extractionState": "manual",
       "localizations": {
@@ -5045,6 +5067,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meldingsliste"
+          }
+        }
+      }
+    },
+    "Select All": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg alle"
+          }
+        }
+      }
+    },
+    "Select messages": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg meldinger"
           }
         }
       }

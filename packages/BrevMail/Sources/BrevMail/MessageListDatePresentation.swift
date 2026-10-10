@@ -54,6 +54,30 @@ enum MessageListDatePresentation {
         )
     }
 
+    /// The spoken form of the row date: "25 minutes ago" rather than "25m" (audit L10).
+    /// Absolute arrival times are already readable and stay as they are.
+    static func accessibilityLabel(
+        for date: Date,
+        showsAbsoluteArrivalTime: Bool,
+        referenceDate: Date = Date(),
+        calendar: Calendar = .current,
+        locale: Locale = .autoupdatingCurrent,
+        timeZone: TimeZone = .autoupdatingCurrent
+    ) -> String {
+        guard isKnown(date) else { return unknownDateLabel }
+        guard !showsAbsoluteArrivalTime else {
+            return absoluteLabel(
+                for: date,
+                referenceDate: referenceDate,
+                calendar: calendar,
+                locale: locale,
+                timeZone: timeZone
+            )
+        }
+        return relativeFormatter(locale: locale, calendar: calendar)
+            .localizedString(for: date, relativeTo: referenceDate)
+    }
+
     static func isKnown(_ date: Date) -> Bool {
         date != Date.distantPast
     }
