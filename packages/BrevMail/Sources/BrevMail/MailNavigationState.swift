@@ -96,8 +96,53 @@ public final class MailNavigationState {
 
     /// Search query bound to the message list search field. Empty string
     /// means "no filter".
+    ///
+    /// This is the composed query every list reads: the text the user typed
+    /// plus the phrases of any search tokens (audit Q2). Assigning it replaces
+    /// the whole query, so the typed text becomes `searchFreeText` and the
+    /// tokens are dropped.
     public var searchText: String {
-        didSet { if oldValue != searchText { restoredSelectionHeader = nil } }
+        get { MailSearchTokens.composedText(freeText: searchFreeText, tokens: searchTokens) }
+        set {
+            searchTokens = []
+            searchFreeText = newValue
+        }
+    }
+
+    /// The text in the search field, without the token phrases.
+    var searchFreeText: String {
+        didSet { if oldValue != searchFreeText { restoredSelectionHeader = nil } }
+    }
+
+    /// Predicate tokens in the iOS search field. They compose into `searchText`.
+    var searchTokens: [MailSearchToken] = [] {
+        didSet { if oldValue != searchTokens { restoredSelectionHeader = nil } }
+    }
+
+    /// The field scope an active field token applies to the typed text.
+    var searchScope: SearchScope { MailSearchTokens.searchScope(for: searchTokens) }
+
+    /// Search every mailbox instead of the open one. Reset when the list reloads for another folder.
+    var searchAllMailboxes = false
+
+    /// Turns predicates typed into the field into tokens, as iOS Mail does when you submit.
+    func commitSearch(now: Date = Date(), calendar: Calendar = .current) {
+        guard searchScope == .all else { return }
+        let extraction = MailSearchTokens.extract(from: searchFreeText, now: now, calendar: calendar)
+        guard !extraction.tokens.isEmpty else { return }
+        var updated = searchTokens
+        for token in extraction.tokens {
+            MailSearchTokens.add(token, to: &updated)
+        }
+        searchTokens = updated
+        searchFreeText = extraction.remainingText
+    }
+
+    /// Clears the query, its tokens and the mailbox scope.
+    func clearSearch() {
+        searchTokens = []
+        searchFreeText = ""
+        searchAllMailboxes = false
     }
 
     // A confirmed restored message may sit outside the first refreshed page.
@@ -253,7 +298,7 @@ public final class MailNavigationState {
         self.selectedSourceID = selectedSourceID
         self.selectedFolderID = selectedFolderID
         self.selectedMessageID = selectedMessageID
-        self.searchText = searchText
+        searchFreeText = searchText
         self.searchExecution = searchExecution
         self.hasUserSelectedSearchExecution = hasUserSelectedSearchExecution
         self.presentedSheet = presentedSheet
