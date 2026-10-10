@@ -79,7 +79,7 @@ shipped. Henrik asked for faster folder switching on 2026-10-09.
    | `cachedMessageHeader` | Primary-key or `message_id` lookup |
    | Cache-only search | Existing FTS (`message_search`) |
    | `retentionHeaders` | `date_ts` range query |
-   | Attachment enumeration | Existing `allIndexedHeaders` path |
+   | Attachment enumeration | New engine query returning only attachment-bearing (or cached-body) rows; today's path pages every header through `allIndexedHeaders` and filters in memory |
    | Removal diffs | `imap_page_windows` set difference |
    | Date repair | Query for `date_ts` ≤ 0 rows |
    | `threadedHeaders` | Thread keys for the page's members from `conversation_links`, not the whole folder |
@@ -87,6 +87,12 @@ shipped. Henrik asked for faster folder switching on 2026-10-09.
 
    Thread resolution stays client-side per ADR-0052. Only its input
    narrows from "every cached header" to "headers linked to this page".
+
+   Attachment enumeration (ADR-0044) is the one consumer whose current
+   SQLite path is itself a whole-folder scan: `allIndexedHeaders` pages
+   every row into memory and the caller keeps the ones with attachments.
+   It gets a selective query instead, with whatever column or index the
+   header table needs to answer it without reading the other rows.
 
 4. **No-index fallback is memory only.** When `localSearchIndex` is nil
    (SQLite failed to open, replacement-account validation, tests), the

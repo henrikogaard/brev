@@ -5595,3 +5595,8 @@ buttons, and package-aware localization.
 - Change: drafted ADR-0087 (Proposed): SQLite becomes the IMAP header store, paging metadata moves to `folder_sync_state` plus an `imap_page_windows` table, full-folder consumers become queries, memory-only fallback without an index, lazy per-folder migration, storage UI reads SQLite, and a measure-first rollout with targets. Amends ADR-0029, ADR-0030 and ADR-0082 §3 once accepted. No code.
 - Evidence: a read-only code survey (callers, schema v6, nullability, encryption, tests, local cache sizes 0.5–0.8 KB/header). Cold folder open and SQLite page reads at 10k/50k are still unmeasured; step 1 of the rollout measures them.
 - Next: Henrik accepts or edits; implementation is four stacked PRs.
+
+## 2026-10-10 — Claude Code — PR #217 review follow-up (ADR-0087, still Proposed)
+
+- Codex review (P2): the consumer table kept "Existing `allIndexedHeaders` path" for attachment enumeration, which pages every header into memory and filters there (`IMAPSMTPBackend` cached-attachment enumeration), contradicting decision 3 ("no consumer scans a whole folder").
+- Change: that row now calls for a selective engine query for attachment-bearing or cached-body rows, with a short paragraph explaining why. Status is unchanged (Proposed); no code. Merged current main.
