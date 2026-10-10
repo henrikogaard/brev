@@ -166,6 +166,13 @@ enum MailRootMessageListTitlePolicy {
         return count > 0 ? count : nil
     }
 
+    /// The line under the phone list's navigation title: the unread count, e.g. "5 unread".
+    /// The account line stays out of it: next to the toolbar buttons it truncated.
+    static func subtitle(unreadCount: Int?) -> String? {
+        guard let unreadCount, unreadCount > 0 else { return nil }
+        return String(localized: "\(unreadCount) unread", bundle: .module)
+    }
+
     static func accountContext(
         mailboxDisplayName: String,
         accountDisplayName: String,

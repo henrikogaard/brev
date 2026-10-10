@@ -135,6 +135,47 @@ struct MessageListDatePresentationTests {
         #expect(label == "Dec 31, 2025, 11:59 PM")
     }
 
+    @Test("VoiceOver reads elapsed time in words instead of the abbreviated visible label")
+    func accessibilityLabelSpellsOutElapsedTime() {
+        let referenceDate = Self.date(year: 2026, month: 6, day: 8, hour: 12, minute: 0)
+        func spoken(_ date: Date) -> String {
+            MessageListDatePresentation.accessibilityLabel(
+                for: date,
+                showsAbsoluteArrivalTime: false,
+                referenceDate: referenceDate,
+                calendar: Self.calendar,
+                locale: Self.locale,
+                timeZone: Self.timeZone
+            )
+        }
+
+        #expect(spoken(referenceDate.addingTimeInterval(-25 * 60)) == "25 minutes ago")
+        #expect(spoken(referenceDate.addingTimeInterval(-2 * 3600)) == "2 hours ago")
+        #expect(spoken(referenceDate.addingTimeInterval(-2 * 86400)) == "2 days ago")
+    }
+
+    @Test("VoiceOver keeps the absolute label when the user prefers absolute times")
+    func accessibilityLabelKeepsAbsoluteTimes() {
+        let date = Self.date(year: 2026, month: 6, day: 2, hour: 20, minute: 30)
+        let referenceDate = Self.date(year: 2026, month: 6, day: 3, hour: 12, minute: 0)
+        #expect(MessageListDatePresentation.accessibilityLabel(
+            for: date,
+            showsAbsoluteArrivalTime: true,
+            referenceDate: referenceDate,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        ) == "Jun 2, 8:30 PM")
+        #expect(MessageListDatePresentation.accessibilityLabel(
+            for: Date.distantPast,
+            showsAbsoluteArrivalTime: false,
+            referenceDate: referenceDate,
+            calendar: Self.calendar,
+            locale: Self.locale,
+            timeZone: Self.timeZone
+        ) == "Unknown date")
+    }
+
     private static var calendar: Calendar {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = timeZone

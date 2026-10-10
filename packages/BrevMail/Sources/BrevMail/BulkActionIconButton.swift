@@ -15,6 +15,9 @@ import BrevThemes
 import SwiftUI
 
 /// Compact icon-only button for bulk action toolbars.
+///
+/// On iOS the glyph and the hit area scale with Dynamic Type and never drop
+/// below 44 pt (audit L1); macOS keeps the 28 pt toolbar button.
 struct BulkActionIconButton: View {
     let label: String
     let systemImage: String
@@ -23,6 +26,8 @@ struct BulkActionIconButton: View {
     let action: () -> Void
 
     @Environment(\.brevTheme) private var theme
+    @ScaledMetric(relativeTo: .body) private var scaledGlyphSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .body) private var scaledHitSize: CGFloat = 44
 
     init(
         label: String,
@@ -41,9 +46,9 @@ struct BulkActionIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .medium))
+                .font(.system(size: glyphSize, weight: .medium))
                 .foregroundStyle(isDestructive ? theme.danger.color : theme.textSecondary.color)
-                .frame(width: 28, height: 28)
+                .frame(minWidth: hitSize, minHeight: hitSize)
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
@@ -52,7 +57,101 @@ struct BulkActionIconButton: View {
         .accessibilityLabel(label)
         .help(label)
     }
+
+    private var glyphSize: CGFloat {
+        #if os(iOS)
+        scaledGlyphSize
+        #else
+        14
+        #endif
+    }
+
+    private var hitSize: CGFloat {
+        #if os(iOS)
+        BrevHitTarget.resolved(scaled: scaledHitSize)
+        #else
+        28
+        #endif
+    }
 }
+
+#if os(iOS)
+/// Navigation-bar and bottom-bar items for the phone's selection mode (audit L1):
+/// Select All and Cancel at the top, Mark, Move, Archive and Delete at the bottom,
+/// as in iOS Mail. The lists inject their own item resolution through the closures.
+struct MailSelectionToolbar<MarkMenu: View>: ToolbarContent {
+    let selectionCount: Int
+    let allSelected: Bool
+    let isDisabled: Bool
+    /// When false the Archive button is omitted (a folder mailbox with no archive folder).
+    let showsArchive: Bool
+    let isArchiveEnabled: Bool
+    let canMove: Bool
+    let onToggleSelectAll: () -> Void
+    let onCancel: () -> Void
+    let onMove: () -> Void
+    let onArchive: () -> Void
+    let onDelete: () -> Void
+    @ViewBuilder var markMenu: () -> MarkMenu
+
+    private var hasSelection: Bool { selectionCount > 0 }
+
+    @ToolbarContentBuilder
+    var body: some ToolbarContent {
+        ToolbarItem(placement: .topBarLeading) {
+            Button(
+                allSelected
+                    ? String(localized: "Deselect All", bundle: .module)
+                    : String(localized: "Select All", bundle: .module),
+                action: onToggleSelectAll
+            )
+            .disabled(isDisabled)
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button(String(localized: "Cancel", bundle: .module), action: onCancel)
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Menu {
+                markMenu()
+            } label: {
+                Text("Mark", bundle: .module)
+            }
+            .disabled(!hasSelection || isDisabled)
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Spacer()
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Button(action: onMove) {
+                Text("Move", bundle: .module)
+            }
+            .disabled(!hasSelection || isDisabled || !canMove)
+        }
+        ToolbarItem(placement: .bottomBar) {
+            Spacer()
+        }
+        if showsArchive {
+            ToolbarItem(placement: .bottomBar) {
+                BulkActionIconButton(
+                    label: String(localized: "Archive", bundle: .module),
+                    systemImage: "archivebox",
+                    isDisabled: !hasSelection || isDisabled || !isArchiveEnabled,
+                    action: onArchive
+                )
+            }
+        }
+        ToolbarItem(placement: .bottomBar) {
+            BulkActionIconButton(
+                label: String(localized: "Delete", bundle: .module),
+                systemImage: "trash",
+                isDisabled: !hasSelection || isDisabled,
+                isDestructive: true,
+                action: onDelete
+            )
+        }
+    }
+}
+#endif
 
 /// The shared bulk-selection action bar used by `MessageListView` and
 /// `UnifiedInboxListView`. Selection counts, capability differences (whether
