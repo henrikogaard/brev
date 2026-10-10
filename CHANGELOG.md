@@ -10,6 +10,7 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- iOS Settings: Add DAV Source and Reconnect Source open as a page on the Settings stack instead of a sheet over the Settings sheet. On iOS 27 the nested sheet made SwiftUI close the whole Settings sheet. iPad and Mac keep the sheet.
 - iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
 - iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
