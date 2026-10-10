@@ -31,8 +31,7 @@ struct ImportProgressBanner: View {
             standardBody
             #endif
         }
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(presentation.accessibilityLabel)
+        .modifier(BannerAccessibility(presentation: presentation))
     }
 
     private var compactMacOSBody: some View {
@@ -104,25 +103,31 @@ struct ImportProgressBanner: View {
 
                     VStack(alignment: .leading, spacing: 2) {
                         Text(presentation.title)
-                            .brevFont(.caption)
+                            .brevFont(.footnote)
                             .foregroundStyle(theme.textPrimary.color)
 
                         if let message = presentation.message {
                             Text(message)
-                                .brevFont(.caption)
+                                .brevFont(.footnote)
                                 .foregroundStyle(theme.textSecondary.color)
-                                .lineLimit(2)
+                                // A repair message must be read in full.
+                                .lineLimit(presentation.action == nil ? 2 : nil)
                                 .fixedSize(horizontal: false, vertical: true)
                         }
                     }
+                    // Title and message read as one element so the repair
+                    // button after them stays separately focusable.
+                    .accessibilityElement(children: .combine)
 
                     Spacer(minLength: 0)
 
                     if let action = presentation.action, let onAction {
                         Button(actionTitle(for: action), action: onAction)
                             .buttonStyle(.borderless)
-                            .brevFont(.caption)
+                            .brevFont(.callout)
                             .foregroundStyle(theme.accent.color)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                 }
 
@@ -179,5 +184,30 @@ struct ImportProgressBanner: View {
         case .error:
             return theme.danger.color.opacity(0.08)
         }
+    }
+}
+
+/// Groups the banner for VoiceOver. A banner with a repair button keeps the
+/// button a separate element (`.combine` would swallow it); informational
+/// banners read as a single labelled element. macOS keeps the combined form.
+private struct BannerAccessibility: ViewModifier {
+    let presentation: ImportProgressBannerPresentation
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        switch presentation.accessibilityGrouping {
+        case .combine:
+            content
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(presentation.accessibilityLabel)
+        case .keepActionSeparate:
+            content
+                .accessibilityElement(children: .contain)
+        }
+        #else
+        content
+            .accessibilityElement(children: .combine)
+            .accessibilityLabel(presentation.accessibilityLabel)
+        #endif
     }
 }

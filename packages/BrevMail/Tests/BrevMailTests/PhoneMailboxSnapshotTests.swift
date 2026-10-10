@@ -255,7 +255,7 @@ struct PhoneMailboxSnapshotTests {
                                   folders: MockBackend.previewFolders)
             ])
             .navigationTitle("Mailboxes")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
         }
         .background(theme.bgSecondary.color)
         .brevTheme(theme)
@@ -292,7 +292,7 @@ struct PhoneMailboxSnapshotTests {
                 MailSourceSection(id: workSource, account: account, mailbox: work, folders: Array(folders.prefix(2)))
             ])
             .navigationTitle("Mailboxes")
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationBarTitleDisplayMode(.large)
         }
         .background(theme.bgSecondary.color)
         .brevTheme(theme)
@@ -302,6 +302,87 @@ struct PhoneMailboxSnapshotTests {
         assertSnapshot(of: host,
                        as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
                        named: dark ? "dark" : "light",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("mailboxes list with apps at the largest accessibility size")
+    func mailboxesAccessibility5() throws {
+        let theme = BrevTheme.brevMonoLight
+        let defaults = try #require(UserDefaults(suiteName: "MailboxesAX5-" + UUID().uuidString))
+        let navigation = MailNavigationState()
+        let account = BrevAccount(id: "account", displayName: "Henrik Øgård", emailAddress: "henrik@example.org")
+        let personal = Mailbox(
+            id: "personal",
+            email: "personal@example.org",
+            displayName: "Henrik Øgård (private)",
+            isPrimary: true
+        )
+        let personalSource = MailSourceID(accountID: account.id, mailboxID: personal.id)
+        try defaults.set(JSONEncoder().encode(Set([personalSource])), forKey: "mailbox.disclosureState")
+        navigation.selectUnifiedInbox()
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 11),
+            Folder(id: "drafts", name: "Drafts", role: .drafts),
+            Folder(id: "sent", name: "Sent", role: .sent)
+        ]
+        let view = NavigationStack {
+            FolderSidebar(
+                navigation: navigation, folders: [],
+                sourceSections: [MailSourceSection(id: personalSource, account: account, mailbox: personal, folders: folders)],
+                onOpenCalendar: {}, onOpenContacts: {}, onOpenTasks: {}
+            )
+            .navigationTitle("Mailboxes")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .background(theme.bgSecondary.color)
+        .brevTheme(theme)
+        .environment(\.dynamicTypeSize, .accessibility5)
+        .defaultAppStorage(defaults)
+        let host = UIHostingController(rootView: view)
+        let traits = UITraitCollection(traitsFrom: [
+            .init(displayScale: 2),
+            .init(preferredContentSizeCategory: .accessibilityExtraExtraExtraLarge)
+        ])
+        assertSnapshot(of: host, as: .image(on: .iPhone13Pro, traits: traits), named: "ax5",
+                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
+    }
+
+    @Test("iPad sidebar wraps long account names instead of truncating them")
+    func ipadSidebarLongAccountName() throws {
+        let theme = BrevTheme.brevMonoLight
+        let defaults = try #require(UserDefaults(suiteName: "IPadSidebar-" + UUID().uuidString))
+        let navigation = MailNavigationState()
+        let account = BrevAccount(id: "account", displayName: "Henrik Øgård", emailAddress: "henrik@example.org")
+        let personal = Mailbox(
+            id: "personal",
+            email: "personal@example.org",
+            displayName: "Henrik Øgård (private)",
+            isPrimary: true
+        )
+        let work = Mailbox(id: "work", email: "work@example.org", displayName: "Henrik Øgård (work, Harbour Logistics)")
+        let personalSource = MailSourceID(accountID: account.id, mailboxID: personal.id)
+        let workSource = MailSourceID(accountID: account.id, mailboxID: work.id)
+        try defaults.set(JSONEncoder().encode(Set([personalSource])), forKey: "mailbox.disclosureState")
+        navigation.selectFolder("inbox", in: personalSource)
+        let folders = [
+            Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 11),
+            Folder(id: "drafts", name: "Drafts", role: .drafts)
+        ]
+        let view = NavigationStack {
+            FolderSidebar(navigation: navigation, folders: [], sourceSections: [
+                MailSourceSection(id: personalSource, account: account, mailbox: personal, folders: folders),
+                MailSourceSection(id: workSource, account: account, mailbox: work, folders: folders)
+            ])
+            .navigationTitle("Mailboxes")
+            .navigationBarTitleDisplayMode(.large)
+        }
+        .background(theme.bgSecondary.color)
+        .brevTheme(theme)
+        .defaultAppStorage(defaults)
+        let host = UIHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 320, height: 640)
+        assertSnapshot(of: host, as: .image(size: CGSize(width: 320, height: 640), traits: .init(displayScale: 2)),
+                       named: "ipad-sidebar",
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 

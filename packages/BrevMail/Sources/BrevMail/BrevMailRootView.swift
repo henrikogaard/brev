@@ -225,6 +225,7 @@ public struct BrevMailRootView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     @Environment(\.verticalSizeClass) private var verticalSizeClass
     #endif
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var navigation = MailNavigationState()
     @State private var relatedConversation = RelatedConversationController()
     @State private var readerThreadMemo = ReaderThreadHeadersMemo()
@@ -636,23 +637,11 @@ public struct BrevMailRootView: View {
     }
 
     public var body: some View {
-        #if os(iOS)
-        MailCompactReaderStack(
-            isReaderPresented: compactReaderHeader != nil,
-            background: { mailRootContent },
-            reader: compactReaderHeader.map { header in
-                AnyView(
-                    NavigationStack {
-                        compactReadingPaneDetailPane(fallbackHeader: header)
-                    }
-                )
-            }
-        )
-        #else
         // Size each pane's content before attaching its toolbar. Inheriting
         // compact controls at the split-view root squeezes native toolbar pills.
+        // On iPhone the reader is pushed onto the message list's navigation
+        // stack as the split view's detail column, not layered over the workspace.
         mailRootContent
-        #endif
     }
 
     private var mailRootContent: some View {
@@ -661,6 +650,15 @@ public struct BrevMailRootView: View {
                 outboxPendingCount = 0
                 await refreshOutboxCount()
             }
+        #if os(iOS)
+            // A back swipe or the Back button pops the detail column; the
+            // system reports it by moving the preferred column off `.detail`.
+            .onChange(of: preferredCompactColumn) { _, column in
+                if column != .detail, compactReaderHeader != nil {
+                    compactReaderHeader = nil
+                }
+            }
+        #endif
     }
 
     /// The status rail with its transitions animated in isolation. These
@@ -1112,8 +1110,30 @@ public struct BrevMailRootView: View {
         }
     }
 
+    /// The workspace-level toast. On iPhone the pushed reader hosts its own
+    /// copy above its bottom bar, so this one steps aside while it is open.
     @ViewBuilder
     private var undoToastOverlay: some View {
+        #if os(iOS)
+        if isCompactReaderPresented {
+            EmptyView()
+        } else {
+            // Clears the list's floating search and compose bar instead of
+            // covering it (the bar is about 56 pt tall plus its margin).
+            undoToastContent(bottomPadding: BrevSpacing.xl + 40)
+        }
+        #else
+        undoToastContent()
+        #endif
+    }
+
+    /// Changes whenever a different toast should replace the visible one.
+    private var undoToastIdentity: String {
+        "\(undoQueue.current?.id.uuidString ?? "-")|\(undoQueue.errorMessage ?? "-")|\(ephemeralToast?.id.uuidString ?? "-")"
+    }
+
+    @ViewBuilder
+    private func undoToastContent(bottomPadding: CGFloat = BrevSpacing.xl) -> some View {
         if undoQueue.isUndoing || undoQueue.errorMessage != nil || undoQueue.current != nil {
             MailUndoToast(
                 queue: undoQueue,
@@ -1122,7 +1142,7 @@ public struct BrevMailRootView: View {
                 onRetry: { performUndo(retry: true) }
             )
             .padding(.horizontal, BrevSpacing.lg)
-            .padding(.bottom, BrevSpacing.xl)
+            .padding(.bottom, bottomPadding)
             .transition(.move(edge: .bottom).combined(with: .opacity))
         } else if let ephemeralToast {
             BrevToast(
@@ -1131,7 +1151,7 @@ public struct BrevMailRootView: View {
                 onDismiss: { clearEphemeralToast() }
             )
             .padding(.horizontal, BrevSpacing.lg)
-            .padding(.bottom, BrevSpacing.xl)
+            .padding(.bottom, bottomPadding)
             .transition(.move(edge: .bottom).combined(with: .opacity))
             .animation(.easeInOut(duration: 0.2), value: ephemeralToast.id)
         }
@@ -1336,7 +1356,7 @@ public struct BrevMailRootView: View {
             } content: {
                 messageListPane
             } detail: {
-                readingPaneDetailPane
+                splitDetailPane
             }
         case .bottomStack:
             NavigationSplitView(
@@ -1351,7 +1371,12 @@ public struct BrevMailRootView: View {
     }
 
     private var readingPanePresentation: MailRootReadingPanePresentation {
-        MailRootReadingPanePresentationPolicy.presentation(for: readingPanePlacementRaw)
+        #if os(iOS)
+        // The phone has no room for a bottom reading pane: the reader is always
+        // the split view's detail column, pushed over the list.
+        if horizontalSizeClass == .compact { return .splitDetailColumn }
+        #endif
+        return MailRootReadingPanePresentationPolicy.presentation(for: readingPanePlacementRaw)
     }
 
     private var mailContextWorkspace: some View {
@@ -1471,8 +1496,11 @@ public struct BrevMailRootView: View {
         .brevFontSection(.sidebar)
         .brevMailPaneSurface(.sidebar)
         #if os(iOS)
-            .navigationTitle(Text("Mailboxes", bundle: .module))
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(Text(verbatim: FolderSidebarPresentation.navigationTitle(
+                activeProfileID: normalizedActiveProfileID,
+                profiles: profiles
+            )))
+            .navigationBarTitleDisplayMode(.large)
             .safeAreaInset(edge: .top, spacing: 0) {
                 // Compact shows a single column; the message-list copy covers
                 // regular width, so mounting here too would duplicate it.
@@ -1627,6 +1655,7 @@ public struct BrevMailRootView: View {
             // The phone reader has no coverage bar: its overflow menu carries the
             // related-mail actions and a footnote reports loading/failure.
             .environment(\.relatedConversationController, relatedConversation)
+            .environment(\.readerAskAIAction, ReaderAskAIAction { isMailContextSheetPresented = true })
         #endif
             .onChange(of: conversationAnchorKey(fallbackHeader: fallbackHeader), initial: true) { _, _ in
                 relatedConversation.updateAnchor(
@@ -1693,18 +1722,73 @@ public struct BrevMailRootView: View {
         #endif
     }
 
+    /// The split view's detail column. On iPhone it is the pushed reader; at
+    /// regular width it is the reading pane.
+    @ViewBuilder
+    private var splitDetailPane: some View {
+        #if os(iOS)
+        if horizontalSizeClass == .compact {
+            // The system clears `compactReaderHeader` when the pop finishes; the
+            // retained selection keeps the screen populated during an
+            // interactive swipe back.
+            if let header = compactReaderHeader ?? navigation.selectedHeader {
+                compactReadingPaneDetailPane(fallbackHeader: header)
+            } else {
+                Color.clear.brevMailPaneSurface(.content)
+            }
+        } else {
+            readingPaneDetailPane
+        }
+        #else
+        readingPaneDetailPane
+        #endif
+    }
+
     #if os(iOS)
     private func compactReadingPaneDetailPane(fallbackHeader: MessageHeader) -> some View {
-        readingPaneContent(fallbackHeader: fallbackHeader)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .brevFontSection(.reader)
-            .brevMailPaneSurface(.content)
-            // The sibling-stack reader is its own navigation context, so it
-            // mounts its own copy of the rail below its nav bar.
-            .safeAreaInset(edge: .top, spacing: 0) {
-                animatedTopChromeStatusRail
-            }
-            .brevMailFallbackToolbar { compactReaderToolbar }
+        let shownHeader = navigation.selectedHeader ?? fallbackHeader
+        // A new conversation (or message, for backends without threads) slides
+        // in; moving within one conversation keeps the thread view mounted.
+        let readerIdentity = selectedBackend.groupsMessagesIntoThreads ? shownHeader.threadID : shownHeader.id
+        return ZStack {
+            readingPaneContent(fallbackHeader: fallbackHeader)
+                .id(readerIdentity)
+                .transition(.push(from: .trailing))
+        }
+        .animation(reduceMotion ? nil : .default, value: readerIdentity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .brevFontSection(.reader)
+        .brevMailPaneSurface(.content)
+        // The pushed reader is its own navigation context, so it mounts its
+        // own copy of the rail below its nav bar.
+        .safeAreaInset(edge: .top, spacing: 0) {
+            animatedTopChromeStatusRail
+        }
+        // Feedback for archive/delete/move sits above the bottom bar, not
+        // over it, and survives the reader popping back to the list.
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            undoToastContent(bottomPadding: BrevSpacing.sm)
+                .animation(reduceMotion ? nil : .easeInOut(duration: 0.2), value: undoToastIdentity)
+        }
+        .navigationBarTitleDisplayMode(.inline)
+        .brevMailFallbackToolbar { compactReaderToolbar }
+    }
+
+    /// Whether the phone's pushed reader is on screen.
+    private var isCompactReaderPresented: Bool {
+        compactReaderHeader != nil && horizontalSizeClass == .compact
+    }
+
+    /// Pushes the reader for `header` onto the split view's compact stack.
+    private func openCompactReader(_ header: MessageHeader) {
+        compactReaderHeader = header
+        preferredCompactColumn = .detail
+    }
+
+    /// Pops the pushed reader back to the message list.
+    private func closeCompactReader() {
+        compactReaderHeader = nil
+        preferredCompactColumn = .content
     }
     #endif
 
@@ -1734,7 +1818,7 @@ public struct BrevMailRootView: View {
             horizontalSizeClass: horizontalSizeClass
         ) {
         case .compactOverlay:
-            compactReaderHeader = header
+            openCompactReader(header)
         case .splitInPlace:
             break
         }
@@ -1864,7 +1948,8 @@ public struct BrevMailRootView: View {
                     } : nil,
                     onMutation: { event in
                         await handleMessageListMutation(event)
-                    }
+                    },
+                    onRefresh: listPullToRefresh
                 )
             } else {
                 Group {
@@ -1898,13 +1983,14 @@ public struct BrevMailRootView: View {
                         },
                         onOpenInNewWindow: canDetachReaderWindow ? { header in
                             openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
-                        } : nil
+                        } : nil,
+                        onRefresh: listPullToRefresh
                     )
                 }
             }
         }
         .brevFontSection(.messageList)
-        .brevMailPaneSurface(.content)
+        .brevMailPaneSurface(.messageList)
         // iOS gives search a capsule inside the bottom bar (see
         // `toolbarList`), the Apple Mail idiom, so
         // the navigation bar keeps only the back button and the mailbox
@@ -1914,7 +2000,8 @@ public struct BrevMailRootView: View {
         // its own whenever the AI Sidebar column appears.
         #if os(iOS)
             .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
-            .navigationBarTitleDisplayMode(.inline)
+            .mailListNavigationSubtitle(selectedMessageDestinationSubtitle)
+            .navigationBarBackButtonHidden(navigation.isInSelectionMode)
             // The rail lives inside the pane so it lays out below this
             // column's navigation bar; the list column is present in every
             // presentation, so its copy alone covers regular width.
@@ -2010,31 +2097,6 @@ public struct BrevMailRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarSidebar: some ToolbarContent {
-        #if os(iOS)
-        if MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: toolbarPlatform,
-            horizontalSizeClass: horizontalSizeClass,
-            hasSelectedDestination: hasSelectedMessageDestination
-        ) {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    openSelectedMessagesOnCompact()
-                } label: {
-                    // A Label(titleAndIcon) renders icon-only in the leading
-                    // slot, so draw the "Inbox ›" text + chevron explicitly.
-                    HStack(spacing: BrevSpacing.xxs) {
-                        Text(selectedMessageDestinationTitle)
-                            .lineLimit(1)
-                        Image(systemName: "chevron.forward")
-                            .brevFont(.footnote).fontWeight(.semibold)
-                    }
-                }
-                .accessibilityLabel(String(localized: "Show messages", bundle: .module))
-                .accessibilityHint(String(localized: "Return to the selected mailbox.", bundle: .module))
-            }
-        }
-        #endif
-
         if MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .sidebar,
             platform: toolbarPlatform
@@ -2147,6 +2209,7 @@ public struct BrevMailRootView: View {
         return recipient?.displayName ?? recipientEmail
     }
 
+    #if os(macOS)
     private func unreadCountPill(_ count: Int) -> some View {
         Text(String(localized: "\(count) unread", bundle: .module))
             .brevFont(.caption)
@@ -2156,6 +2219,7 @@ public struct BrevMailRootView: View {
             .padding(.vertical, 1)
             .background(Capsule().fill(theme.bgSecondary.color))
     }
+    #endif
 
     #if os(macOS)
     private var macToolbarDestinationTitle: some View {
@@ -2216,65 +2280,87 @@ public struct BrevMailRootView: View {
             Spacer()
         }
         #else
-        ToolbarItem(placement: .principal) {
-            VStack(spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
-                    Text(verbatim: selectedMessageDestinationTitle)
-                        .brevFont(.headline)
-                        .lineLimit(1)
-                    if let selectedMessageDestinationUnreadCount {
-                        unreadCountPill(selectedMessageDestinationUnreadCount)
-                    }
+        // The title and its unread subtitle are the pane's navigation title (see
+        // `messageListPane`), so they are laid out the same in every list and scale with
+        // Dynamic Type. Selection mode swaps this group for the list's Select All / Cancel.
+        if !navigation.isInSelectionMode {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if showsMailboxFilterControl {
+                    mailboxFilterToolbarControl
                 }
-                if let selectedMessageDestinationContext {
-                    Text(verbatim: selectedMessageDestinationContext)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
+
+                // iOS Mail has no Refresh button on the phone: pull to refresh does it.
+                if horizontalSizeClass != .compact,
+                   MailRootMailboxActionToolbarPolicy.showsMailboxActions(
+                       on: .messageList,
+                       platform: toolbarPlatform
+                   ) {
+                    refreshToolbarButton
                 }
-            }
-            .accessibilityElement(children: .combine)
-        }
-        ToolbarItemGroup(placement: .primaryAction) {
-            if showsMailboxFilterControl {
-                mailboxFilterToolbarControl
-            }
 
-            if MailRootMailboxActionToolbarPolicy.showsMailboxActions(
-                on: .messageList,
-                platform: toolbarPlatform
-            ) {
-                refreshToolbarButton
-            }
+                if !navigation.isAllAttachmentsSelected {
+                    selectToolbarButton
+                }
 
-            if MailRootSettingsToolbarPolicy.showsSettingsButton(
-                on: .messageList,
-                platform: toolbarPlatform
-            ) {
-                settingsToolbarButton
+                if MailRootSettingsToolbarPolicy.showsSettingsButton(
+                    on: .messageList,
+                    platform: toolbarPlatform
+                ) {
+                    settingsToolbarButton
+                }
             }
         }
         // The search capsule lives inside the bottom bar — Apple's iOS 26
         // Mail idiom — expanding to fill the space between the list's
         // stats label and Compose rather than floating over the rows.
-        ToolbarItem(placement: .bottomBar) {
-            MessageListSearchField(
-                text: $navigation.searchText,
-                prompt: String(localized: "Search messages", bundle: .module),
-                focusRequestID: navigation.searchFocusRequestID
-            )
-            // Toolbar items size to fit, so give the capsule a floor that
-            // fills most of an iPhone bar; wider columns keep it at that
-            // width with Compose pinned right — same as Apple Mail on iPad.
-            .frame(minWidth: 240, maxWidth: .infinity)
-        }
-        ToolbarItem(placement: .bottomBar) {
-            Spacer()
-        }
-        ToolbarItem(placement: .bottomBar) {
-            composeToolbarButton
+        // Selection mode replaces the whole bar with the bulk actions.
+        if !navigation.isInSelectionMode {
+            ToolbarItem(placement: .bottomBar) {
+                MessageListSearchField(
+                    text: $navigation.searchText,
+                    prompt: String(localized: "Search messages", bundle: .module),
+                    focusRequestID: navigation.searchFocusRequestID
+                )
+                // Toolbar items size to fit, so give the capsule a floor that
+                // fills most of an iPhone bar; wider columns keep it at that
+                // width with Compose pinned right — same as Apple Mail on iPad.
+                .frame(minWidth: 240, maxWidth: .infinity)
+            }
+            ToolbarItem(placement: .bottomBar) {
+                Spacer()
+            }
+            ToolbarItem(placement: .bottomBar) {
+                composeToolbarButton
+            }
         }
         #endif
+    }
+
+    #if os(iOS)
+    /// Enters the list's selection mode (audit L1); Cancel and the bulk actions live with the list.
+    private var selectToolbarButton: some View {
+        Button {
+            navigation.beginSelection()
+        } label: {
+            Text("Select", bundle: .module)
+        }
+        .accessibilityLabel(String(localized: "Select messages", bundle: .module))
+    }
+
+    /// Pull to refresh runs the same refresh as the Refresh command. It runs in its own task
+    /// so the list view re-rendering after the refresh cannot cancel it mid-fetch.
+    private var listPullToRefresh: (() async -> Bool?)? {
+        {
+            await Task { await refreshVisibleMail() }.value
+        }
+    }
+    #else
+    private var listPullToRefresh: (() async -> Bool?)? { nil }
+    #endif
+
+    /// Unread summary shown under the list's title.
+    private var selectedMessageDestinationSubtitle: String? {
+        MailRootMessageListTitlePolicy.subtitle(unreadCount: selectedMessageDestinationUnreadCount)
     }
 
     /// Refreshes the visible mailbox.
@@ -2874,140 +2960,170 @@ public struct BrevMailRootView: View {
     #endif
 
     #if os(iOS)
+    /// The pushed reader's chrome, mirroring iOS Mail (`CompactReaderChromePolicy`):
+    /// the system Back button, previous/next chevrons in the navigation bar,
+    /// and Archive/Delete, Move, Reply and Compose along the bottom. The one
+    /// ••• menu is mounted by the reader itself (`MessageDetailView`,
+    /// `ThreadConversationView`) because its inventory depends on that view.
     @ToolbarContentBuilder
     private var compactReaderToolbar: some ToolbarContent {
-        ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-                compactReaderHeader = nil
-            } label: {
-                // `Label` + `.iconOnly`: image-only toolbar buttons lose
-                // their accessibility element on iPhone (the related feature request).
-                Label(String(localized: "Back to messages", bundle: .module), systemImage: "chevron.left")
-                    .labelStyle(.iconOnly)
-            }
-            .accessibilityLabel(String(localized: "Back to messages", bundle: .module))
-        }
-
         if let header = navigation.selectedHeader ?? compactReaderHeader {
+            ToolbarItemGroup(placement: .topBarTrailing) {
+                Button {
+                    showCompactReaderMessage(navigation.previousHeaderID)
+                } label: {
+                    Label(String(localized: "Previous Message", bundle: .module), systemImage: "chevron.up")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(navigation.previousHeaderID == nil)
+                .accessibilityLabel(String(localized: "Previous Message", bundle: .module))
+
+                Button {
+                    showCompactReaderMessage(navigation.nextHeaderID)
+                } label: {
+                    Label(String(localized: "Next Message", bundle: .module), systemImage: "chevron.down")
+                        .labelStyle(.iconOnly)
+                }
+                .disabled(navigation.nextHeaderID == nil)
+                .accessibilityLabel(String(localized: "Next Message", bundle: .module))
+            }
+
             // Landscape: the floating `.bottomBar` capsule's hit region covers
             // the nav-leading Back button on iOS 26+; move the actions into
             // the top bar when height is compact instead.
             let placement: ToolbarItemPlacement = verticalSizeClass == .compact
                 ? .topBarTrailing : .bottomBar
             ToolbarItemGroup(placement: placement) {
-                Button {
-                    presentReply(to: header)
-                } label: {
-                    Label(String(localized: "Reply", bundle: .module), systemImage: "arrowshape.turn.up.left")
-                        .labelStyle(.iconOnly)
+                ForEach(
+                    CompactReaderChromePolicy.bottomBarActions(
+                        hasArchiveFolder: folder(role: .archive) != nil,
+                        hasMoveTargets: !MessageCommandPresentation.moveFolderCandidates(
+                            from: folders,
+                            currentFolderID: header.folderID
+                        ).isEmpty
+                    ),
+                    id: \.self
+                ) { action in
+                    compactReaderBottomBarButton(action, header: header)
                 }
-                .disabled(!canPresentCompose())
-                .accessibilityLabel(String(localized: "Reply", bundle: .module))
-
-                Button {
-                    Task { await archive(header: header) }
-                } label: {
-                    Label(String(localized: "Archive", bundle: .module), systemImage: "archivebox")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(folder(role: .archive) == nil || !canStartCommandMutation())
-                .accessibilityLabel(String(localized: "Archive", bundle: .module))
-
-                Button {
-                    Task { await trash(header: header) }
-                } label: {
-                    Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
-                        .labelStyle(.iconOnly)
-                }
-                .disabled(!canStartCommandMutation())
-                .accessibilityLabel(String(localized: "Delete", bundle: .module))
-
-                Menu {
-                    Button {
-                        Task { await refreshVisibleMail() }
-                    } label: {
-                        Label(String(localized: "Refresh", bundle: .module), systemImage: "arrow.clockwise")
-                    }
-                    .disabled(visibleRefreshTarget == nil || !canStartRefresh())
-
-                    Divider()
-
-                    Button {
-                        presentReplyAll(to: header)
-                    } label: {
-                        Label(String(localized: "Reply All", bundle: .module), systemImage: "arrowshape.turn.up.left.2")
-                    }
-                    .disabled(!canPresentCompose())
-
-                    Button {
-                        presentForward(of: header)
-                    } label: {
-                        Label(String(localized: "Forward", bundle: .module), systemImage: "arrowshape.turn.up.right")
-                    }
-                    .disabled(!canPresentCompose())
-
-                    Button {
-                        Task { await toggleRead(for: header) }
-                    } label: {
-                        Label(
-                            MessageCommandPresentation.readToggleTitle(for: header),
-                            systemImage: header.isRead ? "envelope.badge" : "envelope.open"
-                        )
-                    }
-                    .disabled(!canStartCommandMutation())
-
-                    Button {
-                        Task { await toggleStar(for: header) }
-                    } label: {
-                        Label(
-                            MessageCommandPresentation.flagToggleTitle(for: header),
-                            systemImage: MessageCommandPresentation.flagToggleSymbolName(for: header)
-                        )
-                    }
-                    .disabled(!canStartCommandMutation())
-
-                    Divider()
-
-                    Button {
-                        presentCreateTask(for: header)
-                    } label: {
-                        Label(String(localized: "Create Task", bundle: .module), systemImage: "checklist")
-                    }
-                    .disabled(isMessageWorkBlocked || navigation.presentedSheet != nil)
-
-                    Button {
-                        presentFollowUp(for: header)
-                    } label: {
-                        Label(String(localized: "Follow Up", bundle: .module), systemImage: "flag")
-                    }
-                    .disabled(navigation.presentedSheet != nil)
-
-                    if !folders.isEmpty {
-                        Button {
-                            presentMoveToFolder(for: header)
-                        } label: {
-                            Label(String(localized: "Move", bundle: .module), systemImage: "folder")
-                        }
-                        .disabled(isMessageWorkBlocked)
-                    }
-
-                    Button {
-                        isMailContextSheetPresented = true
-                    } label: {
-                        Label(
-                            MailContextColumnVisibility.toolbarLabel,
-                            systemImage: MailContextColumnVisibility.toolbarSymbolName
-                        )
-                    }
-                } label: {
-                    Label(String(localized: "More message actions", bundle: .module), systemImage: "ellipsis.circle")
-                        .labelStyle(.iconOnly)
-                }
-                .accessibilityLabel(String(localized: "More message actions", bundle: .module))
             }
         }
     }
+
+    @ViewBuilder
+    private func compactReaderBottomBarButton(
+        _ action: CompactReaderBottomBarAction,
+        header: MessageHeader
+    ) -> some View {
+        switch action {
+        case .archive:
+            Button {
+                Task { await archive(header: header) }
+            } label: {
+                Label(String(localized: "Archive", bundle: .module), systemImage: "archivebox")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(folder(role: .archive) == nil || !canStartCommandMutation())
+            .accessibilityLabel(String(localized: "Archive", bundle: .module))
+        case .trash:
+            Button {
+                Task { await trash(header: header) }
+            } label: {
+                Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(!canStartCommandMutation())
+            .accessibilityLabel(String(localized: "Delete", bundle: .module))
+        case .move:
+            Button {
+                presentMoveToFolder(for: header)
+            } label: {
+                Label(String(localized: "Move", bundle: .module), systemImage: "folder")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(isMessageWorkBlocked)
+            .accessibilityLabel(String(localized: "Move", bundle: .module))
+        case .replyMenu:
+            Menu {
+                ForEach(CompactReaderChromePolicy.replyMenuActions, id: \.self) { replyAction in
+                    switch replyAction {
+                    case .reply:
+                        Button {
+                            presentReply(to: header)
+                        } label: {
+                            Label(String(localized: "Reply", bundle: .module), systemImage: "arrowshape.turn.up.left")
+                        }
+                    case .replyAll:
+                        Button {
+                            presentReplyAll(to: header)
+                        } label: {
+                            Label(String(localized: "Reply All", bundle: .module), systemImage: "arrowshape.turn.up.left.2")
+                        }
+                    case .forward:
+                        Button {
+                            presentForward(of: header)
+                        } label: {
+                            Label(String(localized: "Forward", bundle: .module), systemImage: "arrowshape.turn.up.right")
+                        }
+                    }
+                }
+            } label: {
+                Label(String(localized: "Reply", bundle: .module), systemImage: "arrowshape.turn.up.left")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(!canPresentCompose())
+            .accessibilityLabel(String(localized: "Reply", bundle: .module))
+        case .compose:
+            Button {
+                presentNewMessage()
+            } label: {
+                Label(String(localized: "New Message", bundle: .module), systemImage: "square.and.pencil")
+                    .labelStyle(.iconOnly)
+            }
+            .disabled(!canPresentCompose())
+            .accessibilityLabel(String(localized: "New Message", bundle: .module))
+        case .overflow:
+            EmptyView()
+        }
+    }
+
+    /// Moves the pushed reader to a neighbouring loaded message (the chevrons).
+    private func showCompactReaderMessage(_ id: MessageHeader.ID?) {
+        guard let id else { return }
+        withAnimation(reduceMotion ? nil : .default) {
+            navigation.selectedMessageID = id
+            compactReaderHeader = navigation.selectedHeader
+        }
+    }
+
     #endif
+
+    /// Applies the after-archive policy once a message left the open folder.
+    /// - Parameters:
+    ///   - removed: Messages that just left the folder.
+    ///   - selection: The selection `MailNavigationState` settled on after the removal.
+    private func settleCompactReaderAfterRemoval(of removed: Set<MessageHeader.ID>, selection: MessageHeader.ID?) {
+        guard let shown = compactReaderHeader else { return }
+        let outcome = CompactReaderRemovalPolicy.outcome(
+            shownMessageID: shown.id,
+            removedMessageIDs: removed,
+            selectionAfterRemoval: selection
+        )
+        withAnimation(reduceMotion ? nil : .default) {
+            switch outcome {
+            case .stay:
+                break
+            case .show(let id):
+                compactReaderHeader = navigation.currentFolderHeaders.first { $0.id == id }
+            case .returnToList:
+                #if os(iOS)
+                closeCompactReader()
+                #else
+                compactReaderHeader = nil
+                #endif
+            }
+        }
+    }
 
     private var settingsToolbarButton: some View {
         Button {
@@ -3591,13 +3707,14 @@ public struct BrevMailRootView: View {
     }
 
     #if os(iOS)
-    /// Returns `true` when the current device + width warrants a detached
-    /// compose window instead of a modal sheet (iPad at regular width only).
+    /// Returns `true` only when compose should leave the current window. No
+    /// call site asks for that yet, so Reply and New Message present a form
+    /// sheet over the split view on iPad, as iPadOS Mail does.
     private var shouldDetachCompose: Bool {
-        MailDetachWindowPolicy.shouldDetach(
-            idiom: UIDevice.current.userInterfaceIdiom,
-            horizontalSizeClass: horizontalSizeClass
-        )
+        MailRootComposePresentationPolicy.surface(
+            idiom: MailWindowIdiom(UIDevice.current.userInterfaceIdiom),
+            isRegularWidth: horizontalSizeClass == .regular
+        ) == .detachedWindow
     }
     #endif
 
@@ -3718,7 +3835,7 @@ public struct BrevMailRootView: View {
                     navigation.selectFolder(created.id, in: nil)
                     navigation.selectedMessageID = nil
                     navigation.currentFolderHeaders = []
-                    navigation.bulkSelection.removeAll()
+                    navigation.endSelection()
                 }
             }
         case .renameFolder(let target):
@@ -4063,7 +4180,7 @@ public struct BrevMailRootView: View {
         guard selectedFolderID != navigation.selectedFolderID else { return }
         navigation.currentFolderHeaders = []
         navigation.selectedMessageID = nil
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         navigation.selectedFolderID = selectedFolderID
     }
 
@@ -4178,6 +4295,7 @@ public struct BrevMailRootView: View {
                     guard let resolvedSourceID else { return }
                     try await backend(for: resolvedSourceID).move(messageIDs: ids, to: folder, sourceID: resolvedSourceID)
                     navigation.presentedSheet = nil
+                    finishMoveFromCompactReader(ids: ids, destination: folder)
                 },
                 onClose: onClose
             )
@@ -5109,7 +5227,7 @@ public struct BrevMailRootView: View {
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
         navigation.currentFolderHeaders = []
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         applySelectedSourceSection(fallback)
         updateUnreadBadge()
     }
@@ -5503,7 +5621,7 @@ public struct BrevMailRootView: View {
                 folderID: header.folderID
             ))
         } else {
-            compactReaderHeader = header
+            openCompactReader(header)
         }
         #endif
     }
@@ -5775,7 +5893,7 @@ public struct BrevMailRootView: View {
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
         navigation.currentFolderHeaders = []
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         applySelectedSourceSection(fallback)
     }
 
@@ -5824,6 +5942,21 @@ public struct BrevMailRootView: View {
         case nil:
             break
         }
+    }
+
+    /// A Move chosen from the pushed reader's sheet has no optimistic path of
+    /// its own: drop the message, advance or pop per the after-archive policy,
+    /// and confirm with a toast the reader hosts above its bottom bar.
+    private func finishMoveFromCompactReader(ids: [String], destination: Folder) {
+        guard let shown = compactReaderHeader, ids.contains(shown.id) else { return }
+        navigation.removeHeaders(ids: Set(ids))
+        settleCompactReaderAfterRemoval(of: Set(ids), selection: navigation.selectedMessageID)
+        presentEphemeralToast(MailRootEphemeralToast(
+            message: String(localized: "Moved to \(destination.name)", bundle: .module),
+            tone: .success
+        ))
+        navigation.requestReload()
+        Task { await loadFolders() }
     }
 
     private func presentEphemeralToast(_ toast: MailRootEphemeralToast) {
@@ -6100,7 +6233,7 @@ public struct BrevMailRootView: View {
             folders: routeFolders,
             visibleHeaders: visibleHeaders
         )
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         navigation.searchText = ""
         navigation.presentedSheet = nil
         switch decision {
@@ -6245,8 +6378,10 @@ public struct BrevMailRootView: View {
             ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
+        let selectionAfterRemoval = navigation.selectedMessageID
         do {
             let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: archive)
+            settleCompactReaderAfterRemoval(of: [header.id], selection: selectionAfterRemoval)
             undoQueue.registerMoves([receipt], description: String(localized: "Archived", bundle: .module), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -6276,8 +6411,10 @@ public struct BrevMailRootView: View {
             ?? Folder(id: header.folderID, name: header.folderID, role: .custom)
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
+        let selectionAfterRemoval = navigation.selectedMessageID
         do {
             let receipt = try await moveWithUndo(messageIDs: [header.id], from: originalFolder, to: destination)
+            settleCompactReaderAfterRemoval(of: [header.id], selection: selectionAfterRemoval)
             undoQueue.registerMoves(
                 [receipt],
                 description: String(localized: "Moved to \(destination.name)", bundle: .module),
@@ -6311,6 +6448,7 @@ public struct BrevMailRootView: View {
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
+        let selectionAfterRemoval = navigation.selectedMessageID
         do {
             let source: MailSourceID
             if let capturedSourceID {
@@ -6320,6 +6458,7 @@ public struct BrevMailRootView: View {
             }
             let action = try await MailJunkUndo.perform(isJunk, header: header, folders: folders,
                                                         sourceID: source, backend: capturedBackend, lease: undoLease)
+            settleCompactReaderAfterRemoval(of: [header.id], selection: selectionAfterRemoval)
             undoQueue.registerBatch([action], description: MailJunkUndo.description(isJunk), lease: undoLease)
             guard canApplyCommandMutationResponse(request) else {
                 finishCommandMutation(request)
@@ -6379,6 +6518,7 @@ public struct BrevMailRootView: View {
         let capturedSourceID = navigation.selectedSourceID
         clearRootStatus()
         navigation.removeHeaders(ids: [header.id])
+        let selectionAfterRemoval = navigation.selectedMessageID
         switch MessageDeletionOperation.operation(for: header) {
         case .delete(let messageIDs):
             do {
@@ -6391,6 +6531,7 @@ public struct BrevMailRootView: View {
                 let receipt = try await MailUndoableDelete.perform(
                     messageIDs: messageIDs, from: originalFolder, folders: folders, sourceID: source, backend: capturedBackend
                 )
+                settleCompactReaderAfterRemoval(of: [header.id], selection: selectionAfterRemoval)
                 undoQueue.registerMoves([receipt], description: String(localized: "Deleted", bundle: .module), lease: undoLease)
                 guard canApplyCommandMutationResponse(request) else {
                     finishCommandMutation(request)
@@ -6670,7 +6811,7 @@ public struct BrevMailRootView: View {
             navigation.currentFolderHeaders = []
         }
         navigation.selectedMessageID = item.id
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
     }
 
     private func showAllMailFromSender(_ email: String) {

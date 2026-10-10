@@ -271,10 +271,15 @@ jobs:
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/replyCompose()' \
             '-only-testing:BrevMailTests/ComposeAccessibilityBoundsTests' \
+            '-only-testing:BrevMailTests/ComposeNativeSheetsSnapshotTests' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerAccessibilityTextSize()' \
             '-only-testing:BrevMailTests/RelatedConversationFootnoteSnapshotTests' \
+            '-only-testing:BrevMailTests/CompactReaderSnapshotTests' \
+            '-only-testing:BrevMailTests/ImportProgressBannerSnapshotTests' \
+            '-only-testing:BrevMailTests/IMAPAccountSetupKeyboardTraitsTests' \
+            '-only-testing:BrevMailTests/PhoneMessageListSnapshotTests' \
             '-only-testing:BrevMailTests/SnoozePickerSnapshotTests' \
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)

@@ -30,8 +30,11 @@ struct MailPaneSurfacePolicy: Equatable, Sendable {
         role: .sidebar,
         fillsPane: true,
         ignoresTitlebarSafeArea: true,
-        navigationTitleStyle: .inline,
-        navigationBarBackgroundRole: .sidebar
+        // The Mailboxes screen carries a large title on iOS; macOS ignores this.
+        // No opaque navigation bar fill either: with one, iOS draws the large
+        // title behind it and the title disappears.
+        navigationTitleStyle: .automatic,
+        navigationBarBackgroundRole: nil
     )
     static let content = MailPaneSurfacePolicy(
         role: .content,
@@ -43,6 +46,18 @@ struct MailPaneSurfacePolicy: Equatable, Sendable {
         // status bar).
         navigationTitleStyle: .inline,
         navigationBarBackgroundRole: .content
+    )
+
+    /// The message list column. On iOS the bar is left translucent so the iOS 26 scroll-edge
+    /// effect works instead of an opaque theme-coloured bar (audit L5); the mailbox is the
+    /// bar's navigation title. macOS draws it exactly like `content`. A large title was tried
+    /// and is not honoured by the compact split view's content column.
+    static let messageList = MailPaneSurfacePolicy(
+        role: .content,
+        fillsPane: true,
+        ignoresTitlebarSafeArea: true,
+        navigationTitleStyle: .inline,
+        navigationBarBackgroundRole: nil
     )
 
     var ignoredSafeAreaEdges: Edge.Set {
@@ -259,5 +274,24 @@ private struct MailPaneColumnWidthModifier: ViewModifier {
         } else {
             content
         }
+    }
+}
+
+extension View {
+    /// Sets the navigation subtitle where the OS supports it (iOS 26); older systems show only
+    /// the title.
+    @ViewBuilder
+    func mailListNavigationSubtitle(_ subtitle: String?) -> some View {
+        // `navigationSubtitle` is iOS 26 SDK API; CI still builds with Xcode 16
+        // (iOS 18 SDK), where it is marked unavailable on iOS.
+        #if os(iOS) && compiler(>=6.2)
+        if #available(iOS 26.0, *) {
+            navigationSubtitle(subtitle ?? "")
+        } else {
+            self
+        }
+        #else
+        self
+        #endif
     }
 }

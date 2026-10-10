@@ -47,6 +47,19 @@ struct ImportProgressBannerPresentation: Equatable, Sendable {
     let progressFraction: Double?
     let action: ImportProgressBannerAction?
     let accessibilityLabel: String
+
+    /// How VoiceOver should group the banner.
+    enum AccessibilityGrouping: Equatable, Sendable {
+        /// Title, message and progress read as one labelled element.
+        case combine
+        /// The repair button stays a separate, focusable element next to the
+        /// message; combining would swallow it.
+        case keepActionSeparate
+    }
+
+    var accessibilityGrouping: AccessibilityGrouping {
+        action == nil ? .combine : .keepActionSeparate
+    }
 }
 
 /// Maps `AccountSyncHealth` and folder-level sync ticks into mailbox chrome copy.
@@ -60,15 +73,18 @@ enum ImportProgressPresentation {
         if health.state == .authenticationRequired {
             return ImportProgressBannerPresentation(
                 phase: .recoverableFailure,
-                title: "Sign-in required",
-                message: health.lastErrorDescription ?? "Reconnect this account to keep syncing mail.",
+                title: String(localized: "Sign-in required", bundle: .module),
+                message: health.lastErrorDescription ?? String(
+                    localized: "Reconnect this account to keep syncing mail.",
+                    bundle: .module
+                ),
                 style: .warning,
                 showsDeterminateProgress: false,
                 progressCompleted: nil,
                 progressTotal: nil,
                 progressFraction: nil,
                 action: .reauthenticate,
-                accessibilityLabel: "Sign-in required to continue syncing mail."
+                accessibilityLabel: String(localized: "Sign-in required to continue syncing mail.", bundle: .module)
             )
         }
 
@@ -95,15 +111,18 @@ enum ImportProgressPresentation {
         if health.state == .offline, health.lastSuccessfulSyncAt == nil {
             return ImportProgressBannerPresentation(
                 phase: .connecting,
-                title: "Connecting",
-                message: "Setting up your mailbox. Cached mail will appear as soon as the first page is ready.",
+                title: String(localized: "Connecting", bundle: .module),
+                message: String(
+                    localized: "Setting up your mailbox. Cached mail will appear as soon as the first page is ready.",
+                    bundle: .module
+                ),
                 style: .info,
                 showsDeterminateProgress: false,
                 progressCompleted: nil,
                 progressTotal: nil,
                 progressFraction: nil,
                 action: nil,
-                accessibilityLabel: "Connecting to your mail account."
+                accessibilityLabel: String(localized: "Connecting to your mail account.", bundle: .module)
             )
         }
 
@@ -153,16 +172,16 @@ enum ImportProgressPresentation {
         let title: String
         switch health.state {
         case .offline:
-            title = "Sync paused"
+            title = String(localized: "Sync paused", bundle: .module)
         case .providerError:
-            title = "Sync interrupted"
+            title = String(localized: "Sync interrupted", bundle: .module)
         case .degraded:
-            title = "Sync needs attention"
+            title = String(localized: "Sync needs attention", bundle: .module)
         default:
-            title = "Sync interrupted"
+            title = String(localized: "Sync interrupted", bundle: .module)
         }
         let message = health.lastErrorDescription
-            ?? "Cached mail stays available. Retry when you're back online."
+            ?? String(localized: "Cached mail stays available. Retry when you're back online.", bundle: .module)
         return ImportProgressBannerPresentation(
             phase: .recoverableFailure,
             title: title,
@@ -184,11 +203,11 @@ enum ImportProgressPresentation {
     ) -> ImportProgressBannerPresentation {
         let clampedTotal = max(total, 1)
         let message = hasReadableCache(health)
-            ? "You can read available messages while Brev downloads the rest."
-            : "Downloading folders into local storage."
+            ? String(localized: "You can read available messages while Brev downloads the rest.", bundle: .module)
+            : String(localized: "Downloading folders into local storage.", bundle: .module)
         return ImportProgressBannerPresentation(
             phase: .backfillContinuing,
-            title: "Downloading mail",
+            title: String(localized: "Downloading mail", bundle: .module),
             message: message,
             style: .info,
             showsDeterminateProgress: true,
@@ -196,7 +215,7 @@ enum ImportProgressPresentation {
             progressTotal: total,
             progressFraction: Double(completed) / Double(clampedTotal),
             action: nil,
-            accessibilityLabel: "Downloading mail. \(completed) of \(total) folders complete."
+            accessibilityLabel: String(localized: "Downloading mail. \(completed) of \(total) folders complete.", bundle: .module)
         )
     }
 
@@ -206,11 +225,11 @@ enum ImportProgressPresentation {
         let fraction = indexProgressFraction(for: health)
         let detail = indexProgressDetail(for: health)
         let message = hasReadableCache(health)
-            ? "You can read available messages while Brev finishes indexing."
+            ? String(localized: "You can read available messages while Brev finishes indexing.", bundle: .module)
             : detail
         return ImportProgressBannerPresentation(
             phase: .indexCatchingUp,
-            title: "Indexing mail",
+            title: String(localized: "Indexing mail", bundle: .module),
             message: message,
             style: .info,
             showsDeterminateProgress: fraction != nil,
@@ -218,7 +237,7 @@ enum ImportProgressPresentation {
             progressTotal: health.searchIndexProgress?.totalFolderCount,
             progressFraction: fraction,
             action: nil,
-            accessibilityLabel: "Indexing mail. \(detail)"
+            accessibilityLabel: String(localized: "Indexing mail. \(detail)", bundle: .module)
         )
     }
 
@@ -267,12 +286,15 @@ enum ImportProgressPresentation {
 
     private static func indexProgressDetail(for health: AccountSyncHealth) -> String {
         if let progress = health.searchIndexProgress, progress.totalFolderCount > 0 {
-            return "\(progress.completedFolderCount) of \(progress.totalFolderCount) folders indexed."
+            return String(
+                localized: "\(progress.completedFolderCount) of \(progress.totalFolderCount) folders indexed.",
+                bundle: .module
+            )
         }
         if case .rebuilding(let progress) = health.indexStatus, let progress {
             let percent = Int((min(max(progress, 0), 1) * 100).rounded())
-            return "Indexing is \(percent) percent complete."
+            return String(localized: "Indexing is \(percent) percent complete.", bundle: .module)
         }
-        return "Building the local search index."
+        return String(localized: "Building the local search index.", bundle: .module)
     }
 }
