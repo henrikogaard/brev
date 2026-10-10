@@ -21,6 +21,8 @@ import SwiftUI
 /// render as blocks positioned by start minute and split into lanes when
 /// they overlap. Tapping a block selects the event for the detail pane.
 public struct CalendarDayView: View {
+    /// Points per hour; scales with Dynamic Type so event blocks keep room for text.
+    @ScaledMetric(relativeTo: .caption) private var hourHeight: CGFloat = 48
     /// The displayed day (start-of-day in the display zone).
     let day: Date
     /// All-day events covering the day, pinned above the hour grid.
@@ -60,7 +62,7 @@ public struct CalendarDayView: View {
                     placements: placements,
                     collectionFor: collectionFor,
                     selectedEventID: $selectedEventID,
-                    hourHeight: 48,
+                    hourHeight: hourHeight,
                     showsHourLabels: true
                 )
             }
@@ -106,6 +108,7 @@ struct AllDayStrip: View {
 /// used by the all-day strip and the month cells.
 struct CalendarEventChip: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.calendar) private var calendar
 
     let event: PIMEvent
     let collection: PIMCollection?
@@ -139,13 +142,20 @@ struct CalendarEventChip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(
-            event.summary
-                ?? CalendarEventPresentation.untitledTitle()
-        )
-        .accessibilityAddTraits(
-            isSelected ? .isSelected : []
-        )
+        #if os(iOS)
+            // The color bar is a greedy rectangle; without this an all-day chip
+            // fills the day view's whole height on iPhone.
+            .fixedSize(horizontal: false, vertical: true)
+        #endif
+            .accessibilityLabel(
+                CalendarEventPresentation.accessibilityLabel(
+                    for: event,
+                    calendar: calendar
+                )
+            )
+            .accessibilityAddTraits(
+                isSelected ? .isSelected : []
+            )
     }
 
     /// The collection's provider color, or the theme accent when the
@@ -172,6 +182,8 @@ struct CalendarDayColumn: View {
     var hourHeight: CGFloat = 48
     /// Whether a leading hour ruler renders inside this column.
     var showsHourLabels = true
+    /// Width of the hour ruler; scales with the hour labels.
+    @ScaledMetric(relativeTo: .caption) private var rulerWidth: CGFloat = 48
 
     private let hours = 0 ..< 24
 
@@ -193,7 +205,7 @@ struct CalendarDayColumn: View {
                     .frame(height: hourHeight, alignment: .top)
             }
         }
-        .frame(width: 48)
+        .frame(width: rulerWidth)
         .accessibilityHidden(true)
     }
 
@@ -281,8 +293,10 @@ struct CalendarDayColumn: View {
         .buttonStyle(.plain)
         .offset(x: x, y: y)
         .accessibilityLabel(
-            event.summary
-                ?? CalendarEventPresentation.untitledTitle()
+            CalendarEventPresentation.accessibilityLabel(
+                for: event,
+                calendar: calendar
+            )
         )
         .accessibilityAddTraits(
             selectedEventID == event.id ? .isSelected : []

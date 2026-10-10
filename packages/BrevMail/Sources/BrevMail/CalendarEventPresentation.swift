@@ -57,6 +57,22 @@ public enum CalendarEventPresentation {
         return "\(startText) – \(end.formatted(.dateTime.hour().minute()))"
     }
 
+    /// VoiceOver label for a grid event block or chip: title, time range and
+    /// location, e.g. "Standup, 9:00 – 9:30, Room 4" (audit finding P3).
+    public static func accessibilityLabel(
+        for event: PIMEvent,
+        calendar: Calendar
+    ) -> String {
+        var parts = [
+            event.summary ?? untitledTitle(),
+            agendaTimeText(for: event, calendar: calendar)
+        ]
+        if let location = event.location, !location.isEmpty {
+            parts.append(location)
+        }
+        return parts.joined(separator: ", ")
+    }
+
     /// Section header for an agenda day bucket: "Today", "Tomorrow",
     /// or the localized weekday + date for anything further out.
     public static func daySectionTitle(

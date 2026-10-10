@@ -73,21 +73,163 @@ public struct TasksListView: View {
 /// One task row — completion checkbox, title, and a secondary line
 /// (due date / notes preview). Extracted so the row renders identically
 /// in the List and in snapshot fixtures.
+///
+/// On iOS VoiceOver sees two elements: the text (title, notes, due date and
+/// "Overdue") and the completion toggle, labelled "Completed" with Yes or No
+/// as its value. Activating the text never toggles completion. The toggle
+/// is a 44 pt target and overdue is spelled out, not only coloured (audit
+/// P4). macOS keeps its merged row.
 public struct TaskRowView: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.calendar) private var calendar
+    @ScaledMetric(relativeTo: .title3) private var checkboxGlyphSize: CGFloat = 22
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let task: PIMTask
     let onToggleCompleted: ((PIMTask) -> Void)?
+    /// Clock for the overdue state.
+    let now: Date
 
     public init(
         task: PIMTask,
-        onToggleCompleted: ((PIMTask) -> Void)? = nil
+        onToggleCompleted: ((PIMTask) -> Void)? = nil,
+        now: Date = Date()
     ) {
         self.task = task
         self.onToggleCompleted = onToggleCompleted
+        self.now = now
     }
 
     public var body: some View {
+        #if os(iOS)
+        nativeRow
+        #else
+        desktopRow
+        #endif
+    }
+
+    private var subtitle: String? {
+        let notes = task.notes?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return notes.isEmpty ? nil : notes
+    }
+
+    private var titleText: some View {
+        Text(task.title ?? String(
+            localized: "Untitled task", bundle: .module
+        ))
+        .brevFont(.subheadline)
+        .foregroundStyle(
+            task.isCompleted
+                ? theme.textSecondary.color
+                : theme.textPrimary.color
+        )
+        .strikethrough(task.isCompleted)
+        .lineLimit(stacksDetails ? nil : 1)
+    }
+
+    /// At accessibility text sizes the due date drops under the title
+    /// instead of squeezing it to an ellipsis.
+    private var stacksDetails: Bool {
+        dynamicTypeSize.isAccessibilitySize
+    }
+
+    // MARK: - iOS
+
+    #if os(iOS)
+    private var nativeRow: some View {
+        HStack(spacing: BrevSpacing.xs) {
+            Button {
+                onToggleCompleted?(task)
+            } label: {
+                Image(
+                    systemName: task.isCompleted
+                        ? "checkmark.circle.fill" : "circle"
+                )
+                .font(.system(size: checkboxGlyphSize))
+                .foregroundStyle(
+                    task.isCompleted
+                        ? theme.success.color : theme.textSecondary.color
+                )
+                .frame(
+                    minWidth: TaskRowPresentation.minimumToggleSize,
+                    minHeight: TaskRowPresentation.minimumToggleSize
+                )
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(onToggleCompleted == nil)
+            .accessibilityLabel(TaskRowPresentation.toggleLabel())
+            .accessibilityValue(TaskRowPresentation.toggleValue(for: task))
+            .accessibilityAddTraits(.isToggle)
+
+            textColumn
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(
+                    TaskRowPresentation.rowLabel(for: task, now: now, calendar: calendar)
+                )
+                .accessibilityAddTraits(.isButton)
+                .accessibilitySortPriority(1)
+        }
+        .padding(.vertical, BrevSpacing.xxs)
+        .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var textColumn: some View {
+        if stacksDetails {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                detailLines
+                if let due = task.due {
+                    dueLabel(due)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else {
+            HStack(spacing: BrevSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    detailLines
+                }
+                Spacer(minLength: BrevSpacing.sm)
+                if let due = task.due {
+                    dueLabel(due)
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var detailLines: some View {
+        titleText
+        if let subtitle {
+            Text(subtitle)
+                .brevFont(.caption)
+                .foregroundStyle(theme.textSecondary.color)
+                .lineLimit(stacksDetails ? nil : 1)
+        }
+    }
+
+    private func dueLabel(_ due: Date) -> some View {
+        let overdue = TaskRowPresentation.isOverdue(task, now: now)
+        return VStack(alignment: stacksDetails ? .leading : .trailing, spacing: 0) {
+            if overdue {
+                Text(TaskRowPresentation.overdueText())
+                    .brevFont(.caption)
+                    .fontWeight(.semibold)
+            }
+            Text(due.formatted(date: .abbreviated, time: .omitted))
+                .brevFont(.caption)
+        }
+        .foregroundStyle(
+            overdue ? theme.danger.color : theme.textSecondary.color
+        )
+    }
+    #endif
+
+    // MARK: - macOS
+
+    #if os(macOS)
+    private var desktopRow: some View {
         HStack(spacing: BrevSpacing.md) {
             Button {
                 onToggleCompleted?(task)
@@ -116,17 +258,7 @@ public struct TaskRowView: View {
             )
 
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(task.title ?? String(
-                    localized: "Untitled task", bundle: .module
-                ))
-                .brevFont(.subheadline)
-                .foregroundStyle(
-                    task.isCompleted
-                        ? theme.textSecondary.color
-                        : theme.textPrimary.color
-                )
-                .strikethrough(task.isCompleted)
-                .lineLimit(1)
+                titleText
                 if let subtitle {
                     Text(subtitle)
                         .brevFont(.caption)
@@ -139,7 +271,7 @@ public struct TaskRowView: View {
                 Text(due.formatted(date: .abbreviated, time: .omitted))
                     .brevFont(.caption)
                     .foregroundStyle(
-                        isOverdue
+                        TaskRowPresentation.isOverdue(task, now: now)
                             ? theme.danger.color
                             : theme.textSecondary.color
                     )
@@ -148,15 +280,5 @@ public struct TaskRowView: View {
         .padding(.vertical, BrevSpacing.xxs)
         .accessibilityElement(children: .combine)
     }
-
-    private var subtitle: String? {
-        let notes = task.notes?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return notes.isEmpty ? nil : notes
-    }
-
-    private var isOverdue: Bool {
-        guard let due = task.due, !task.isCompleted else { return false }
-        return due < Date()
-    }
+    #endif
 }

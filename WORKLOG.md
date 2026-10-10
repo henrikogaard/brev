@@ -1,5 +1,28 @@
 # Worklog
 
+## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
+
+- Goal: native iPhone Calendar, Contacts and Tasks chrome, empty states and
+  task editor (`fix/ios-pim-native`).
+- Changed: shared "no sources" state with a button that opens Settings →
+  Calendar & Contacts (new `SettingsView(pushesInitialSection:)` entry point,
+  `BrevApp.openSettingsFromPIMCover`); Calendar layout menu, range title, +,
+  Today, previous/next and sync moved into the navigation and bottom bars;
+  month cells are single buttons with event dots and a label listing events;
+  event blocks speak title, time and place; Dynamic Type scaling for the grids;
+  `TaskEditorView` is a Form sheet on iOS; task rows split the completion
+  switch from the text, 44 pt target, "Overdue" word; task delete asks first;
+  Done is trailing and textPrimary on all three covers; PIM editor sheets use
+  `brevSheetAppearance`. macOS windows unchanged (month grid and task editor
+  macOS renders byte-identical to main).
+- Verified: presentation tests (macOS `swift test`), iOS package build,
+  iOS snapshots recorded on iOS 27, simulator walk-through with a seeded cache.
+- Checkpoint commit: nb/dark/AX3 simulator screenshots, per-screen audit
+  results and docs/qa evidence folder still to do.
+- Observation (pre-existing, not fixed): tapping "Add DAV Source…" in
+  Settings → Calendar & Contacts closes the whole Settings sheet in the iOS
+  mock-mode simulator, also on main.
+
 ## 2026-10-03 — Agent — Issue #11 stub-DAV rows 2.7/2.8/4.3
 
 - Goal: close the stub-matrix rows left open by the #3 reconciliation

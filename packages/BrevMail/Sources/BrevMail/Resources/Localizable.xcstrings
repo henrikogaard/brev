@@ -267,6 +267,47 @@
         }
       }
     },
+    "%lld events": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld event"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld events"
+                }
+              }
+            }
+          }
+        },
+        "nb": {
+          "variations": {
+            "plural": {
+              "one": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hendelse"
+                }
+              },
+              "other": {
+                "stringUnit": {
+                  "state": "translated",
+                  "value": "%lld hendelser"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "%lld Filters": {
       "extractionState": "manual",
       "localizations": {
@@ -3551,6 +3592,17 @@
         }
       }
     },
+    "Connect a calendar in Settings → Accounts & Connections → Calendar & Contacts to see events here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en kalender i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se hendelser her."
+          }
+        }
+      }
+    },
     "Connect a calendar in Settings → Calendar & Contacts to see events here.": {
       "extractionState": "manual",
       "localizations": {
@@ -3562,6 +3614,17 @@
         }
       }
     },
+    "Connect a contacts source in Settings → Accounts & Connections → Calendar & Contacts to see people here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en kontaktkilde i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se personer her."
+          }
+        }
+      }
+    },
     "Connect a contacts source in Settings → Calendar & Contacts to see people here.": {
       "extractionState": "manual",
       "localizations": {
@@ -3569,6 +3632,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Koble til en kontaktkilde i Innstillinger → Kalender og kontakter for å se personer her."
+          }
+        }
+      }
+    },
+    "Connect a tasks source in Settings → Accounts & Connections → Calendar & Contacts to see tasks here.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en oppgavekilde i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se oppgaver her."
           }
         }
       }
@@ -4999,6 +5073,17 @@
         }
       }
     },
+    "Delete this task?": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Slette denne oppgaven?"
+          }
+        }
+      }
+    },
     "Deleted": {
       "extractionState": "manual",
       "localizations": {
@@ -5072,6 +5157,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Laster ned e-post. %1$lld av %2$lld mapper er ferdige."
+          }
+        }
+      }
+    },
+    "Due %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frist %@"
           }
         }
       }
@@ -5204,6 +5300,94 @@
           "stringUnit": {
             "state": "translated",
             "value": "Meldingsliste"
+          }
+        }
+      }
+    },
+    "Next Day": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste dag"
+          }
+        }
+      }
+    },
+    "Next Month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Neste måned"
+          }
+        }
+      }
+    },
+    "No": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nei"
+          }
+        }
+      }
+    },
+    "Open Calendar & Contacts Settings": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne innstillinger for Kalender og Kontakter"
+          }
+        }
+      }
+    },
+    "Overdue": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forfalt"
+          }
+        }
+      }
+    },
+    "Previous Day": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige dag"
+          }
+        }
+      }
+    },
+    "Previous Month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige måned"
+          }
+        }
+      }
+    },
+    "Previous Week": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige uke"
           }
         }
       }

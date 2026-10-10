@@ -21,6 +21,9 @@ import SwiftUI
 /// the target list picker (writable collections only). Saves go through
 /// TasksEditingModel so capability checks, provider dispatch, and
 /// conflict errors stay off the view.
+///
+/// On iOS this is a standard form sheet: a navigation stack with Cancel and
+/// Add or Save in the bar (audit finding P4). macOS keeps its dialog layout.
 public struct TaskEditorView: View {
     @Environment(\.brevTheme) private var theme
 
@@ -62,6 +65,125 @@ public struct TaskEditorView: View {
     }
 
     public var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    /// Whether the draft can be saved right now.
+    private var canSave: Bool {
+        !model.isSaving && draft.isSaveEnabled && draft.targetID != nil
+    }
+
+    // MARK: - iOS
+
+    #if os(iOS)
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                if let lastError = model.lastError {
+                    // Save failures surface at the top of the form so a
+                    // conflict is visible without scrolling past Notes.
+                    Section {
+                        BrevInlineStatus(message: lastError, tone: .danger, lineLimit: nil)
+                    }
+                    .brevSheetRow()
+                }
+
+                Section {
+                    TextField(
+                        String(localized: "Task title", bundle: .module),
+                        text: $draft.title
+                    )
+                    .brevFont(.body)
+                    .accessibilityLabel(Text("Title", bundle: .module))
+                    Picker(selection: $draft.targetID) {
+                        ForEach(model.targets) { target in
+                            Text(target.title).tag(target.id as String?)
+                        }
+                    } label: {
+                        Text("List", bundle: .module)
+                    }
+                    .brevFont(.body)
+                    Picker(selection: $draft.status) {
+                        ForEach(PIMTaskStatus.allCases, id: \.self) { status in
+                            Text(statusTitle(status)).tag(status)
+                        }
+                    } label: {
+                        Text("Status", bundle: .module)
+                    }
+                    .brevFont(.body)
+                }
+                .brevSheetRow()
+
+                Section {
+                    Toggle(isOn: $includesDueDate) {
+                        Text("Add due date", bundle: .module)
+                    }
+                    .onChange(of: includesDueDate) { _, newValue in
+                        draft.due = newValue ? selectedDueDate : nil
+                    }
+                    if includesDueDate {
+                        DatePicker(
+                            String(localized: "Due date", bundle: .module),
+                            selection: $selectedDueDate,
+                            displayedComponents: [.date, .hourAndMinute]
+                        )
+                        .onChange(of: selectedDueDate) { _, newValue in
+                            draft.due = newValue
+                        }
+                    }
+                }
+                .brevFont(.body)
+                .brevSheetRow()
+
+                Section {
+                    TextEditor(text: $draft.notes)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel(Text("Notes", bundle: .module))
+                } header: {
+                    Text("Notes", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                }
+                .brevSheetRow()
+            }
+            .navigationTitle(
+                Text(editing == nil ? LocalizedStringKey("New Task") : LocalizedStringKey("Edit Task"), bundle: .module)
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await save() }
+                    } label: {
+                        Text(editing == nil ? LocalizedStringKey("Add") : LocalizedStringKey("Save"), bundle: .module)
+                    }
+                    .disabled(!canSave)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+    #endif
+
+    // MARK: - macOS
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             BrevDivider()
@@ -69,9 +191,7 @@ public struct TaskEditorView: View {
             BrevDivider()
             footer
         }
-        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 400, idealHeight: 480)
-        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -138,9 +258,7 @@ public struct TaskEditorView: View {
                         }
                     }
                     .labelsHidden()
-                    #if os(macOS)
-                        .pickerStyle(.segmented)
-                    #endif
+                    .pickerStyle(.segmented)
                 }
 
                 fieldGroup(String(localized: "dueDate.title", bundle: .module)) {
@@ -198,25 +316,9 @@ public struct TaskEditorView: View {
                 Task { await save() }
             }
             .keyboardShortcut(.defaultAction)
-            .disabled(
-                model.isSaving || !draft.isSaveEnabled
-                    || draft.targetID == nil
-            )
+            .disabled(!canSave)
         }
         .padding(BrevSpacing.md)
-    }
-
-    private func statusTitle(_ status: PIMTaskStatus) -> String {
-        switch status {
-        case .needsAction:
-            String(localized: "Needs action", bundle: .module)
-        case .inProcess:
-            String(localized: "In progress", bundle: .module)
-        case .completed:
-            String(localized: "Completed", bundle: .module)
-        case .cancelled:
-            String(localized: "Cancelled", bundle: .module)
-        }
     }
 
     private func fieldGroup<Content: View>(
@@ -229,6 +331,22 @@ public struct TaskEditorView: View {
                 .fontWeight(.semibold)
                 .foregroundStyle(theme.textSecondary.color)
             content()
+        }
+    }
+    #endif
+
+    // MARK: - Shared
+
+    private func statusTitle(_ status: PIMTaskStatus) -> String {
+        switch status {
+        case .needsAction:
+            String(localized: "Needs action", bundle: .module)
+        case .inProcess:
+            String(localized: "In progress", bundle: .module)
+        case .completed:
+            String(localized: "Completed", bundle: .module)
+        case .cancelled:
+            String(localized: "Cancelled", bundle: .module)
         }
     }
 

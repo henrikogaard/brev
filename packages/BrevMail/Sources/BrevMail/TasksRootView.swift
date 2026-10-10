@@ -12,6 +12,7 @@
 
 import BrevCalendar
 import BrevDesign
+import BrevSettings
 import BrevThemes
 import SwiftUI
 
@@ -35,6 +36,9 @@ public struct TasksRootView: View {
     /// Dismisses the hosting surface (iOS presents the view in a full-screen
     /// cover); nil hides the Done affordance.
     private let onDismiss: (() -> Void)?
+    /// Opens the Settings pane that connects sources from the empty state;
+    /// nil (default) shows no button.
+    private let onOpenSettings: ((SettingsSection) -> Void)?
     @State private var columnVisibility = NavigationSplitViewVisibility
         .automatic
     /// Drives iOS push navigation onto the detail column on selection.
@@ -42,6 +46,8 @@ public struct TasksRootView: View {
         .sidebar
     /// The sheet request: a new task, or an edit of the cached one.
     @State private var editorRequest: EditorRequest?
+    /// iOS asks before deleting a task; macOS deletes straight away.
+    @State private var taskPendingDeletion: PIMTask?
 
     /// Identifiable sheet payload for the task editor.
     private enum EditorRequest: Identifiable {
@@ -62,14 +68,18 @@ public struct TasksRootView: View {
     ///   a read-only task list.
     /// - Parameter onDismiss: Dismiss action for a host that presents the
     ///   view modally; nil (default) shows no Done button.
+    /// - Parameter onOpenSettings: Opens the given Settings pane from the
+    ///   "no sources" empty state; nil (default) shows no button.
     public init(
         model: TasksBrowsingModel,
         editing: TasksEditingModel? = nil,
-        onDismiss: (() -> Void)? = nil
+        onDismiss: (() -> Void)? = nil,
+        onOpenSettings: ((SettingsSection) -> Void)? = nil
     ) {
         _model = State(initialValue: model)
         self.editing = editing
         self.onDismiss = onDismiss
+        self.onOpenSettings = onOpenSettings
     }
 
     public var body: some View {
@@ -90,13 +100,14 @@ public struct TasksRootView: View {
         // the screen pushes the nav bar offscreen-left.
         .frame(minWidth: 760, minHeight: 480)
         #endif
-        .searchable(
+        .modifier(PIMSearchableModifier(
             text: Bindable(model).searchText,
             prompt: String(
                 localized: "Search tasks",
                 bundle: .module
-            )
-        )
+            ),
+            isEnabled: showsSearch
+        ))
         .task { await model.load() }
         .task { await editing?.load() }
         .task { await model.observeSourceChanges() }
@@ -109,8 +120,38 @@ public struct TasksRootView: View {
         .sheet(item: $editorRequest) { request in
             if let editing {
                 editorSheet(for: request, editing: editing)
+                    .pimEditorSheetAppearance(theme)
             }
         }
+        #if os(iOS)
+        .alert(
+            String(localized: "Delete this task?", bundle: .module),
+            isPresented: Binding(
+                get: { taskPendingDeletion != nil },
+                set: { if !$0 { taskPendingDeletion = nil } }
+            )
+        ) {
+            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                if let task = taskPendingDeletion {
+                    Task { await delete(task) }
+                }
+                taskPendingDeletion = nil
+            }
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                taskPendingDeletion = nil
+            }
+        }
+        #endif
+    }
+
+    /// The search field needs tasks to search; with no source connected
+    /// it is hidden on iOS.
+    private var showsSearch: Bool {
+        #if os(iOS)
+        model.hasSources
+        #else
+        true
+        #endif
     }
 
     // MARK: - List column
@@ -147,17 +188,10 @@ public struct TasksRootView: View {
                     String(localized: "Loading tasks", bundle: .module)
                 )
         } else if !model.hasSources {
-            emptyState(
+            PIMNoSourcesView(
+                kind: .tasks,
                 symbol: "checklist",
-                title: String(
-                    localized: "No tasks sources connected",
-                    bundle: .module
-                ),
-                message: String(
-                    localized:
-                    "Connect a tasks source in Settings → Calendar & Contacts to see tasks here.",
-                    bundle: .module
-                )
+                onOpenSettings: onOpenSettings
             )
         } else if model.sections.isEmpty {
             emptyState(
@@ -245,7 +279,11 @@ public struct TasksRootView: View {
     private func deleteAction(for task: PIMTask) -> (() -> Void)? {
         guard let editing, editing.canEdit(task) else { return nil }
         return {
+            #if os(iOS)
+            taskPendingDeletion = task
+            #else
             Task { await delete(task) }
+            #endif
         }
     }
 
@@ -363,11 +401,13 @@ public struct TasksRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
+        #if os(macOS)
         if let onDismiss {
             ToolbarItem(placement: .cancellationAction) {
                 Button(String(localized: "Done", bundle: .module), action: onDismiss)
             }
         }
+        #endif
         if !model.allCollections.isEmpty {
             ToolbarItem(placement: .secondaryAction) {
                 Menu {
@@ -468,5 +508,12 @@ public struct TasksRootView: View {
                 String(localized: "Sync tasks now", bundle: .module)
             )
         }
+        #if os(iOS)
+        if let onDismiss {
+            ToolbarItem(placement: .primaryAction) {
+                PIMDoneButton(action: onDismiss)
+            }
+        }
+        #endif
     }
 }
