@@ -5573,6 +5573,14 @@ buttons, and package-aware localization.
 - Verification: `MessageListSelectionMathTests` (21, one failing first run led to fixing Command-click on the lone selected row), `MessageBulkSelectionPresentationTests` (3, en and nb plurals via `.lproj`), extended `MailKeyboardShortcutInventoryTests`; `swift build` clean.
 - Skipped: no UI-driven check of clicks, Command-A or the pane (Brev ignores background UI driving); drag to folder uses the existing `draggablePayload`, which already carries the whole bulk selection, but was not exercised. The reader toolbar still shows single-message actions (Reply and so on) for the previously selected message while the pane is up; hiding them is a follow-up. Thread child rows and the Unified Inbox list keep their previous click handling.
 
+## 2026-10-10 — Claude Code — iOS sheet appearance and native utility sheets (audit H1–H3, R12, O4)
+
+- Goal: slice 6 of the iOS UI/UX audit. Branch `fix/ios-native-utility-sheets` from `origin/main` @ f4555690.
+- Changes: one `brevSheetAppearance(_:)` modifier in `RootAppearance.swift` (pure `BrevSheetAppearanceResolution` plus tint, `presentationBackground`, hidden grouped-list background; macOS keeps `brevTheme`) replaces every `.brevTheme(theme)` on a presented view in BrevMail, including the snooze, schedule-send, compose-sheet, template and Drive call sites. Move To, Copy To, Note, Properties, View Source/Show Headers, Create Task/Meeting (and their unavailable sheets), Follow Up, Outbox and Choose Mailboxes are `NavigationStack` sheets on iOS with Cancel/Done/Save/Create/Continue in the navigation bar; the Mac dialogs are untouched behind `#if os(macOS)`. Choose Mailboxes gained Skip (finishes without saving) and a default-mailbox checkmark list. The Ask AI sheet has a title and Done, "on this device" copy, no Command-Return hint and a display-name sender chip.
+- Verification: `SheetAppearanceTests` (resolution cases plus a source scan that fails on `.brevTheme(` in BrevMail sources) and a new sender-chip test; iOS snapshot suite `NativeUtilitySheetsSnapshotTests` (also in the CI iOS list); simulator run with a temporary XCUITest outside the repo.
+- Not verified at runtime: see the PR body and `docs/qa/ios-slice6-sheets-2026-10-10/README.md`.
+- Handoff: H3's other sites (add-account sheet, theme picker Done, PIM covers) are outside this slice's files.
+
 ## 2026-10-10 — Claude Code — iOS native search: scopes, tokens, suggestions (slice 5, audit Q1, Q2)
 
 - Goal: replace the hand-built bottom search capsule and the stacked bands above results with the system search field. Branch `fix/ios-native-search` from `origin/main` @ 939e72ae.

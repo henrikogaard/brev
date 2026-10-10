@@ -32,6 +32,46 @@ struct MessagePropertiesSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: an inset-grouped list under a standard navigation bar with Done.
+    private var nativeBody: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(rows) { row in
+                        field(label: row.label, value: row.value)
+                            .accessibilityElement(children: .combine)
+                            .brevSheetRow()
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(Text("Message Properties", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Done", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             titleBar
             BrevDivider()
@@ -44,9 +84,7 @@ struct MessagePropertiesSheet: View {
                 .padding(BrevSpacing.md)
             }
         }
-        #if os(macOS)
         .frame(minWidth: 360, idealWidth: 440, minHeight: 320, idealHeight: 420)
-        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -71,6 +109,8 @@ struct MessagePropertiesSheet: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
     }
+
+    #endif
 
     private func field(label: String, value: String) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {

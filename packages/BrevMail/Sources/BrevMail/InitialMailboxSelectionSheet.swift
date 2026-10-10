@@ -85,15 +85,19 @@ struct InitialMailboxSelectionPresentationModifier: ViewModifier {
     let initialPreferences: MailboxSourcePreferences
     let theme: BrevTheme
     let onSave: (MailboxSourcePreferences) -> Void
+    /// Leaves the sheet without choosing; the defaults (every mailbox, the
+    /// primary one as default) stay in place.
+    let onSkip: () -> Void
 
     func body(content: Content) -> some View {
         content.sheet(isPresented: $isPresented) {
             InitialMailboxSelectionSheet(
                 sourceSections: sourceSections,
                 initialPreferences: initialPreferences,
-                onSave: onSave
+                onSave: onSave,
+                onSkip: onSkip
             )
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
             .interactiveDismissDisabled(true)
         }
     }
@@ -104,16 +108,19 @@ private struct InitialMailboxSelectionSheet: View {
 
     let sourceSections: [MailSourceSection]
     let onSave: (MailboxSourcePreferences) -> Void
+    let onSkip: () -> Void
 
     @State private var selectionState: InitialMailboxSelectionPresentation.SelectionState
 
     init(
         sourceSections: [MailSourceSection],
         initialPreferences: MailboxSourcePreferences,
-        onSave: @escaping (MailboxSourcePreferences) -> Void
+        onSave: @escaping (MailboxSourcePreferences) -> Void,
+        onSkip: @escaping () -> Void
     ) {
         self.sourceSections = sourceSections
         self.onSave = onSave
+        self.onSkip = onSkip
         let availableSourceIDs = sourceSections.map(\.id)
         let preferredDefault = sourceSections.first { $0.mailbox.isPrimary }?.id
         _selectionState = State(initialValue: InitialMailboxSelectionPresentation.initialState(
@@ -124,6 +131,125 @@ private struct InitialMailboxSelectionSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    private var canContinue: Bool {
+        !selectionState.selectedSourceIDs.isEmpty && selectionState.defaultSourceID != nil
+    }
+
+    #if os(iOS)
+    /// iOS: a standard sheet with Skip / Continue in the navigation bar, a
+    /// switch per mailbox and a checkmark list for the default mailbox.
+    private var nativeBody: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(sourceSections) { section in
+                        nativeMailboxRow(section)
+                    }
+                } header: {
+                    Text(InitialMailboxSelectionPresentation.guidanceText)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                Section {
+                    ForEach(sourceSections.filter { selectionState.selectedSourceIDs.contains($0.id) }) { section in
+                        nativeDefaultRow(section)
+                    }
+                } header: {
+                    Text("Default mailbox", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(Text("Choose Mailboxes", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onSkip()
+                    } label: {
+                        Text("Skip", bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        save()
+                    } label: {
+                        Text("Continue", bundle: .module)
+                    }
+                    .disabled(!canContinue)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func nativeMailboxRow(_ section: MailSourceSection) -> some View {
+        let isEnabled = selectionState.selectedSourceIDs.contains(section.id)
+        return Toggle(isOn: Binding(
+            get: { isEnabled },
+            set: { setEnabled($0, for: section.id) }
+        )) {
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                Text(section.title)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Text(section.subtitle)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .truncationMode(.middle)
+            }
+        }
+        .disabled(isEnabled && selectionState.selectedSourceIDs.count == 1)
+        .brevSheetRow()
+    }
+
+    private func nativeDefaultRow(_ section: MailSourceSection) -> some View {
+        let isDefault = selectionState.defaultSourceID == section.id
+        return Button {
+            selectionState = InitialMailboxSelectionPresentation.makeDefault(
+                section.id,
+                in: selectionState
+            )
+        } label: {
+            HStack(spacing: BrevSpacing.md) {
+                Text(section.title)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.sm)
+                if isDefault {
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(theme.accent.color)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .brevSheetRow()
+        .accessibilityLabel(
+            isDefault
+                ? section.title
+                : String(localized: "Make \(section.title) the default", bundle: .module)
+        )
+        .accessibilityValue(isDefault ? String(localized: "Default mailbox", bundle: .module) : "")
+        .accessibilityAddTraits(isDefault ? .isSelected : [])
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             header
 
@@ -142,7 +268,7 @@ private struct InitialMailboxSelectionSheet: View {
                     save()
                 }
                 .keyboardShortcut(.defaultAction)
-                .disabled(selectionState.selectedSourceIDs.isEmpty || selectionState.defaultSourceID == nil)
+                .disabled(!canContinue)
             }
         }
         .padding(BrevSpacing.xl)
@@ -218,13 +344,8 @@ private struct InitialMailboxSelectionSheet: View {
         .brevQuietSurface()
     }
 
-    private var defaultButtonHitSize: CGFloat {
-        #if os(iOS)
-        44
-        #else
-        30
-        #endif
-    }
+    private var defaultButtonHitSize: CGFloat { 30 }
+    #endif
 
     private func setEnabled(_ isEnabled: Bool, for sourceID: MailSourceID) {
         selectionState = InitialMailboxSelectionPresentation.setSource(

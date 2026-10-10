@@ -1606,6 +1606,17 @@
         }
       }
     },
+    "Answers use only the messages cached on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar bruker bare meldingene som er bufret på denne enheten."
+          }
+        }
+      }
+    },
     "AOL requires an app password — not your login password. Generate one in AOL → Account Security → Generate app password.": {
       "extractionState": "manual",
       "localizations": {
@@ -5197,6 +5208,17 @@
         }
       }
     },
+    "Make %@ the default": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør %@ til standard"
+          }
+        }
+      }
+    },
     "Mark": {
       "extractionState": "manual",
       "localizations": {
@@ -5226,6 +5248,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nylige søk"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hopp over"
           }
         }
       }

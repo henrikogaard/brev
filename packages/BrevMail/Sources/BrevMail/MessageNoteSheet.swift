@@ -41,6 +41,95 @@ struct MessageNoteSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    private var subjectText: String {
+        header.subject.isEmpty ? String(localized: "noSubject.plain", bundle: .module) : header.subject
+    }
+
+    #if os(iOS)
+    /// iOS: a standard form sheet with Cancel / Save in the navigation bar.
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextEditor(text: $bodyText)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .frame(minHeight: 180)
+                        .accessibilityLabel(String(localized: "Note body", bundle: .module))
+                        .brevSheetRow()
+                } header: {
+                    Text(verbatim: subjectText)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                        .lineLimit(2)
+                }
+
+                if note != nil {
+                    Section {
+                        Button(role: .destructive) {
+                            deleteNote()
+                        } label: {
+                            Text("Delete Note", bundle: .module)
+                                .foregroundStyle(theme.danger.color)
+                        }
+                        .accessibilityHint(
+                            String(localized: "Removes the local note from this message", bundle: .module)
+                        )
+                        .brevSheetRow()
+                    }
+                }
+            }
+            .navigationTitle(
+                note == nil
+                    ? Text("addNote.action", bundle: .module)
+                    : Text("editNote.action", bundle: .module)
+            )
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onSave(bodyText)
+                        onClose()
+                    } label: {
+                        Text("Save", bundle: .module)
+                    }
+                    .accessibilityHint(
+                        String(localized: "Saves the note body to local message workflow state", bundle: .module)
+                    )
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+    #endif
+
+    private func deleteNote() {
+        if let onDelete {
+            onDelete()
+        } else {
+            onSave("")
+        }
+        onClose()
+    }
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             headerView
             BrevDivider()
@@ -48,9 +137,7 @@ struct MessageNoteSheet: View {
             BrevDivider()
             footer
         }
-        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 340, idealHeight: 420)
-        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -67,9 +154,7 @@ struct MessageNoteSheet: View {
                 )
                 .brevFont(.headline)
                 .foregroundStyle(theme.textPrimary.color)
-                Text(verbatim: header.subject.isEmpty
-                    ? String(localized: "noSubject.plain", bundle: .module)
-                    : header.subject)
+                Text(verbatim: subjectText)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
@@ -111,12 +196,7 @@ struct MessageNoteSheet: View {
         HStack(spacing: BrevSpacing.sm) {
             if note != nil {
                 BrevButton("Delete Note", style: .secondary, bundle: .module) {
-                    if let onDelete {
-                        onDelete()
-                    } else {
-                        onSave("")
-                    }
-                    onClose()
+                    deleteNote()
                 }
                 .accessibilityHint(String(localized: "Removes the local note from this message", bundle: .module))
             }
@@ -133,4 +213,5 @@ struct MessageNoteSheet: View {
         }
         .padding(BrevSpacing.md)
     }
+    #endif
 }

@@ -28,7 +28,13 @@ struct FollowUpDatePickerView: View {
     let onCancel: () -> Void
 
     @State private var customDate = Date().addingTimeInterval(86400)
+    #if os(macOS)
     @State private var isCustomExpanded = false
+    #else
+    @State private var detent: PresentationDetent = .medium
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var iconWidth: CGFloat = 28
+    #endif
 
     init(
         header: MessageHeader,
@@ -48,6 +54,140 @@ struct FollowUpDatePickerView: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: an inset-grouped list under a standard navigation bar; presets
+    /// confirm on tap like the snooze sheet.
+    private var nativeBody: some View {
+        NavigationStack {
+            List {
+                Section {
+                    ForEach(FollowUpReminderPreset.allCases) { preset in
+                        presetRow(preset)
+                    }
+                } header: {
+                    Text(header.subject)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                        .lineLimit(2)
+                }
+
+                Section {
+                    DatePicker(
+                        String(localized: "Follow-up date", bundle: .module),
+                        selection: $customDate,
+                        in: Date()...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .brevFont(.body)
+                    .brevSheetRow()
+                    Button {
+                        onConfirm(customDate)
+                    } label: {
+                        Text("Set Follow-Up Reminder", bundle: .module)
+                            .brevFont(.body)
+                    }
+                    .brevSheetRow()
+                } header: {
+                    Text("Custom date & time", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .textCase(nil)
+                }
+
+                if existingReminder != nil, let onRemove {
+                    Section {
+                        Button(role: .destructive) {
+                            onRemove()
+                        } label: {
+                            Text("Remove Follow-Up Reminder", bundle: .module)
+                                .brevFont(.body)
+                                .foregroundStyle(theme.danger.color)
+                        }
+                        .brevSheetRow()
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(Text("Follow Up", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onCancel()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large], selection: $detent)
+        .presentationDragIndicator(.visible)
+        .onAppear {
+            // The presets and custom picker do not fit the medium detent at
+            // accessibility sizes.
+            if dynamicTypeSize.isAccessibilitySize { detent = .large }
+        }
+    }
+
+    private func presetRow(_ preset: FollowUpReminderPreset) -> some View {
+        let dueAt = FollowUpReminderPresentation.dueAt(for: preset)
+        let visual = dueAt.formatted(.dateTime.weekday(.abbreviated).hour().minute())
+        return Button {
+            onConfirm(dueAt)
+        } label: {
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: BrevSpacing.md) {
+                    presetIcon(preset)
+                    Text(preset.title)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
+                    Spacer(minLength: BrevSpacing.sm)
+                    Text(visual)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                }
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    HStack(spacing: BrevSpacing.md) {
+                        presetIcon(preset)
+                        Text(preset.title)
+                            .brevFont(.body)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    Text(visual)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .padding(.leading, iconWidth + BrevSpacing.md)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .brevSheetRow()
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(preset.title)
+        .accessibilityValue(dueAt.formatted(.dateTime.weekday(.wide).hour().minute()))
+        .accessibilityAddTraits(.isButton)
+    }
+
+    private func presetIcon(_ preset: FollowUpReminderPreset) -> some View {
+        Image(systemName: presetSymbol(preset))
+            .foregroundStyle(theme.accent.color)
+            .frame(width: iconWidth)
+            .accessibilityHidden(true)
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Image(systemName: "flag").foregroundStyle(theme.accent.color)
@@ -59,10 +199,6 @@ struct FollowUpDatePickerView: View {
                     .buttonStyle(.plain)
                     .foregroundStyle(theme.textSecondary.color)
                     .keyboardShortcut(.cancelAction)
-                #if os(iOS)
-                    .frame(minWidth: 44, minHeight: 44)
-                    .contentShape(Rectangle())
-                #endif
             }
             .padding(BrevSpacing.md)
 
@@ -97,10 +233,7 @@ struct FollowUpDatePickerView: View {
                         }
                         .padding(.horizontal, BrevSpacing.md)
                         .padding(.vertical, BrevSpacing.sm)
-                        #if os(iOS)
-                            .frame(minHeight: 44)
-                        #endif
-                            .contentShape(Rectangle())
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .accessibilityValue(
@@ -129,10 +262,7 @@ struct FollowUpDatePickerView: View {
                     }
                     .padding(.horizontal, BrevSpacing.md)
                     .padding(.vertical, BrevSpacing.sm)
-                    #if os(iOS)
-                        .frame(minHeight: 44)
-                    #endif
-                        .contentShape(Rectangle())
+                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityValue(
@@ -174,6 +304,8 @@ struct FollowUpDatePickerView: View {
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
+
+    #endif
 
     private func presetSymbol(_ preset: FollowUpReminderPreset) -> String {
         switch preset {
