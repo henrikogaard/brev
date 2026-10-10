@@ -49,7 +49,7 @@ struct AIProviderSettingsPanel: View {
             subtitle: String(localized: "Choose where Brev sends requests when you invoke an AI feature.", bundle: .module),
             symbolName: "server.rack"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 providerContent
             }
             .task {
@@ -92,7 +92,7 @@ struct AIProviderSettingsPanel: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
 
-            BrevButton(String(localized: "Choose provider", bundle: .module)) {
+            SettingsButton(String(localized: "Choose provider", bundle: .module)) {
                 beginAddingProvider()
             }
             .disabled(isWorking)
@@ -123,25 +123,25 @@ struct AIProviderSettingsPanel: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
             .padding(BrevSpacing.md)
-            .brevQuietSurface()
+            .settingsInlineSurface()
 
             ViewThatFits(in: .horizontal) {
-                HStack(spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Edit provider", bundle: .module)) {
+                SettingsButtonRow {
+                    SettingsButton(String(localized: "Edit provider", bundle: .module)) {
                         isEditingProvider = true
                         statusMessage = nil
                     }
-                    BrevButton(String(localized: "Add provider", bundle: .module), style: .secondary) {
+                    SettingsButton(String(localized: "Add provider", bundle: .module), style: .secondary) {
                         beginAddingProvider()
                     }
                 }
 
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                    BrevButton(String(localized: "Edit provider", bundle: .module)) {
+                    SettingsButton(String(localized: "Edit provider", bundle: .module)) {
                         isEditingProvider = true
                         statusMessage = nil
                     }
-                    BrevButton(String(localized: "Add provider", bundle: .module), style: .secondary) {
+                    SettingsButton(String(localized: "Add provider", bundle: .module), style: .secondary) {
                         beginAddingProvider()
                     }
                 }
@@ -358,14 +358,14 @@ struct AIProviderSettingsPanel: View {
     }
 
     private var saveButton: some View {
-        BrevButton(String(localized: "Save provider", bundle: .module)) {
+        SettingsButton(String(localized: "Save provider", bundle: .module)) {
             Task { await saveDraft() }
         }
         .disabled(isWorking || !draft.validationIssues.isEmpty)
     }
 
     private var cancelButton: some View {
-        BrevButton(String(localized: "Cancel", bundle: .module), style: .secondary) {
+        SettingsButton(String(localized: "Cancel", bundle: .module), style: .secondary) {
             Task { await cancelEditing() }
         }
         .disabled(isWorking)
@@ -374,7 +374,7 @@ struct AIProviderSettingsPanel: View {
     private var existingProviderActions: some View {
         DisclosureGroup(String(localized: "Provider actions", bundle: .module)) {
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                BrevButton(String(localized: "Restore preset", bundle: .module), style: .secondary) {
+                SettingsButton(String(localized: "Restore preset", bundle: .module), style: .secondary) {
                     draft.applyPreset(draft.kind)
                     statusMessage = ProviderStatusMessage(
                         message: String(localized: "Provider fields restored to the selected preset.", bundle: .module),
@@ -391,14 +391,18 @@ struct AIProviderSettingsPanel: View {
     }
 
     private var disableButton: some View {
-        BrevButton(String(localized: "Disable", bundle: .module), style: .secondary) {
+        SettingsButton(String(localized: "Disable", bundle: .module), style: .secondary) {
             Task { await disableProvider() }
         }
         .disabled(isWorking || !draft.isEnabled)
     }
 
     private var deleteButton: some View {
-        BrevButton(String(localized: "Delete", bundle: .module), style: .destructive) {
+        SettingsButton(
+            String(localized: "Delete", bundle: .module),
+            style: .destructive,
+            confirmationTitle: String(localized: "Delete this AI provider?", bundle: .module)
+        ) {
             Task { await deleteProvider() }
         }
         .disabled(isWorking)

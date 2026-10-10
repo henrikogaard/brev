@@ -253,6 +253,25 @@ public struct ComposeView: View {
     @State private var isScheduleSheetPresented = false
     @State private var selectedSenderID: String
 
+    /// Keyboard focus for the header fields; the body is a UIKit text view and
+    /// is driven through `bodyFocusRequest` instead.
+    @FocusState private var focusedField: ComposeFocusField?
+    @State private var bodyFocusRequest: ComposeBodyFocusRequest?
+    @State private var didApplyInitialFocus = false
+    /// What the session opened with, so Cancel can tell an edited draft from
+    /// an untouched one. Captured on first appearance.
+    @State private var dismissalBaseline: ComposeDismissalContent?
+    #if os(iOS)
+    @State private var showsCancelOptions = false
+    @State private var showsDiscardConfirmation = false
+    @State private var isAttachPhotoPickerPresented = false
+    @State private var selectedAttachmentPhotos: [PhotosPickerItem] = []
+    @State private var isCameraPresented = false
+    @State private var isDocumentScannerPresented = false
+    @ScaledMetric(relativeTo: .body) private var toolbarIconPointSize: CGFloat = 14
+    @ScaledMetric(relativeTo: .body) private var toolbarButtonScale: CGFloat = 1
+    #endif
+
     // Draft autosave is driven by the inactivity task below. Keeping one
     // driver avoids a second 30-second timer racing the same save path.
     @State private var showDraftRecoveryBanner: Bool
@@ -596,7 +615,7 @@ public struct ComposeView: View {
                         scheduledSendDate = chosenDate
                     }
                 )
-                .brevTheme(theme)
+                .composeSheetTheme(theme)
             }
             .sheet(item: $linkSheetInput) { input in
                 ComposeLinkSheet(
@@ -608,8 +627,10 @@ public struct ComposeView: View {
                         removeLink()
                     }
                 )
-                .brevTheme(theme)
+                .composeSheetTheme(theme)
             }
+            .onAppear { captureDismissalBaselineIfNeeded() }
+            .task { await applyInitialFocusIfNeeded() }
             .onDisappear {
                 cancelAutoSaveDraftTask()
                 invalidateComposeOperation()
@@ -656,6 +677,29 @@ public struct ComposeView: View {
             )
             .onChange(of: selectedInlineImageItem) {
                 handleSelectedInlineImage()
+            }
+            // iOS Mail semantics: a draft with unsaved work cannot be swiped
+            // away. The swipe is refused and routed to the same Delete/Save
+            // choice as Cancel.
+            .interactiveDismissDisabled(ComposeDismissalPolicy.blocksInteractiveDismissal(for: dismissalState))
+            .background(
+                ComposeDismissAttemptObserver {
+                    handleCancelRequest(
+                        ComposeDismissalPolicy.decision(forAttemptedSwipeWith: dismissalState)
+                    )
+                }
+            )
+            .fullScreenCover(isPresented: $isCameraPresented) {
+                ComposeCameraPicker { data in
+                    Task { await attachImages([ComposeAttachmentDrop.DroppedImage(data: data, type: .jpeg)]) }
+                }
+                .ignoresSafeArea()
+            }
+            .fullScreenCover(isPresented: $isDocumentScannerPresented) {
+                ComposeDocumentScanner { pdfData in
+                    Task { await attachScannedDocument(pdfData) }
+                }
+                .ignoresSafeArea()
             }
         #else
         return content
@@ -887,13 +931,7 @@ public struct ComposeView: View {
 
     private var mobileToolbar: some View {
         HStack(spacing: BrevSpacing.sm) {
-            toolbarButton(
-                label: ComposeToolbarAction.close.accessibilityLabel,
-                systemImage: "xmark",
-                isDisabled: isBusy,
-                action: close
-            )
-            .keyboardShortcut(.cancelAction)
+            cancelButton
 
             Spacer(minLength: 0)
 
@@ -902,12 +940,16 @@ public struct ComposeView: View {
         // Centre the title like a nav bar: overlaying keeps it visually
         // centred regardless of the Send label's width.
         .overlay {
-            Text(composeTitle)
-                .brevFont(.headline)
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(1)
-                .accessibilityAddTraits(.isHeader)
-                .allowsHitTesting(false)
+            // At accessibility sizes Cancel, the title and Send cannot share
+            // one row on a phone; the title yields.
+            if !isAccessibilityFieldLayout {
+                Text(composeTitle)
+                    .brevFont(.headline)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .lineLimit(1)
+                    .accessibilityAddTraits(.isHeader)
+                    .allowsHitTesting(false)
+            }
         }
         .padding(.leading, BrevSpacing.sm)
         .padding(.trailing, BrevSpacing.sm)
@@ -915,30 +957,197 @@ public struct ComposeView: View {
         .dynamicTypeSize(denseChromeDynamicTypeRange)
     }
 
+    /// iOS Mail's text "Cancel". On a dirty draft it asks Delete Draft / Save
+    /// Draft; a clean draft just closes.
+    private var cancelButton: some View {
+        #if os(iOS)
+        Button {
+            handleCancelRequest(ComposeDismissalPolicy.decision(for: dismissalState))
+        } label: {
+            Text("Cancel", bundle: .module)
+                .brevFont(.body)
+                .foregroundStyle(theme.accent.color)
+                .lineLimit(1)
+                .padding(.horizontal, BrevSpacing.xs)
+                .frame(minHeight: toolbarMetrics.hitTargetSize)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isBusy || pendingUndoSendTask != nil)
+        .keyboardShortcut(.cancelAction)
+        .confirmationDialog(
+            Text("Draft options", bundle: .module),
+            isPresented: $showsCancelOptions,
+            titleVisibility: .hidden
+        ) {
+            Button(role: .destructive) {
+                Task { await discardDraft() }
+            } label: {
+                Text("Delete Draft", bundle: .module)
+            }
+            Button {
+                Task { await saveDraft() }
+            } label: {
+                Text("Save Draft", bundle: .module)
+            }
+            Button(role: .cancel) {} label: {
+                Text("Cancel", bundle: .module)
+            }
+        }
+        #else
+        toolbarButton(
+            label: ComposeToolbarAction.close.accessibilityLabel,
+            systemImage: "xmark",
+            isDisabled: isBusy,
+            action: close
+        )
+        .keyboardShortcut(.cancelAction)
+        #endif
+    }
+
+    #if os(iOS)
+    private var dismissalState: ComposeDismissalState {
+        ComposeDismissalState(
+            isDirty: isDirtyForDismissal,
+            isBusy: isBusy,
+            isUndoSendPending: pendingUndoSendTask != nil,
+            hasCompletedExplicitOperation: hasCompletedExplicitOperation
+        )
+    }
+
+    private var isDirtyForDismissal: Bool {
+        guard let dismissalBaseline else { return false }
+        return ComposeDismissalPolicy.isDirty(current: currentDismissalContent, baseline: dismissalBaseline)
+    }
+
+    private func handleCancelRequest(_ decision: ComposeDismissalDecision) {
+        switch decision {
+        case .closeNow:
+            // Nothing to keep: skip the close-time autosave so an untouched
+            // reply does not leave a stray draft behind.
+            hasCompletedExplicitOperation = true
+            close()
+        case .askDeleteOrSave:
+            showsCancelOptions = true
+        case .ignore:
+            break
+        }
+    }
+    #endif
+
+    private var currentDismissalContent: ComposeDismissalContent {
+        ComposeDismissalContent(
+            to: to + [toInputText],
+            cc: cc + [ccInputText],
+            bcc: bcc + [bccInputText],
+            subject: subject,
+            userBody: ComposeDismissalContent.userBody(
+                from: bodyText,
+                quoteProtection: quoteProtection,
+                managedSignatureBody: insertedSignatureBody
+            ),
+            attachmentCount: pendingAttachments.count
+        )
+    }
+
+    /// Records the opening state once. Sessions that exist nowhere on the
+    /// server yet (recovered drafts, `mailto:` prefills) are compared against a
+    /// blank compose so Cancel always offers to save them.
+    private func captureDismissalBaselineIfNeeded() {
+        guard dismissalBaseline == nil else { return }
+        let isUnsavedSession = recoveredDraft != nil
+            || (prefill != nil && restoredDraft == nil && replyingTo == nil && forwardingFrom == nil)
+        dismissalBaseline = isUnsavedSession ? .blank : currentDismissalContent
+    }
+
     #if os(iOS)
     private var mobileUtilityToolbar: some View {
         HStack(spacing: BrevSpacing.xxs) {
-            toolbarButton(
-                label: ComposeToolbarAction.attach.accessibilityLabel,
-                systemImage: "paperclip",
-                isDisabled: isBusy
-            ) {
-                isPickingFile = true
-            }
+            attachMenu
             formatMenu
             composeActionsMenu
             Spacer(minLength: 0)
         }
         .padding(.horizontal, BrevSpacing.sm)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: toolbarMetrics.utilityHeight,
-            maxHeight: toolbarMetrics.utilityHeight
-        )
+        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.utilityHeight)
         .overlay(alignment: .top) {
             BrevDivider()
         }
         .dynamicTypeSize(denseChromeDynamicTypeRange)
+    }
+
+    /// The paperclip: a menu of attachment sources, like iOS Mail. Sources the
+    /// device cannot provide (no camera, no document scanner) are left out.
+    private var attachMenu: some View {
+        Menu {
+            ForEach(
+                ComposeAttachMenuPolicy.items(
+                    isCameraAvailable: ComposeIOSAttachmentSource.isCameraAvailable,
+                    isDocumentScanAvailable: ComposeIOSAttachmentSource.isDocumentScanAvailable
+                )
+            ) { item in
+                Button {
+                    switch item {
+                    case .photoLibrary: isAttachPhotoPickerPresented = true
+                    case .camera: isCameraPresented = true
+                    case .files: isPickingFile = true
+                    case .scanDocuments: isDocumentScannerPresented = true
+                    }
+                } label: {
+                    Label(item.title, systemImage: item.systemImage)
+                }
+                .disabled(isInteractionBlocked)
+            }
+        } label: {
+            toolbarControlIcon("paperclip")
+        }
+        .menuStyle(.borderlessButton)
+        .disabled(isBusy)
+        .opacity(isBusy ? 0.45 : 1)
+        .accessibilityLabel(ComposeToolbarAction.attach.accessibilityLabel)
+        .photosPicker(
+            isPresented: $isAttachPhotoPickerPresented,
+            selection: $selectedAttachmentPhotos,
+            maxSelectionCount: ComposeAttachMenuPolicy.maxPhotoSelection,
+            matching: .images,
+            preferredItemEncoding: .compatible
+        )
+        .onChange(of: selectedAttachmentPhotos) {
+            let items = selectedAttachmentPhotos
+            guard !items.isEmpty else { return }
+            Task { await importSelectedPhotos(items) }
+        }
+    }
+
+    /// Loads the picked Photos items and attaches them as image files.
+    @MainActor
+    private func importSelectedPhotos(_ items: [PhotosPickerItem]) async {
+        defer { selectedAttachmentPhotos = [] }
+        var images: [ComposeAttachmentDrop.DroppedImage] = []
+        for item in items {
+            guard let data = try? await item.loadTransferable(type: Data.self) else { continue }
+            let type = item.supportedContentTypes.first {
+                $0.conforms(to: .image) && $0.preferredFilenameExtension != nil
+            } ?? .jpeg
+            images.append(ComposeAttachmentDrop.DroppedImage(data: data, type: type))
+        }
+        await attachImages(images)
+    }
+
+    /// Attaches a scan from the document camera as a single PDF.
+    @MainActor
+    private func attachScannedDocument(_ pdfData: Data) async {
+        let directory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("brev-compose-scan-\(UUID().uuidString)", isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        do {
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            let url = directory.appendingPathComponent(ComposeAttachMenuPolicy.scanFilename())
+            try pdfData.write(to: url)
+            await importAttachments(from: [url])
+        } catch {
+            errorMessage = ComposeAttachmentImport.filePickerErrorMessage(for: error)
+        }
     }
     #endif
 
@@ -965,7 +1174,25 @@ public struct ComposeView: View {
         .sheet(isPresented: $showTemplatePicker) {
             templatePickerSheet
         }
+        #if os(iOS)
         return menu
+            .confirmationDialog(
+                Text("Delete this draft?", bundle: .module),
+                isPresented: $showsDiscardConfirmation,
+                titleVisibility: .visible
+            ) {
+                Button(role: .destructive) {
+                    Task { await discardDraft() }
+                } label: {
+                    Text("Delete Draft", bundle: .module)
+                }
+                Button(role: .cancel) {} label: {
+                    Text("Cancel", bundle: .module)
+                }
+            }
+        #else
+        return menu
+        #endif
     }
 
     /// One overflow menu for the desktop compose actions that do not need
@@ -1162,7 +1389,12 @@ public struct ComposeView: View {
             Divider()
 
             Button(role: .destructive) {
+                #if os(iOS)
+                // Destructive and unrecoverable: confirm first.
+                showsDiscardConfirmation = true
+                #else
                 Task { await discardDraft() }
+                #endif
             } label: {
                 Label(ComposeToolbarAction.discardDraft.accessibilityLabel, systemImage: "trash")
             }
@@ -1191,15 +1423,36 @@ public struct ComposeView: View {
     }
 
     private func toolbarControlIcon(_ systemImage: String) -> some View {
+        #if os(iOS)
+        // iOS: a minimum, so the hit target grows with Dynamic Type.
+        toolbarIcon(systemImage)
+            .frame(
+                minWidth: toolbarMetrics.hitTargetSize,
+                minHeight: toolbarMetrics.hitTargetSize
+            )
+            .contentShape(Rectangle())
+        #else
         toolbarIcon(systemImage)
             .frame(
                 width: toolbarMetrics.hitTargetSize,
                 height: toolbarMetrics.hitTargetSize
             )
             .contentShape(Rectangle())
+        #endif
     }
 
     private func toolbarIcon(_ systemImage: String) -> some View {
+        #if os(iOS)
+        Image(systemName: systemImage)
+            .font(.system(size: toolbarIconSize, weight: .regular))
+            .symbolRenderingMode(.hierarchical)
+            .foregroundStyle(theme.textSecondary.color)
+            .frame(
+                minWidth: toolbarMetrics.buttonSize * toolbarIconScale,
+                minHeight: toolbarMetrics.buttonSize * toolbarIconScale
+            )
+            .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
+        #else
         Image(systemName: systemImage)
             .font(.system(size: 14, weight: .regular))
             .symbolRenderingMode(.hierarchical)
@@ -1209,7 +1462,14 @@ public struct ComposeView: View {
                 height: toolbarMetrics.buttonSize
             )
             .contentShape(RoundedRectangle(cornerRadius: BrevRadius.sm, style: .continuous))
+        #endif
     }
+
+    #if os(iOS)
+    /// Chrome icon glyph size; scales with Dynamic Type.
+    private var toolbarIconSize: CGFloat { toolbarIconPointSize }
+    private var toolbarIconScale: CGFloat { toolbarButtonScale }
+    #endif
 
     @ViewBuilder
     private var editorAppearanceMenuContent: some View {
@@ -1387,7 +1647,10 @@ public struct ComposeView: View {
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
                     onInputTextChanged: { query in updateRecipientSuggestions(for: .to, query: query) },
-                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) }
+                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) },
+                    focusedField: $focusedField,
+                    field: .to,
+                    onSubmit: { advanceFocus(from: .to) }
                 ) {
                     carbonCopyControls
                 }
@@ -1399,7 +1662,10 @@ public struct ComposeView: View {
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
                     onInputTextChanged: { query in updateRecipientSuggestions(for: .to, query: query) },
-                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) }
+                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .to) },
+                    focusedField: $focusedField,
+                    field: .to,
+                    onSubmit: { advanceFocus(from: .to) }
                 ) {
                     carbonCopyControls
                 }
@@ -1412,7 +1678,10 @@ public struct ComposeView: View {
                     inputText: $ccInputText,
                     suggestions: suggestions(for: .cc),
                     onInputTextChanged: { query in updateRecipientSuggestions(for: .cc, query: query) },
-                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .cc) }
+                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .cc) },
+                    focusedField: $focusedField,
+                    field: .cc,
+                    onSubmit: { advanceFocus(from: .cc) }
                 )
             }
             if isBccFieldVisible {
@@ -1423,7 +1692,10 @@ public struct ComposeView: View {
                     inputText: $bccInputText,
                     suggestions: suggestions(for: .bcc),
                     onInputTextChanged: { query in updateRecipientSuggestions(for: .bcc, query: query) },
-                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .bcc) }
+                    onSuggestionSelected: { _ in clearRecipientSuggestions(for: .bcc) },
+                    focusedField: $focusedField,
+                    field: .bcc,
+                    onSubmit: { advanceFocus(from: .bcc) }
                 )
             }
         }
@@ -1769,6 +2041,9 @@ public struct ComposeView: View {
                 .foregroundStyle(theme.textPrimary.color)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .accessibilityLabel(String(localized: "Subject", bundle: .module))
+                .focused($focusedField, equals: .subject)
+                .submitLabel(.next)
+                .onSubmit { advanceFocus(from: .subject) }
         }
         .padding(.vertical, fieldVerticalPadding)
     }
@@ -1889,7 +2164,8 @@ public struct ComposeView: View {
             onFileDragTargetChanged: { isTargeted in
                 isDropTargeted = isTargeted
             },
-            quoteProtection: quoteProtection
+            quoteProtection: quoteProtection,
+            focusRequest: bodyFocusRequest
         )
         .padding(.horizontal, BrevSpacing.xl)
         .padding(.vertical, BrevSpacing.lg)
@@ -2790,6 +3066,53 @@ public struct ComposeView: View {
     }
     #endif
 
+    // MARK: - Focus
+
+    /// Moves the keyboard like iOS Mail: new mail opens in To, a reply in the
+    /// body. Runs once, after the sheet has finished presenting. iOS only;
+    /// macOS windows keep their own first-responder behaviour.
+    private func applyInitialFocusIfNeeded() async {
+        #if os(iOS)
+        guard !didApplyInitialFocus else { return }
+        didApplyInitialFocus = true
+        let field = ComposeFocusPolicy.initialField(
+            hasRecipients: !to.isEmpty,
+            hasSubject: !subject.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
+        // A focus change made while the sheet is still sliding up is dropped.
+        try? await Task.sleep(nanoseconds: 450_000_000)
+        guard !Task.isCancelled else { return }
+        moveFocus(to: field)
+        #endif
+    }
+
+    private func advanceFocus(from field: ComposeFocusField) {
+        // Return chains the fields on iOS only; macOS keeps its own Tab/Return behaviour.
+        #if os(iOS)
+        guard let next = ComposeFocusPolicy.field(
+            after: field,
+            isCcVisible: isCcFieldVisible,
+            isBccVisible: isBccFieldVisible
+        ) else { return }
+        moveFocus(to: next)
+        #endif
+    }
+
+    private func moveFocus(to field: ComposeFocusField) {
+        if field == .body {
+            focusedField = nil
+            bodyFocusRequest = ComposeBodyFocusRequest(
+                id: (bodyFocusRequest?.id ?? 0) + 1,
+                selection: ComposeFocusPolicy.initialBodySelection(
+                    in: bodyText as NSString,
+                    quoteProtection: quoteProtection
+                )
+            )
+        } else {
+            focusedField = field
+        }
+    }
+
     // MARK: - Logic
 
     /// The email address the composer is currently sending as.
@@ -3433,19 +3756,24 @@ public struct ComposeView: View {
             if !urls.isEmpty {
                 await importAttachments(from: urls)
             }
-            if !images.isEmpty {
-                let imported = await ComposeAttachmentDrop.importDroppedImages(
-                    images,
-                    existingFilenames: Set(pendingAttachments.map(\.filename)),
-                    existingByteCount: pendingAttachments.reduce(0) { $0 + $1.data.count }
-                )
-                pendingAttachments.append(contentsOf: imported.attachments)
-                if let message = imported.errorMessage {
-                    errorMessage = message
-                }
-            }
+            await attachImages(images)
         }
         return true
+    }
+
+    /// Attaches loose image data (dropped, picked from Photos or taken with
+    /// the camera) under generated filenames.
+    private func attachImages(_ images: [ComposeAttachmentDrop.DroppedImage]) async {
+        guard !images.isEmpty else { return }
+        let imported = await ComposeAttachmentDrop.importDroppedImages(
+            images,
+            existingFilenames: Set(pendingAttachments.map(\.filename)),
+            existingByteCount: pendingAttachments.reduce(0) { $0 + $1.data.count }
+        )
+        pendingAttachments.append(contentsOf: imported.attachments)
+        if let message = imported.errorMessage {
+            errorMessage = message
+        }
     }
 
     private func loadDroppedFileURL(from provider: NSItemProvider) async -> URL? {
@@ -3810,5 +4138,18 @@ struct PendingAttachment: Identifiable, Sendable {
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
+    }
+}
+
+private extension View {
+    /// Themes a sheet presented from compose. On iOS the sheet inherits the
+    /// presenter's colour scheme (pinning it from inside a sheet is what made
+    /// sheets render light in a dark app); macOS keeps its existing pinning.
+    func composeSheetTheme(_ theme: BrevTheme) -> some View {
+        #if os(iOS)
+        environment(\.brevTheme, theme)
+        #else
+        brevTheme(theme)
+        #endif
     }
 }

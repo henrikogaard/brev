@@ -200,6 +200,37 @@ public final class MailNavigationState {
     /// list is in bulk-action mode.
     public var bulkSelection: Set<MessageHeader.ID>
 
+    /// Whether the list was put into selection mode explicitly (the phone's
+    /// Select button or a row's Select action). Stays on while the selection
+    /// is empty so unticking the last row does not end the mode; Cancel or a
+    /// completed bulk action ends it via `endSelection()`.
+    public var isSelecting = false
+
+    /// Whether rows show selection circles: explicit selection mode, or any
+    /// bulk selection (the macOS keyboard path never sets `isSelecting`).
+    public var isInSelectionMode: Bool {
+        isSelecting || !bulkSelection.isEmpty
+    }
+
+    /// Enters selection mode, optionally ticking the first row.
+    public func beginSelection(selecting id: MessageHeader.ID? = nil) {
+        isSelecting = true
+        if let id {
+            bulkSelection.insert(id)
+        }
+    }
+
+    /// Leaves selection mode and clears the selection.
+    public func endSelection() {
+        isSelecting = false
+        bulkSelection.removeAll()
+    }
+
+    /// Bulk handlers the message list publishes for the reader pane's
+    /// "N messages selected" buttons. Not observed: the list refreshes it
+    /// whenever the selection changes, which is also when the pane renders.
+    @ObservationIgnored var bulkSelectionActions: MailBulkSelectionActions?
+
     /// Incremented when a command or toolbar action asks the current
     /// message list to reload its visible folder.
     public var reloadRequestID: Int
@@ -305,7 +336,7 @@ public final class MailNavigationState {
         selectedFolderID = Self.unifiedInboxFolderID
         selectedMessageID = nil
         currentFolderHeaders = []
-        bulkSelection.removeAll()
+        endSelection()
         mailboxFilter = .none
     }
 
@@ -342,7 +373,7 @@ public final class MailNavigationState {
     /// Opens a sender-scoped search and forces it to stay local-only so the
     /// sender panel never triggers a network lookup.
     public func showAllMailFromSender(_ email: String) {
-        bulkSelection.removeAll()
+        endSelection()
         presentedSheet = nil
         searchExecution = .cacheOnly
         hasUserSelectedSearchExecution = true
@@ -364,7 +395,7 @@ public final class MailNavigationState {
         selectedFolderID = folderID
         selectedMessageID = nil
         currentFolderHeaders = []
-        bulkSelection.removeAll()
+        endSelection()
         mailboxFilter = .none
     }
 
@@ -375,7 +406,7 @@ public final class MailNavigationState {
         selectedFolderID = folderID
         selectedMessageID = nil
         currentFolderHeaders = []
-        bulkSelection.removeAll()
+        endSelection()
         mailboxFilter = .none
     }
 
@@ -388,7 +419,7 @@ public final class MailNavigationState {
         selectedCollectionFolderID = nil
         selectedMessageID = nil
         currentFolderHeaders = []
-        bulkSelection.removeAll()
+        endSelection()
         mailboxFilter = .none
     }
 
@@ -397,7 +428,7 @@ public final class MailNavigationState {
         restoredSelectionHeader = nil
         currentFolderHeaders = headers
         selectedMessageID = header.id
-        bulkSelection.removeAll()
+        endSelection()
     }
 
     /// Selects a source-owned message for the reader.
@@ -408,7 +439,7 @@ public final class MailNavigationState {
         selectedFolderID = header.folderID
         selectedMessageID = header.id
         currentFolderHeaders = headers
-        bulkSelection.removeAll()
+        endSelection()
     }
 
     /// Reopens a confirmed restored message without depending on the next list page.
@@ -496,6 +527,25 @@ public final class MailNavigationState {
         }
     }
 
+    /// The loaded header before the selected one, or `nil` at the first
+    /// message, with nothing selected, or when the selection is not loaded.
+    public var previousHeaderID: MessageHeader.ID? {
+        adjacentHeaderID(offset: -1)
+    }
+
+    /// The loaded header after the selected one, or `nil` at the last
+    /// message, with nothing selected, or when the selection is not loaded.
+    public var nextHeaderID: MessageHeader.ID? {
+        adjacentHeaderID(offset: 1)
+    }
+
+    private func adjacentHeaderID(offset: Int) -> MessageHeader.ID? {
+        guard let selected = selectedMessageID,
+              let index = currentFolderIndex(of: selected)
+        else { return nil }
+        return currentFolderHeaders[safe: index + offset]?.id
+    }
+
     /// Move the reading-pane selection to the next loaded header. If
     /// nothing is selected yet, start at the first loaded header.
     public func selectNextHeader() {
@@ -526,6 +576,18 @@ public final class MailNavigationState {
             return
         }
         selectedMessageID = currentFolderHeaders[safe: index - 1]?.id ?? selected
+    }
+
+    /// Move the reading-pane selection for a Home / End / Page Up / Page Down
+    /// key. Other commands, and an empty list, leave the selection unchanged.
+    func moveSelection(_ command: MessageListKeyCommand) {
+        let current = selectedMessageID.flatMap { currentFolderIndex(of: $0) }
+        guard let target = MessageListKeyboardNavigation.targetIndex(
+            for: command,
+            current: current,
+            count: currentFolderHeaders.count
+        ) else { return }
+        selectedMessageID = currentFolderHeaders[target].id
     }
 
     /// Ask the active message list to refetch the currently visible
@@ -565,7 +627,7 @@ public final class MailNavigationState {
         selectedFolderID = nil
         selectedMessageID = nil
         currentFolderHeaders = []
-        bulkSelection.removeAll()
+        endSelection()
     }
 
     /// Open compose for a new outgoing message.

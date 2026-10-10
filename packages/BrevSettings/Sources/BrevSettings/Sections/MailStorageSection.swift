@@ -659,7 +659,7 @@ struct MailStorageSection: View {
                 bundle: .module
             )
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xl) {
+            SettingsGroupStack {
                 if localBackend != nil {
                     localFoldersGroup
                 }
@@ -709,7 +709,10 @@ struct MailStorageSection: View {
         ) {
             storageValueRow(
                 title: String(localized: "Size on disk", bundle: .module),
-                value: localFoldersBytes.map { MailStorageInfo.formattedSize($0) } ?? "Calculating..."
+                value: localFoldersBytes.map { MailStorageInfo.formattedSize($0) } ?? String(
+                    localized: "Calculating...",
+                    bundle: .module
+                )
             )
         }
     }
@@ -729,13 +732,21 @@ struct MailStorageSection: View {
         MailStorageReloadKey(accountID: account?.id, backend: backend)
     }
 
+    private var storageSummarySubtitle: String {
+        #if os(macOS)
+        String(localized: "Size on disk and cache location for this account.", bundle: .module)
+        #else
+        String(localized: "Size on disk for this account.", bundle: .module)
+        #endif
+    }
+
     private var storageSummaryGroup: some View {
         SettingsGroup(
             title: String(localized: "Local data", bundle: .module),
-            subtitle: String(localized: "Size on disk and cache location for this account.", bundle: .module),
+            subtitle: storageSummarySubtitle,
             symbolName: "internaldrive"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 storageValueRow(
                     title: String(localized: "Size on disk", bundle: .module),
                     value: MailStoragePresentation.totalValue(
@@ -743,15 +754,16 @@ struct MailStorageSection: View {
                         indexMetrics: indexMetrics
                     )
                 )
+                // The iOS sandbox path is not something a user can open or act on.
+                #if os(macOS)
                 if let storageURL {
                     storageValueRow(
                         title: String(localized: "Cache location", bundle: .module),
                         value: MailStorageInfo.displayPath(for: storageURL)
                     )
                 }
-                #if os(macOS)
                 if let storageURL {
-                    BrevButton(String(localized: "Reveal Cache in Finder", bundle: .module), style: .secondary) {
+                    SettingsButton(String(localized: "Reveal Cache in Finder", bundle: .module), style: .secondary) {
                         NSWorkspace.shared.activateFileViewerSelecting([storageURL])
                     }
                 }
@@ -789,7 +801,7 @@ struct MailStorageSection: View {
             ),
             symbolName: "chart.bar"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 if let breakdown {
                     ForEach(MailStoragePresentation.rows(
                         for: breakdown,
@@ -798,7 +810,10 @@ struct MailStorageSection: View {
                         storageValueRow(title: row.title, value: "\(row.value) - \(row.detail)")
                     }
                 } else {
-                    storageValueRow(title: String(localized: "Details", bundle: .module), value: "Calculating...")
+                    storageValueRow(
+                        title: String(localized: "Details", bundle: .module),
+                        value: String(localized: "Calculating...", bundle: .module)
+                    )
                 }
             }
         }
@@ -810,7 +825,7 @@ struct MailStorageSection: View {
             subtitle: String(localized: "Download mail locally so all-mail search can use the durable index.", bundle: .module),
             symbolName: "magnifyingglass"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsInfoCallout(
                     symbolName: "doc.text.magnifyingglass",
                     message: MailStoragePresentation.indexSummary(for: syncHealth),
@@ -843,16 +858,16 @@ struct MailStorageSection: View {
             storageValueRow(
                 title: String(localized: "Attachment index", bundle: .module),
                 value: attachmentIndexBytes
-                    .map { MailStorageInfo.formattedSize(Int64($0)) } ?? "Calculating..."
+                    .map { MailStorageInfo.formattedSize(Int64($0)) } ?? String(localized: "Calculating...", bundle: .module)
             )
-            HStack(spacing: BrevSpacing.sm) {
-                BrevButton(
+            SettingsButtonRow {
+                SettingsButton(
                     String(localized: "Rebuild", bundle: .module),
                     style: .secondary
                 ) {
                     Task { await runAttachmentIndexAction(rebuild: true) }
                 }
-                BrevButton(
+                SettingsButton(
                     String(localized: "Remove", bundle: .module),
                     style: .destructive
                 ) {
@@ -887,7 +902,7 @@ struct MailStorageSection: View {
             subtitle: String(localized: "Default for all accounts. Set per-folder exceptions in Folder Sync.", bundle: .module),
             symbolName: "calendar.badge.clock"
         ) {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
+            SettingsRowStack(spacing: BrevSpacing.md) {
                 SettingsPickerRow(
                     symbolName: "clock.arrow.circlepath",
                     title: String(localized: "Cache lookback", bundle: .module),
@@ -919,7 +934,7 @@ struct MailStorageSection: View {
             ),
             symbolName: "arrow.down.circle"
         ) {
-            BrevButton(
+            SettingsButton(
                 MailStoragePresentation.actionTitle(
                     for: .downloadAllMail,
                     isRunning: activeAction == .downloadAllMail
@@ -941,7 +956,7 @@ struct MailStorageSection: View {
             ),
             symbolName: "arrow.triangle.2.circlepath"
         ) {
-            BrevButton(
+            SettingsButton(
                 MailStoragePresentation.actionTitle(
                     for: .resetAndRedownload,
                     isRunning: activeAction == .resetAndRedownload

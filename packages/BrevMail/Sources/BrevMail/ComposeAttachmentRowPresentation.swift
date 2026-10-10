@@ -25,7 +25,7 @@ struct ComposeAttachmentRowPresentation: Equatable {
             formattedSize: attachment.formattedSize,
             statusText: statusText(for: attachment),
             retryButtonTitle: ComposeAttachmentUploadState.retryActionTitle(for: attachment),
-            removeAccessibilityLabel: "Remove \(attachment.filename)"
+            removeAccessibilityLabel: String(localized: "Remove \(attachment.filename)", bundle: .module)
         )
     }
 
@@ -34,7 +34,7 @@ struct ComposeAttachmentRowPresentation: Equatable {
             return statusText
         }
         if attachment.uploadedAttachmentID != nil {
-            return "Ready to send"
+            return String(localized: "Ready to send", bundle: .module)
         }
         return nil
     }

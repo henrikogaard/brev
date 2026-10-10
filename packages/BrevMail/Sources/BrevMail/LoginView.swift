@@ -56,6 +56,13 @@ public struct LoginView: View {
             }
         }
         .brevWindowTranslucency(windowRole: .mainWindow)
+        .onChange(of: session.signInError) { _, error in
+            // The inline status appears without moving VoiceOver focus; say
+            // it aloud so a failed restore or re-auth is not silent.
+            if let error {
+                AccessibilityNotification.Announcement(error).post()
+            }
+        }
         .sheet(isPresented: $isShowingIMAPSetup) {
             if let failedEmail = session.authFailedIMAPAccountEmail {
                 IMAPAccountSetupSheet(
@@ -142,7 +149,7 @@ public struct LoginView: View {
 
                 if session.authFailedIMAPAccountEmail != nil {
                     Text("Repair the saved account or choose another sign-in method.", bundle: .module)
-                        .brevFont(.caption)
+                        .brevFont(supportingFont)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -172,7 +179,7 @@ public struct LoginView: View {
                 "Mail account setup is not available in this build. Use the demo mailbox for local UI testing.",
                 bundle: .module
             )
-            .brevFont(.caption)
+            .brevFont(supportingFont)
             .foregroundStyle(theme.textTertiary.color)
             .fixedSize(horizontal: false, vertical: true)
         }
@@ -192,7 +199,7 @@ public struct LoginView: View {
                     .loginTouchTarget()
 
                     Text(googleConnectionDescription, bundle: .module)
-                        .brevFont(.caption)
+                        .brevFont(supportingFont)
                         .foregroundStyle(theme.textSecondary.color)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -209,7 +216,7 @@ public struct LoginView: View {
                         .loginTouchTarget()
 
                         Text("For Fastmail and other IMAP/SMTP providers.", bundle: .module)
-                            .brevFont(.caption)
+                            .brevFont(supportingFont)
                             .foregroundStyle(theme.textSecondary.color)
                             .fixedSize(horizontal: false, vertical: true)
                     }
@@ -217,12 +224,15 @@ public struct LoginView: View {
             } else {
                 // A sign-in/restore error banner takes priority: don't stack
                 // the configuration caption under it.
-                if session.googleOAuthConfigIsInvalid && session.signInError == nil {
+                if LoginViewPresentation.showsGoogleUnavailableNotice(
+                    googleConfigIsInvalid: session.googleOAuthConfigIsInvalid,
+                    hasSignInError: session.signInError != nil
+                ) {
                     Text(
-                        "Google sign-in isn't configured in this build. Provide the OAuth client ID at build time, or add a mail account instead.",
+                        "Google sign-in isn't available in this build. You can still add a Gmail account with an app password.",
                         bundle: .module
                     )
-                    .brevFont(.caption)
+                    .brevFont(supportingFont)
                     .foregroundStyle(theme.textSecondary.color)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -236,7 +246,7 @@ public struct LoginView: View {
                     "Brev finds IMAP and SMTP settings from your email, or lets you enter them yourself.",
                     bundle: .module
                 )
-                .brevFont(.caption)
+                .brevFont(supportingFont)
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
             }
@@ -255,6 +265,16 @@ public struct LoginView: View {
                 }
             }
         }
+    }
+
+    /// Explanatory copy under the sign-in actions. The page has plenty of room
+    /// on iPhone, so it reads at callout size there instead of caption.
+    private var supportingFont: BrevFont {
+        #if os(iOS)
+        .callout
+        #else
+        .caption
+        #endif
     }
 
     private var googleConnectionDescription: LocalizedStringKey {
@@ -424,7 +444,7 @@ public struct LoginView: View {
                 "Your credentials stay in the Keychain. Brev connects directly to your mail provider.",
                 bundle: .module
             )
-            .brevFont(.caption)
+            .brevFont(supportingFont)
             .foregroundStyle(theme.textSecondary.color)
             .fixedSize(horizontal: false, vertical: true)
         } icon: {
@@ -500,6 +520,17 @@ public enum LoginViewPresentation {
             return .retry
         }
         return nil
+    }
+
+    /// Whether the login page explains that Google sign-in is unavailable in
+    /// this build. A pending sign-in or restore error takes priority so the two
+    /// messages never stack. The build-time client ID requirement is
+    /// developer detail and lives in `docs/release.md`, not in the UI.
+    public static func showsGoogleUnavailableNotice(
+        googleConfigIsInvalid: Bool,
+        hasSignInError: Bool
+    ) -> Bool {
+        googleConfigIsInvalid && !hasSignInError
     }
 
     /// Package resource name of the Brev app-icon tile shown as the

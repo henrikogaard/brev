@@ -29,6 +29,7 @@ public struct MailCommands: Commands {
     @FocusedValue(\.mailPrintExportActions) private var printExportActions
     @FocusedValue(\.mailContextColumnAction) private var mailContextColumnAction
     @FocusedValue(\.mailHelpActions) private var helpActions
+    @FocusedValue(\.mailListSelectAll) private var listSelectAll
     @AppStorage("folders.showIcons") private var showSidebarIcons = true
 
     /// Creates the cross-platform command set.
@@ -72,6 +73,22 @@ public struct MailCommands: Commands {
             .keyboardShortcut("p", modifiers: [.command, .shift])
             .disabled(printExportActions?.isAvailable != true)
         }
+
+        // MARK: - Edit menu additions
+
+        #if os(macOS)
+        // Enabled only while the message list holds keyboard focus (it
+        // publishes `listSelectAll` then). Everywhere else the item is
+        // disabled and ⌘A falls through to the standard Select All, so text
+        // fields keep working.
+        CommandGroup(after: .pasteboard) {
+            Button(String(localized: "Select All Messages", bundle: .module)) {
+                listSelectAll?.perform()
+            }
+            .keyboardShortcut("a")
+            .disabled(listSelectAll == nil)
+        }
+        #endif
 
         // MARK: - Message menu
 

@@ -86,6 +86,36 @@ struct MailKeyboardShortcutInventoryTests {
         #expect(entry("Cancel / Close Compose")?.shortcut == "Escape")
     }
 
+    @Test("message-list keys are listed as macOS-only bare keys")
+    func messageListKeysAreListed() {
+        let entries = MailKeyboardShortcutInventory.sections.flatMap(\.entries)
+
+        func entry(_ action: String) -> MailKeyboardShortcut? {
+            entries.first { $0.action == action }
+        }
+
+        #if os(macOS)
+        let expectedPlatformEntry: Bool? = true
+        #else
+        let expectedPlatformEntry: Bool? = nil
+        #endif
+        let expectations: [(String, String)] = [
+            ("Delete Selected Messages", "⌫"),
+            ("Select All Messages", "⌘A"),
+            ("Extend Selection Up", "⇧↑"),
+            ("Extend Selection Down", "⇧↓"),
+            ("Clear Selection", "Escape"),
+            ("First Message", "Home"),
+            ("Last Message", "End"),
+            ("Up One Page", "Page Up"),
+            ("Down One Page", "Page Down"),
+        ]
+        for (action, shortcut) in expectations {
+            #expect(entry(action)?.shortcut == shortcut)
+            #expect(entry(action)?.isMacOSOnly == expectedPlatformEntry)
+        }
+    }
+
     @Test("macOS-only entries match registrations gated behind macOS commands")
     func macOSOnlyEntriesMatchGatedRegistrations() {
         let entries = MailKeyboardShortcutInventory.sections.flatMap(\.entries)

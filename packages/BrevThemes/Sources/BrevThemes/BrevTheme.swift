@@ -168,6 +168,66 @@ public extension BrevTheme {
         withReadableAccent().accent
     }
 
+    /// Border color for controls whose outline is the only cue to their
+    /// boundary (text fields, outlined buttons): WCAG 1.4.11 asks for 3:1.
+    ///
+    /// Returns `border` unchanged when it already reaches 3:1 on both
+    /// `bgPrimary` and `bgSecondary`; otherwise mixes `border` toward
+    /// `textPrimary` by the smallest amount that does. The decorative
+    /// `border` token itself keeps its quiet value for card and divider
+    /// hairlines. ADR-0002 (2026-10 contrast contract).
+    var controlBorder: BrevColor {
+        let surfaces = [bgPrimary, bgSecondary]
+        let target = 3.0
+        if surfaces.allSatisfy({ border.contrastRatio(against: $0) >= target }) {
+            return border
+        }
+        var lower = 0.0
+        var upper = 1.0
+        for _ in 0 ..< 24 {
+            let middle = (lower + upper) / 2
+            let candidate = border.mixed(with: textPrimary, amount: middle)
+            if surfaces.allSatisfy({ candidate.contrastRatio(against: $0) >= target }) {
+                upper = middle
+            } else {
+                lower = middle
+            }
+        }
+        return border.mixed(with: textPrimary, amount: upper)
+    }
+
+    /// Accent-coloured text for use on a surface tinted with the accent at
+    /// `opacity` (selected chips, accent badges).
+    ///
+    /// Returns `accent` when it already reaches 4.5:1 on that tint over both
+    /// `bgPrimary` and `bgSecondary`; otherwise mixes it toward `textPrimary`
+    /// (or black/white when that is also too weak) by the smallest amount that
+    /// does, so the text keeps the accent hue as far as legibility allows.
+    /// ADR-0002 (2026-10 contrast contract).
+    func accentTextOnTint(opacity: Double) -> BrevColor {
+        let tints = [bgPrimary, bgSecondary].map { $0.blended(with: accent, amount: opacity) }
+        let target = 4.5
+        func passes(_ color: BrevColor) -> Bool {
+            tints.allSatisfy { color.contrastRatio(against: $0) >= target }
+        }
+        if passes(accent) { return accent }
+        // Some palettes (Solarized) have a primary text colour that is itself
+        // under 4.5:1 on the tint, so fall back to the mode's extreme.
+        let extreme = BrevColor(mode == .dark ? "#FFFFFF" : "#000000")
+        let destination = passes(textPrimary) ? textPrimary : extreme
+        var lower = 0.0
+        var upper = 1.0
+        for _ in 0 ..< 24 {
+            let middle = (lower + upper) / 2
+            if passes(accent.mixed(with: destination, amount: middle)) {
+                upper = middle
+            } else {
+                lower = middle
+            }
+        }
+        return accent.mixed(with: destination, amount: upper)
+    }
+
     /// Foreground color with the strongest contrast against the accent.
     var onAccent: BrevColor {
         let black = BrevColor("#000000")
@@ -424,7 +484,29 @@ private extension BrevTheme {
     }
 }
 
+extension BrevColor {
+    /// `other` painted over this opaque colour at `amount` opacity.
+    func blended(with other: BrevColor, amount: Double) -> BrevColor {
+        mixed(with: other, amount: amount)
+    }
+}
+
 private extension BrevColor {
+    /// sRGB-channel blend toward `other`; `amount` 0 returns self.
+    func mixed(with other: BrevColor, amount: Double) -> BrevColor {
+        let start = sRGBComponents
+        let end = other.sRGBComponents
+        func channel(_ from: Double, _ to: Double) -> Int {
+            Int(((from + (to - from) * amount) * 255).rounded())
+        }
+        return BrevColor(String(
+            format: "#%02X%02X%02X",
+            channel(start.red, end.red),
+            channel(start.green, end.green),
+            channel(start.blue, end.blue)
+        ))
+    }
+
     func contrastMinimum(on surfaces: [BrevColor]) -> Double {
         surfaces.map { contrastRatio(against: $0) }.min() ?? 0
     }

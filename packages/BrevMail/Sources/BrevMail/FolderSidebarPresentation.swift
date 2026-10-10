@@ -103,6 +103,25 @@ enum FolderSidebarSmartViewPresentation {
     }
 }
 
+/// VoiceOver copy for the Mailboxes list, kept out of the views so it can be tested.
+enum FolderSidebarAccessibility {
+    /// "16 unread". `nil` at zero so VoiceOver never announces "0 unread".
+    static func unreadValue(count: Int) -> String? {
+        count > 0 ? String(localized: "\(count) unread", bundle: .module) : nil
+    }
+
+    /// The spoken value of an account header. A collapsed account hides its
+    /// folders, so its inbox unread count rides along with the state instead of
+    /// being swallowed by the header's label.
+    static func accountHeaderValue(isExpanded: Bool, unreadCount: Int) -> String {
+        let state = isExpanded
+            ? String(localized: "Expanded mailbox", bundle: .module)
+            : String(localized: "Collapsed mailbox", bundle: .module)
+        guard !isExpanded, let unread = unreadValue(count: unreadCount) else { return state }
+        return "\(state), \(unread)"
+    }
+}
+
 enum FolderSidebarSelectionPresentation {
     static let cornerRadius = BrevRadius.md
     static let globalActionOpacity = 0.18
@@ -428,6 +447,16 @@ enum FolderSidebarPresentation {
         folderRowTrailingPadding: BrevSpacing.sm,
         folderRowVerticalPadding: BrevSpacing.xxs
     )
+
+    /// Large title of the Mailboxes screen: "Mailboxes" for the all-mailboxes
+    /// profile, otherwise the active profile's name.
+    static func navigationTitle(activeProfileID: MailProfile.ID, profiles: [MailProfile]) -> String {
+        let selectedID = MailProfileSelectionPolicy.selectedProfileID(activeProfileID, profiles: profiles)
+        guard selectedID != MailProfile.allMailboxesID,
+              let name = profiles.first(where: { $0.id == selectedID })?.name
+        else { return String(localized: "Mailboxes", bundle: .module) }
+        return name
+    }
 
     static func mailboxHeader(
         isSwitchingMailbox: Bool,

@@ -30,7 +30,7 @@
 				<string>brev.newMail.replyEnabled</string>
 			</array>
 			<key>UNNotificationExtensionDefaultContentHidden</key>
-			<false/>
+			<true/>
 			<key>UNNotificationExtensionInitialContentSizeRatio</key>
 			<real>0.3</real>
 		</dict>

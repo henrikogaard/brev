@@ -92,59 +92,70 @@ struct BrevApp: App {
         )
     }
 
+    /// Settings open as a sheet over the mailbox, so the list selection and
+    /// scroll position underneath survive opening and closing Settings. The
+    /// sheet resolves the persisted theme itself because it is presented from
+    /// outside `.brevRootAppearance`.
+    private var settingsSheet: some View {
+        SettingsView(
+            accountStore: session.accountStore,
+            activeTheme: $session.theme,
+            activeAppIcon: appIconBinding,
+            initialAccounts: session.visibleBackends.map(\.account),
+            initialCurrentAccountID: session.backend?.account.id,
+            mailboxContext: settingsMailboxContext,
+            backendProvider: { accountID in session.backends[accountID] },
+            pimSourceCoordinator: session.pimSourceCoordinator,
+            pimCollectionService: session.pimCollectionService,
+            pimEventSyncService: session.pimEventSyncService,
+            pimContactSyncService: session.pimContactSyncService,
+            pimTaskSyncService: session.pimTaskSyncService,
+            onEnableGooglePIMFeature: { accountID, kind in
+                _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
+            },
+            onEnableGooglePIMWrite: { accountID, kind in
+                _ = try await session.enableGooglePIMWriteFeature(accountID: accountID, kind: kind)
+            },
+            onReauthorizeGooglePIMSource: { accountID, kind in
+                _ = try await session.reauthorizeGooglePIMSource(accountID: accountID, kind: kind)
+            },
+            onAddAccount: { isShowingAddAccountSheet = true },
+            onSignOut: { account in await session.signOut(account: account) },
+            onRemoveAccount: { account, deleteLinkedSourceCache in
+                await session.removeAccount(
+                    account,
+                    deleteLinkedSourceCache: deleteLinkedSourceCache
+                )
+            },
+            linkedSourcesProvider: { accountID in
+                await session.linkedPIMSources(for: accountID)
+            },
+            onAIProviderConfigurationChanged: {
+                await session.reloadConfiguredAIBackends()
+            },
+            onClose: { showSettings = false }
+        )
+        .environment(\.openURL, browserOpenURLAction)
+        .brevRootAppearance(session: session)
+        .sheet(isPresented: $isShowingAddAccountSheet) { addAccountSheet }
+    }
+
+    private var addAccountSheet: some View {
+        MailAccountSetupSheet(
+            session: session,
+            initialEmailAddress: session.authFailedIMAPAccountEmail ?? ""
+        ) {
+            isShowingAddAccountSheet = false
+        }
+        // Presented from outside `.brevRootAppearance`, so it resolves the
+        // persisted theme and color scheme itself.
+        .brevRootAppearance(session: session)
+    }
+
     var body: some Scene {
         WindowGroup(for: ReaderCommandWindowPayload.self) { $readerCommandHandoff in
             Group {
-                // Settings sits above the mailbox-root decision so the
-                // restore-error alert's "Open Settings" action works even
-                // when every account failed to restore and the window would
-                // otherwise show the login screen.
-                // A detached command must reach its mailbox even when another
-                // scene has opened the shared Settings surface.
-                if AppSessionRestorePresentationPolicy.shouldShowSettings(
-                    isRequested: showSettings,
-                    hasReaderCommandHandoff: readerCommandHandoff != nil
-                ) {
-                    SettingsView(
-                        accountStore: session.accountStore,
-                        activeTheme: $session.theme,
-                        activeAppIcon: appIconBinding,
-                        initialAccounts: session.visibleBackends.map(\.account),
-                        initialCurrentAccountID: session.backend?.account.id,
-                        mailboxContext: settingsMailboxContext,
-                        backendProvider: { accountID in session.backends[accountID] },
-                        pimSourceCoordinator: session.pimSourceCoordinator,
-                        pimCollectionService: session.pimCollectionService,
-                        pimEventSyncService: session.pimEventSyncService,
-                        pimContactSyncService: session.pimContactSyncService,
-                        pimTaskSyncService: session.pimTaskSyncService,
-                        onEnableGooglePIMFeature: { accountID, kind in
-                            _ = try await session.enableGooglePIMFeature(accountID: accountID, kind: kind)
-                        },
-                        onEnableGooglePIMWrite: { accountID, kind in
-                            _ = try await session.enableGooglePIMWriteFeature(accountID: accountID, kind: kind)
-                        },
-                        onReauthorizeGooglePIMSource: { accountID, kind in
-                            _ = try await session.reauthorizeGooglePIMSource(accountID: accountID, kind: kind)
-                        },
-                        onAddAccount: { isShowingAddAccountSheet = true },
-                        onSignOut: { account in await session.signOut(account: account) },
-                        onRemoveAccount: { account, deleteLinkedSourceCache in
-                            await session.removeAccount(
-                                account,
-                                deleteLinkedSourceCache: deleteLinkedSourceCache
-                            )
-                        },
-                        linkedSourcesProvider: { accountID in
-                            await session.linkedPIMSources(for: accountID)
-                        },
-                        onAIProviderConfigurationChanged: {
-                            await session.reloadConfiguredAIBackends()
-                        },
-                        onClose: { showSettings = false }
-                    )
-                    .environment(\.openURL, browserOpenURLAction)
-                } else if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
+                if AppSessionRestorePresentationPolicy.shouldShowMailboxRoot(
                     visibleBackendCount: session.visibleBackends.count,
                     isRestoringSession: session.isRestoringSession
                 ) {
@@ -238,6 +249,22 @@ struct BrevApp: App {
                 }
             }
             .brevRootAppearance(session: session)
+            // Presented above the mailbox-root decision so the restore-error
+            // alert's "Open Settings" action works even when every account
+            // failed to restore and the window shows the login screen. A
+            // detached command scene never presents the shared Settings
+            // surface, so it keeps its mailbox.
+            .sheet(isPresented: Binding(
+                get: {
+                    AppSessionRestorePresentationPolicy.shouldShowSettings(
+                        isRequested: showSettings,
+                        hasReaderCommandHandoff: readerCommandHandoff != nil
+                    )
+                },
+                set: { showSettings = $0 }
+            )) {
+                settingsSheet
+            }
             .alert(
                 String(localized: "Account error"),
                 isPresented: $showRestoreErrorAlert
@@ -255,16 +282,12 @@ struct BrevApp: App {
                     "One or more accounts couldn't be restored. Open Settings → Accounts to update credentials or remove the affected account."
                 )
             }
-            .sheet(isPresented: $isShowingAddAccountSheet) {
-                MailAccountSetupSheet(
-                    session: session,
-                    initialEmailAddress: session.authFailedIMAPAccountEmail ?? ""
-                ) {
-                    isShowingAddAccountSheet = false
-                }
-                // The sheet is presented from outside `.brevRootAppearance`, so
-                // it must resolve the persisted theme and color scheme itself.
-                .brevRootAppearance(session: session)
+            // While Settings is open it presents the add-account sheet itself.
+            .sheet(isPresented: Binding(
+                get: { isShowingAddAccountSheet && !showSettings },
+                set: { isShowingAddAccountSheet = $0 }
+            )) {
+                addAccountSheet
             }
             .fullScreenCover(isPresented: $showCalendar) {
                 // No NavigationStack wrapper: the root view is itself a
@@ -385,12 +408,16 @@ struct BrevApp: App {
                     canFileLocally: session.localBackend != nil
                 )
                 .environment(\.openURL, browserOpenURLAction)
+                // A detached scene is its own root, so it resolves the persisted
+                // theme and color scheme itself like the main and PIM scenes.
+                .brevRootAppearance(session: session)
             }
         }
 
         // iPad detached compose window — opened via openWindow(value:) in
-        // BrevMailRootView when the user composes/replies/forwards on a
-        // regular-width iPad scene (ADR-0033).
+        // BrevMailRootView only on an explicit request. Reply and New Message
+        // present a form sheet over the main window, so nothing creates this
+        // scene and a relaunch no longer brings a stray compose window back.
         WindowGroup(for: ComposeWindowPayload.self) { $payload in
             if let payload {
                 DetachedComposeWindowView(
@@ -410,6 +437,7 @@ struct BrevApp: App {
                         AppSessionFactory.trustedEncryptionIdentityCount(for: account)
                     }
                 )
+                .brevRootAppearance(session: session)
             }
         }
     }

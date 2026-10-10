@@ -36,19 +36,19 @@ struct MessageAttachmentActionPresentation: Equatable, Sendable, Identifiable {
         var actions = [
             MessageAttachmentActionPresentation(
                 kind: .preview,
-                title: "Preview",
+                title: String(localized: "Preview", bundle: .module),
                 systemImage: "eye",
                 isDisabled: isDisabled
             ),
             MessageAttachmentActionPresentation(
                 kind: .save,
-                title: "Save",
+                title: String(localized: "Save", bundle: .module),
                 systemImage: "arrow.down.circle",
                 isDisabled: isDisabled
             ),
             MessageAttachmentActionPresentation(
                 kind: .open,
-                title: "Open",
+                title: String(localized: "Open", bundle: .module),
                 systemImage: "arrow.up.forward",
                 isDisabled: isDisabled
             )

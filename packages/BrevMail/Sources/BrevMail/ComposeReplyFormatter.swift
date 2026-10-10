@@ -43,6 +43,14 @@ enum ComposeSubjectPrefixCollapser {
 }
 
 enum ComposeReplyFormatter {
+    /// Test seams: snapshot tests pin the attribution line's locale and time
+    /// zone so the rendered text does not depend on the machine running them.
+    static var localeOverride: Locale?
+    static var timeZoneOverride: TimeZone?
+
+    static var defaultLocale: Locale { localeOverride ?? .current }
+    static var defaultTimeZone: TimeZone { timeZoneOverride ?? .current }
+
     static func subject(for original: String) -> String {
         let rest = ComposeSubjectPrefixCollapser.stripping(original, prefixes: ["re:"])
         return "Re: \(displaySubject(rest))"
@@ -50,16 +58,78 @@ enum ComposeReplyFormatter {
 
     /// First line of the quoted original block — also the marker the
     /// compose quote-edit guard uses to locate the read-only region.
-    static func quoteMarker(for header: MessageHeader) -> String {
-        "On \(format(header.date)), \(format(header.from)) wrote:"
+    ///
+    /// The line is localized and shows the reader's local time ("Den 9. okt.
+    /// 2026 kl. 10:13 skrev …:"). The guard receives this exact string at
+    /// open time, so it never has to parse the visible wording.
+    static func quoteMarker(
+        for header: MessageHeader,
+        locale: Locale = ComposeReplyFormatter.defaultLocale,
+        timeZone: TimeZone = ComposeReplyFormatter.defaultTimeZone
+    ) -> String {
+        let day = format(header.date, locale: locale, timeZone: timeZone, includesTime: false)
+        let time = format(header.date, locale: locale, timeZone: timeZone, includesTime: true)
+        let sender = format(header.from)
+        return String(
+            localized: "On \(day) at \(time), \(sender) wrote:",
+            bundle: localizedBundle(for: locale)
+        )
+    }
+
+    /// Whether `line` is a reply attribution line in English or in `locale`'s
+    /// wording. Signature placement uses this to find where a quote starts
+    /// without hard-coding "wrote:".
+    static func isAttributionLine<S: StringProtocol>(
+        _ line: S,
+        locale: Locale = ComposeReplyFormatter.defaultLocale
+    ) -> Bool {
+        let text = String(line)
+        if text.hasPrefix("On "), text.hasSuffix(" wrote:") { return true }
+        let affixes = attributionAffixes(locale: locale)
+        return text.count > affixes.prefix.count + affixes.suffix.count
+            && text.hasPrefix(affixes.prefix)
+            && text.hasSuffix(affixes.suffix)
+    }
+
+    /// The fixed words before the first and after the last placeholder of the
+    /// localized attribution template.
+    private static func attributionAffixes(locale: Locale) -> (prefix: String, suffix: String) {
+        let first = "\u{1}"
+        let last = "\u{2}"
+        let template = String(
+            localized: "On \(first) at \(first), \(last) wrote:",
+            bundle: localizedBundle(for: locale)
+        )
+        let prefix = template.components(separatedBy: first).first ?? ""
+        let suffix = template.components(separatedBy: last).last ?? ""
+        return (prefix, suffix)
+    }
+
+    /// The `.lproj` bundle for `locale`'s best-matching catalog language, so
+    /// the attribution wording follows the requested locale rather than only
+    /// the process language.
+    private static func localizedBundle(for locale: Locale) -> Bundle {
+        let language = Bundle.preferredLocalizations(
+            from: Bundle.module.localizations,
+            forPreferences: [locale.identifier]
+        ).first
+        guard let language,
+              let path = Bundle.module.path(forResource: language, ofType: "lproj"),
+              let bundle = Bundle(path: path)
+        else {
+            return .module
+        }
+        return bundle
     }
 
     static func body(
         for header: MessageHeader,
         quoteText: String? = nil,
-        placement: ComposeReplyQuotePlacement = .belowReply
+        placement: ComposeReplyQuotePlacement = .belowReply,
+        locale: Locale = ComposeReplyFormatter.defaultLocale,
+        timeZone: TimeZone = ComposeReplyFormatter.defaultTimeZone
     ) -> String {
-        let quoteHeader = quoteMarker(for: header)
+        let quoteHeader = quoteMarker(for: header, locale: locale, timeZone: timeZone)
         let quotedSnippet = quoteLines(from: quoteText ?? header.snippet)
 
         switch placement {
@@ -90,12 +160,18 @@ enum ComposeReplyFormatter {
         return "\(name) <\(email)>"
     }
 
-    private static func format(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.timeZone = TimeZone(secondsFromGMT: 0)
-        formatter.dateFormat = "d MMM yyyy 'at' HH:mm 'UTC'"
-        return formatter.string(from: date)
+    private static func format(
+        _ date: Date,
+        locale: Locale,
+        timeZone: TimeZone,
+        includesTime: Bool
+    ) -> String {
+        var style = includesTime
+            ? Date.FormatStyle(date: .omitted, time: .shortened)
+            : Date.FormatStyle(date: .abbreviated, time: .omitted)
+        style.locale = locale
+        style.timeZone = timeZone
+        return date.formatted(style)
     }
 
     private static func displaySubject(_ subject: String) -> String {

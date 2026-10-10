@@ -25,6 +25,8 @@ struct ReaderQuickReplyBar: View {
     let isDisabled: Bool
 
     @Environment(\.brevTheme) private var theme
+    /// Scales the send glyph with Dynamic Type; 44 pt targets hold it on iOS.
+    @ScaledMetric(relativeTo: .title2) private var sendGlyphSize: CGFloat = 24
     @Binding private var draftWasSaved: Bool
     @State private var draftText = ""
     @State private var isSending = false
@@ -47,30 +49,58 @@ struct ReaderQuickReplyBar: View {
         _draftWasSaved = draftWasSaved
     }
 
+    /// Side of the square buttons: Apple's 44 pt minimum target on iOS.
+    private static let buttonSize: CGFloat = {
+        #if os(iOS)
+        44
+        #else
+        32
+        #endif
+    }()
+
+    @ViewBuilder
+    private var quickReplyField: some View {
+        let placeholder = String(localized: "Reply to \(recipientName)…", bundle: .module)
+        #if os(iOS)
+        // The system placeholder colour fails contrast on the field's
+        // surface; use the theme's secondary text.
+        TextField(
+            placeholder,
+            text: $draftText,
+            prompt: Text(placeholder).foregroundStyle(theme.textSecondary.color),
+            axis: .vertical
+        )
+        #else
+        TextField(placeholder, text: $draftText, axis: .vertical)
+        #endif
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Rectangle()
                 .fill(theme.border.color)
                 .frame(height: 0.5)
             HStack(alignment: .bottom, spacing: BrevSpacing.sm) {
-                TextField(
-                    String(localized: "Reply to \(recipientName)…", bundle: .module),
-                    text: $draftText,
-                    axis: .vertical
-                )
-                .lineLimit(1 ... 5)
-                .textFieldStyle(.plain)
-                .padding(.horizontal, BrevSpacing.sm)
-                .padding(.vertical, BrevSpacing.xs)
-                .background(
-                    RoundedRectangle(cornerRadius: BrevRadius.lg, style: .continuous)
-                        .fill(theme.bgSecondary.color)
-                )
-                .overlay {
-                    RoundedRectangle(cornerRadius: BrevRadius.lg, style: .continuous)
-                        .stroke(theme.border.color, lineWidth: 0.5)
-                }
-                .disabled(isDisabled || isSending)
+                quickReplyField
+                    .lineLimit(1 ... 5)
+                    .textFieldStyle(.plain)
+                #if os(iOS)
+                    // Return sends, as the keyboard's label says; longer replies
+                    // go through "Open in Composer".
+                    .submitLabel(.send)
+                    .onSubmit(beginSend)
+                #endif
+                    .padding(.horizontal, BrevSpacing.sm)
+                    .padding(.vertical, BrevSpacing.xs)
+                    .background(
+                        RoundedRectangle(cornerRadius: BrevRadius.lg, style: .continuous)
+                            .fill(theme.bgSecondary.color)
+                    )
+                    .overlay {
+                        RoundedRectangle(cornerRadius: BrevRadius.lg, style: .continuous)
+                            .stroke(theme.border.color, lineWidth: 0.5)
+                    }
+                    .disabled(isDisabled || isSending)
                 #if os(macOS)
                     .focusEffectDisabled()
                 #endif
@@ -79,7 +109,7 @@ struct ReaderQuickReplyBar: View {
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .foregroundStyle(theme.textSecondary.color)
-                        .frame(width: 32, height: 32)
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -89,9 +119,9 @@ struct ReaderQuickReplyBar: View {
 
                 Button(action: beginSend) {
                     Image(systemName: "arrow.up.circle.fill")
-                        .font(.system(size: 24))
+                        .font(.system(size: sendGlyphSize))
                         .foregroundStyle(theme.accent.color)
-                        .frame(width: 32, height: 32)
+                        .frame(width: Self.buttonSize, height: Self.buttonSize)
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -108,9 +138,13 @@ struct ReaderQuickReplyBar: View {
                 HStack(spacing: BrevSpacing.sm) {
                     Text(String(localized: "Sending in \(remainingSeconds)s…", bundle: .module))
                     Spacer()
-                    Button(String(localized: "Undo", bundle: .module), action: cancelSend)
-                        .buttonStyle(.plain)
-                        .foregroundStyle(theme.accent.color)
+                    Button(action: cancelSend) {
+                        Text(String(localized: "Undo", bundle: .module))
+                            .frame(minWidth: Self.buttonSize, minHeight: Self.buttonSize)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accent.color)
                 }
                 .brevFont(.caption)
                 .foregroundStyle(theme.textSecondary.color)
@@ -142,12 +176,36 @@ struct ReaderQuickReplyBar: View {
             }
         }
         .background(theme.bgPrimary.color)
-        .onDisappear {
-            if remainingSeconds != nil {
-                sendTask?.cancel()
+        #if os(iOS)
+            // Countdown, "Sent" and failure are otherwise silent for VoiceOver.
+            .onChange(of: status) { _, newStatus in
+                switch newStatus {
+                case .sent:
+                    announce(String(localized: "Sent", bundle: .module))
+                case .failed:
+                    announce(draftWasSaved
+                        ? String(localized: "Couldn't send. Your reply was saved as a draft.", bundle: .module)
+                        : String(localized: "Couldn't send reply.", bundle: .module))
+                case nil:
+                    break
+                }
             }
-        }
+            .onChange(of: remainingSeconds != nil) { _, isCountingDown in
+                if isCountingDown { announce(String(localized: "Sending", bundle: .module)) }
+            }
+        #endif
+            .onDisappear {
+                if remainingSeconds != nil {
+                    sendTask?.cancel()
+                }
+            }
     }
+
+    #if os(iOS)
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
+    }
+    #endif
 
     private func beginSend() {
         let text = draftText

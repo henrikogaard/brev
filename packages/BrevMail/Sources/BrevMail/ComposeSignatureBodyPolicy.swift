@@ -103,11 +103,8 @@ enum ComposeSignatureBodyPolicy {
 
     private static func replyQuoteStart(in body: String) -> String.Index? {
         var searchRange = body.startIndex ..< body.endIndex
-        while let range = body.range(of: "\n\nOn ", range: searchRange) {
-            let markerLineStart = body.index(range.lowerBound, offsetBy: 2)
-            let markerLineEnd = body[markerLineStart...].firstIndex(of: "\n") ?? body.endIndex
-            let markerLine = body[markerLineStart ..< markerLineEnd]
-            if markerLine.range(of: " wrote:") != nil {
+        while let range = body.range(of: "\n\n", range: searchRange) {
+            if isReplyQuotePrefix(body[range.lowerBound...]) {
                 return range.lowerBound
             }
             searchRange = range.upperBound ..< body.endIndex
@@ -115,11 +112,13 @@ enum ComposeSignatureBodyPolicy {
         return nil
     }
 
+    /// Whether `value` starts with a blank line followed by a reply
+    /// attribution line, in English or the current language.
     private static func isReplyQuotePrefix(_ value: Substring) -> Bool {
-        guard value.hasPrefix("\n\nOn ") else { return false }
+        guard value.hasPrefix("\n\n") else { return false }
         let markerLineStart = value.index(value.startIndex, offsetBy: 2)
         let markerLineEnd = value[markerLineStart...].firstIndex(of: "\n") ?? value.endIndex
-        return value[markerLineStart ..< markerLineEnd].range(of: " wrote:") != nil
+        return ComposeReplyFormatter.isAttributionLine(value[markerLineStart ..< markerLineEnd])
     }
 
     private static func isForwardedMessagePrefix(_ value: Substring) -> Bool {

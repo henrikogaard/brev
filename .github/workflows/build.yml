@@ -271,15 +271,20 @@ jobs:
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/emptyCompose()' \
             '-only-testing:BrevMailTests/ComposeViewSnapshotTests/replyCompose()' \
             '-only-testing:BrevMailTests/ComposeAccessibilityBoundsTests' \
+            '-only-testing:BrevMailTests/ComposeNativeSheetsSnapshotTests' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/noSelectionPlaceholder()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()' \
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerAccessibilityTextSize()' \
             '-only-testing:BrevMailTests/RelatedConversationFootnoteSnapshotTests' \
+            '-only-testing:BrevMailTests/CompactReaderSnapshotTests' \
+            '-only-testing:BrevMailTests/ImportProgressBannerSnapshotTests' \
+            '-only-testing:BrevMailTests/IMAPAccountSetupKeyboardTraitsTests' \
+            '-only-testing:BrevMailTests/PhoneMessageListSnapshotTests' \
             '-only-testing:BrevMailTests/SnoozePickerSnapshotTests' \
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
 
-      - name: Test compact settings rows on iOS Simulator
+      - name: Test compact settings rows and forms on iOS Simulator
         if: steps.snapshot-runtime.outputs.run == 'true'
         working-directory: packages/BrevSettings
         run: |
@@ -290,6 +295,7 @@ jobs:
             -testLanguage en \
             -testRegion en_US \
             '-only-testing:BrevSettingsTests/CompactSettingsRowSnapshotTests' \
+            '-only-testing:BrevSettingsTests/SettingsFormSnapshotTests' \
             test
 
       - name: Report deferred iOS snapshot comparison
