@@ -63,7 +63,9 @@ struct MessageListAppearLoadTests {
         try await list.waitForHeaders(["b"])
         try await list.settle()
         list.navigation.searchExecution = .serverOnly
-        try await list.settle()
+        // The re-run goes through the search debounce, so wait for it rather
+        // than for a fixed interval; a slow CI runner outlasts `settle()`.
+        try await list.waitForSearchCount(2)
         #expect(list.backend.searchCount == 2)
         #expect(list.backend.firstPageFetchCount == 0)
     }
@@ -118,6 +120,13 @@ private struct HostedList {
 
     func waitForHeaders(_ ids: [String]) async throws {
         while navigation.currentFolderHeaders.map(\.id) != ids {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+    }
+
+    /// Waits for the backend to have run `count` searches, for at most ten seconds.
+    func waitForSearchCount(_ count: Int) async throws {
+        for _ in 0 ..< 1000 where backend.searchCount < count {
             try await Task.sleep(for: .milliseconds(10))
         }
     }
