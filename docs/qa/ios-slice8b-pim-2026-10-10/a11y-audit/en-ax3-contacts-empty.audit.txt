@@ -1,0 +1,1 @@
+dynamicType | Dynamic Type font sizes are partially unsupported | Edit | User will not be able to change the font size of this SwiftUI.AccessibilityNode

@@ -5603,3 +5603,9 @@ buttons, and package-aware localization.
 - Verification: `SheetAppearanceTests` (resolution cases plus a source scan that fails on `.brevTheme(` in BrevMail sources) and a new sender-chip test; iOS snapshot suite `NativeUtilitySheetsSnapshotTests` (also in the CI iOS list); simulator run with a temporary XCUITest outside the repo.
 - Not verified at runtime: see the PR body and `docs/qa/ios-slice6-sheets-2026-10-10/README.md`.
 - Handoff: H3's other sites (add-account sheet, theme picker Done, PIM covers) are outside this slice's files.
+
+## 2026-10-10 — Claude Code — Slice 8b runtime QA evidence (PR #234)
+
+- Goal: capture simulator evidence for P1-P4. Added `docs/qa/ios-slice8b-pim-2026-10-10/` (empty states en light/dark, nb light, en AX3; Settings page from the empty state; a11y audit text; snapshot references).
+- Verification: temporary XCUITest outside the repo on own iPhone 17 Pro iOS 27 simulator (deleted after). No product code changed.
+- Not verified: screens behind a connected source (month, week, task editor, delete confirmation, Contacts editor): Add DAV Source dismisses the whole Settings sheet in mock mode (pre-existing), so only snapshot-test renderings exist.

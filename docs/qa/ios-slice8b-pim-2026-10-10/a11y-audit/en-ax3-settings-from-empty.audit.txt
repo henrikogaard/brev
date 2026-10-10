@@ -1,0 +1,1 @@
+textClipped | Text clipped | Add DAV Source… | Text of this SwiftUI.AccessibilityNode may be clipped at larger Dynamic Type sizes.
