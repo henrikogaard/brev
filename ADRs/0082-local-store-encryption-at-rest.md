@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-09-28
 - **Deciders:** Henrik
+- **Amended by:** ADR-0087 (§3 Layer A/B coverage: header rows move into the SQLite stores)
 - **Related:** ADR-0006, ADR-0030, ADR-0076
 
 ## Context
