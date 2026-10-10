@@ -800,6 +800,9 @@ provider's own synchronization settings apply.
   endpoints and credential references, and feature preferences are
   stored locally in UserDefaults or JSON files in Application Support.
   Credential references are not the credentials themselves.
+- **Recent searches (iOS):** the text of your last few searches is kept in
+  UserDefaults on the device to offer as suggestions. It is never sent
+  anywhere, and "Clear" in the search suggestions removes it.
 - **Mail and drafts:** local SQLite databases and files in Application
   Support hold synchronized message and folder identifiers, headers,
   bodies, raw source, attachments, search indexes and sync cursors.

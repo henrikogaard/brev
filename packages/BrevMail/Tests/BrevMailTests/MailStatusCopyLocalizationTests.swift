@@ -84,7 +84,18 @@ struct MailStatusCopyLocalizationTests {
         "Messages from your VIP senders will appear here.",
         // Calendar/Contacts/Tasks kept-cache banner
         "Showing cached data",
-        "Last updated %@"
+        "Last updated %@",
+        // iOS system search: scope bar, tokens and suggestions
+        "Current mailbox",
+        "All mailboxes",
+        "This month",
+        "Last month",
+        "Recent searches",
+        "Clear recent searches",
+        "Suggested filters",
+        "Senders",
+        "Search in From",
+        "Search in Subject"
     ]
 
     @Test("no catalog key keeps raw string-interpolation source")

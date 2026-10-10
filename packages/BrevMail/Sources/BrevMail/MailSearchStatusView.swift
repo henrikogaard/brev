@@ -94,9 +94,17 @@ struct MailSearchStatusView: View {
                 .accessibilityLabel(String(localized: "Retry search", bundle: .module))
             }
         }
+        #if os(iOS)
+        // A footnote under the results, not a band: no fill, no extra padding.
+        .padding(.horizontal, BrevSpacing.lg)
+        .padding(.vertical, BrevSpacing.xs)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
+        #else
         .padding(.horizontal, BrevSpacing.lg)
         .padding(.vertical, BrevSpacing.sm)
         .background(theme.bgSecondary.color)
         .accessibilityElement(children: .contain)
+        #endif
     }
 }

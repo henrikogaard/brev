@@ -190,6 +190,51 @@ struct PhoneMessageListSnapshotTests {
         )
     }
 
+    private func searchFootnote(failed: Bool) -> some View {
+        let source = MailSourceID(accountID: "work", mailboxID: "work")
+        var progress = MailSearchProgressState()
+        let request = progress.begin(sources: [source])
+        if failed {
+            progress.fail(source: source, request: request)
+        } else {
+            _ = progress.apply(MailSearchUpdate(headers: [], coverage: .cached), source: source, request: request)
+        }
+        return MailSearchStatusView(progress: progress, checksAttachments: false, retry: {})
+    }
+
+    @Test("search footnote says results are incomplete after a failed server search, without a band")
+    func searchFootnoteFailed() {
+        let theme = BrevTheme.brevMonoLight
+        let view = searchFootnote(failed: true)
+            .frame(width: 390, height: 90, alignment: .top)
+            .background(theme.bgPrimary.color)
+            .brevTheme(theme)
+        assertSnapshot(
+            of: host(view, width: 390, height: 90, dark: false),
+            as: .image(size: CGSize(width: 390, height: 90), traits: .init(displayScale: 2)),
+            named: "search-footnote-failed",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("search footnote while the server is still searching, dark and at accessibility 3")
+    func searchFootnoteServerStage() {
+        let theme = BrevTheme.brevMonoDark
+        let view = VStack(spacing: 0) {
+            searchFootnote(failed: false)
+            searchFootnote(failed: false).dynamicTypeSize(.accessibility3)
+        }
+        .frame(width: 390, height: 190, alignment: .top)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        assertSnapshot(
+            of: host(view, width: 390, height: 190, dark: true),
+            as: .image(size: CGSize(width: 390, height: 190), traits: .init(displayScale: 2)),
+            named: "search-footnote-server-stage-dark",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     private func host(_ view: some View, width: CGFloat, height: CGFloat, dark: Bool) -> UIViewController {
         let host = UIHostingController(rootView: view)
         host.overrideUserInterfaceStyle = dark ? .dark : .light
