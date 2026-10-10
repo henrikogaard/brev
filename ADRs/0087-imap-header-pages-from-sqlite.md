@@ -1,7 +1,8 @@
 # ADR-0087: Serve IMAP header pages from SQLite and retire whole-folder JSON
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-09
+- **Updated:** 2026-10-10 (accepted by Henrik)
 - **Deciders:** Henrik
 - **Amends:** ADR-0029 (header cache semantics), ADR-0030 (migration path),
   ADR-0082 §3 (Layer A/B coverage)

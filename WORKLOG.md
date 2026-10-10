@@ -5600,3 +5600,8 @@ buttons, and package-aware localization.
 
 - Codex review (P2): the consumer table kept "Existing `allIndexedHeaders` path" for attachment enumeration, which pages every header into memory and filters there (`IMAPSMTPBackend` cached-attachment enumeration), contradicting decision 3 ("no consumer scans a whole folder").
 - Change: that row now calls for a selective engine query for attachment-bearing or cached-body rows, with a short paragraph explaining why. Status is unchanged (Proposed); no code. Merged current main.
+
+## 2026-10-10 — Claude Code — ADR-0087 accepted
+
+- Henrik approved ADR-0087 on 2026-10-10. Status changed Proposed → Accepted in the ADR and the index; ADR-0029, ADR-0030 and ADR-0082 carry an "Amended by ADR-0087" line and the index rows say so.
+- No code in this PR. Implementation follows the ADR's rollout: measure first (cold open and SQLite page reads at 10k/50k), then the four stacked PRs; the cutover ships only if it meets the ADR's targets.

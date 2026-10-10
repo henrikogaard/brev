@@ -3,6 +3,7 @@
 - **Status:** Proposed
 - **Date:** 2026-06-07
 - **Deciders:** Henrik
+- **Amended by:** ADR-0087 (migration path: whole-folder JSON is retired, not kept as a fallback)
 
 ## Context
 
