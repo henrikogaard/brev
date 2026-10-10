@@ -33,7 +33,7 @@ public enum BrevConstants {
 
     /// Marketing version surfaced in Info.plist. Bumped per release
     /// (ADR-0009).
-    public static let marketingVersion = "0.2.6"
+    public static let marketingVersion = "0.2.7"
 
     /// Build number. Local build tooling bumps this per build; the
     /// in-repo value is a safe fallback for direct Xcode invocations.

@@ -4,6 +4,8 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+## [0.2.7] - 2026-10-10
+
 ### Added
 
 - Mac message list keyboard: Delete moves the selected message (or the checked messages) to Trash with the usual undo, Escape clears the checked messages, Home and End jump to the first and last message, and Page Up and Page Down move ten messages at a time. The Keyboard Shortcuts window lists them.

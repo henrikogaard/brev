@@ -5671,3 +5671,9 @@ buttons, and package-aware localization.
 - Change: on a compact-width iOS Settings stack, `PIMSourcesSettingsView` pushes `PIMSourceConnectSheet` (new `isPushed`: no own NavigationStack, no Cancel) with `navigationDestination` on the Add row, for both connect and reconnect. Regular width and macOS keep the sheet. `navigationDestination` on the whole group changed its layout, so it sits on the row.
 - Verification: iPhone 17 Pro iOS 27 simulator: button pushes the form, back returns to Calendar & Contacts, Settings stays open, layout matches before. `swift test` BrevSettings: 47 pre-existing macOS pixel-snapshot failures, identical on an untouched checkout; lint/format clean; BrevSettings builds for macOS and iOS.
 - Not verified: Reconnect Source push (needs a connected source), iPad regular width, submitting the form.
+
+## 2026-10-10 — Claude Code — Mac release 0.2.7 prep
+
+- Goal: ship the iOS UX pass slices merged since 0.2.6 (#222, #219, #224–#231, #233–#235 and others) as Mac `v0.2.7`. iOS TestFlight is launched by Henrik from another Mac (this Mac has no `.env.local`).
+- Changes: marketing version 0.2.6 → 0.2.7 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.7. Tag `v0.2.7` follows a green PR-event Build on this commit; main is fast-forwarded to it so the tag SHA has that Build.
+- Verification: see PR; release workflow run is recorded in the handoff.
