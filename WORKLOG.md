@@ -5602,3 +5602,18 @@ buttons, and package-aware localization.
 
 - Codex review (P2): `Model.rendered(_:)` stored a checked continuation that task cancellation could not resume, so a render that never arrived would hang the suite past `.timeLimit`. The wait now uses `withTaskCancellationHandler` and resumes the stored continuation on cancellation; the assertions after it then fail normally.
 - Verification: `swift test --filter WorkflowNavigationReconciliation` 15/15 green in a loop after merging current main; swiftlint strict and swiftformat clean on the file.
+
+## 2026-10-10 — Claude Code — message list loads once on appear
+
+- Goal: stop `MessageListView` fetching a folder's first page twice when it appears (found in PR #232). Branch `fix/message-list-single-appear-load` from `origin/main` @ afb668c5.
+- Changes: the search trigger on `MessageListView` is an `.onChange` of the same search text and filter key instead of a `.task(id:)`. The `.task(id:)` also ran on appear, where the `reloadKey` task already loads the folder (or runs the search when search text is set), so with empty search text `reload()` could run a second time once the first load had cleared `activeFolderLoadRequest`. A search text or filter change still calls `reloadForSearchChange()`; `searchWork` cancels the previous run and `onDisappear` cancels the last one, as before. The modifier sits in `body` because one more `.onChange` in the `workflowObservedContent` chain exceeds the type checker's budget.
+- Verification: new `MessageListAppearLoadTests` (hosted list, counting backend that answers on the main actor). Before the fix: 2 first-page fetches on appear and 3 after clearing a search (red). After: 1 and 2, and an appearance with search text runs 1 search and 0 folder fetches. swiftformat and swiftlint clean on the touched files; `xcodebuild -scheme BrevMail -destination 'generic/platform=iOS Simulator'` BUILD SUCCEEDED.
+- Pre-existing failures: full `swift test --package-path packages/BrevMail` fails 53 pixel-snapshot tests in 17 snapshot suites on this host (macOS 27.0.1). The same 53 fail with the source change reverted; no other test fails.
+- `UnifiedInboxListView` has one `.task(id: loadKey)` for folder and search loads, so it has no second appear load; unchanged.
+- Not changed: a filter-key change with empty search text still reloads the folder, as it did. On appear that needs `navigation.searchExecution` to differ from the backend default with no user selection, which `init` already rules out.
+
+## 2026-10-10 — Claude Code — PR #233 review follow-up
+
+- Codex review (P2): a folder switch resets search options in the `reloadKey` task (`reconcileSearchExecutionWithBackendCapabilities()`, scope and all-folders resets), which changed the observed search key and ran `reloadForSearchChange()`; with empty search text that fetched the folder's first page a second time.
+- Change: the search observer now watches `SearchChangeTrigger(text:filterKey:)` and asks `MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText:newSearchText:)`. Without search text before and after, an options-only change does not reload; entering, changing or clearing text, and option changes while searching, reload as before.
+- Verification: hosted test "a search option change with empty search text does not refetch the folder" failed before the change (2 fetches) and passes after; 3 new policy tests; `swift test --filter "MessageList|MailSearch|UnifiedInbox"` 271 tests green (snapshots skipped); iOS `BrevMail` build succeeds; swiftlint strict and swiftformat clean on touched files. Merged current main (#230 search rework) first.

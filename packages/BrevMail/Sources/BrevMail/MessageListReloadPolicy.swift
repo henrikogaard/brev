@@ -23,6 +23,15 @@ enum MessageListReloadPolicy {
         guard !query.isEmpty else { return .folder }
         return .search(query: query)
     }
+
+    /// Whether a change to the search text or to a search option (scope,
+    /// execution, all folders) needs a reload. Without search text the folder
+    /// page does not depend on any search option, so an options-only change —
+    /// such as the execution reset a folder switch performs — must not fetch
+    /// the page the folder load already fetched.
+    static func searchChangeNeedsReload(oldSearchText: String, newSearchText: String) -> Bool {
+        operation(forSearchText: oldSearchText) != .folder || operation(forSearchText: newSearchText) != .folder
+    }
 }
 
 enum MessageListWorkResumePolicy {
