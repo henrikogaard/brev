@@ -134,7 +134,7 @@ struct ThreadMessageCard: View {
                 }
                 .buttonStyle(.plain)
                 .modifier(ThreadCardHeaderAffordance(isExpanded: isExpanded))
-                .accessibilityLabel(header.from.displayName)
+                .accessibilityLabel(headerAccessibilityLabel)
                 .accessibilityValue(isExpanded ? String(localized: "Expanded message", bundle: .module) : String(
                     localized: "Collapsed message",
                     bundle: .module
@@ -223,6 +223,17 @@ struct ThreadMessageCard: View {
         }
     }
 
+    /// One VoiceOver phrase for the header button: sender, full date, and the
+    /// snippet while the card is collapsed.
+    private var headerAccessibilityLabel: String {
+        let sender = header.from.displayName
+        let date = dateTextOverride
+            ?? header.date.formatted(date: .abbreviated, time: .shortened)
+        let summary = MessageReaderHeaderPresentation.accessibilityLabel(senderName: sender, fullDate: date)
+        guard !isExpanded, !header.snippet.isEmpty else { return summary }
+        return "\(summary). \(header.snippet)"
+    }
+
     // MARK: - Subviews
 
     @ViewBuilder
@@ -260,9 +271,8 @@ struct ThreadMessageCard: View {
                     phoneDateText
                 }
                 if isExpanded {
-                    Text(verbatim: header.from.email)
-                        .font(.subheadline)
-                        .foregroundStyle(theme.textSecondary.color)
+                    // The single-message reader's phone header shows "to …",
+                    // never the raw address, which wrapped over two lines here.
                     recipientSummary
                 } else {
                     Text(header.snippet)

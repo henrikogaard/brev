@@ -38,6 +38,13 @@ All notable changes to Brev are documented here.
 - Reply attribution lines are localized and use your local time ("Den 9. okt. 2026 kl. 10:13 skrev …:") instead of English text in UTC. Signature placement still recognises English lines in older drafts.
 - iOS recipient chips read as one VoiceOver element with Remove as an action instead of two stops.
 - iOS compose no longer logs "Modifying state during view update" while the body editor is created or its text is replaced.
+- iOS: opening a message on iPhone now pushes the reader with the system animation, and swiping from the left edge goes back to the list (the Back button names the mailbox). The list behind it is no longer visible to VoiceOver.
+- iOS: the reader has the Apple Mail action bar. Archive (or Delete when the account has no Archive folder), Move, a Reply menu (Reply, Reply All, Forward) and New Message sit along the bottom; previous and next message chevrons sit in the navigation bar. The duplicate bottom ••• menu is gone: the one ••• menu in the navigation bar now holds the message actions, related mail, Original and "Ask AI", for single messages and conversations alike. The conversation header no longer shows the mailbox address, and expanded conversation cards show "to …" like the single-message header.
+
+### Fixed
+
+- iOS: archiving, deleting or moving a message from the reader now shows the "Archived/Deleted/Moved" toast with Undo above the bottom bar and announces it to VoiceOver, then shows the next message with a slide, or goes back to the list when none is left. Undo and Dismiss on toasts are 44 pt targets on iPhone.
+- iOS: the reader header's sender row and "to …" row are 44 pt tall, and tapping the sender opens their contact card. The quick-reply bar has 44 pt buttons, a Send return key, a themed placeholder, a Dynamic Type send glyph, and VoiceOver announcements for sending, sent and failure. Collapsed conversation cards read sender, date and snippet as one element, the conversation subject is a heading, and the thread animations honour Reduce Motion.
 
 - The attachment count above a message's attachments reads "1 attachment" or "2 attachments" (and "1 vedlegg" in Norwegian) using proper plural rules.
 

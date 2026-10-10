@@ -42,6 +42,11 @@ public struct BrevToast: View {
     /// content so it reads as a floating pill instead of a full-width bar.
     private static let maxMessageWidth: CGFloat = 320
 
+    #if os(iOS)
+    /// Apple's minimum touch target; the Undo and Dismiss buttons keep it.
+    private static let minimumTouchTarget: CGFloat = 44
+    #endif
+
     public var body: some View {
         HStack(spacing: BrevSpacing.sm) {
             Image(systemName: tone.symbolName)
@@ -57,9 +62,15 @@ public struct BrevToast: View {
 
             if let actionTitle,
                let onAction {
-                Button(actionTitle, action: onAction)
-                    .buttonStyle(.borderless)
-                    .foregroundStyle(theme.accent.color)
+                Button(action: onAction) {
+                    Text(actionTitle)
+                    #if os(iOS)
+                        .frame(minWidth: Self.minimumTouchTarget, minHeight: Self.minimumTouchTarget)
+                        .contentShape(Rectangle())
+                    #endif
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(theme.accent.color)
             }
 
             if let onDismiss {
@@ -67,6 +78,10 @@ public struct BrevToast: View {
                     Image(systemName: "xmark")
                         .imageScale(.small)
                         .accessibilityHidden(true)
+                    #if os(iOS)
+                        .frame(minWidth: Self.minimumTouchTarget, minHeight: Self.minimumTouchTarget)
+                        .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.borderless)
                 .foregroundStyle(theme.textTertiary.color)
@@ -74,15 +89,32 @@ public struct BrevToast: View {
             }
         }
         .padding(.horizontal, BrevSpacing.md)
-        .padding(.vertical, BrevSpacing.sm)
-        .background(theme.bgTertiary.color)
-        .overlay {
-            RoundedRectangle(cornerRadius: BrevRadius.lg)
-                .stroke(theme.border.color, lineWidth: 1)
-        }
-        .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
-        .accessibilityElement(children: .contain)
+        #if os(iOS)
+            // The 44 pt buttons already provide the vertical breathing room.
+            .padding(.vertical, BrevSpacing.xxs)
+        #else
+            .padding(.vertical, BrevSpacing.sm)
+        #endif
+            .background(theme.bgTertiary.color)
+            .overlay {
+                RoundedRectangle(cornerRadius: BrevRadius.lg)
+                    .stroke(theme.border.color, lineWidth: 1)
+            }
+            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.lg))
+            .accessibilityElement(children: .contain)
+        #if os(iOS)
+            // Nothing else tells a VoiceOver user that the action they just took
+            // (for example an archive from the reader) went through.
+            .onAppear { announce(message) }
+            .onChange(of: message) { _, newMessage in announce(newMessage) }
+        #endif
     }
+
+    #if os(iOS)
+    private func announce(_ text: String) {
+        AccessibilityNotification.Announcement(text).post()
+    }
+    #endif
 }
 
 /// Alias for platforms and call sites that use snackbar terminology.

@@ -37,8 +37,10 @@ public struct ThreadConversationView: View {
     @Environment(\.readerCommandAction) private var readerCommandAction
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     #if os(iOS)
     @Environment(\.relatedConversationController) private var relatedConversation
+    @Environment(\.readerAskAIAction) private var askAIAction
     @Environment(\.openWindow) private var openWindow
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
@@ -188,13 +190,24 @@ public struct ThreadConversationView: View {
                             .padding(.horizontal, BrevSpacing.md)
                             .padding(.top, BrevSpacing.lg)
                             .padding(.bottom, BrevSpacing.sm)
+                            .accessibilityAddTraits(.isHeader)
                         #if os(macOS)
                             .dynamicTypeSize(denseChromeDynamicTypeRange)
                         #endif
                     }
 
+                    #if os(iOS)
+                    // The phone shows the message count only: the mailbox
+                    // address is noise, and the conversation controls live in
+                    // the navigation bar's single ••• menu.
+                    participantSummary
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, BrevSpacing.md)
+                        .padding(.bottom, BrevSpacing.sm)
+                    #else
                     conversationMetadataRow
                         .dynamicTypeSize(denseChromeDynamicTypeRange)
+                    #endif
 
                     #if os(iOS)
                     RelatedConversationFootnote(horizontalPadding: BrevSpacing.md, bottomPadding: BrevSpacing.sm)
@@ -224,7 +237,7 @@ public struct ThreadConversationView: View {
                                 renderPool: renderPool,
                                 inviteReconciler: inviteReconciler
                             ) {
-                                withAnimation(.easeInOut(duration: 0.2)) {
+                                animate(.easeInOut(duration: 0.2)) {
                                     if expandedMessageIDs.contains(header.id) {
                                         expandedMessageIDs.remove(header.id)
                                     } else {
@@ -264,7 +277,7 @@ public struct ThreadConversationView: View {
                     }
                     if shouldAutoScrollToExpandedMessage, let defaultID {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation {
+                            animate {
                                 proxy.scrollTo(defaultID, anchor: .top)
                             }
                         }
@@ -280,12 +293,12 @@ public struct ThreadConversationView: View {
                         selectedID: navigation.selectedMessageID,
                         in: visibleHeaders
                     )
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    animate(.easeInOut(duration: 0.15)) {
                         expandedMessageIDs = defaultID.map { [$0] } ?? []
                     }
                     if shouldAutoScrollToExpandedMessage, let defaultID {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            withAnimation { proxy.scrollTo(defaultID, anchor: .top) }
+                            animate { proxy.scrollTo(defaultID, anchor: .top) }
                         }
                     }
                 }
@@ -297,7 +310,7 @@ public struct ThreadConversationView: View {
                         selectedID: navigation.selectedMessageID,
                         in: visibleHeaders
                     )
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    animate(.easeInOut(duration: 0.15)) {
                         expandedMessageIDs = defaultID.map { [$0] } ?? []
                     }
                 }
@@ -305,7 +318,7 @@ public struct ThreadConversationView: View {
                     guard let selectedID,
                           visibleHeaders.contains(where: { $0.id == selectedID })
                     else { return }
-                    withAnimation(.easeInOut(duration: 0.15)) {
+                    animate(.easeInOut(duration: 0.15)) {
                         expandedMessageIDs.insert(selectedID)
                         if shouldAutoScrollToExpandedMessage {
                             proxy.scrollTo(selectedID, anchor: .top)
@@ -313,6 +326,15 @@ public struct ThreadConversationView: View {
                     }
                 }
                 .focusedSceneValue(\.mailPrintExportActions, printExportActions)
+            #if os(iOS)
+                // The thread's one ••• menu lives in the navigation bar next to
+                // the previous/next chevrons, not in a row of its own.
+                .toolbar {
+                    ToolbarItem(placement: .primaryAction) {
+                        threadActionsMenu
+                    }
+                }
+            #endif
                 .alert(String(localized: "Print / Export Failed", bundle: .module), isPresented: printExportErrorBinding) {
                     Button(String(localized: "OK", bundle: .module), role: .cancel) {
                         printExportErrorMessage = nil
@@ -348,6 +370,14 @@ public struct ThreadConversationView: View {
             print: { printThread() },
             exportPDF: { exportThreadPDF() }
         )
+    }
+
+    /// Runs `body` animated unless Reduce Motion is on.
+    private func animate<Result>(
+        _ animation: Animation? = .default,
+        _ body: () throws -> Result
+    ) rethrows -> Result {
+        try withAnimation(reduceMotion ? nil : animation, body)
     }
 
     // MARK: - Per-card context menu
@@ -778,7 +808,7 @@ public struct ThreadConversationView: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                animate(.easeInOut(duration: 0.2)) {
                     showUnreadOnly.toggle()
                 }
             } label: {
@@ -791,7 +821,7 @@ public struct ThreadConversationView: View {
             }
 
             Button {
-                withAnimation(.easeInOut(duration: 0.2)) {
+                animate(.easeInOut(duration: 0.2)) {
                     if areAllExpanded {
                         expandedMessageIDs.removeAll()
                     } else {
@@ -812,16 +842,27 @@ public struct ThreadConversationView: View {
             Divider()
             threadPrintExportMenuItems
             #endif
+            #if os(iOS)
+            if let askAIAction {
+                Divider()
+                ReaderAskAIMenuButton(action: askAIAction)
+            }
+            #endif
         } label: {
+            #if os(iOS)
+            Label(String(localized: "More message actions", bundle: .module), systemImage: "ellipsis.circle")
+            #else
             Label(String(localized: "Conversation controls", bundle: .module), systemImage: "ellipsis.circle")
                 .labelStyle(.iconOnly)
                 .foregroundStyle(theme.textSecondary.color)
-            #if os(iOS)
-                .frame(width: 44, height: 44)
             #endif
         }
+        #if os(macOS)
         .menuStyle(.borderlessButton)
         .accessibilityLabel(String(localized: "Conversation controls", bundle: .module))
+        #else
+        .accessibilityLabel(String(localized: "More message actions", bundle: .module))
+        #endif
     }
 
     #if os(iOS)

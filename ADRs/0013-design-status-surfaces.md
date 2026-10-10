@@ -12,6 +12,11 @@
   Swift-package call sites resolve their labels against the owning package's
   String Catalog instead of the main bundle. Mirrors `BrevButton` and follows
   ADR-0058; app-target call sites keep the default lookup path.
+  2026-10-09 — On iOS, `BrevToast` keeps its Undo and Dismiss buttons at
+  Apple's 44 pt minimum touch target and posts a VoiceOver announcement of
+  its message when it appears or changes (the pushed reader hosts the toast
+  above its bottom bar, where nothing else tells a VoiceOver user an
+  archive went through). No public API change; macOS rendering unchanged.
 
 ## Context
 
