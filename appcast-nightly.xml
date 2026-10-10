@@ -1,5 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.5-nightly.20261009</title><pubDate>Fri, 09 Oct 2026 03:18:57 GMT</pubDate><sparkle:version>2026100903</sparkle:version><sparkle:shortVersionString>0.2.5-nightly.20261009</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at faafd40e9543618cadb3d7e6a8eccbd6b15326fe.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.6-nightly.20261010</title><pubDate>Sat, 10 Oct 2026 03:09:35 GMT</pubDate><sparkle:version>2026101002</sparkle:version><sparkle:shortVersionString>0.2.6-nightly.20261010</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at f4555690bb0ba56240f211ce6424439d02b77fd3.
+
+- fix(ios): push the reader and give it an iOS Mail action bar (#224) (f455569)
+- fix(ios): compose cancel, focus, attachments and native compose sheets (#225) (dc7fe81)
+- feat(macos): list keyboard keys, thread card hover, plural attachment count (#220) (210d712)
+- fix(a11y): theme contrast contract, scalable icon buttons, plurals and extension strings (#223) (bf89626)
+- fix(ios): Settings panes as Forms, flatter navigation and iOS-only copy (#226) (eeb6e3d)
+- docs(qa): iOS UI/UX and accessibility audit 2026-10-09 (#215) (c65dbe9)
+- style: apply SwiftFormat to #212 test files (#221) (e7d2e4b)
+- docs(adr): note the avatar display cache in ADR-0003; fix #212 test formatting (#213) (4682cd5)
+- feat(appearance): apply the reader font section to the reader pane (ADR-0086) (#218) (f7c5d62)
+- docs(worklog): blank reader body after launch is an occluded-window artifact (#214) (9461a8c)
+- chore(release): fold #211 and #212 into 0.2.6 (a69e297)
+- perf(macos): trim list, selection and avatar hot paths (#212) (4265663)
+- fix(release): build signed releases with the macOS 26 SDK (#211) (75c8ed4)
+- chore(release): cut 0.2.6 (78f33e2)
+- fix(ios): native snooze picker sheet (#210) (853f9d2)
+- fix(ios): theme and tidy the add-account sheet (#208) (e6c8928)
+- feat(appearance): per-section font family (ADR-0086) (#207) (23c3c85)
+- fix(macos): drop theme wash from toolbar scroll edge band (#206) (e747508)
+- feat(ios): Apple Mail–style reader header (#209) (5eb968d)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261010.dmg" length="27707760" type="application/octet-stream" sparkle:edSignature="ZW4ICTVAI86GMk/iupmAgP/u/aOyDpwW1P4iL7eqr7to2oKosXucFBxBrFEoK2uHxIxOnpSwh8yyppM8q30sAA==" /></item><item><title>0.2.5-nightly.20261009</title><pubDate>Fri, 09 Oct 2026 03:18:57 GMT</pubDate><sparkle:version>2026100903</sparkle:version><sparkle:shortVersionString>0.2.5-nightly.20261009</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at faafd40e9543618cadb3d7e6a8eccbd6b15326fe.
 
 - chore(release): cut 0.2.5 (faafd40)
 - docs(qa): PIM stub-DAV evidence 2.7/2.8/4.3 + fix iOS PIM theme (#187) (3190ab7)
@@ -8,7 +28,7 @@
 - fix(imap): accept UID metadata after body literals (#188) (a824383)
 - chore(release): cut 0.2.4 (4d89d06)
 - fix(macos): blur mail content under toolbar, compact mailbox title (#202) (233f335)
-- fix(release): package clean DMGs with Applications shortcut (eb46aa1)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261009.dmg" length="31467709" type="application/octet-stream" sparkle:edSignature="o1nHEUXLge3TfRi26zI+YBxMIvjZxst1+lpHlb18hVOLcVXhtNTWOztcUqg3pDottGX1w931E+egTcee0/JDDg==" /></item><item><title>0.2.2-nightly.20261008</title><pubDate>Thu, 08 Oct 2026 03:16:16 GMT</pubDate><sparkle:version>2026100803</sparkle:version><sparkle:shortVersionString>0.2.2-nightly.20261008</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at f7763af03a9a06c1eeaefa017dc7d3a1759f1f89.
+- fix(release): package clean DMGs with Applications shortcut (eb46aa1)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261009.dmg" length="31467709" type="application/octet-stream" sparkle:edSignature="o1nHEUXLge3TfRi26zI+YBxMIvjZxst1+lpHlb18hVOLcVXhtNTWOztcUqg3pDottGX1w931E+egTcee0/JDDg==" /></item><item><title>0.2.2-nightly.20261008</title><pubDate>Thu, 08 Oct 2026 03:16:16 GMT</pubDate><sparkle:version>2026100803</sparkle:version><sparkle:shortVersionString>0.2.2-nightly.20261008</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at f7763af03a9a06c1eeaefa017dc7d3a1759f1f89.
 
 - chore(release): cut 0.2.2 (f7763af)
 - fix(release): grant Sparkle installer mach-lookup in sandboxed builds (#200) (c0b8689)
