@@ -32,7 +32,8 @@ enum MailboxMailContextScopeWiring {
         mailboxChatScope: MailboxChatScope,
         sourceID: MailSourceID?,
         focusedFolder: Folder?,
-        actionSourceScope: MailboxActionAgentSourceScope
+        actionSourceScope: MailboxActionAgentSourceScope,
+        senderName: String? = nil
     ) -> MailboxChatScopeContext {
         MailboxChatScopeContext(
             senderEmail: senderEmail(from: mailboxChatScope),
@@ -41,7 +42,8 @@ enum MailboxMailContextScopeWiring {
                 sourceID: sourceID,
                 actionSourceScope: actionSourceScope
             ),
-            sourceID: sourceID
+            sourceID: sourceID,
+            senderName: senderName
         )
     }
 

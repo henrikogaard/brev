@@ -81,24 +81,66 @@ struct MessageRawSourceSheet: View {
     }
 
     var body: some View {
+        sheetBody
+            .presentationDetents([.large])
+            .task {
+                do {
+                    let raw = try await loadSource()
+                    loadState = .loaded(MessageRawSourcePresentation.body(from: raw, mode: mode))
+                } catch {
+                    loadState = .failed(MessageRawSourceErrorText.message(for: error))
+                }
+            }
+    }
+
+    @ViewBuilder
+    private var sheetBody: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard navigation bar with the mode as its title and Done.
+    private var nativeBody: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 0) {
+                Text(header.subject.isEmpty ? String(localized: "(No subject)", bundle: .module) : header.subject)
+                    .brevFont(.footnote)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .lineLimit(2)
+                    .padding(.horizontal, BrevSpacing.md)
+                    .padding(.vertical, BrevSpacing.sm)
+                BrevDivider()
+                content
+            }
+            .navigationTitle(Text(LocalizedStringKey(mode.title), bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Done", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             titleBar
             BrevDivider()
             content
         }
-        #if os(macOS)
         .frame(minWidth: 420, idealWidth: 560, minHeight: 360, idealHeight: 520)
-        #endif
         .background(theme.bgPrimary.color)
-        .presentationDetents([.large])
-        .task {
-            do {
-                let raw = try await loadSource()
-                loadState = .loaded(MessageRawSourcePresentation.body(from: raw, mode: mode))
-            } catch {
-                loadState = .failed(MessageRawSourceErrorText.message(for: error))
-            }
-        }
     }
 
     private var titleBar: some View {
@@ -127,6 +169,8 @@ struct MessageRawSourceSheet: View {
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
     }
+
+    #endif
 
     @ViewBuilder
     private var content: some View {
