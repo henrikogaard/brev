@@ -3126,6 +3126,17 @@
         }
       }
     },
+    "Choose a folder for the attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en mappe for vedleggene"
+          }
+        }
+      }
+    },
     "Choose a folder from the sidebar.": {
       "extractionState": "manual",
       "localizations": {
@@ -5119,6 +5130,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "Endre rekkefølge på eller skjul favorittene dine."
+          }
+        }
+      }
+    },
+    "Save All…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre alle…"
+          }
+        }
+      }
+    },
+    "Save all attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre alle vedlegg"
+          }
+        }
+      }
+    },
+    "Saved %lld attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret %lld vedlegg"
+          }
+        }
+      }
+    },
+    "Saved %lld of %lld attachments": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret %lld av %lld vedlegg"
           }
         }
       }

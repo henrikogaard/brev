@@ -24,6 +24,8 @@ All notable changes to Brev are documented here.
 
 - iOS: the compose paperclip is now a menu like iOS Mail's. It offers Photo Library, Take Photo (only on devices with a camera), Attach File and Scan Documents (only where the document scanner is supported; a scan is attached as one PDF). Photos, camera pictures and scans are processed on the device and nothing is uploaded until you send the message. Brev asks for camera access only when you pick Take Photo or Scan Documents.
 
+- Mac reader attachments behave like Apple Mail: drag a row to Finder, a compose window or another app to copy the file with its original name, double-click a row to open it in its default app, and see the filename and size when you hover. Messages with two or more attachments get a "Save All…" button that saves them into a folder you choose without overwriting existing files.
+
 ### Fixed
 
 - The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
