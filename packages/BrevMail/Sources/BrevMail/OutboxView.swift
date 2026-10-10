@@ -55,20 +55,23 @@ public struct OutboxView: View {
                 .navigationBarTitleDisplayMode(.inline)
             #endif
                 .toolbar {
-                    ToolbarItem(placement: .automatic) {
-                        Button(String(localized: "Refresh", bundle: .module)) { Task { await loadMutations() } }
-                            .disabled(isRetrying)
-                    }
                     #if os(iOS)
-                    ToolbarItem(placement: .cancellationAction) {
-                        Button(String(localized: "Close", bundle: .module)) { onClose?() }
+                    // Done closes the sheet; retry sits in the bottom bar and
+                    // the list refreshes itself, so the nav bar carries one
+                    // button.
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button { onClose?() } label: { Text("Done", bundle: .module) }
                     }
                     if !mutations.isEmpty {
-                        ToolbarItem(placement: .primaryAction) {
+                        ToolbarItem(placement: .bottomBar) {
                             retryButton
                         }
                     }
                     #else
+                    ToolbarItem(placement: .automatic) {
+                        Button(String(localized: "Refresh", bundle: .module)) { Task { await loadMutations() } }
+                            .disabled(isRetrying)
+                    }
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "Close", bundle: .module)) { onClose?() }
                     }
@@ -92,7 +95,7 @@ public struct OutboxView: View {
                 changingSchedule = nil
                 Task { await changeSchedule(entry, to: date ?? Date()) }
             }
-            .brevTheme(theme)
+            .brevSheetAppearance(theme)
         }
         .confirmationDialog(String(localized: "Review scheduled message", bundle: .module), isPresented: Binding(
             get: { reviewAction != nil }, set: { if !$0 { reviewAction = nil } }
@@ -133,12 +136,14 @@ public struct OutboxView: View {
             Section {
                 Text(backend.account.emailAddress).brevFont(.caption).foregroundStyle(theme.textSecondary.color)
             }
+            .brevSheetRow()
             if let retryError {
                 Section {
                     Text(retryError)
                         .brevFont(.footnote)
                         .foregroundStyle(theme.danger.color)
                 }
+                .brevSheetRow()
             }
             if !scheduled.isEmpty {
                 Section(String(localized: "Scheduled", bundle: .module)) {
@@ -160,6 +165,7 @@ public struct OutboxView: View {
                                            })
                     }
                 }
+                .brevSheetRow()
             }
             ForEach(mutations) { mutation in
                 mutationRow(mutation)
@@ -170,6 +176,7 @@ public struct OutboxView: View {
                             Label(String(localized: "Discard", bundle: .module), systemImage: "trash")
                         }
                     }
+                    .brevSheetRow()
             }
             if !mutations.isEmpty { Section {
                 Button(role: .destructive) {
@@ -182,8 +189,13 @@ public struct OutboxView: View {
                         Spacer()
                     }
                 }
+                .brevSheetRow()
             } }
         }
+        #if os(iOS)
+        .listStyle(.insetGrouped)
+        #endif
+        .refreshable { await loadMutations() }
     }
 
     private func mutationRow(_ mutation: PendingMutation) -> some View {

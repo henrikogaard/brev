@@ -113,10 +113,13 @@ public struct MessageListView: View {
     @State private var isBulkPermanentDeletePresented = false
     @State private var pendingBlockSenderHeader: MessageHeader?
     @State private var pendingSnoozeHeaders: [MessageHeader] = []
-    @State private var searchScope: SearchScope = .all
-    /// When true, search spans every folder in the mailbox instead of just
-    /// the folder being viewed. Resets to false on folder/account switch.
-    @State private var searchAllFolders = false
+    /// The field scope picked in the macOS search options bar. On iOS the scope comes
+    /// from a field token in the search field (see `searchScope`).
+    @State private var searchScopeSelection: SearchScope = .all
+    #if os(iOS)
+    /// The folder the mailbox scope was last reset for.
+    @State private var searchScopeFolderIdentity: String?
+    #endif
     /// Progressive disclosure for search execution / scope chips. Expands
     /// automatically when the user leaves the default search options.
     @State private var isSearchOptionsExpanded = false
@@ -269,8 +272,17 @@ public struct MessageListView: View {
                 if !navigation.bulkSelection.isEmpty {
                     navigation.endSelection()
                 }
-                searchScope = .all
+                searchScopeSelection = .all
+                #if os(iOS)
+                // The scope bar stays visible while searching, so a pull to refresh
+                // must not flip "All mailboxes" back; only a real folder switch does.
+                if searchScopeFolderIdentity != folderIdentityKey {
+                    searchScopeFolderIdentity = folderIdentityKey
+                    searchAllFolders = false
+                }
+                #else
                 searchAllFolders = false
+                #endif
                 isSearchOptionsExpanded = false
                 reconcileSearchExecutionWithBackendCapabilities()
                 refreshPinnedMessageIDSet()
@@ -393,7 +405,7 @@ public struct MessageListView: View {
                             pendingSnoozeHeaders = []
                         }
                     )
-                    .brevTheme(theme)
+                    .brevSheetAppearance(theme)
                 }
             }
     }
@@ -420,6 +432,10 @@ public struct MessageListView: View {
                     }
                 )
             }
+            // iOS keeps search chrome in the system search field (scope bar, tokens)
+            // and reports status in a footnote under the results, so no bands stack
+            // above the list (audit Q2).
+            #if os(macOS)
             if !trimmedSearchText.isEmpty {
                 CollapsibleOptionsStrip(
                     isExpanded: $isSearchOptionsExpanded,
@@ -440,6 +456,7 @@ public struct MessageListView: View {
                     Task { await reloadForSearchChange() }
                 }
             }
+            #endif
             Group {
                 if folder != nil {
                     listContent(presentation: presentation)
@@ -468,6 +485,9 @@ public struct MessageListView: View {
                     #endif
                 }
             }
+            #if os(iOS)
+            .safeAreaInset(edge: .bottom, spacing: 0) { searchStatusFootnote }
+            #endif
             #if !os(iOS)
             if let footer = folderStatsFooterPresentation(presentation: presentation) {
                 MessageListFolderStatsFooter(presentation: footer)
@@ -1755,6 +1775,31 @@ public struct MessageListView: View {
         }
     }
 
+    // MARK: - Search status footnote
+
+    #if os(iOS)
+    /// The single status line under the results. Present only while the search
+    /// has something worth saying (see `MailSearchFooterPolicy`).
+    @ViewBuilder
+    private var searchStatusFootnote: some View {
+        let checksAttachments = MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
+            queries: [activeAttachmentSearchQuery].compactMap { $0 },
+            isLoading: searchProgress.isSearching
+        )
+        if !trimmedSearchText.isEmpty,
+           searchProgress.request != nil,
+           MailSearchFooterPolicy.shouldShow(
+               progress: searchProgress,
+               execution: navigation.searchExecution,
+               checksAttachments: checksAttachments
+           ) {
+            MailSearchStatusView(progress: searchProgress, checksAttachments: checksAttachments) {
+                Task { await reloadForSearchChange() }
+            }
+        }
+    }
+    #endif
+
     // MARK: - Search scope chip bar
 
     private var hasNonDefaultSearchOptions: Bool {
@@ -1795,8 +1840,8 @@ public struct MessageListView: View {
                 availableExecutions: MessageListSearchExecutionPolicy.availableExecutions(
                     capabilities: backend.capabilities
                 ),
-                folderScope: $searchAllFolders,
-                fieldScope: $searchScope
+                folderScope: $navigation.searchAllMailboxes,
+                fieldScope: $searchScopeSelection
             )
             if !naturalLanguageSearchChips.isEmpty {
                 ScrollView(.horizontal) {
@@ -1956,6 +2001,19 @@ public struct MessageListView: View {
 
     private var trimmedSearchText: String {
         navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The field scope applied to the typed text: a field token wins over the macOS options bar.
+    private var searchScope: SearchScope {
+        navigation.searchScope == .all ? searchScopeSelection : navigation.searchScope
+    }
+
+    /// When true, search spans every folder in the mailbox instead of just
+    /// the folder being viewed. Owned by the navigation state so the iOS search
+    /// field's scope bar can set it; resets to false on folder/account switch.
+    private var searchAllFolders: Bool {
+        get { navigation.searchAllMailboxes }
+        nonmutating set { navigation.searchAllMailboxes = newValue }
     }
 
     /// Composite key for the consolidated search-filter `.task`. Changes to

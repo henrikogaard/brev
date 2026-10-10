@@ -63,10 +63,19 @@ enum MailboxChatEmptyTranscriptPolicy {
     /// on. Restating the invitation, as it did, put one sentence on screen
     /// twice — and the disabled reason, which it said before that, belongs in
     /// the composer callout beside the control it disables.
-    static let message = String(
-        localized: "Answers use only the messages cached on this Mac.",
-        bundle: .module
-    )
+    static var message: String {
+        #if os(iOS)
+        String(
+            localized: "Answers use only the messages cached on this device.",
+            bundle: .module
+        )
+        #else
+        String(
+            localized: "Answers use only the messages cached on this Mac.",
+            bundle: .module
+        )
+        #endif
+    }
 }
 
 enum MailboxChatSendOutcome: Equatable, Sendable {
@@ -177,6 +186,8 @@ struct MailboxChatPanel: View {
 
     let scope: MailboxChatScope
     let sourceID: MailSourceID?
+    /// Display name of the sender in `scope`, shown on the sender chip.
+    let senderDisplayName: String?
     let aiBackend: (any AIBackend)?
     let actionFolders: [Folder]
     let focusedFolder: Folder?
@@ -198,6 +209,7 @@ struct MailboxChatPanel: View {
     init(
         scope: MailboxChatScope,
         sourceID: MailSourceID? = nil,
+        senderDisplayName: String? = nil,
         aiBackend: (any AIBackend)?,
         actionFolders: [Folder] = [],
         focusedFolder: Folder? = nil,
@@ -213,13 +225,15 @@ struct MailboxChatPanel: View {
             mailboxChatScope: scope,
             sourceID: sourceID,
             focusedFolder: focusedFolder,
-            actionSourceScope: actionSourceScope
+            actionSourceScope: actionSourceScope,
+            senderName: senderDisplayName
         )
         let initialChipKind = context.defaultChipKind
         let initialScope = context.scope(for: initialChipKind) ?? scope
 
         self.scope = scope
         self.sourceID = sourceID
+        self.senderDisplayName = senderDisplayName
         self.aiBackend = aiBackend
         self.actionFolders = actionFolders
         self.focusedFolder = focusedFolder
@@ -300,10 +314,20 @@ struct MailboxChatPanel: View {
 
     private var header: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+            #if os(iOS)
+            // The sheet's navigation bar carries the title; the provider label
+            // stays as the first line of the panel.
+            if let transparencyLabel = aiBackend?.transparencyLabel {
+                Text(transparencyLabel)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+            #else
             MailContextSectionHeader(
                 title: String(localized: "Mailbox chat", bundle: .module),
                 trailing: aiBackend?.transparencyLabel
             )
+            #endif
 
             HStack(spacing: BrevSpacing.sm) {
                 Text("Search scope", bundle: .module)
@@ -468,9 +492,11 @@ struct MailboxChatPanel: View {
             Task { await send() }
             return .handled
         }
+        #if os(macOS)
         .accessibilityHint(
             String(localized: "Press Command-Return to send.", bundle: .module)
         )
+        #endif
     }
 
     /// Why the composer is blocked, and the one control that unblocks it.
@@ -804,7 +830,8 @@ struct MailboxChatPanel: View {
             mailboxChatScope: scope,
             sourceID: sourceID,
             focusedFolder: focusedFolder,
-            actionSourceScope: actionSourceScope
+            actionSourceScope: actionSourceScope,
+            senderName: senderDisplayName
         )
     }
 

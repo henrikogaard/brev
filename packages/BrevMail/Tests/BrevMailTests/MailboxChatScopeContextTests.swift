@@ -115,6 +115,31 @@ struct MailboxChatScopeContextTests {
         #expect(chips[0].accessibilityLabel == "ada@example.com")
     }
 
+    @Test("sender chip prefers the display name over the address's local part")
+    func senderChipPrefersDisplayName() {
+        let named = MailboxChatScopeContext(
+            senderEmail: "notifications@example.com",
+            folder: nil,
+            accountLabel: nil,
+            sourceID: nil,
+            senderName: "  GitHub  "
+        )
+        let blank = MailboxChatScopeContext(
+            senderEmail: "notifications@example.com",
+            folder: nil,
+            accountLabel: nil,
+            sourceID: nil,
+            senderName: "   "
+        )
+
+        let namedChips = MailboxChatScopeChipPolicy.chips(context: named, selected: .sender)
+        let blankChips = MailboxChatScopeChipPolicy.chips(context: blank, selected: .sender)
+
+        #expect(namedChips[0].title == "GitHub")
+        #expect(namedChips[0].accessibilityLabel == "notifications@example.com")
+        #expect(blankChips[0].title == "notifications")
+    }
+
     @Test("every disabled chip explains what unlocks it")
     func everyDisabledChipExplainsWhatUnlocksIt() {
         let context = MailboxChatScopeContext(

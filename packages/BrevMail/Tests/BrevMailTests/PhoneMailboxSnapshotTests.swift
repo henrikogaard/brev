@@ -386,7 +386,7 @@ struct PhoneMailboxSnapshotTests {
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
-    @Test("phone search and message typography", arguments: [false, true])
+    @Test("phone message typography (search is the system field, not drawn here)", arguments: [false, true])
     func inbox(dark: Bool) {
         let theme = dark ? BrevTheme.brevMonoDark : .brevMonoLight
         let header = MessageHeader(
@@ -397,8 +397,6 @@ struct PhoneMailboxSnapshotTests {
             date: .distantPast, isRead: false
         )
         let view = VStack(spacing: 0) {
-            MessageListSearchField(text: .constant(""), prompt: "Search messages")
-                .padding(12)
             MessageListRow(
                 header: header, threadCount: 1, isSelected: false, isChecked: false,
                 isInSelectionMode: false, isPinned: false, isThreadExpanded: false,

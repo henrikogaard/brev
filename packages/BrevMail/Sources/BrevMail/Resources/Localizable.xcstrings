@@ -1606,6 +1606,17 @@
         }
       }
     },
+    "Answers use only the messages cached on this device.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Svar bruker bare meldingene som er bufret på denne enheten."
+          }
+        }
+      }
+    },
     "AOL requires an app password — not your login password. Generate one in AOL → Account Security → Generate app password.": {
       "extractionState": "manual",
       "localizations": {
@@ -3342,6 +3353,17 @@
         }
       }
     },
+    "Clear recent searches": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fjern nylige søk"
+          }
+        }
+      }
+    },
     "Clear Selection": {
       "extractionState": "manual",
       "localizations": {
@@ -4604,6 +4626,17 @@
         }
       }
     },
+    "Current mailbox": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjeldende postkasse"
+          }
+        }
+      }
+    },
     "Custom Smart Views": {
       "extractionState": "manual",
       "localizations": {
@@ -5164,6 +5197,28 @@
         }
       }
     },
+    "Last month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Forrige måned"
+          }
+        }
+      }
+    },
+    "Make %@ the default": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Gjør %@ til standard"
+          }
+        }
+      }
+    },
     "Mark": {
       "extractionState": "manual",
       "localizations": {
@@ -5186,6 +5241,28 @@
         }
       }
     },
+    "Recent searches": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Nylige søk"
+          }
+        }
+      }
+    },
+    "Skip": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hopp over"
+          }
+        }
+      }
+    },
     "Reorder or hide your favourites.": {
       "extractionState": "manual",
       "localizations": {
@@ -5193,6 +5270,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Endre rekkefølge på eller skjul favorittene dine."
+          }
+        }
+      }
+    },
+    "Search in From": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i Fra"
+          }
+        }
+      }
+    },
+    "Search in Subject": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Søk i Emne"
           }
         }
       }
@@ -5285,6 +5384,17 @@
         }
       }
     },
+    "Senders": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Avsendere"
+          }
+        }
+      }
+    },
     "Setting up your mailbox. Cached mail will appear as soon as the first page is ready.": {
       "extractionState": "manual",
       "localizations": {
@@ -5318,6 +5428,17 @@
         }
       }
     },
+    "Suggested filters": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Foreslåtte filtre"
+          }
+        }
+      }
+    },
     "Sync interrupted": {
       "extractionState": "manual",
       "localizations": {
@@ -5347,6 +5468,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Synkronisering satt på pause"
+          }
+        }
+      }
+    },
+    "This month": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Denne måneden"
           }
         }
       }

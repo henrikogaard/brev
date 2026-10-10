@@ -106,3 +106,117 @@ private struct BrevRootAppearanceModifier: ViewModifier {
         }
     }
 }
+
+// MARK: - Presented sheets
+
+extension View {
+    /// Themes a presented view (sheet, popover content, auxiliary window).
+    ///
+    /// Replaces the per-sheet `.brevTheme(_:)` pin, which fixed the sheet's
+    /// colour scheme from a theme that could be stale (the system flipping
+    /// while a sheet is open produced light sheets in a dark app). On iOS the
+    /// sheet reads the same persisted appearance settings as
+    /// `brevRootAppearance(session:)`: follow-system leaves the scheme unpinned,
+    /// and a pinned mode resolves its theme from the settings rather than from
+    /// the presenter. It also paints the sheet background, hides the grouped
+    /// list background, and applies the accent tint. macOS windows keep the
+    /// plain theme pin.
+    ///
+    /// - Parameter theme: The presenter's theme; used on macOS and when no
+    ///   appearance settings have been saved yet.
+    func brevSheetAppearance(_ theme: BrevTheme, defaults: UserDefaults = .standard) -> some View {
+        modifier(BrevSheetAppearanceModifier(presenterTheme: theme, defaults: defaults))
+    }
+
+    /// Row styling for lists inside themed sheets: the theme's secondary
+    /// surface and separator instead of the system grouped colours.
+    func brevSheetRow() -> some View {
+        modifier(BrevSheetRowModifier())
+    }
+}
+
+/// The theme and colour-scheme pin a sheet should use.
+struct BrevSheetAppearanceResolution: Equatable {
+    let theme: BrevTheme
+    /// `nil` in follow-system mode so the sheet keeps tracking the system.
+    let preferredColorScheme: ColorScheme?
+
+    /// - Parameters:
+    ///   - presenterTheme: Theme the presenting view runs with; the answer when
+    ///     no appearance settings were saved (legacy single-theme installs).
+    ///   - settings: Persisted appearance settings, `nil` when none were saved.
+    ///   - prefersDark: The sheet's own colour scheme before any pin.
+    ///   - increasedContrast: Whether Increase Contrast is on.
+    static func resolve(
+        presenterTheme: BrevTheme,
+        settings: AppearanceThemeSettings?,
+        prefersDark: Bool,
+        increasedContrast: Bool
+    ) -> BrevSheetAppearanceResolution {
+        guard let settings else {
+            return BrevSheetAppearanceResolution(
+                theme: presenterTheme,
+                preferredColorScheme: presenterTheme.mode.colorScheme
+            )
+        }
+        let theme = settings.resolvedTheme(prefersDark: prefersDark, increasedContrast: increasedContrast)
+        return BrevSheetAppearanceResolution(
+            theme: theme,
+            preferredColorScheme: settings.followsSystemAppearance ? nil : theme.mode.colorScheme
+        )
+    }
+}
+
+private struct BrevSheetAppearanceModifier: ViewModifier {
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var colorSchemeContrast
+    let presenterTheme: BrevTheme
+    let defaults: UserDefaults
+    @State private var settings: AppearanceThemeSettings?
+
+    init(presenterTheme: BrevTheme, defaults: UserDefaults) {
+        self.presenterTheme = presenterTheme
+        self.defaults = defaults
+        _settings = State(initialValue: Self.savedSettings(in: defaults))
+    }
+
+    private static func savedSettings(in defaults: UserDefaults) -> AppearanceThemeSettings? {
+        AppearanceThemeSettings.hasSavedValue(in: defaults)
+            ? AppearanceThemeSettings.load(from: defaults)
+            : nil
+    }
+
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        let resolved = BrevSheetAppearanceResolution.resolve(
+            presenterTheme: presenterTheme,
+            settings: settings,
+            prefersDark: colorScheme == .dark,
+            increasedContrast: colorSchemeContrast == .increased
+        )
+        content
+            .environment(\.brevTheme, resolved.theme)
+            .preferredColorScheme(resolved.preferredColorScheme)
+            .tint(resolved.theme.accent.color)
+            .presentationBackground(resolved.theme.bgPrimary.color)
+            .scrollContentBackground(.hidden)
+            .onReceive(
+                NotificationCenter.default.publisher(for: .brevAppearanceThemeSettingsDidChange)
+            ) { _ in
+                settings = Self.savedSettings(in: defaults)
+            }
+        #else
+        content.brevTheme(presenterTheme)
+        #endif
+    }
+}
+
+private struct BrevSheetRowModifier: ViewModifier {
+    @Environment(\.brevTheme) private var theme
+
+    func body(content: Content) -> some View {
+        content
+            .listRowBackground(theme.bgSecondary.color)
+            .listRowSeparatorTint(theme.separator.color)
+    }
+}
