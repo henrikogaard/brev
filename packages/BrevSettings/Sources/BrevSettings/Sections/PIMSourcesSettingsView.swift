@@ -111,6 +111,19 @@ struct PIMSourcesSettingsView: View {
 
     @State private var isShowingConnectSheet = false
     @State private var removalCandidate: PIMSource?
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
+
+    /// iPhone Settings is a stack inside a sheet; the forms push there
+    /// instead of nesting a second sheet (see `PIMSourceConnectSheet`).
+    private var pushesForms: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
 
     var body: some View {
         SettingsGroup(
@@ -159,31 +172,23 @@ struct PIMSourcesSettingsView: View {
                     ))
                 }
                 .padding(.top, BrevSpacing.xxs)
+                // Pushed forms hang off this row, not the whole group: a
+                // destination on the group changes how its rows lay out.
+                .navigationDestination(isPresented: connectBinding(pushed: true)) {
+                    connectForm(isPushed: true)
+                }
+                .navigationDestination(item: credentialBinding(pushed: true)) { source in
+                    reconnectForm(source, isPushed: true)
+                }
 
                 googleRows
             }
         }
-        .sheet(isPresented: $isShowingConnectSheet) {
-            PIMSourceConnectSheet(
-                title: String(localized: "addDavSource.action", bundle: .module),
-                submitTitle: String(localized: "Connect", bundle: .module),
-                showsEndpointFields: true,
-                isSubmitting: model.isConnecting,
-                connectError: model.lastError
-            ) { form in
-                await model.connectDAV(form)
-            }
+        .sheet(isPresented: connectBinding(pushed: false)) {
+            connectForm(isPushed: false)
         }
-        .sheet(item: Bindable(model).credentialSheetSource) { source in
-            PIMSourceConnectSheet(
-                title: String(localized: "Reconnect Source", bundle: .module),
-                submitTitle: String(localized: "reconnect.action", bundle: .module),
-                showsEndpointFields: false,
-                isSubmitting: model.pendingSourceID == source.id,
-                connectError: model.lastError
-            ) { form in
-                await model.reconnect(sourceID: source.id, form: form)
-            }
+        .sheet(item: credentialBinding(pushed: false)) { source in
+            reconnectForm(source, isPushed: false)
         }
         .confirmationDialog(
             String(localized: "Remove source?", bundle: .module),
@@ -202,6 +207,46 @@ struct PIMSourcesSettingsView: View {
                 localized: "Brev stops all work for \(source.displayName) and deletes its unsent drafts. Provider data is never deleted. A kept cache stays readable but disconnected.",
                 bundle: .module
             ))
+        }
+    }
+
+    private func connectBinding(pushed: Bool) -> Binding<Bool> {
+        Binding(
+            get: { isShowingConnectSheet && pushesForms == pushed },
+            set: { isShowingConnectSheet = $0 }
+        )
+    }
+
+    private func credentialBinding(pushed: Bool) -> Binding<PIMSource?> {
+        Binding(
+            get: { pushesForms == pushed ? model.credentialSheetSource : nil },
+            set: { model.credentialSheetSource = $0 }
+        )
+    }
+
+    private func connectForm(isPushed: Bool) -> some View {
+        PIMSourceConnectSheet(
+            title: String(localized: "addDavSource.action", bundle: .module),
+            submitTitle: String(localized: "Connect", bundle: .module),
+            showsEndpointFields: true,
+            isSubmitting: model.isConnecting,
+            connectError: model.lastError,
+            isPushed: isPushed
+        ) { form in
+            await model.connectDAV(form)
+        }
+    }
+
+    private func reconnectForm(_ source: PIMSource, isPushed: Bool) -> some View {
+        PIMSourceConnectSheet(
+            title: String(localized: "Reconnect Source", bundle: .module),
+            submitTitle: String(localized: "reconnect.action", bundle: .module),
+            showsEndpointFields: false,
+            isSubmitting: model.pendingSourceID == source.id,
+            connectError: model.lastError,
+            isPushed: isPushed
+        ) { form in
+            await model.reconnect(sourceID: source.id, form: form)
         }
     }
 
@@ -646,6 +691,11 @@ struct PIMSourceConnectSheet: View {
     /// TLS errors) must surface inside the sheet: the section's own error
     /// callout sits behind it and is unreachable on iOS.
     let connectError: String?
+    /// True when the form is a page pushed on the Settings stack rather than
+    /// a sheet: no own navigation stack and no Cancel button, the back button
+    /// leaves. iPhone Settings pushes because a sheet nested in the Settings
+    /// sheet makes SwiftUI dismiss the whole Settings sheet on iOS 27.
+    let isPushed: Bool
     /// Returns true when the action succeeded and the sheet should close.
     let onSubmit: (PIMDAVConnectForm) async -> Bool
 
@@ -658,6 +708,7 @@ struct PIMSourceConnectSheet: View {
         showsEndpointFields: Bool,
         isSubmitting: Bool,
         connectError: String?,
+        isPushed: Bool = false,
         /// Seeds the post-submit state; only tests and previews pass true.
         didAttemptSubmit: Bool = false,
         onSubmit: @escaping (PIMDAVConnectForm) async -> Bool
@@ -667,71 +718,80 @@ struct PIMSourceConnectSheet: View {
         self.showsEndpointFields = showsEndpointFields
         self.isSubmitting = isSubmitting
         self.connectError = connectError
+        self.isPushed = isPushed
         self.onSubmit = onSubmit
         _didAttemptSubmit = State(initialValue: didAttemptSubmit)
     }
 
     var body: some View {
-        NavigationStack {
-            SwiftUI.Form(content: {
-                if showsEndpointFields {
-                    Section(String(localized: "Source", bundle: .module)) {
-                        kindPicker
-                    }
-                    Section(
-                        header: Text(String(localized: "Server", bundle: .module)),
-                        footer: Text(endpointFooter)
-                    ) {
-                        endpointFields
-                    }
+        if isPushed {
+            formContent
+        } else {
+            NavigationStack { formContent }
+            #if os(macOS)
+                .frame(minWidth: 440, idealWidth: 480, minHeight: showsEndpointFields ? 480 : 300)
+            #endif
+        }
+    }
+
+    private var formContent: some View {
+        SwiftUI.Form(content: {
+            if showsEndpointFields {
+                Section(String(localized: "Source", bundle: .module)) {
+                    kindPicker
                 }
                 Section(
-                    header: Text(String(localized: "Sign in", bundle: .module)),
-                    footer: Text(
-                        String(
-                            localized: "Credentials are stored in Keychain and used only for this source.",
-                            bundle: .module
-                        )
-                    )
+                    header: Text(String(localized: "Server", bundle: .module)),
+                    footer: Text(endpointFooter)
                 ) {
-                    credentialFields
+                    endpointFields
                 }
-                if showsEndpointFields {
-                    Section(String(localized: "Display name", bundle: .module)) {
-                        displayNameField
-                    }
+            }
+            Section(
+                header: Text(String(localized: "Sign in", bundle: .module)),
+                footer: Text(
+                    String(
+                        localized: "Credentials are stored in Keychain and used only for this source.",
+                        bundle: .module
+                    )
+                )
+            ) {
+                credentialFields
+            }
+            if showsEndpointFields {
+                Section(String(localized: "Display name", bundle: .module)) {
+                    displayNameField
                 }
-                issueCallouts
-            })
-            #if os(macOS)
-            .formStyle(.grouped)
-            #endif
-            .navigationTitle(title)
-            #if os(iOS)
-                .navigationBarTitleDisplayMode(.inline)
-            #endif
-                .toolbar {
+            }
+            issueCallouts
+        })
+        #if os(macOS)
+        .formStyle(.grouped)
+        #endif
+        .navigationTitle(title)
+        #if os(iOS)
+            .navigationBarTitleDisplayMode(.inline)
+        #endif
+            .toolbar {
+                if !isPushed {
                     ToolbarItem(placement: .cancellationAction) {
                         Button(String(localized: "Cancel", bundle: .module)) {
                             dismiss()
                         }
                     }
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button(submitTitle) {
-                            didAttemptSubmit = true
-                            Task {
-                                if await onSubmit(form) {
-                                    dismiss()
-                                }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(submitTitle) {
+                        didAttemptSubmit = true
+                        Task {
+                            if await onSubmit(form) {
+                                dismiss()
                             }
                         }
-                        .disabled(!canSubmit)
                     }
+                    .disabled(!canSubmit)
                 }
-        }
-        #if os(macOS)
-        .frame(minWidth: 440, idealWidth: 480, minHeight: showsEndpointFields ? 480 : 300)
-        #endif
+            }
     }
 
     private var canSubmit: Bool {

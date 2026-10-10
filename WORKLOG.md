@@ -5663,3 +5663,11 @@ buttons, and package-aware localization.
 - Goal: capture simulator evidence for P1-P4. Added `docs/qa/ios-slice8b-pim-2026-10-10/` (empty states en light/dark, nb light, en AX3; Settings page from the empty state; a11y audit text; snapshot references).
 - Verification: temporary XCUITest outside the repo on own iPhone 17 Pro iOS 27 simulator (deleted after). No product code changed.
 - Not verified: screens behind a connected source (month, week, task editor, delete confirmation, Contacts editor): Add DAV Source dismisses the whole Settings sheet in mock mode (pre-existing), so only snapshot-test renderings exist.
+
+## 2026-10-10 — Claude Code — Add DAV Source closed all of Settings (iOS 27)
+
+- Goal: fix tapping "Add DAV Source…" dismissing the whole Settings sheet (pre-existing on main, found during slice 8b QA).
+- Finding: reproduced on an iOS 27 simulator. About 1.2 s after the connect sheet opens SwiftUI logs four refused presents on the Settings sheet and calls the root `showSettings` binding with false while its getter still returns true. The credential sheet and removal dialog in the same view are never built; moving the root Settings `.sheet` below the covers did not help. Root cause inside SwiftUI not isolated.
+- Change: on a compact-width iOS Settings stack, `PIMSourcesSettingsView` pushes `PIMSourceConnectSheet` (new `isPushed`: no own NavigationStack, no Cancel) with `navigationDestination` on the Add row, for both connect and reconnect. Regular width and macOS keep the sheet. `navigationDestination` on the whole group changed its layout, so it sits on the row.
+- Verification: iPhone 17 Pro iOS 27 simulator: button pushes the form, back returns to Calendar & Contacts, Settings stays open, layout matches before. `swift test` BrevSettings: 47 pre-existing macOS pixel-snapshot failures, identical on an untouched checkout; lint/format clean; BrevSettings builds for macOS and iOS.
+- Not verified: Reconnect Source push (needs a connected source), iPad regular width, submitting the form.
