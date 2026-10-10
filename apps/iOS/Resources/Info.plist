@@ -42,11 +42,11 @@
 	<dict>
 		<key>CFBundleAlternateIcons</key>
 		<dict>
-			<key>BrevIconEnvelopeDarkMetal</key>
+			<key>BrevIconEnvelopeLight</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>BrevIconEnvelopeDarkMetal</string>
+					<string>BrevIconEnvelopeLight</string>
 				</array>
 			</dict>
 			<key>BrevIconEnvelopeCarbon</key>
@@ -69,11 +69,11 @@
 	<dict>
 		<key>CFBundleAlternateIcons</key>
 		<dict>
-			<key>BrevIconEnvelopeDarkMetal</key>
+			<key>BrevIconEnvelopeLight</key>
 			<dict>
 				<key>CFBundleIconFiles</key>
 				<array>
-					<string>BrevIconEnvelopeDarkMetal</string>
+					<string>BrevIconEnvelopeLight</string>
 				</array>
 			</dict>
 			<key>BrevIconEnvelopeCarbon</key>

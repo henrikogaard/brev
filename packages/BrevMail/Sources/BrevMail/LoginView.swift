@@ -535,7 +535,7 @@ public enum LoginViewPresentation {
 
     /// Package resource name of the Brev app-icon tile shown as the
     /// welcome-screen brand mark.
-    public static let brandIconAssetName = "BrevIconEnvelopeLightPreview"
+    public static let brandIconAssetName = "BrevIconEnvelopeDarkMetalPreview"
 }
 
 private extension View {

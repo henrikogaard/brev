@@ -23,11 +23,11 @@ struct AppIconPreferencesTests {
         #expect(Set(AppIconVariant.allCases.map(\.previewAssetName)).count == 3)
     }
 
-    @Test("default icon is the light envelope")
-    func defaultIconIsLightEnvelope() throws {
+    @Test("default icon is Smoke")
+    func defaultIconIsSmoke() throws {
         let defaults = try Self.makeDefaults()
 
-        #expect(AppIconPreferences.load(defaults: defaults) == .envelopeLight)
+        #expect(AppIconPreferences.load(defaults: defaults) == .envelopeDarkMetal)
     }
 
     @Test("saving and loading preserves selected icon")
@@ -39,23 +39,23 @@ struct AppIconPreferencesTests {
         #expect(AppIconPreferences.load(defaults: defaults) == .envelopeCarbon)
     }
 
-    @Test("unknown persisted icon falls back to the light envelope")
-    func unknownPersistedIconFallsBackToLightEnvelope() throws {
+    @Test("unknown persisted icon falls back to Smoke")
+    func unknownPersistedIconFallsBackToSmoke() throws {
         let defaults = try Self.makeDefaults()
         defaults.set("missing-icon", forKey: AppIconPreferences.iconIDKey)
 
-        #expect(AppIconPreferences.load(defaults: defaults) == .envelopeLight)
+        #expect(AppIconPreferences.load(defaults: defaults) == .envelopeDarkMetal)
     }
 
-    @Test("the light envelope maps to the primary iOS app icon")
-    func lightEnvelopeMapsToPrimaryIOSAppIcon() {
-        #expect(AppIconVariant.envelopeLight.alternateIconName == nil)
-        #expect(AppIconVariant.envelopeDarkMetal.alternateIconName == "BrevIconEnvelopeDarkMetal")
-        #expect(AppIconVariant.matchingAlternateIconName(nil) == .envelopeLight)
+    @Test("Smoke maps to the primary iOS app icon")
+    func smokeMapsToPrimaryIOSAppIcon() {
+        #expect(AppIconVariant.envelopeDarkMetal.alternateIconName == nil)
+        #expect(AppIconVariant.envelopeLight.alternateIconName == "BrevIconEnvelopeLight")
+        #expect(AppIconVariant.matchingAlternateIconName(nil) == .envelopeDarkMetal)
         #expect(
             AppIconVariant.matchingAlternateIconName(
-                AppIconVariant.envelopeDarkMetal.alternateIconName
-            ) == .envelopeDarkMetal
+                AppIconVariant.envelopeLight.alternateIconName
+            ) == .envelopeLight
         )
         #expect(
             AppIconVariant.matchingAlternateIconName(
@@ -87,6 +87,15 @@ struct AppIconPreferencesTests {
 
         defaults.set("nordic-navy", forKey: AppIconPreferences.iconIDKey)
         #expect(AppIconPreferences.load(defaults: defaults) == .envelopeDarkMetal)
+    }
+
+    @Test("saved envelope choices and backups keep their identity", arguments: AppIconVariant.allCases)
+    func savedEnvelopeChoicesKeepTheirIdentity(_ variant: AppIconVariant) throws {
+        let defaults = try Self.makeDefaults()
+        defaults.set(variant.rawValue, forKey: AppIconPreferences.iconIDKey)
+        #expect(AppIconPreferences.load(defaults: defaults) == variant)
+        let encoded = try JSONEncoder().encode(variant)
+        #expect(try JSONDecoder().decode(AppIconVariant.self, from: encoded) == variant)
     }
 
     private static func makeDefaults() throws -> UserDefaults {

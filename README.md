@@ -162,7 +162,7 @@ using the same shortcut model as iPhone with compact, keyboard-navigable rows.
 - Independent sidebar/window background opacity, labelled from More transparent
   to Fully opaque, with a live schematic preview. Advanced controls hold the
   material style and unified title bar; Reduce Transparency keeps surfaces solid.
-- Twenty selectable Brev app icon variants; macOS Dock icon switching
+- Three selectable glass envelope icons: Frost, Smoke (default), and Obsidian; macOS Dock icon switching
   and iOS alternate icons.
 
 ### AI Writer (opt-in)

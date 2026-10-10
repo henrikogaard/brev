@@ -17,13 +17,14 @@ import Foundation
 /// The app targets own the actual platform application of the icon:
 /// macOS swaps the Dock image and iOS uses alternate app icon names.
 public enum AppIconVariant: String, CaseIterable, Codable, Identifiable, Sendable, Hashable {
+    // Keep raw values stable for existing preferences and settings backups.
     case envelopeLight = "envelope-light"
     case envelopeDarkMetal = "envelope-dark-metal"
     case envelopeCarbon = "envelope-carbon"
 
     public var id: String { rawValue }
 
-    public static let defaultVariant: AppIconVariant = .envelopeLight
+    public static let defaultVariant: AppIconVariant = .envelopeDarkMetal
 
     public var title: String {
         metadata.title
@@ -40,18 +41,18 @@ public enum AppIconVariant: String, CaseIterable, Codable, Identifiable, Sendabl
     private var metadata: (title: String, subtitle: String, assetName: String) {
         switch self {
         case .envelopeLight: return (
-                String(localized: "Light", bundle: .module),
-                String(localized: "Recommended", bundle: .module),
+                String(localized: "Frost", bundle: .module),
+                String(localized: "Light glass", bundle: .module),
                 "BrevIconEnvelopeLight"
             )
         case .envelopeDarkMetal: return (
-                String(localized: "Dark Metal", bundle: .module),
-                String(localized: "Textured dark", bundle: .module),
+                String(localized: "Smoke", bundle: .module),
+                String(localized: "Recommended", bundle: .module),
                 "BrevIconEnvelopeDarkMetal"
             )
         case .envelopeCarbon: return (
-                String(localized: "Carbon", bundle: .module),
-                String(localized: "Woven black", bundle: .module),
+                String(localized: "Obsidian", bundle: .module),
+                String(localized: "Dark glass", bundle: .module),
                 "BrevIconEnvelopeCarbon"
             )
         }
