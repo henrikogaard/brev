@@ -21,6 +21,14 @@ struct MessageListSenderPresentationTests {
         #expect(MessageListSenderPresentation.fontWeight == .bold)
     }
 
+    @Test("rows with an unread dot carry read state in the sender weight too")
+    func unreadDotRowsVarySenderWeight() {
+        #expect(MessageListSenderPresentation.fontWeight(isRead: false, usesUnreadDot: true) == .semibold)
+        #expect(MessageListSenderPresentation.fontWeight(isRead: true, usesUnreadDot: true) == .regular)
+        #expect(MessageListSenderPresentation.fontWeight(isRead: true, usesUnreadDot: false) == .bold)
+        #expect(MessageListSenderPresentation.fontWeight(isRead: false, usesUnreadDot: false) == .bold)
+    }
+
     @Test("compact rows keep the sender and subject while removing secondary metadata")
     func compactRowsKeepPrimaryMailIdentity() {
         let compact = MessageListRowContentPolicy.presentation(

@@ -30,6 +30,17 @@ struct MailPaneSurfacePolicyTests {
         #expect(MailPaneSurfacePolicy.content.navigationBarBackgroundRole == .content)
     }
 
+    @Test("message list pane keeps the content surface but leaves the navigation bar translucent")
+    func messageListPaneLeavesNavigationBarTranslucent() {
+        let policy = MailPaneSurfacePolicy.messageList
+        #expect(policy.role == MailPaneSurfacePolicy.content.role)
+        #expect(policy.fillsPane)
+        #expect(policy.ignoresTitlebarSafeArea)
+        // No forced opaque bar, so the iOS 26 scroll-edge effect can show (audit L5).
+        #expect(policy.navigationTitleStyle == .inline)
+        #expect(policy.navigationBarBackgroundRole == nil)
+    }
+
     @Test("iPad message list column has readable split width")
     func iPadMessageListColumnHasReadableSplitWidth() throws {
         let width = try #require(MailPaneColumnWidthPolicy.messageList(platform: .iPad))

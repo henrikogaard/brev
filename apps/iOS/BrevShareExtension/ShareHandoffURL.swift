@@ -98,3 +98,90 @@ enum ShareHandoffURL {
         return components.url
     }
 }
+
+// MARK: - Share sheet content
+
+//
+// Lives in this file because it is already compiled into BrevIOSTests (the
+// extension itself cannot be linked by a test bundle).
+
+/// What the share sheet shows for the items the host app handed over, and
+/// whether "Open Brev" may run. Pure Foundation so the unit-test target can
+/// compile it directly (the extension itself cannot be linked by tests).
+struct ShareSheetContent: Equatable {
+    /// Still reading the shared items.
+    var isLoading = true
+    /// Shared plain text, if any fits the handoff URL.
+    var text: String?
+    /// Absolute strings of the shared web URLs.
+    var urls: [String] = []
+    /// File names of the attachments copied into the App Group.
+    var attachmentNames: [String] = []
+    /// Footer lines: skipped items and oversize text.
+    var notes: [String] = []
+    /// Why nothing can be opened, or what went wrong while reading.
+    var message: String?
+    /// Whether "Open Brev" is available.
+    var canOpen = false
+
+    /// Initial state while the extension reads its input items.
+    static let loading = ShareSheetContent()
+
+    /// Builds the final state from what the extraction pass collected.
+    /// - Parameters:
+    ///   - text: Shared text; dropped when it cannot round-trip through the handoff URL.
+    ///   - urls: Shared web URLs.
+    ///   - attachmentURLs: Files already copied into the handoff directory.
+    ///   - unsupportedCount: Items that could not be shared.
+    ///   - extractionError: Failure preparing shared storage, if any.
+    ///   - canHandoffText: Whether the text fits the handoff URL.
+    static func resolve(
+        text: String?,
+        urls: [URL],
+        attachmentURLs: [URL],
+        unsupportedCount: Int,
+        extractionError: String?,
+        canHandoffText: (String) -> Bool
+    ) -> ShareSheetContent {
+        var content = ShareSheetContent()
+        content.isLoading = false
+
+        // Oversized text cannot round-trip through the handoff URL, so drop it
+        // instead of failing the handoff. Never truncate: a silently shortened
+        // draft is worse than a missing one.
+        var keptText = text
+        var overflowNote: String?
+        if let candidate = keptText, !canHandoffText(candidate) {
+            keptText = nil
+            overflowNote = String(localized: "Shared text is too large to include and was left out.")
+        }
+        if keptText?.isEmpty == true { keptText = nil }
+
+        content.text = keptText
+        content.urls = urls.map(\.absoluteString)
+        content.attachmentNames = attachmentURLs.map(\.lastPathComponent)
+
+        if unsupportedCount > 0 {
+            content.notes.append(String(localized: "\(unsupportedCount) unsupported"))
+        }
+        if let overflowNote {
+            content.notes.append(overflowNote)
+        }
+
+        let hasContent = keptText != nil || !urls.isEmpty || !attachmentURLs.isEmpty
+        if let extractionError {
+            content.message = extractionError
+            content.canOpen = keptText != nil || !urls.isEmpty
+        } else if !hasContent {
+            content.message = overflowNote
+                ?? (unsupportedCount > 0
+                    ? String(localized: "This content type is not supported yet.")
+                    : String(localized: "No content to share"))
+            content.notes = []
+            content.canOpen = false
+        } else {
+            content.canOpen = true
+        }
+        return content
+    }
+}

@@ -277,6 +277,9 @@ jobs:
             '-only-testing:BrevMailTests/MessageDetailViewSnapshotTests/headerAccessibilityTextSize()' \
             '-only-testing:BrevMailTests/RelatedConversationFootnoteSnapshotTests' \
             '-only-testing:BrevMailTests/CompactReaderSnapshotTests' \
+            '-only-testing:BrevMailTests/ImportProgressBannerSnapshotTests' \
+            '-only-testing:BrevMailTests/IMAPAccountSetupKeyboardTraitsTests' \
+            '-only-testing:BrevMailTests/PhoneMessageListSnapshotTests' \
             '-only-testing:BrevMailTests/SnoozePickerSnapshotTests' \
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
