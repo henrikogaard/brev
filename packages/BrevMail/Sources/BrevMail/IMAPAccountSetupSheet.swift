@@ -238,16 +238,17 @@ public struct IMAPAccountSetupSheet: View {
             setupField(String(localized: "Email address", bundle: .module)) {
                 TextField(String("name@example.org"), text: $emailAddress)
                     .focused($focusedField, equals: .email)
-                    .submitLabel(.next)
+                    // Return is Find settings until the details appear, so it
+                    // never moves focus to a field that is not on screen.
+                    .submitLabel(showsAccountDetails ? .next : .go)
                 #if os(iOS)
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
+                    .textContentType(.username)
                     .autocorrectionDisabled()
                 #endif
                     .disabled(isReauthentication)
-                    .onSubmit {
-                        focusedField = .displayName
-                    }
+                    .onSubmit(submitEmail)
             }
 
             findSettingsButton
@@ -257,6 +258,10 @@ public struct IMAPAccountSetupSheet: View {
                 setupField(String(localized: "Display name (optional)", bundle: .module)) {
                     TextField(String(localized: "Name shown on the account", bundle: .module), text: $displayName)
                         .focused($focusedField, equals: .displayName)
+                        .submitLabel(showsPasswordField ? .next : .done)
+                        .onSubmit {
+                            if showsPasswordField { focusedField = .password }
+                        }
                 }
 
                 if showsPasswordField {
@@ -264,6 +269,9 @@ public struct IMAPAccountSetupSheet: View {
                         SecureField(String(localized: "Stored locally in Keychain", bundle: .module), text: $password)
                             .focused($focusedField, equals: .password)
                             .submitLabel(.done)
+                        #if os(iOS)
+                            .textContentType(.password)
+                        #endif
                     }
                     if incomingAuthentication == .appPassword {
                         Text(verbatim: IMAPAccountSetupPresentation.appPasswordGuidance(providerName: discovery?.displayName))
@@ -528,10 +536,12 @@ public struct IMAPAccountSetupSheet: View {
                     HStack(spacing: BrevSpacing.md) {
                         setupField(String(localized: "Host", bundle: .module)) {
                             TextField(String("sieve.example.org"), text: $manageSieveHost)
+                                .serverHostTraits()
                         }
 
                         setupField(String(localized: "Port", bundle: .module)) {
                             TextField(String("4190"), text: $manageSievePort)
+                                .serverPortTraits()
                                 .frame(width: 96)
                         }
                     }
@@ -539,10 +549,12 @@ public struct IMAPAccountSetupSheet: View {
                     VStack(alignment: .leading, spacing: BrevSpacing.md) {
                         setupField(String(localized: "Host", bundle: .module)) {
                             TextField(String("sieve.example.org"), text: $manageSieveHost)
+                                .serverHostTraits()
                         }
 
                         setupField(String(localized: "Port", bundle: .module)) {
                             TextField(String("4190"), text: $manageSievePort)
+                                .serverPortTraits()
                         }
                     }
                 }
@@ -755,10 +767,12 @@ public struct IMAPAccountSetupSheet: View {
                 HStack(spacing: BrevSpacing.md) {
                     setupField(String(localized: "Host", bundle: .module)) {
                         TextField(String("mail.example.org"), text: host)
+                            .serverHostTraits()
                     }
 
                     setupField(String(localized: "Port", bundle: .module)) {
                         TextField(String("993"), text: port)
+                            .serverPortTraits()
                             .frame(width: 96)
                     }
                 }
@@ -766,10 +780,12 @@ public struct IMAPAccountSetupSheet: View {
                 VStack(alignment: .leading, spacing: BrevSpacing.md) {
                     setupField(String(localized: "Host", bundle: .module)) {
                         TextField(String("mail.example.org"), text: host)
+                            .serverHostTraits()
                     }
 
                     setupField(String(localized: "Port", bundle: .module)) {
                         TextField(String("993"), text: port)
+                            .serverPortTraits()
                     }
                 }
             }
@@ -788,6 +804,7 @@ public struct IMAPAccountSetupSheet: View {
 
             setupField(String(localized: "Username template", bundle: .module)) {
                 TextField(String("%EMAILADDRESS%"), text: usernameTemplate)
+                    .serverIdentifierTraits()
             }
         }
         .setupSectionSurface(theme: theme)
@@ -827,16 +844,21 @@ public struct IMAPAccountSetupSheet: View {
         @ViewBuilder content: () -> Content
     ) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            // The field carries the label for VoiceOver; the visible caption
+            // above it would otherwise be read a second time.
             fieldLabel(title)
+                .accessibilityHidden(true)
             #if os(iOS)
             // The system rounded-border style paints near-black boxes inside
             // the themed card in dark mode; use theme surfaces instead.
             content()
                 .textFieldStyle(.plain)
+                .accessibilityLabel(title)
                 .setupFieldSurface(theme: theme)
             #else
             content()
                 .textFieldStyle(.roundedBorder)
+                .accessibilityLabel(title)
             #endif
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1060,8 +1082,24 @@ public struct IMAPAccountSetupSheet: View {
         }
     }
 
+    /// Return in the Email field: run Find settings while the details are
+    /// hidden, otherwise move on to the next field.
+    private func submitEmail() {
+        switch IMAPAccountSetupPresentation.emailSubmitAction(showsAccountDetails: showsAccountDetails) {
+        case .findSettings:
+            discover(asPath: .discovered, focusPasswordOnSuccess: true)
+        case .advance:
+            focusedField = .displayName
+        }
+    }
+
     /// Runs discovery only from Find settings (or one-shot re-auth).
-    private func discover(asPath path: IMAPAccountSetupPresentation.SetupPath) {
+    /// - Parameter focusPasswordOnSuccess: Moves focus to the password field
+    ///   once the details are on screen, so Return flows from Email to Password.
+    private func discover(
+        asPath path: IMAPAccountSetupPresentation.SetupPath,
+        focusPasswordOnSuccess: Bool = false
+    ) {
         // Mark the probe before validation so its status section mounts and
         // the warning actually renders instead of being a silent no-op.
         didStartDiscoveryProbe = true
@@ -1086,6 +1124,11 @@ public struct IMAPAccountSetupSheet: View {
                     forEmailAddress: email
                 )
                 applyDiscovery(result, path: path == .manual ? .manual : resolvedPath(for: result, preferred: path))
+                if focusPasswordOnSuccess, showsPasswordField {
+                    // The password field mounts on the next render pass.
+                    await Task.yield()
+                    focusedField = .password
+                }
             } catch {
                 applyDiscovery(
                     MailAccountAutodiscovery.manualFallback(forEmailAddress: email),
@@ -1294,6 +1337,40 @@ private struct SetupStatus: Equatable {
 }
 
 private extension View {
+    /// Host names are never sentences: no capitalisation or autocorrect, and
+    /// the URL keyboard with its `.` and `/` keys on iOS.
+    @ViewBuilder
+    func serverHostTraits() -> some View {
+        #if os(iOS)
+        keyboardType(.URL)
+            .textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        #else
+        self
+        #endif
+    }
+
+    /// Ports are digits only.
+    @ViewBuilder
+    func serverPortTraits() -> some View {
+        #if os(iOS)
+        keyboardType(.numberPad)
+        #else
+        self
+        #endif
+    }
+
+    /// Identifiers such as the username template keep exactly what was typed.
+    @ViewBuilder
+    func serverIdentifierTraits() -> some View {
+        #if os(iOS)
+        textInputAutocapitalization(.never)
+            .autocorrectionDisabled()
+        #else
+        self
+        #endif
+    }
+
     @ViewBuilder
     func imapSetupTouchTarget() -> some View {
         #if os(iOS)

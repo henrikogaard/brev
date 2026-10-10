@@ -11,6 +11,7 @@
  */
 
 #if canImport(UIKit)
+import BrevBackend
 import BrevDesign
 @testable import BrevMail
 import BrevThemes
@@ -76,6 +77,48 @@ struct ImportProgressBannerSnapshotTests {
             of: failureHost,
             as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
             named: "failure"
+        )
+    }
+
+    @Test("sign-in required banner keeps a 44 pt Sign in again button at default and accessibility sizes")
+    @MainActor
+    func signInRequiredBanner() throws {
+        let theme = BrevTheme.brevBuiltIns.first { $0.id == "brev-light" } ?? BrevTheme.brevBuiltIns[0]
+        let health = AccountSyncHealth(
+            sourceID: MailSourceID(accountID: "acct", mailboxID: "mbox"),
+            state: .authenticationRequired,
+            lastSuccessfulSyncAt: Date(),
+            lastErrorDescription: nil,
+            indexStatus: .ready(messageCount: 8),
+            cacheSizeBytes: 2048,
+            pendingMutationCount: 0
+        )
+        let presentation = try #require(
+            ImportProgressPresentation.resolve(health: health, folderSyncProgress: nil)
+        )
+        let banner = ImportProgressBanner(presentation: presentation, onAction: {})
+            .frame(width: 360)
+            .brevTheme(theme)
+
+        let host = UIHostingController(rootView: banner)
+        host.view.backgroundColor = .clear
+        assertSnapshot(
+            of: host,
+            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            named: "sign-in-required",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+        assertSnapshot(
+            of: host,
+            as: .image(
+                on: .iPhone13Pro,
+                traits: UITraitCollection(traitsFrom: [
+                    UITraitCollection(displayScale: 2),
+                    UITraitCollection(preferredContentSizeCategory: .accessibilityLarge)
+                ])
+            ),
+            named: "sign-in-required-ax3",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
 }

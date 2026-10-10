@@ -204,6 +204,19 @@ enum IMAPAccountSetupPresentation {
         isReauthentication || path != .undiscovered
     }
 
+    /// What Return does in the Email field.
+    enum EmailSubmitAction: Equatable, Sendable {
+        /// Details are still hidden: Return runs Find settings, the only way
+        /// forward, instead of moving focus to a field that is not on screen.
+        case findSettings
+        /// Details are already visible: Return moves on to the next field.
+        case advance
+    }
+
+    static func emailSubmitAction(showsAccountDetails: Bool) -> EmailSubmitAction {
+        showsAccountDetails ? .advance : .findSettings
+    }
+
     static func showsAdvancedServerFields(
         isAdvancedSetupExpanded: Bool,
         visibility: ServerFieldVisibility
