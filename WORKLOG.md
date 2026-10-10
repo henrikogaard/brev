@@ -5677,3 +5677,11 @@ buttons, and package-aware localization.
 - Goal: ship the iOS UX pass slices merged since 0.2.6 (#222, #219, #224–#231, #233–#235 and others) as Mac `v0.2.7`. iOS TestFlight is launched by Henrik from another Mac (this Mac has no `.env.local`).
 - Changes: marketing version 0.2.6 → 0.2.7 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.7. Tag `v0.2.7` follows a green PR-event Build on this commit; main is fast-forwarded to it so the tag SHA has that Build.
 - Verification: see PR; release workflow run is recorded in the handoff.
+
+## 2026-10-11 — Codex — Glass envelope icon PR
+
+- Request: replace the three app icons with Frost, Smoke and Obsidian; make 02 Smoke the default and update brev-site. Follow-up: switching Frost to Smoke changed the Dock size.
+- Implemented SVG masters with compact optical drawings, direct per-size rasterization, vector PDF previews, opaque iOS catalogs and multi-resolution ICNS for all running macOS variants. Removed the old Icon Composer override. Kept persisted IDs and backup compatibility; Smoke is the new default and login brand. Updated target manifests, generated projects, translations and ADR-0004. The three Dock variants now share the same loading path and measured bounds.
+- Verification: 7 AppIconPreferences tests passed after expected red failures; 4 icon-only login snapshots updated and passed; macOS dated mock build/launch and iOS Simulator build passed; native selector exercised; 74 catalog entries checked for dimensions and iOS alpha rules; regeneration deterministic; lint/format/ADR checks passed. Full commands and limits are in `docs/qa/glass-icons-2026-10-11/README.md`.
+- Existing failures: seven other LoginView snapshots also fail with the exact original source and artwork. Their baselines were preserved. Physical-device iOS switching and automated Dock pixel capture were not verified.
+- Delivery: feature/glass-envelope-icons targets main. Companion website PR: https://github.com/henrikogaard/brev-site/pull/1. No issue was assigned; no issue/project closeout is claimed. No release or deployment. README, CHANGELOG, ADR-0004 and asset-generation notes updated; privacy, release and agent documents require no change.

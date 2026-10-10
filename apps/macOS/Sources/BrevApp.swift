@@ -795,13 +795,13 @@ extension Notification.Name {
 
 @MainActor
 private func applyMacOSAppIcon(_ variant: AppIconVariant) {
-    // The default variant is the bundle icon itself; resetting to nil keeps
-    // its light/dark appearance switching, which a static NSImage would lose.
-    guard variant != .defaultVariant else {
-        NSApplication.shared.applicationIconImage = nil
-        return
-    }
-    if let image = NSImage(named: variant.previewAssetName) {
+    // All variants use the same ICNS path. Resetting the primary icon to nil
+    // lets macOS normalize it differently and makes Smoke shrink in the Dock.
+    let isNightlyDefault = variant == .defaultVariant
+        && Bundle.main.object(forInfoDictionaryKey: "BRReleaseRing") as? String == "nightly"
+    let assetName = isNightlyDefault ? AppIconVariant.envelopeCarbon.assetName : variant.assetName
+    if let url = Bundle.main.url(forResource: assetName, withExtension: "icns"),
+       let image = NSImage(contentsOf: url) {
         NSApplication.shared.applicationIconImage = image
     }
 }

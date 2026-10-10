@@ -3,22 +3,12 @@
  Brev - Mail Client for macOS and iOS
  Copyright (C) 2026 Brev contributors
 
- Regenerates Brev's primary and alternate app icon assets from the raster
- source artwork in assets/app-icons/source.
-
- The source pack is full-bleed rounded-tile PNG artwork (1254×1254, aurora,
- solid, gradient, and inverted paper-plane concepts). Two render modes turn
- each master into the platform assets:
-
- - .opaqueIOS: writes the artwork full-bleed without an alpha channel. iOS app
-   icons must be opaque (App Store Connect rejects alpha); the system applies
-   its own corner mask.
- - .sourceArtwork: masks the authored rounded tile, keeps transparency outside
-   it, and insets the tile to `macTileRatio` so macOS Dock icons and in-app
-   previews retain the standard rounded-tile margin.
-
- Rendering uses CoreGraphics directly, so the script has no external
- dependencies (the previous SVG pipeline shelled out to rsvg-convert).
+ Regenerates the glass envelope icon family from SVG source artwork.
+ Requires macOS, rsvg-convert (brew install librsvg), and iconutil.
+ Compact artwork is selected by logical size before rasterizing each output.
+ macOS keeps the authored transparency and canvas occupancy. iOS is flattened
+ over a matching neutral background without an alpha channel. Preview PDFs
+ retain vector paths, and all Dock icons retain the same ICNS resolutions.
  */
 
 import CoreGraphics
@@ -28,7 +18,11 @@ import UniformTypeIdentifiers
 
 private struct IconVariant {
     let assetName: String
-    let sourceFilename: String
+    let finish: String
+    let backgroundGray: CGFloat
+
+    var sourceFilename: String { "brev-glass-\(finish).svg" }
+    var compactFilename: String { "brev-glass-\(finish)-compact.svg" }
 }
 
 private struct AppIconEntry {
@@ -40,48 +34,20 @@ private struct AppIconEntry {
 }
 
 private enum IconRenderMode {
-    /// Masks and insets the authored tile for transparent macOS Dock icons and
-    /// in-app previews.
     case sourceArtwork
-    /// Composites the full-bleed tile over an opaque background, matching iOS
-    /// app icon requirements (no alpha channel).
     case opaqueIOS
 }
 
-/// Fraction of the canvas the rounded tile occupies in `.sourceArtwork` mode.
-/// Matches the previous SVG tile (x=96, width=832 in a 1024 canvas).
-private let macTileRatio = 0.8125
-private let sourceCornerRadiusRatio = 0.25
-
+// Stable asset names preserve saved preferences and settings backups.
 private let variants: [IconVariant] = [
-    IconVariant(assetName: "BrevIconAuroraOriginal", sourceFilename: "01-aurora-original.png"),
-    IconVariant(assetName: "BrevIconAuroraMinimalArc", sourceFilename: "02-aurora-minimal-arc.png"),
-    IconVariant(assetName: "BrevIconAuroraThinLines", sourceFilename: "03-aurora-thin-lines.png"),
-    IconVariant(assetName: "BrevIconAuroraSoftGlow", sourceFilename: "04-aurora-soft-glow.png"),
-    IconVariant(assetName: "BrevIconAuroraDiagonal", sourceFilename: "05-aurora-diagonal.png"),
-    IconVariant(assetName: "BrevIconAuroraCurtain", sourceFilename: "06-aurora-curtain.png"),
-    IconVariant(assetName: "BrevIconAuroraGreenBlue", sourceFilename: "07-aurora-green-blue-bands.png"),
-    IconVariant(assetName: "BrevIconAuroraHalo", sourceFilename: "08-aurora-halo.png"),
-    IconVariant(assetName: "BrevIconSolidWhite", sourceFilename: "09-solid-white.png"),
-    IconVariant(assetName: "BrevIconSolidLightGray", sourceFilename: "10-solid-light-gray.png"),
-    IconVariant(assetName: "BrevIconSolidGraphite", sourceFilename: "11-solid-graphite-gray.png"),
-    IconVariant(assetName: "BrevIconSolidNordicBlue", sourceFilename: "12-solid-nordic-blue.png"),
-    IconVariant(assetName: "BrevIconGradientArctic", sourceFilename: "13-gradient-arctic-blue-navy.png"),
-    IconVariant(assetName: "BrevIconGradientCyanViolet", sourceFilename: "14-gradient-cyan-violet.png"),
-    IconVariant(assetName: "BrevIconInvertedDark", sourceFilename: "15-inverted-light-plane-dark.png"),
-    IconVariant(assetName: "BrevIconInvertedBlack", sourceFilename: "16-inverted-light-plane-black.png"),
-    IconVariant(assetName: "BrevIconInvertedGraphite", sourceFilename: "17-inverted-light-plane-dark-graphite.png"),
-    IconVariant(assetName: "BrevIconInvertedBlackMetal", sourceFilename: "18-inverted-black-3d-metal-gradient.png"),
-    IconVariant(assetName: "BrevIconInvertedGunmetal", sourceFilename: "19-inverted-gunmetal-3d-gradient.png"),
-    IconVariant(assetName: "BrevIconInvertedCarbon", sourceFilename: "20-inverted-brushed-metal-carbon.png")
+    IconVariant(assetName: "BrevIconEnvelopeLight", finish: "frost", backgroundGray: 0.82),
+    IconVariant(assetName: "BrevIconEnvelopeDarkMetal", finish: "smoke", backgroundGray: 0.20),
+    IconVariant(assetName: "BrevIconEnvelopeCarbon", finish: "obsidian", backgroundGray: 0.06)
 ]
 
-private let defaultAppIconAssetName = "BrevIconAuroraOriginal"
-
-/// Nightly ring (ADR-0080): a distinct dark tile so `Brev Nightly.app` is
-/// visually separate in the Dock. `BREV_APP_ICON_NAME` selects it at build
-/// time via `ASSETCATALOG_COMPILER_APPICON_NAME`.
-private let nightlyAppIconAssetName = "BrevIconInvertedGraphite"
+private let defaultAppIconAssetName = "BrevIconEnvelopeDarkMetal"
+// ADR-0080: keep the Nightly ring visually distinct from the stable icon.
+private let nightlyAppIconAssetName = "BrevIconEnvelopeCarbon"
 
 private let iosEntries = [
     AppIconEntry(idiom: "iphone", size: "20x20", scale: "2x", filename: "icon_20x20@2x.png", pixels: 40),
@@ -173,6 +139,13 @@ private func generateCatalogs() throws {
     for variant in variants {
         try writeImageSet(catalog: macCatalog, variant: variant)
         try writeImageSet(catalog: iosCatalog, variant: variant)
+        if variant.assetName == defaultAppIconAssetName {
+            try writeImageSet(
+                catalog: root.appending(path: "packages/BrevMail/Sources/BrevMail/Resources/BrevBrandAssets.xcassets"),
+                variant: variant
+            )
+        }
+        try writeDockIcon(variant)
 
         guard variant.assetName != defaultVariant.assetName else { continue }
         try writeAppIconSet(
@@ -187,9 +160,11 @@ private func generateCatalogs() throws {
 
 private func validateSourceArtwork() throws {
     for variant in variants {
-        let source = sourceDirectory.appending(path: variant.sourceFilename)
-        guard fileManager.fileExists(atPath: source.path) else {
-            throw IconGenerationError.missingSource(source.path)
+        for filename in [variant.sourceFilename, variant.compactFilename] {
+            let source = sourceDirectory.appending(path: filename)
+            guard fileManager.fileExists(atPath: source.path) else {
+                throw IconGenerationError.missingSource(source.path)
+            }
         }
     }
 }
@@ -210,18 +185,21 @@ private func writeImageSet(catalog: URL, variant: IconVariant) throws {
     let directory = catalog.appending(path: "\(variant.assetName)Preview.imageset")
     try replaceDirectory(directory)
 
-    let filename = "icon_1024.png"
-    let data = try renderIconData(variant, pixels: 1024, mode: .sourceArtwork)
+    let filename = "icon.pdf"
+    let data = try runTool("rsvg-convert", arguments: [
+        "--format", "pdf", "--width", "1024", "--height", "1024",
+        sourceDirectory.appending(path: variant.sourceFilename).path
+    ])
     try data.write(to: directory.appending(path: filename), options: .atomic)
 
     let contents: [String: Any] = [
         "images": [
             [
                 "filename": filename,
-                "idiom": "universal",
-                "scale": "1x"
+                "idiom": "universal"
             ]
         ],
+        "properties": ["preserves-vector-representation": true],
         "info": [
             "author": "xcode",
             "version": 1
@@ -241,7 +219,12 @@ private func writeAppIconSet(
     try replaceDirectory(directory)
 
     for entry in entries {
-        let data = try renderIconData(variant, pixels: entry.pixels, mode: mode)
+        let data = try renderIconData(
+            variant,
+            pixels: entry.pixels,
+            logicalSize: Double(entry.size.split(separator: "x")[0])!,
+            mode: mode
+        )
         try data.write(to: directory.appending(path: entry.filename), options: .atomic)
     }
 
@@ -263,98 +246,71 @@ private func writeAppIconSet(
     try writeJSON(contents, to: directory.appending(path: "Contents.json"))
 }
 
+private func writeDockIcon(_ variant: IconVariant) throws {
+    let temporary = fileManager.temporaryDirectory.appending(path: UUID().uuidString)
+    defer { try? fileManager.removeItem(at: temporary) }
+    try writeAppIconSet(catalog: temporary, name: variant.assetName, entries: macEntries, variant: variant, mode: .sourceArtwork)
+    let iconSet = temporary.appending(path: "\(variant.assetName).iconset")
+    try fileManager.moveItem(at: temporary.appending(path: "\(variant.assetName).appiconset"), to: iconSet)
+    try fileManager.removeItem(at: iconSet.appending(path: "Contents.json"))
+    let directory = root.appending(path: "apps/macOS/Resources/AppIcons")
+    try fileManager.createDirectory(at: directory, withIntermediateDirectories: true)
+    _ = try runTool("iconutil", arguments: [
+        "--convert", "icns", "--output", directory.appending(path: "\(variant.assetName).icns").path, iconSet.path
+    ])
+}
+
 private func renderIconData(
     _ variant: IconVariant,
     pixels: Int,
+    logicalSize: Double,
     mode: IconRenderMode
 ) throws -> Data {
-    let source = sourceDirectory.appending(path: variant.sourceFilename)
-    let image = try loadSourceImage(source)
-
-    let context: CGContext
-    switch mode {
-    case .opaqueIOS:
-        guard let ctx = CGContext(
-            data: nil,
-            width: pixels,
-            height: pixels,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: sourceColorSpace,
-            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
-        ) else {
-            throw IconGenerationError.renderFailed(variant.sourceFilename)
-        }
-        ctx.setFillColor(CGColor(gray: 0, alpha: 1))
-        ctx.fill(CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        ctx.interpolationQuality = .high
-        ctx.draw(image, in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        context = ctx
-
-    case .sourceArtwork:
-        guard let ctx = CGContext(
-            data: nil,
-            width: pixels,
-            height: pixels,
-            bitsPerComponent: 8,
-            bytesPerRow: 0,
-            space: sourceColorSpace,
-            bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-        ) else {
-            throw IconGenerationError.renderFailed(variant.sourceFilename)
-        }
-        ctx.clear(CGRect(x: 0, y: 0, width: pixels, height: pixels))
-        ctx.interpolationQuality = .high
-        let inset = (Double(pixels) * (1 - macTileRatio)) / 2
-        let target = CGRect(
-            x: inset,
-            y: inset,
-            width: Double(pixels) - inset * 2,
-            height: Double(pixels) - inset * 2
-        )
-        ctx.addPath(
-            CGPath(
-                roundedRect: target,
-                cornerWidth: target.width * sourceCornerRadiusRatio,
-                cornerHeight: target.height * sourceCornerRadiusRatio,
-                transform: nil
-            )
-        )
-        ctx.clip()
-        ctx.draw(image, in: target)
-        context = ctx
-    }
-
-    guard let rendered = context.makeImage() else {
-        throw IconGenerationError.renderFailed(variant.sourceFilename)
-    }
-
-    let data = NSMutableData()
+    // A 128 px macOS representation also serves 48–64 pt Retina Dock slots.
+    var compact = logicalSize <= 64
+    if case .sourceArtwork = mode, pixels <= 128 { compact = true }
+    let filename = compact ? variant.compactFilename : variant.sourceFilename
+    let png = try runTool("rsvg-convert", arguments: [
+        "--width", String(pixels), "--height", String(pixels),
+        sourceDirectory.appending(path: filename).path
+    ])
+    guard case .opaqueIOS = mode else { return png }
     guard
-        let destination = CGImageDestinationCreateWithData(
-            data as CFMutableData,
-            UTType.png.identifier as CFString,
-            1,
-            nil
+        let source = CGImageSourceCreateWithData(png as CFData, nil),
+        let image = CGImageSourceCreateImageAtIndex(source, 0, nil),
+        let context = CGContext(
+            data: nil, width: pixels, height: pixels, bitsPerComponent: 8,
+            bytesPerRow: 0, space: sourceColorSpace,
+            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
         )
-    else {
-        throw IconGenerationError.renderFailed(variant.sourceFilename)
+    else { throw IconGenerationError.renderFailed(filename) }
+    context.setFillColor(CGColor(gray: variant.backgroundGray, alpha: 1))
+    context.fill(CGRect(x: 0, y: 0, width: pixels, height: pixels))
+    context.draw(image, in: CGRect(x: 0, y: 0, width: pixels, height: pixels))
+    guard let rendered = context.makeImage() else { throw IconGenerationError.renderFailed(filename) }
+    let data = NSMutableData()
+    guard let destination = CGImageDestinationCreateWithData(data, UTType.png.identifier as CFString, 1, nil) else {
+        throw IconGenerationError.renderFailed(filename)
     }
     CGImageDestinationAddImage(destination, rendered, nil)
-    guard CGImageDestinationFinalize(destination) else {
-        throw IconGenerationError.renderFailed(variant.sourceFilename)
-    }
+    guard CGImageDestinationFinalize(destination) else { throw IconGenerationError.renderFailed(filename) }
     return data as Data
 }
 
-private func loadSourceImage(_ url: URL) throws -> CGImage {
-    guard
-        let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-        let image = CGImageSourceCreateImageAtIndex(source, 0, nil)
-    else {
-        throw IconGenerationError.invalidSource(url.lastPathComponent)
-    }
-    return image
+private func runTool(_ name: String, arguments: [String]) throws -> Data {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/env")
+    process.arguments = [name] + arguments
+    var environment = ProcessInfo.processInfo.environment
+    environment["SOURCE_DATE_EPOCH"] = "0"
+    process.environment = environment
+    let output = Pipe()
+    process.standardOutput = output
+    try process.run()
+    let data = output.fileHandleForReading.readDataToEndOfFile()
+    process.waitUntilExit()
+    guard process.terminationStatus == 0 else { throw IconGenerationError.renderFailed(name) }
+    return data
 }
 
 private func replaceDirectory(_ directory: URL) throws {
@@ -381,7 +337,6 @@ private func writeJSON(_ object: Any, to url: URL) throws {
 private enum IconGenerationError: LocalizedError {
     case missingDefault(String)
     case missingSource(String)
-    case invalidSource(String)
     case renderFailed(String)
 
     var errorDescription: String? {
@@ -390,8 +345,6 @@ private enum IconGenerationError: LocalizedError {
             return "Unable to find default app icon variant \(assetName)."
         case .missingSource(let path):
             return "Missing app icon source artwork at \(path)."
-        case .invalidSource(let filename):
-            return "Unable to decode source artwork \(filename)."
         case .renderFailed(let filename):
             return "Failed to render app icon from \(filename)."
         }

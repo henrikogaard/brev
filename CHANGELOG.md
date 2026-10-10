@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- App icons: Frost, Smoke and Obsidian glass envelopes replace the old finishes. Smoke is the default; saved icon choices keep their corresponding finish. Compact drawings keep small Dock icons sharp, and the login screen uses Smoke.
+
 ## [0.2.7] - 2026-10-10
 
 ### Added

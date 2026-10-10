@@ -143,14 +143,26 @@ name.
 
 ### Application icon asset catalogs
 
-App icon masters live under `assets/app-icons/source/` and
-`scripts/generate-app-icon-variants.swift` deterministically regenerates the
-macOS primary icon, both platforms' Settings previews, and the iOS primary and
-alternate icon catalogs. `AppIconVariant` owns the stable preference IDs and
-asset-name mapping. The iOS target manifest lists every non-primary catalog in
-`ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES`, while concept 01 is the
-primary catalog. Icon-family changes must update these surfaces together so a
-Settings choice always resolves to an asset compiled into both app targets.
+App icon masters live under `assets/app-icons/source/`. The glass family uses
+six SVG files: Frost, Smoke and Obsidian, each with a full and a compact drawing.
+`scripts/generate-app-icon-variants.swift` renders them with `rsvg-convert`
+(librsvg, required only when regenerating assets). Each raster size is drawn
+from the SVG directly. Logical sizes up to 64 points use the compact drawing,
+including Retina exports. The 128 px macOS representation also uses compact
+artwork for 48–64 pt Retina Dock slots. No second inset or rounded-tile mask is applied.
+
+Smoke is the primary icon and Obsidian is the distinct Nightly icon. Both
+platforms use the asset catalogs. The old Icon Composer resource is no longer
+compiled, so it cannot override Smoke or add a white background. All macOS Dock variants, including Smoke, use bundled multi-resolution ICNS
+files; Settings and login branding
+use vector PDF image sets. iOS icon PNGs are composited over a matching neutral
+background and encoded without alpha.
+
+`AppIconVariant` retains the existing preference IDs and asset-name mapping:
+`envelope-light` is Frost, `envelope-dark-metal` is Smoke, and `envelope-carbon`
+is Obsidian. Existing settings backups and saved selections remain readable.
+The iOS manifest and Info.plist list Frost and Obsidian as alternates; Smoke
+maps to the primary icon. Icon-family changes update these surfaces together.
 
 ### Extension target API boundaries
 
