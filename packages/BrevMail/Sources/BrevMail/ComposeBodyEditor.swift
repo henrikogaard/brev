@@ -41,6 +41,9 @@ struct ComposeBodyEditor: View {
     /// Read-only quoted-original region of the body (replies/forwards); the
     /// platform editor refuses text changes landing inside it.
     var quoteProtection: ComposeQuoteProtection?
+    /// Asks the iOS text view to take keyboard focus (and place the caret);
+    /// ignored on macOS, where the window's first responder logic applies.
+    var focusRequest: ComposeBodyFocusRequest?
 
     var body: some View {
         PlatformComposeBodyEditor(
@@ -59,7 +62,8 @@ struct ComposeBodyEditor: View {
             iosRichTextTargetBox: iosRichTextTargetBox,
             onDropFileURLs: onDropFileURLs,
             onFileDragTargetChanged: onFileDragTargetChanged,
-            quoteProtection: quoteProtection
+            quoteProtection: quoteProtection,
+            focusRequest: focusRequest
         )
     }
 }
@@ -295,6 +299,8 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
     var onDropFileURLs: (([URL]) -> Void)?
     var onFileDragTargetChanged: ((Bool) -> Void)?
     var quoteProtection: ComposeQuoteProtection?
+    /// Unused on macOS.
+    var focusRequest: ComposeBodyFocusRequest?
 
     func makeCoordinator() -> Coordinator {
         Coordinator(
@@ -871,6 +877,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     var onDropFileURLs: (([URL]) -> Void)?
     var onFileDragTargetChanged: ((Bool) -> Void)?
     var quoteProtection: ComposeQuoteProtection?
+    var focusRequest: ComposeBodyFocusRequest?
 
     private var isRichText: Bool { bodyFormat == .richTextHTML }
 
@@ -889,7 +896,7 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> UITextView {
-        let textView = UITextView()
+        let textView = ComposeBodyTextView()
         textView.delegate = context.coordinator
         textView.isEditable = true
         textView.isSelectable = true
@@ -898,6 +905,17 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0
         textView.allowsEditingTextAttributes = isRichText
+        // Dynamic Type: the font is a `UIFontMetrics` body font, so the text
+        // view rescales it when the content size category changes.
+        textView.adjustsFontForContentSizeCategory = true
+        // Font and colour go on before the text so the initial body (a reply's
+        // quote, a restored draft) is not left in UIKit's fixed default font.
+        textView.font = ComposeEditorTypography.uiFont(
+            family: fontFamily,
+            textSize: textSize,
+            compatibleWith: textView.traitCollection
+        )
+        textView.textColor = UIColor(appearance.editorTheme.textPrimary.color)
         textView.text = text
         textView.accessibilityLabel = String(localized: "Message body", bundle: .module)
         applyTextChecking(to: textView)
@@ -910,7 +928,9 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         iosRichTextTargetBox?.target = context.coordinator
         context.coordinator.quoteProtection = quoteProtection
         context.coordinator.publishRichHTML(from: textView)
-        context.coordinator.updateSelection(from: textView)
+        // The selection bindings are SwiftUI state; writing them while the
+        // view is being made logs "Modifying state during view update".
+        context.coordinator.updateSelection(from: textView, deferringStateWrite: true)
         applyQuoteStyling(to: textView)
         return textView
     }
@@ -926,14 +946,20 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         textView.allowsEditingTextAttributes = isRichText
         if textView.text != text {
             textView.text = text
-            context.coordinator.updateSelection(from: textView)
+            context.coordinator.updateSelection(from: textView, deferringStateWrite: true)
         }
         if isRichText {
             context.coordinator.publishRichHTML(from: textView)
         } else if richHTML != nil {
-            richHTML = nil
+            // A binding write during a view update; hop to the next turn.
+            let richHTMLBinding = $richHTML
+            DispatchQueue.main.async { richHTMLBinding.wrappedValue = nil }
         }
-        let font = ComposeEditorTypography.uiFont(family: fontFamily, textSize: textSize)
+        let font = ComposeEditorTypography.uiFont(
+            family: fontFamily,
+            textSize: textSize,
+            compatibleWith: textView.traitCollection
+        )
         let textColor = UIColor(appearance.editorTheme.textPrimary.color)
         textView.tintColor = UIColor(appearance.editorTheme.accent.color)
         textView.backgroundColor = .clear
@@ -954,6 +980,10 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         applyTextChecking(to: textView)
         applyQuoteStyling(to: textView)
         context.coordinator.isUpdatingFromSwiftUI = false
+        if let focusRequest, focusRequest.id != context.coordinator.handledFocusRequestID {
+            context.coordinator.handledFocusRequestID = focusRequest.id
+            (textView as? ComposeBodyTextView)?.requestFocus(selection: focusRequest.selection)
+        }
     }
 
     static func dismantleUIView(_ uiView: UITextView, coordinator: Coordinator) {
@@ -991,6 +1021,8 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
         weak var textView: UITextView?
         weak var targetBox: ComposeIOSRichTextTargetBox?
         var isUpdatingFromSwiftUI = false
+        /// The newest `ComposeBodyFocusRequest.id` already acted on.
+        var handledFocusRequestID = 0
         var isRichText: Bool
         var inlineImageRegistry: ComposeInlineImageRegistry?
         var onRequestLinkSheet: ((ComposeLinkSheetInput) -> Void)?
@@ -1062,7 +1094,16 @@ private struct PlatformComposeBodyEditor: UIViewRepresentable {
             updateSelection(from: textView)
         }
 
-        func updateSelection(from textView: UITextView) {
+        func updateSelection(from textView: UITextView, deferringStateWrite: Bool = false) {
+            if deferringStateWrite {
+                // Called while SwiftUI is making/updating the representable, where
+                // writing @State bindings is undefined behaviour.
+                DispatchQueue.main.async { [weak self, weak textView] in
+                    guard let self, let textView else { return }
+                    updateSelection(from: textView)
+                }
+                return
+            }
             let selectedRange = textView.selectedRange
             // Borrow the live text storage instead of copying `textView.text`
             // twice per caret movement; only the selected range materializes.
@@ -1414,6 +1455,39 @@ private extension UIFont {
             return self
         }
         return UIFont(descriptor: descriptor, size: pointSize)
+    }
+}
+
+/// The compose body text view. It can be asked to take focus before it is in a
+/// window (the sheet is still presenting when SwiftUI first updates it), and
+/// carries that request over until it is.
+final class ComposeBodyTextView: UITextView {
+    private var pendingFocus: (selection: NSRange?, isPending: Bool) = (nil, false)
+
+    /// Takes keyboard focus now, or as soon as the view joins a window.
+    func requestFocus(selection: NSRange?) {
+        pendingFocus = (selection, true)
+        applyPendingFocus()
+    }
+
+    override func didMoveToWindow() {
+        super.didMoveToWindow()
+        applyPendingFocus()
+    }
+
+    private func applyPendingFocus() {
+        guard pendingFocus.isPending, window != nil else { return }
+        let selection = pendingFocus.selection
+        pendingFocus = (nil, false)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, window != nil else { return }
+            becomeFirstResponder()
+            if let selection {
+                let length = (text as NSString).length
+                let location = min(selection.location, length)
+                selectedRange = NSRange(location: location, length: min(selection.length, length - location))
+            }
+        }
     }
 }
 #endif

@@ -44,7 +44,15 @@ enum ComposeEditorTypography {
     #endif
 
     #if canImport(UIKit)
-    static func uiFont(family: MailboxFontFamily, textSize: MailboxTextSize) -> UIFont {
+    /// Body font for the UIKit editor. The mailbox text-size preference sets the
+    /// base size at the default Dynamic Type setting; `UIFontMetrics` scales it
+    /// with the user's content size category (pass the text view's
+    /// `traitCollection` so the result tracks that view).
+    static func uiFont(
+        family: MailboxFontFamily,
+        textSize: MailboxTextSize,
+        compatibleWith traitCollection: UITraitCollection? = nil
+    ) -> UIFont {
         let size = pointSize(for: textSize)
         let design: UIFontDescriptor.SystemDesign = switch family {
         case .system: .default
@@ -53,10 +61,8 @@ enum ComposeEditorTypography {
         case .monospaced: .monospaced
         }
         let base = UIFont.systemFont(ofSize: size)
-        guard let descriptor = base.fontDescriptor.withDesign(design) else {
-            return base
-        }
-        return UIFont(descriptor: descriptor, size: size)
+        let designed = base.fontDescriptor.withDesign(design).map { UIFont(descriptor: $0, size: size) } ?? base
+        return UIFontMetrics(forTextStyle: .body).scaledFont(for: designed, compatibleWith: traitCollection)
     }
     #endif
 }

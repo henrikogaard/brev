@@ -24,9 +24,24 @@ with `TEST_RUNNER_` so they reach the test process; compare again without them.
 | `BrevMailSnapshotTests/composeViewRendersSignaturePicker()` | `BrevMailSnapshotTests/composeViewRendersSignaturePicker.signature-picker.png` | #53: reviewed toolbar changes; Work signature picker remains visible. |
 | `ComposeViewSnapshotTests/emptyCompose()` | `ComposeViewSnapshotTests/emptyCompose.empty-compose.png` | #53: Close/mode/Send above, Attach/More below; empty fields and sender preserved. |
 | `ComposeViewSnapshotTests/replyCompose()` | `ComposeViewSnapshotTests/replyCompose.reply-compose.png` | #53: same toolbar changes; recipient chip, subject, sender and quoted body preserved. |
+| `ComposeNativeSheetsSnapshotTests` | `ComposeNativeSheetsSnapshotTests/*.png` (8 references) | iOS compose slice: Insert Link (new, existing link), Schedule Send (quick picks, custom date; calendar and locale pinned to UTC / en_US), Templates (populated, empty), Drive sheet chrome at phone width, Cc/Bcc rows. Rendered in a real `UIWindow`. |
 | `MessageDetailViewSnapshotTests/noSelectionPlaceholder()` | `MessageDetailViewSnapshotTests/noSelectionPlaceholder.no-selection.png` | #53: reviewed theme contrast refresh; envelope and no-selection copy preserved. |
 | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()` | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender.header-present.png` | #53: reviewed secondary-text contrast and body sizing; subject, sender, recipients, date and snippet preserved. |
+| `PhoneMessageListSnapshotTests` | `PhoneMessageListSnapshotTests/*.png` (7 references) | iOS list slice: unread and read rows (light, dark), compact All Inboxes row, selection circles (ticked/unticked), row at accessibility 5, plain date heading next to the collapsible one, system empty state. Reviewed: accent dot only on unread, semibold sender only on unread, no account line on the compact row. |
+| `PhoneMailboxSnapshotTests` `expandedInbox` and `inbox` | `PhoneMailboxSnapshotTests/expandedInbox-accessibility.*.png`, `inbox-dark.{light,dark}.png` | iOS list slice: rows now show the accent unread dot instead of the thin bar; thread count and sender metadata unchanged. Re-recorded only these four; the other `PhoneMailboxSnapshotTests` references already fail to compare on this host and were not touched. |
 | `SettingsFormSnapshotTests` (root, accounts, notifications, appearance × light, dark, accessibility 3) | `SettingsFormSnapshotTests/forms.<pane>-<variant>.png` | Settings panes as inset-grouped forms (iOS slice 7). Notifications renders the denied state with the Open Settings row. Reviewed in light, dark and AX3; no card-in-card surfaces. |
+
+Pushed-reader slice (iOS UX audit slice 1, 2026-10-09). Refreshed after
+visual review of each diff, all tied to the reader changes: the 44 pt sender
+and "to" rows, the "to …" line replacing the raw address on expanded
+conversation cards, and the conversation header losing the mailbox address
+row. `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()`,
+`BrevMailSnapshotTests/threadMessageCardExpandedRenders()`,
+`BrevMailSnapshotTests/threadConversationViewRendersDeterministically()`,
+`PhoneMailboxSnapshotTests/detachedReader()` and
+`PhoneMailboxSnapshotTests/conversation(accessibility:)` were re-recorded. New
+suite `CompactReaderSnapshotTests` (expanded card light and dark, collapsed card
+at AX3, quick-reply bar light and dark, undo toast) joins the required lane.
 
 The required lane intentionally stays small and deterministic. It is the
 blocking signal for stable UIKit snapshots, not a claim that every snapshot
@@ -136,3 +151,32 @@ eighteen tests in five suites on iOS 27 with `en` / `en_US`.
 The 660 pt compose reference now shows Close, mode and Send across the header,
 with Attach/More below the form. This supersedes the earlier overflow placement
 described in the PR #47 history above. Deferred suites remain explicitly separate.
+
+## iOS compose slice — 2026-10-09
+
+The compose sheet changed on purpose, so `ComposeViewSnapshotTests/emptyCompose()`,
+`ComposeViewSnapshotTests/replyCompose()`,
+`BrevMailSnapshotTests/composeViewRendersSignaturePicker()`,
+`PhoneMailboxSnapshotTests/narrowCompose()` and both `phoneCompose(accessibility:)` references were re-recorded after visual
+review. Every difference is explained by the slice: a text "Cancel" replaces the
+✕, the reply quote now uses the Dynamic Type body font instead of UIKit's small
+default font, and the reply attribution line is localized and in local time
+(`replyCompose()` pins `ComposeReplyFormatter` to `en_GB` / UTC so the text does
+not depend on the machine). At accessibility sizes the centred title is dropped
+so Cancel and Send keep their room.
+
+Recorded on the iOS 27.0 (24A434) simulator, iPhone 17 Pro. On that runtime
+`PhoneMailboxSnapshotTests` references for views this slice does not touch
+(favourites, settings categories, folder hierarchy, sidebar, search) also fail
+to compare locally; they were left untouched and still need a runtime-matched
+refresh.
+
+
+Mailboxes list slice (iOS UX audit slice 8a, 2026-10-10). The sidebar became a
+native inset-grouped list with a large title, so the five phone sidebar
+references were re-recorded after visual review with `-testLanguage en
+-testRegion en_US`: `PhoneMailboxSnapshotTests/accessibleFavorites()`,
+`mailboxes(dark:)` and `twoAccountMailboxes(dark:)` (both appearances). Two
+cases are new: `mailboxesAccessibility5()` (AX5, apps and an expanded account)
+and `ipadSidebarLongAccountName()` (a long account name wraps instead of
+truncating).

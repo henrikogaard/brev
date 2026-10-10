@@ -37,6 +37,149 @@ struct TemplatePickerView: View {
     @State private var searchText = ""
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a list with the system search field, Done in the navigation bar and
+    /// the "save as template" action as the last section.
+    private var nativeBody: some View {
+        NavigationStack {
+            List {
+                if filteredTemplates.isEmpty {
+                    Section {
+                        nativeEmptyState
+                    }
+                    .listRowBackground(Color.clear)
+                } else {
+                    Section {
+                        ForEach(filteredTemplates) { template in
+                            nativeTemplateRow(template)
+                        }
+                    }
+                    .listRowBackground(theme.bgSecondary.color)
+                }
+
+                Section {
+                    nativeSaveAsRow
+                }
+                .listRowBackground(theme.bgSecondary.color)
+            }
+            .scrollContentBackground(.hidden)
+            .background(theme.bgPrimary.color)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("Search templates", bundle: .module)
+            )
+            .navigationTitle(Text("Templates", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Done", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+    }
+
+    private var nativeEmptyState: some View {
+        VStack(spacing: BrevSpacing.xs) {
+            Text(
+                searchText.isEmpty
+                    ? String(localized: "No Templates", bundle: .module)
+                    : String(localized: "No templates match your search", bundle: .module)
+            )
+            .brevFont(.headline)
+            .foregroundStyle(theme.textPrimary.color)
+            Text("Save the current message as a template\nto reuse it in future conversations.", bundle: .module)
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.textSecondary.color)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, BrevSpacing.md)
+    }
+
+    private func nativeTemplateRow(_ template: MessageTemplate) -> some View {
+        Button {
+            onInsert(template)
+            dismiss()
+        } label: {
+            HStack(spacing: BrevSpacing.md) {
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(verbatim: template.name)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .lineLimit(1)
+                    if let subject = template.subject, !subject.isEmpty {
+                        Text("Subject: \(subject)", bundle: .module)
+                            .brevFont(.caption)
+                            .foregroundStyle(theme.textSecondary.color)
+                    }
+                    Text(verbatim: template.body)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(2)
+                }
+                Spacer(minLength: BrevSpacing.sm)
+                if template.isPinned {
+                    Image(systemName: "pin.fill")
+                        .foregroundStyle(theme.accent.color)
+                        .accessibilityHidden(true)
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    @ViewBuilder
+    private var nativeSaveAsRow: some View {
+        if showSaveAsField {
+            TextField(String(localized: "Template name", bundle: .module), text: $saveAsName)
+                .submitLabel(.done)
+                .onSubmit { saveCurrentAsTemplate() }
+            Button {
+                saveCurrentAsTemplate()
+            } label: {
+                Text("Save", bundle: .module)
+            }
+            .disabled(saveAsName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button(role: .cancel) {
+                saveAsName = ""
+                showSaveAsField = false
+            } label: {
+                Text("Cancel", bundle: .module)
+            }
+        } else {
+            Button {
+                showSaveAsField = true
+            } label: {
+                Label(String(localized: "Save current message as template…", bundle: .module), systemImage: "plus")
+                    .foregroundStyle(theme.accent.color)
+            }
+        }
+    }
+
+    private func saveCurrentAsTemplate() {
+        guard !saveAsName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        onSaveAsTemplate(saveAsName)
+        saveAsName = ""
+        showSaveAsField = false
+        templateSettings = MessageTemplateSettings.load()
+    }
+    #endif
+
+    private var desktopBody: some View {
         NavigationStack {
             VStack(spacing: 0) {
                 searchBar

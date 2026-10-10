@@ -44,7 +44,7 @@ enum LocalizationCatalogTestSupport {
         return forms
     }
 
-    private static func loadCatalogStrings() throws -> [String: Any] {
+    static func loadCatalogStrings() throws -> [String: Any] {
         let relativePath = "packages/BrevMail/Sources/BrevMail/Resources/Localizable.xcstrings"
         var directory = URL(fileURLWithPath: #filePath).deletingLastPathComponent()
         for _ in 0 ..< 7 {

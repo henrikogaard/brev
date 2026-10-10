@@ -598,4 +598,45 @@ struct FolderSidebarPresentationTests {
         #expect(!presentation.canDeleteFolder)
         #expect(!presentation.canFlushFolder)
     }
+
+    @Test("unread counts speak as a phrase and stay silent at zero")
+    func unreadValueSpeaksAPhrase() {
+        #expect(FolderSidebarAccessibility.unreadValue(count: 16) == "16 unread")
+        #expect(FolderSidebarAccessibility.unreadValue(count: 1) == "1 unread")
+        #expect(FolderSidebarAccessibility.unreadValue(count: 0) == nil)
+        #expect(FolderSidebarAccessibility.unreadValue(count: -3) == nil)
+    }
+
+    @Test("an expanded account header announces only its state")
+    func expandedAccountHeaderValue() {
+        let value = FolderSidebarAccessibility.accountHeaderValue(isExpanded: true, unreadCount: 11)
+        #expect(value == "Expanded mailbox")
+    }
+
+    @Test("a collapsed account header keeps its unread badge in the spoken value")
+    func collapsedAccountHeaderValueIncludesUnread() {
+        let value = FolderSidebarAccessibility.accountHeaderValue(isExpanded: false, unreadCount: 11)
+        #expect(value == "Collapsed mailbox, 11 unread")
+        let none = FolderSidebarAccessibility.accountHeaderValue(isExpanded: false, unreadCount: 0)
+        #expect(none == "Collapsed mailbox")
+    }
+
+    @Test("the Mailboxes title follows the active profile")
+    func navigationTitleFollowsProfile() {
+        let source = MailSourceID(accountID: "a", mailboxID: "m")
+        let focused = MailProfile(id: "focused", name: "Focused", sourceIDs: [source])
+        let profiles = [MailProfile.allMailboxes(sourceIDs: [source]), focused]
+        #expect(FolderSidebarPresentation.navigationTitle(
+            activeProfileID: MailProfile.allMailboxesID, profiles: profiles
+        ) == "Mailboxes")
+        #expect(FolderSidebarPresentation.navigationTitle(
+            activeProfileID: "focused", profiles: profiles
+        ) == "Focused")
+        #expect(FolderSidebarPresentation.navigationTitle(
+            activeProfileID: "deleted-profile", profiles: profiles
+        ) == "Mailboxes")
+        #expect(FolderSidebarPresentation.navigationTitle(
+            activeProfileID: "focused", profiles: []
+        ) == "Mailboxes")
+    }
 }

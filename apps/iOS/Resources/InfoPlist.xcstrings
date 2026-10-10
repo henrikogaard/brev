@@ -57,6 +57,23 @@
         }
       }
     },
+    "NSCameraUsageDescription": {
+      "extractionState": "extracted_with_value",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "new",
+            "value": "Brev uses the camera only when you choose Take Photo or Scan Documents while writing a message. Pictures and scans stay on your device until you send the message."
+          }
+        },
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev bruker kameraet bare når du velger Ta bilde eller Skann dokumenter mens du skriver en melding. Bilder og skanninger blir værende på enheten din til du sender meldingen."
+          }
+        }
+      }
+    },
     "NSContactsUsageDescription": {
       "extractionState": "extracted_with_value",
       "localizations": {

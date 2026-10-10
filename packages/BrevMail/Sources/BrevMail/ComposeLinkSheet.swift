@@ -62,6 +62,95 @@ struct ComposeLinkSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard form sheet with Cancel / Insert in the navigation bar.
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(
+                        String(localized: "https://example.com or email@example.com", bundle: .module),
+                        text: $urlString
+                    )
+                    .keyboardType(.URL)
+                    .textContentType(.URL)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .submitLabel(.next)
+                    .focused($focusedField, equals: .url)
+                    .onSubmit { focusedField = .displayText }
+                    .accessibilityLabel(Text("URL", bundle: .module))
+
+                    TextField(
+                        String(localized: "Optional — uses URL if left blank", bundle: .module),
+                        text: $displayText
+                    )
+                    .submitLabel(.done)
+                    .focused($focusedField, equals: .displayText)
+                    .onSubmit { attemptConfirm() }
+                    .accessibilityLabel(Text("Display text", bundle: .module))
+                } footer: {
+                    if let validationError {
+                        Text(validationError)
+                            .foregroundStyle(theme.danger.color)
+                    }
+                }
+                .listRowBackground(theme.bgSecondary.color)
+
+                if input.hasExistingLink {
+                    Section {
+                        Button(role: .destructive) {
+                            onRemove()
+                            dismiss()
+                        } label: {
+                            Text("Remove Link", bundle: .module)
+                        }
+                    }
+                    .listRowBackground(theme.bgSecondary.color)
+                }
+            }
+            .scrollContentBackground(.hidden)
+            .background(theme.bgPrimary.color)
+            .navigationTitle(Text("Insert Link", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        dismiss()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        attemptConfirm()
+                    } label: {
+                        Text("Insert", bundle: .module)
+                    }
+                    .disabled(urlString.trimmingCharacters(in: .whitespaces).isEmpty)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .onAppear { focusedField = .url }
+    }
+
+    private enum LinkField: Hashable {
+        case url
+        case displayText
+    }
+
+    @FocusState private var focusedField: LinkField?
+    #endif
+
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.lg) {
             Text("Insert Link", bundle: .module)
                 .brevFont(.headline)

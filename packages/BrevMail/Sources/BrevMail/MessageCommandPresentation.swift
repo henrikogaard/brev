@@ -88,11 +88,25 @@ struct MessageContextMenuSection: Equatable, Sendable {
     let actions: [MessageContextMenuActionPresentation]
 }
 
+/// How a row context menu is laid out: the desktop inventory, or the shorter phone menu.
+enum MessageContextMenuLayout: Equatable, Sendable {
+    case full
+    /// iOS Mail parity (audit L7): reply, mark and filing first; everything else under "More".
+    case compact
+}
+
 struct MessageContextMenuPresentation: Equatable, Sendable {
     let sections: [MessageContextMenuSection]
+    /// Actions folded under a trailing "More" submenu. Empty for the full layout.
+    let overflowSections: [MessageContextMenuSection]
+
+    init(sections: [MessageContextMenuSection], overflowSections: [MessageContextMenuSection] = []) {
+        self.sections = sections
+        self.overflowSections = overflowSections
+    }
 
     func action(_ action: MessageContextMenuAction) -> MessageContextMenuActionPresentation? {
-        for section in sections {
+        for section in sections + overflowSections {
             if let match = section.actions.first(where: { $0.action == action }) {
                 return match
             }
@@ -108,6 +122,8 @@ public enum MessageCommandPresentation {
         case archive
         case move
         case delete
+        /// Opens the action sheet of less common actions (trailing swipe, phone layout).
+        case more
     }
 
     enum DetailContextAction: Hashable {
@@ -447,9 +463,10 @@ public enum MessageCommandPresentation {
         canExportPDF: Bool = false,
         canShowProperties: Bool = false,
         extendedCapabilities: BackendExtendedCapabilities = [],
-        canExportEML: Bool = false
+        canExportEML: Bool = false,
+        layout: MessageContextMenuLayout = .full
     ) -> MessageContextMenuPresentation {
-        messageMenu(
+        let full = messageMenu(
             for: header,
             includesRowActions: true,
             isSelected: isSelected,
@@ -479,6 +496,30 @@ public enum MessageCommandPresentation {
             extendedCapabilities: extendedCapabilities,
             canExportEML: canExportEML
         )
+        return layout == .compact ? compacted(full) : full
+    }
+
+    /// Phone row menu: the actions people reach for most stay at the top level in
+    /// iOS Mail's order, every other action moves under one "More" submenu.
+    private static func compacted(_ full: MessageContextMenuPresentation) -> MessageContextMenuPresentation {
+        let primaryGroups: [[MessageContextMenuAction]] = [
+            [.reply, .replyAll, .forward],
+            [.toggleRead, .toggleFlag, .toggleSnooze],
+            [.move, .archive, .delete],
+            [.select]
+        ]
+        var placed: Set<MessageContextMenuAction> = []
+        var sections: [MessageContextMenuSection] = []
+        for group in primaryGroups {
+            let actions = group.compactMap { full.action($0) }
+            placed.formUnion(actions.map(\.action))
+            appendSection(&sections, actions: actions)
+        }
+        let overflow = full.sections.compactMap { section -> MessageContextMenuSection? in
+            let remaining = section.actions.filter { !placed.contains($0.action) }
+            return remaining.isEmpty ? nil : MessageContextMenuSection(actions: remaining)
+        }
+        return MessageContextMenuPresentation(sections: sections, overflowSections: overflow)
     }
 
     /// The reader-surface menu (reader overflow, body context menu, detached
@@ -820,7 +861,7 @@ public enum MessageCommandPresentation {
 
     static func feedback(for action: DirectAction) -> DirectActionFeedback {
         switch action {
-        case .toggleRead, .toggleFlag, .archive, .move:
+        case .toggleRead, .toggleFlag, .archive, .move, .more:
             .impact
         case .delete:
             .warning
@@ -831,7 +872,33 @@ public enum MessageCommandPresentation {
         hasArchive ? [.archive, .delete] : [.delete]
     }
 
+    /// Trailing swipe actions in SwiftUI declaration order, which is edge first: the first
+    /// action sits at the screen edge and is the one a full swipe runs.
+    ///
+    /// The phone layout matches iOS Mail (More, Flag, then Archive or Trash at the edge).
+    /// Archive is the edge action when the account has an archive folder, otherwise Trash.
+    static func trailingSwipeActions(hasArchive: Bool, isCompact: Bool) -> [DirectAction] {
+        guard isCompact else { return trailingSwipeActions(hasArchive: hasArchive) }
+        return [hasArchive ? .archive : .delete, .toggleFlag, .more]
+    }
+
     static let leadingSwipeActions: [DirectAction] = [.toggleFlag, .toggleRead]
+
+    /// Leading swipe actions. The phone layout has one: toggle read, as iOS Mail does.
+    static func leadingSwipeActions(isCompact: Bool) -> [DirectAction] {
+        isCompact ? [.toggleRead] : leadingSwipeActions
+    }
+
+    /// Context-menu actions offered by the phone "More" swipe sheet. Mark, Flag and the
+    /// edge action already have their own swipe buttons; Delete only appears when Archive
+    /// owns the edge.
+    static func swipeMoreActions(hasArchive: Bool) -> [MessageContextMenuAction] {
+        var actions: [MessageContextMenuAction] = [.reply, .replyAll, .forward, .toggleSnooze, .move, .setJunk]
+        if hasArchive {
+            actions.append(.delete)
+        }
+        return actions
+    }
 
     static func detailContextActions(
         canPresentSheets: Bool,
