@@ -773,6 +773,17 @@
         }
       }
     },
+    "%lld of %lld folders indexed.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%1$lld av %2$lld mapper er indeksert."
+          }
+        }
+      }
+    },
     "%lld of %lld messages filed locally. %@": {
       "extractionState": "manual",
       "localizations": {
@@ -2734,6 +2745,17 @@
         }
       }
     },
+    "Building the local search index.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bygger det lokale søkeindekset."
+          }
+        }
+      }
+    },
     "Built-in Smart Views": {
       "extractionState": "manual",
       "localizations": {
@@ -2752,6 +2774,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Punktliste"
+          }
+        }
+      }
+    },
+    "Cached mail stays available. Retry when you're back online.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagret e-post er fortsatt tilgjengelig. Prøv igjen når du er på nett igjen."
           }
         }
       }
@@ -3487,6 +3520,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Koble til postkassen din."
+          }
+        }
+      }
+    },
+    "Connecting": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kobler til"
+          }
+        }
+      }
+    },
+    "Connecting to your mail account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kobler til e-postkontoen din."
           }
         }
       }
@@ -4884,6 +4939,39 @@
         }
       }
     },
+    "Downloading folders into local storage.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster ned mapper til lokal lagring."
+          }
+        }
+      }
+    },
+    "Downloading mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster ned e-post"
+          }
+        }
+      }
+    },
+    "Downloading mail. %lld of %lld folders complete.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Laster ned e-post. %1$lld av %2$lld mapper er ferdige."
+          }
+        }
+      }
+    },
     "Expand message": {
       "extractionState": "manual",
       "localizations": {
@@ -4902,6 +4990,50 @@
           "stringUnit": {
             "state": "translated",
             "value": "Første melding"
+          }
+        }
+      }
+    },
+    "Google sign-in isn't available in this build. You can still add a Gmail account with an app password.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google-pålogging er ikke tilgjengelig i denne versjonen. Du kan fortsatt legge til en Gmail-konto med et appassord."
+          }
+        }
+      }
+    },
+    "Indexing is %lld percent complete.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekseringen er %lld prosent ferdig."
+          }
+        }
+      }
+    },
+    "Indexing mail": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserer e-post"
+          }
+        }
+      }
+    },
+    "Indexing mail. %@": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Indekserer e-post. %@"
           }
         }
       }
@@ -4961,6 +5093,83 @@
         }
       }
     },
+    "Reconnect this account to keep syncing mail.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til kontoen på nytt for å fortsette å synkronisere e-post."
+          }
+        }
+      }
+    },
+    "Setting up your mailbox. Cached mail will appear as soon as the first page is ready.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Setter opp postkassen din. Lagret e-post vises så snart første side er klar."
+          }
+        }
+      }
+    },
+    "Sign-in required": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pålogging kreves"
+          }
+        }
+      }
+    },
+    "Sign-in required to continue syncing mail.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Pålogging kreves for å fortsette å synkronisere e-post."
+          }
+        }
+      }
+    },
+    "Sync interrupted": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkronisering avbrutt"
+          }
+        }
+      }
+    },
+    "Sync needs attention": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkronisering trenger oppmerksomhet"
+          }
+        }
+      }
+    },
+    "Sync paused": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Synkronisering satt på pause"
+          }
+        }
+      }
+    },
     "Up One Page": {
       "extractionState": "manual",
       "localizations": {
@@ -4968,6 +5177,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Én side opp"
+          }
+        }
+      }
+    },
+    "You can read available messages while Brev downloads the rest.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kan lese tilgjengelige meldinger mens Brev laster ned resten."
+          }
+        }
+      }
+    },
+    "You can read available messages while Brev finishes indexing.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Du kan lese tilgjengelige meldinger mens Brev fullfører indekseringen."
+          }
+        }
+      }
+    },
+    "Your device is locked, so Brev can't read your saved sign-in yet. Unlock your device, then try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Enheten er låst, så Brev kan ikke lese den lagrede påloggingen ennå. Lås opp enheten og prøv igjen."
           }
         }
       }
@@ -6361,17 +6603,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Google åpner sin egen sikre innlogging, og så henter Brev inn innboksen din."
-          }
-        }
-      }
-    },
-    "Google sign-in isn't configured in this build. Provide the OAuth client ID at build time, or add a mail account instead.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Google-innlogging er ikke konfigurert i dette bygget. Oppgi OAuth-klient-ID-en ved bygging, eller legg til en e-postkonto i stedet."
           }
         }
       }
