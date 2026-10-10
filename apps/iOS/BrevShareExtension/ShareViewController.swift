@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import SwiftUI
 import UIKit
 import UniformTypeIdentifiers
 
@@ -26,12 +27,7 @@ final class ShareViewController: UIViewController {
     private var unsupportedItemCount = 0
     private var extractionErrorMessage: String?
 
-    private let containerView = UIView()
-    private let titleLabel = UILabel()
-    private let subtitleLabel = UILabel()
-    private let composeButton = UIButton(type: .system)
-    private let cancelButton = UIButton(type: .system)
-    private let activityIndicator = UIActivityIndicatorView(style: .medium)
+    private let model = ShareSheetModel()
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -39,77 +35,29 @@ final class ShareViewController: UIViewController {
         extractSharedContent()
     }
 
+    /// Hosts the SwiftUI share sheet edge to edge, so the system sheet supplies
+    /// the size, background and Dynamic Type behavior.
     private func setupUI() {
-        view.backgroundColor = UIColor.systemBackground.withAlphaComponent(0.86)
-
-        containerView.backgroundColor = .systemBackground
-        containerView.layer.cornerRadius = 16
-        containerView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(containerView)
-
-        titleLabel.text = String(localized: "Compose in Brev")
-        titleLabel.font = .systemFont(ofSize: 20, weight: .semibold)
-        titleLabel.textAlignment = .center
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(titleLabel)
-
-        subtitleLabel.text = String(localized: "Loading shared content...")
-        subtitleLabel.font = .systemFont(ofSize: 14)
-        subtitleLabel.textColor = .secondaryLabel
-        subtitleLabel.textAlignment = .center
-        subtitleLabel.numberOfLines = 3
-        subtitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(subtitleLabel)
-
-        composeButton.setTitle(String(localized: "Open Brev"), for: .normal)
-        composeButton.titleLabel?.font = .systemFont(ofSize: 17, weight: .semibold)
-        composeButton.backgroundColor = .systemGreen
-        composeButton.setTitleColor(.white, for: .normal)
-        composeButton.layer.cornerRadius = 12
-        composeButton.translatesAutoresizingMaskIntoConstraints = false
-        composeButton.addTarget(self, action: #selector(openBrev), for: .touchUpInside)
-        composeButton.isEnabled = false
-        containerView.addSubview(composeButton)
-
-        cancelButton.setTitle(String(localized: "Cancel"), for: .normal)
-        cancelButton.titleLabel?.font = .systemFont(ofSize: 17)
-        cancelButton.translatesAutoresizingMaskIntoConstraints = false
-        cancelButton.addTarget(self, action: #selector(cancelShare), for: .touchUpInside)
-        containerView.addSubview(cancelButton)
-
-        activityIndicator.translatesAutoresizingMaskIntoConstraints = false
-        containerView.addSubview(activityIndicator)
-
+        let host = UIHostingController(
+            rootView: ShareSheetView(
+                model: model,
+                onCancel: { [weak self] in self?.cancelShare() },
+                onOpen: { [weak self] in self?.openBrev() }
+            )
+        )
+        addChild(host)
+        host.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(host.view)
         NSLayoutConstraint.activate([
-            containerView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            containerView.centerYAnchor.constraint(equalTo: view.centerYAnchor),
-            containerView.widthAnchor.constraint(equalToConstant: 300),
-
-            titleLabel.topAnchor.constraint(equalTo: containerView.topAnchor, constant: 24),
-            titleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            titleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-
-            subtitleLabel.topAnchor.constraint(equalTo: titleLabel.bottomAnchor, constant: 8),
-            subtitleLabel.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            subtitleLabel.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-
-            activityIndicator.topAnchor.constraint(equalTo: subtitleLabel.bottomAnchor, constant: 16),
-            activityIndicator.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-
-            composeButton.topAnchor.constraint(equalTo: activityIndicator.bottomAnchor, constant: 16),
-            composeButton.leadingAnchor.constraint(equalTo: containerView.leadingAnchor, constant: 20),
-            composeButton.trailingAnchor.constraint(equalTo: containerView.trailingAnchor, constant: -20),
-            composeButton.heightAnchor.constraint(equalToConstant: 48),
-
-            cancelButton.topAnchor.constraint(equalTo: composeButton.bottomAnchor, constant: 8),
-            cancelButton.centerXAnchor.constraint(equalTo: containerView.centerXAnchor),
-            cancelButton.bottomAnchor.constraint(equalTo: containerView.bottomAnchor, constant: -20)
+            host.view.topAnchor.constraint(equalTo: view.topAnchor),
+            host.view.bottomAnchor.constraint(equalTo: view.bottomAnchor),
+            host.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            host.view.trailingAnchor.constraint(equalTo: view.trailingAnchor)
         ])
+        host.didMove(toParent: self)
     }
 
     private func extractSharedContent() {
-        activityIndicator.startAnimating()
-
         guard let extensionItems = extensionContext?.inputItems as? [NSExtensionItem] else {
             finishExtraction()
             return
@@ -267,54 +215,20 @@ final class ShareViewController: UIViewController {
     }
 
     private func finishExtraction() {
-        activityIndicator.stopAnimating()
-        composeButton.isEnabled = true
-
-        // Oversized text cannot round-trip through the handoff URL, so drop
-        // it instead of failing the handoff — never truncate, since a
-        // silently shortened draft is worse than a missing one. URLs and
-        // attachments the user shared still open.
-        var textOverflowMessage: String?
-        if let text = sharedText, !ShareHandoffURL.canHandoff(text: text) {
-            sharedText = nil
-            textOverflowMessage = String(
-                localized: "Shared text is too large to include and was left out."
-            )
-        }
-
-        var parts: [String] = []
-        if let text = sharedText, !text.isEmpty {
-            parts.append(text)
-        }
-        if !sharedURLs.isEmpty {
-            parts.append(String(localized: "\(sharedURLs.count) URL(s)"))
-        }
-        if !sharedAttachmentURLs.isEmpty {
-            let count = sharedAttachmentURLs.count
-            parts.append(count == 1 ? String(localized: "1 attachment") : String(localized: "\(count) attachments"))
-        }
-        if unsupportedItemCount > 0 {
-            parts.append(String(localized: "\(unsupportedItemCount) unsupported"))
-        }
-        if let textOverflowMessage {
-            parts.append(textOverflowMessage)
-        }
-
-        if let extractionErrorMessage {
-            subtitleLabel.text = extractionErrorMessage
-            composeButton.isEnabled = sharedText != nil || !sharedURLs.isEmpty
-        } else if sharedText == nil, sharedURLs.isEmpty, sharedAttachmentURLs.isEmpty {
-            subtitleLabel.text = textOverflowMessage
-                ?? (unsupportedItemCount > 0
-                    ? String(localized: "This content type is not supported yet.")
-                    : String(localized: "No content to share"))
-            composeButton.isEnabled = false
-        } else {
-            subtitleLabel.text = parts.joined(separator: " · ")
-        }
+        let content = ShareSheetContent.resolve(
+            text: sharedText,
+            urls: sharedURLs,
+            attachmentURLs: sharedAttachmentURLs,
+            unsupportedCount: unsupportedItemCount,
+            extractionError: extractionErrorMessage,
+            canHandoffText: ShareHandoffURL.canHandoff(text:)
+        )
+        // Oversized text is dropped from the handoff, not truncated.
+        if content.text == nil { sharedText = nil }
+        model.content = content
     }
 
-    @objc private func openBrev() {
+    private func openBrev() {
         guard let url = buildShareURL() else {
             cancelShare()
             return
@@ -345,9 +259,7 @@ final class ShareViewController: UIViewController {
     }
 
     private func showHandoffFailure() {
-        subtitleLabel.text = String(localized: "Brev could not open this shared draft. Please try again.")
-        composeButton.isEnabled = true
-        composeButton.setTitle(String(localized: "Try Again"), for: .normal)
+        model.handoffFailed = true
     }
 
     private func buildShareURL() -> URL? {
@@ -465,7 +377,7 @@ final class ShareViewController: UIViewController {
         return candidate
     }
 
-    @objc private func cancelShare() {
+    private func cancelShare() {
         extensionContext?.completeRequest(returningItems: nil)
     }
 }
