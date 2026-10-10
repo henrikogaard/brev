@@ -364,7 +364,7 @@ public struct MessageListView: View {
                             pendingSnoozeHeaders = []
                         }
                     )
-                    .brevTheme(theme)
+                    .brevSheetAppearance(theme)
                 }
             }
     }

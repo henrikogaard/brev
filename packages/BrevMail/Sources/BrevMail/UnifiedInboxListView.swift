@@ -492,7 +492,7 @@ struct UnifiedInboxListView: View {
                         pendingSnoozeItems = []
                     }
                 )
-                .brevTheme(theme)
+                .brevSheetAppearance(theme)
             }
         }
     }

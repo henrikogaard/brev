@@ -35,6 +35,116 @@ struct MessageEventSheet: View {
     }
 
     var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard form sheet with Cancel / Create in the navigation bar.
+    private var nativeBody: some View {
+        NavigationStack {
+            Form {
+                Section {
+                    TextField(String(localized: "Meeting title", bundle: .module), text: $draft.title)
+                        .brevFont(.body)
+                        .accessibilityLabel(Text("Title", bundle: .module))
+                }
+                .brevSheetRow()
+
+                Section {
+                    DatePicker(
+                        String(localized: "Starts", bundle: .module),
+                        selection: $draft.startDate,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                    .onChange(of: draft.startDate) { _, newValue in
+                        if draft.endDate < newValue {
+                            draft.endDate = newValue.addingTimeInterval(3600)
+                        }
+                    }
+                    DatePicker(
+                        String(localized: "Ends", bundle: .module),
+                        selection: $draft.endDate,
+                        in: draft.startDate...,
+                        displayedComponents: [.date, .hourAndMinute]
+                    )
+                }
+                .brevFont(.body)
+                .brevSheetRow()
+
+                if !draft.attendees.isEmpty {
+                    Section {
+                        Text(draft.attendees.joined(separator: ", "))
+                            .brevFont(.callout)
+                            .foregroundStyle(theme.textPrimary.color)
+                            .textSelection(.enabled)
+                    } header: {
+                        sectionHeader("Attendees")
+                    }
+                    .brevSheetRow()
+                }
+
+                Section {
+                    TextEditor(text: $draft.notes)
+                        .brevFont(.body)
+                        .foregroundStyle(theme.textPrimary.color)
+                        .frame(minHeight: 120)
+                        .accessibilityLabel(Text("Notes", bundle: .module))
+                } header: {
+                    sectionHeader("Notes")
+                }
+                .brevSheetRow()
+
+                if statusMessage != nil || errorMessage != nil {
+                    Section {
+                        if let statusMessage {
+                            BrevInlineStatus(message: statusMessage, tone: .success)
+                        }
+                        if let errorMessage {
+                            BrevInlineStatus(message: errorMessage, tone: .danger)
+                        }
+                    }
+                    .brevSheetRow()
+                }
+            }
+            .navigationTitle(Text("Create Meeting", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        // Once the meeting exists there is nothing left to cancel.
+                        Text(statusMessage == nil ? LocalizedStringKey("Cancel") : LocalizedStringKey("Done"), bundle: .module)
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        Task { await createEvent() }
+                    } label: {
+                        Text(isCreating ? LocalizedStringKey("Creating...") : LocalizedStringKey("Create"), bundle: .module)
+                    }
+                    .disabled(isCreating || !draft.isCreateEnabled)
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func sectionHeader(_ key: LocalizedStringKey) -> some View {
+        Text(key, bundle: .module)
+            .brevFont(.footnote)
+            .foregroundStyle(theme.textSecondary.color)
+            .textCase(nil)
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: 0) {
             header
             BrevDivider()
@@ -42,9 +152,7 @@ struct MessageEventSheet: View {
             BrevDivider()
             footer
         }
-        #if os(macOS)
         .frame(minWidth: 380, idealWidth: 460, minHeight: 460, idealHeight: 560)
-        #endif
         .background(theme.bgPrimary.color)
         .presentationDetents([.medium, .large])
     }
@@ -162,6 +270,8 @@ struct MessageEventSheet: View {
         }
     }
 
+    #endif
+
     private func createEvent() async {
         isCreating = true
         errorMessage = nil
@@ -190,6 +300,40 @@ struct MessageEventUnavailableSheet: View {
     let onClose: () -> Void
 
     var body: some View {
+        #if os(iOS)
+        NavigationStack {
+            List {
+                BrevInlineStatus(
+                    message: String(
+                        localized: "Open the message again before creating a meeting.",
+                        bundle: .module
+                    ),
+                    tone: .info
+                )
+                .brevSheetRow()
+            }
+            .listStyle(.insetGrouped)
+            .navigationTitle(Text("Create Meeting", bundle: .module))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button {
+                        onClose()
+                    } label: {
+                        Text("Done", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.visible)
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
             HStack(spacing: BrevSpacing.sm) {
                 Image(systemName: "calendar.badge.plus")
@@ -220,9 +364,8 @@ struct MessageEventUnavailableSheet: View {
             .keyboardShortcut(.cancelAction)
         }
         .padding(BrevSpacing.md)
-        #if os(macOS)
-            .frame(minWidth: 340, idealWidth: 400)
-        #endif
-            .background(theme.bgPrimary.color)
+        .frame(minWidth: 340, idealWidth: 400)
+        .background(theme.bgPrimary.color)
     }
+    #endif
 }

@@ -19,6 +19,9 @@ struct MailboxChatScopeContext: Equatable, Sendable {
     var folder: Folder?
     var accountLabel: String?
     var sourceID: MailSourceID?
+    /// The sender's display name, when the message carries one; the sender chip
+    /// shows it instead of the address's local part.
+    var senderName: String?
 
     var defaultChipKind: MailboxChatScopeChipKind {
         if senderEmail != nil {
@@ -70,12 +73,16 @@ struct MailboxChatScopeContext: Equatable, Sendable {
     }
 
     /// Compact chip caption: full addresses get clipped mid-domain in the
-    /// narrow column, so the sender chip carries the local part while the
-    /// complete address stays on the accessibility label.
+    /// narrow column, so the sender chip carries the display name (or the local
+    /// part when there is none) while the complete address stays on the
+    /// accessibility label.
     func chipShortTitle(for kind: MailboxChatScopeChipKind) -> String {
         switch kind {
         case .sender:
             guard let senderEmail else { return chipTitle(for: kind) }
+            if let name = senderName?.trimmingCharacters(in: .whitespacesAndNewlines), !name.isEmpty {
+                return name
+            }
             return senderEmail.split(separator: "@").first.map(String.init)
                 ?? senderEmail
         case .folder, .account:

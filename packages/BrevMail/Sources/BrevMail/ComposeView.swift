@@ -597,6 +597,7 @@ public struct ComposeView: View {
                     ) { result in
                         Task { await attachDriveResult(result) }
                     }
+                    .brevSheetAppearance(theme)
                 }
             }
             .task {
@@ -615,7 +616,7 @@ public struct ComposeView: View {
                         scheduledSendDate = chosenDate
                     }
                 )
-                .composeSheetTheme(theme)
+                .brevSheetAppearance(theme)
             }
             .sheet(item: $linkSheetInput) { input in
                 ComposeLinkSheet(
@@ -627,7 +628,7 @@ public struct ComposeView: View {
                         removeLink()
                     }
                 )
-                .composeSheetTheme(theme)
+                .brevSheetAppearance(theme)
             }
             .onAppear { captureDismissalBaselineIfNeeded() }
             .task { await applyInitialFocusIfNeeded() }
@@ -2536,6 +2537,7 @@ public struct ComposeView: View {
                 templateSettings = settings
             }
         )
+        .brevSheetAppearance(theme)
     }
 
     // MARK: - Undo-send
@@ -4138,18 +4140,5 @@ struct PendingAttachment: Identifiable, Sendable {
 
     var formattedSize: String {
         ByteCountFormatter.string(fromByteCount: Int64(data.count), countStyle: .file)
-    }
-}
-
-private extension View {
-    /// Themes a sheet presented from compose. On iOS the sheet inherits the
-    /// presenter's colour scheme (pinning it from inside a sheet is what made
-    /// sheets render light in a dark app); macOS keeps its existing pinning.
-    func composeSheetTheme(_ theme: BrevTheme) -> some View {
-        #if os(iOS)
-        environment(\.brevTheme, theme)
-        #else
-        brevTheme(theme)
-        #endif
     }
 }

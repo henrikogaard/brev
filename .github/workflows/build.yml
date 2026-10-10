@@ -278,6 +278,7 @@ jobs:
             '-only-testing:BrevMailTests/RelatedConversationFootnoteSnapshotTests' \
             '-only-testing:BrevMailTests/CompactReaderSnapshotTests' \
             '-only-testing:BrevMailTests/SnoozePickerSnapshotTests' \
+            '-only-testing:BrevMailTests/NativeUtilitySheetsSnapshotTests' \
             '-only-testing:BrevMailTests/PIMRootViewSnapshotTests' \
             test || (echo "::error::iOS BrevMail snapshot tests failed"; exit 1)
 

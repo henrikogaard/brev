@@ -68,6 +68,138 @@ public struct MoveToSheet: View {
     }
 
     public var body: some View {
+        #if os(iOS)
+        nativeBody
+        #else
+        desktopBody
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS: a standard sheet with Cancel in the navigation bar, the system
+    /// search field and an inset-grouped folder list.
+    private var nativeBody: some View {
+        NavigationStack {
+            List {
+                Section {
+                    let candidates = filteredFolders
+                    if candidates.isEmpty {
+                        emptyState
+                            .listRowBackground(Color.clear)
+                    } else {
+                        ForEach(candidates) { folder in
+                            nativeFolderRow(folder)
+                        }
+                    }
+                } footer: {
+                    if let moveError {
+                        Label {
+                            Text(verbatim: moveError)
+                        } icon: {
+                            Image(systemName: "exclamationmark.triangle")
+                        }
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.danger.color)
+                    }
+                }
+
+                if onCreateFolder != nil {
+                    Section {
+                        nativeNewFolderRow
+                    }
+                }
+            }
+            .listStyle(.insetGrouped)
+            .searchable(
+                text: $searchText,
+                placement: .navigationBarDrawer(displayMode: .always),
+                prompt: Text("Search folders", bundle: .module)
+            )
+            .navigationTitle(Text(verbatim: title))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button {
+                        onClose?()
+                    } label: {
+                        Text("Cancel", bundle: .module)
+                    }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
+    }
+
+    private func nativeFolderRow(_ folder: Folder) -> some View {
+        let isCurrent = folder.id == currentFolderID
+        let name = displayName(for: folder)
+        return Button {
+            guard !isCurrent, !isMoving else { return }
+            Task { await performMove(to: folder) }
+        } label: {
+            HStack(spacing: BrevSpacing.md) {
+                Image(systemName: systemImage(for: folder.role))
+                    .foregroundStyle(theme.accent.color)
+                    .frame(width: 24, alignment: .center)
+                    .accessibilityHidden(true)
+                Text(verbatim: name)
+                    .brevFont(.body)
+                    .foregroundStyle(theme.textPrimary.color)
+                Spacer(minLength: BrevSpacing.xs)
+                if isCurrent {
+                    Text("Current", bundle: .module)
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                    Image(systemName: "checkmark")
+                        .foregroundStyle(theme.accent.color)
+                        .accessibilityHidden(true)
+                } else if folder.unreadCount > 0 {
+                    Text(verbatim: "\(folder.unreadCount)")
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .monospacedDigit()
+                }
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .disabled(isMoving)
+        .brevSheetRow()
+        .accessibilityAddTraits(isCurrent ? .isSelected : [])
+    }
+
+    private var nativeNewFolderRow: some View {
+        let trimmed = newFolderName.trimmingCharacters(in: .whitespacesAndNewlines)
+        return HStack(spacing: BrevSpacing.md) {
+            Image(systemName: "folder.badge.plus")
+                .foregroundStyle(theme.accent.color)
+                .frame(width: 24, alignment: .center)
+                .accessibilityHidden(true)
+            TextField(
+                String(localized: "New folder name", bundle: .module),
+                text: $newFolderName
+            ) {
+                if !trimmed.isEmpty {
+                    Task { await createAndMove(named: trimmed) }
+                }
+            }
+            .brevFont(.body)
+            Button {
+                Task { await createAndMove(named: trimmed) }
+            } label: {
+                Text("Create", bundle: .module)
+                    .brevFont(.body)
+            }
+            .buttonStyle(.borderless)
+            .disabled(trimmed.isEmpty || isMoving)
+        }
+        .brevSheetRow()
+    }
+    #endif
+
+    #if os(macOS)
+    private var desktopBody: some View {
         VStack(spacing: 0) {
             header
             BrevDivider()
@@ -83,9 +215,7 @@ public struct MoveToSheet: View {
                 errorFooter(moveError)
             }
         }
-        #if os(macOS)
         .frame(minWidth: 320, idealWidth: 380)
-        #endif
         .background(theme.bgPrimary.color)
     }
 
@@ -154,6 +284,8 @@ public struct MoveToSheet: View {
         .frame(maxHeight: 400)
     }
 
+    #endif
+
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: BrevSpacing.xs) {
@@ -172,6 +304,7 @@ public struct MoveToSheet: View {
         .frame(maxWidth: .infinity)
     }
 
+    #if os(macOS)
     private func folderRow(_ folder: Folder) -> some View {
         let isCurrent = folder.id == currentFolderID
         let title = displayName(for: folder)
@@ -203,10 +336,7 @@ public struct MoveToSheet: View {
             }
             .padding(.horizontal, BrevSpacing.md)
             .padding(.vertical, BrevSpacing.sm)
-            #if os(iOS)
-                .frame(minHeight: 44)
-            #endif
-                .contentShape(Rectangle())
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .disabled(isCurrent || isMoving)
@@ -253,10 +383,6 @@ public struct MoveToSheet: View {
                 } label: {
                     Text("Create", bundle: .module)
                         .brevFont(.subheadline)
-                    #if os(iOS)
-                        .frame(minWidth: 44, minHeight: 44)
-                        .contentShape(Rectangle())
-                    #endif
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(trimmed.isEmpty ? theme.textTertiary.color : theme.accent.color)
@@ -266,6 +392,8 @@ public struct MoveToSheet: View {
             .padding(.vertical, BrevSpacing.sm)
         }
     }
+
+    #endif
 
     private func createAndMove(named name: String) async {
         guard let onCreateFolder, !isMoving else { return }
