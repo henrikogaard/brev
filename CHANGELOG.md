@@ -34,6 +34,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Opening a folder no longer fetches its first page of messages twice.
 - The reading font in Settings > Appearance > Fonts now also applies to the reader's labels, buttons, and thread headers, not just message text.
 - iOS Settings: the Mac-only cache path, the Mac-only import tools, the capability roadmap and the "System accent is available on Mac" note no longer appear, an untranslated "Calculating..." is localized, and settings search no longer offers rows that do not exist on iPhone. "Rules & Organisation" is now "Rules & Organization".
 - iOS Appearance: the mail preview text now follows Dynamic Type.

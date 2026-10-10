@@ -248,6 +248,15 @@ public struct MessageListView: View {
             .onChange(of: localMessageWorkflowState) {
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
+            // Not a `.task(id:)`: that also runs on appear, where the `reloadKey` task has
+            // already loaded the folder or run the search, and fetched the first page twice.
+            // `searchWork` cancels the previous run, as the task's id change did.
+            .onChange(of: SearchChangeTrigger(text: navigation.searchText, filterKey: searchFilterKey)) { old, new in
+                guard MessageListReloadPolicy.searchChangeNeedsReload(
+                    oldSearchText: old.text, newSearchText: new.text
+                ) else { return }
+                Task { await reloadForSearchChange() }
+            }
         #if os(iOS)
             .toolbar { selectionToolbar(visibleHeaders: presentationSnapshot.headers) }
         #endif
@@ -303,7 +312,6 @@ public struct MessageListView: View {
                 refreshPinnedMessageIDSet()
                 scheduleDebouncedThreadCountsRebuild()
             }
-            .task(id: "\(navigation.searchText)|\(searchFilterKey)") { await reloadForSearchChange() }
             .onDisappear { searchWork.cancel() }
             .onChange(of: groupByThread) {
                 activeMutationRequest = nil
@@ -2021,6 +2029,12 @@ public struct MessageListView: View {
     /// active search fire a single task through this key instead of three
     /// separate tasks each doing their own debounce wait and search-plan
     /// computation.
+    /// Search text and search options, observed together so one change runs one reload.
+    private struct SearchChangeTrigger: Equatable {
+        let text: String
+        let filterKey: String
+    }
+
     private var searchFilterKey: String {
         "\(searchScope.rawValue)|\(navigation.searchExecution.rawValue)|\(searchAllFolders)"
     }

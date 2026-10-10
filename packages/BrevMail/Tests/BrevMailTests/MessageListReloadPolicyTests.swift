@@ -25,6 +25,24 @@ struct MessageListReloadPolicyTests {
         #expect(MessageListReloadPolicy.operation(forSearchText: "  budget \n") == .search(query: "budget"))
     }
 
+    @Test("a search option change without search text does not reload the folder")
+    func optionChangeWithoutSearchTextSkipsReload() {
+        #expect(!MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "", newSearchText: ""))
+        #expect(!MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "", newSearchText: "  "))
+    }
+
+    @Test("entering, changing or clearing search text reloads")
+    func searchTextChangesReload() {
+        #expect(MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "", newSearchText: "budget"))
+        #expect(MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "budget", newSearchText: "budgets"))
+        #expect(MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "budget", newSearchText: ""))
+    }
+
+    @Test("a search option change with search text reloads the search")
+    func optionChangeWithSearchTextReloads() {
+        #expect(MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText: "budget", newSearchText: "budget"))
+    }
+
     @Test("pending visible reload resumes when root work unblocks")
     func pendingVisibleReloadResumesWhenRootWorkUnblocks() {
         #expect(MessageListWorkResumePolicy.shouldReloadVisibleMessages(
