@@ -124,6 +124,11 @@ public struct MessageListView: View {
     /// Keyboard focus on the message list — up/down arrows move the
     /// selection through visible headers while the list is focused.
     @FocusState private var listKeyboardFocus: Bool
+    /// Fixed and moving ends of the current Shift range (see
+    /// `MessageListSelectionMath`). Follow the selected row while no rows
+    /// are checked.
+    @State private var rangeAnchorID: MessageHeader.ID?
+    @State private var rangeCursorID: MessageHeader.ID?
     #endif
 
     /// Whether the list pane currently owns the selection tint (focused
@@ -728,33 +733,50 @@ public struct MessageListView: View {
     #if os(macOS)
     @ViewBuilder
     private func bulkActionBar(visibleHeaders: [MessageHeader]) -> some View {
-        MailBulkActionBar(
+        let actions = makeBulkSelectionActions()
+        return MailBulkActionBar(
             selectionCount: navigation.bulkSelection.count,
-            showsArchive: archiveFolder != nil,
+            showsArchive: actions.canArchive,
             isDisabled: isMutationActionBlocked,
-            onMarkRead: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
-                Task { await bulkSetRead(true) }
-            },
-            onMarkUnread: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
-                Task { await bulkSetRead(false) }
-            },
-            onFlag: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
-                Task { await bulkSetFlag(true) }
-            },
-            onArchive: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                Task { await bulkArchive() }
-            },
-            onDelete: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await bulkDelete() }
-            }
+            onMarkRead: actions.markRead,
+            onMarkUnread: actions.markUnread,
+            onFlag: actions.flag,
+            onArchive: actions.archive,
+            onDelete: actions.delete
         ) {
             bulkOverflowMenu(visibleHeaders: visibleHeaders)
         }
+    }
+
+    /// The bulk handlers shared by the action bar and, on macOS, the reader
+    /// pane's "N messages selected" buttons.
+    private func makeBulkSelectionActions() -> MailBulkSelectionActions {
+        MailBulkSelectionActions(
+            canArchive: archiveFolder != nil,
+            markRead: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+                Task { await bulkSetRead(true) }
+            },
+            markUnread: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+                Task { await bulkSetRead(false) }
+            },
+            flag: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+                Task { await bulkSetFlag(true) }
+            },
+            archive: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+                Task { await bulkArchive() }
+            },
+            delete: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+                Task { await bulkDelete() }
+            },
+            clearSelection: {
+                navigation.endSelection()
+            }
+        )
     }
 
     @ViewBuilder
@@ -897,6 +919,11 @@ public struct MessageListView: View {
                             guard let selection else { return }
                             proxy.scrollTo(selection)
                         }
+                        .onChange(of: rangeCursorID) { _, cursor in
+                            // Shift-arrow can run past the visible rows.
+                            guard let cursor, !navigation.bulkSelection.isEmpty else { return }
+                            proxy.scrollTo(cursor)
+                        }
                     #endif
                 }
             }
@@ -911,15 +938,34 @@ public struct MessageListView: View {
             .focusable()
             .focused($listKeyboardFocus)
             .focusEffectDisabled()
-            .onKeyPress(.upArrow) {
+            .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                 listKeyboardFocus = true
-                navigation.selectPreviousHeader()
+                let delta = press.key == .upArrow ? -1 : 1
+                if press.modifiers.contains(.shift) {
+                    extendSelection(by: delta)
+                } else {
+                    collapseBulkSelectionToCursor()
+                    if delta < 0 {
+                        navigation.selectPreviousHeader()
+                    } else {
+                        navigation.selectNextHeader()
+                    }
+                }
                 return .handled
             }
-            .onKeyPress(.downArrow) {
-                listKeyboardFocus = true
-                navigation.selectNextHeader()
-                return .handled
+            .focusedValue(\.mailListSelectAll, MailListSelectAllAction { selectAllVisibleMessages() })
+            .onChange(of: navigation.selectedMessageID) { _, selection in
+                if navigation.bulkSelection.isEmpty { resetRangeAnchor(to: selection) }
+            }
+            .onChange(of: navigation.bulkSelection.isEmpty) { _, isEmpty in
+                if isEmpty { resetRangeAnchor(to: navigation.selectedMessageID) }
+            }
+            .onChange(of: navigation.bulkSelection, initial: true) { _, selection in
+                // The reader pane's buttons call these; keep them fresh for
+                // the selection they will act on.
+                navigation.bulkSelectionActions = MessageBulkSelectionPresentation.showsPane(
+                    forSelectionCount: selection.count
+                ) ? makeBulkSelectionActions() : nil
             }
             .onKeyPress(.return) {
                 listKeyboardFocus = true
@@ -984,7 +1030,9 @@ public struct MessageListView: View {
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
-                if !navigation.isInSelectionMode {
+                // macOS: a plain click always single-selects; `selectMessage` ends
+                // any selection. iOS keeps tap-to-toggle while in selection mode.
+                if !navigation.isInSelectionMode || plainClickReplacesBulkSelection {
                     // Drafts reopen in the composer instead of the reader.
                     if folder?.role == .drafts, composeActions.openDraft(header, sourceID: sourceID) {
                         return
@@ -1013,6 +1061,11 @@ public struct MessageListView: View {
                 )
             }
         }
+        #if os(macOS)
+        .withModifiedClick { modifier in
+            handleModifiedClick(modifier, for: header)
+        }
+        #endif
         .draggable(draggablePayload(for: header))
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
@@ -1985,7 +2038,90 @@ public struct MessageListView: View {
         onSelectMessage?(header)
     }
 
+    /// macOS: a plain click always returns to single selection, replacing any
+    /// checked rows. iOS keeps its tap-to-toggle selection mode.
+    private var plainClickReplacesBulkSelection: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     #if os(macOS)
+    /// Row IDs in the order the list shows them, skipping collapsed date
+    /// sections; the order Shift ranges and Select All work in.
+    private var visibleRowIDs: [MessageHeader.ID] {
+        let snapshot = presentationSnapshot
+        return groupByDate
+            ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
+            : snapshot.headers.map(\.id)
+    }
+
+    private func applySelection(_ result: MessageListSelectionMath.Result) {
+        navigation.bulkSelection = result.checkedIDs
+        rangeAnchorID = result.anchorID
+        rangeCursorID = result.cursorID
+    }
+
+    private func resetRangeAnchor(to id: MessageHeader.ID?) {
+        rangeAnchorID = id
+        rangeCursorID = id
+    }
+
+    /// Command-click toggles a row; Shift-click selects from the anchor.
+    private func handleModifiedClick(_ modifier: MessageListClickModifier, for header: MessageHeader) {
+        guard !isPerformingMutation else { return }
+        listKeyboardFocus = true
+        switch modifier {
+        case .toggle:
+            applySelection(MessageListSelectionMath.toggling(
+                header.id,
+                checked: navigation.bulkSelection,
+                selectedID: navigation.selectedMessageID
+            ))
+        case .range:
+            applySelection(MessageListSelectionMath.range(
+                to: header.id,
+                anchorID: rangeAnchorID,
+                selectedID: navigation.selectedMessageID,
+                order: visibleRowIDs
+            ))
+        }
+    }
+
+    /// Shift-up / Shift-down: grow or shrink the range from the anchor.
+    private func extendSelection(by delta: Int) {
+        guard !isPerformingMutation else { return }
+        applySelection(MessageListSelectionMath.extending(
+            by: delta,
+            anchorID: rangeAnchorID,
+            cursorID: rangeCursorID,
+            selectedID: navigation.selectedMessageID,
+            order: visibleRowIDs
+        ))
+    }
+
+    /// Command-A with the list focused.
+    private func selectAllVisibleMessages() {
+        guard !isPerformingMutation else { return }
+        applySelection(MessageListSelectionMath.selectingAll(
+            order: visibleRowIDs,
+            selectedID: navigation.selectedMessageID
+        ))
+    }
+
+    /// A plain arrow key after a range returns to one selected row, moving
+    /// from the end of the range the user was last extending.
+    private func collapseBulkSelectionToCursor() {
+        guard !navigation.bulkSelection.isEmpty else { return }
+        let target = rangeCursorID
+        navigation.endSelection()
+        if let target, navigation.currentFolderHeaders.contains(where: { $0.id == target }) {
+            navigation.selectedMessageID = target
+        }
+    }
+
     /// Delete, Escape, Home, End, Page Up and Page Down on the focused list.
     /// The list container only receives these while it holds keyboard focus,
     /// so the search field and other text inputs keep their own editing keys.
@@ -2001,8 +2137,8 @@ public struct MessageListView: View {
             return .handled
         case .clearSelection:
             // Nothing to clear: let Escape reach whatever else wants it.
-            guard !navigation.bulkSelection.isEmpty else { return .ignored }
-            navigation.bulkSelection.removeAll()
+            guard navigation.isInSelectionMode else { return .ignored }
+            navigation.endSelection()
             return .handled
         case .moveToStart, .moveToEnd, .pageUp, .pageDown:
             listKeyboardFocus = true
@@ -3829,6 +3965,16 @@ struct MessageListRow: View {
     let onActivate: () -> Void
     let onToggleCheck: () -> Void
     let onToggleThread: () -> Void
+    /// macOS: runs for a Command-click or Shift-click on the row body instead
+    /// of `onActivate`. Nil (the default) leaves modified clicks as plain ones.
+    private(set) var onModifiedClick: ((MessageListClickModifier) -> Void)?
+
+    /// Returns the row with a handler for Command-click and Shift-click.
+    func withModifiedClick(_ handler: @escaping (MessageListClickModifier) -> Void) -> MessageListRow {
+        var row = self
+        row.onModifiedClick = handler
+        return row
+    }
 
     /// Coordinate space the row's tap gesture and the thread chevron share.
     fileprivate static let rowCoordinateSpace = "brev.messageListRow"
@@ -4089,6 +4235,17 @@ struct MessageListRow: View {
                     case .toggleThread:
                         onToggleThread()
                     case .activate:
+                        #if canImport(AppKit)
+                        let flags = NSApp.currentEvent?.modifierFlags ?? []
+                        if let onModifiedClick,
+                           let modifier = MessageListClickModifier(
+                               command: flags.contains(.command),
+                               shift: flags.contains(.shift)
+                           ) {
+                            onModifiedClick(modifier)
+                            return
+                        }
+                        #endif
                         onActivate()
                     }
                 }

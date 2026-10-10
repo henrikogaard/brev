@@ -143,6 +143,21 @@ enum MailKeyboardShortcutInventory {
                 isMacOSOnly: true
             ),
             .init(
+                action: String(localized: "Select All Messages", bundle: .module),
+                shortcut: "⌘A",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Extend Selection Up", bundle: .module),
+                shortcut: "⇧↑",
+                isMacOSOnly: true
+            ),
+            .init(
+                action: String(localized: "Extend Selection Down", bundle: .module),
+                shortcut: "⇧↓",
+                isMacOSOnly: true
+            ),
+            .init(
                 action: String(localized: "Clear Selection", bundle: .module),
                 shortcut: "Escape",
                 isMacOSOnly: true
