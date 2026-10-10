@@ -1512,8 +1512,11 @@ public struct BrevMailRootView: View {
         .brevFontSection(.sidebar)
         .brevMailPaneSurface(.sidebar)
         #if os(iOS)
-            .navigationTitle(Text("Mailboxes", bundle: .module))
-            .navigationBarTitleDisplayMode(.inline)
+            .navigationTitle(Text(verbatim: FolderSidebarPresentation.navigationTitle(
+                activeProfileID: normalizedActiveProfileID,
+                profiles: profiles
+            )))
+            .navigationBarTitleDisplayMode(.large)
             .safeAreaInset(edge: .top, spacing: 0) {
                 // Compact shows a single column; the message-list copy covers
                 // regular width, so mounting here too would duplicate it.
@@ -1723,7 +1726,15 @@ public struct BrevMailRootView: View {
             Color.clear
         }
         #else
-        readingPaneContent()
+        if MessageBulkSelectionPresentation.showsPane(forSelectionCount: navigation.bulkSelection.count) {
+            MessageBulkSelectionPane(
+                count: navigation.bulkSelection.count,
+                actions: navigation.bulkSelectionActions,
+                isDisabled: isCommandMutationBlocked
+            )
+        } else {
+            readingPaneContent()
+        }
         #endif
     }
 
@@ -1953,7 +1964,8 @@ public struct BrevMailRootView: View {
                     } : nil,
                     onMutation: { event in
                         await handleMessageListMutation(event)
-                    }
+                    },
+                    onRefresh: listPullToRefresh
                 )
             } else {
                 Group {
@@ -1987,13 +1999,14 @@ public struct BrevMailRootView: View {
                         },
                         onOpenInNewWindow: canDetachReaderWindow ? { header in
                             openMessageInNewWindow(header, sourceID: navigation.selectedSourceID)
-                        } : nil
+                        } : nil,
+                        onRefresh: listPullToRefresh
                     )
                 }
             }
         }
         .brevFontSection(.messageList)
-        .brevMailPaneSurface(.content)
+        .brevMailPaneSurface(.messageList)
         // iOS gives search a capsule inside the bottom bar (see
         // `toolbarList`), the Apple Mail idiom, so
         // the navigation bar keeps only the back button and the mailbox
@@ -2003,7 +2016,8 @@ public struct BrevMailRootView: View {
         // its own whenever the AI Sidebar column appears.
         #if os(iOS)
             .navigationTitle(Text(verbatim: selectedMessageDestinationTitle))
-            .navigationBarTitleDisplayMode(.inline)
+            .mailListNavigationSubtitle(selectedMessageDestinationSubtitle)
+            .navigationBarBackButtonHidden(navigation.isInSelectionMode)
             // The rail lives inside the pane so it lays out below this
             // column's navigation bar; the list column is present in every
             // presentation, so its copy alone covers regular width.
@@ -2099,31 +2113,6 @@ public struct BrevMailRootView: View {
 
     @ToolbarContentBuilder
     private var toolbarSidebar: some ToolbarContent {
-        #if os(iOS)
-        if MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: toolbarPlatform,
-            horizontalSizeClass: horizontalSizeClass,
-            hasSelectedDestination: hasSelectedMessageDestination
-        ) {
-            ToolbarItem(placement: .navigationBarLeading) {
-                Button {
-                    openSelectedMessagesOnCompact()
-                } label: {
-                    // A Label(titleAndIcon) renders icon-only in the leading
-                    // slot, so draw the "Inbox ›" text + chevron explicitly.
-                    HStack(spacing: BrevSpacing.xxs) {
-                        Text(selectedMessageDestinationTitle)
-                            .lineLimit(1)
-                        Image(systemName: "chevron.forward")
-                            .brevFont(.footnote).fontWeight(.semibold)
-                    }
-                }
-                .accessibilityLabel(String(localized: "Show messages", bundle: .module))
-                .accessibilityHint(String(localized: "Return to the selected mailbox.", bundle: .module))
-            }
-        }
-        #endif
-
         if MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .sidebar,
             platform: toolbarPlatform
@@ -2236,6 +2225,7 @@ public struct BrevMailRootView: View {
         return recipient?.displayName ?? recipientEmail
     }
 
+    #if os(macOS)
     private func unreadCountPill(_ count: Int) -> some View {
         Text(String(localized: "\(count) unread", bundle: .module))
             .brevFont(.caption)
@@ -2245,6 +2235,7 @@ public struct BrevMailRootView: View {
             .padding(.vertical, 1)
             .background(Capsule().fill(theme.bgSecondary.color))
     }
+    #endif
 
     #if os(macOS)
     private var macToolbarDestinationTitle: some View {
@@ -2305,65 +2296,87 @@ public struct BrevMailRootView: View {
             Spacer()
         }
         #else
-        ToolbarItem(placement: .principal) {
-            VStack(spacing: 1) {
-                HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
-                    Text(verbatim: selectedMessageDestinationTitle)
-                        .brevFont(.headline)
-                        .lineLimit(1)
-                    if let selectedMessageDestinationUnreadCount {
-                        unreadCountPill(selectedMessageDestinationUnreadCount)
-                    }
+        // The title and its unread subtitle are the pane's navigation title (see
+        // `messageListPane`), so they are laid out the same in every list and scale with
+        // Dynamic Type. Selection mode swaps this group for the list's Select All / Cancel.
+        if !navigation.isInSelectionMode {
+            ToolbarItemGroup(placement: .primaryAction) {
+                if showsMailboxFilterControl {
+                    mailboxFilterToolbarControl
                 }
-                if let selectedMessageDestinationContext {
-                    Text(verbatim: selectedMessageDestinationContext)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textSecondary.color)
-                        .lineLimit(1)
+
+                // iOS Mail has no Refresh button on the phone: pull to refresh does it.
+                if horizontalSizeClass != .compact,
+                   MailRootMailboxActionToolbarPolicy.showsMailboxActions(
+                       on: .messageList,
+                       platform: toolbarPlatform
+                   ) {
+                    refreshToolbarButton
                 }
-            }
-            .accessibilityElement(children: .combine)
-        }
-        ToolbarItemGroup(placement: .primaryAction) {
-            if showsMailboxFilterControl {
-                mailboxFilterToolbarControl
-            }
 
-            if MailRootMailboxActionToolbarPolicy.showsMailboxActions(
-                on: .messageList,
-                platform: toolbarPlatform
-            ) {
-                refreshToolbarButton
-            }
+                if !navigation.isAllAttachmentsSelected {
+                    selectToolbarButton
+                }
 
-            if MailRootSettingsToolbarPolicy.showsSettingsButton(
-                on: .messageList,
-                platform: toolbarPlatform
-            ) {
-                settingsToolbarButton
+                if MailRootSettingsToolbarPolicy.showsSettingsButton(
+                    on: .messageList,
+                    platform: toolbarPlatform
+                ) {
+                    settingsToolbarButton
+                }
             }
         }
         // The search capsule lives inside the bottom bar — Apple's iOS 26
         // Mail idiom — expanding to fill the space between the list's
         // stats label and Compose rather than floating over the rows.
-        ToolbarItem(placement: .bottomBar) {
-            MessageListSearchField(
-                text: $navigation.searchText,
-                prompt: String(localized: "Search messages", bundle: .module),
-                focusRequestID: navigation.searchFocusRequestID
-            )
-            // Toolbar items size to fit, so give the capsule a floor that
-            // fills most of an iPhone bar; wider columns keep it at that
-            // width with Compose pinned right — same as Apple Mail on iPad.
-            .frame(minWidth: 240, maxWidth: .infinity)
-        }
-        ToolbarItem(placement: .bottomBar) {
-            Spacer()
-        }
-        ToolbarItem(placement: .bottomBar) {
-            composeToolbarButton
+        // Selection mode replaces the whole bar with the bulk actions.
+        if !navigation.isInSelectionMode {
+            ToolbarItem(placement: .bottomBar) {
+                MessageListSearchField(
+                    text: $navigation.searchText,
+                    prompt: String(localized: "Search messages", bundle: .module),
+                    focusRequestID: navigation.searchFocusRequestID
+                )
+                // Toolbar items size to fit, so give the capsule a floor that
+                // fills most of an iPhone bar; wider columns keep it at that
+                // width with Compose pinned right — same as Apple Mail on iPad.
+                .frame(minWidth: 240, maxWidth: .infinity)
+            }
+            ToolbarItem(placement: .bottomBar) {
+                Spacer()
+            }
+            ToolbarItem(placement: .bottomBar) {
+                composeToolbarButton
+            }
         }
         #endif
+    }
+
+    #if os(iOS)
+    /// Enters the list's selection mode (audit L1); Cancel and the bulk actions live with the list.
+    private var selectToolbarButton: some View {
+        Button {
+            navigation.beginSelection()
+        } label: {
+            Text("Select", bundle: .module)
+        }
+        .accessibilityLabel(String(localized: "Select messages", bundle: .module))
+    }
+
+    /// Pull to refresh runs the same refresh as the Refresh command. It runs in its own task
+    /// so the list view re-rendering after the refresh cannot cancel it mid-fetch.
+    private var listPullToRefresh: (() async -> Bool?)? {
+        {
+            await Task { await refreshVisibleMail() }.value
+        }
+    }
+    #else
+    private var listPullToRefresh: (() async -> Bool?)? { nil }
+    #endif
+
+    /// Unread summary shown under the list's title.
+    private var selectedMessageDestinationSubtitle: String? {
+        MailRootMessageListTitlePolicy.subtitle(unreadCount: selectedMessageDestinationUnreadCount)
     }
 
     /// Refreshes the visible mailbox.
@@ -3710,13 +3723,14 @@ public struct BrevMailRootView: View {
     }
 
     #if os(iOS)
-    /// Returns `true` when the current device + width warrants a detached
-    /// compose window instead of a modal sheet (iPad at regular width only).
+    /// Returns `true` only when compose should leave the current window. No
+    /// call site asks for that yet, so Reply and New Message present a form
+    /// sheet over the split view on iPad, as iPadOS Mail does.
     private var shouldDetachCompose: Bool {
-        MailDetachWindowPolicy.shouldDetach(
-            idiom: UIDevice.current.userInterfaceIdiom,
-            horizontalSizeClass: horizontalSizeClass
-        )
+        MailRootComposePresentationPolicy.surface(
+            idiom: MailWindowIdiom(UIDevice.current.userInterfaceIdiom),
+            isRegularWidth: horizontalSizeClass == .regular
+        ) == .detachedWindow
     }
     #endif
 
@@ -3837,7 +3851,7 @@ public struct BrevMailRootView: View {
                     navigation.selectFolder(created.id, in: nil)
                     navigation.selectedMessageID = nil
                     navigation.currentFolderHeaders = []
-                    navigation.bulkSelection.removeAll()
+                    navigation.endSelection()
                 }
             }
         case .renameFolder(let target):
@@ -4182,7 +4196,7 @@ public struct BrevMailRootView: View {
         guard selectedFolderID != navigation.selectedFolderID else { return }
         navigation.currentFolderHeaders = []
         navigation.selectedMessageID = nil
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         navigation.selectedFolderID = selectedFolderID
     }
 
@@ -5229,7 +5243,7 @@ public struct BrevMailRootView: View {
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
         navigation.currentFolderHeaders = []
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         applySelectedSourceSection(fallback)
         updateUnreadBadge()
     }
@@ -5895,7 +5909,7 @@ public struct BrevMailRootView: View {
         navigation.selectedFolderID = selectedFolderID
         navigation.selectedMessageID = nil
         navigation.currentFolderHeaders = []
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         applySelectedSourceSection(fallback)
     }
 
@@ -6235,7 +6249,7 @@ public struct BrevMailRootView: View {
             folders: routeFolders,
             visibleHeaders: visibleHeaders
         )
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         navigation.searchText = ""
         navigation.presentedSheet = nil
         switch decision {
@@ -6813,7 +6827,7 @@ public struct BrevMailRootView: View {
             navigation.currentFolderHeaders = []
         }
         navigation.selectedMessageID = item.id
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
     }
 
     private func showAllMailFromSender(_ email: String) {

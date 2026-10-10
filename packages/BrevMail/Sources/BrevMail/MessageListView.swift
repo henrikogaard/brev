@@ -70,6 +70,10 @@ public struct MessageListView: View {
     private let onMutation: (MailEvent) async -> Void
     private let onUnreadCountChanged: (Folder.ID, Int) -> Void
     private let onOpenInNewWindow: ((MessageHeader) -> Void)?
+    /// Pull-to-refresh handler. The mailbox root passes its full refresh (fetch from the
+    /// server, then reload) so a pull behaves like the Refresh command. It returns nil when
+    /// the refresh never reached the backend; nil here reloads the cached list only.
+    private let onRefresh: (() async -> Bool?)?
 
     @State private var loadedFolderHeaders: [MessageHeader] = []
     @State private var headers: [MessageHeader] = []
@@ -104,6 +108,8 @@ public struct MessageListView: View {
     @State private var collapsedDateSectionIDs: Set<MessageListDateSection.ID> = []
     @State private var expandedThreadIDs: Set<String> = []
     @State private var pendingDeleteHeaderID: MessageHeader.ID?
+    /// The row whose phone "More" swipe sheet is open.
+    @State private var swipeMoreHeader: MessageHeader?
     @State private var isBulkPermanentDeletePresented = false
     @State private var pendingBlockSenderHeader: MessageHeader?
     @State private var pendingSnoozeHeaders: [MessageHeader] = []
@@ -118,6 +124,11 @@ public struct MessageListView: View {
     /// Keyboard focus on the message list — up/down arrows move the
     /// selection through visible headers while the list is focused.
     @FocusState private var listKeyboardFocus: Bool
+    /// Fixed and moving ends of the current Shift range (see
+    /// `MessageListSelectionMath`). Follow the selected row while no rows
+    /// are checked.
+    @State private var rangeAnchorID: MessageHeader.ID?
+    @State private var rangeCursorID: MessageHeader.ID?
     #endif
 
     /// Whether the list pane currently owns the selection tint (focused
@@ -199,7 +210,8 @@ public struct MessageListView: View {
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
         onMutation: @escaping (MailEvent) async -> Void = { _ in },
         onUnreadCountChanged: @escaping (Folder.ID, Int) -> Void = { _, _ in },
-        onOpenInNewWindow: ((MessageHeader) -> Void)? = nil
+        onOpenInNewWindow: ((MessageHeader) -> Void)? = nil,
+        onRefresh: (() async -> Bool?)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
@@ -220,6 +232,7 @@ public struct MessageListView: View {
         self.onMutation = onMutation
         self.onUnreadCountChanged = onUnreadCountChanged
         self.onOpenInNewWindow = onOpenInNewWindow
+        self.onRefresh = onRefresh
         if !navigation.hasUserSelectedSearchExecution {
             navigation.searchExecution = MessageListSearchExecutionPolicy.defaultExecution(
                 capabilities: backend.capabilities
@@ -232,6 +245,17 @@ public struct MessageListView: View {
             .onChange(of: localMessageWorkflowState) {
                 reconcileNavigationHeaders(selectFirstIfNeeded: selectsFirstMessageWhenNeeded)
             }
+        #if os(iOS)
+            .toolbar { selectionToolbar(visibleHeaders: presentationSnapshot.headers) }
+        #endif
+            .confirmationDialog(
+                swipeMoreHeader?.subject ?? "",
+                isPresented: isSwipeMorePresented,
+                titleVisibility: .visible,
+                presenting: swipeMoreHeader
+            ) { header in
+                swipeMoreActionButtons(for: header)
+            }
     }
 
     @ViewBuilder
@@ -239,7 +263,12 @@ public struct MessageListView: View {
         let presentation = presentationSnapshot
         mailboxContent(presentation: presentation)
             .task(id: reloadKey) {
-                navigation.bulkSelection.removeAll()
+                // A reload that finds a selection means an action (or a refresh) consumed it,
+                // so selection mode ends with it; an empty selection means the user has only
+                // just entered the mode.
+                if !navigation.bulkSelection.isEmpty {
+                    navigation.endSelection()
+                }
                 searchScope = .all
                 searchAllFolders = false
                 isSearchOptionsExpanded = false
@@ -373,9 +402,11 @@ public struct MessageListView: View {
     private func mailboxContent(presentation: MessageListPresentationSnapshot) -> some View {
         VStack(spacing: 0) {
             LegacyPinNotice()
+            #if os(macOS)
             if !navigation.bulkSelection.isEmpty {
                 bulkActionBar(visibleHeaders: presentation.headers)
             }
+            #endif
             if let mutationErrorStatus {
                 BrevInlineStatus(
                     message: mutationErrorStatus.message,
@@ -474,6 +505,17 @@ public struct MessageListView: View {
         }
         defer { pendingBlockSenderHeader = nil }
         await blockSender(email: header.from.email, header: header)
+    }
+
+    private var isSwipeMorePresented: Binding<Bool> {
+        Binding(
+            get: { swipeMoreHeader != nil },
+            set: { isPresented in
+                if !isPresented {
+                    swipeMoreHeader = nil
+                }
+            }
+        )
     }
 
     private var isDeleteMessageAlertPresented: Binding<Bool> {
@@ -591,35 +633,150 @@ public struct MessageListView: View {
         MailboxFolderStatsDetail(rawValue: folderStatsDetailRaw) ?? .compact
     }
 
+    #if os(iOS)
+    /// Select All / Cancel in the navigation bar and Mark, Move, Archive and Delete in the
+    /// bottom bar while the list is in selection mode (audit L1).
+    @ToolbarContentBuilder
+    private func selectionToolbar(visibleHeaders: [MessageHeader]) -> some ToolbarContent {
+        if navigation.isInSelectionMode {
+            let allVisible = Set(visibleHeaders.map(\.id))
+            MailSelectionToolbar(
+                selectionCount: navigation.bulkSelection.count,
+                allSelected: !allVisible.isEmpty && allVisible.isSubset(of: navigation.bulkSelection),
+                isDisabled: isMutationActionBlocked,
+                showsArchive: archiveFolder != nil,
+                isArchiveEnabled: true,
+                canMove: !MessageCommandPresentation.moveFolderCandidates(
+                    from: allFolders,
+                    currentFolderID: folder?.id
+                ).isEmpty,
+                onToggleSelectAll: {
+                    if allVisible.isSubset(of: navigation.bulkSelection) {
+                        navigation.bulkSelection.subtract(allVisible)
+                    } else {
+                        navigation.bulkSelection.formUnion(allVisible)
+                    }
+                },
+                onCancel: { navigation.endSelection() },
+                onMove: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .move))
+                    navigation.presentedSheet = .moveTo(
+                        messageIDs: Array(navigation.bulkSelection),
+                        sourceID: sourceID,
+                        currentFolderID: folder?.id
+                    )
+                },
+                onArchive: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+                    Task { await bulkArchive() }
+                },
+                onDelete: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+                    Task { await bulkDelete() }
+                },
+                markMenu: { selectionMarkMenu }
+            )
+        }
+    }
+
+    /// The Mark menu in the selection bottom bar. Each action ends selection mode, as in iOS Mail.
+    @ViewBuilder
+    private var selectionMarkMenu: some View {
+        let selectedHeaders = selectedBulkHeaders
+        Button(String(localized: "Mark as Read", bundle: .module), systemImage: "envelope.open") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+            Task {
+                await bulkSetRead(true)
+                navigation.endSelection()
+            }
+        }
+        Button(String(localized: "Mark as Unread", bundle: .module), systemImage: "envelope.badge") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+            Task {
+                await bulkSetRead(false)
+                navigation.endSelection()
+            }
+        }
+        Button(String(localized: "Flag", bundle: .module), systemImage: "flag") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task {
+                await bulkSetFlag(true)
+                navigation.endSelection()
+            }
+        }
+        Button(String(localized: "Unflag", bundle: .module), systemImage: "flag.slash") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task {
+                await bulkSetFlag(false)
+                navigation.endSelection()
+            }
+        }
+        Button(String(localized: "Snooze…", bundle: .module), systemImage: "clock") {
+            pendingSnoozeHeaders = selectedHeaders
+        }
+        Button(
+            workflowVisibilityMode == .done
+                ? String(localized: "Mark as Not Done", bundle: .module)
+                : String(localized: "Mark as Done", bundle: .module),
+            systemImage: "checkmark.circle"
+        ) {
+            if workflowVisibilityMode == .done {
+                clearDone(headers: selectedHeaders)
+            } else {
+                markDone(headers: selectedHeaders)
+            }
+            navigation.endSelection()
+        }
+    }
+    #endif
+
+    #if os(macOS)
     @ViewBuilder
     private func bulkActionBar(visibleHeaders: [MessageHeader]) -> some View {
-        MailBulkActionBar(
+        let actions = makeBulkSelectionActions()
+        return MailBulkActionBar(
             selectionCount: navigation.bulkSelection.count,
-            showsArchive: archiveFolder != nil,
+            showsArchive: actions.canArchive,
             isDisabled: isMutationActionBlocked,
-            onMarkRead: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
-                Task { await bulkSetRead(true) }
-            },
-            onMarkUnread: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
-                Task { await bulkSetRead(false) }
-            },
-            onFlag: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
-                Task { await bulkSetFlag(true) }
-            },
-            onArchive: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
-                Task { await bulkArchive() }
-            },
-            onDelete: {
-                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
-                Task { await bulkDelete() }
-            }
+            onMarkRead: actions.markRead,
+            onMarkUnread: actions.markUnread,
+            onFlag: actions.flag,
+            onArchive: actions.archive,
+            onDelete: actions.delete
         ) {
             bulkOverflowMenu(visibleHeaders: visibleHeaders)
         }
+    }
+
+    /// The bulk handlers shared by the action bar and, on macOS, the reader
+    /// pane's "N messages selected" buttons.
+    private func makeBulkSelectionActions() -> MailBulkSelectionActions {
+        MailBulkSelectionActions(
+            canArchive: archiveFolder != nil,
+            markRead: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+                Task { await bulkSetRead(true) }
+            },
+            markUnread: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+                Task { await bulkSetRead(false) }
+            },
+            flag: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+                Task { await bulkSetFlag(true) }
+            },
+            archive: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+                Task { await bulkArchive() }
+            },
+            delete: {
+                performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+                Task { await bulkDelete() }
+            },
+            clearSelection: {
+                navigation.endSelection()
+            }
+        )
     }
 
     @ViewBuilder
@@ -634,14 +791,16 @@ public struct MessageListView: View {
             currentFolderID: folder?.id
         )
         Menu {
-            Button(allSelected ? "Deselect All" : "Select All") {
-                if allSelected {
-                    navigation.bulkSelection.subtract(allVisible)
-                } else {
-                    navigation.bulkSelection.formUnion(allVisible)
+            Button(allSelected
+                ? String(localized: "Deselect All", bundle: .module)
+                : String(localized: "Select All", bundle: .module)) {
+                    if allSelected {
+                        navigation.bulkSelection.subtract(allVisible)
+                    } else {
+                        navigation.bulkSelection.formUnion(allVisible)
+                    }
                 }
-            }
-            .disabled(isPerformingMutation)
+                .disabled(isPerformingMutation)
             Button(String(localized: "Unflag", bundle: .module)) {
                 performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
                 Task { await bulkSetFlag(false) }
@@ -651,14 +810,16 @@ public struct MessageListView: View {
                 pendingSnoozeHeaders = selectedHeaders
             }
             .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
-            Button(workflowVisibilityMode == .done ? "Not Done" : "Done") {
-                if workflowVisibilityMode == .done {
-                    clearDone(headers: selectedHeaders)
-                } else {
-                    markDone(headers: selectedHeaders)
+            Button(workflowVisibilityMode == .done
+                ? String(localized: "Mark as Not Done", bundle: .module)
+                : String(localized: "Mark as Done", bundle: .module)) {
+                    if workflowVisibilityMode == .done {
+                        clearDone(headers: selectedHeaders)
+                    } else {
+                        markDone(headers: selectedHeaders)
+                    }
                 }
-            }
-            .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
+                .disabled(isMutationActionBlocked || selectedHeaders.isEmpty)
             if !moveFolderCandidates.isEmpty {
                 Button(String(localized: "move.menu", bundle: .module)) {
                     performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .move))
@@ -681,6 +842,7 @@ public struct MessageListView: View {
         .accessibilityLabel(String(localized: "More bulk actions", bundle: .module))
         .help(String(localized: "More bulk actions", bundle: .module))
     }
+    #endif
 
     @ViewBuilder
     private func listContent(presentation: MessageListPresentationSnapshot) -> some View {
@@ -750,12 +912,17 @@ public struct MessageListView: View {
                         // Remove List's platform minimum so their own padding determines
                         // the gap between date groups.
                         .environment(\.defaultMinListRowHeight, 1)
-                        .refreshable { await reloadVisibleMessages() }
+                        .refreshable { await pullToRefresh() }
                         .brevBottomBarScrollInset()
                     #if os(macOS)
                         .onChange(of: navigation.selectedMessageID) { _, selection in
                             guard let selection else { return }
                             proxy.scrollTo(selection)
+                        }
+                        .onChange(of: rangeCursorID) { _, cursor in
+                            // Shift-arrow can run past the visible rows.
+                            guard let cursor, !navigation.bulkSelection.isEmpty else { return }
+                            proxy.scrollTo(cursor)
                         }
                     #endif
                 }
@@ -771,15 +938,34 @@ public struct MessageListView: View {
             .focusable()
             .focused($listKeyboardFocus)
             .focusEffectDisabled()
-            .onKeyPress(.upArrow) {
+            .onKeyPress(keys: [.upArrow, .downArrow], phases: [.down, .repeat]) { press in
                 listKeyboardFocus = true
-                navigation.selectPreviousHeader()
+                let delta = press.key == .upArrow ? -1 : 1
+                if press.modifiers.contains(.shift) {
+                    extendSelection(by: delta)
+                } else {
+                    collapseBulkSelectionToCursor()
+                    if delta < 0 {
+                        navigation.selectPreviousHeader()
+                    } else {
+                        navigation.selectNextHeader()
+                    }
+                }
                 return .handled
             }
-            .onKeyPress(.downArrow) {
-                listKeyboardFocus = true
-                navigation.selectNextHeader()
-                return .handled
+            .focusedValue(\.mailListSelectAll, MailListSelectAllAction { selectAllVisibleMessages() })
+            .onChange(of: navigation.selectedMessageID) { _, selection in
+                if navigation.bulkSelection.isEmpty { resetRangeAnchor(to: selection) }
+            }
+            .onChange(of: navigation.bulkSelection.isEmpty) { _, isEmpty in
+                if isEmpty { resetRangeAnchor(to: navigation.selectedMessageID) }
+            }
+            .onChange(of: navigation.bulkSelection, initial: true) { _, selection in
+                // The reader pane's buttons call these; keep them fresh for
+                // the selection they will act on.
+                navigation.bulkSelectionActions = MessageBulkSelectionPresentation.showsPane(
+                    forSelectionCount: selection.count
+                ) ? makeBulkSelectionActions() : nil
             }
             .onKeyPress(.return) {
                 listKeyboardFocus = true
@@ -805,7 +991,8 @@ public struct MessageListView: View {
         MessageListDateSectionHeader(
             title: section.title,
             count: section.totalCount,
-            isCollapsed: section.isCollapsed
+            isCollapsed: section.isCollapsed,
+            isCollapsible: !usesCompactMessageRows
         ) {
             toggleDateSection(section.id)
         }
@@ -827,7 +1014,7 @@ public struct MessageListView: View {
             isSelected: navigation.selectedMessageID == header.id,
             isFocusedPane: listSelectionIsFocused,
             isChecked: navigation.bulkSelection.contains(header.id),
-            isInSelectionMode: !navigation.bulkSelection.isEmpty,
+            isInSelectionMode: navigation.isInSelectionMode,
             isPinned: pinnedMessageIDs.contains(header.id),
             isThreadExpanded: expandedThreadIDs.contains(header.threadID),
             showAvatar: showSenderAvatars,
@@ -843,7 +1030,9 @@ public struct MessageListView: View {
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
-                if navigation.bulkSelection.isEmpty {
+                // macOS: a plain click always single-selects; `selectMessage` ends
+                // any selection. iOS keeps tap-to-toggle while in selection mode.
+                if !navigation.isInSelectionMode || plainClickReplacesBulkSelection {
                     // Drafts reopen in the composer instead of the reader.
                     if folder?.role == .drafts, composeActions.openDraft(header, sourceID: sourceID) {
                         return
@@ -872,6 +1061,11 @@ public struct MessageListView: View {
                 )
             }
         }
+        #if os(macOS)
+        .withModifiedClick { modifier in
+            handleModifiedClick(modifier, for: header)
+        }
+        #endif
         .draggable(draggablePayload(for: header))
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
@@ -888,14 +1082,20 @@ public struct MessageListView: View {
         )
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             ForEach(
-                MessageCommandPresentation.trailingSwipeActions(hasArchive: archiveFolder != nil),
+                MessageCommandPresentation.trailingSwipeActions(
+                    hasArchive: archiveFolder != nil,
+                    isCompact: usesCompactMessageRows
+                ),
                 id: \.self
             ) { action in
                 trailingSwipeButton(action, for: header)
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            ForEach(MessageCommandPresentation.leadingSwipeActions, id: \.self) { action in
+            ForEach(
+                MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
+                id: \.self
+            ) { action in
                 leadingSwipeButton(action, for: header)
             }
         }
@@ -927,9 +1127,10 @@ public struct MessageListView: View {
         #endif
     }
 
-    @ViewBuilder
-    private func messageContextMenu(for header: MessageHeader) -> some View {
-        let menu = MessageCommandPresentation.contextMenu(
+    /// Resolves the row's context-menu inventory. The phone uses the shorter layout; the
+    /// swipe "More" sheet reads the same presentation so both stay in step.
+    private func contextMenuPresentation(for header: MessageHeader) -> MessageContextMenuPresentation {
+        MessageCommandPresentation.contextMenu(
             for: header,
             isSelected: navigation.bulkSelection.contains(header.id),
             isPinned: pinnedMessageIDs.contains(header.id),
@@ -967,8 +1168,14 @@ public struct MessageListView: View {
             canExportPDF: supportsRowPrinting,
             canShowProperties: true,
             extendedCapabilities: backend.extendedCapabilities,
-            canExportEML: supportsRowPrinting
+            canExportEML: supportsRowPrinting,
+            layout: usesCompactMessageRows ? .compact : .full
         )
+    }
+
+    @ViewBuilder
+    private func messageContextMenu(for header: MessageHeader) -> some View {
+        let menu = contextMenuPresentation(for: header)
         ForEach(menu.sections.indices, id: \.self) { sectionIndex in
             if sectionIndex > 0 {
                 Divider()
@@ -977,6 +1184,29 @@ public struct MessageListView: View {
                 messageContextMenuButton(action, for: header)
             }
         }
+        if menu.overflowSections.isEmpty {
+            contextMenuExtras(for: header)
+        } else {
+            Divider()
+            Menu {
+                ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
+                    if sectionIndex > 0 {
+                        Divider()
+                    }
+                    ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
+                        messageContextMenuButton(action, for: header)
+                    }
+                }
+                contextMenuExtras(for: header)
+            } label: {
+                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    /// Category, label and plugin entries that follow the standard actions.
+    @ViewBuilder
+    private func contextMenuExtras(for header: MessageHeader) -> some View {
         if let sourceID {
             Divider()
             inboxCategoryMenu(for: header, sourceID: sourceID)
@@ -992,6 +1222,19 @@ public struct MessageListView: View {
             }
         }
         pluginMessageContextMenuItems
+    }
+
+    /// Actions behind the phone's trailing "More" swipe button.
+    @ViewBuilder
+    private func swipeMoreActionButtons(for header: MessageHeader) -> some View {
+        let menu = contextMenuPresentation(for: header)
+        ForEach(
+            MessageCommandPresentation.swipeMoreActions(hasArchive: archiveFolder != nil)
+                .compactMap { menu.action($0) },
+            id: \.action
+        ) { action in
+            messageContextMenuButton(action, for: header)
+        }
     }
 
     private func messageLabelMenu(
@@ -1418,7 +1661,7 @@ public struct MessageListView: View {
                     isSelected: navigation.selectedMessageID == child.id,
                     isFocusedPane: listSelectionIsFocused,
                     onSelect: {
-                        if navigation.bulkSelection.isEmpty {
+                        if !navigation.isInSelectionMode {
                             selectMessage(child)
                         } else {
                             toggleSelection(for: child)
@@ -1448,7 +1691,7 @@ public struct MessageListView: View {
             } label: {
                 Label(String(localized: "Archive", bundle: .module), systemImage: "archivebox")
             }
-            .tint(theme.accent.color)
+            .tint(usesCompactMessageRows ? theme.info.color : theme.accent.color)
             .disabled(isMutationActionBlocked)
         case .delete:
             Button(role: .destructive) {
@@ -1461,7 +1704,17 @@ public struct MessageListView: View {
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
+            .tint(usesCompactMessageRows ? theme.danger.color : nil)
             .disabled(isMutationActionBlocked)
+        case .toggleFlag:
+            leadingSwipeButton(.toggleFlag, for: header)
+        case .more:
+            Button {
+                swipeMoreHeader = header
+            } label: {
+                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+            }
+            .tint(theme.textSecondary.color)
         default:
             EmptyView()
         }
@@ -1785,7 +2038,90 @@ public struct MessageListView: View {
         onSelectMessage?(header)
     }
 
+    /// macOS: a plain click always returns to single selection, replacing any
+    /// checked rows. iOS keeps its tap-to-toggle selection mode.
+    private var plainClickReplacesBulkSelection: Bool {
+        #if os(macOS)
+        true
+        #else
+        false
+        #endif
+    }
+
     #if os(macOS)
+    /// Row IDs in the order the list shows them, skipping collapsed date
+    /// sections; the order Shift ranges and Select All work in.
+    private var visibleRowIDs: [MessageHeader.ID] {
+        let snapshot = presentationSnapshot
+        return groupByDate
+            ? snapshot.dateSections.flatMap(\.visibleHeaders).map(\.id)
+            : snapshot.headers.map(\.id)
+    }
+
+    private func applySelection(_ result: MessageListSelectionMath.Result) {
+        navigation.bulkSelection = result.checkedIDs
+        rangeAnchorID = result.anchorID
+        rangeCursorID = result.cursorID
+    }
+
+    private func resetRangeAnchor(to id: MessageHeader.ID?) {
+        rangeAnchorID = id
+        rangeCursorID = id
+    }
+
+    /// Command-click toggles a row; Shift-click selects from the anchor.
+    private func handleModifiedClick(_ modifier: MessageListClickModifier, for header: MessageHeader) {
+        guard !isPerformingMutation else { return }
+        listKeyboardFocus = true
+        switch modifier {
+        case .toggle:
+            applySelection(MessageListSelectionMath.toggling(
+                header.id,
+                checked: navigation.bulkSelection,
+                selectedID: navigation.selectedMessageID
+            ))
+        case .range:
+            applySelection(MessageListSelectionMath.range(
+                to: header.id,
+                anchorID: rangeAnchorID,
+                selectedID: navigation.selectedMessageID,
+                order: visibleRowIDs
+            ))
+        }
+    }
+
+    /// Shift-up / Shift-down: grow or shrink the range from the anchor.
+    private func extendSelection(by delta: Int) {
+        guard !isPerformingMutation else { return }
+        applySelection(MessageListSelectionMath.extending(
+            by: delta,
+            anchorID: rangeAnchorID,
+            cursorID: rangeCursorID,
+            selectedID: navigation.selectedMessageID,
+            order: visibleRowIDs
+        ))
+    }
+
+    /// Command-A with the list focused.
+    private func selectAllVisibleMessages() {
+        guard !isPerformingMutation else { return }
+        applySelection(MessageListSelectionMath.selectingAll(
+            order: visibleRowIDs,
+            selectedID: navigation.selectedMessageID
+        ))
+    }
+
+    /// A plain arrow key after a range returns to one selected row, moving
+    /// from the end of the range the user was last extending.
+    private func collapseBulkSelectionToCursor() {
+        guard !navigation.bulkSelection.isEmpty else { return }
+        let target = rangeCursorID
+        navigation.endSelection()
+        if let target, navigation.currentFolderHeaders.contains(where: { $0.id == target }) {
+            navigation.selectedMessageID = target
+        }
+    }
+
     /// Delete, Escape, Home, End, Page Up and Page Down on the focused list.
     /// The list container only receives these while it holds keyboard focus,
     /// so the search field and other text inputs keep their own editing keys.
@@ -1801,8 +2137,8 @@ public struct MessageListView: View {
             return .handled
         case .clearSelection:
             // Nothing to clear: let Escape reach whatever else wants it.
-            guard !navigation.bulkSelection.isEmpty else { return .ignored }
-            navigation.bulkSelection.removeAll()
+            guard navigation.isInSelectionMode else { return .ignored }
+            navigation.endSelection()
             return .handled
         case .moveToStart, .moveToEnd, .pageUp, .pageDown:
             listKeyboardFocus = true
@@ -2016,6 +2352,20 @@ public struct MessageListView: View {
                 durationMilliseconds: MailUIPerformanceDiagnostics.durationMilliseconds(since: interval.startedAt)
             )
             finishFolderLoad(request)
+        }
+    }
+
+    /// Pull to refresh fetches from the server through the root's refresh, like the Refresh
+    /// command, then reloads. An active search only re-runs the search.
+    private func pullToRefresh() async {
+        guard let onRefresh,
+              MessageListReloadPolicy.operation(forSearchText: navigation.searchText) == .folder
+        else {
+            await reloadVisibleMessages()
+            return
+        }
+        if await onRefresh() == nil {
+            await reloadVisibleMessages()
         }
     }
 
@@ -2650,6 +3000,14 @@ public struct MessageListView: View {
 
     private func toggleSelection(for header: MessageHeader) {
         guard !isPerformingMutation else { return }
+        #if os(iOS)
+        // The row's Select action enters the explicit selection mode, which then
+        // outlasts unticking the last row until the user taps Cancel.
+        if !navigation.isInSelectionMode {
+            navigation.beginSelection(selecting: header.id)
+            return
+        }
+        #endif
         if navigation.bulkSelection.contains(header.id) {
             navigation.bulkSelection.remove(header.id)
         } else {
@@ -2772,7 +3130,7 @@ public struct MessageListView: View {
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: idSet)
         removeCachedHeaders(ids: idSet)
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         var receipts: [MailMoveUndo?] = []
         var completedIDs: Set<MessageHeader.ID> = []
         defer {
@@ -2835,7 +3193,7 @@ public struct MessageListView: View {
         mutationErrorStatus = nil
         navigation.removeHeaders(ids: idSet)
         removeCachedHeaders(ids: idSet)
-        navigation.bulkSelection.removeAll()
+        navigation.endSelection()
         var receipts: [MailMoveUndo?] = []
         var completedIDs: Set<MessageHeader.ID> = []
         defer {
@@ -3280,7 +3638,7 @@ struct InboxCategoryBar: View {
                     .fill(BrevSeparator.color(for: theme))
                     .frame(height: 0.5)
             }
-            .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+            .mailDenseListChromeDynamicType()
     }
 
     private func categoryButton(_ category: InboxCategory) -> some View {
@@ -3461,6 +3819,15 @@ struct MessageListThreadTogglePreference: PreferenceKey {
 /// Shared type weight for sender identity throughout the message list.
 enum MessageListSenderPresentation {
     static let fontWeight: Font.Weight = .bold
+
+    /// Sender weight for a row. Where the row shows an iOS Mail style unread dot
+    /// (the phone), the sender is semibold only while unread so read and unread rows
+    /// differ at a glance (audit L2); the desktop rows keep the single bold weight.
+    static func fontWeight(isRead: Bool, usesUnreadDot: Bool) -> Font.Weight {
+        guard usesUnreadDot else { return fontWeight }
+        return isRead ? .regular : .semibold
+    }
+
     static let preferredMinimumWidth: CGFloat = 144
 
     /// Floor for the sender column so the name stays identifiable at the 280-point
@@ -3598,6 +3965,16 @@ struct MessageListRow: View {
     let onActivate: () -> Void
     let onToggleCheck: () -> Void
     let onToggleThread: () -> Void
+    /// macOS: runs for a Command-click or Shift-click on the row body instead
+    /// of `onActivate`. Nil (the default) leaves modified clicks as plain ones.
+    private(set) var onModifiedClick: ((MessageListClickModifier) -> Void)?
+
+    /// Returns the row with a handler for Command-click and Shift-click.
+    func withModifiedClick(_ handler: @escaping (MessageListClickModifier) -> Void) -> MessageListRow {
+        var row = self
+        row.onModifiedClick = handler
+        return row
+    }
 
     /// Coordinate space the row's tap gesture and the thread chevron share.
     fileprivate static let rowCoordinateSpace = "brev.messageListRow"
@@ -3605,7 +3982,44 @@ struct MessageListRow: View {
     #if os(iOS)
     @ScaledMetric(relativeTo: .body) private var phoneTextScale: CGFloat = 1
     @ScaledMetric(relativeTo: .caption) private var phoneMetadataScale: CGFloat = 1
+    @ScaledMetric(relativeTo: .body) private var unreadDotSize: CGFloat = 10
+    @ScaledMetric(relativeTo: .body) private var scaledSelectionCircleSize: CGFloat = 22
+    @ScaledMetric(relativeTo: .body) private var scaledSelectionTargetSize: CGFloat = 44
     #endif
+
+    /// Whether this platform marks unread rows with iOS Mail's leading dot (the phone)
+    /// instead of the desktop's thin bar.
+    private var usesUnreadDot: Bool {
+        #if os(iOS)
+        true
+        #else
+        false
+        #endif
+    }
+
+    private var selectionCircleSize: CGFloat {
+        #if os(iOS)
+        scaledSelectionCircleSize
+        #else
+        20
+        #endif
+    }
+
+    private var selectionTargetSize: CGFloat {
+        #if os(iOS)
+        BrevHitTarget.resolved(scaled: scaledSelectionTargetSize)
+        #else
+        0
+        #endif
+    }
+
+    private var selectionCheckColor: Color {
+        #if os(iOS)
+        theme.accent.color
+        #else
+        selectionPalette.text.color
+        #endif
+    }
 
     private var senderPointSize: CGFloat {
         #if os(iOS)
@@ -3707,10 +4121,13 @@ struct MessageListRow: View {
             if isInSelectionMode {
                 Button(action: onToggleCheck) {
                     Image(systemName: isChecked ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isChecked ? selectionPalette.text.color : theme.textTertiary.color)
-                        .font(.system(size: 20))
+                        .foregroundStyle(isChecked ? selectionCheckColor : theme.textTertiary.color)
+                        .font(.system(size: selectionCircleSize))
+                        .frame(minWidth: selectionTargetSize, minHeight: selectionTargetSize)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .accessibilityHidden(true)
             }
             unreadMarker
             if showAvatar, !usesAccessibilityLayout {
@@ -3719,6 +4136,8 @@ struct MessageListRow: View {
                     displayName: header.from.name,
                     size: density.avatarSize
                 )
+                // The initials would be read before the sender's name (audit L10).
+                .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 senderMetadataHeader
@@ -3816,6 +4235,17 @@ struct MessageListRow: View {
                     case .toggleThread:
                         onToggleThread()
                     case .activate:
+                        #if canImport(AppKit)
+                        let flags = NSApp.currentEvent?.modifierFlags ?? []
+                        if let onModifiedClick,
+                           let modifier = MessageListClickModifier(
+                               command: flags.contains(.command),
+                               shift: flags.contains(.shift)
+                           ) {
+                            onModifiedClick(modifier)
+                            return
+                        }
+                        #endif
                         onActivate()
                     }
                 }
@@ -3823,6 +4253,7 @@ struct MessageListRow: View {
         .onHover { isHovered = $0 }
         .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
+        .accessibilityAddTraits(isInSelectionMode && isChecked ? .isSelected : [])
         .accessibilityCompactStatusValue(
             isCompactWidth,
             value: compactAccessibilityStatusValue
@@ -3898,6 +4329,31 @@ struct MessageListRow: View {
     /// weight to the subject line.
     @ViewBuilder
     private var unreadMarker: some View {
+        #if os(iOS)
+        unreadDot
+        #else
+        unreadBar
+        #endif
+    }
+
+    #if os(iOS)
+    /// iOS Mail's unread indicator: a filled accent dot in the leading gutter (audit L2).
+    /// Read rows keep the gutter so text columns line up, but expose no accessibility
+    /// element; compact rows already carry "Unread" in their status value.
+    private var unreadDot: some View {
+        Circle()
+            .fill(header.isRead ? Color.clear : theme.accent.color)
+            .frame(width: unreadDotSize, height: unreadDotSize)
+            // Centre the dot on the sender's first line, tracking the text size.
+            .padding(.top, max(0, (senderPointSize * 1.2 - unreadDotSize) / 2))
+            .accessibilityLabel(String(localized: "Unread", bundle: .module))
+            .accessibilityHidden(header.isRead || isCompactWidth)
+    }
+    #endif
+
+    #if os(macOS)
+    @ViewBuilder
+    private var unreadBar: some View {
         let width: CGFloat = 3
         let height = max(12, textSize.listTitlePointSize * 1.1)
         return RoundedRectangle(cornerRadius: width / 2)
@@ -3909,6 +4365,7 @@ struct MessageListRow: View {
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
             .accessibilityHidden(header.isRead)
     }
+    #endif
 
     /// Provider label chips (Gmail labels). `header.labels` is only populated
     /// by backends advertising `.labels`, so an empty set renders nothing and
@@ -4012,48 +4469,72 @@ struct MessageListRow: View {
         }
     }
 
+    @ViewBuilder
     private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
-        HStack(spacing: BrevSpacing.xs) {
-            Text(header.from.displayName)
-                .font(fontFamily.font(
-                    size: senderPointSize,
-                    weight: MessageListSenderPresentation.fontWeight
-                ))
-                .foregroundStyle(theme.textPrimary.color)
-                .lineLimit(usesAccessibilityLayout ? nil : 1)
-                .truncationMode(.tail)
-                .frame(
-                    minWidth: senderMinimumWidth,
-                    maxWidth: .infinity,
-                    alignment: .leading
-                )
-                .layoutPriority(1)
-            if threadCount > 1 {
-                Text(verbatim: "\(threadCount)")
-                    .font(fontFamily.font(size: metadataPointSize))
-                    .foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: true, vertical: false)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 1)
-                    .background(Capsule().fill(theme.bgSecondary.color))
-                // Rendered as a plain glyph, not a Button: the row's
-                // high-priority tap gesture wins over nested buttons, so the
-                // tap is routed by hit frame instead.
-                Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
-                    .font(fontFamily.font(size: metadataPointSize, weight: .medium))
-                    .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
-                    .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
-                    .contentShape(Rectangle())
-                    .background {
-                        GeometryReader { proxy in
-                            Color.clear.preference(
-                                key: MessageListThreadTogglePreference.self,
-                                value: proxy.frame(in: .named(Self.rowCoordinateSpace))
-                            )
-                        }
-                    }
+        if usesAccessibilityLayout, threadCount > 1 {
+            // At accessibility sizes the thread badge would squeeze the name into
+            // "Marte Solh…"; it moves below the name instead (audit L9).
+            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                senderName(minimumWidth: senderMinimumWidth)
+                HStack(spacing: BrevSpacing.xs) {
+                    threadControls
+                }
+            }
+        } else {
+            HStack(spacing: BrevSpacing.xs) {
+                senderName(minimumWidth: senderMinimumWidth)
+                if threadCount > 1 {
+                    threadControls
+                }
             }
         }
+    }
+
+    private func senderName(minimumWidth: CGFloat) -> some View {
+        Text(header.from.displayName)
+            .font(fontFamily.font(
+                size: senderPointSize,
+                weight: MessageListSenderPresentation.fontWeight(
+                    isRead: header.isRead,
+                    usesUnreadDot: usesUnreadDot
+                )
+            ))
+            .foregroundStyle(theme.textPrimary.color)
+            .lineLimit(usesAccessibilityLayout ? nil : 1)
+            .truncationMode(.tail)
+            .frame(
+                minWidth: usesAccessibilityLayout ? nil : minimumWidth,
+                maxWidth: .infinity,
+                alignment: .leading
+            )
+            .layoutPriority(1)
+    }
+
+    @ViewBuilder
+    private var threadControls: some View {
+        Text(verbatim: "\(threadCount)")
+            .font(fontFamily.font(size: metadataPointSize))
+            .foregroundStyle(theme.textSecondary.color)
+            .fixedSize(horizontal: true, vertical: false)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 1)
+            .background(Capsule().fill(theme.bgSecondary.color))
+        // Rendered as a plain glyph, not a Button: the row's
+        // high-priority tap gesture wins over nested buttons, so the
+        // tap is routed by hit frame instead.
+        Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
+            .font(fontFamily.font(size: metadataPointSize, weight: .medium))
+            .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
+            .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
+            .contentShape(Rectangle())
+            .background {
+                GeometryReader { proxy in
+                    Color.clear.preference(
+                        key: MessageListThreadTogglePreference.self,
+                        value: proxy.frame(in: .named(Self.rowCoordinateSpace))
+                    )
+                }
+            }
     }
 
     private func metadataDateLabel(_ dateLabel: String) -> some View {
@@ -4062,6 +4543,17 @@ struct MessageListRow: View {
             .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
             .lineLimit(1)
             .fixedSize(horizontal: true, vertical: false)
+            .accessibilityLabel(spokenDateLabel)
+    }
+
+    private var spokenDateLabel: String {
+        MessageListDatePresentation.accessibilityLabel(
+            for: header.date,
+            showsAbsoluteArrivalTime: showsAbsoluteArrivalTime,
+            calendar: calendar,
+            locale: locale,
+            timeZone: timeZone
+        )
     }
 
     @ViewBuilder
@@ -4108,74 +4600,95 @@ struct MessageListRow: View {
                     .accessibilityLabel(String(localized: "Has attachments", bundle: .module))
             }
         }
-        .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+        .mailDenseListChromeDynamicType()
     }
 }
 
-/// Collapsible date-section header. Shared by the per-folder `MessageListView`
-/// and the `UnifiedInboxListView` so both group by date identically.
+/// Date-section header. Collapsible on the desktop; a plain, non-interactive heading on
+/// the phone, where iOS Mail has no date grouping and a tappable 18 pt strip invited
+/// stray taps (audit L3). Shared by the per-folder `MessageListView` and the
+/// `UnifiedInboxListView` so both group by date identically.
 struct MessageListDateSectionHeader: View {
     @Environment(\.brevTheme) private var theme
     let title: String
     let count: Int
     let isCollapsed: Bool
+    var isCollapsible = true
     let onToggle: () -> Void
 
     var body: some View {
         let presentation = MessageListPresentation.sectionHeader(title: title)
-        Button(action: onToggle) {
-            HStack(spacing: BrevSpacing.xs) {
+        if isCollapsible {
+            Button(action: onToggle) {
+                headerContent(presentation, showsDisclosure: true)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(
+                isCollapsed
+                    ? String(localized: "\(title), \(count) messages, collapsed", bundle: .module)
+                    : String(localized: "\(title), \(count) messages, expanded", bundle: .module)
+            )
+            .accessibilityHint(String(
+                localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",
+                bundle: .module
+            ))
+            .mailDenseListChromeDynamicType()
+        } else {
+            headerContent(presentation, showsDisclosure: false)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(title)
+                .accessibilityValue(String(localized: "\(count) messages", bundle: .module))
+                .accessibilityAddTraits(.isHeader)
+                .mailDenseListChromeDynamicType()
+        }
+    }
+
+    private func headerContent(
+        _ presentation: MessageListSectionHeaderPresentation,
+        showsDisclosure: Bool
+    ) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            if showsDisclosure {
                 Image(systemName: isCollapsed ? "chevron.right" : "chevron.down")
                     .brevFont(.caption)
                     .foregroundStyle(disclosureColor(for: presentation.style))
                     .frame(width: 12)
                     .accessibilityHidden(true)
-
-                if let icon = presentation.icon {
-                    Image(systemName: icon)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.accent.color)
-                        .accessibilityHidden(true)
-                }
-
-                Text(presentation.title)
-                    .brevFont(.caption)
-                    .foregroundStyle(titleColor(for: presentation.style))
-
-                // The count stays with its label: pushed to the far edge it
-                // lost the connection to the group it counts.
-                Text(verbatim: "· \(count)")
-                    .brevFont(.caption)
-                    .foregroundStyle(countColor(for: presentation.style))
-                    .monospacedDigit()
-
-                Spacer(minLength: BrevSpacing.xs)
             }
-            .textCase(nil)
-            .padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, verticalPadding)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(backgroundColor(for: presentation.style))
-            .overlay(alignment: .leading) {
-                if presentation.style == .pinned {
-                    Rectangle()
-                        .fill(theme.accent.color)
-                        .frame(width: 2)
-                }
+
+            if let icon = presentation.icon {
+                Image(systemName: icon)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.accent.color)
+                    .accessibilityHidden(true)
             }
-            .contentShape(Rectangle())
+
+            Text(presentation.title)
+                .brevFont(.caption)
+                .foregroundStyle(titleColor(for: presentation.style))
+
+            // The count stays with its label: pushed to the far edge it
+            // lost the connection to the group it counts.
+            Text(verbatim: "· \(count)")
+                .brevFont(.caption)
+                .foregroundStyle(countColor(for: presentation.style))
+                .monospacedDigit()
+
+            Spacer(minLength: BrevSpacing.xs)
         }
-        .buttonStyle(.plain)
-        .accessibilityLabel(
-            isCollapsed
-                ? String(localized: "\(title), \(count) messages, collapsed", bundle: .module)
-                : String(localized: "\(title), \(count) messages, expanded", bundle: .module)
-        )
-        .accessibilityHint(String(
-            localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",
-            bundle: .module
-        ))
-        .dynamicTypeSize(MailDenseChromeDynamicType.compactRange)
+        .textCase(nil)
+        .padding(.horizontal, BrevSpacing.md)
+        .padding(.vertical, verticalPadding)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(backgroundColor(for: presentation.style))
+        .overlay(alignment: .leading) {
+            if presentation.style == .pinned {
+                Rectangle()
+                    .fill(theme.accent.color)
+                    .frame(width: 2)
+            }
+        }
+        .contentShape(Rectangle())
     }
 
     private func disclosureColor(
@@ -4217,6 +4730,36 @@ struct MessageListEmptyStateView: View {
     var onAction: (() -> Void)?
 
     var body: some View {
+        #if os(iOS)
+        // System empty state (audit L11): the icon scales with Dynamic Type and the dimmed
+        // 0.6-opacity tertiary tint that failed contrast in every built-in theme is gone.
+        ContentUnavailableView {
+            Label {
+                Text(status.title)
+                    .foregroundStyle(theme.textPrimary.color)
+            } icon: {
+                Image(systemName: status.icon)
+                    .foregroundStyle(theme.textSecondary.color)
+            }
+        } description: {
+            Text(status.subtitle)
+                .foregroundStyle(theme.textSecondary.color)
+        } actions: {
+            if let actionTitle = status.actionTitle,
+               let onAction {
+                Button(actionTitle, action: onAction)
+                    .buttonStyle(.plain)
+                    .foregroundStyle(theme.accent.color)
+                    .frame(minHeight: BrevHitTarget.minimum)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        #else
+        desktopBody
+        #endif
+    }
+
+    private var desktopBody: some View {
         VStack(spacing: BrevSpacing.md) {
             Image(systemName: status.icon)
                 .font(.system(size: 40, weight: .light))

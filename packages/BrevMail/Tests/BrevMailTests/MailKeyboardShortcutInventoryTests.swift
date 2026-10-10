@@ -101,6 +101,9 @@ struct MailKeyboardShortcutInventoryTests {
         #endif
         let expectations: [(String, String)] = [
             ("Delete Selected Messages", "⌫"),
+            ("Select All Messages", "⌘A"),
+            ("Extend Selection Up", "⇧↑"),
+            ("Extend Selection Down", "⇧↓"),
             ("Clear Selection", "Escape"),
             ("First Message", "Home"),
             ("Last Message", "End"),

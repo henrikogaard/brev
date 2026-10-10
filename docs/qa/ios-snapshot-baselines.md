@@ -27,6 +27,8 @@ with `TEST_RUNNER_` so they reach the test process; compare again without them.
 | `ComposeNativeSheetsSnapshotTests` | `ComposeNativeSheetsSnapshotTests/*.png` (8 references) | iOS compose slice: Insert Link (new, existing link), Schedule Send (quick picks, custom date; calendar and locale pinned to UTC / en_US), Templates (populated, empty), Drive sheet chrome at phone width, Cc/Bcc rows. Rendered in a real `UIWindow`. |
 | `MessageDetailViewSnapshotTests/noSelectionPlaceholder()` | `MessageDetailViewSnapshotTests/noSelectionPlaceholder.no-selection.png` | #53: reviewed theme contrast refresh; envelope and no-selection copy preserved. |
 | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender()` | `MessageDetailViewSnapshotTests/headerPresentRendersSubjectAndSender.header-present.png` | #53: reviewed secondary-text contrast and body sizing; subject, sender, recipients, date and snippet preserved. |
+| `PhoneMessageListSnapshotTests` | `PhoneMessageListSnapshotTests/*.png` (7 references) | iOS list slice: unread and read rows (light, dark), compact All Inboxes row, selection circles (ticked/unticked), row at accessibility 5, plain date heading next to the collapsible one, system empty state. Reviewed: accent dot only on unread, semibold sender only on unread, no account line on the compact row. |
+| `PhoneMailboxSnapshotTests` `expandedInbox` and `inbox` | `PhoneMailboxSnapshotTests/expandedInbox-accessibility.*.png`, `inbox-dark.{light,dark}.png` | iOS list slice: rows now show the accent unread dot instead of the thin bar; thread count and sender metadata unchanged. Re-recorded only these four; the other `PhoneMailboxSnapshotTests` references already fail to compare on this host and were not touched. |
 | `SettingsFormSnapshotTests` (root, accounts, notifications, appearance × light, dark, accessibility 3) | `SettingsFormSnapshotTests/forms.<pane>-<variant>.png` | Settings panes as inset-grouped forms (iOS slice 7). Notifications renders the denied state with the Open Settings row. Reviewed in light, dark and AX3; no card-in-card surfaces. |
 
 Pushed-reader slice (iOS UX audit slice 1, 2026-10-09). Refreshed after
@@ -169,3 +171,12 @@ Recorded on the iOS 27.0 (24A434) simulator, iPhone 17 Pro. On that runtime
 to compare locally; they were left untouched and still need a runtime-matched
 refresh.
 
+
+Mailboxes list slice (iOS UX audit slice 8a, 2026-10-10). The sidebar became a
+native inset-grouped list with a large title, so the five phone sidebar
+references were re-recorded after visual review with `-testLanguage en
+-testRegion en_US`: `PhoneMailboxSnapshotTests/accessibleFavorites()`,
+`mailboxes(dark:)` and `twoAccountMailboxes(dark:)` (both appearances). Two
+cases are new: `mailboxesAccessibility5()` (AX5, apps and an expanded account)
+and `ipadSidebarLongAccountName()` (a long account name wraps instead of
+truncating).

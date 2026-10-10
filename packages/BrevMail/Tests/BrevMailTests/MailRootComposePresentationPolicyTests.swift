@@ -299,30 +299,6 @@ struct MailRootInitialMailboxSelectionPolicyTests {
 
 @Suite("MailRootSettingsToolbarPolicy")
 struct MailRootSettingsToolbarPolicyTests {
-    @Test("iPhone sidebar exposes an escape to the selected message list")
-    func iPhoneSidebarExposesMessageListEscape() {
-        #expect(MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: .iOS,
-            horizontalSizeClass: .compact,
-            hasSelectedDestination: true
-        ))
-        #expect(!MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: .iOS,
-            horizontalSizeClass: .compact,
-            hasSelectedDestination: false
-        ))
-        #expect(!MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: .iOS,
-            horizontalSizeClass: .regular,
-            hasSelectedDestination: true
-        ))
-        #expect(!MailRootSidebarToolbarPolicy.showsMessageListButton(
-            platform: .macOS,
-            horizontalSizeClass: .compact,
-            hasSelectedDestination: true
-        ))
-    }
-
     @Test("detail toolbars condense secondary actions on every platform")
     func detailToolbarsCondenseSecondaryActions() {
         #expect(MailRootDetailToolbarPolicy.usesCondensedLayout(platform: .iOS))
@@ -544,5 +520,32 @@ struct MailboxFilterControlPolicyTests {
             sourceID: sourceID,
             aliasPreferences: .defaults
         ) == "Projects")
+    }
+}
+
+@Suite("MailRootComposeSurface")
+struct MailRootComposeSurfaceTests {
+    @Test("iPad at regular width composes in a sheet, not a second window")
+    func regularWidthIPadUsesSheet() {
+        #expect(MailRootComposePresentationPolicy.surface(idiom: .pad, isRegularWidth: true) == .sheet)
+    }
+
+    @Test("iPhone and compact iPad compose in a sheet")
+    func compactSurfacesUseSheet() {
+        #expect(MailRootComposePresentationPolicy.surface(idiom: .phone, isRegularWidth: false) == .sheet)
+        #expect(MailRootComposePresentationPolicy.surface(idiom: .pad, isRegularWidth: false) == .sheet)
+    }
+
+    @Test("a new window is opened only when it is requested on an iPad at regular width")
+    func explicitRequestOpensWindow() {
+        #expect(MailRootComposePresentationPolicy.surface(
+            idiom: .pad, isRegularWidth: true, requestedNewWindow: true
+        ) == .detachedWindow)
+        #expect(MailRootComposePresentationPolicy.surface(
+            idiom: .pad, isRegularWidth: false, requestedNewWindow: true
+        ) == .sheet)
+        #expect(MailRootComposePresentationPolicy.surface(
+            idiom: .phone, isRegularWidth: true, requestedNewWindow: true
+        ) == .sheet)
     }
 }

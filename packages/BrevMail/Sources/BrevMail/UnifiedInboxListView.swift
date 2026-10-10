@@ -53,6 +53,9 @@ struct UnifiedInboxListView: View {
     @Environment(\.undoQueue) private var undoQueue
     @Environment(\.calendar) private var calendar
     @Environment(\.locale) private var locale
+    #if os(iOS)
+    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
+    #endif
     @Bindable private var navigation: MailNavigationState
     @Binding private var localMessageWorkflowState: LocalMessageWorkflowState
     private let backends: [any MailBackend]
@@ -76,6 +79,9 @@ struct UnifiedInboxListView: View {
     /// the message belongs to.
     private let onOpenInNewWindow: ((UnifiedInboxItem) -> Void)?
     private let onMutation: (MailEvent) async -> Void
+    /// Pull-to-refresh handler; the mailbox root passes its full refresh so a pull fetches
+    /// from every account. nil reloads the cached list only.
+    private let onRefresh: (() async -> Bool?)?
 
     @State private var requestedScope: String?
     @State private var loadedContentKey: String?
@@ -101,6 +107,8 @@ struct UnifiedInboxListView: View {
     @State private var pendingDeleteItemID: UnifiedInboxItem.ID?
     @State private var pendingBlockSenderItemID: UnifiedInboxItem.ID?
     @State private var isBulkPermanentDeletePresented = false
+    /// The row whose phone "More" swipe sheet is open.
+    @State private var swipeMoreItem: UnifiedInboxItem?
     @State private var pendingSnoozeItems: [UnifiedInboxItem] = []
     /// Active follow-up reminders indexed by message, rebuilt on settings
     /// reload so each rendered row's reminder lookup stays O(1)-ish.
@@ -160,7 +168,8 @@ struct UnifiedInboxListView: View {
         composeActions: MailComposePresentationActions,
         onSelectMessage: ((MessageHeader) -> Void)? = nil,
         onOpenInNewWindow: ((UnifiedInboxItem) -> Void)? = nil,
-        onMutation: @escaping (MailEvent) async -> Void = { _ in }
+        onMutation: @escaping (MailEvent) async -> Void = { _ in },
+        onRefresh: (() async -> Bool?)? = nil
     ) {
         self.navigation = navigation
         _localMessageWorkflowState = localMessageWorkflowState
@@ -179,6 +188,7 @@ struct UnifiedInboxListView: View {
         self.onSelectMessage = onSelectMessage
         self.onOpenInNewWindow = onOpenInNewWindow
         self.onMutation = onMutation
+        self.onRefresh = onRefresh
         // A smart view *is* a saved filter, so entering one seeds the shared
         // filter with its query. The filter now lives on the navigation state
         // so the macOS toolbar can host the control, which means seeding it
@@ -203,6 +213,17 @@ struct UnifiedInboxListView: View {
             .onChange(of: localMessageWorkflowState) {
                 reconcileNavigationAfterItemsChanged(selectFirstIfNeeded: navigation.selectedMessageID != nil)
             }
+        #if os(iOS)
+            .toolbar { selectionToolbar(visibleItems: presentationSnapshot.visibleItems) }
+        #endif
+            .confirmationDialog(
+                swipeMoreItem?.header.subject ?? "",
+                isPresented: isSwipeMorePresented,
+                titleVisibility: .visible,
+                presenting: swipeMoreItem
+            ) { item in
+                swipeMoreActionButtons(for: item)
+            }
     }
 
     @ViewBuilder
@@ -210,9 +231,11 @@ struct UnifiedInboxListView: View {
         let presentation = presentationSnapshot
         VStack(spacing: 0) {
             LegacyPinNotice()
+            #if os(macOS)
             if !selectedItemIDs.isEmpty {
                 bulkActionBar
             }
+            #endif
             if let mutationErrorStatus {
                 BrevInlineStatus(
                     message: mutationErrorStatus.message,
@@ -334,7 +357,7 @@ struct UnifiedInboxListView: View {
                             #if os(macOS)
                                 .scrollClipDisabled()
                             #endif
-                                .refreshable { await reloadVisibleItems() }
+                                .refreshable { await pullToRefresh() }
                             #if os(macOS)
                                 .onChange(of: selectedUnifiedItemID) { _, selection in
                                     guard let selection else { return }
@@ -401,8 +424,12 @@ struct UnifiedInboxListView: View {
             }
             guard !isWorkBlocked, !isMutating else { return }
             let request = loadOwnership.begin()
+            // A reload that finds a selection means an action (or a refresh) consumed it, so
+            // selection mode ends with it; an empty selection means the mode was just entered.
+            if !selectedItemIDs.isEmpty || !navigation.bulkSelection.isEmpty {
+                navigation.endSelection()
+            }
             selectedItemIDs.removeAll()
-            navigation.bulkSelection.removeAll()
             reconcileSearchExecutionWithVisibleSources()
             followUpReminderIndex = FollowUpReminderIndex(settings: .load())
             if !trimmedSearchText.isEmpty {
@@ -717,7 +744,8 @@ struct UnifiedInboxListView: View {
         MessageListDateSectionHeader(
             title: section.title,
             count: section.totalCount,
-            isCollapsed: section.isCollapsed
+            isCollapsed: section.isCollapsed,
+            isCollapsible: !usesCompactMessageRows
         ) {
             toggleDateSection(section.id)
         }
@@ -936,6 +964,94 @@ struct UnifiedInboxListView: View {
         }
     }
 
+    #if os(iOS)
+    /// Select All / Cancel in the navigation bar and Mark, Move, Archive and Delete in the
+    /// bottom bar while the list is in selection mode (audit L1).
+    @ToolbarContentBuilder
+    private func selectionToolbar(visibleItems: [UnifiedInboxItem]) -> some ToolbarContent {
+        if isInSelectionMode {
+            let selected = selectedItems
+            let allVisible = Set(visibleItems.map(\.id))
+            let moveSourceID = singleMoveSourceID(for: selected)
+            MailSelectionToolbar(
+                selectionCount: selectedItemIDs.count,
+                allSelected: !allVisible.isEmpty && allVisible.isSubset(of: selectedItemIDs),
+                isDisabled: isMutationActionBlocked,
+                showsArchive: true,
+                // Unified rows mix sources: Archive stays visible but disables
+                // unless every selected item has an archive folder.
+                isArchiveEnabled: selected.allSatisfy { $0.archiveFolder != nil },
+                canMove: moveSourceID != nil,
+                onToggleSelectAll: {
+                    if allVisible.isSubset(of: selectedItemIDs) {
+                        selectedItemIDs.subtract(allVisible)
+                    } else {
+                        selectedItemIDs.formUnion(allVisible)
+                    }
+                },
+                onCancel: {
+                    selectedItemIDs.removeAll()
+                    navigation.endSelection()
+                },
+                onMove: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .move))
+                    navigation.presentedSheet = .moveTo(
+                        messageIDs: selected.map(\.header.id),
+                        sourceID: moveSourceID,
+                        currentFolderID: singleCurrentFolderID(for: selected)
+                    )
+                },
+                onArchive: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .archive))
+                    Task { await bulkArchive() }
+                },
+                onDelete: {
+                    performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .delete))
+                    Task { await bulkDelete() }
+                },
+                markMenu: { selectionMarkMenu(selectedItems: selected) }
+            )
+        }
+    }
+
+    /// The Mark menu in the selection bottom bar. Each action ends selection mode, as in iOS Mail.
+    @ViewBuilder
+    private func selectionMarkMenu(selectedItems: [UnifiedInboxItem]) -> some View {
+        Button(String(localized: "Mark as Read", bundle: .module), systemImage: "envelope.open") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+            Task { await bulkSetRead(true) }
+        }
+        Button(String(localized: "Mark as Unread", bundle: .module), systemImage: "envelope.badge") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleRead))
+            Task { await bulkSetRead(false) }
+        }
+        Button(String(localized: "Flag", bundle: .module), systemImage: "flag") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task { await bulkSetFlag(true) }
+        }
+        Button(String(localized: "Unflag", bundle: .module), systemImage: "flag.slash") {
+            performDirectMessageActionFeedback(MessageCommandPresentation.feedback(for: .toggleFlag))
+            Task { await bulkSetFlag(false) }
+        }
+        Button(String(localized: "Snooze…", bundle: .module), systemImage: "clock") {
+            pendingSnoozeItems = selectedItems
+        }
+        Button(
+            workflowVisibilityMode == .done
+                ? String(localized: "Mark as Not Done", bundle: .module)
+                : String(localized: "Mark as Done", bundle: .module),
+            systemImage: "checkmark.circle"
+        ) {
+            if workflowVisibilityMode == .done {
+                clearDone(items: selectedItems)
+            } else {
+                markDone(items: selectedItems)
+            }
+        }
+    }
+    #endif
+
+    #if os(macOS)
     @ViewBuilder
     private var bulkActionBar: some View {
         // Resolve the selection once per bar build instead of re-filtering
@@ -987,14 +1103,16 @@ struct UnifiedInboxListView: View {
                 pendingSnoozeItems = selectedItems
             }
             .disabled(isMutationActionBlocked || selectedItems.isEmpty)
-            Button(workflowVisibilityMode == .done ? "Not Done" : "Done") {
-                if workflowVisibilityMode == .done {
-                    clearDone(items: selectedItems)
-                } else {
-                    markDone(items: selectedItems)
+            Button(workflowVisibilityMode == .done
+                ? String(localized: "Mark as Not Done", bundle: .module)
+                : String(localized: "Mark as Done", bundle: .module)) {
+                    if workflowVisibilityMode == .done {
+                        clearDone(items: selectedItems)
+                    } else {
+                        markDone(items: selectedItems)
+                    }
                 }
-            }
-            .disabled(isMutationActionBlocked || selectedItems.isEmpty)
+                .disabled(isMutationActionBlocked || selectedItems.isEmpty)
             Button(String(localized: "move.menu", bundle: .module)) {
                 navigation.presentedSheet = .moveTo(
                     messageIDs: selectedItems.map(\.header.id),
@@ -1014,6 +1132,7 @@ struct UnifiedInboxListView: View {
         .accessibilityLabel(String(localized: "More bulk actions", bundle: .module))
         .help(String(localized: "More bulk actions", bundle: .module))
     }
+    #endif
 
     @ViewBuilder
     private func messageRow(
@@ -1046,7 +1165,7 @@ struct UnifiedInboxListView: View {
                     isSelected: navigation.selectedSourceID == child.sourceID
                         && navigation.selectedMessageID == child.header.id,
                     onSelect: {
-                        if selectedItemIDs.isEmpty {
+                        if !isInSelectionMode {
                             selectMessage(child)
                         } else {
                             toggleSelection(for: child)
@@ -1080,11 +1199,12 @@ struct UnifiedInboxListView: View {
             isSelected: navigation.selectedSourceID == item.sourceID
                 && navigation.selectedMessageID == item.header.id,
             isChecked: selectedItemIDs.contains(item.id),
-            isInSelectionMode: !selectedItemIDs.isEmpty,
+            isInSelectionMode: isInSelectionMode,
             isPinned: pinnedMessageIDs.contains(item.pinID),
             isThreadExpanded: expandedThreadKeys.contains(threadKey),
             showAvatar: showSenderAvatars,
             previewLineCount: mailboxPreviewLineCount.visibleLineCount,
+            isCompactWidth: usesCompactMessageRows,
             fontFamily: mailboxFontFamily,
             textSize: mailboxTextSize,
             density: mailboxListDensity,
@@ -1098,7 +1218,7 @@ struct UnifiedInboxListView: View {
             hasFollowUp: followUpReminder != nil,
             followUpDue: followUpReminder?.isDue() == true,
             onActivate: {
-                if selectedItemIDs.isEmpty {
+                if !isInSelectionMode {
                     // Drafts reopen in the composer instead of the reader.
                     if item.folder.role == .drafts,
                        composeActions.openDraft(item.header, sourceID: item.sourceID) {
@@ -1136,14 +1256,20 @@ struct UnifiedInboxListView: View {
         .messageListThemedRowBackground()
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             ForEach(
-                MessageCommandPresentation.trailingSwipeActions(hasArchive: item.archiveFolder != nil),
+                MessageCommandPresentation.trailingSwipeActions(
+                    hasArchive: item.archiveFolder != nil,
+                    isCompact: usesCompactMessageRows
+                ),
                 id: \.self
             ) { action in
                 trailingSwipeButton(action, for: item)
             }
         }
         .swipeActions(edge: .leading, allowsFullSwipe: true) {
-            ForEach(MessageCommandPresentation.leadingSwipeActions, id: \.self) { action in
+            ForEach(
+                MessageCommandPresentation.leadingSwipeActions(isCompact: usesCompactMessageRows),
+                id: \.self
+            ) { action in
                 leadingSwipeButton(action, for: item)
             }
         }
@@ -1159,9 +1285,10 @@ struct UnifiedInboxListView: View {
         }
     }
 
-    @ViewBuilder
-    private func messageContextMenu(for item: UnifiedInboxItem) -> some View {
-        let menu = MessageCommandPresentation.contextMenu(
+    /// Resolves the row's context-menu inventory. The phone uses the shorter layout; the
+    /// swipe "More" sheet reads the same presentation so both stay in step.
+    private func contextMenuPresentation(for item: UnifiedInboxItem) -> MessageContextMenuPresentation {
+        MessageCommandPresentation.contextMenu(
             for: item.header,
             isSelected: selectedItemIDs.contains(item.id),
             isPinned: pinnedMessageIDs.contains(item.pinID),
@@ -1187,8 +1314,14 @@ struct UnifiedInboxListView: View {
             canReply: composeActions.isAvailable,
             canShowProperties: true,
             extendedCapabilities: backend(for: item.sourceID)?.extendedCapabilities ?? [],
-            canExportEML: supportsRowExport
+            canExportEML: supportsRowExport,
+            layout: usesCompactMessageRows ? .compact : .full
         )
+    }
+
+    @ViewBuilder
+    private func messageContextMenu(for item: UnifiedInboxItem) -> some View {
+        let menu = contextMenuPresentation(for: item)
         ForEach(menu.sections.indices, id: \.self) { sectionIndex in
             if sectionIndex > 0 {
                 Divider()
@@ -1197,9 +1330,41 @@ struct UnifiedInboxListView: View {
                 messageContextMenuButton(action, for: item)
             }
         }
-        Divider()
-        inboxCategoryMenu(for: item)
-        pluginMessageContextMenuItems
+        if menu.overflowSections.isEmpty {
+            Divider()
+            inboxCategoryMenu(for: item)
+            pluginMessageContextMenuItems
+        } else {
+            Divider()
+            Menu {
+                ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
+                    if sectionIndex > 0 {
+                        Divider()
+                    }
+                    ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
+                        messageContextMenuButton(action, for: item)
+                    }
+                }
+                Divider()
+                inboxCategoryMenu(for: item)
+                pluginMessageContextMenuItems
+            } label: {
+                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+            }
+        }
+    }
+
+    /// Actions behind the phone's trailing "More" swipe button.
+    @ViewBuilder
+    private func swipeMoreActionButtons(for item: UnifiedInboxItem) -> some View {
+        let menu = contextMenuPresentation(for: item)
+        ForEach(
+            MessageCommandPresentation.swipeMoreActions(hasArchive: item.archiveFolder != nil)
+                .compactMap { menu.action($0) },
+            id: \.action
+        ) { action in
+            messageContextMenuButton(action, for: item)
+        }
     }
 
     @ViewBuilder
@@ -1500,7 +1665,7 @@ struct UnifiedInboxListView: View {
             } label: {
                 Label(String(localized: "Archive", bundle: .module), systemImage: "archivebox")
             }
-            .tint(theme.accent.color)
+            .tint(usesCompactMessageRows ? theme.info.color : theme.accent.color)
             .disabled(isMutationActionBlocked)
         case .delete:
             Button(role: .destructive) {
@@ -1513,7 +1678,17 @@ struct UnifiedInboxListView: View {
             } label: {
                 Label(String(localized: "Delete", bundle: .module), systemImage: "trash")
             }
+            .tint(usesCompactMessageRows ? theme.danger.color : nil)
             .disabled(isMutationActionBlocked)
+        case .toggleFlag:
+            leadingSwipeButton(.toggleFlag, for: item)
+        case .more:
+            Button {
+                swipeMoreItem = item
+            } label: {
+                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+            }
+            .tint(theme.textSecondary.color)
         default:
             EmptyView()
         }
@@ -2163,10 +2338,63 @@ struct UnifiedInboxListView: View {
     #endif
 
     private func toggleSelection(for item: UnifiedInboxItem) {
+        #if os(iOS)
+        // The row's Select action enters the explicit selection mode, which then
+        // outlasts unticking the last row until the user taps Cancel.
+        if !isInSelectionMode {
+            navigation.isSelecting = true
+        }
+        #endif
         if selectedItemIDs.contains(item.id) {
             selectedItemIDs.remove(item.id)
         } else {
             selectedItemIDs.insert(item.id)
+        }
+    }
+
+    /// Unticks rows an action has consumed. When that empties the selection, selection mode
+    /// ends too, as in iOS Mail.
+    private func subtractSelection(_ ids: Set<UnifiedInboxItem.ID>) {
+        let hadSelection = !selectedItemIDs.isEmpty
+        selectedItemIDs.subtract(ids)
+        if hadSelection, selectedItemIDs.isEmpty {
+            navigation.endSelection()
+        }
+    }
+
+    private var isSwipeMorePresented: Binding<Bool> {
+        Binding(
+            get: { swipeMoreItem != nil },
+            set: { isPresented in
+                if !isPresented {
+                    swipeMoreItem = nil
+                }
+            }
+        )
+    }
+
+    /// Whether rows show selection circles: the explicit mode or any ticked row.
+    private var isInSelectionMode: Bool {
+        navigation.isSelecting || !selectedItemIDs.isEmpty
+    }
+
+    private var usesCompactMessageRows: Bool {
+        #if os(iOS)
+        horizontalSizeClass == .compact
+        #else
+        false
+        #endif
+    }
+
+    /// Pull to refresh fetches from every account through the root's refresh, like the
+    /// Refresh command, then reloads. An active search only re-runs the search.
+    private func pullToRefresh() async {
+        guard let onRefresh, trimmedSearchText.isEmpty else {
+            await reloadVisibleItems()
+            return
+        }
+        if await onRefresh() == nil {
+            await reloadVisibleItems()
         }
     }
 
@@ -2565,7 +2793,7 @@ struct UnifiedInboxListView: View {
             navigation.selectedSourceID == item.sourceID
                 && navigation.selectedMessageID == item.header.id
         }
-        selectedItemIDs.subtract(targetIDs)
+        subtractSelection(targetIDs)
         if removedSelectedMessage {
             navigation.selectedMessageID = nil
         }
@@ -2621,7 +2849,7 @@ struct UnifiedInboxListView: View {
                 }
             }
         }
-        selectedItemIDs.subtract(targetIDs)
+        subtractSelection(targetIDs)
         let selectionRevision = navigation.readerSelectionRevision
 
         let request = loadOwnership.begin()
