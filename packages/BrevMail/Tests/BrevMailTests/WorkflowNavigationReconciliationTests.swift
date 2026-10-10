@@ -22,8 +22,50 @@ import Testing
 @MainActor
 struct WorkflowNavigationReconciliationTests {
     @Observable
+    @MainActor
     final class Model {
         var workflow = LocalMessageWorkflowState.defaults
+
+        /// Workflow state the hosted view tree last rendered. The header count
+        /// cannot stand in for it: a second startup load can still be in
+        /// flight, and it filters with the live binding before SwiftUI has
+        /// rendered the change. Undoing at that point puts the state back
+        /// before the list ever saw it, so its `onChange` never fires.
+        @ObservationIgnored private var renderedWorkflow = LocalMessageWorkflowState.defaults
+        @ObservationIgnored private var renderWaiter: (
+            workflow: LocalMessageWorkflowState, continuation: CheckedContinuation<Void, Never>
+        )?
+
+        func didRender(_ workflow: LocalMessageWorkflowState) {
+            renderedWorkflow = workflow
+            guard let waiter = renderWaiter, waiter.workflow == workflow else { return }
+            renderWaiter = nil
+            waiter.continuation.resume()
+        }
+
+        /// Suspends until the view tree has rendered `workflow`; the list's own
+        /// `onChange` reconciliation runs in that same SwiftUI update.
+        ///
+        /// Returns early when the task is cancelled, so a render that never
+        /// arrives ends at the test's time limit (which cancels the task) and
+        /// fails on the assertions that follow instead of hanging the suite.
+        func rendered(_ workflow: LocalMessageWorkflowState) async {
+            guard renderedWorkflow != workflow else { return }
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    guard !Task.isCancelled else { return continuation.resume() }
+                    renderWaiter = (workflow, continuation)
+                }
+            } onCancel: {
+                Task { @MainActor in self.abandonRenderWait() }
+            }
+        }
+
+        private func abandonRenderWait() {
+            guard let waiter = renderWaiter else { return }
+            renderWaiter = nil
+            waiter.continuation.resume()
+        }
     }
 
     struct Harness: View {
@@ -35,6 +77,10 @@ struct WorkflowNavigationReconciliationTests {
         let unified: Bool
 
         var body: some View {
+            list.onChange(of: model.workflow) { _, workflow in model.didRender(workflow) }
+        }
+
+        @ViewBuilder private var list: some View {
             if unified {
                 UnifiedInboxListView(
                     navigation: navigation, backends: [backend],
@@ -66,12 +112,16 @@ struct WorkflowNavigationReconciliationTests {
         }
     }
 
-    @Test("external workflow changes and undo update reader membership without a reload", arguments: [false, true], [false, true])
+    @Test(
+        "external workflow changes and undo update reader membership without a reload",
+        .timeLimit(.minutes(1)),
+        arguments: [false, true], [false, true]
+    )
     func externalWorkflowChange(unified: Bool, snooze: Bool) async throws {
         try await exerciseWorkflowChange(unified: unified, snooze: snooze, unreadOnly: false)
     }
 
-    @Test("unified workflow changes keep selection inside the visible unread filter")
+    @Test("unified workflow changes keep selection inside the visible unread filter", .timeLimit(.minutes(1)))
     func filteredUnifiedWorkflowChange() async throws {
         try await exerciseWorkflowChange(unified: true, snooze: false, unreadOnly: true)
     }
@@ -113,16 +163,12 @@ struct WorkflowNavigationReconciliationTests {
         model.workflow = snooze
             ? LocalMessageWorkflowStatePolicy.snoozing(messageID, until: .distantFuture, in: .defaults)
             : LocalMessageWorkflowStatePolicy.markingDone([messageID], in: .defaults)
-        for _ in 0 ..< 250 where navigation.currentFolderHeaders.count != (unreadOnly ? 1 : 2) {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await model.rendered(model.workflow)
         #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a"] : ["a", "c"]))
         #expect(navigation.selectedMessageID == (unreadOnly ? "a" : "c"))
         let task = try #require(undo.undo())
         #expect(await task.value)
-        for _ in 0 ..< 250 where navigation.currentFolderHeaders.count != (unreadOnly ? 2 : 3) {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        await model.rendered(previousState)
         #expect(navigation.currentFolderHeaders.map(\.id) == (unreadOnly ? ["a", "b"] : ["a", "b", "c"]))
         #expect(navigation.selectedMessageID == (unreadOnly ? "a" : "c"))
     }
