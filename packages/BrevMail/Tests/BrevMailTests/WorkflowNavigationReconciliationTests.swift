@@ -45,9 +45,26 @@ struct WorkflowNavigationReconciliationTests {
 
         /// Suspends until the view tree has rendered `workflow`; the list's own
         /// `onChange` reconciliation runs in that same SwiftUI update.
+        ///
+        /// Returns early when the task is cancelled, so a render that never
+        /// arrives ends at the test's time limit (which cancels the task) and
+        /// fails on the assertions that follow instead of hanging the suite.
         func rendered(_ workflow: LocalMessageWorkflowState) async {
             guard renderedWorkflow != workflow else { return }
-            await withCheckedContinuation { renderWaiter = (workflow, $0) }
+            await withTaskCancellationHandler {
+                await withCheckedContinuation { continuation in
+                    guard !Task.isCancelled else { return continuation.resume() }
+                    renderWaiter = (workflow, continuation)
+                }
+            } onCancel: {
+                Task { @MainActor in self.abandonRenderWait() }
+            }
+        }
+
+        private func abandonRenderWait() {
+            guard let waiter = renderWaiter else { return }
+            renderWaiter = nil
+            waiter.continuation.resume()
         }
     }
 
