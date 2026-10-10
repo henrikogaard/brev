@@ -43,6 +43,31 @@ struct MessageListAppearLoadTests {
         #expect(list.backend.firstPageFetchCount == 2)
     }
 
+    @Test("a search option change with empty search text does not refetch the folder", .timeLimit(.minutes(1)))
+    func searchOptionChangeWithoutTextKeepsFolderPage() async throws {
+        let list = HostedList()
+        defer { list.close() }
+        try await list.waitForHeaders(["a", "b", "c"])
+        try await list.settle()
+        // What `reconcileSearchExecutionWithBackendCapabilities()` does on a folder
+        // switch to a backend without the selected search mode.
+        list.navigation.searchExecution = .serverOnly
+        try await list.settle()
+        #expect(list.backend.firstPageFetchCount == 1)
+    }
+
+    @Test("a search option change with search text runs the search again", .timeLimit(.minutes(1)))
+    func searchOptionChangeWithTextSearchesAgain() async throws {
+        let list = HostedList(searchText: "b")
+        defer { list.close() }
+        try await list.waitForHeaders(["b"])
+        try await list.settle()
+        list.navigation.searchExecution = .serverOnly
+        try await list.settle()
+        #expect(list.backend.searchCount == 2)
+        #expect(list.backend.firstPageFetchCount == 0)
+    }
+
     @Test("an appearance with search text searches once and skips the folder page", .timeLimit(.minutes(1)))
     func appearWithSearchTextSearchesOnce() async throws {
         let list = HostedList(searchText: "b")

@@ -5597,3 +5597,9 @@ buttons, and package-aware localization.
 - Pre-existing failures: full `swift test --package-path packages/BrevMail` fails 53 pixel-snapshot tests in 17 snapshot suites on this host (macOS 27.0.1). The same 53 fail with the source change reverted; no other test fails.
 - `UnifiedInboxListView` has one `.task(id: loadKey)` for folder and search loads, so it has no second appear load; unchanged.
 - Not changed: a filter-key change with empty search text still reloads the folder, as it did. On appear that needs `navigation.searchExecution` to differ from the backend default with no user selection, which `init` already rules out.
+
+## 2026-10-10 — Claude Code — PR #233 review follow-up
+
+- Codex review (P2): a folder switch resets search options in the `reloadKey` task (`reconcileSearchExecutionWithBackendCapabilities()`, scope and all-folders resets), which changed the observed search key and ran `reloadForSearchChange()`; with empty search text that fetched the folder's first page a second time.
+- Change: the search observer now watches `SearchChangeTrigger(text:filterKey:)` and asks `MessageListReloadPolicy.searchChangeNeedsReload(oldSearchText:newSearchText:)`. Without search text before and after, an options-only change does not reload; entering, changing or clearing text, and option changes while searching, reload as before.
+- Verification: hosted test "a search option change with empty search text does not refetch the folder" failed before the change (2 fetches) and passes after; 3 new policy tests; `swift test --filter "MessageList|MailSearch|UnifiedInbox"` 271 tests green (snapshots skipped); iOS `BrevMail` build succeeds; swiftlint strict and swiftformat clean on touched files. Merged current main (#230 search rework) first.
