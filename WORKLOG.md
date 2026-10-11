@@ -5692,3 +5692,8 @@ buttons, and package-aware localization.
 - Verification: 7 AppIconPreferences tests passed after expected red failures; 4 icon-only login snapshots updated and passed; macOS dated mock build/launch and iOS Simulator build passed; native selector exercised; 74 catalog entries checked for dimensions and iOS alpha rules; regeneration deterministic; lint/format/ADR checks passed. Full commands and limits are in `docs/qa/glass-icons-2026-10-11/README.md`.
 - Existing failures: seven other LoginView snapshots also fail with the exact original source and artwork. Their baselines were preserved. Physical-device iOS switching and automated Dock pixel capture were not verified.
 - Delivery: feature/glass-envelope-icons targets main. Companion website PR: https://github.com/henrikogaard/brev-site/pull/1. No issue was assigned; no issue/project closeout is claimed. No release or deployment. README, CHANGELOG, ADR-0004 and asset-generation notes updated; privacy, release and agent documents require no change.
+
+## 2026-10-11 — Claude Code — Mac release 0.2.8 prep
+
+- Goal: ship #238 (quiet related-mail bar, clearer nb copy) and #237 (glass envelope icons, Smoke default) as Mac `v0.2.8`. iOS TestFlight is Henrik's, from another Mac.
+- Changes: marketing version 0.2.7 → 0.2.8 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.8. Tag `v0.2.8` follows a green PR-event Build on this commit; main is fast-forwarded to it.
