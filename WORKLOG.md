@@ -5692,3 +5692,10 @@ buttons, and package-aware localization.
 - Verification: 7 AppIconPreferences tests passed after expected red failures; 4 icon-only login snapshots updated and passed; macOS dated mock build/launch and iOS Simulator build passed; native selector exercised; 74 catalog entries checked for dimensions and iOS alpha rules; regeneration deterministic; lint/format/ADR checks passed. Full commands and limits are in `docs/qa/glass-icons-2026-10-11/README.md`.
 - Existing failures: seven other LoginView snapshots also fail with the exact original source and artwork. Their baselines were preserved. Physical-device iOS switching and automated Dock pixel capture were not verified.
 - Delivery: feature/glass-envelope-icons targets main. Companion website PR: https://github.com/henrikogaard/brev-site/pull/1. No issue was assigned; no issue/project closeout is claimed. No release or deployment. README, CHANGELOG, ADR-0004 and asset-generation notes updated; privacy, release and agent documents require no change.
+
+## 2026-10-11 — Claude Code — ADR-0088 sign-in code panel (issue #239, Proposed)
+
+- Goal: assess and start issue #239 (floating panel with sign-in codes and links on arrival). The feature reads mail content and has privacy and spoofing implications, so per AGENTS.md this is an ADR-first change.
+- Assessment (read-only): feasible as a macOS view-layer feature. Gaps: the arrival hook (`MailEvent.messagesAdded`) is consumed in `BrevMailRootView` and has no age check; new mail has a snippet only, so the body and `Authentication-Results` need a fetch; only DMARC failure is parsed today; no `NSPanel` exists. Closed-window behaviour of the subscription is unverified.
+- Change: `ADRs/0088-sign-in-code-and-link-panel.md` (Proposed) and an index row. No code.
+- Next: Henrik answers the three open questions and accepts the ADR; then slice 1 (pure detector).

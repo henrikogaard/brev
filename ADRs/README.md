@@ -98,6 +98,7 @@ repository checks.
 | 85 | Desktop starts in Compact list density | Accepted |
 | 86 | Per-section font family | Accepted |
 | 87 | Serve IMAP header pages from SQLite and retire whole-folder JSON | Accepted |
+| 88 | Show sign-in codes and links on screen as they arrive | Proposed |
 
 ## Conventions
 
