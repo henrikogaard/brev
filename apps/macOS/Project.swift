@@ -83,7 +83,7 @@ let project = Project(
             sources: ["Sources/**"],
             resources: [
                 "Resources/Assets.xcassets",
-                "Resources/AppIcon.icon",
+                "Resources/AppIcons/*.icns",
                 "Resources/Localizable.xcstrings",
                 "Resources/InfoPlist.xcstrings"
             ],

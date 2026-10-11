@@ -12,7 +12,6 @@
 		1B227327213BA6AF141B6E18 /* BrevThemes in Frameworks */ = {isa = PBXBuildFile; productRef = CEC74C5E12C0DEA5F70E1017 /* BrevThemes */; };
 		1CC15A1FC98AB1E104EE86F2 /* BrevAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BC6E48FA4543B47D64BFD8 /* BrevAppIntents.swift */; };
 		24F14ED373419E0FF50DF302 /* Sparkle.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 88F5CCF3B6AF123315A0D124 /* Sparkle.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
-		27C20E84CA628996395CD380 /* AppIcon.icon in Resources */ = {isa = PBXBuildFile; fileRef = D9435FFF6A851B273DEF59F8 /* AppIcon.icon */; };
 		2BC90DA3635FF0B50788CE3C /* MacUpdateController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3F1A98A883F9A00B2588885A /* MacUpdateController.swift */; };
 		4AAAD0E6F607E20AD6AD3163 /* WindowFrameAutosave.swift in Sources */ = {isa = PBXBuildFile; fileRef = 270DF896BE4F01BB8A26FF28 /* WindowFrameAutosave.swift */; };
 		4D6FF4F7571CE6CA005C3B9D /* BrevCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = AEF78576AEDFCC3ADE96428F /* BrevCalendar */; };
@@ -21,6 +20,7 @@
 		615723232987A180870B438D /* InfoPlist.xcstrings in Resources */ = {isa = PBXBuildFile; fileRef = 0C6B7B666EAEC4DCB890FF57 /* InfoPlist.xcstrings */; };
 		65A4228E9E05953C1D49B649 /* BrevDesign in Frameworks */ = {isa = PBXBuildFile; productRef = 9243890DFD2667F527EA637A /* BrevDesign */; };
 		85FA9F8CC7644215F7D5A75A /* BrevMacWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 5F10040F8AF74B8133E19027 /* BrevMacWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		8CC7314DCA39660E9218BB08 /* BrevIconEnvelopeCarbon.icns in Resources */ = {isa = PBXBuildFile; fileRef = F7EB0CCBBE83190E2BCFC123 /* BrevIconEnvelopeCarbon.icns */; };
 		9BDE032E05E012C1AB5A5487 /* BrevMail in Frameworks */ = {isa = PBXBuildFile; productRef = B06627585BF8DA4D0D415790 /* BrevMail */; };
 		A9B5225F27410DBC80BF62FA /* BrevMacWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 552AB18C50933DCA7B40853D /* BrevMacWidgetsBundle.swift */; };
 		AA95D3410F47800B1378A07E /* TuistBundle+BrevMacOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = 505266410123068B84035C98 /* TuistBundle+BrevMacOS.swift */; };
@@ -31,9 +31,11 @@
 		D65183A5C51272DFA4651F88 /* BrevMailCommands.swift in Sources */ = {isa = PBXBuildFile; fileRef = 560B23745A8AF4A38B3E9DFF /* BrevMailCommands.swift */; };
 		DD1DFA80923FE666E13AA925 /* BrevBackend in Frameworks */ = {isa = PBXBuildFile; productRef = D0DEAC0B8A9AEA36F5863F77 /* BrevBackend */; };
 		E83BC8122D5CC52046808DBF /* BrevSettings in Frameworks */ = {isa = PBXBuildFile; productRef = 134F1A1E81E465A7DF2439EC /* BrevSettings */; };
+		EACBE6630F5857D1C6FB8024 /* BrevIconEnvelopeLight.icns in Resources */ = {isa = PBXBuildFile; fileRef = 1092EC4E54A4B4D5245DC2BB /* BrevIconEnvelopeLight.icns */; };
 		EF6F6F2342412F39DE52AAD0 /* BrevSyncEngine in Frameworks */ = {isa = PBXBuildFile; productRef = F61A35820977C972940969BA /* BrevSyncEngine */; };
 		FBB4623C42067EE45CE63E5F /* BrevPlugins in Frameworks */ = {isa = PBXBuildFile; productRef = 76EA438ABFA5C3B669374D15 /* BrevPlugins */; };
 		FC54ACA1146BC15CD092299F /* MailFilePanels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87C638BA4D5498459078A85E /* MailFilePanels.swift */; };
+		FDD0B478D4571D13ADB497F6 /* BrevIconEnvelopeDarkMetal.icns in Resources */ = {isa = PBXBuildFile; fileRef = 32FC80939C240ECC37AF07D2 /* BrevIconEnvelopeDarkMetal.icns */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -82,11 +84,13 @@
 
 /* Begin PBXFileReference section */
 		0C6B7B666EAEC4DCB890FF57 /* InfoPlist.xcstrings */ = {isa = PBXFileReference; path = InfoPlist.xcstrings; sourceTree = "<group>"; };
+		1092EC4E54A4B4D5245DC2BB /* BrevIconEnvelopeLight.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BrevIconEnvelopeLight.icns; sourceTree = "<group>"; };
 		15CE7648E45AC7BBA088CFBC /* BrevSettings */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevSettings; path = ../../packages/BrevSettings; sourceTree = "<group>"; };
 		16FD9C8D32351B257F998344 /* BrevPlugins */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevPlugins; path = ../../packages/BrevPlugins; sourceTree = "<group>"; };
 		270DF896BE4F01BB8A26FF28 /* WindowFrameAutosave.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowFrameAutosave.swift; sourceTree = "<group>"; };
 		2DDED1033D03103D8010F046 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		31A6013F9115B9BD90946109 /* BrevWidgets */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevWidgets; path = ../../packages/BrevWidgets; sourceTree = "<group>"; };
+		32FC80939C240ECC37AF07D2 /* BrevIconEnvelopeDarkMetal.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BrevIconEnvelopeDarkMetal.icns; sourceTree = "<group>"; };
 		392B84125F564F1E481F4A80 /* BrevExamplePlugin */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevExamplePlugin; path = ../../Plugins/BrevExamplePlugin; sourceTree = "<group>"; };
 		3F1A98A883F9A00B2588885A /* MacUpdateController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MacUpdateController.swift; sourceTree = "<group>"; };
 		47392CB2535DD31B7D211A8B /* Localizable.xcstrings */ = {isa = PBXFileReference; path = Localizable.xcstrings; sourceTree = "<group>"; };
@@ -107,9 +111,9 @@
 		B3784797F461CA8C6E729A41 /* TuistAssets+BrevMacOS.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "TuistAssets+BrevMacOS.swift"; sourceTree = "<group>"; };
 		C0E3161C0A69C95AA60ADA4B /* Brev.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Brev.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		C7BC6E48FA4543B47D64BFD8 /* BrevAppIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevAppIntents.swift; sourceTree = "<group>"; };
-		D9435FFF6A851B273DEF59F8 /* AppIcon.icon */ = {isa = PBXFileReference; path = AppIcon.icon; sourceTree = "<group>"; };
 		E2F69F7B5DC8C3B7D1B6029B /* BrevThemes */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevThemes; path = ../../packages/BrevThemes; sourceTree = "<group>"; };
 		F775C0D8CA2AFD45D5294B51 /* BrevCalendar */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevCalendar; path = ../../packages/BrevCalendar; sourceTree = "<group>"; };
+		F7EB0CCBBE83190E2BCFC123 /* BrevIconEnvelopeCarbon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = BrevIconEnvelopeCarbon.icns; sourceTree = "<group>"; };
 		F851B0803FAF89EA84A79547 /* BrevBackend */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevBackend; path = ../../packages/BrevBackend; sourceTree = "<group>"; };
 		FF973611FA4CB1002CB82C8C /* BrevMail */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevMail; path = ../../packages/BrevMail; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -144,6 +148,16 @@
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		3AEAD0CC89D546EC20612697 /* AppIcons */ = {
+			isa = PBXGroup;
+			children = (
+				F7EB0CCBBE83190E2BCFC123 /* BrevIconEnvelopeCarbon.icns */,
+				32FC80939C240ECC37AF07D2 /* BrevIconEnvelopeDarkMetal.icns */,
+				1092EC4E54A4B4D5245DC2BB /* BrevIconEnvelopeLight.icns */,
+			);
+			path = AppIcons;
+			sourceTree = "<group>";
+		};
 		4462BECAD898A929DF1CE641 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
@@ -181,7 +195,7 @@
 		84129ED75C477D44362D4856 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				D9435FFF6A851B273DEF59F8 /* AppIcon.icon */,
+				3AEAD0CC89D546EC20612697 /* AppIcons */,
 				78A6A7876826C01FD6F25FDF /* Assets.xcassets */,
 				537DA255C9F9E17941C5AF46 /* BrevMacOS.entitlements */,
 				2DDED1033D03103D8010F046 /* Info.plist */,
@@ -391,7 +405,9 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
-				27C20E84CA628996395CD380 /* AppIcon.icon in Resources */,
+				8CC7314DCA39660E9218BB08 /* BrevIconEnvelopeCarbon.icns in Resources */,
+				FDD0B478D4571D13ADB497F6 /* BrevIconEnvelopeDarkMetal.icns in Resources */,
+				EACBE6630F5857D1C6FB8024 /* BrevIconEnvelopeLight.icns in Resources */,
 				5FC0E6D86CE8A90470BB18B6 /* Assets.xcassets in Resources */,
 				615723232987A180870B438D /* InfoPlist.xcstrings in Resources */,
 				AD7C348FAF228A3E7929C885 /* Localizable.xcstrings in Resources */,

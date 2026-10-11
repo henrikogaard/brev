@@ -13231,6 +13231,61 @@
           }
         }
       }
+    },
+    "Frost": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Frost"
+          }
+        }
+      }
+    },
+    "Smoke": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Røyk"
+          }
+        }
+      }
+    },
+    "Obsidian": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Obsidian"
+          }
+        }
+      }
+    },
+    "Light glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lyst glass"
+          }
+        }
+      }
+    },
+    "Dark glass": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mørkt glass"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

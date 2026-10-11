@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+<title id="title">Brev — Frost glass — compact</title>
+<desc id="desc">A monochrome glass envelope with crisp folds. Optically adjusted for 16–64 pixel use, with heavier fold edges and fewer fine lines. No raster images or blur filters.</desc>
+<defs><linearGradient id="edge" x1="256" y1="34" x2="256" y2="472" gradientUnits="userSpaceOnUse"><stop stop-color="#D0D0D0"/><stop offset="1" stop-color="#777777"/></linearGradient><linearGradient id="body" x1="170" y1="60" x2="330" y2="462" gradientUnits="userSpaceOnUse"><stop stop-color="#E8E8E8"/><stop offset="1" stop-color="#A3A3A3"/></linearGradient><linearGradient id="left" x1="24" y1="210" x2="255" y2="370" gradientUnits="userSpaceOnUse"><stop stop-color="#EDEDED"/><stop offset="1" stop-color="#ABABAB"/></linearGradient><linearGradient id="right" x1="482" y1="180" x2="282" y2="392" gradientUnits="userSpaceOnUse"><stop stop-color="#C2C2C2"/><stop offset="1" stop-color="#7E7E7E"/></linearGradient><linearGradient id="front" x1="210" y1="270" x2="290" y2="462" gradientUnits="userSpaceOnUse"><stop stop-color="#DEDEDE"/><stop offset="1" stop-color="#959595"/></linearGradient><linearGradient id="flap" x1="176" y1="34" x2="314" y2="306" gradientUnits="userSpaceOnUse"><stop offset="0" stop-color="#FAFAFA"/><stop offset=".36" stop-color="#E6E6E6"/><stop offset=".77" stop-color="#B7B7B7"/><stop offset="1" stop-color="#EEEEEE"/></linearGradient><linearGradient id="reflection" x1="256" y1="34" x2="256" y2="190" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity=".72"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0"/></linearGradient><linearGradient id="rim" x1="150" y1="34" x2="362" y2="462" gradientUnits="userSpaceOnUse"><stop stop-color="#FFFFFF" stop-opacity=".8"/><stop offset=".5" stop-color="#FFFFFF" stop-opacity=".16"/><stop offset="1" stop-color="#FFFFFF" stop-opacity=".38"/></linearGradient><clipPath id="face"><rect x="24" y="34" width="464" height="428" rx="102"/></clipPath></defs>
+<rect x="24" y="44" width="464" height="428" rx="102" fill="url(#edge)"/>
+<rect x="24" y="34" width="464" height="428" rx="102" fill="url(#body)"/>
+<g clip-path="url(#face)">
+<path d="M24 131 275 280 66 466H24Z" fill="url(#left)"/>
+<path d="M488 131 237 280 446 466h42Z" fill="url(#right)"/>
+<path d="m18 430 212-160c15-11 37-11 52 0l212 160v44H18Z" fill="url(#front)"/>
+
+<path d="M24 25h464v119L282 303c-15 12-37 12-52 0L24 144Z" fill="#818181"/>
+<path d="M24 25h464v113L282 297c-15 12-37 12-52 0L24 138Z" fill="url(#flap)"/>
+<path d="m27 140 203 157c15 12 37 12 52 0l203-157" fill="none" stroke="#737373" stroke-width="14"/>
+<path d="M24 31h464v61c-140 44-274-27-464 72Z" fill="url(#reflection)"/>
+</g>
+<rect x="25" y="35" width="462" height="426" rx="101" fill="none" stroke="url(#rim)" stroke-width="7"/>
+</svg>

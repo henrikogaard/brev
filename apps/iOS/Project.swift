@@ -59,7 +59,7 @@ let project = Project(
             "BREV_GOOGLE_API_KEY": .string(BrevConstants.googleAPIKey),
             "BREV_GOOGLE_APP_ID": .string(BrevConstants.googleAppID),
             "ASSETCATALOG_COMPILER_INCLUDE_ALL_APPICON_ASSETS": "YES",
-            "ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES": "BrevIconEnvelopeDarkMetal BrevIconEnvelopeCarbon"
+            "ASSETCATALOG_COMPILER_ALTERNATE_APPICON_NAMES": "BrevIconEnvelopeLight BrevIconEnvelopeCarbon"
         ],
         configurations: [
             .debug(name: "Debug"),
