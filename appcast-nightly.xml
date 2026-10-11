@@ -1,5 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.6-nightly.20261010</title><pubDate>Sat, 10 Oct 2026 03:09:35 GMT</pubDate><sparkle:version>2026101002</sparkle:version><sparkle:shortVersionString>0.2.6-nightly.20261010</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at f4555690bb0ba56240f211ce6424439d02b77fd3.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.7-nightly.20261011</title><pubDate>Sun, 11 Oct 2026 02:27:21 GMT</pubDate><sparkle:version>2026101102</sparkle:version><sparkle:shortVersionString>0.2.7-nightly.20261011</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 90d5843f544bc4415f04702a5e47ffa8bbce5a47.
+
+- feat(icons): ship glass envelopes with Smoke as default (#237) (90d5843)
+- chore(release): cut 0.2.7 (1cdb17f)
+- fix(ios): push the DAV connect form instead of nesting a sheet in Settings (#235) (3a3ad12)
+- fix(ios): native Calendar, Contacts and Tasks chrome, empty states and editors (#234) (44bd1a2)
+- docs(adr): accept ADR-0087 IMAP header pages from SQLite (#217) (a22286c)
+- fix(BrevMail): load the message list once on appear (#233) (8fe4e94)
+- test(BrevMail): await the rendered workflow state in the reconciliation test (#232) (01b1953)
+- fix(ios): native search with scopes, tokens and suggestions (#230) (a1a8ae0)
+- fix(ios): one sheet appearance modifier and native utility sheets (#231) (afb668c)
+- feat(macos): multi-select with Command/Shift-click, Select All and a bulk selection pane (#222) (936c198)
+- feat(macos): drag out, Save All and double-click open for reader attachments (#219) (9b77a7f)
+- fix(ios): native Mailboxes list and iPad compose sheet (#229) (939e72a)
+- fix(ios): native selection mode, unread dot and swipe parity in the message list (#228) (4aa8e1f)
+- fix(ios): onboarding keyboard traits, sign-in errors and native share extension (#227) (0b740ca)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261011.dmg" length="26461011" type="application/octet-stream" sparkle:edSignature="fbx1bF4OdQvph+JlDUyhMd3qKv2Nl3HZrNa23PPC8Llb12gh/+NxCwPQ6lDiffLg/ARhHaEiDo9hxUuc4SOaBw==" /></item><item><title>0.2.6-nightly.20261010</title><pubDate>Sat, 10 Oct 2026 03:09:35 GMT</pubDate><sparkle:version>2026101002</sparkle:version><sparkle:shortVersionString>0.2.6-nightly.20261010</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at f4555690bb0ba56240f211ce6424439d02b77fd3.
 
 - fix(ios): push the reader and give it an iOS Mail action bar (#224) (f455569)
 - fix(ios): compose cancel, focus, attachments and native compose sheets (#225) (dc7fe81)
@@ -19,7 +34,7 @@
 - fix(ios): theme and tidy the add-account sheet (#208) (e6c8928)
 - feat(appearance): per-section font family (ADR-0086) (#207) (23c3c85)
 - fix(macos): drop theme wash from toolbar scroll edge band (#206) (e747508)
-- feat(ios): Apple Mail–style reader header (#209) (5eb968d)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261010.dmg" length="27707760" type="application/octet-stream" sparkle:edSignature="ZW4ICTVAI86GMk/iupmAgP/u/aOyDpwW1P4iL7eqr7to2oKosXucFBxBrFEoK2uHxIxOnpSwh8yyppM8q30sAA==" /></item><item><title>0.2.5-nightly.20261009</title><pubDate>Fri, 09 Oct 2026 03:18:57 GMT</pubDate><sparkle:version>2026100903</sparkle:version><sparkle:shortVersionString>0.2.5-nightly.20261009</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at faafd40e9543618cadb3d7e6a8eccbd6b15326fe.
+- feat(ios): Apple Mail–style reader header (#209) (5eb968d)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261010.dmg" length="27707760" type="application/octet-stream" sparkle:edSignature="ZW4ICTVAI86GMk/iupmAgP/u/aOyDpwW1P4iL7eqr7to2oKosXucFBxBrFEoK2uHxIxOnpSwh8yyppM8q30sAA==" /></item><item><title>0.2.5-nightly.20261009</title><pubDate>Fri, 09 Oct 2026 03:18:57 GMT</pubDate><sparkle:version>2026100903</sparkle:version><sparkle:shortVersionString>0.2.5-nightly.20261009</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at faafd40e9543618cadb3d7e6a8eccbd6b15326fe.
 
 - chore(release): cut 0.2.5 (faafd40)
 - docs(qa): PIM stub-DAV evidence 2.7/2.8/4.3 + fix iOS PIM theme (#187) (3190ab7)
