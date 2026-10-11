@@ -15,28 +15,107 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
+/// What the macOS reader bar shows for related-conversation lookup
+/// (ADR-0074 §8). It stays quiet until there is something to say or do: the
+/// plain cached and complete states have no sentence, Load related mail is the
+/// only idle action, and Spam and Trash is offered only after a lookup has
+/// produced a result.
+struct RelatedConversationBarPresentation: Equatable {
+    /// Non-ideal lookup states worth a sentence.
+    enum Status: Equatable {
+        case loading
+        case failed
+        case partial
+    }
+
+    /// Actions in display order.
+    enum Action: Hashable {
+        case retry
+        case loadRelatedMail
+        case includeSpamAndTrash
+    }
+
+    let status: Status?
+    let actions: [Action]
+
+    /// True when the bar has nothing to show and should not render at all.
+    var isEmpty: Bool { status == nil && actions.isEmpty }
+
+    init(
+        canLoadRelated: Bool,
+        isLoadingRemote: Bool,
+        remoteLoadDidFail: Bool,
+        remoteLoadAttempted: Bool,
+        coverage: ConversationCoverage?,
+        hasExcludedFolders: Bool,
+        includesSpamAndTrash: Bool
+    ) {
+        if isLoadingRemote || coverage == .loading {
+            status = .loading
+            actions = []
+            return
+        }
+        let isPartial = coverage == .partial
+        status = remoteLoadDidFail ? .failed : (isPartial ? .partial : nil)
+        var items: [Action] = []
+        if remoteLoadDidFail || isPartial {
+            items.append(.retry)
+        }
+        if canLoadRelated, !remoteLoadAttempted || remoteLoadDidFail {
+            items.append(.loadRelatedMail)
+        }
+        let hasLookupResult = remoteLoadAttempted || isPartial || coverage == .completeForScope
+        if hasExcludedFolders, !includesSpamAndTrash, hasLookupResult {
+            items.append(.includeSpamAndTrash)
+        }
+        actions = items
+    }
+
+    @MainActor
+    init(controller: RelatedConversationController) {
+        self.init(
+            canLoadRelated: controller.canLoadRelated,
+            isLoadingRemote: controller.isLoadingRemote,
+            remoteLoadDidFail: controller.remoteLoadDidFail,
+            remoteLoadAttempted: controller.remoteLoadAttempted,
+            coverage: controller.snapshot?.coverage,
+            hasExcludedFolders: !(controller.snapshot?.excludedFolderIDs.isEmpty ?? true),
+            includesSpamAndTrash: controller.includesSpamAndTrash
+        )
+    }
+}
+
 /// Compact conversation-coverage feedback for the reader (ADR-0074 §8).
 ///
 /// Shows the explicit **Load related mail** action while only the cached
 /// snapshot is available, progress while remote discovery runs, and honest
-/// partial/complete-for-scope results with Retry and Spam/Trash inclusion.
+/// failed/partial results with Retry and Spam/Trash inclusion.
 struct RelatedConversationBar: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let controller: RelatedConversationController
 
+    private var presentation: RelatedConversationBarPresentation {
+        RelatedConversationBarPresentation(controller: controller)
+    }
+
     var body: some View {
+        let presentation = presentation
         Group {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                    statusRow
-                    actions
+                    if let status = presentation.status {
+                        statusRow(status)
+                    }
+                    actions(presentation)
                 }
             } else {
                 HStack(spacing: BrevSpacing.sm) {
-                    statusRow
+                    if let status = presentation.status {
+                        statusRow(status)
+                    }
                     Spacer(minLength: BrevSpacing.sm)
-                    actions
+                    actions(presentation)
                 }
             }
         }
@@ -49,81 +128,67 @@ struct RelatedConversationBar: View {
             .accessibilityElement(children: .combine)
     }
 
-    private var statusRow: some View {
-        HStack(spacing: BrevSpacing.sm) {
-            Image(systemName: presentation.symbol)
+    private func statusRow(_ status: RelatedConversationBarPresentation.Status) -> some View {
+        let appearance = appearance(for: status)
+        return HStack(spacing: BrevSpacing.sm) {
+            Image(systemName: appearance.symbol)
                 .symbolRenderingMode(.hierarchical)
-                .foregroundStyle(presentation.tint)
-            Text(presentation.message)
+                .foregroundStyle(appearance.tint)
+            Text(appearance.message)
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
-    /// One dispatch over the controller's state keeps the symbol, tint and
-    /// copy consistent — a coverage case can never show another case's icon.
-    private var presentation: (symbol: String, tint: Color, message: String) {
-        if controller.isLoadingRemote {
-            return ("arrow.triangle.2.circlepath", theme.textSecondary.color,
-                    String(localized: "Loading related mail across folders…", bundle: .module))
-        }
-        if controller.remoteLoadDidFail {
-            return ("exclamationmark.triangle", theme.warning.color,
-                    String(localized: "Couldn't load related mail.", bundle: .module))
-        }
-        switch controller.snapshot?.coverage {
-        case .completeForScope:
-            return ("checkmark.circle", theme.accent.color,
-                    String(localized: "Conversation complete for this mailbox.", bundle: .module))
-        case .partial:
-            return ("exclamationmark.circle", theme.warning.color,
-                    String(localized: "Partial — some folders couldn't be searched.", bundle: .module))
+    /// One dispatch over the status keeps the symbol, tint and copy
+    /// consistent — a state can never show another state's icon.
+    private func appearance(
+        for status: RelatedConversationBarPresentation.Status
+    ) -> (symbol: String, tint: Color, message: String) {
+        switch status {
         case .loading:
-            return ("arrow.triangle.2.circlepath", theme.textSecondary.color,
-                    String(localized: "Loading related mail…", bundle: .module))
-        case .cached:
-            return ("arrow.triangle.branch", theme.textSecondary.color,
-                    String(localized: "Showing cached conversation.", bundle: .module))
-        case nil:
-            return ("arrow.triangle.branch", theme.textSecondary.color,
-                    String(localized: "Brev can look for related mail in other folders of this account.",
-                           bundle: .module))
+            ("arrow.triangle.2.circlepath", theme.textSecondary.color,
+             String(localized: "Loading related mail across folders…", bundle: .module))
+        case .failed:
+            ("exclamationmark.triangle", theme.warning.color,
+             String(localized: "Couldn't load related mail.", bundle: .module))
+        case .partial:
+            ("exclamationmark.circle", theme.warning.color,
+             String(localized: "Partial — some folders couldn't be searched.", bundle: .module))
         }
     }
 
     @ViewBuilder
-    private var actions: some View {
-        if controller.isLoadingRemote {
+    private func actions(_ presentation: RelatedConversationBarPresentation) -> some View {
+        if presentation.status == .loading {
             ProgressView()
                 .controlSize(.small)
         } else {
-            if controller.remoteLoadDidFail || controller.snapshot?.coverage == .partial {
-                BrevButton(String(localized: "Retry", bundle: .module), style: .tertiary) {
-                    controller.retry()
-                }
-            }
-            if controller.canLoadRelated,
-               !controller.remoteLoadAttempted || controller.remoteLoadDidFail {
-                BrevButton(
-                    String(localized: "Load related mail", bundle: .module),
-                    style: .secondary
-                ) {
-                    controller.loadRelatedMail()
-                }
-                .accessibilityHint(String(
-                    localized: "Searches every eligible folder in this account, including folders that are not synced, for related message headers.",
-                    bundle: .module
-                ))
-            }
-            if let snapshot = controller.snapshot,
-               !snapshot.excludedFolderIDs.isEmpty,
-               !controller.includesSpamAndTrash {
-                BrevButton(
-                    String(localized: "Include Spam and Trash", bundle: .module),
-                    style: .tertiary
-                ) {
-                    controller.includeSpamAndTrash()
+            ForEach(presentation.actions, id: \.self) { action in
+                switch action {
+                case .retry:
+                    BrevButton(String(localized: "Retry", bundle: .module), style: .tertiary) {
+                        controller.retry()
+                    }
+                case .loadRelatedMail:
+                    BrevButton(
+                        String(localized: "Load related mail", bundle: .module),
+                        style: .secondary
+                    ) {
+                        controller.loadRelatedMail()
+                    }
+                    .accessibilityHint(String(
+                        localized: "Searches every eligible folder in this account, including folders that are not synced, for related message headers.",
+                        bundle: .module
+                    ))
+                case .includeSpamAndTrash:
+                    BrevButton(
+                        String(localized: "Include Spam and Trash", bundle: .module),
+                        style: .tertiary
+                    ) {
+                        controller.includeSpamAndTrash()
+                    }
                 }
             }
         }

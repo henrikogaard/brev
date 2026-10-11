@@ -6,6 +6,7 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Mac reader: the related-mail strip above a message is quiet until it has something to say. The "Showing cached conversation" sentence and the always-visible Spam and Trash button are gone; an untouched conversation shows only Load related mail, and Spam and Trash appears after a lookup has run. Norwegian wording is clearer ("Last inn relatert e-post", "Inkluder søppelpost og søppel").
 - App icons: Frost, Smoke and Obsidian glass envelopes replace the old finishes. Smoke is the default; saved icon choices keep their corresponding finish. Compact drawings keep small Dock icons sharp, and the login screen uses Smoke.
 
 ## [0.2.7] - 2026-10-10

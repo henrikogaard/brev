@@ -2626,17 +2626,6 @@
         }
       }
     },
-    "Brev can look for related mail in other folders of this account.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Brev kan se etter relatert e-post i andre mapper på denne kontoen."
-          }
-        }
-      }
-    },
     "Brev can replace the copy it uploaded earlier, or keep both files.": {
       "extractionState": "manual",
       "localizations": {
@@ -3830,17 +3819,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Fortsett med Google"
-          }
-        }
-      }
-    },
-    "Conversation complete for this mailbox.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Samtalen er ferdig for denne postkassen."
           }
         }
       }
@@ -7396,7 +7374,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ta med søppelpost og søppel"
+            "value": "Inkluder søppelpost og søppel"
           }
         }
       }
@@ -7736,7 +7714,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Last relatert e-post"
+            "value": "Last inn relatert e-post"
           }
         }
       }
@@ -12037,17 +12015,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Viser bare forhåndsvisning"
-          }
-        }
-      }
-    },
-    "Showing cached conversation.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Viser bufret samtale."
           }
         }
       }
