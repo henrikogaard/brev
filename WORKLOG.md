@@ -1,5 +1,35 @@
 # Worklog
 
+## 2026-10-12 — Agent — iOS beta release script
+
+- Goal: send an iOS beta to TestFlight with one command, as Catchlog does
+  (`feature/ios-beta-release`). macOS release untouched.
+- Changed: `scripts/release-ios-beta.sh` wraps the manual recipe in
+  `docs/release.md`; `scripts/testflight-distribute.mjs` (copied from
+  Catchlog, with a command-line entry) sets the notes and the optional
+  external group; `scripts/test-release-ios-beta.sh` runs in `scripts/test.sh`.
+- Decision: no Actions workflow. The repository is public, so a self-hosted
+  runner on the release machine would run fork pull-request code next to the
+  signing keys. The script is started over SSH instead; a public repository
+  can be fetched there without the GitHub login.
+- Decision: external-capable export by default (Henrik, 2026-10-12);
+  `--internal-only` keeps the old policy.
+- Verified: `scripts/test.sh --self-tests-only` and shellcheck locally;
+  `--dry-run --current-checkout` on the Mac mini over SSH at `b7f85a0`
+  (gates, launch regression, demo guard, archive, archive checks, local
+  export). Nothing uploaded, no build number taken, checkout clean after.
+- Found by the first dry run: xcodebuild echoes the settings of an
+  `-xcconfig` file, so the provider settings were printed. The script now
+  masks those lines; the rerun's log holds none of the values.
+- Found by CI: `plutil` on the macOS 15 runner prints its "no value" error on
+  stdout, which failed the script test there. The script and the test now go
+  by exit status.
+- Skipped: a real upload and the TestFlight follow-up (needs a release
+  request); `scripts/lint.sh` and `scripts/format.sh` (no Swift changed).
+- Handoff: the Mac mini has `~/.brev-ios-release/release.env` and the release
+  checkout `~/Dev/Repos/.worktrees/brev/release`, which sits on this branch
+  until the PR is merged.
+
 ## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
 
 - Goal: native iPhone Calendar, Contacts and Tasks chrome, empty states and

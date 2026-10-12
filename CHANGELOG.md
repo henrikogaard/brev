@@ -4,6 +4,10 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- iOS TestFlight builds are made by one script, `scripts/release-ios-beta.sh`, on the release machine. It runs the launch regression and export checks, takes the next build number from a counter, verifies the archive and uploads it. `--dry-run` signs and exports without uploading.
+
 ## [0.2.8] - 2026-10-11
 
 ### Changed
