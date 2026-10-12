@@ -223,7 +223,11 @@ rm -f "$provider_xcconfig"
 # ── Verify the archive before it leaves the machine ──────────────────────────
 APP_PATH="$ARCHIVE_PATH/Products/Applications/BrevIOS.app"
 plist_value() {
-  plutil -extract "$2" raw -o - "$1" 2>/dev/null || true
+  # Older plutil prints its "no value" error on stdout, so test the status.
+  local value
+  if value="$(plutil -extract "$2" raw -o - "$1" 2>/dev/null)"; then
+    printf '%s\n' "$value"
+  fi
 }
 archived_bundle_id="$(plist_value "$ARCHIVE_PATH/Info.plist" ApplicationProperties.CFBundleIdentifier)"
 archived_version="$(plist_value "$ARCHIVE_PATH/Info.plist" ApplicationProperties.CFBundleShortVersionString)"

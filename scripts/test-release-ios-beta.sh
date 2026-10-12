@@ -82,7 +82,10 @@ PLIST
 PLIST
     ;;
   export)
-    internal="$(plutil -extract testFlightInternalTestingOnly raw -o - "$export_plist" 2>/dev/null || echo absent)"
+    # Older plutil prints its "no value" error on stdout, so test the status.
+    if ! internal="$(plutil -extract testFlightInternalTestingOnly raw -o - "$export_plist" 2>/dev/null)"; then
+      internal=absent
+    fi
     echo "export destination=$(plutil -extract destination raw -o - "$export_plist") internal-only=$internal" >> "$TEST_LOG"
     ;;
 esac
