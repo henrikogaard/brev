@@ -14,6 +14,18 @@
   can be fetched there without the GitHub login.
 - Decision: external-capable export by default (Henrik, 2026-10-12);
   `--internal-only` keeps the old policy.
+- Verified: `scripts/test.sh --self-tests-only` and shellcheck locally;
+  `--dry-run --current-checkout` on the Mac mini over SSH at `b259959`
+  (gates, launch regression, demo guard, archive, archive checks, local
+  export). Nothing uploaded, no build number taken, checkout clean after.
+- Found by the first dry run: xcodebuild echoes the settings of an
+  `-xcconfig` file, so the provider settings were printed. The script now
+  masks those lines; the rerun's log holds none of the values.
+- Skipped: a real upload and the TestFlight follow-up (needs a release
+  request); `scripts/lint.sh` and `scripts/format.sh` (no Swift changed).
+- Handoff: the Mac mini has `~/.brev-ios-release/release.env` and the release
+  checkout `~/Dev/Repos/.worktrees/brev/release`, which sits on this branch
+  until the PR is merged.
 
 ## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
 
