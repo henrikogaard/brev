@@ -59,6 +59,9 @@ setting() { sed -n "s/^$1 = //p" "$xcconfig"; }
 case "$mode" in
   archive)
     echo "xcconfig mode=$(stat -f %Lp "$xcconfig")" >> "$TEST_LOG"
+    # The real xcodebuild prints the file's settings before it builds.
+    echo "Build settings from configuration file '$xcconfig':"
+    sed 's/^/    /' "$xcconfig"
     app="$archive/Products/Applications/BrevIOS.app"
     mkdir -p "$app"
     touch "$app/PrivacyInfo.xcprivacy"

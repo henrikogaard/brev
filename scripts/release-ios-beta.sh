@@ -215,7 +215,9 @@ ARCHIVE_ARGS=(
 )
 [[ -n "$BUILD_NUMBER" ]] && ARCHIVE_ARGS+=("CURRENT_PROJECT_VERSION=$BUILD_NUMBER")
 [[ -n "${SIGNING_KEYCHAIN:-}" ]] && ARCHIVE_ARGS+=("OTHER_CODE_SIGN_FLAGS=--keychain $SIGNING_KEYCHAIN")
-xcodebuild archive "${ARCHIVE_ARGS[@]}"
+# xcodebuild echoes every setting it reads from an -xcconfig file.
+xcodebuild archive "${ARCHIVE_ARGS[@]}" 2>&1 \
+  | sed -E 's/^([[:space:]]+BREV_[A-Z_]+ = ).*/\1<hidden>/'
 rm -f "$provider_xcconfig"
 
 # ── Verify the archive before it leaves the machine ──────────────────────────
