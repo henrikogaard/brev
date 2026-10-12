@@ -15,12 +15,15 @@
 - Decision: external-capable export by default (Henrik, 2026-10-12);
   `--internal-only` keeps the old policy.
 - Verified: `scripts/test.sh --self-tests-only` and shellcheck locally;
-  `--dry-run --current-checkout` on the Mac mini over SSH at `b259959`
+  `--dry-run --current-checkout` on the Mac mini over SSH at `b7f85a0`
   (gates, launch regression, demo guard, archive, archive checks, local
   export). Nothing uploaded, no build number taken, checkout clean after.
 - Found by the first dry run: xcodebuild echoes the settings of an
   `-xcconfig` file, so the provider settings were printed. The script now
   masks those lines; the rerun's log holds none of the values.
+- Found by CI: `plutil` on the macOS 15 runner prints its "no value" error on
+  stdout, which failed the script test there. The script and the test now go
+  by exit status.
 - Skipped: a real upload and the TestFlight follow-up (needs a release
   request); `scripts/lint.sh` and `scripts/format.sh` (no Swift changed).
 - Handoff: the Mac mini has `~/.brev-ios-release/release.env` and the release
