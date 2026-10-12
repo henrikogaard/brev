@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-10-12 — Agent — iOS beta release script
+
+- Goal: send an iOS beta to TestFlight with one command, as Catchlog does
+  (`feature/ios-beta-release`). macOS release untouched.
+- Changed: `scripts/release-ios-beta.sh` wraps the manual recipe in
+  `docs/release.md`; `scripts/testflight-distribute.mjs` (copied from
+  Catchlog, with a command-line entry) sets the notes and the optional
+  external group; `scripts/test-release-ios-beta.sh` runs in `scripts/test.sh`.
+- Decision: no Actions workflow. The repository is public, so a self-hosted
+  runner on the release machine would run fork pull-request code next to the
+  signing keys. The script is started over SSH instead; a public repository
+  can be fetched there without the GitHub login.
+- Decision: external-capable export by default (Henrik, 2026-10-12);
+  `--internal-only` keeps the old policy.
+
 ## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
 
 - Goal: native iPhone Calendar, Contacts and Tasks chrome, empty states and

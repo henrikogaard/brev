@@ -383,6 +383,14 @@ Before opening a PR:
    PRIVACY.md update.
 6. CHANGELOG.md updated under `## Unreleased`.
 
+### iOS beta releases
+
+When Henrik asks for an iOS beta or TestFlight build, read "iOS TestFlight" in
+`docs/release.md` and use `scripts/release-ios-beta.sh` on the release Mac
+mini. His request authorizes that one run. Confirm the "What to Test" notes
+with him before starting, and report the script's `Done` line as it stands.
+The macOS release (`release.yml`, Sparkle) is a separate process.
+
 ### Running things locally
 
 - Generate project: `tuist generate`
