@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-10-13 — Agent — Demo screenshots
+
+- Goal: save demo screenshots of the iOS and macOS apps to the repository.
+- Changed: added `docs/screenshots/` with six PNGs — macOS mail window and
+  iOS inbox/reader, each in light and dark — and a `## Screenshots` section
+  in `README.md` that switches them via `<picture>` + `prefers-color-scheme`.
+- How they were captured: test builds in mock mode (`Brev Test` via
+  `script/build_and_run.sh --mock`, `SIMCTL_CHILD_BREV_USE_MOCK=1` on an
+  iPhone 17 iOS 27.0 simulator). macOS window captured at 1440x900 with
+  `screencapture -l<WID>`; iOS via `simctl io screenshot` with the status
+  bar overridden to 9:41 / full battery.
+- Verified: images render; README markup follows GitHub's documented
+  light/dark `<picture>` convention. Docs-only change — `scripts/lint.sh`
+  and `scripts/format.sh` still run before the PR.
+- Handoff: retake `docs/screenshots/*` when the shell changes materially;
+  capture recipe is in this entry and in `.agents/skills/testing-brev-ui`.
+
 ## 2026-10-12 — Agent — iOS beta release script
 
 - Goal: send an iOS beta to TestFlight with one command, as Catchlog does
