@@ -4,6 +4,11 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- README shows demo screenshots of the macOS and iOS apps in light and dark
+  mode, kept in `docs/screenshots/` and switched by `prefers-color-scheme`.
+
 ### Changed
 
 - iOS TestFlight builds are made by one script, `scripts/release-ios-beta.sh`, on the release machine. It runs the launch regression and export checks, takes the next build number from a counter, verifies the archive and uploads it. `--dry-run` signs and exports without uploading.

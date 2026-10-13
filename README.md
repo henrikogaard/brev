@@ -5,6 +5,29 @@ Local-first, standards-friendly, and free of telemetry.
 
 **Status:** Pre-alpha. Not yet released.
 
+## Screenshots
+
+### macOS
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/macos-mail-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/macos-mail-light.png">
+  <img alt="Brev for macOS — three-column mail window with message reader" src="docs/screenshots/macos-mail-light.png">
+</picture>
+
+### iOS
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ios-inbox-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/ios-inbox-light.png">
+  <img alt="Brev for iOS — inbox message list" src="docs/screenshots/ios-inbox-light.png" width="320">
+</picture>
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/screenshots/ios-reader-dark.png">
+  <source media="(prefers-color-scheme: light)" srcset="docs/screenshots/ios-reader-light.png">
+  <img alt="Brev for iOS — message reader" src="docs/screenshots/ios-reader-light.png" width="320">
+</picture>
+
 ## What this is
 
 Brev is an open-source mail client for macOS and iOS. The current
