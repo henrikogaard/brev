@@ -1,5 +1,52 @@
 # Worklog
 
+## 2026-10-13 — Agent — Demo screenshots
+
+- Goal: save demo screenshots of the iOS and macOS apps to the repository.
+- Changed: added `docs/screenshots/` with six PNGs — macOS mail window and
+  iOS inbox/reader, each in light and dark — and a `## Screenshots` section
+  in `README.md` that switches them via `<picture>` + `prefers-color-scheme`.
+- How they were captured: test builds in mock mode (`Brev Test` via
+  `script/build_and_run.sh --mock`, `SIMCTL_CHILD_BREV_USE_MOCK=1` on an
+  iPhone 17 iOS 27.0 simulator). macOS window captured at 1440x900 with
+  `screencapture -l<WID>`; iOS via `simctl io screenshot` with the status
+  bar overridden to 9:41 / full battery.
+- Verified: images render; README markup follows GitHub's documented
+  light/dark `<picture>` convention. Docs-only change — `scripts/lint.sh`
+  and `scripts/format.sh` still run before the PR.
+- Handoff: retake `docs/screenshots/*` when the shell changes materially;
+  capture recipe is in this entry and in `.agents/skills/testing-brev-ui`.
+
+## 2026-10-12 — Agent — iOS beta release script
+
+- Goal: send an iOS beta to TestFlight with one command, as Catchlog does
+  (`feature/ios-beta-release`). macOS release untouched.
+- Changed: `scripts/release-ios-beta.sh` wraps the manual recipe in
+  `docs/release.md`; `scripts/testflight-distribute.mjs` (copied from
+  Catchlog, with a command-line entry) sets the notes and the optional
+  external group; `scripts/test-release-ios-beta.sh` runs in `scripts/test.sh`.
+- Decision: no Actions workflow. The repository is public, so a self-hosted
+  runner on the release machine would run fork pull-request code next to the
+  signing keys. The script is started over SSH instead; a public repository
+  can be fetched there without the GitHub login.
+- Decision: external-capable export by default (Henrik, 2026-10-12);
+  `--internal-only` keeps the old policy.
+- Verified: `scripts/test.sh --self-tests-only` and shellcheck locally;
+  `--dry-run --current-checkout` on the Mac mini over SSH at `b7f85a0`
+  (gates, launch regression, demo guard, archive, archive checks, local
+  export). Nothing uploaded, no build number taken, checkout clean after.
+- Found by the first dry run: xcodebuild echoes the settings of an
+  `-xcconfig` file, so the provider settings were printed. The script now
+  masks those lines; the rerun's log holds none of the values.
+- Found by CI: `plutil` on the macOS 15 runner prints its "no value" error on
+  stdout, which failed the script test there. The script and the test now go
+  by exit status.
+- Skipped: a real upload and the TestFlight follow-up (needs a release
+  request); `scripts/lint.sh` and `scripts/format.sh` (no Swift changed).
+- Handoff: the Mac mini has `~/.brev-ios-release/release.env` and the release
+  checkout `~/Dev/Repos/.worktrees/brev/release`, which sits on this branch
+  until the PR is merged.
+
 ## 2026-10-10 — Agent — Slice 8b iOS PIM chrome (findings P1-P4)
 
 - Goal: native iPhone Calendar, Contacts and Tasks chrome, empty states and
@@ -5693,6 +5740,11 @@ buttons, and package-aware localization.
 - Existing failures: seven other LoginView snapshots also fail with the exact original source and artwork. Their baselines were preserved. Physical-device iOS switching and automated Dock pixel capture were not verified.
 - Delivery: feature/glass-envelope-icons targets main. Companion website PR: https://github.com/henrikogaard/brev-site/pull/1. No issue was assigned; no issue/project closeout is claimed. No release or deployment. README, CHANGELOG, ADR-0004 and asset-generation notes updated; privacy, release and agent documents require no change.
 
+## 2026-10-11 — Claude Code — Mac release 0.2.8 prep
+
+- Goal: ship #238 (quiet related-mail bar, clearer nb copy) and #237 (glass envelope icons, Smoke default) as Mac `v0.2.8`. iOS TestFlight is Henrik's, from another Mac.
+- Changes: marketing version 0.2.7 → 0.2.8 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.8. Tag `v0.2.8` follows a green PR-event Build on this commit; main is fast-forwarded to it.
+
 ## 2026-10-11 — Claude Code — ADR-0088 sign-in code panel (issue #239, Proposed)
 
 - Goal: assess and start issue #239 (floating panel with sign-in codes and links on arrival). The feature reads mail content and has privacy and spoofing implications, so per AGENTS.md this is an ADR-first change.
@@ -5704,7 +5756,7 @@ buttons, and package-aware localization.
 
 - Goal: revise the Proposed ADR-0088 for the user-approved review direction without accepting it or implementing the feature.
 - Change: record independent per-account/device opt-ins defaulting off, provider-established trusted authentication, the conservative proposed DMARC-only policy, unchanged-message and 60-second defaults, delivery-provenance and cache-persistence limits, panel focus constraints, and deferred iOS notification privacy design. ADR status remains Proposed.
-- Verification: `git diff --check`, `scripts/lint.sh`, and `scripts/format.sh` run in that order after the edits. Tests, builds and runtime focus/subscription/cache checks are skipped because this is an ADR/worklog-only change; no runtime behavior is claimed.
-- Documentation sweep: no README or CHANGELOG update because no feature ships; no PRIVACY.md or ADR-0006 behavior update before implementation; ADR-0088 is already indexed.
-- Read-only conflict inspection: `git merge-tree` against `origin/main` shows the existing WORKLOG append conflict between main's `Mac release 0.2.8 prep` entry and this PR branch's `ADR-0088 sign-in code panel` entry. No merge, rebase or conflict resolution was performed.
+- Merge: merged `origin/main` at `3a553ddbf754a0adb110598dec48108e8a7e8b41`. The only merge conflict was this additive WORKLOG append: kept main's “Mac release 0.2.8 prep” entry and the PR's ADR-0088 history, followed by this handoff. No rebase or force-push.
+- Verification: `git diff --check`, `git diff --check --cached`, `scripts/lint.sh`, and `scripts/format.sh` passed in that order; format changed 0/1285 files. App tests/builds and runtime focus/subscription/cache checks are skipped; the PR-specific change remains design-only, and no runtime behavior is claimed.
+- Documentation sweep: preserved main's README, CHANGELOG, release and screenshot updates. This PR ships no feature, so it adds no PRIVACY.md or ADR-0006 behavior update; ADR-0088 was already indexed.
 - Handoff: Henrik's explicit ADR acceptance and the listed provider-trust, DMARC-policy, provenance, lifecycle and focus evidence gates remain required before implementation.

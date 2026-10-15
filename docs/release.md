@@ -245,6 +245,82 @@ identifier `eu.brevmail.brev.ios`. Internal builds use Apple team
 `45AD7E7G5G`; confirm that team is signed in under Xcode Accounts before
 archiving.
 
+### One command
+
+`scripts/release-ios-beta.sh` runs every step below on the release Mac mini
+(`macmini-agent`) and uploads the result. Each release is an explicit request
+from Henrik. That request authorizes one run. Confirm the notes with him first.
+
+```bash
+ssh macmini-agent 'cd ~/Dev/Repos/.worktrees/brev/release && \
+  scripts/release-ios-beta.sh --notes "What to test"'
+```
+
+The script refuses a checkout with local changes, moves it to `origin/main`
+(detached), runs the gates, archives with the next build number, checks the
+archive, uploads it, waits for App Store Connect to process it and sets the
+"What to Test" notes. It ends with a `Done` line. An upload does not mean
+testers have the build: processing takes 5 to 20 minutes, and an external
+group waits for Beta App Review.
+
+Options:
+
+- `--dry-run` runs the gates, archives, signs and exports to a local `.ipa`.
+  It uploads nothing and leaves the build counter alone. Use it to prove a
+  machine is set up.
+- `--internal-only` uploads with `testFlightInternalTestingOnly`. Without it
+  the build uses the external export policy and the script first runs the
+  Release-only demo mailbox guard, so the same build can later go to
+  `Public Beta`.
+- `--current-checkout` builds the checked-out commit instead of `origin/main`.
+
+Settings and state live outside the repository in `~/.brev-ios-release`
+(mode `700`):
+
+- `release.env`:
+
+  ```bash
+  ASC_KEY_ID=XXXXXXXXXX
+  ASC_ISSUER_ID=00000000-0000-0000-0000-000000000000
+  ASC_KEY_PATH=~/.catchlog-release/AuthKey.p8
+  # Leave these two out on a Mac that signs with the login keychain.
+  SIGNING_KEYCHAIN=~/Library/Keychains/catchlog-release.keychain-db
+  SIGNING_KEYCHAIN_PASSWORD_FILE=~/.catchlog-release/keychain-password
+  # Optional: add each external-capable build to this group and submit it
+  # for Beta App Review.
+  TESTFLIGHT_EXTERNAL_GROUP=
+  # The iOS provider settings from .env.example.
+  BREV_GOOGLE_OAUTH_IOS_CLIENT_ID=
+  BREV_MICROSOFT_OAUTH_CLIENT_ID=
+  BREV_GOOGLE_API_KEY=
+  BREV_GOOGLE_APP_ID=
+  ```
+
+  The App Store Connect key and the signing keychain are the ones the
+  Catchlog beta pipeline already keeps on that machine. `release.env` points
+  at them; it does not copy them. The Google callback scheme and redirect URI
+  are derived from the client ID unless `release.env` sets them.
+- `build-number`: the last build number used. Every real run takes the next
+  one, starting at 100. A manual upload after that needs a higher number.
+- `last-release.json`: version, build number and commit of the last upload.
+- `release.lock`: keeps two releases from building at once.
+
+The machine also needs Xcode with an iOS simulator runtime, `mise` (for the
+pinned Tuist) and Node 22 for `scripts/testflight-distribute.mjs`.
+
+There is no GitHub Actions button for this. Brev is a public repository, and a
+self-hosted runner on the release machine would let a pull request from a fork
+run code next to the signing keys.
+
+If the follow-up fails after the upload, do not rerun the release: the build
+is already in App Store Connect. Check its processing state there and set the
+notes by hand.
+
+### By hand
+
+The steps the script runs, for a machine without `~/.brev-ios-release` or for
+debugging one of them.
+
 Run the focused configuration gates and generate the workspace:
 
 ```bash

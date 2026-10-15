@@ -4,6 +4,17 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Added
+
+- README shows demo screenshots of the macOS and iOS apps in light and dark
+  mode, kept in `docs/screenshots/` and switched by `prefers-color-scheme`.
+
+### Changed
+
+- iOS TestFlight builds are made by one script, `scripts/release-ios-beta.sh`, on the release machine. It runs the launch regression and export checks, takes the next build number from a counter, verifies the archive and uploads it. `--dry-run` signs and exports without uploading.
+
+## [0.2.8] - 2026-10-11
+
 ### Changed
 
 - Mac reader: the related-mail strip above a message is quiet until it has something to say. The "Showing cached conversation" sentence and the always-visible Spam and Trash button are gone; an untouched conversation shows only Load related mail, and Spam and Trash appears after a lookup has run. Norwegian wording is clearer ("Last inn relatert e-post", "Inkluder søppelpost og søppel").

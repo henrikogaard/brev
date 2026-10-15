@@ -90,6 +90,9 @@ scripts/test-ios-privacy-manifest.sh
 echo "── internal TestFlight export policy ──"
 scripts/test-testflight-export-options.sh
 
+echo "── iOS beta release script ──"
+bash scripts/test-release-ios-beta.sh
+
 echo "── Developer ID release policy ──"
 scripts/test-developer-id-release-config.sh
 
