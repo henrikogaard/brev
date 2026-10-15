@@ -5978,3 +5978,56 @@ buttons, and package-aware localization.
   implements the existing ADR-0072 cache lifecycle without changing privacy
   posture, setup, or provider network behavior. Remaining acceptance gates
   are the parent review, snapshot pixel review, and isolated runtime QA.
+
+## 2026-10-15 — Agent — #11 / PR #245 bounded v6 runtime evidence
+
+- Goal: retest the approved Contacts actions/localization/retained-cache delta
+  at `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`, using the original frozen
+  v5 Charlie fixture without reconnecting/recreating/deleting it.
+- Changes: new `docs/qa/pim-parity-v6-2026-10-15.md` and this append only.
+  Earlier reports/artifacts preserved. No product edits or source revision
+  change. Evidence links require originating-session access, not public or
+  portable GitHub embeds.
+- Runtime: targeted owned iOS simulator rebuild/install; preflight and
+  post-install comparison proved frozen cache/marker identity preserved.
+  Original list/exact-link reads and read-only capabilities passed, with zero
+  frozen-source requests from 19:17:45 to 19:49:58 UTC. Contacts EN/NB
+  light/dark AX3 labels/order/scaling passed. Edit canceled; deletion popover
+  safely dismissed; initial immediate-copy assertion retained the prior link,
+  then one settled retry matched Alice. Original active contact cache unchanged.
+  No visible explicit Cancel or standalone disconnected-detail notice claimed.
+- Distinct source `pim-247b38a5-71ed-4cd5-9999-44d22e7faa53`, port 18645:
+  NB WORK displayed Arbeid and custom qa-lab stayed unchanged. UI delete-cache
+  removal eliminated only Delta's local source/cache; its exact link showed
+  the localized missing notice. Charlie remained reachable and byte-identical.
+  Both remote payloads remained unchanged; no remote PUT/DELETE.
+- Inherited parent report, not this runner's execution: CI 21/21 passed and
+  full BrevCalendar 266 tests/26 suites passed; full local BrevMail 2194
+  tests/331 suites failed with 89 snapshot mismatches across
+  Login/Compose/Mail Context/Local Folders/PIM. CI snapshots reportedly passed
+  the same SHA. Host drift is only a hypothesis, not base-verified; do not
+  claim a full local pass. No broad rerun.
+- Limits: no existing retained Calendar/Tasks fixtures, so optional smoke not
+  manufactured. AX bridge unavailable; no spoken VoiceOver or fresh motion
+  claim. Final motion/VoiceOver preferences both read 0. macOS, live providers,
+  signed-Keychain persistence and physical iPhone remain acceptance gates.
+  Recurrence and prior settled runtime/checks were not rerun.
+- Handoff: app PID 24123, stubs 5246:18643 / 15161:18644 / 23594:18645 left
+  running on owned simulator 0AAE0F16-6167-435E-884F-C0BA50E05A67, NB/dark/AX3,
+  original Charlie detail. Preserve the frozen fixture. Primary recording:
+  `/Users/devin/screencasts/pim-v6-ios-primary/pim-v6-ios-primary-edited.mp4`;
+  exact manifests/screenshots under
+  `/Users/devin/pim-parity-evidence/v6-20261015-a/`.
+- Publication: runtime runner did not run repository lint/format/diff checks
+  or commit/push; parent-reported automated results and limitations above were
+  not rerun or independently verified here. Subsequent publication passed
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record retained cache and contacts runtime verification`, was
+  pushed once to `origin fix/pim-parity-gaps`. Tested source revision
+  `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f` remains distinct from the
+  evidence-only publication commit. No CI dispatch/watch, PR/issue actions,
+  merges or releases. Documentation sweep: QA/worklog only; no product/privacy/
+  architecture/release change, no new blueprint/skill edits or proposals.
+  #11/#3 remain acceptance-gated.
