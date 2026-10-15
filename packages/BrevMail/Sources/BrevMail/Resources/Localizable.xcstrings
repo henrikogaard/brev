@@ -15078,6 +15078,160 @@
         }
       }
     },
+    "Choose a Drive folder before saving.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en Disk-mappe før du lagrer."
+          }
+        }
+      }
+    },
+    "Choose an export format.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg et eksportformat."
+          }
+        }
+      }
+    },
+    "Choose the same file as the event attachment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg den samme filen som hendelsesvedlegget."
+          }
+        }
+      }
+    },
+    "Folders and shortcuts cannot be saved as attachments.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Mapper og snarveier kan ikke lagres som vedlegg."
+          }
+        }
+      }
+    },
+    "Google Drive could not authorize this file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Disk kunne ikke godkjenne denne filen."
+          }
+        }
+      }
+    },
+    "Google Drive could not prepare this file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Disk kunne ikke klargjøre denne filen."
+          }
+        }
+      }
+    },
+    "Save this event attachment to a Drive folder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Lagre dette hendelsesvedlegget i en Disk-mappe."
+          }
+        }
+      }
+    },
+    "The calendar source changed before saving finished.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalenderkilden ble endret før lagringen var ferdig."
+          }
+        }
+      }
+    },
+    "The event attachment can only be saved as a new copy.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Hendelsesvedlegget kan bare lagres som en ny kopi."
+          }
+        }
+      }
+    },
+    "This attachment is not a supported Google Drive link.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Dette vedlegget er ikke en støttet Google Disk-lenke."
+          }
+        }
+      }
+    },
+    "Choose a valid Drive folder.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg en gyldig Disk-mappe."
+          }
+        }
+      }
+    },
+    "Google Drive could not save this file. Try again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Disk kunne ikke lagre filen. Prøv igjen."
+          }
+        }
+      }
+    },
+    "Google Drive returned a different file than the selected attachment.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Disk returnerte en annen fil enn det valgte vedlegget."
+          }
+        }
+      }
+    },
+    "Choose an export format before saving this Google document.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Velg et eksportformat før du lagrer dette Google-dokumentet."
+          }
+        }
+      }
+    },
     "snooze.action": {
       "extractionState": "manual",
       "localizations": {

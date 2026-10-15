@@ -554,7 +554,12 @@ choice when the name already exists, and shows upload progress with a
 working cancel. Attach-as-link adds a Drive URL to the message body
 instead of the file bytes. Attaching to an event stores only the Drive
 link on the event — Brev never sends file bytes to the calendar
-provider.
+provider. If you explicitly choose **Save to Google Drive** on a
+supported Drive-backed event attachment, Brev asks Google Picker to
+authorize that exact file, reads its metadata, downloads its bytes
+(or exports a Workspace document in the format you choose), and
+uploads a copy to the folder you select. This leaves the event link
+unchanged and does not require calendar write access.
 
 **How to disable:** Do not choose the Drive actions. The grant can be
 removed in your Google account's third-party access settings; Brev

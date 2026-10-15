@@ -5754,3 +5754,11 @@ buttons, and package-aware localization.
 - Not verified: authenticated macOS/iOS Picker, attach/save/export/referrer/error/revoke/offline/remote cleanup. UI testing needs explicit approval, approved disposable-account access and private Picker configuration; no login challenge bypass attempted.
 - Docs sweep: Unreleased CHANGELOG and new `docs/qa/drive-attachments-acceptance-v2-2026-10-15.md` updated; README, privacy/ADR-0006, ADR-0072, AGENTS and release docs unchanged because feature/architecture/privacy/workflow boundaries did not change.
 - Handoff: stop at first push; opening even a draft PR triggers macOS CI and is held for cost authorization. Project token denied access; intended status after verified push is In review, not Done. No merge, issue close, release or version change.
+
+## 2026-10-15 — Devin — #14 calendar Drive attachment save (PR #244)
+
+- Goal: add a user-initiated way to save a supported Drive-linked calendar event attachment into a selected Drive folder without changing event persistence or contacting arbitrary URLs.
+- Changes: strict Drive URL parsing, source/account-qualified event save and Picker authorization, metadata-verified download/export, shared conflict/upload model with source-file overwrite protection, localized detail action and save sheet, and new synthetic model/snapshot coverage. Privacy, ADR-0006, ADR-0072, CHANGELOG and versioned QA evidence updated; v2 evidence preserved.
+- TDD red run: new focused tests initially failed because the new save-model types did not yet exist; persisted at `/Users/devin/Library/Logs/brev-drive-calendar-save-red-20261015.log`.
+- Verification: focused BrevMail tests passed (15 tests/2 suites for the new models; 31 tests/5 suites for all GoogleDrive tests); BrevBackend GoogleDrive passed (12 tests/2 suites, rerun after formatting). New light/dark save-action snapshots passed; the full existing snapshot suite still has four pre-existing host mismatches in agenda/detail baselines, which were preserved. Format passed (4/1290 files formatted; 175 skipped) and lint passed (SwiftFormat, SwiftLint strict, coverage self-test, ADR check). `git diff --check` passed.
+- Not verified: live Google, app launch, or interactive runtime/UI testing; all remained on hold. No calendar writer or persistent Drive file-ID schema added.

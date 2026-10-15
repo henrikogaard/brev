@@ -1174,6 +1174,16 @@ grant.
   account; Drive attachments on tasks/contacts are not a provider
   concept and stay out.
 
+### #14 — user-initiated event attachment save (2026-10-15, BrevMail)
+
+- Calendar attachments remain provider-neutral links. A separate,
+  user-triggered action authorizes the exact linked Drive file with
+  Google Picker, stages downloaded/exported bytes in memory, and
+  uploads a copy to a user-selected Drive folder. It uses the linked
+  Google account's existing `drive.file` opt-in and never calls a
+  calendar writer, mutates the event link, or requires event-write
+  permission.
+
 ### #81 — ICS parse/write formatter caching (2026-09-22, BrevCalendar)
 
 - `ICSParser` now caches TZID-qualified `DateFormatter`s in a

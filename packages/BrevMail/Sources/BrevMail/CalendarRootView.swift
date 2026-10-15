@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 import BrevDesign
 import BrevSettings
@@ -47,6 +48,7 @@ public struct CalendarRootView: View {
     /// The sheet request: a new event anchored at a date, or an edit
     /// of the cached event.
     @State private var editorRequest: EditorRequest?
+    @State private var eventSaveRequest: EventSaveRequest?
 
     /// Identifiable sheet payload for the event editor.
     private enum EditorRequest: Identifiable {
@@ -60,6 +62,18 @@ public struct CalendarRootView: View {
             case .edit(let event):
                 "edit-\(event.id)"
             }
+        }
+    }
+
+    private struct EventSaveRequest: Identifiable {
+        let eventID: PIMEvent.ID
+        let sourceID: PIMSource.ID
+        let attachment: PIMEventAttachment
+        let accountID: BrevAccount.ID
+        let feature: GoogleDriveFeature
+
+        var id: String {
+            "\(eventID)-\(sourceID)-\(attachment.url)"
         }
     }
 
@@ -119,12 +133,51 @@ public struct CalendarRootView: View {
             if newValue != nil {
                 preferredCompactColumn = .detail
             }
+            if let eventSaveRequest,
+               newValue != eventSaveRequest.eventID {
+                self.eventSaveRequest = nil
+            }
+        }
+        .onChange(
+            of: model.sources.map {
+                "\($0.id):\($0.linkedAccountID ?? "")"
+            }
+        ) { _, _ in
+            guard let request = eventSaveRequest,
+                  let currentEvent = model.event(id: request.eventID),
+                  let currentSource = model.source(for: currentEvent),
+                  currentSource.id == request.sourceID,
+                  currentSource.linkedAccountID == request.accountID
+            else {
+                eventSaveRequest = nil
+                return
+            }
         }
         .sheet(item: $editorRequest) { request in
             if let editing {
                 editorSheet(for: request, editing: editing)
                     .pimEditorSheetAppearance(theme)
             }
+        }
+        .sheet(item: $eventSaveRequest) { request in
+            let browsingModel = model
+            GoogleDriveEventSaveSheet(
+                attachment: request.attachment,
+                accountID: request.accountID,
+                feature: request.feature,
+                sourceIsValid: {
+                    guard let currentEvent = browsingModel.event(
+                        id: request.eventID
+                    ),
+                        browsingModel.selectedEventID == request.eventID,
+                        browsingModel.collection(for: currentEvent) != nil,
+                        let currentSource = browsingModel.source(for: currentEvent)
+                    else { return false }
+                    return currentSource.id == request.sourceID
+                        && currentSource.linkedAccountID == request.accountID
+                }
+            )
+            .pimEditorSheetAppearance(theme)
         }
     }
 
@@ -261,6 +314,7 @@ public struct CalendarRootView: View {
                 source: model.source(for: event),
                 onEdit: editAction(for: event),
                 onDelete: deleteAction(for: event),
+                onSaveAttachment: saveAction(for: event),
                 isRecurring: editing?.needsScopeChoice(for: event)
                     ?? false
             )
@@ -280,6 +334,38 @@ public struct CalendarRootView: View {
             // With nothing to pick from, the leading column already
             // explains the situation — keep the detail pane blank.
             theme.bgPrimary.color.ignoresSafeArea()
+        }
+    }
+
+    private func saveAction(
+        for event: PIMEvent
+    ) -> ((PIMEventAttachment) -> Void)? {
+        guard let feature = editing?.driveFeature else { return nil }
+        return { attachment in
+            Task { @MainActor in
+                guard let currentEvent = model.event(id: event.id),
+                      model.selectedEventID == event.id,
+                      currentEvent.sourceID == event.sourceID,
+                      model.collection(for: currentEvent) != nil,
+                      let source = model.source(for: currentEvent),
+                      let accountID = source.linkedAccountID,
+                      await feature.isEligible(accountID: accountID)
+                else { return }
+                guard let latestEvent = model.event(id: event.id),
+                      model.selectedEventID == event.id,
+                      model.collection(for: latestEvent) != nil,
+                      let latestSource = model.source(for: latestEvent),
+                      latestSource.id == source.id,
+                      latestSource.linkedAccountID == accountID
+                else { return }
+                eventSaveRequest = EventSaveRequest(
+                    eventID: event.id,
+                    sourceID: source.id,
+                    attachment: attachment,
+                    accountID: accountID,
+                    feature: feature
+                )
+            }
         }
     }
 

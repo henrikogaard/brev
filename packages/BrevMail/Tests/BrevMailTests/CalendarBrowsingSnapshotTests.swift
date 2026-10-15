@@ -196,5 +196,79 @@ struct CalendarBrowsingSnapshotTests {
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }
+
+    @Test("read-only Google events retain the attachment save action", arguments: ["light", "dark"])
+    func eventDetailDriveSaveReadOnly(mode: String) {
+        var event = Self.event(id: "e-drive", summary: "Planning")
+        event.attachments = [
+            PIMEventAttachment(
+                url: "https://drive.google.com/file/d/source-file/view",
+                title: "Agenda.pdf",
+                mimeType: "application/pdf"
+            ),
+        ]
+        let googleSource = PIMSource(
+            id: "s1",
+            kind: .calendar,
+            provider: .google,
+            linkedAccountID: "acct1",
+            displayName: "Google",
+            enabledCapabilities: [.read],
+            status: .ready,
+            createdAt: Self.start,
+            updatedAt: Self.start
+        )
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = CalendarEventDetailView(
+            event: event,
+            collection: Self.collection(isReadOnly: true),
+            source: googleSource,
+            onSaveAttachment: { _ in }
+        )
+        .frame(width: 420, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 560)),
+            named: "detail-drive-save-readonly-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("Drive links without an eligible account have no save action", arguments: ["light", "dark"])
+    func eventDetailDriveSaveUnavailable(mode: String) {
+        var event = Self.event(id: "e-drive", summary: "Planning")
+        event.attachments = [
+            PIMEventAttachment(
+                url: "https://drive.google.com/file/d/source-file/view",
+                title: "Agenda.pdf",
+                mimeType: "application/pdf"
+            ),
+        ]
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = CalendarEventDetailView(
+            event: event,
+            collection: Self.collection(),
+            source: Self.source()
+        )
+        .frame(width: 420, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 560)),
+            named: "detail-drive-save-unavailable-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
 }
 #endif

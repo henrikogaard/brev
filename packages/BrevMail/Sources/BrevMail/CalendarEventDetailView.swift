@@ -38,6 +38,8 @@ public struct CalendarEventDetailView: View {
     /// Deletes the event under the chosen recurring scope; nil hides
     /// the Delete action. nil scope means a non-recurring delete.
     let onDelete: ((CalendarRecurringEditScope?) -> Void)?
+    /// Saves one supported Drive attachment into a user-selected folder.
+    let onSaveAttachment: ((PIMEventAttachment) -> Void)?
     /// Whether the event belongs to a repeating series — the delete
     /// confirmation asks for a scope only then.
     let isRecurring: Bool
@@ -50,6 +52,7 @@ public struct CalendarEventDetailView: View {
         source: PIMSource? = nil,
         onEdit: (() -> Void)? = nil,
         onDelete: ((CalendarRecurringEditScope?) -> Void)? = nil,
+        onSaveAttachment: ((PIMEventAttachment) -> Void)? = nil,
         isRecurring: Bool = false
     ) {
         self.event = event
@@ -57,6 +60,7 @@ public struct CalendarEventDetailView: View {
         self.source = source
         self.onEdit = onEdit
         self.onDelete = onDelete
+        self.onSaveAttachment = onSaveAttachment
         self.isRecurring = isRecurring
     }
 
@@ -476,23 +480,43 @@ public struct CalendarEventDetailView: View {
                 id: \.offset
             ) { _, attachment in
                 if let url = URL(string: attachment.url) {
-                    Button {
-                        openURL(url)
-                    } label: {
-                        HStack(spacing: BrevSpacing.sm) {
-                            Image(systemName: "link")
-                                .foregroundStyle(theme.accent.color)
-                            Text(attachment.title ?? attachment.url)
-                                .brevFont(.body)
-                                .foregroundStyle(theme.textPrimary.color)
-                                .lineLimit(1)
-                                .truncationMode(.middle)
-                            Spacer()
-                            Image(systemName: "arrow.up.right")
-                                .foregroundStyle(theme.textTertiary.color)
+                    HStack(spacing: BrevSpacing.sm) {
+                        Button {
+                            openURL(url)
+                        } label: {
+                            HStack(spacing: BrevSpacing.sm) {
+                                Image(systemName: "link")
+                                    .foregroundStyle(theme.accent.color)
+                                Text(attachment.title ?? attachment.url)
+                                    .brevFont(.body)
+                                    .foregroundStyle(theme.textPrimary.color)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                                Spacer()
+                                Image(systemName: "arrow.up.right")
+                                    .foregroundStyle(theme.textTertiary.color)
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        if let onSaveAttachment,
+                           GoogleDriveEventSaveModel.fileID(
+                               in: attachment.url
+                           ) != nil {
+                            Button {
+                                onSaveAttachment(attachment)
+                            } label: {
+                                Image(systemName: "square.and.arrow.down")
+                                    .foregroundStyle(theme.accent.color)
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel(
+                                String(
+                                    localized: "Save to Google Drive",
+                                    bundle: .module
+                                )
+                            )
                         }
                     }
-                    .buttonStyle(.plain)
                 }
             }
         }

@@ -111,8 +111,16 @@ public struct GoogleDriveClient: Sendable {
         /// Whether the file is a Google Workspace document that must be
         /// exported rather than downloaded.
         public var isWorkspaceDocument: Bool {
-            mimeType.hasPrefix("application/vnd.google-apps.")
-                && mimeType != "application/vnd.google-apps.folder"
+            [
+                "application/vnd.google-apps.document",
+                "application/vnd.google-apps.spreadsheet",
+                "application/vnd.google-apps.presentation",
+            ].contains(mimeType)
+        }
+
+        /// Whether Drive returned a shortcut rather than the selected file.
+        public var isShortcut: Bool {
+            mimeType == "application/vnd.google-apps.shortcut"
         }
     }
 
