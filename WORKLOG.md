@@ -5881,3 +5881,50 @@ buttons, and package-aware localization.
 - Documentation sweep: CHANGELOG and WORKLOG updated. No new view API,
   theme token, architecture, provider call, persistence, privacy, setup or
   release behavior; README, ADRs, PRIVACY and AGENTS need no change.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM runtime retest v5
+
+- Goal: retest the approved adaptive Calendar action layout at
+  `bbe06d81b50ad19dc49169cab951f42d5a91ba6f`, then collect a bounded independent
+  populated Calendar/Contacts batch under the revised stop policy.
+- Rebuilt/installed only on owned simulator
+  `0AAE0F16-6167-435E-884F-C0BA50E05A67`, reused original stub PID 5246/18643,
+  and reconnected process-local mock credentials. Same writable event and all
+  three actions were verified before comparison. No recurrence retest.
+- Calendar actions passed EN light/dark Large and AX3, plus NB light/dark AX3:
+  full scaled labels and preserved order. Edit/cancel, safe deletion-dialog
+  dismissal and copied-link identity passed without provider mutation. An
+  explicit Cancel button was not visible in the AX3 popover. Final original
+  event and two contact payloads match their pre-v5 copies.
+- Continued independent EN/NB/light/dark/Large/AX3 lists, details and editors.
+  Collected Contacts AX3 action fragmentation and NB standard TYPE=WORK
+  rendering as English "Work"; no product fixes made. Reduced Motion is
+  preference readback plus functional navigation only; complete AX traversal
+  and actual VoiceOver spoken readback remain unverified.
+- A separate owned CardDAV source on 18644 failed as induced without blocking
+  healthy Calendar sync/read, then recovered through Sync Now. After preserving
+  state, "remove, keep cached copy" left Charlie byte-identical on disk but
+  inaccessible in list and exact-ID deep link. Froze that mutation flow;
+  delete-cache removal was not executed. No secondary PUT/DELETE/POST.
+- Added `docs/qa/pim-parity-v5-2026-10-15.md`, one primary annotated recording
+  and session-access-only screenshot links. v2/v3/v4 evidence remains intact;
+  no binary artifacts tracked. Remaining live-provider/macOS isolation/signing/
+  physical-device/acceptance gates are unchanged; no auth retries or Drive work.
+- Handoff: app PID 12451, original stub 5246/18643 and secondary stub 15161/18644
+  remain running. NB/dark/AX3 original writable Calendar detail is visible;
+  Reduce Motion preference On, VoiceOver Off. Keep the removed source's
+  preserved cache/server for review; credentials are process-only.
+- Publication: runtime runner did not run repository lint/format/diff checks or
+  commit/push; its runtime results and bounded findings are reported above.
+  Subsequent publication passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record PIM accessibility and cache acceptance findings`, was
+  pushed once to `origin fix/pim-parity-gaps`. Tested source revision
+  `bbe06d81b50ad19dc49169cab951f42d5a91ba6f` remains distinct from the
+  evidence-only publication commit. No PR comments/edits, CI dispatch/watch,
+  issue closure or merge in this publication.
+- Documentation sweep: v5 QA and appended worklog only; no product/privacy/
+  architecture/release change, no new skill/blueprint edits or proposals.
+  Parent review of the three independent findings and remaining acceptance
+  gates is required; #11/#3 remain open.
