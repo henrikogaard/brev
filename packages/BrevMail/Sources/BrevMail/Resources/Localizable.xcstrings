@@ -15177,6 +15177,17 @@
         }
       }
     },
+    "Start the save again to prepare this file.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Start lagringen på nytt for å klargjøre denne filen."
+          }
+        }
+      }
+    },
     "The calendar source changed before saving finished.": {
       "extractionState": "manual",
       "localizations": {

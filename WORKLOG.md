@@ -5780,3 +5780,11 @@ buttons, and package-aware localization.
 - Verification: `swift test --package-path packages/BrevMail --filter CalendarDriveSaveEligibility` passed (7 tests/1 suite); `swift test --package-path packages/BrevMail --filter GoogleDrive` passed (47 tests/6 suites); `swift test --package-path packages/BrevMail --filter 'CalendarBrowsingSnapshotTests/eventDetailDriveSave'` passed (2 tests/1 suite, all 4 light/dark cases). The earlier focused save/retry filter passed (30 tests/3 suites); final broad GoogleDrive run reran these suites. `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed. BrevBackend GoogleDrive remains at its previously verified 13 tests/2 suites and was not rerun because it is unchanged.
 - Not verified: full snapshots, CI, app launch, or runtime/UI/live-provider testing; the four existing agenda/detail snapshot mismatches remain with cause unverified, and unrelated baselines were preserved.
 - Handoff: one correction commit/push to existing PR #244 is authorized; the parent owns the next review, CI, and QA steps. No second commit is needed to record the push SHA.
+
+## 2026-10-15 — Devin — PR #244 follow-up review nits
+
+- Goal: apply the three small, authorized follow-up corrections without changing the reviewed save implementation.
+- Changes: added the Norwegian translation for the save-preparation retry message, corrected the v3 focused-test filter, and made both event-save wait helpers record timeout failures.
+- Verification: `swift test --package-path packages/BrevMail --filter 'GoogleDrivePickerFailureRetry|GoogleDriveEventSave|GoogleDriveSave'` passed (30 tests/3 suites); the catalog JSON parsed and the exact Norwegian value was asserted; `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed after this log entry.
+- Scope exclusions: no full suites, BrevBackend tests, snapshots, CI, UI/runtime, or live-provider testing were run.
+- Handoff: one follow-up commit containing these four paths is authorized for the existing PR branch; the parent owns the subsequent CI and QA steps.

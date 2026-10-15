@@ -719,6 +719,7 @@ struct GoogleDriveEventSaveTests {
             if condition() { return }
             await Task.yield()
         }
+        Issue.record("Timed out waiting for Drive save state")
     }
 }
 
@@ -843,6 +844,7 @@ struct GoogleDrivePickerFailureRetryTests {
             if condition() { return }
             await Task.yield()
         }
+        Issue.record("Timed out waiting for Drive save state")
     }
 
     private func settle() async {
