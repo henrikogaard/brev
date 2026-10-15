@@ -5788,3 +5788,12 @@ buttons, and package-aware localization.
 - Verification: `swift test --package-path packages/BrevMail --filter 'GoogleDrivePickerFailureRetry|GoogleDriveEventSave|GoogleDriveSave'` passed (30 tests/3 suites); the catalog JSON parsed and the exact Norwegian value was asserted; `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed after this log entry.
 - Scope exclusions: no full suites, BrevBackend tests, snapshots, CI, UI/runtime, or live-provider testing were run.
 - Handoff: one follow-up commit containing these four paths is authorized for the existing PR branch; the parent owns the subsequent CI and QA steps.
+
+## 2026-10-15 — Devin — #14 / PR #244 bounded runtime evidence v4
+
+- Goal: establish safe authentic Drive QA prerequisites at `0f10db03ea930859e7b3fae691fc1c37087e944d`, then test only reachable isolated states.
+- Verification: built and ran the pinned iOS Debug app in a fresh owned simulator with synthetic loopback CalDAV data. Verified an actual read-only, unlinked source shows both attachment links without Save in EN/NB, including reselection and large-text reachability. Local event bytes were unchanged and no DAV PUT/DELETE occurred. Evidence is synthetic-native only; native AX/VoiceOver semantics were not verified.
+- Blocked: Picker API key/app ID are unavailable; dedicated Google credentials were not exercised and no eligible Google-linked source/real file fixtures were established. All positive provider save/export/conflict/cancel/retry and denial/revocation/offline rows remain blocked. macOS was not launched because genuine App Group isolation is unavailable.
+- Changes: new v4 evidence report; v2/v3 and production sources preserved. No package/backend/snapshot suites were rerun for this docs-only update (TDD not applicable). Prior automated results remain separate evidence.
+- Documentation sweep: README, CHANGELOG, privacy, ADRs and AGENTS need no change for this evidence-only update. Runtime skill safety corrections require a separate approved follow-up; blueprint safety guidance is proposed through its approval flow.
+- Handoff: one docs-only push to existing PR #244; parent owns review, CI and future QA. No merge, issue closure, Done transition, release or workflow dispatch. Owned simulator and local fixture server remain available; reconnect the synthetic source before additional sync after locale relaunch.
