@@ -6,6 +6,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Calendar event-detail actions stack vertically when the available width
+  cannot fit their labels, preserving readability at accessibility text sizes.
 - Calendar: saving “This and Future Events” at the start of a series
   updates the existing series instead of leaving a duplicate with an
   invalid end date. Later splits preserve the original series' fields.

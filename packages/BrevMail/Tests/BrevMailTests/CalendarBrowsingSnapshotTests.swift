@@ -169,6 +169,29 @@ struct CalendarBrowsingSnapshotTests {
         )
     }
 
+    @Test("event actions remain readable in a narrow detail pane", arguments: ["light", "dark"])
+    func eventDetailNarrowActions(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = CalendarEventDetailView(
+            event: Self.event(id: "narrow-actions", summary: "Planning"),
+            onEdit: {},
+            onDelete: { _ in }
+        )
+        .frame(width: 200, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 200, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 200, height: 560)),
+            named: "detail-narrow-actions-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("event detail explains why editing is hidden", arguments: ["light", "dark"])
     func eventDetailReadOnlyHint(mode: String) {
         let event = Self.event(

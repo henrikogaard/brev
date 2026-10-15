@@ -5861,3 +5861,23 @@ buttons, and package-aware localization.
 - Documentation sweep: QA and worklog only; no product/privacy/architecture/
   release/agent-policy change or new skill/blueprint edits. Parent decides
   the AX3 proposal and resumption; #11/#3 remain acceptance-gated.
+
+## 2026-10-15 — Agent — #11 / PR #245 adaptive Calendar actions
+
+- Goal: correct the v4 iOS AX3 action-label wrapping without shrinking text.
+- Changes: Calendar detail measures its action row at ideal width and falls
+  back to leading-aligned vertical actions when it does not fit. Button
+  handlers, localization, roles and accessibility grouping are unchanged.
+  Added narrow-width light/dark snapshots in the existing Calendar suite.
+- Verification: `RECORD_SNAPSHOTS=YES swift test --package-path packages/BrevMail
+  --filter CalendarBrowsingSnapshotTests.eventDetailNarrowActions` recorded
+  only the new dark/light references (record mode emitted its expected
+  notices); the same focused test without recording passed both cases.
+  `scripts/format.sh` formatted 0/1285 files (176 skipped);
+  `scripts/lint.sh` passed. Historical v4 failure evidence remains intact.
+- Not verified: no runtime retest, app launch, UI driving, simulator use, or
+  broad suite was run on this worktree. The iOS AX3 retest remains assigned
+  to the isolated child after review of this pushed change.
+- Documentation sweep: CHANGELOG and WORKLOG updated. No new view API,
+  theme token, architecture, provider call, persistence, privacy, setup or
+  release behavior; README, ADRs, PRIVACY and AGENTS need no change.

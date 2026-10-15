@@ -149,7 +149,20 @@ public struct CalendarEventDetailView: View {
     /// Edit/Delete affordances for writable sources. Both stay plain
     /// buttons so the row reads as inline text actions, not chrome.
     private var actionRow: some View {
-        HStack(spacing: BrevSpacing.lg) {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: BrevSpacing.lg) {
+                actionButtons
+            }
+            .fixedSize(horizontal: true, vertical: false)
+            VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                actionButtons
+            }
+        }
+        .accessibilityElement(children: .contain)
+    }
+
+    private var actionButtons: some View {
+        Group {
             if let onEdit {
                 Button {
                     onEdit()
@@ -196,7 +209,6 @@ public struct CalendarEventDetailView: View {
                 )
             }
         }
-        .accessibilityElement(children: .contain)
     }
 
     /// The brev:// link that reopens this cached event (#10).
