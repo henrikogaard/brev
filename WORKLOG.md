@@ -5699,3 +5699,12 @@ buttons, and package-aware localization.
 - Assessment (read-only): feasible as a macOS view-layer feature. Gaps: the arrival hook (`MailEvent.messagesAdded`) is consumed in `BrevMailRootView` and has no age check; new mail has a snippet only, so the body and `Authentication-Results` need a fetch; only DMARC failure is parsed today; no `NSPanel` exists. Closed-window behaviour of the subscription is unverified.
 - Change: `ADRs/0088-sign-in-code-and-link-panel.md` (Proposed) and an index row. No code.
 - Next: Henrik answers the three open questions and accepts the ADR; then slice 1 (pure detector).
+
+## 2026-10-15 — Agent — PR #241 / issue #239
+
+- Goal: revise the Proposed ADR-0088 for the user-approved review direction without accepting it or implementing the feature.
+- Change: record independent per-account/device opt-ins defaulting off, provider-established trusted authentication, the conservative proposed DMARC-only policy, unchanged-message and 60-second defaults, delivery-provenance and cache-persistence limits, panel focus constraints, and deferred iOS notification privacy design. ADR status remains Proposed.
+- Verification: `git diff --check`, `scripts/lint.sh`, and `scripts/format.sh` run in that order after the edits. Tests, builds and runtime focus/subscription/cache checks are skipped because this is an ADR/worklog-only change; no runtime behavior is claimed.
+- Documentation sweep: no README or CHANGELOG update because no feature ships; no PRIVACY.md or ADR-0006 behavior update before implementation; ADR-0088 is already indexed.
+- Read-only conflict inspection: `git merge-tree` against `origin/main` shows the existing WORKLOG append conflict between main's `Mac release 0.2.8 prep` entry and this PR branch's `ADR-0088 sign-in code panel` entry. No merge, rebase or conflict resolution was performed.
+- Handoff: Henrik's explicit ADR acceptance and the listed provider-trust, DMARC-policy, provenance, lifecycle and focus evidence gates remain required before implementation.
