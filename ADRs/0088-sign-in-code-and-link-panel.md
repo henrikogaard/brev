@@ -331,6 +331,25 @@ prevent a future caller from misusing an extracted associated value: the
 integration-time lifecycle audit in slice 5 is still required. No user-visible
 strings or network/storage behavior change in this slice.
 
+### Isolated consent model status (2026-10-15)
+
+The model-only part of slice 4 is implemented as `SignInCodeSettings` in
+BrevSettings. Explicit stable-account-ID records hold independent code/link
+booleans, both off for missing accounts, with no global inherited enable.
+Persistence requires injected local `UserDefaults`; malformed records or
+key/account-ID mismatches fail closed. Explicit removal deletes the persisted
+account record, and removing the last record removes the storage key. Initial
+behavior is fixed: leave the source message unchanged and a 60-second timeout.
+
+Synthetic tests exercise account isolation, independent opt-ins, local-only
+persistence, malformed data, deletion, and exclusion from backup export/import
+in both restore modes and the cloud allowlist. The model is not included in
+`SettingsBackupPayload` or `PreferenceSyncAllowlist`, and no settings-store or
+account-lifecycle caller is added. Consent is not provider eligibility. No
+detector invocation, candidate persistence, body read, network call, UI, panel,
+notification or AppSession wiring is added; both providers remain unsupported.
+The consent explanation and integration-time privacy updates remain unshipped.
+
 ### Remaining integration slices
 
 1. Verify provider delivery/backfill provenance and authentication trust
@@ -345,8 +364,8 @@ strings or network/storage behavior change in this slice.
    before asynchronous reads and display; cancel on disable or account removal.
 3. Add the local deterministic detector and English/Norwegian false-positive
    fixtures. Detection must not run before opt-in, even for cached bodies.
-4. Add `SignInCodeSettings` and the in-context consent explanation. Keep
-   consent out of backup/iCloud, default post-use behavior to leave messages
+4. Wire the isolated `SignInCodeSettings` model and add the in-context consent
+   explanation. Keep consent out of backup/iCloud, default post-use behavior to leave messages
    unchanged, and set the panel timeout default to 60 seconds. Update
    `PRIVACY.md` and ADR-0006 as part of implementation, before shipping.
 5. Audit existing body-cache persistence and test that derived candidate and
