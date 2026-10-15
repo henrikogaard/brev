@@ -5771,3 +5771,31 @@ buttons, and package-aware localization.
   Build/Lint, unlike feature-branch pushes. Board access denied; intended
   evidence-handoff state In review, never Done. #3/#11 stay open pending
   provider/platform evidence and Henrik's sign-off. No merge/release requested.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM parity runtime v3
+
+- Goal: resume approved isolated runtime acceptance without product edits.
+- Added `docs/qa/pim-parity-v3-2026-10-15.md`; preserved prior evidence.
+  Fresh iOS 27 simulator and owned local DAV fixtures established.
+- Runtime: event/contact search and same-process offline cached reads worked;
+  All Events conditional save worked. Stopped at first product defect:
+  This and Future Events on the first occurrence leaves duplicate rows and
+  an old series with UNTIL before DTSTART, persisting after manual sync.
+  Recording, screenshots, redacted logs and cache evidence retained outside
+  the checkout; portable screenshot URLs are embedded in the v3 report.
+- Blocked: macOS no-launch app-group isolation preflight; no signing identity
+  for persistent-Keychain proof; no safe live Google attempt or dedicated DAV
+  credentials. Remaining recovery/localization/accessibility rows stopped for
+  the defect; no physical iPhone or live-provider acceptance claim.
+- No product/source/entitlement changes. Settled 327-test automated evidence
+  was not rerun. Validation passed once with
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted);
+  `git diff --check` passed before delivery.
+- Delivery: committed as `docs(qa): record isolated PIM runtime acceptance
+  findings` and pushed once to `origin/fix/pim-parity-gaps` for PR #245. No PR
+  edits/comments, CI dispatch/watch, issue closure or release. Parent decides
+  the proposed first-occurrence boundary fix and next runtime scope.
+- Documentation sweep: QA and worklog only; no product, privacy, architecture,
+  release/version or agent-policy change. Owned app/stub remain running;
+  exact PIDs, UDID, port and paths are in the report.
