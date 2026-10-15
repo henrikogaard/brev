@@ -151,9 +151,9 @@ What the codebase gives us today (checked 2026-10-11):
     60 seconds.
 12. **Privacy documentation.** When body-reading implementation begins,
     update `PRIVACY.md` and ADR-0006 to describe the opt-in-gated use of the
-    existing account endpoint and the additional body fetch. This documentation-
-    only PR does not claim the feature has shipped and does not update user-
-    facing privacy documentation as though it had.
+    existing account endpoint and the additional body fetch. The accepted
+    design and isolated detector do not claim the feature has shipped or
+    update user-facing privacy documentation as though it had.
 
 ## Rationale
 
@@ -273,7 +273,7 @@ gates. Do not add a capability flag asserting support, connect a detector to
 `.messagesAdded`, or expose an enabled setting on the strength of this audit.
 The audit does not change ordinary message rendering, fetching, or caching.
 
-To unblock the first implementation slice:
+To unblock the first provider-dependent implementation slice:
 
 1. Identify a receiving service with documented authentication-header
    sanitization or authoritative authentication metadata, tied to the
@@ -296,6 +296,42 @@ contract or an authoritative per-message delivery-origin field. This remains
 an evidence blocker, not an assumption to encode in a provider adapter.
 
 ## Implementation slices
+
+### Isolated detector status (2026-10-15)
+
+The provider-independent part of slice 3 is implemented in BrevMail as internal
+`SignInCodeDetector` and `SignInCandidate` types, exercised only by synthetic
+Swift Testing fixtures. This work can precede provider evidence because no
+production caller, body access, eligibility assessment, capability, setting,
+panel or notification is added. Both adapters remain unsupported for live
+presentation; all evidence gates above are unchanged.
+
+The deliberately conservative grammar accepts explicit English/Norwegian
+sign-in-code wording with 4–8 ASCII digits or 4–8 ASCII alphanumerics containing
+at least one digit, preserving the original code spelling. It rejects multiple
+code-like values, mixed code/link candidates, common order/price/phone/date
+contexts, and delimited numeric fragments. False negatives are preferred to
+guessing. Grouped codes, letter-only codes and generic “code” wording are not
+recognized in this slice.
+
+Link detection accepts a single explicit plain-text HTTPS destination with
+nearby sign-in wording, preserving its exact spelling and exposing its host.
+Every displayed domain outside the destination must match that host exactly
+(even parent/subdomain differences are rejected). HTML, Markdown, credentials,
+ports, IP literals, internationalized hosts, malformed escapes, ambiguous
+terminal punctuation and recognizable tracking/redirect/unsubscribe patterns
+are rejected. Arbitrary server-side redirect/tracking behavior cannot be
+determined locally: this is not a destination-safety verdict. Callers must never
+flatten HTML into this input and thereby discard visible/target evidence.
+
+Inputs are bounded to 64 KiB and 128 numeric tokens. Candidate values have no
+serialization conformance, caches, logs, storage or sync integration; default
+description/debug/reflection surfaces are redacted. These safeguards do not
+prevent a future caller from misusing an extracted associated value: the
+integration-time lifecycle audit in slice 5 is still required. No user-visible
+strings or network/storage behavior change in this slice.
+
+### Remaining integration slices
 
 1. Verify provider delivery/backfill provenance and authentication trust
    boundaries before enabling any account. Preserve ordered duplicate headers
