@@ -5806,3 +5806,28 @@ buttons, and package-aware localization.
 - Repository checks: passed — `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` (SwiftFormat: 0/1294 files required formatting; SwiftLint strict, coverage self-test and ADR check passed), `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1294 files formatted), and `git diff --check`.
 - Documentation sweep: new v5 report and this entry only; no README, CHANGELOG, privacy/ADR, AGENTS or release change is warranted for frozen/new test evidence. TDD is not applicable to this docs-only update. Provider configuration/disposable access, positive runtime/remote outcomes, real macOS isolation, iOS/AX coverage and maintainer acceptance remain open.
 - Handoff: one Conventional Commit/push to the existing branch, then stop for parent review. No old snapshot repair, full-suite rerun, CI watch/dispatch, PR edit, merge, closure, Done transition or release.
+
+## 2026-10-15 — Devin — #11 / ADR-0089 bounded recurrence design
+
+- Goal: publish the bounded recurrence design Henrik explicitly approved,
+  in a separate ADR-only draft PR targeting `main`.
+- Changes: ADR-0089 and its index entry record a lossless eligibility
+  descriptor, bounded local projection, explicit unsupported/incomplete
+  coverage, stable occurrence/master separation and separately verified
+  future-scope writes. ADR-0088 remains reserved in PR #241.
+- Evidence: v7 on PR #245 reproduced missing later COUNT5 occurrences;
+  source review confirmed raw-record-only browsing and a summary-only,
+  lossy recurrence parser. No implementation or additional runtime evidence
+  is claimed by this design.
+- Verification: `git diff --check`, local ADR-link/index validation,
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`, and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (SwiftFormat lint:
+  0/1294 files require formatting; format: 0/1294 files formatted;
+  SwiftLint strict, coverage self-test and ADR check passed). TDD,
+  package suites, builds and UI testing were not run because this is an
+  ADR-only change.
+- Documentation sweep: ADR/index/worklog only. No product, setup, privacy,
+  network, release or workflow change; README, CHANGELOG, PRIVACY and AGENTS
+  need no update. Existing QA evidence and fixtures remain untouched.
+- Handoff: design accepted; draft PR and its automatic CI authorized.
+  No implementation, merge, issue closure, Done transition or release.
