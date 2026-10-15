@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Drive attachment uploads use correctly separated multipart parts. Cancelling
+  a transfer stays a cancellation, and a later upload no longer reuses an
+  invalidated session.
+
 ### Added
 
 - README shows demo screenshots of the macOS and iOS apps in light and dark

@@ -5744,3 +5744,13 @@ buttons, and package-aware localization.
 
 - Goal: ship #238 (quiet related-mail bar, clearer nb copy) and #237 (glass envelope icons, Smoke default) as Mac `v0.2.8`. iOS TestFlight is Henrik's, from another Mac.
 - Changes: marketing version 0.2.7 → 0.2.8 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.8. Tag `v0.2.8` follows a green PR-event Build on this commit; main is fast-forwarded to it.
+
+## 2026-10-15 — Devin — #14 Drive attachment acceptance gaps
+
+- Goal: close reproduced transport gaps in the existing Drive implementation, not rebuild #77/#78 or configuration repair #161. Isolated worktree/branch `fix/drive-acceptance-gaps`, based on `origin/main` at `3a553dd`; target `main`.
+- TDD: multipart create/update structure and native cancellation assertions failed; cancel-then-retry through the production upload transport crashed because its session was invalidated. All reproduction used synthetic data and injected transports/URLProtocol, not Google.
+- Changes: CRLF before multipart content boundaries; preserve native cancellation; one ephemeral upload session and immutable progress delegate per operation with explicit session cleanup. Narrow `drive.file`, UI, calendar/contact features and configuration unchanged.
+- Verification: BrevBackend GoogleDrive filter passed (12 tests, 2 suites); BrevMail GoogleDrive filter passed (16 tests, 3 suites); `scripts/format.sh` passed (0/1285 files formatted, 174 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed. The first format attempt found `mise` absent; installed it and the pinned project tools, then reran format and lint successfully. UI and live Google checks were intentionally skipped per scope; see the explicit limitations below.
+- Not verified: authenticated macOS/iOS Picker, attach/save/export/referrer/error/revoke/offline/remote cleanup. UI testing needs explicit approval, approved disposable-account access and private Picker configuration; no login challenge bypass attempted.
+- Docs sweep: Unreleased CHANGELOG and new `docs/qa/drive-attachments-acceptance-v2-2026-10-15.md` updated; README, privacy/ADR-0006, ADR-0072, AGENTS and release docs unchanged because feature/architecture/privacy/workflow boundaries did not change.
+- Handoff: stop at first push; opening even a draft PR triggers macOS CI and is held for cost authorization. Project token denied access; intended status after verified push is In review, not Done. No merge, issue close, release or version change.

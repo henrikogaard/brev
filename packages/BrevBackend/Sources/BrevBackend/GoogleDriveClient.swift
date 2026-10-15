@@ -132,14 +132,19 @@ public struct GoogleDriveClient: Sendable {
     /// Builds the production upload transport: a delegate URLSession
     /// that reports upload bytes and honours task cancellation.
     public static func makeUploadTransport() -> UploadTransport {
-        let delegate = UploadProgressDelegate()
-        let session = URLSession(
-            configuration: .ephemeral,
-            delegate: delegate,
-            delegateQueue: nil
-        )
+        makeUploadTransport(configuration: .ephemeral)
+    }
+
+    static func makeUploadTransport(configuration: URLSessionConfiguration) -> UploadTransport {
         return { request, onProgress in
-            delegate.onProgress = onProgress
+            try Task.checkCancellation()
+            let delegate = UploadProgressDelegate(onProgress: onProgress)
+            let session = URLSession(
+                configuration: configuration,
+                delegate: delegate,
+                delegateQueue: nil
+            )
+            defer { session.finishTasksAndInvalidate() }
             let body = request.httpBody
             var uploadRequest = request
             uploadRequest.httpBody = nil
@@ -163,11 +168,14 @@ public struct GoogleDriveClient: Sendable {
         }
     }
 
-    /// URLSession delegate that forwards upload progress to the
-    /// current callback. One upload runs at a time per client call.
+    /// Each upload owns its session and immutable progress callback.
     private final class UploadProgressDelegate: NSObject,
         URLSessionTaskDelegate, @unchecked Sendable {
-        var onProgress: (@Sendable (Int64, Int64) -> Void)?
+        let onProgress: @Sendable (Int64, Int64) -> Void
+
+        init(onProgress: @escaping @Sendable (Int64, Int64) -> Void) {
+            self.onProgress = onProgress
+        }
 
         func urlSession(
             _ session: URLSession,
@@ -176,7 +184,7 @@ public struct GoogleDriveClient: Sendable {
             totalBytesSent: Int64,
             totalBytesExpectedToSend: Int64
         ) {
-            onProgress?(totalBytesSent, totalBytesExpectedToSend)
+            onProgress(totalBytesSent, totalBytesExpectedToSend)
         }
     }
 
@@ -314,6 +322,7 @@ public struct GoogleDriveClient: Sendable {
                 .utf8
         ))
         try body.append(JSONSerialization.data(withJSONObject: metadata))
+        body.append(Data("\r\n".utf8))
         body.append(Self.multipartBoundaryLine(boundary))
         body.append(Data(
             ("Content-Type: " + mimeType + "\r\n\r\n").utf8
@@ -408,7 +417,7 @@ public struct GoogleDriveClient: Sendable {
             "Content-Type: application/json; charset=UTF-8\r\n\r\n"
                 .utf8
         ))
-        body.append(Data("{}".utf8))
+        body.append(Data("{}\r\n".utf8))
         body.append(Self.multipartBoundaryLine(boundary))
         body.append(Data(
             ("Content-Type: " + mimeType + "\r\n\r\n").utf8
@@ -456,6 +465,8 @@ public struct GoogleDriveClient: Sendable {
             }
             return try await transport(request)
         } catch is CancellationError {
+            throw CancellationError()
+        } catch let error as URLError where error.code == .cancelled {
             throw CancellationError()
         } catch let error as DriveError {
             throw error
