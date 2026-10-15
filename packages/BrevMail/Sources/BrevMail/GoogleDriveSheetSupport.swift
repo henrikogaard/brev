@@ -26,6 +26,8 @@ struct GoogleDriveOptInPrompt: View {
     @ScaledMetric(relativeTo: .largeTitle) private var iconPointSize: CGFloat = 32
     let account: BrevAccount
     let feature: GoogleDriveFeature
+    /// When true, the flow owner performs enablement and owns cancellation.
+    let operationOwned: Bool
     /// Runs after a successful grant — the sheet advances to the
     /// picker.
     let onEnabled: () -> Void
@@ -33,10 +35,12 @@ struct GoogleDriveOptInPrompt: View {
     init(
         account: BrevAccount,
         feature: GoogleDriveFeature,
+        operationOwned: Bool = false,
         onEnabled: @escaping () -> Void
     ) {
         self.account = account
         self.feature = feature
+        self.operationOwned = operationOwned
         self.onEnabled = onEnabled
     }
 
@@ -45,6 +49,7 @@ struct GoogleDriveOptInPrompt: View {
     init(
         accountID: BrevAccount.ID,
         feature: GoogleDriveFeature,
+        operationOwned: Bool = false,
         onEnabled: @escaping () -> Void
     ) {
         // The prompt only reads the account's ID; a minimal record
@@ -57,6 +62,7 @@ struct GoogleDriveOptInPrompt: View {
                 backendIdentifier: BrevAccount.gmailAPIBackendIdentifier
             ),
             feature: feature,
+            operationOwned: operationOwned,
             onEnabled: onEnabled
         )
     }
@@ -86,17 +92,21 @@ struct GoogleDriveOptInPrompt: View {
             if feature.isEnabling {
                 ProgressView()
             }
-            if let lastError = feature.lastError {
+            if !operationOwned, let lastError = feature.lastError {
                 Text(lastError)
                     .brevFont(.caption)
                     .foregroundStyle(theme.danger.color)
                     .multilineTextAlignment(.center)
             }
             Button {
-                Task {
-                    try? await feature.enable(accountID: account.id)
-                    if await feature.isEnabled(accountID: account.id) {
-                        onEnabled()
+                if operationOwned {
+                    onEnabled()
+                } else {
+                    Task {
+                        try? await feature.enable(accountID: account.id)
+                        if await feature.isEnabled(accountID: account.id) {
+                            onEnabled()
+                        }
                     }
                 }
             } label: {

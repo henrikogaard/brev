@@ -73,6 +73,31 @@ struct GoogleDriveClientTests {
         )
     }
 
+    @Test("workspace MIME semantics include Google Apps types except folders")
+    func workspaceDocumentMimeSemantics() {
+        #expect(
+            GoogleDriveClient.File(
+                id: "form",
+                name: "Form",
+                mimeType: "application/vnd.google-apps.form"
+            ).isWorkspaceDocument
+        )
+        #expect(
+            GoogleDriveClient.File(
+                id: "shortcut",
+                name: "Shortcut",
+                mimeType: "application/vnd.google-apps.shortcut"
+            ).isWorkspaceDocument
+        )
+        #expect(
+            !GoogleDriveClient.File(
+                id: "folder",
+                name: "Folder",
+                mimeType: "application/vnd.google-apps.folder"
+            ).isWorkspaceDocument
+        )
+    }
+
     @Test("metadata requests the file fields and decodes size")
     func metadataRequest() async throws {
         let stub = StubTransport()
@@ -175,6 +200,7 @@ struct GoogleDriveClientTests {
         #expect(body.contains(#""name":"a.txt""#))
         #expect(body.contains(#""parents":["folder1"]"#))
         #expect(body.contains("hello"))
+        try expectMultipart(request, metadata: ["name": "a.txt", "parents": ["folder1"]], bytes: "hello")
     }
 
     @Test("existingFile queries name, folder, and trashed flag")
@@ -230,6 +256,33 @@ struct GoogleDriveClientTests {
         #expect(
             request.url?.absoluteString.contains("files/old") == true
         )
+        try expectMultipart(request, metadata: [:], bytes: "v2")
+    }
+
+    private func expectMultipart(
+        _ request: URLRequest,
+        metadata: [String: Any],
+        bytes: String
+    ) throws {
+        let contentType = try #require(request.value(forHTTPHeaderField: "Content-Type"))
+        let boundary = try #require(contentType.components(separatedBy: "boundary=").last)
+        let body = try #require(request.httpBody.flatMap { String(data: $0, encoding: .utf8) })
+        #expect(body.hasPrefix("--" + boundary + "\r\n"))
+        let parts = body.components(separatedBy: "\r\n--" + boundary)
+        try #require(parts.count == 3)
+        let metadataBody = try #require(parts[0].components(separatedBy: "\r\n\r\n").last)
+        let decoded = try JSONSerialization.jsonObject(with: Data(metadataBody.utf8)) as? NSDictionary
+        #expect(decoded == metadata as NSDictionary)
+        #expect(parts[1] == "\r\nContent-Type: text/plain\r\n\r\n" + bytes)
+        #expect(parts[2] == "--\r\n")
+    }
+
+    @Test("URLSession cancellation stays cancellation rather than a connectivity failure")
+    func downloadURLCancellation() async {
+        let client = GoogleDriveClient { _ in throw URLError(.cancelled) }
+        await #expect(throws: CancellationError.self) {
+            try await client.download(fileID: "synthetic", accessToken: "synthetic-token")
+        }
     }
 
     @Test("401/403 map to authenticationRequired, 404 to notFound")
@@ -321,4 +374,50 @@ struct GoogleDriveClientTests {
             try await task.value
         }
     }
+}
+
+@Suite("GoogleDriveUploadTransport", .timeLimit(.minutes(1)))
+struct GoogleDriveUploadTransportTests {
+    @Test("a cancelled upload does not invalidate the next upload")
+    func retryAfterCancellation() async throws {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [DriveUploadURLProtocol.self]
+        let transport = GoogleDriveClient.makeUploadTransport(configuration: configuration)
+        var request = URLRequest(url: URL(string: "https://drive-upload.invalid/cancel")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data("synthetic".utf8)
+        let cancelledRequest = request
+        let first = Task { try await transport(cancelledRequest) { _, _ in } }
+        var started = DriveUploadURLProtocol.started.stream.makeAsyncIterator()
+        try #require(await started.next() != nil)
+        first.cancel()
+        await #expect(throws: CancellationError.self) { try await first.value }
+
+        request.url = URL(string: "https://drive-upload.invalid/retry")!
+        let (_, response) = try await transport(request) { _, _ in }
+        #expect(response.statusCode == 200)
+    }
+}
+
+private final class DriveUploadURLProtocol: URLProtocol, @unchecked Sendable {
+    static let started = AsyncStream<Void>.makeStream()
+
+    override class func canInit(with request: URLRequest) -> Bool { true }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+
+    override func startLoading() {
+        if request.url?.path == "/cancel" {
+            Self.started.continuation.yield(())
+            return
+        }
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil, headerFields: nil
+        )!
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: Data("synthetic".utf8))
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {}
 }

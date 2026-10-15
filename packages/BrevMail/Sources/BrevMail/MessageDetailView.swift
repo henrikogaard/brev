@@ -230,20 +230,25 @@ public struct MessageDetailView: View {
             }
         }
         .focusedSceneValue(\.mailPrintExportActions, printExportActions)
-        .sheet(item: $pendingDriveSave) { pending in
+        .sheet(item: $pendingDriveSave, onDismiss: {
+            pendingDriveSave?.payload.clear()
+            pendingDriveSave = nil
+        }) { pending in
             if let driveFeature {
                 GoogleDriveSaveSheet(
-                    account: backend.account,
+                    accountID: backend.account.id,
                     feature: driveFeature,
-                    filename: pending.name,
-                    mimeType: pending.mimeType,
-                    data: pending.data
-                ) { _ in
-                    attachmentSaveToast = String(
-                        localized: "Saved to Google Drive",
-                        bundle: .module
-                    )
-                }
+                    payload: pending.payload,
+                    onSaved: { _ in
+                        attachmentSaveToast = String(
+                            localized: "Saved to Google Drive",
+                            bundle: .module
+                        )
+                    },
+                    onCancel: {
+                        pendingDriveSave = nil
+                    }
+                )
             }
         }
         .confirmationDialog(
@@ -2156,12 +2161,17 @@ public struct MessageDetailView: View {
                 purpose: .savePanelStaging
             )
             let data = try Data(contentsOf: url)
-            pendingDriveSave = PendingDriveSave(
-                name: attachment.name,
+            let payload = GoogleDriveStagedPayload()
+            payload.stage(
+                filename: attachment.name,
                 mimeType: attachment.mimeType.isEmpty
                     ? "application/octet-stream"
                     : attachment.mimeType,
-                data: data
+                bytes: data
+            )
+            pendingDriveSave?.payload.clear()
+            pendingDriveSave = PendingDriveSave(
+                payload: payload
             )
         } catch {
             // Error is already surfaced by the helper.
@@ -3366,7 +3376,5 @@ private extension MessageDetailInlineStatus.Tone {
 /// the message.
 private struct PendingDriveSave: Identifiable {
     let id = UUID()
-    let name: String
-    let mimeType: String
-    let data: Data
+    let payload: GoogleDriveStagedPayload
 }

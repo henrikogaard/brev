@@ -144,6 +144,58 @@ struct GoogleDriveFeatureTests {
         }
         #expect(feature.lastError != nil)
     }
+
+    @Test("cancellation during token lookup prevents the client request")
+    func cancellationWhileResolvingToken() async {
+        final class Requests: @unchecked Sendable {
+            private let lock = NSLock()
+            private var storage: [URLRequest] = []
+
+            func append(_ request: URLRequest) {
+                lock.lock()
+                storage.append(request)
+                lock.unlock()
+            }
+
+            var count: Int {
+                lock.lock()
+                defer { lock.unlock() }
+                return storage.count
+            }
+        }
+
+        let gate = GoogleDriveSaveTestGate()
+        let requests = Requests()
+        let client = GoogleDriveClient(transport: { request in
+            requests.append(request)
+            return (
+                Data(#"{"id":"f1","name":"File.pdf","mimeType":"application/pdf"}"#.utf8),
+                HTTPURLResponse(
+                    url: URL(string: "https://www.googleapis.com")!,
+                    statusCode: 200,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        })
+        let service = GoogleDriveFileService(
+            client: client,
+            accessToken: { _ in
+                await gate.pause()
+                return "token"
+            }
+        )
+        let pending = Task {
+            try await service.metadata(fileID: "f1", accountID: "acct1")
+        }
+        await gate.waitUntilEntered()
+        pending.cancel()
+        await gate.release()
+        await #expect(throws: CancellationError.self) {
+            _ = try await pending.value
+        }
+        #expect(requests.count == 0)
+    }
 }
 
 /// Picker-page coverage (#14): generated HTML carries the token, key,
