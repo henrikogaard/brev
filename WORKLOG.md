@@ -5928,3 +5928,53 @@ buttons, and package-aware localization.
   architecture/release change, no new skill/blueprint edits or proposals.
   Parent review of the three independent findings and remaining acceptance
   gates is required; #11/#3 remain open.
+
+## 2026-10-15 — Agent — #11 / PR #245 retained-cache browsing
+
+- Goal: preserve access to explicitly retained, disconnected PIM caches after
+  source removal without restoring active source metadata, credentials,
+  consent, provider connectivity, synchronization, or write capability.
+- Changes: added marker-based per-kind retained-cache discovery and
+  registered-source exclusion; wired active-first, duplicate-free cache
+  loading, localized disconnected-source failures, stale banners, and
+  active-source-only sync guards across Contacts, Calendar, and Tasks.
+  Added focused source-store, coordinator, and browsing-model coverage.
+  Contacts actions now use the authored adaptive narrow-width layout and
+  standard labels localize while arbitrary labels remain unchanged. The
+  duplicate `Other` catalog entry was removed while preserving the
+  pre-existing translation. ADR-0072 and CHANGELOG were updated.
+- Verification:
+  `swift test --package-path packages/BrevCalendar --filter
+  'PIMSource(Coordinator|Store)Tests'` passed 22 tests in 2 suites.
+  `swift test --package-path packages/BrevMail --filter
+  '(ContactsBrowsingModelTests|CalendarBrowsingModelTests|TasksBrowsingModelTests|ContactPresentationTests|ContactsEditingModelTests)'`
+  passed 71 tests in 5 suites; after adding the absent-source editability
+  assertion, `swift test --package-path packages/BrevMail --filter
+  'ContactsEditingModelTests'` passed 9 tests in 1 suite.
+  After changing the file-backed regression to use a fresh contact store
+  after source removal, `swift test --package-path packages/BrevMail
+  --filter 'ContactsBrowsingModelTests'` passed 18 tests in 1 suite.
+  `RECORD_SNAPSHOTS=YES swift test --package-path packages/BrevMail
+  --filter 'ContactsBrowsingSnapshotTests/contactDetailNarrowActions'`
+  recorded only the new light/dark references and exited 1 on the two
+  expected record-mode notices. The same command without recording passed
+  both snapshot cases. Generated:
+  `packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ContactsBrowsingSnapshotTests/contactDetailNarrowActions-mode.detail-narrow-actions-light.png`
+  and
+  `packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ContactsBrowsingSnapshotTests/contactDetailNarrowActions-mode.detail-narrow-actions-dark.png`.
+  The first lint run identified SwiftFormat await-hoisting issues, which
+  were corrected; the final `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`
+  passed, including SwiftLint coverage and ADR checks.
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed after the corrections,
+  formatting 3 of 1,285 files; the final format run changed 0 of 1,285
+  files, and SwiftFormat lint found 0 files requiring formatting.
+  `git diff --check` passed after the final worklog update.
+- TDD limitation: the layout and source-store API edits were authored before
+  this test pass; the retained-cache model and coordinator coverage was added
+  afterward. No provider network traffic, app launch, simulator/UI runtime
+  retest, or broad runtime QA was performed. Full package gates remain
+  optional final checks only.
+- Documentation sweep: README and PRIVACY were left unchanged because this
+  implements the existing ADR-0072 cache lifecycle without changing privacy
+  posture, setup, or provider network behavior. Remaining acceptance gates
+  are the parent review, snapshot pixel review, and isolated runtime QA.

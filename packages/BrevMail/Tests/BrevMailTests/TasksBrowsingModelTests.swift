@@ -56,9 +56,20 @@ struct TasksBrowsingModelTests {
     }
 
     private actor LocalDataStore: PIMSourceLocalDataStore {
+        let retainedIDs: [PIMSource.ID]
+
+        init(retainedIDs: [PIMSource.ID] = []) {
+            self.retainedIDs = retainedIDs
+        }
+
         func deleteSyncAndDraftData(for sourceID: PIMSource.ID) async throws {}
         func deleteCachedContent(for sourceID: PIMSource.ID) async throws {}
         func markCacheDisconnected(for sourceID: PIMSource.ID) async throws {}
+        func retainedSourceIDs(
+            for kind: PIMSourceKind
+        ) async throws -> [PIMSource.ID] {
+            kind == .tasks ? retainedIDs : []
+        }
     }
 
     private actor CollectionStore: PIMCollectionStore {
@@ -227,7 +238,8 @@ struct TasksBrowsingModelTests {
         sources: [PIMSource],
         collections: [PIMSource.ID: [PIMCollection]] = [:],
         tasks: [PIMSource.ID: [PIMTask]] = [:],
-        failingSourceIDs: Set<PIMSource.ID> = []
+        failingSourceIDs: Set<PIMSource.ID> = [],
+        retainedSourceIDs: [PIMSource.ID] = []
     ) async throws -> (TasksBrowsingModel, TaskStore) {
         let sourceStore = SourceStore()
         for source in sources {
@@ -236,7 +248,7 @@ struct TasksBrowsingModelTests {
         let coordinator = PIMSourceCoordinator(
             store: sourceStore,
             credentials: CredentialStore(),
-            localData: LocalDataStore(),
+            localData: LocalDataStore(retainedIDs: retainedSourceIDs),
             now: { Self.fixedNow }
         )
         let collectionStore = CollectionStore()
@@ -300,6 +312,38 @@ struct TasksBrowsingModelTests {
         #expect(model.visibleTasks.map(\.id).sorted() == ["t1", "t2"])
         #expect(model.lastError == nil)
         #expect(model.hasSources)
+    }
+
+    @Test("retained tasks load and reveal without an active source")
+    func loadRetainedCache() async throws {
+        let (model, _) = try await makeModel(
+            sources: [],
+            tasks: [
+                "retained": [
+                    Self.task(
+                        id: "retained-task",
+                        sourceID: "retained",
+                        collectionID: "c1",
+                        title: "Retained task"
+                    ),
+                ],
+            ],
+            retainedSourceIDs: ["retained"]
+        )
+
+        await model.load()
+        #expect(model.retainedSourceIDs == ["retained"])
+        #expect(model.hasRetainedCache)
+        #expect(model.hasSources)
+        #expect(model.sources.isEmpty)
+        #expect(model.canSyncAny == false)
+        #expect(model.visibleTasks.map(\.id) == ["retained-task"])
+
+        await model.syncNow(sourceID: "retained")
+        #expect(model.lastError == nil)
+        await model.revealTask(id: "retained-task")
+        #expect(model.selectedTaskID == "retained-task")
+        #expect(model.deepLinkNotice == nil)
     }
 
     @Test("contacts and calendar sources stay out of the tasks surface")

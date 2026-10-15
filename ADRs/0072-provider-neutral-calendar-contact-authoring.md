@@ -320,7 +320,11 @@ entry names the slice that introduced it; details live in the code.
 - `PIMSourceLocalDataStore` / `FilePIMSourceLocalDataStore`: per-source
   local-data ownership with the two-step removal contract — cursors, drafts
   and write markers always die with the source; readable cache only on
-  explicit choice, otherwise marked disconnected and read-only.
+  explicit choice, otherwise marked disconnected and read-only. The
+  marker-based `retainedSourceIDs(for:)` discovery path reads those
+  disconnected caches without creating active source metadata or restoring
+  credentials, consent, provider connectivity, synchronization, or write
+  capability; active source enumeration remains unchanged.
 - `PIMDAVTransport`, `PIMDAVClient`, `PIMDAVEndpoint`,
   `PIMDAVValidation`, `PIMDAVConnectError`: DAV setup validation. Manual
   endpoints and RFC 6764 well-known discovery, HTTPS enforced (loopback

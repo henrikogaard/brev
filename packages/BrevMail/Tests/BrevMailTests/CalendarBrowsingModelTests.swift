@@ -55,9 +55,20 @@ struct CalendarBrowsingModelTests {
     }
 
     private actor LocalDataStore: PIMSourceLocalDataStore {
+        let retainedIDs: [PIMSource.ID]
+
+        init(retainedIDs: [PIMSource.ID] = []) {
+            self.retainedIDs = retainedIDs
+        }
+
         func deleteSyncAndDraftData(for sourceID: PIMSource.ID) async throws {}
         func deleteCachedContent(for sourceID: PIMSource.ID) async throws {}
         func markCacheDisconnected(for sourceID: PIMSource.ID) async throws {}
+        func retainedSourceIDs(
+            for kind: PIMSourceKind
+        ) async throws -> [PIMSource.ID] {
+            kind == .calendar ? retainedIDs : []
+        }
     }
 
     private actor CollectionStore: PIMCollectionStore {
@@ -221,7 +232,8 @@ struct CalendarBrowsingModelTests {
         sources: [PIMSource],
         collections: [PIMSource.ID: [PIMCollection]] = [:],
         events: [String: [PIMEvent]] = [:],
-        failingSourceIDs: Set<PIMSource.ID> = []
+        failingSourceIDs: Set<PIMSource.ID> = [],
+        retainedSourceIDs: [PIMSource.ID] = []
     ) async throws -> CalendarBrowsingModel {
         let sourceStore = SourceStore()
         for source in sources {
@@ -230,7 +242,7 @@ struct CalendarBrowsingModelTests {
         let coordinator = PIMSourceCoordinator(
             store: sourceStore,
             credentials: CredentialStore(),
-            localData: LocalDataStore(),
+            localData: LocalDataStore(retainedIDs: retainedSourceIDs),
             now: { Self.fixedNow }
         )
         let collectionStore = CollectionStore()
@@ -302,6 +314,38 @@ struct CalendarBrowsingModelTests {
         #expect(model.visibleEvents.map(\.id) == ["e1", "e2"])
         #expect(model.lastError == nil)
         #expect(model.hasSources)
+    }
+
+    @Test("retained events load and reveal without an active source")
+    func loadRetainedCache() async throws {
+        let model = try await makeModel(
+            sources: [],
+            events: [
+                "retained|c1": [
+                    Self.event(
+                        id: "retained-event",
+                        sourceID: "retained",
+                        collectionID: "c1",
+                        summary: "Retained event"
+                    ),
+                ],
+            ],
+            retainedSourceIDs: ["retained"]
+        )
+
+        await model.load()
+        #expect(model.retainedSourceIDs == ["retained"])
+        #expect(model.hasRetainedCache)
+        #expect(model.hasSources)
+        #expect(model.sources.isEmpty)
+        #expect(model.canSyncAny == false)
+        #expect(model.visibleEvents.map(\.id) == ["retained-event"])
+
+        await model.syncNow(sourceID: "retained")
+        #expect(model.lastError == nil)
+        await model.revealEvent(id: "retained-event")
+        #expect(model.selectedEventID == "retained-event")
+        #expect(model.deepLinkNotice == nil)
     }
 
     @Test("contacts sources are not loaded into the calendar surface")

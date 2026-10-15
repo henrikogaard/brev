@@ -11,11 +11,17 @@ All notable changes to Brev are documented here.
 - Calendar: saving “This and Future Events” at the start of a series
   updates the existing series instead of leaving a duplicate with an
   invalid end date. Later splits preserve the original series' fields.
+- Contacts detail actions stack vertically when their labels cannot fit,
+  while standard contact labels are localized and arbitrary custom labels
+  retain their original spelling.
 
 ### Added
 
 - README shows demo screenshots of the macOS and iOS apps in light and dark
   mode, kept in `docs/screenshots/` and switched by `prefers-color-scheme`.
+- Removed sources with retained, disconnected caches remain browsable as
+  read-only Contacts, Calendar, and Tasks data without restoring an active
+  source.
 
 ### Changed
 

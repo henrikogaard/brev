@@ -136,7 +136,7 @@ public struct ContactsRootView: View {
 
     private var listColumn: some View {
         VStack(spacing: 0) {
-            if !model.staleSources.isEmpty {
+            if !model.staleSources.isEmpty || model.hasRetainedCache {
                 staleBanner
             }
             if let lastError = model.lastError {

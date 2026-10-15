@@ -43,6 +43,8 @@ public final class TasksBrowsingModel {
 
     /// Tasks sources known to the coordinator, in coordinator order.
     public private(set) var sources: [PIMSource] = []
+    /// Disconnected source IDs whose retained cache may be browsed read-only.
+    public private(set) var retainedSourceIDs: [PIMSource.ID] = []
     /// Discovered collections (task lists) per source; empty when
     /// discovery never ran.
     public private(set) var collectionsBySource:
@@ -168,7 +170,12 @@ public final class TasksBrowsingModel {
     /// Whether any tasks source exists — drives the empty state that
     /// points at Settings rather than a bare "no tasks".
     public var hasSources: Bool {
-        !sources.isEmpty
+        !sources.isEmpty || hasRetainedCache
+    }
+
+    /// Whether at least one disconnected cache is available for browsing.
+    public var hasRetainedCache: Bool {
+        !retainedSourceIDs.isEmpty
     }
 
     /// Whether Sync Now can run for a source in this session — the
@@ -238,6 +245,12 @@ public final class TasksBrowsingModel {
             lastError = error.localizedDescription
             return
         }
+        if let coordinator {
+            await retainedSourceIDs =
+                (try? coordinator.retainedSourceIDs(for: .tasks)) ?? []
+        } else {
+            retainedSourceIDs = []
+        }
         await loadCollections()
         await loadTasks()
         reconcileSelection()
@@ -275,11 +288,11 @@ public final class TasksBrowsingModel {
             return
         }
         var map: [PIMSource.ID: [PIMCollection]] = [:]
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             // A store read failure must not blank the source — its rows
             // render without list metadata instead.
-            await map[source.id] =
-                (try? collectionService.collections(for: source.id))
+            await map[sourceID] =
+                (try? collectionService.collections(for: sourceID))
                     ?? []
         }
         collectionsBySource = map
@@ -292,14 +305,14 @@ public final class TasksBrowsingModel {
         }
         var all: [PIMTask] = []
         var failedSources: [String] = []
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             do {
                 try await all.append(
-                    contentsOf: taskSyncService.tasks(for: source.id)
+                    contentsOf: taskSyncService.tasks(for: sourceID)
                 )
             } catch {
                 // One unreadable cache must not blank the others.
-                failedSources.append(source.displayName)
+                failedSources.append(sourceName(for: sourceID))
             }
         }
         tasks = all
@@ -319,7 +332,8 @@ public final class TasksBrowsingModel {
     /// User-initiated sync for one tasks source; reloads the cache
     /// afterward so the list reflects the fresh snapshot.
     public func syncNow(sourceID: PIMSource.ID) async {
-        guard let taskSyncService,
+        guard sources.contains(where: { $0.id == sourceID }),
+              let taskSyncService,
               !syncingSourceIDs.contains(sourceID)
         else { return }
         syncingSourceIDs.insert(sourceID)
@@ -349,6 +363,19 @@ public final class TasksBrowsingModel {
         for source in sources where canSyncNow(source) {
             await syncNow(sourceID: source.id)
         }
+    }
+
+    private var cacheSourceIDs: [PIMSource.ID] {
+        var ids = sources.map(\.id)
+        for id in retainedSourceIDs where !ids.contains(id) {
+            ids.append(id)
+        }
+        return ids
+    }
+
+    private func sourceName(for sourceID: PIMSource.ID) -> String {
+        sources.first { $0.id == sourceID }?.displayName
+            ?? String(localized: "Disconnected source", bundle: .module)
     }
 
     // MARK: - Helpers

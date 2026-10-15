@@ -60,19 +60,28 @@ public enum ContactPresentation {
         return nil
     }
 
-    /// Row label for a labeled field — the provider's label when present,
-    /// else a generic one.
+    /// Localizes standard field types while preserving custom labels.
     public static func fieldLabel(
         _ label: String?,
         fallback: String
     ) -> String {
         guard let label, !label.isEmpty else { return fallback }
-        // vCard labels arrive like "WORK"/"HOME"/"item1"; People labels
-        // arrive lowercased. Capitalize single-word labels for display.
-        if label.allSatisfy({ !$0.isLowercase }) || label == label.lowercased() {
-            return label.prefix(1).uppercased() + label.dropFirst().lowercased()
+        switch label.lowercased() {
+        case "work":
+            return String(localized: "Work", bundle: .module)
+        case "home":
+            return String(localized: "Home", bundle: .module)
+        case "mobile", "cell":
+            return String(localized: "Mobile", bundle: .module)
+        case "fax":
+            return String(localized: "Fax", bundle: .module)
+        case "pager":
+            return String(localized: "Pager", bundle: .module)
+        case "other":
+            return String(localized: "Other", bundle: .module)
+        default:
+            return label
         }
-        return label
     }
 
     /// Display text for a labeled date — month + day only when the

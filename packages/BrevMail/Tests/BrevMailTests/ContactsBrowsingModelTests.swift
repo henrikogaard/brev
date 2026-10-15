@@ -13,6 +13,9 @@
 import BrevCalendar
 @testable import BrevMail
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import Testing
 
 /// Browsing-model coverage for the Contacts surface (ADR-0072 #8):
@@ -55,10 +58,56 @@ struct ContactsBrowsingModelTests {
         func deleteCredential(for account: String) async throws {}
     }
 
+    private struct StubTransport: PIMDAVTransport {
+        let body: String
+
+        func send(
+            _ request: URLRequest
+        ) async throws -> (Data, HTTPURLResponse) {
+            (
+                Data(body.utf8),
+                HTTPURLResponse(
+                    url: request.url!,
+                    statusCode: 207,
+                    httpVersion: nil,
+                    headerFields: nil
+                )!
+            )
+        }
+    }
+
+    private static let davMultistatus = """
+    <?xml version="1.0" encoding="utf-8"?>
+    <d:multistatus xmlns:d="DAV:">
+      <d:response>
+        <d:href>/dav/</d:href>
+        <d:propstat>
+          <d:prop>
+            <d:current-user-principal>
+              <d:href>/principals/user/henrik/</d:href>
+            </d:current-user-principal>
+          </d:prop>
+          <d:status>HTTP/1.1 200 OK</d:status>
+        </d:propstat>
+      </d:response>
+    </d:multistatus>
+    """
+
     private actor LocalDataStore: PIMSourceLocalDataStore {
+        let retainedIDs: [PIMSource.ID]
+
+        init(retainedIDs: [PIMSource.ID] = []) {
+            self.retainedIDs = retainedIDs
+        }
+
         func deleteSyncAndDraftData(for sourceID: PIMSource.ID) async throws {}
         func deleteCachedContent(for sourceID: PIMSource.ID) async throws {}
         func markCacheDisconnected(for sourceID: PIMSource.ID) async throws {}
+        func retainedSourceIDs(
+            for kind: PIMSourceKind
+        ) async throws -> [PIMSource.ID] {
+            kind == .contacts ? retainedIDs : []
+        }
     }
 
     private actor CollectionStore: PIMCollectionStore {
@@ -199,7 +248,8 @@ struct ContactsBrowsingModelTests {
         sources: [PIMSource],
         collections: [PIMSource.ID: [PIMCollection]] = [:],
         contacts: [PIMSource.ID: [PIMContact]] = [:],
-        failingSourceIDs: Set<PIMSource.ID> = []
+        failingSourceIDs: Set<PIMSource.ID> = [],
+        retainedSourceIDs: [PIMSource.ID] = []
     ) async throws -> ContactsBrowsingModel {
         let sourceStore = SourceStore()
         for source in sources {
@@ -208,7 +258,7 @@ struct ContactsBrowsingModelTests {
         let coordinator = PIMSourceCoordinator(
             store: sourceStore,
             credentials: CredentialStore(),
-            localData: LocalDataStore(),
+            localData: LocalDataStore(retainedIDs: retainedSourceIDs),
             now: { Self.fixedNow }
         )
         let collectionStore = CollectionStore()
@@ -244,6 +294,19 @@ struct ContactsBrowsingModelTests {
         )
     }
 
+    private func makeTempDir() throws -> URL {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(
+                "brev-contacts-retained-\(UUID().uuidString)",
+                isDirectory: true
+            )
+        try FileManager.default.createDirectory(
+            at: url,
+            withIntermediateDirectories: true
+        )
+        return url
+    }
+
     // MARK: - Loading
 
     @Test("load merges cached contacts across sources, name-sorted")
@@ -273,6 +336,148 @@ struct ContactsBrowsingModelTests {
         #expect(model.visibleContacts.map(\.id) == ["a", "z"])
         #expect(model.lastError == nil)
         #expect(model.hasSources)
+    }
+
+    @Test("retained contacts load and reveal without an active source")
+    func loadRetainedCache() async throws {
+        let model = try await makeModel(
+            sources: [],
+            contacts: [
+                "retained": [
+                    Self.contact(
+                        id: "retained-contact",
+                        sourceID: "retained",
+                        displayName: "Retained Ada"
+                    ),
+                ],
+            ],
+            retainedSourceIDs: ["retained"]
+        )
+
+        await model.load()
+        #expect(model.retainedSourceIDs == ["retained"])
+        #expect(model.hasRetainedCache)
+        #expect(model.hasSources)
+        #expect(model.sources.isEmpty)
+        #expect(model.canSyncAny == false)
+        #expect(model.visibleContacts.map(\.id) == ["retained-contact"])
+
+        await model.syncNow(sourceID: "retained")
+        #expect(model.lastError == nil)
+        await model.revealContact(id: "retained-contact")
+        #expect(model.selectedContactID == "retained-contact")
+        #expect(model.deepLinkNotice == nil)
+    }
+
+    @Test("a deleted retained cache cannot resolve a contact deep link")
+    func deletedRetainedCacheMissesDeepLink() async throws {
+        let model = try await makeModel(
+            sources: [],
+            retainedSourceIDs: []
+        )
+
+        await model.revealContact(id: "deleted-contact")
+        #expect(model.selectedContactID == nil)
+        #expect(model.deepLinkNotice != nil)
+        #expect(!model.hasSources)
+    }
+
+    @Test("coordinator removal leaves readable contacts but not deleted caches")
+    func coordinatorRemovalRetainedContacts() async throws {
+        let root = try makeTempDir()
+        let sourceStore = SourceStore()
+        let credentials = CredentialStore()
+        let localData = FilePIMSourceLocalDataStore(rootURL: root)
+        let coordinator = PIMSourceCoordinator(
+            store: sourceStore,
+            credentials: credentials,
+            localData: localData,
+            davClient: PIMDAVClient(
+                transport: StubTransport(body: Self.davMultistatus)
+            ),
+            now: { Self.fixedNow }
+        )
+        let retainedSource = try await coordinator.connectDAVSource(
+            kind: .contacts,
+            endpoint: .manual(URL(string: "https://dav.example.com/")!),
+            displayName: "Retained",
+            credential: .bearer(token: "retained")
+        )
+        let deletedSource = try await coordinator.connectDAVSource(
+            kind: .contacts,
+            endpoint: .manual(URL(string: "https://dav.example.com/")!),
+            displayName: "Deleted",
+            credential: .bearer(token: "deleted")
+        )
+        let contactStore = JSONPIMContactStore(localDataStore: localData)
+        try await contactStore.saveContacts(
+            [
+                Self.contact(
+                    id: "retained-exact-id",
+                    sourceID: retainedSource.id,
+                    displayName: "Retained Ada"
+                ),
+            ],
+            for: retainedSource.id
+        )
+        try await contactStore.saveContacts(
+            [
+                Self.contact(
+                    id: "deleted-exact-id",
+                    sourceID: deletedSource.id,
+                    displayName: "Deleted Ada"
+                ),
+            ],
+            for: deletedSource.id
+        )
+
+        try await coordinator.removeSource(
+            id: retainedSource.id,
+            deleteCachedContent: false
+        )
+        try await coordinator.removeSource(
+            id: deletedSource.id,
+            deleteCachedContent: true
+        )
+
+        let collectionStore = CollectionStore()
+        let collectionService = PIMCollectionService(
+            coordinator: coordinator,
+            store: collectionStore,
+            credentials: credentials,
+            now: { Self.fixedNow }
+        )
+        let contactSyncService = PIMContactSyncService(
+            coordinator: coordinator,
+            collectionStore: collectionStore,
+            contactStore: JSONPIMContactStore(localDataStore: localData),
+            cursorStore: CursorStore(),
+            credentials: credentials,
+            now: { Self.fixedNow }
+        )
+        let model = ContactsBrowsingModel(
+            coordinator: coordinator,
+            collectionService: collectionService,
+            contactSyncService: contactSyncService,
+            now: { Self.fixedNow }
+        )
+
+        await model.revealContact(id: "retained-exact-id")
+        #expect(model.sources.isEmpty)
+        #expect(model.retainedSourceIDs == [retainedSource.id])
+        #expect(model.hasRetainedCache)
+        #expect(model.hasSources)
+        #expect(model.canSyncAny == false)
+        #expect(model.selectedContactID == "retained-exact-id")
+        #expect(model.visibleContacts.map(\.id) == ["retained-exact-id"])
+        #expect(model.lastError == nil)
+
+        await model.syncNow(sourceID: retainedSource.id)
+        #expect(model.lastError == nil)
+
+        await model.revealContact(id: "deleted-exact-id")
+        #expect(model.selectedContactID == nil)
+        #expect(model.deepLinkNotice != nil)
     }
 
     @Test("calendar sources are not loaded into the contacts surface")

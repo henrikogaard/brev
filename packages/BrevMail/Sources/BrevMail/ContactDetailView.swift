@@ -231,54 +231,66 @@ public struct ContactDetailView: View {
     /// Edit/Delete affordances for writable sources — plain buttons so
     /// the row reads as inline text actions, not chrome.
     private var actionRow: some View {
-        HStack(spacing: BrevSpacing.lg) {
-            if let onEdit {
-                Button {
-                    onEdit()
-                } label: {
-                    Label(
-                        String(localized: "Edit", bundle: .module),
-                        systemImage: "pencil"
-                    )
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.accent.color)
-                }
-                .buttonStyle(.plain)
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: BrevSpacing.lg) {
+                actionButtons
             }
-            if onDelete != nil {
-                Button(role: .destructive) {
-                    showsDeleteConfirmation = true
-                } label: {
-                    Label(
-                        String(localized: "Delete", bundle: .module),
-                        systemImage: "trash"
-                    )
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.danger.color)
-                }
-                .buttonStyle(.plain)
-            }
-            if let deepLinkURL {
-                Button {
-                    PIMDeepLinkCopy.copy(deepLinkURL)
-                } label: {
-                    Label(
-                        String(localized: "Copy Link", bundle: .module),
-                        systemImage: "link"
-                    )
-                    .brevFont(.subheadline)
-                    .foregroundStyle(theme.accent.color)
-                }
-                .buttonStyle(.plain)
-                .accessibilityHint(
-                    String(
-                        localized: "Copies a link that reopens this contact in Brev",
-                        bundle: .module
-                    )
-                )
+            .fixedSize(horizontal: true, vertical: false)
+
+            VStack(alignment: .leading, spacing: BrevSpacing.lg) {
+                actionButtons
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    @ViewBuilder
+    private var actionButtons: some View {
+        if let onEdit {
+            Button {
+                onEdit()
+            } label: {
+                Label(
+                    String(localized: "Edit", bundle: .module),
+                    systemImage: "pencil"
+                )
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.accent.color)
+            }
+            .buttonStyle(.plain)
+        }
+        if onDelete != nil {
+            Button(role: .destructive) {
+                showsDeleteConfirmation = true
+            } label: {
+                Label(
+                    String(localized: "Delete", bundle: .module),
+                    systemImage: "trash"
+                )
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.danger.color)
+            }
+            .buttonStyle(.plain)
+        }
+        if let deepLinkURL {
+            Button {
+                PIMDeepLinkCopy.copy(deepLinkURL)
+            } label: {
+                Label(
+                    String(localized: "Copy Link", bundle: .module),
+                    systemImage: "link"
+                )
+                .brevFont(.subheadline)
+                .foregroundStyle(theme.accent.color)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(
+                String(
+                    localized: "Copies a link that reopens this contact in Brev",
+                    bundle: .module
+                )
+            )
+        }
     }
 
     /// The brev:// link that reopens this cached contact (#10).

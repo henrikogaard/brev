@@ -1,6 +1,42 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Work": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Arbeid" } }
+      }
+    },
+    "Home": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Hjem" } }
+      }
+    },
+    "Mobile": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Mobil" } }
+      }
+    },
+    "Fax": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Faks" } }
+      }
+    },
+    "Pager": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Personsøker" } }
+      }
+    },
+    "Disconnected source": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Frakoblet kilde" } }
+      }
+    },
     "%@ %@ the message.": {
       "extractionState": "manual",
       "localizations": {

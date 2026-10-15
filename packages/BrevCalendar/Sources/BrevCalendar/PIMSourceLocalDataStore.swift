@@ -28,6 +28,15 @@ public protocol PIMSourceLocalDataStore: Sendable {
     func deleteCachedContent(for sourceID: PIMSource.ID) async throws
     /// Marks any retained cache as disconnected and read-only.
     func markCacheDisconnected(for sourceID: PIMSource.ID) async throws
+    /// Lists disconnected caches of a kind without restoring source credentials or consent.
+    func retainedSourceIDs(for kind: PIMSourceKind) async throws -> [PIMSource.ID]
+}
+
+public extension PIMSourceLocalDataStore {
+    /// Stores without retained-cache discovery expose no disconnected content.
+    func retainedSourceIDs(for _: PIMSourceKind) async throws -> [PIMSource.ID] {
+        []
+    }
 }
 
 /// File-backed PIMSourceLocalDataStore.
@@ -110,6 +119,30 @@ public struct FilePIMSourceLocalDataStore: PIMSourceLocalDataStore {
         }
         let marker = directory(for: sourceID).appendingPathComponent("disconnected")
         try Data().write(to: marker, options: .atomic)
+    }
+
+    public func retainedSourceIDs(for kind: PIMSourceKind) async throws -> [PIMSource.ID] {
+        guard fileManager.fileExists(atPath: rootURL.path) else { return [] }
+        let contentPath: String
+        switch kind {
+        case .contacts: contentPath = "contacts.json"
+        case .calendar: contentPath = "events"
+        case .tasks: contentPath = "tasks"
+        }
+        let directories = try fileManager.contentsOfDirectory(
+            at: rootURL,
+            includingPropertiesForKeys: [.isDirectoryKey, .isSymbolicLinkKey],
+            options: [.skipsHiddenFiles]
+        )
+        return try directories.compactMap { directory in
+            let values = try directory.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            guard values.isDirectory == true, values.isSymbolicLink != true,
+                  fileManager.fileExists(atPath: directory.appendingPathComponent("disconnected").path),
+                  fileManager.fileExists(atPath: directory.appendingPathComponent("cache")
+                      .appendingPathComponent(contentPath).path)
+            else { return nil }
+            return directory.lastPathComponent
+        }.sorted()
     }
 
     private func removeIfPresent(_ url: URL) throws {
