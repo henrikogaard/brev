@@ -1,7 +1,8 @@
 # ADR-0088: Show sign-in codes and links on screen as they arrive
 
-- **Status:** Proposed
+- **Status:** Accepted
 - **Date:** 2026-10-11
+- **Accepted:** 2026-10-15
 - **Deciders:** Henrik
 - **Relates to:** ADR-0006 (telemetry and privacy), ADR-0058 (string
   catalogs), ADR-0074 (source-owned conversations), ADR-0075 (macOS
@@ -18,9 +19,11 @@ moment the message arrives.
 The feature reads message content and acts on it, so it carries more risk
 than a normal notification. It must not surface a spoofed message, silently
 read mail before the user consents, or expose a code outside the user's
-awareness. This ADR remains Proposed. The design direction below records the
-user-approved revisions of 2026-10-15; that approval is not acceptance of this
-ADR or authorization to implement the feature.
+awareness. Henrik accepted the revised design on 2026-10-15 with
+"design look good - continue", following the request for explicit design
+acceptance. This accepts the decisions below, including aligned DMARC-pass-only
+authentication. It does not establish provider evidence, ship the feature,
+authorize merging the PR, or close issue #239.
 
 What the codebase gives us today (checked 2026-10-11):
 
@@ -89,11 +92,10 @@ What the codebase gives us today (checked 2026-10-11):
    views must not type-check provider implementations. Generic IMAP accounts
    without an established trust boundary are unavailable and fail closed.
    Gmail support also requires evidence and is not assumed. For this
-   conservative proposal, eligibility requires a trusted DMARC pass aligned to
+   initial version, eligibility requires a trusted DMARC pass aligned to
    the actual `From` domain; there is no DKIM-only fallback in the first
    version. Missing, malformed, ambiguous, or conflicting trusted results
-   fail closed. This DMARC-only policy is a proposal subject to explicit ADR
-   acceptance, not a separately approved product choice. Authentication is an
+   fail closed. Authentication is an
    anti-spoofing signal, not proof that a link or destination site is safe.
 5. **Body fetch policy.** Only after the explicit opt-in, delivery-provenance,
    recency and folder gates pass, and the account advertises an established
@@ -147,7 +149,7 @@ What the codebase gives us today (checked 2026-10-11):
     from account backup and iCloud key-value sync (ADR-0076). The post-use
     default is to leave the message unchanged; the panel timeout defaults to
     60 seconds.
-12. **Privacy documentation.** When implementation is authorized and begins,
+12. **Privacy documentation.** When body-reading implementation begins,
     update `PRIVACY.md` and ADR-0006 to describe the opt-in-gated use of the
     existing account endpoint and the additional body fetch. This documentation-
     only PR does not claim the feature has shipped and does not update user-
@@ -167,8 +169,8 @@ What the codebase gives us today (checked 2026-10-11):
   attacker can add misleading `Authentication-Results` fields. Only a
   provider adapter that demonstrates the receiving-service boundary can make
   a trusted assessment; absence of evidence means no feature for that account.
-  A trusted DMARC pass aligned to the actual From domain is a conservative
-  initial proposal, while the exact policy still requires ADR acceptance.
+  A trusted DMARC pass aligned to the actual From domain is the accepted
+  initial policy; a DKIM-only fallback is not permitted.
 - **Body fetch over snippet-only.** Snippets are short, so many codes sit
   beyond them. Fetches are bounded by explicit consent, provider trust,
   delivery provenance, recency and folder gates, with consent rechecked before
@@ -180,7 +182,7 @@ What the codebase gives us today (checked 2026-10-11):
 
 ## Consequences
 
-### If accepted
+### Accepted scope
 
 - A new macOS window type, a new controller owned by `AppSession`, and one
   extra body fetch per qualifying, opted-in message on accounts with an
@@ -227,25 +229,19 @@ What the codebase gives us today (checked 2026-10-11):
 - Multi-account bursts could flood the screen. Mitigation: one panel at a
   time, newest replaces older for the same sender, a small queue cap.
 
-## Remaining acceptance and implementation evidence gates
+## Remaining implementation evidence gates
 
-The user-approved direction recorded 2026-10-15 resolves the defaults and
+The accepted design recorded 2026-10-15 resolves the defaults and
 consent scope: separate codes and links opt-ins, both off per account/device;
 leave messages unchanged by default; and a 60-second default timeout. It also
-requires trusted-provider authentication rather than trusting raw headers.
-This direction does not accept the ADR. The specific DMARC-only aligned-pass
-policy remains a conservative proposal and still requires explicit ADR
-acceptance.
+requires trusted-provider authentication rather than trusting raw headers,
+with a DMARC-only aligned-pass policy and no DKIM-only fallback.
 
-Before acceptance or implementation proceeds:
+Before provider-dependent implementation proceeds:
 
-- Henrik must explicitly accept this ADR; its status remains **Proposed**.
 - Each enabled provider must supply evidence for its receiving-service trust
   boundary and forged-result handling. Gmail support is not presumed; generic
   IMAP without evidence remains unavailable.
-- The initial authentication policy must be reviewed as DMARC-pass-only,
-  aligned to the actual From domain, with no DKIM-only fallback. This policy
-  has not been separately approved.
 - Eligibility must prove provider delivery/backfill provenance, or fail
   closed. The ten-minute timestamp filter alone is insufficient.
 - Implementation must verify subscription lifetime, cancellation and consent
@@ -254,6 +250,50 @@ Before acceptance or implementation proceeds:
   consumed. No runtime verification is claimed by this ADR-only PR.
 - Any future iOS notification needs its own accepted privacy design before
   notification contents are authorized.
+
+## Provider readiness audit (2026-10-15)
+
+Read-only audit of the current adapters at `64bf2d9`. No live account, raw
+private message, or sign-in code was used. These findings identify missing
+evidence; they do not establish that a provider can never support this feature.
+
+| Gate | Observed implementation | Result |
+| --- | --- | --- |
+| IMAP authentication provenance | `IMAPMessageBodyParser.parse` and `structuredBody` take the first matching header through `MIMEHeader.value(named:)`. `MessageBody.authenticationResults` is a raw string with no receiving-service provenance. | Not established. A matching `authserv-id` or apparent pass cannot qualify an account. |
+| Gmail authentication provenance | `GmailAPIBackend.body(from:)` uses `headerMap`, which keeps only the first value for each lowercased header name. The documented Message API exposes MIME headers, not a separate trusted DMARC assessment. | Not established. Preserve evidence before interpreting results; API authentication does not authenticate each header's author. |
+| IMAP fresh delivery | `IMAPSMTPBackendState.recordListedMessageIDs` seeds a set and emits previously unseen IDs on subsequent listings. The event carries no delivery/backfill origin. | A later page of old mail can be indistinguishable from arrival. Do not use this event alone. |
+| Gmail fresh delivery | `GmailAPIBackend.reconcile` calls `emitDiff` after either incremental sync or the `fullSyncRequired` fallback. The diff emits IDs missing from the earlier store snapshot. | Store additions are not proof of fresh delivery; the full-sync fallback loses that distinction. |
+| Gmail timestamps | The Message API documents `internalDate` as receipt time for normal SMTP mail, but allows API-migrated mail to use the message's Date header. | Neither `internalDate` nor a recent header timestamp proves delivery origin by itself. |
+| IMAP body storage | `IMAPSMTPBackend.messageBody` writes fetched/parsed bodies through `bodyCache.setBody`; `FileIMAPMessageBodyCache` encodes `MessageBody` as JSON and writes it to disk. | The existing fetch path can persist source message content. Memory-only claims apply to derived candidates, not email bodies. |
+| Gmail body storage | `GmailAPIBackend.body(for:)` stores fetched full messages and calls `readCache.storeBody`; `SQLiteGmailAccountStore.storeBody` writes `body_json` into `gmail_bodies`. | Source content can persist in ordinary mail storage. No non-persisting body-read guarantee. |
+| Closed-window delivery | `BrevMailRootView.mailRootLoadingContent` starts a SwiftUI task which reaches `subscribeToChanges`. | Ownership is verified in source; whether the consumer survives closing the window is not runtime-verified. |
+
+**Current outcome:** neither adapter has demonstrated all required provider
+gates. Do not add a capability flag asserting support, connect a detector to
+`.messagesAdded`, or expose an enabled setting on the strength of this audit.
+The audit does not change ordinary message rendering, fetching, or caching.
+
+To unblock the first implementation slice:
+
+1. Identify a receiving service with documented authentication-header
+   sanitization or authoritative authentication metadata, tied to the
+   configured authenticated account. RFC 8601 describes the required trust
+   boundary; it is not evidence that a particular service implements it.
+2. In an isolated test mailbox, verify how sender-supplied first headers,
+   matching `authserv-id` values, duplicates, conflicting results and missing
+   results are handled. Use only synthetic messages. Record sanitized
+   provenance evidence, never real sign-in content. Local parser fixtures
+   alone cannot establish the server's behavior.
+3. Establish delivery origin through that provider's sync path, including
+   import, backfill, reconnect and history-expiry/full-sync cases. If origin
+   cannot be established, keep the account unsupported.
+4. Only then implement the provider-neutral assessment and eligible-event
+   contract with fail-closed fixtures. Preserve ordered header evidence where
+   needed; retaining more headers alone must not grant trust.
+
+The sources reviewed below do not establish Gmail's forged-header removal
+contract or an authoritative per-message delivery-origin field. This remains
+an evidence blocker, not an assumption to encode in a provider adapter.
 
 ## Implementation slices
 
@@ -287,3 +327,6 @@ Before acceptance or implementation proceeds:
   `MessageHeaderAnalyzer`, `MessageSecurityWarningPolicy`,
   `BrevSettings/NotificationSettings.swift`.
 - RFC 8601 (Authentication-Results), RFC 7489 (DMARC).
+- [RFC 8601 trust boundary and header handling](https://www.rfc-editor.org/rfc/rfc8601.html).
+- [Gmail Message resource, headers and internalDate](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.messages).
+- [Gmail history records and full-sync fallback](https://developers.google.com/workspace/gmail/api/reference/rest/v1/users.history/list).

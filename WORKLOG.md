@@ -5760,3 +5760,13 @@ buttons, and package-aware localization.
 - Verification: `git diff --check`, `git diff --check --cached`, `scripts/lint.sh`, and `scripts/format.sh` passed in that order; format changed 0/1285 files. App tests/builds and runtime focus/subscription/cache checks are skipped; the PR-specific change remains design-only, and no runtime behavior is claimed.
 - Documentation sweep: preserved main's README, CHANGELOG, release and screenshot updates. This PR ships no feature, so it adds no PRIVACY.md or ADR-0006 behavior update; ADR-0088 was already indexed.
 - Handoff: Henrik's explicit ADR acceptance and the listed provider-trust, DMARC-policy, provenance, lifecycle and focus evidence gates remain required before implementation.
+
+## 2026-10-15 — Agent — Issue #239 / ADR-0088 acceptance and provider audit
+
+- Goal: continue after Henrik's "design look good - continue", recording acceptance of the revised ADR and checking the first provider-evidence gate before feature code.
+- Scope: continued the clean `docs/adr-0088-sign-in-code-panel` worktree/PR #241 targeting `main`; no sibling PR, PR merge, or issue closure.
+- Changes: marked ADR-0088 and its index Accepted, including the aligned DMARC-only policy; added a source-linked provider-readiness audit. Both adapters currently discard duplicate authentication results in their body mapping and lack trusted receiving-service provenance. IMAP listing additions and Gmail reconcile diffs lack delivery origin. Gmail's documented timestamp can be selected for migrated mail. None of these facts proves fresh, authenticated delivery.
+- Storage/lifecycle: verified ordinary IMAP file-cache and Gmail SQLite body-write paths in source. The SwiftUI-owned event subscription is identified, but closed-window lifetime remains runtime-unverified. No raw private mail or live sign-in contents were accessed.
+- Verification: `git diff --check`, `scripts/lint.sh`, and `scripts/format.sh` passed in that order; format changed 0/1285 files (174 skipped). TDD, app builds and runtime checks were skipped because only ADR/index/worklog documentation changed; this audit is not live-provider evidence.
+- Documentation sweep: no shipped feature or changed network/storage behavior, so README, CHANGELOG, PRIVACY, ADR-0006, release/QA guides and AGENTS remain unchanged.
+- Handoff: provider-dependent implementation is blocked on receiving-service trust and delivery-origin evidence. Do not add an enabling capability, body-read hook or panel based on raw headers. Isolated synthetic provider validation is the next gate; acceptance is not a relaxation of it. GitHub Projects remains inaccessible with the available token; intended design-review status is In review, not Done.
