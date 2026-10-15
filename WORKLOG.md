@@ -6031,3 +6031,61 @@ buttons, and package-aware localization.
   merges or releases. Documentation sweep: QA/worklog only; no product/privacy/
   architecture/release change, no new blueprint/skill edits or proposals.
   #11/#3 remain acceptance-gated.
+
+## 2026-10-15 — Agent — #11 / PR #245 bounded v7 runtime evidence
+
+- Goal: execute the approved still-open recurrence and Calendar/Tasks retained
+  cache cases at HEAD `3a784926563571a59e60b552ce4e7cf6180436d9`, product
+  unchanged from v6 `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`.
+  Reused app/simulator; no rebuild, reinstall, product or harness edits.
+- Changes: new `docs/qa/pim-parity-v7-2026-10-15.md` and this append only.
+  All v2-v6 evidence preserved. New distinct synthetic sources on ports
+  18646–18649 used existing DAV/VTODO support; no external providers.
+- Runtime failure: distinct daily COUNT5 masters appeared October 16, but
+  October 18 day grid was empty; actual third occurrences were unreachable.
+  Later future edit/delete stopped before any mutation. No DTSTART workaround.
+  Proposed narrow parent-review scope: bounded recurrence projection and
+  occurrence-aware selection; no split/count correctness claim or product fix.
+- Independent runtime: Calendar and Tasks keep-cache list/exact-link reads
+  passed read-only. Active Settings/registry excluded them; markers/cache
+  remained, cursors absent, Tasks toggles/sync inert. Separate delete-cache
+  fixtures removed only local state; missing exact links verified, remote
+  payloads unchanged, retained keep links still readable. First deleted Tasks
+  presentation lacked a captured notice; repeat showed the localized notice.
+  Source-specific measured removal/read windows had zero requests; all new
+  logs had zero PUT/DELETE. Diagnostic GETs attributed separately.
+- AX3: Edit text aligned behind native back chrome did not activate; the tap
+  scrolled to top. After scrolling clear, Edit opened and canceled normally.
+  No persistent untappable overlap reproduced. All prior cache bytes/mtimes,
+  registry and frozen Charlie provider payload preserved. No VoiceOver speech,
+  full AX traversal or fresh motion claim.
+- Limits/inherited: later-scope mutation QA remains blocked. No broad suites,
+  settled Contacts/first-boundary/Copy Link retests, live-provider auth, macOS
+  launch, signed-Keychain persistence or physical-device evidence. Parent
+  reports automatic CI 20 pass/0 fail/0 pending/1 snapshot skip; not rerun.
+  Prior local snapshot mismatches remain unresolved; host drift not proven.
+- Evidence: `/Users/devin/pim-parity-evidence/v7-20261015-a/`, including exact
+  identities/payload hashes/request windows and `final-evidence.json`; single
+  annotated recording
+  `/Users/devin/screencasts/pim-v7-ios-primary/pim-v7-ios-primary-edited.mp4`.
+  Attachment links require session access, not public/portable GitHub embeds.
+- Reusable state: app 24123; prior stubs 5246:18643 / 15161:18644 /
+  23594:18645; new stubs 30916:18646 / 30925:18647 / 30946:18648 /
+  30955:18649. Owned simulator 0AAE0F16-6167-435E-884F-C0BA50E05A67,
+  NB/dark/AX3, original Alice after cancellation. Keep Charlie and new retained
+  caches frozen; new delete-source provider payloads remain on their stubs.
+- Publication: the bounded runtime procedure above is complete at approved
+  checkout HEAD `3a784926563571a59e60b552ce4e7cf6180436d9`, using unchanged
+  product revision `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`; no product change
+  was made. The runtime runner did not run repository publication
+  lint/format/diff checks or commit/push. This documentation-only publication
+  passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record bounded v7 recurrence and retained-cache evidence`, was
+  pushed once to `origin fix/pim-parity-gaps`. No tests were rerun for
+  publication; TDD was skipped as docs-only. No CI dispatch/watch, PR/issue
+  actions, merge, release or Done transition. Documentation sweep: QA/worklog
+  only; no product/privacy/architecture changes or new blueprint/skill edits.
+  Parent decision needed before recurrence implementation; #11/#3 remain
+  acceptance-gated.
