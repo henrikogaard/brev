@@ -5744,3 +5744,30 @@ buttons, and package-aware localization.
 
 - Goal: ship #238 (quiet related-mail bar, clearer nb copy) and #237 (glass envelope icons, Smoke default) as Mac `v0.2.8`. iOS TestFlight is Henrik's, from another Mac.
 - Changes: marketing version 0.2.7 → 0.2.8 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.8. Tag `v0.2.8` follows a green PR-event Build on this commit; main is fast-forwarded to it.
+
+## 2026-10-15 — Agent — #11 / #3 PIM parity evidence v2
+
+- Goal: reconcile genuine Calendar/Contacts acceptance gaps without rebuilding
+  #3, duplicating #239/#14, or implementing Proposed ADR-0084.
+- Changes: added `docs/qa/pim-parity-v2-2026-10-15.md`; preserved the canonical
+  matrix and prior artifacts. Separates fresh automated results from inherited
+  stub/macOS/iOS evidence, live-provider gates and maintainer acceptance;
+  supplies exact isolated runtime plans and credential references, never values.
+  No new reproducible code defect established; documentation-only TDD exception.
+- Verification on base `3a553ddbf754a0adb110598dec48108e8a7e8b41`:
+  BrevCalendar 264 tests/26 suites; focused BrevMail PIM scheduler/RSVP/hint
+  22 tests/3 suites; focused BrevSettings PIM model/row/DAV form 41 tests/3
+  suites. All exited 0. `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`,
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 formatted), and
+  `scripts/privacy-audit.sh` passed. Exact filters/tool versions in the report.
+- Skipped: UI, live Google/DAV CRUD, macOS timed-idle pickup, physical iPhone,
+  full app/release builds and unrelated snapshots: no UI/live approval and
+  dedicated fixture/signing/device acceptance remains outstanding. No snapshot
+  baselines changed. Existing iOS stub 2.7/2.8/4.3 not needlessly repeated.
+- Documentation sweep: QA and this log only; no product, privacy/network,
+  architecture, release/version, or agent-policy change requiring other docs.
+- Handoff: `fix/pim-parity-gaps` targets `main`; stop after first batch push.
+  Draft PR held for parent cost direction because every PR triggers macOS
+  Build/Lint, unlike feature-branch pushes. Board access denied; intended
+  evidence-handoff state In review, never Done. #3/#11 stay open pending
+  provider/platform evidence and Henrik's sign-off. No merge/release requested.
