@@ -5823,3 +5823,41 @@ buttons, and package-aware localization.
   evidence. No views, strings, privacy/network calls, schema, signing,
   README setup or release settings changed. Other recurrence behaviors,
   including future-scope deletion, require separate verification.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM runtime retest v4
+
+- Goal: execute the exact approved first-occurrence regression at
+  `9cb1cd9737ea69dc7068b70e39f42bab749dbe89`, then independent iOS/stub rows.
+- Rebuilt BrevIOS for the existing owned iOS 27 simulator, preserved v3
+  failing server/cache records separately, and reseeded the exact original
+  series. Reconnected process-only mock credentials. Stub cursor expiry/full
+  sync established one server/cache/list record before recording.
+- Runtime: title edit → All Events → title edit → This and Future Events
+  with dates unchanged → explicit sync passed. One record, original UID/key
+  and UTC dates, COUNT=5, no UNTIL; both writes were conditional PUT 204.
+- Stopped independent continuation at a newly reproduced populated AX3
+  event-detail layout defect: fixed horizontal actions fragment Delete and
+  Copy Link into narrow multiline labels. Default Large restores the normal
+  row; AX3 reproduces. Proposed adaptive action layout requires parent review;
+  no product edits made by the runner.
+- Added `docs/qa/pim-parity-v4-2026-10-15.md` with exact identity proof,
+  primary annotated recording, screenshot comparison, gaps and reusable
+  processes. Devin attachments require session access; they are not public
+  or portable GitHub embeds. Historical v2/v3 evidence remains intact.
+- Remaining NB/Contacts/reduced-motion/VoiceOver/source-failure/cache-removal
+  rows paused under the first-defect rule. No macOS launch, live-provider
+  retry, signed-Keychain or physical-device claim. Settled automated and
+  parent focused checks inherited rather than rerun.
+- Publication: the runtime runner did not run repository lint/format/diff
+  checks or commit/push; its runtime checks are reported above. This
+  publication phase passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record recurrence retest and accessibility findings`, was pushed
+  once to `origin fix/pim-parity-gaps`. Tested source revision
+  `9cb1cd9737ea69dc7068b70e39f42bab749dbe89` is distinct from the publication
+  commit; no CI was dispatched or watched. App PID 7682 and stub PID
+  5246/port 18643 remain running; owned simulator is left English/dark/AX3.
+- Documentation sweep: QA and worklog only; no product/privacy/architecture/
+  release/agent-policy change or new skill/blueprint edits. Parent decides
+  the AX3 proposal and resumption; #11/#3 remain acceptance-gated.
