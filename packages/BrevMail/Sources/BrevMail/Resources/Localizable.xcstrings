@@ -15111,13 +15111,24 @@
         }
       }
     },
-    "Folders and shortcuts cannot be saved as attachments.": {
+    "Folders, shortcuts, and unsupported Google file types cannot be saved as attachments.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mapper og snarveier kan ikke lagres som vedlegg."
+            "value": "Mapper, snarveier og Google-filtyper som ikke støttes, kan ikke lagres som vedlegg."
+          }
+        }
+      }
+    },
+    "Confirm the attachment in Google's picker before saving.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Bekreft vedlegget i Googles filvelger før du lagrer."
           }
         }
       }
@@ -15129,6 +15140,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Google Disk kunne ikke godkjenne denne filen."
+          }
+        }
+      }
+    },
+    "Google Drive could not be enabled for this account.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Google Disk kunne ikke aktiveres for denne kontoen."
           }
         }
       }

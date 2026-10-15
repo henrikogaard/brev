@@ -16,24 +16,37 @@ import BrevThemes
 import Foundation
 import SwiftUI
 
-/// The save-to-Drive sheet (#14): opt-in on first use, a Google
-/// folder picker for the destination, an explicit conflict choice
-/// when Brev already created a same-named file there, then the
-/// upload.
+/// Presents the shared Google Drive save flow for event and mail attachments.
 struct GoogleDriveSaveSheet: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dismiss) private var dismiss
 
-    let accountID: BrevAccount.ID
-    let feature: GoogleDriveFeature
-    /// The attachment filename and bytes to upload.
-    let filename: String
-    let mimeType: String
-    let data: Data
-    let onSaved: (GoogleDriveClient.File) -> Void
-    let originalFileID: String?
-    let isValid: () -> Bool
+    private let feature: GoogleDriveFeature
+    @State private var model: GoogleDriveSaveModel
 
+    init(
+        accountID: BrevAccount.ID,
+        feature: GoogleDriveFeature,
+        payload: GoogleDriveStagedPayload,
+        onSaved: @escaping (GoogleDriveClient.File) -> Void,
+        onCancel: (() -> Void)? = nil,
+        isValid: @escaping () -> Bool = { true }
+    ) {
+        self.feature = feature
+        _model = State(
+            initialValue: GoogleDriveSaveModel(
+                accountID: accountID,
+                payload: payload,
+                files: feature.files,
+                isValid: isValid,
+                feature: feature,
+                onSaved: onSaved,
+                onCancel: onCancel
+            )
+        )
+    }
+
+    /// Compatibility initializer for callers that stage bytes directly.
     init(
         accountID: BrevAccount.ID,
         feature: GoogleDriveFeature,
@@ -44,16 +57,21 @@ struct GoogleDriveSaveSheet: View {
         originalFileID: String? = nil,
         isValid: @escaping () -> Bool = { true }
     ) {
-        self.accountID = accountID
-        self.feature = feature
-        self.filename = filename
-        self.mimeType = mimeType
-        self.data = data
-        self.onSaved = onSaved
-        self.originalFileID = originalFileID
-        self.isValid = isValid
+        self.init(
+            accountID: accountID,
+            feature: feature,
+            payload: GoogleDriveStagedPayload(
+                filename: filename,
+                mimeType: mimeType,
+                bytes: data,
+                sourceFileID: originalFileID
+            ),
+            onSaved: onSaved,
+            isValid: isValid
+        )
     }
 
+    /// Compatibility initializer for existing mail sheet call sites.
     init(
         account: BrevAccount,
         feature: GoogleDriveFeature,
@@ -76,51 +94,41 @@ struct GoogleDriveSaveSheet: View {
         )
     }
 
-    private enum Step {
-        case optIn
-        case pickingFolder
-        case uploading(folderID: String?)
-    }
-
-    @State private var step: Step = .optIn
-    @State private var accessToken: String?
-    @State private var errorMessage: String?
-    /// A same-named Brev-created file in the chosen folder.
-    @State private var conflict: GoogleDriveClient.File?
-    @State private var pendingFolderID: String?
-    /// Byte-level upload progress, 0...1; nil while indeterminate.
-    @State private var uploadProgress: Double?
-    /// The in-flight upload task so Cancel aborts it for real.
-    @State private var uploadTask: Task<Void, Never>?
-    @State private var operationGeneration = 0
-    @State private var saveModel: GoogleDriveSaveModel?
-
     var body: some View {
         GoogleDriveSheetChrome(title: "Save to Google Drive") {
             content
         }
-        .task { await advanceIfEnabled() }
-        .onDisappear { cancelOperation() }
+        .task { model.start() }
+        .onDisappear {
+            model.cancel()
+        }
+        .onChange(of: model.phase) { _, phase in
+            if phase == .finished {
+                dismiss()
+            }
+        }
         .alert(
             String(localized: "A file with this name exists", bundle: .module),
             isPresented: Binding(
-                get: { conflict != nil },
-                set: { if !$0 { conflict = nil } }
+                get: { model.conflict != nil },
+                set: { _ in }
             )
         ) {
-            if let conflict,
+            if let conflict = model.conflict,
                GoogleDriveSaveModel.canReplace(
                    conflictID: conflict.id,
-                   originalFileID: originalFileID
+                   originalFileID: model.originalFileID
                ) {
                 Button(String(localized: "Replace", bundle: .module)) {
-                    startUpload(replacing: conflict.id)
+                    model.replaceConflict()
                 }
             }
             Button(String(localized: "Keep Both", bundle: .module)) {
-                startUpload(replacing: nil)
+                model.keepBoth()
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
+            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                model.cancelConflict()
+            }
         } message: {
             Text(
                 "Brev can replace the copy it uploaded earlier, or keep both files.",
@@ -131,221 +139,79 @@ struct GoogleDriveSaveSheet: View {
 
     @ViewBuilder
     private var content: some View {
-        switch step {
+        switch model.phase {
         case .optIn:
             GoogleDriveOptInPrompt(
-                accountID: accountID,
-                feature: feature
+                accountID: model.accountID,
+                feature: feature,
+                operationOwned: true
             ) {
-                Task { await advanceIfEnabled() }
+                model.enable()
             }
-        case .pickingFolder:
-            if let accessToken {
-                GoogleDrivePickerView(
-                    configuration: .init(
-                        accessToken: accessToken,
-                        developerKey: feature.pickerDeveloperKey,
-                        appID: feature.pickerAppID,
-                        mode: .folder
-                    ),
-                    onPicked: { picks in
-                        guard let folder = picks.first,
-                              GoogleDriveSaveModel.isValidFolder(folder)
-                        else {
-                            errorMessage = String(
-                                localized: "Choose a valid Drive folder.",
-                                bundle: .module
-                            )
-                            return
-                        }
-                        startConflictCheck(folder: folder)
-                    },
-                    onCancel: { dismiss() },
-                    onError: { _ in
-                        errorMessage = String(
-                            localized: "Google Drive could not prepare this file.",
-                            bundle: .module
-                        )
-                    }
-                )
-                .overlay(alignment: .bottom) {
-                    if let errorMessage {
-                        Text(errorMessage)
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.danger.color)
-                            .padding(BrevSpacing.sm)
-                    }
+        case .working:
+            ProgressView()
+        case .retry:
+            Button(String(localized: "Retry", bundle: .module)) {
+                model.start()
+            }
+            .buttonStyle(.borderedProminent)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .picking(let accessToken):
+            let pickerToken = model.pickerOperationToken
+            GoogleDrivePickerView(
+                configuration: .init(
+                    accessToken: accessToken,
+                    developerKey: feature.pickerDeveloperKey,
+                    appID: feature.pickerAppID,
+                    mode: .folder
+                ),
+                onPicked: { picks in
+                    model.pickedFolder(
+                        picks.first,
+                        pickerToken: pickerToken
+                    )
+                },
+                onCancel: cancelAndDismiss,
+                onError: { _ in
+                    model.reportPickerFailure(pickerToken: pickerToken)
                 }
-            } else {
-                ProgressView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+            )
+            .id(pickerToken)
         case .uploading:
             VStack(spacing: BrevSpacing.md) {
-                if let uploadProgress {
-                    ProgressView(value: uploadProgress)
+                if let progress = model.progress {
+                    ProgressView(value: progress)
                         .frame(maxWidth: 240)
                 } else {
                     ProgressView()
                 }
                 Text(
-                    "Uploading \(filename)…",
+                    "Uploading \(model.payload.filename ?? "")…",
                     bundle: .module
                 )
                 .brevFont(.body)
                 .foregroundStyle(theme.textSecondary.color)
                 Button(String(localized: "Cancel", bundle: .module)) {
-                    cancelOperation()
-                    uploadProgress = nil
-                    step = .pickingFolder
+                    cancelAndDismiss()
                 }
                 .buttonStyle(.bordered)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+        case .conflict:
+            ProgressView()
+        case .finished:
+            ProgressView()
+        }
+        if let error = model.errorMessage {
+            Text(error)
+                .brevFont(.caption)
+                .foregroundStyle(theme.danger.color)
+                .padding(BrevSpacing.sm)
         }
     }
 
-    private func advanceIfEnabled() async {
-        guard await feature.isEnabled(accountID: accountID),
-              let provider = feature.accessToken
-        else { return }
-        do {
-            accessToken = try await provider(accountID)
-            guard await isCurrentAccount() else { return }
-            step = .pickingFolder
-        } catch {
-            errorMessage = String(
-                localized: "Google Drive could not authorize this file.",
-                bundle: .module
-            )
-        }
-    }
-
-    /// Checks for a same-named Brev-created file in the destination
-    /// before uploading so the user picks Replace or Keep Both.
-    private func startConflictCheck(folder: GoogleDrivePick) {
-        operationGeneration &+= 1
-        let operation = operationGeneration
-        uploadTask?.cancel()
-        uploadTask = Task {
-            await checkConflict(folder: folder, operation: operation)
-        }
-    }
-
-    private func checkConflict(
-        folder: GoogleDrivePick,
-        operation: Int
-    ) async {
-        guard let files = feature.files,
-              await isCurrentAccount()
-        else { return }
-        pendingFolderID = folder.id
-        let model = GoogleDriveSaveModel(
-            accountID: accountID,
-            filename: filename,
-            mimeType: mimeType,
-            data: data,
-            originalFileID: originalFileID,
-            files: files,
-            isValid: isValid
-        )
-        saveModel = model
-        do {
-            let result = try await model.inspectFolder(folder)
-            guard operationGeneration == operation,
-                  await isCurrentAccount()
-            else { return }
-            conflict = result
-            if conflict == nil {
-                startUpload(replacing: nil)
-            }
-        } catch {
-            guard operationGeneration == operation else { return }
-            errorMessage = (error as? GoogleDriveSaveError)?.errorDescription
-                ?? String(
-                    localized: "Google Drive could not save this file. Try again.",
-                    bundle: .module
-                )
-        }
-    }
-
-    /// Starts the upload on a stored task so the Cancel button can
-    /// abort it; byte progress feeds the determinate bar.
-    private func startUpload(replacing fileID: String?) {
-        guard let folderID = pendingFolderID, !folderID.isEmpty,
-              fileID.map({
-                  GoogleDriveSaveModel.canReplace(
-                      conflictID: $0,
-                      originalFileID: originalFileID
-                  )
-              }) ?? true
-        else { return }
-        operationGeneration &+= 1
-        let operation = operationGeneration
-        uploadProgress = nil
-        uploadTask = Task { await upload(replacing: fileID, operation: operation) }
-    }
-
-    private func upload(replacing fileID: String?, operation: Int) async {
-        guard feature.files != nil,
-              await isCurrentAccount(),
-              operationGeneration == operation,
-              let folderID = pendingFolderID, !folderID.isEmpty
-        else {
-            errorMessage = String(
-                localized: "Google Drive could not save this file. Try again.",
-                bundle: .module
-            )
-            return
-        }
-        step = .uploading(folderID: folderID)
-        let onProgress: @Sendable (Int64, Int64) -> Void = { sent, total in
-            guard total > 0 else { return }
-            Task { @MainActor in
-                guard operationGeneration == operation, isValid() else { return }
-                uploadProgress = Double(sent) / Double(total)
-            }
-        }
-        do {
-            guard let saveModel else { throw GoogleDriveSaveError.sourceUnavailable }
-            let file = try await saveModel.upload(
-                folderID: folderID,
-                replacing: fileID,
-                onProgress: onProgress
-            )
-            guard operationGeneration == operation,
-                  await isCurrentAccount()
-            else { return }
-            onSaved(file)
-            dismiss()
-        } catch is CancellationError {
-            guard operationGeneration == operation else { return }
-        } catch {
-            guard operationGeneration == operation else { return }
-            errorMessage = (error as? GoogleDriveSaveError)?.errorDescription
-                ?? String(
-                    localized: "Google Drive could not save this file. Try again.",
-                    bundle: .module
-                )
-            step = .pickingFolder
-        }
-    }
-
-    private func isCurrentAccount() async -> Bool {
-        guard isValid(),
-              await feature.isEligible(accountID: accountID),
-              await feature.isEnabled(accountID: accountID)
-        else { return false }
-        return isValid()
-    }
-
-    private func cancelOperation() {
-        operationGeneration &+= 1
-        uploadTask?.cancel()
-        uploadTask = nil
-        saveModel?.cancel()
-        saveModel = nil
-        uploadProgress = nil
-        conflict = nil
+    private func cancelAndDismiss() {
+        model.cancel()
+        dismiss()
     }
 }

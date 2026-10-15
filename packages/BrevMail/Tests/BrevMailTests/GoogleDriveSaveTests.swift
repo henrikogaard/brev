@@ -2,7 +2,8 @@
  Brev - Mail Client for macOS and iOS
  Copyright (c) 2026 Brev contributors
 
- Permission is hereby granted, free of charge (the "Software"), to deal
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
  in the Software without restriction, including without limitation the rights
  to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  copies of the Software, and to permit persons to whom the Software is
@@ -87,10 +88,13 @@ struct GoogleDriveSaveTests {
         )
         let model = GoogleDriveSaveModel(
             accountID: "acct1",
-            filename: "Agenda.pdf",
-            mimeType: "application/pdf",
-            data: Data([1]),
-            files: files
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1])
+            ),
+            files: files,
+            feature: Self.enabledFeature()
         )
         let folder = GoogleDrivePick(
             id: "folder-1",
@@ -118,11 +122,14 @@ struct GoogleDriveSaveTests {
         )
         let model = GoogleDriveSaveModel(
             accountID: "acct1",
-            filename: "Agenda.pdf",
-            mimeType: "application/pdf",
-            data: Data([1]),
-            originalFileID: "source",
-            files: files
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1]),
+                sourceFileID: "source"
+            ),
+            files: files,
+            feature: Self.enabledFeature()
         )
         await #expect(throws: GoogleDriveSaveError.cannotReplaceSource) {
             try await model.upload(folderID: "folder-1", replacing: "source")
@@ -148,10 +155,13 @@ struct GoogleDriveSaveTests {
         )
         let model = GoogleDriveSaveModel(
             accountID: "acct1",
-            filename: "Agenda.pdf",
-            mimeType: "application/pdf",
-            data: Data([1]),
-            files: files
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1])
+            ),
+            files: files,
+            feature: Self.enabledFeature()
         )
         let folder = GoogleDrivePick(
             id: "folder-1",
@@ -168,8 +178,55 @@ struct GoogleDriveSaveTests {
         #expect(model.progress == 1)
     }
 
+    @Test("a picked conflict replacement survives alert dismissal")
+    func pickedConflictReplacementCannotBeCancelledByDismissal() async throws {
+        let conflict = GoogleDriveClient.File(
+            id: "brev-copy",
+            name: "Agenda.pdf",
+            mimeType: "application/pdf"
+        )
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "replacement",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            ),
+            conflict: conflict
+        )
+        var savedFileID: String?
+        let model = GoogleDriveSaveModel(
+            accountID: "acct1",
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1])
+            ),
+            files: files,
+            feature: Self.enabledFeature(),
+            onSaved: { savedFileID = $0.id }
+        )
+        let folder = GoogleDrivePick(
+            id: "folder-1",
+            name: "Events",
+            mimeType: "application/vnd.google-apps.folder",
+            isFolder: true
+        )
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.pickedFolder(folder, pickerToken: model.pickerOperationToken)
+        await waitUntil { model.phase == .conflict(conflict) }
+        model.replaceConflict()
+        model.cancelConflict()
+        await waitUntil { model.phase == .finished }
+
+        #expect(await files.counts().update == 1)
+        #expect(savedFileID == "replacement")
+        #expect(model.payload.bytes == nil)
+    }
+
     @Test("Keep Both creates rather than replacing a conflict")
-    func keepsBothFiles() async throws {
+    func keepsBothFiles() async {
         let files = RecordingDriveFiles(
             metadata: GoogleDriveClient.File(
                 id: "new",
@@ -184,23 +241,35 @@ struct GoogleDriveSaveTests {
         )
         let model = GoogleDriveSaveModel(
             accountID: "acct1",
-            filename: "Agenda.pdf",
-            mimeType: "application/pdf",
-            data: Data([1]),
-            files: files
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1])
+            ),
+            files: files,
+            feature: Self.enabledFeature()
         )
-        _ = try await model.inspectFolder(
-            GoogleDrivePick(
-                id: "folder-1",
-                name: "Events",
-                mimeType: "application/vnd.google-apps.folder",
-                isFolder: true
-            )
+        let folder = GoogleDrivePick(
+            id: "folder-1",
+            name: "Events",
+            mimeType: "application/vnd.google-apps.folder",
+            isFolder: true
         )
-        _ = try await model.upload(folderID: "folder-1", replacing: nil)
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.pickedFolder(folder, pickerToken: model.pickerOperationToken)
+        await waitUntil {
+            if case .conflict = model.phase { return true }
+            return false
+        }
+        model.keepBoth()
+        model.cancelConflict()
+        await waitUntil { model.phase == .finished }
+
         let counts = await files.counts()
         #expect(counts.create == 1)
         #expect(counts.update == 0)
+        #expect(model.payload.bytes == nil)
     }
 
     @Test("provider errors remain retryable")
@@ -215,15 +284,65 @@ struct GoogleDriveSaveTests {
         )
         let model = GoogleDriveSaveModel(
             accountID: "acct1",
-            filename: "Agenda.pdf",
-            mimeType: "application/pdf",
-            data: Data([1]),
-            files: files
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([1])
+            ),
+            files: files,
+            feature: Self.enabledFeature()
         )
         await #expect(throws: GoogleDriveSaveTestFailure.failed) {
             try await model.upload(folderID: "folder-1", replacing: nil)
         }
         _ = try await model.upload(folderID: "folder-1", replacing: nil)
+        #expect(await files.counts().create == 2)
+    }
+
+    @Test("an upload error returns the shared flow to a retryable picker")
+    func orchestratedUploadErrorIsRetryable() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "new",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            ),
+            createFailures: 1
+        )
+        let payload = GoogleDriveStagedPayload(
+            filename: "Agenda.pdf",
+            mimeType: "application/pdf",
+            bytes: Data([1])
+        )
+        let model = GoogleDriveSaveModel(
+            accountID: "acct1",
+            payload: payload,
+            files: files,
+            feature: Self.enabledFeature()
+        )
+        let folder = GoogleDrivePick(
+            id: "folder-1",
+            name: "Events",
+            mimeType: "application/vnd.google-apps.folder",
+            isFolder: true
+        )
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.pickedFolder(folder, pickerToken: model.pickerOperationToken)
+        await waitUntil { model.errorMessage != nil }
+
+        #expect(model.phase == .picking(accessToken: "token"))
+        #expect(model.errorMessage == "Google Drive could not save this file. Try again.")
+        #expect(model.pickerOperationToken != nil)
+        #expect(payload.bytes == Data([1]))
+        model.pickedFolder(folder, pickerToken: model.pickerOperationToken)
+        await waitUntil { model.phase == .finished }
+
+        #expect(payload.bytes == nil)
+        #expect(payload.filename == nil)
+        #expect(payload.mimeType == nil)
+        #expect(model.errorMessage == nil)
         #expect(await files.counts().create == 2)
     }
 
@@ -238,24 +357,97 @@ struct GoogleDriveSaveTests {
             ),
             createGate: gate
         )
-        let model = GoogleDriveSaveModel(
-            accountID: "acct1",
+        let payload = GoogleDriveStagedPayload(
             filename: "Agenda.pdf",
             mimeType: "application/pdf",
-            data: Data([1]),
-            files: files
+            bytes: Data([1])
         )
+        let model = GoogleDriveSaveModel(
+            accountID: "acct1",
+            payload: payload,
+            files: files,
+            feature: Self.enabledFeature()
+        )
+        let progressCallbacks = GoogleDriveProgressCounter()
         let pending = Task {
-            try await model.upload(folderID: "folder-1", replacing: nil)
+            try await model.upload(
+                folderID: "folder-1",
+                replacing: nil,
+                onProgress: { _, _ in progressCallbacks.increment() }
+            )
         }
         await gate.waitUntilEntered()
         model.cancel()
+        #expect(model.phase == .finished)
+        #expect(model.progress == nil)
+        #expect(payload.bytes == nil)
+        #expect(payload.filename == nil)
+        #expect(payload.mimeType == nil)
         await gate.release()
         await #expect(throws: CancellationError.self) {
             try await pending.value
         }
-        let retried = try await model.upload(folderID: "folder-1", replacing: nil)
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
+        #expect(model.progress == nil)
+        #expect(progressCallbacks.value == 0)
+        await #expect(throws: GoogleDriveSaveError.sourceUnavailable) {
+            try await model.upload(folderID: "folder-1", replacing: nil)
+        }
+        let freshModel = GoogleDriveSaveModel(
+            accountID: "acct1",
+            payload: GoogleDriveStagedPayload(
+                filename: "Agenda.pdf",
+                mimeType: "application/pdf",
+                bytes: Data([2])
+            ),
+            files: files,
+            feature: Self.enabledFeature()
+        )
+        let retried = try await freshModel.upload(
+            folderID: "folder-1",
+            replacing: nil
+        )
         #expect(retried.id == "new")
         #expect(await files.counts().create == 2)
+    }
+
+    private static func enabledFeature() -> GoogleDriveFeature {
+        GoogleDriveFeature(configuration: { _ in
+            GoogleOAuthAccountConfiguration(
+                subject: "subject",
+                email: "user@gmail.com",
+                grantedScopes: [GoogleDriveClient.scope],
+                platform: .macOS
+            )
+        }, accessToken: { _ in "token" }, pickerDeveloperKey: "key", pickerAppID: "app")
+    }
+
+    private func waitUntil(
+        _ condition: @MainActor () -> Bool
+    ) async {
+        for _ in 0 ..< 1000 {
+            if condition() { return }
+            await Task.yield()
+        }
+        Issue.record("Timed out waiting for Drive save state")
+    }
+}
+
+final class GoogleDriveProgressCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var count = 0
+
+    var value: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return count
+    }
+
+    func increment() {
+        lock.lock()
+        defer { lock.unlock() }
+        count += 1
     }
 }

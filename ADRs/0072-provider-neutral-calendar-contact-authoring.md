@@ -1182,7 +1182,9 @@ grant.
   uploads a copy to a user-selected Drive folder. It uses the linked
   Google account's existing `drive.file` opt-in and never calls a
   calendar writer, mutates the event link, or requires event-write
-  permission.
+  permission. The flow requires explicit intent, source-qualified
+  eligibility, and Picker authorization for the exact file; generic
+  external and CalDAV attachment URLs are not downloadable.
 
 ### #81 — ICS parse/write formatter caching (2026-09-22, BrevCalendar)
 

@@ -73,6 +73,31 @@ struct GoogleDriveClientTests {
         )
     }
 
+    @Test("workspace MIME semantics include Google Apps types except folders")
+    func workspaceDocumentMimeSemantics() {
+        #expect(
+            GoogleDriveClient.File(
+                id: "form",
+                name: "Form",
+                mimeType: "application/vnd.google-apps.form"
+            ).isWorkspaceDocument
+        )
+        #expect(
+            GoogleDriveClient.File(
+                id: "shortcut",
+                name: "Shortcut",
+                mimeType: "application/vnd.google-apps.shortcut"
+            ).isWorkspaceDocument
+        )
+        #expect(
+            !GoogleDriveClient.File(
+                id: "folder",
+                name: "Folder",
+                mimeType: "application/vnd.google-apps.folder"
+            ).isWorkspaceDocument
+        )
+    }
+
     @Test("metadata requests the file fields and decodes size")
     func metadataRequest() async throws {
         let stub = StubTransport()

@@ -55,6 +55,414 @@ struct GoogleDriveEventSaveTests {
         #expect(GoogleDriveEventSaveModel.authorizesPickerID("file_1", for: "https://drive.google.com/file/d/file_1"))
     }
 
+    @Test("explicit intent reaches Picker before touching Drive files")
+    func pickerAuthorizesBeforeMetadataAndDownload() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let payload = GoogleDriveStagedPayload()
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files,
+            payload: payload
+        )
+
+        #expect(await files.counts().metadata == 0)
+        model.start()
+        await waitUntil { model.phase == .picking(accessToken: "token") }
+        #expect(await files.counts().metadata == 0)
+
+        model.picked([
+            GoogleDrivePick(
+                id: "other",
+                name: "Other",
+                mimeType: "application/pdf"
+            ),
+        ])
+        await waitUntil { model.errorMessage != nil }
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+        #expect(model.authorizedFileID == nil)
+
+        model.cancel()
+        #expect(model.phase == .finished)
+        #expect(payload.bytes == nil)
+        #expect(payload.filename == nil)
+        #expect(payload.mimeType == nil)
+        #expect(model.authorizedFileID == nil)
+    }
+
+    @Test("a matching Picker event authorizes and stages only that file")
+    func matchingPickerEventStagesTheAuthorizedFile() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let payload = GoogleDriveStagedPayload()
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files,
+            payload: payload
+        )
+        model.start()
+        await waitUntil { model.phase == .picking(accessToken: "token") }
+        model.picked([
+            GoogleDrivePick(id: "file_1", name: "Agenda.pdf", mimeType: "application/pdf"),
+        ])
+        await waitUntil { model.phase == .saving }
+
+        #expect(model.authorizedFileID == "file_1")
+        #expect(payload.filename == "Agenda.pdf")
+        #expect(payload.bytes == Data([1, 2, 3]))
+        #expect(await files.counts().metadata == 1)
+        #expect(await files.counts().download == 1)
+        model.cancel()
+        #expect(payload.bytes == nil)
+        #expect(model.authorizedFileID == nil)
+    }
+
+    @Test("no Drive grant leaves the flow at opt-in without file calls")
+    func missingGrantDoesNotReadMetadata() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(scopes: ["openid"]),
+            files: files
+        )
+        model.start()
+        await waitUntil { model.phase == .optIn }
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("metadata and download require a matching Picker authorization")
+    func metadataAndPreparationRequirePickerAuthorization() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files
+        )
+
+        await #expect(throws: GoogleDriveEventSaveError.pickerAuthorizationRequired) {
+            _ = try await model.loadMetadata()
+        }
+        await #expect(throws: GoogleDriveEventSaveError.pickerAuthorizationRequired) {
+            try await model.prepare()
+        }
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("superseded validation cannot publish late Picker state")
+    func supersededValidationCannotPublishPickerState() async {
+        let gate = GoogleDriveSaveTestGate()
+        let grant = GoogleDriveSaveTestGrant(
+            firstConfigurationGate: gate
+        )
+        await grant.enable()
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let feature = GoogleDriveFeature(
+            configuration: { _ in await grant.configuration() },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: feature,
+            files: files
+        )
+        model.start()
+        await gate.waitUntilEntered()
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        let currentPickerToken = model.pickerOperationToken
+        await gate.release()
+        for _ in 0 ..< 10 {
+            await Task.yield()
+        }
+
+        #expect(model.phase == .picking(accessToken: "token"))
+        #expect(model.pickerOperationToken == currentPickerToken)
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("a mismatched Picker result is rejected before file services")
+    func mismatchedPickerResultMakesNoServiceCalls() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files
+        )
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.picked(
+            [GoogleDrivePick(id: "other", name: "Other.pdf", mimeType: "application/pdf")],
+            pickerToken: model.pickerOperationToken
+        )
+        await waitUntil { model.errorMessage != nil }
+
+        #expect(model.authorizedFileID == nil)
+        #expect(model.pickerOperationToken != nil)
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("a revoked grant after Picker returns to opt-in without file calls")
+    func revokedGrantStopsPickerOrchestration() async {
+        let grant = GoogleDriveSaveTestGrant()
+        await grant.enable()
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let feature = GoogleDriveFeature(
+            configuration: { _ in await grant.configuration() },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: feature,
+            files: files
+        )
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        let token = model.pickerOperationToken
+        await grant.revoke()
+        model.picked(
+            [GoogleDrivePick(id: "file_1", name: "Agenda.pdf", mimeType: "application/pdf")],
+            pickerToken: token
+        )
+        await waitUntil { model.phase == .optIn && model.errorMessage != nil }
+
+        #expect(model.authorizedFileID == nil)
+        #expect(model.pickerOperationToken == nil)
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("provider error details are replaced with a generic message")
+    func unknownProviderFailureUsesGenericFallback() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            ),
+            metadataFailure: .failed
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files
+        )
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        let pickerToken = model.pickerOperationToken
+        model.picked(
+            [GoogleDrivePick(id: "file_1", name: "Agenda.pdf", mimeType: "application/pdf")],
+            pickerToken: pickerToken
+        )
+        await waitUntil { model.errorMessage != nil }
+
+        #expect(
+            model.errorMessage
+                == String(
+                    localized: "Google Drive could not prepare this file.",
+                    bundle: .module
+                )
+        )
+        #expect(model.errorMessage != GoogleDriveSaveTestFailure.failed.localizedDescription)
+    }
+
+    @Test("cancellation during eligibility validation cannot start file calls")
+    func cancellationDuringValidationStopsFlow() async {
+        let gate = GoogleDriveSaveTestGate()
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let feature = GoogleDriveFeature(
+            configuration: { _ in
+                await gate.pause()
+                return GoogleOAuthAccountConfiguration(
+                    subject: "subject",
+                    email: "user@gmail.com",
+                    grantedScopes: [GoogleDriveClient.scope],
+                    platform: .macOS
+                )
+            },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: feature,
+            files: files
+        )
+        model.start()
+        await gate.waitUntilEntered()
+        model.cancel()
+        await gate.release()
+        await waitUntil { model.phase == .finished }
+
+        let counts = await files.counts()
+        #expect(counts.metadata == 0)
+        #expect(counts.download == 0)
+        #expect(counts.export == 0)
+    }
+
+    @Test("dismissed opt-in cannot restart, but a fresh flow can")
+    func dismissedEnableDoesNotRestartAndFreshFlowCanPrepare() async {
+        let gate = GoogleDriveSaveTestGate()
+        let grant = GoogleDriveSaveTestGrant()
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let feature = GoogleDriveFeature(
+            configuration: { _ in await grant.configuration() },
+            enablement: { _ in
+                await gate.pause()
+                await grant.enable()
+            },
+            accessToken: { _ in "token" },
+            files: files,
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+        let oldPayload = GoogleDriveStagedPayload()
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: feature,
+            payload: oldPayload
+        )
+        model.start()
+        await waitUntil { model.phase == .optIn }
+        model.enable()
+        await gate.waitUntilEntered()
+        model.cancel()
+        await gate.release()
+        await waitUntil { feature.isEnabling == false }
+        model.start()
+
+        #expect(model.phase == .finished)
+        #expect(model.pickerOperationToken == nil)
+        #expect(oldPayload.bytes == nil)
+        #expect(await files.counts().metadata == 0)
+
+        let freshPayload = GoogleDriveStagedPayload()
+        let freshModel = GoogleDriveEventSaveModel(
+            attachment: model.attachment,
+            accountID: "acct1",
+            feature: feature,
+            payload: freshPayload
+        )
+        freshModel.start()
+        await waitUntil { freshModel.pickerOperationToken != nil }
+        let pickerToken = freshModel.pickerOperationToken
+        freshModel.picked(
+            [GoogleDrivePick(id: "file_1", name: "Agenda.pdf", mimeType: "application/pdf")],
+            pickerToken: pickerToken
+        )
+        await waitUntil { freshModel.phase == .saving }
+
+        #expect(freshPayload.bytes == Data([1, 2, 3]))
+        #expect(await files.counts().metadata == 1)
+        #expect(await files.counts().download == 1)
+        freshModel.cancel()
+    }
+
     @Test("preparation reads only the parsed ID and downloads the metadata file")
     func preparesBinaryFromDrive() async throws {
         let files = RecordingDriveFiles(
@@ -76,13 +484,20 @@ struct GoogleDriveEventSaveTests {
             files: files
         )
 
-        #expect(await files.counts().metadata == 0)
-        let prepared = try await model.prepare()
+        let payload = model.payload
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.picked(
+            [GoogleDrivePick(id: "file_1", name: "Agenda.pdf", mimeType: "application/pdf")],
+            pickerToken: model.pickerOperationToken
+        )
+        await waitUntil { model.phase == .saving }
         let counts = await files.counts()
-        #expect(prepared.filename == "Agenda.pdf")
-        #expect(prepared.mimeType == "application/pdf")
-        #expect(prepared.data == Data([1, 2, 3]))
-        #expect(prepared.originalFileID == "file_1")
+        #expect(payload.filename == "Agenda.pdf")
+        #expect(payload.mimeType == "application/pdf")
+        #expect(payload.bytes == Data([1, 2, 3]))
+        #expect(payload.sourceFileID == "file_1")
+        #expect(model.authorizedFileID == "file_1")
         #expect(counts.metadata == 1)
         #expect(counts.download == 1)
         #expect(counts.export == 0)
@@ -112,13 +527,29 @@ struct GoogleDriveEventSaveTests {
                 for: "application/vnd.google-apps.document"
             ).first
         )
-        await #expect(throws: GoogleDriveEventSaveError.exportChoiceRequired) {
-            try await model.prepare()
+        let payload = model.payload
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        model.picked(
+            [
+                GoogleDrivePick(
+                    id: "doc_1",
+                    name: "Plan",
+                    mimeType: "application/vnd.google-apps.document"
+                ),
+            ],
+            pickerToken: model.pickerOperationToken
+        )
+        await waitUntil {
+            if case .exportChoice = model.phase { return true }
+            return false
         }
-        let prepared = try await model.prepare(exportFormat: format)
+        model.chooseExport(format)
+        await waitUntil { model.phase == .saving }
         let counts = await files.counts()
-        #expect(prepared.filename == "Plan.pdf")
-        #expect(prepared.mimeType == format.mimeType)
+        #expect(payload.filename == "Plan.pdf")
+        #expect(payload.mimeType == format.mimeType)
+        #expect(payload.sourceFileID == "doc_1")
         #expect(counts.download == 0)
         #expect(counts.export == 1)
     }
@@ -140,6 +571,7 @@ struct GoogleDriveEventSaveTests {
             feature: enabledFeature(),
             files: files
         )
+        #expect(await authorize(model, fileID: "file_1"))
         await #expect(throws: GoogleDriveEventSaveError.mismatchedFile) {
             try await model.prepare()
         }
@@ -170,6 +602,7 @@ struct GoogleDriveEventSaveTests {
                 feature: enabledFeature(),
                 files: files
             )
+            #expect(await authorize(model, fileID: "file_1"))
             await #expect(throws: GoogleDriveEventSaveError.unsupportedFile) {
                 try await model.prepare()
             }
@@ -200,25 +633,234 @@ struct GoogleDriveEventSaveTests {
             files: files,
             isValid: { sourceIsValid }
         )
+        #expect(await authorize(model, fileID: "file_1"))
         let pending = Task { try await model.prepare() }
         await gate.waitUntilEntered()
         sourceIsValid = false
         await gate.release()
-        await #expect(throws: GoogleDriveEventSaveError.sourceUnavailable) {
+        await #expect(throws: CancellationError.self) {
             try await pending.value
         }
         #expect(await files.counts().download == 0)
     }
 
-    private func enabledFeature() -> GoogleDriveFeature {
-        GoogleDriveFeature { _ in
-            GoogleOAuthAccountConfiguration(
-                subject: "subject",
-                email: "user@gmail.com",
-                grantedScopes: [GoogleDriveClient.scope],
-                platform: .macOS
-            )
+    @Test("invalid live source prevents opt-in network work")
+    func invalidSourceDoesNotEnableDrive() async {
+        let calls = GoogleDriveEnableCallCounter()
+        var sourceIsValid = false
+        let feature = GoogleDriveFeature(
+            configuration: { _ in
+                GoogleOAuthAccountConfiguration(
+                    subject: "subject",
+                    email: "user@gmail.com",
+                    grantedScopes: [GoogleDriveClient.scope],
+                    platform: .macOS
+                )
+            },
+            enablement: { _ in await calls.increment() },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: feature,
+            isValid: { sourceIsValid }
+        )
+
+        model.enable()
+        for _ in 0 ..< 20 {
+            await Task.yield()
         }
+
+        #expect(await calls.value == 0)
+        sourceIsValid = true
+        model.cancel()
+    }
+
+    private func enabledFeature(
+        scopes: Set<String> = [GoogleDriveClient.scope]
+    ) -> GoogleDriveFeature {
+        GoogleDriveFeature(
+            configuration: { _ in
+                GoogleOAuthAccountConfiguration(
+                    subject: "subject",
+                    email: "user@gmail.com",
+                    grantedScopes: scopes,
+                    platform: .macOS
+                )
+            },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+    }
+
+    private func authorize(
+        _ model: GoogleDriveEventSaveModel,
+        fileID: String
+    ) async -> Bool {
+        await model.authorize(
+            pick: GoogleDrivePick(
+                id: fileID,
+                name: "Selected",
+                mimeType: "application/pdf"
+            )
+        )
+    }
+
+    private func waitUntil(
+        _ condition: @MainActor () -> Bool
+    ) async {
+        for _ in 0 ..< 1000 {
+            if condition() { return }
+            await Task.yield()
+        }
+    }
+}
+
+@Suite("GoogleDrivePickerFailureRetry")
+@MainActor
+struct GoogleDrivePickerFailureRetryTests {
+    @Test("event Picker failure waits for explicit Continue")
+    func eventPickerFailureWaitsForExplicitRetry() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "file_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let payload = GoogleDriveStagedPayload(
+            filename: "stale.pdf",
+            mimeType: "application/pdf",
+            bytes: Data([1]),
+            sourceFileID: "stale-file"
+        )
+        let model = GoogleDriveEventSaveModel(
+            attachment: PIMEventAttachment(
+                url: "https://drive.google.com/file/d/file_1"
+            ),
+            accountID: "acct1",
+            feature: enabledFeature(),
+            files: files,
+            payload: payload
+        )
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        let failedToken = model.pickerOperationToken
+        model.reportPickerFailure(pickerToken: failedToken)
+
+        #expect(model.phase == .intent)
+        #expect(model.errorMessage == "Google Drive could not prepare this file.")
+        #expect(model.pickerOperationToken == nil)
+        #expect(model.authorizedFileID == nil)
+        #expect(payload.bytes == nil)
+        #expect(payload.filename == nil)
+        #expect(payload.mimeType == nil)
+        #expect(payload.sourceFileID == nil)
+        model.reportPickerFailure(pickerToken: failedToken)
+
+        await settle()
+        #expect(model.phase == .intent)
+        #expect(model.pickerOperationToken == nil)
+        await expectNoFileCalls(files.counts())
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        #expect(model.pickerOperationToken != failedToken)
+        await expectNoFileCalls(files.counts())
+        model.cancel()
+    }
+
+    @Test("shared Picker failure waits for explicit Retry")
+    func sharedPickerFailureWaitsForExplicitRetry() async {
+        let files = RecordingDriveFiles(
+            metadata: GoogleDriveClient.File(
+                id: "copy_1",
+                name: "Agenda.pdf",
+                mimeType: "application/pdf"
+            )
+        )
+        let payload = GoogleDriveStagedPayload(
+            filename: "Agenda.pdf",
+            mimeType: "application/pdf",
+            bytes: Data([1, 2, 3])
+        )
+        let model = GoogleDriveSaveModel(
+            accountID: "acct1",
+            payload: payload,
+            files: files,
+            feature: enabledFeature()
+        )
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        let failedToken = model.pickerOperationToken
+        model.reportPickerFailure(pickerToken: failedToken)
+
+        #expect(model.phase == .retry)
+        #expect(model.pickerOperationToken == nil)
+        #expect(model.errorMessage == "Google Drive could not save this file. Try again.")
+        #expect(payload.bytes == Data([1, 2, 3]))
+        model.reportPickerFailure(pickerToken: failedToken)
+        await settle()
+        #expect(model.phase == .retry)
+        #expect(model.pickerOperationToken == nil)
+        await expectNoFileCalls(files.counts())
+
+        model.start()
+        await waitUntil { model.pickerOperationToken != nil }
+        #expect(model.pickerOperationToken != failedToken)
+        await expectNoFileCalls(files.counts())
+        model.cancel()
+    }
+
+    private func enabledFeature() -> GoogleDriveFeature {
+        GoogleDriveFeature(
+            configuration: { _ in
+                GoogleOAuthAccountConfiguration(
+                    subject: "subject",
+                    email: "user@gmail.com",
+                    grantedScopes: [GoogleDriveClient.scope],
+                    platform: .macOS
+                )
+            },
+            accessToken: { _ in "token" },
+            pickerDeveloperKey: "key",
+            pickerAppID: "app"
+        )
+    }
+
+    private func waitUntil(
+        _ condition: @MainActor () -> Bool
+    ) async {
+        for _ in 0 ..< 1000 {
+            if condition() { return }
+            await Task.yield()
+        }
+    }
+
+    private func settle() async {
+        for _ in 0 ..< 20 {
+            await Task.yield()
+        }
+    }
+
+    private func expectNoFileCalls(
+        _ counts: RecordingDriveFiles.Counts,
+        sourceLocation: SourceLocation = #_sourceLocation
+    ) {
+        #expect(counts.metadata == 0, sourceLocation: sourceLocation)
+        #expect(counts.download == 0, sourceLocation: sourceLocation)
+        #expect(counts.export == 0, sourceLocation: sourceLocation)
+        #expect(counts.existingFile == 0, sourceLocation: sourceLocation)
+        #expect(counts.create == 0, sourceLocation: sourceLocation)
+        #expect(counts.update == 0, sourceLocation: sourceLocation)
     }
 }
 
@@ -227,6 +869,7 @@ actor RecordingDriveFiles: DriveFileServing {
         var metadata = 0
         var download = 0
         var export = 0
+        var existingFile = 0
         var create = 0
         var update = 0
         var lastAccountID: String?
@@ -238,6 +881,7 @@ actor RecordingDriveFiles: DriveFileServing {
     private let response: GoogleDriveClient.File
     private let createGate: GoogleDriveSaveTestGate?
     private let metadataGate: GoogleDriveSaveTestGate?
+    private let metadataFailure: GoogleDriveSaveTestFailure?
     private let conflictResponse: GoogleDriveClient.File?
     private var count = Counts()
     private var createFailuresRemaining: Int
@@ -246,12 +890,14 @@ actor RecordingDriveFiles: DriveFileServing {
         metadata: GoogleDriveClient.File,
         createGate: GoogleDriveSaveTestGate? = nil,
         metadataGate: GoogleDriveSaveTestGate? = nil,
+        metadataFailure: GoogleDriveSaveTestFailure? = nil,
         conflict: GoogleDriveClient.File? = nil,
         createFailures: Int = 0
     ) {
         response = metadata
         self.createGate = createGate
         self.metadataGate = metadataGate
+        self.metadataFailure = metadataFailure
         conflictResponse = conflict
         createFailuresRemaining = createFailures
     }
@@ -268,6 +914,7 @@ actor RecordingDriveFiles: DriveFileServing {
         if let metadataGate {
             await metadataGate.pause()
         }
+        if let metadataFailure { throw metadataFailure }
         return response
     }
 
@@ -301,10 +948,10 @@ actor RecordingDriveFiles: DriveFileServing {
         count.create += 1
         count.lastAccountID = accountID
         count.lastFolderID = parentFolderID
-        onProgress?(1, 1)
         if let createGate {
             await createGate.pause()
         }
+        onProgress?(1, 1)
         if createFailuresRemaining > 0 {
             createFailuresRemaining -= 1
             throw GoogleDriveSaveTestFailure.failed
@@ -317,6 +964,7 @@ actor RecordingDriveFiles: DriveFileServing {
         inFolderID folderID: String?,
         accountID: BrevAccount.ID
     ) async throws -> GoogleDriveClient.File? {
+        count.existingFile += 1
         count.lastAccountID = accountID
         return conflictResponse
     }
@@ -336,8 +984,34 @@ actor RecordingDriveFiles: DriveFileServing {
     }
 }
 
-enum GoogleDriveSaveTestFailure: Error, Equatable {
+enum GoogleDriveSaveTestFailure: Error, Equatable, LocalizedError {
     case failed
+
+    var errorDescription: String? { "Private provider response details" }
+}
+
+actor GoogleDriveSaveTestGrant {
+    private var isEnabled = false
+    private var firstConfigurationGate: GoogleDriveSaveTestGate?
+
+    init(firstConfigurationGate: GoogleDriveSaveTestGate? = nil) {
+        self.firstConfigurationGate = firstConfigurationGate
+    }
+
+    func configuration() async -> GoogleOAuthAccountConfiguration {
+        let gate = firstConfigurationGate
+        firstConfigurationGate = nil
+        if let gate { await gate.pause() }
+        return GoogleOAuthAccountConfiguration(
+            subject: "subject",
+            email: "user@gmail.com",
+            grantedScopes: isEnabled ? [GoogleDriveClient.scope] : [],
+            platform: .macOS
+        )
+    }
+
+    func enable() { isEnabled = true }
+    func revoke() { isEnabled = false }
 }
 
 actor GoogleDriveSaveTestGate {
@@ -363,5 +1037,13 @@ actor GoogleDriveSaveTestGate {
     func release() {
         releaseWaiter?.resume()
         releaseWaiter = nil
+    }
+}
+
+actor GoogleDriveEnableCallCounter {
+    private(set) var value = 0
+
+    func increment() {
+        value += 1
     }
 }

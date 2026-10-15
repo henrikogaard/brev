@@ -40,6 +40,9 @@ public struct CalendarEventDetailView: View {
     let onDelete: ((CalendarRecurringEditScope?) -> Void)?
     /// Saves one supported Drive attachment into a user-selected folder.
     let onSaveAttachment: ((PIMEventAttachment) -> Void)?
+    /// The source-qualified attachments resolved for the live selection.
+    /// nil preserves the standalone detail view's test/caller behavior.
+    let eligibleSaveAttachments: Set<PIMEventAttachment>?
     /// Whether the event belongs to a repeating series — the delete
     /// confirmation asks for a scope only then.
     let isRecurring: Bool
@@ -53,6 +56,7 @@ public struct CalendarEventDetailView: View {
         onEdit: (() -> Void)? = nil,
         onDelete: ((CalendarRecurringEditScope?) -> Void)? = nil,
         onSaveAttachment: ((PIMEventAttachment) -> Void)? = nil,
+        eligibleSaveAttachments: Set<PIMEventAttachment>? = nil,
         isRecurring: Bool = false
     ) {
         self.event = event
@@ -61,6 +65,7 @@ public struct CalendarEventDetailView: View {
         self.onEdit = onEdit
         self.onDelete = onDelete
         self.onSaveAttachment = onSaveAttachment
+        self.eligibleSaveAttachments = eligibleSaveAttachments
         self.isRecurring = isRecurring
     }
 
@@ -499,6 +504,7 @@ public struct CalendarEventDetailView: View {
                         }
                         .buttonStyle(.plain)
                         if let onSaveAttachment,
+                           eligibleSaveAttachments?.contains(attachment) ?? true,
                            GoogleDriveEventSaveModel.fileID(
                                in: attachment.url
                            ) != nil {

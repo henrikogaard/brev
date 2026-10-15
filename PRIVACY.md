@@ -559,7 +559,8 @@ supported Drive-backed event attachment, Brev asks Google Picker to
 authorize that exact file, reads its metadata, downloads its bytes
 (or exports a Workspace document in the format you choose), and
 uploads a copy to the folder you select. This leaves the event link
-unchanged and does not require calendar write access.
+unchanged and does not require calendar write access. Generic external
+and CalDAV attachment URLs are not downloaded.
 
 **How to disable:** Do not choose the Drive actions. The grant can be
 removed in your Google account's third-party access settings; Brev
