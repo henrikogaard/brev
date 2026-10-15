@@ -5799,3 +5799,27 @@ buttons, and package-aware localization.
 - Documentation sweep: QA and worklog only; no product, privacy, architecture,
   release/version or agent-policy change. Owned app/stub remain running;
   exact PIDs, UDID, port and paths are in the report.
+
+## 2026-10-15 — Agent — #11 / PR #245 recurrence boundary correction
+
+- Goal: address the first-occurrence duplicate reproduced in v3 without
+  replacing historical evidence or changing provider/network boundaries.
+- Changes: keep the original event in the editor draft; use the ordinary
+  series update/move path when truncation would precede its start. For a
+  later split, retain the unedited original master rather than applying
+  the new series' title and dates to past occurrences. Added first-boundary
+  and original-field regression assertions.
+- Verification: the new first-occurrence regression failed against HEAD
+  source with three expected issues (split/update count, recurrence count,
+  and saved identity); after restoring the authored sources byte-for-byte,
+  the two future-scope tests passed and the combined editing/draft suites
+  passed (22 tests). `scripts/format.sh` formatted 0/1285 files (175
+  skipped); `scripts/lint.sh` passed.
+- Not verified: UI, live-provider, macOS isolation, recurrence expansion,
+  and future-scope deletion. These remain outside this verification; no
+  runtime acceptance is claimed.
+- Documentation sweep: CHANGELOG and ADR-0072 reflect the behavior fix;
+  v3 only corrects publication/access wording and retains its failure
+  evidence. No views, strings, privacy/network calls, schema, signing,
+  README setup or release settings changed. Other recurrence behaviors,
+  including future-scope deletion, require separate verification.

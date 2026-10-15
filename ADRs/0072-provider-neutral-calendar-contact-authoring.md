@@ -739,7 +739,11 @@ grant.
 - Recurring edits ask for a scope: All Events patches the master;
   This and Future Events truncates the master's RRULE UNTIL to the
   day before the edited occurrence and creates a new series with a
-  fresh UID. Single-occurrence exceptions stay deferred — they need
+  fresh UID. If that boundary precedes the original series start,
+  there is no earlier series to retain: update or move the original
+  record using the All Events path instead. Later splits retain the
+  original master fields and apply edits only to the new series.
+  Single-occurrence exceptions stay deferred — they need
   multi-component VEVENT resources on CalDAV and recurringEventId on
   Google.
 - A move between calendars is create-in-target then delete-original:

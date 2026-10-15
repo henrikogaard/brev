@@ -23,8 +23,10 @@ full platform/provider acceptance; #11 and #3 remain open.
 
 The unchanged v2 report was the execution plan. Historical reports, artifacts
 and the inherited automated baseline were preserved, not rerun. No product
-source, entitlement, signing configuration, CI, issue, PR, commit, push or
-release change was made. #14 Drive scope was not tested.
+source, entitlement, signing configuration, CI, issue or release change
+was made during runtime execution. The evidence and WORKLOG were subsequently
+committed and pushed to PR #245 after lint/format checks. #14 Drive scope was
+not tested.
 
 ## Failure F1 — future scope at the first occurrence
 
@@ -53,7 +55,7 @@ Reproduction, using only the owned synthetic fixture:
 6. Click Sync calendars now. Both rows remain. This persistence check was
    the final runtime action; testing stopped.
 
-| 🔴 Before future-scope action | 🟢 After action — observed failure, not a fix |
+| Before future-scope action | After action — observed failure, not a fix |
 | --- | --- |
 | ![Initial populated calendar](https://app.devin.ai/attachments/a3f6762b-f959-4c45-842a-f57db6d16556/01-calendar-en-light.png) | ![Duplicate rows persist after sync](https://app.devin.ai/attachments/302c3ce1-7607-4388-9350-a7e217c9c3db/03-future-scope-duplicate-after-sync.png) |
 | ![Valid five-occurrence series before](https://app.devin.ai/attachments/cee84528-ee72-4538-b028-7f132fdb23a2/04-before-future-scope-detail.png) | ![Old series ends before start](https://app.devin.ai/attachments/14a185bc-af66-43fa-8b9d-3e413dc73577/05-invalid-until-detail.png) |
@@ -158,7 +160,8 @@ Local failing records were deliberately retained for reproduction.
 
 ## Evidence paths
 
-All paths below are local artifacts; the embedded image URLs above are portable.
+All paths below are local artifacts; the embedded image URLs above require
+access to the Devin session and are not public repository assets.
 Base directory: `/Users/devin/pim-parity-evidence/v3-20261015-a/`.
 
 - Primary annotated recording:
@@ -205,4 +208,6 @@ No blueprint was changed. Suggested testing-skill note is outside the repo:
 Documentation sweep: new QA report and appended worklog only. No shipping,
 privacy/network, architecture, release or policy change requiring README,
 CHANGELOG, PRIVACY, ADR or AGENTS edits. No tests, lint, formatting, snapshots
-or unrelated suites were rerun.
+or unrelated suites were rerun during runtime execution. Evidence publication
+then ran `scripts/lint.sh`, `scripts/format.sh` and `git diff --check`; all
+passed, with no files reformatted.

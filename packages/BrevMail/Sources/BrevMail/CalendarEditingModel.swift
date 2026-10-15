@@ -442,11 +442,10 @@ public final class CalendarEditingModel {
         else {
             throw PIMEventWriteService.WriteError.notWritable
         }
-        var master = draft.makeEvent(
-            sourceID: originalTarget.source.id,
-            collectionID: originalTarget.collection.id
-        )
-        guard let rule = master.recurrenceRule else {
+        guard var master = draft.originalEvent,
+              let originalStart = master.start,
+              let rule = master.recurrenceRule
+        else {
             throw PIMEventWriteService.WriteError.invalidResponse
         }
         let boundary = Calendar.current.date(
@@ -454,6 +453,10 @@ public final class CalendarEditingModel {
             value: -1,
             to: draft.start
         ) ?? draft.start
+        // No original occurrence survives this boundary; retain the series identity.
+        guard boundary >= originalStart else {
+            return try await performSave(draft, target: target, scope: .series)
+        }
         master.recurrenceRule = ICSParser.RecurrenceRule(
             frequency: rule.frequency,
             interval: rule.interval,

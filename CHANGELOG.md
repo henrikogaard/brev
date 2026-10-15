@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Calendar: saving “This and Future Events” at the start of a series
+  updates the existing series instead of leaving a duplicate with an
+  invalid end date. Later splits preserve the original series' fields.
+
 ### Added
 
 - README shows demo screenshots of the macOS and iOS apps in light and dark
