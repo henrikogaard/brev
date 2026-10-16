@@ -302,6 +302,21 @@ columns: `Backlog`, `Ready`, `In progress`, `In review`, and `Done`.
   `git branch --show-current`, and check whether the branch is pushed / has a
   PR when the repo uses GitHub.
 
+### Evidence reports need new evidence
+
+Issues that wait on live QA (for example #11 and #14) are blocked by
+fixtures, not by documentation. Do not write a new versioned QA report
+(`docs/qa/*-vN-*.md`), restate an existing matrix, or post a long status
+comment unless the session produced new evidence:
+
+- a run against a live provider, real DAV server, physical device, or
+  native app build that was not available before, or
+- a code change that alters a matrix row's result.
+
+When nothing new was run, post one short issue comment naming the
+blocking fixture or decision and stop. Re-running automated suites on
+unchanged code is not new evidence.
+
 ### Pull-request shape and stacks
 
 - One PR should deliver one coherent outcome. Before creating a branch or PR,
