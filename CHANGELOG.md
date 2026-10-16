@@ -19,6 +19,9 @@ All notable changes to Brev are documented here.
 - Contacts detail actions stack vertically when their labels cannot fit,
   while standard contact labels are localized and arbitrary custom labels
   retain their original spelling.
+- Settings → Calendar & Contacts lists each collection on one line with a
+  trailing switch, gives source switches their own rows, moves cached
+  counts into the status line, and drops the empty separator rows on iOS.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an

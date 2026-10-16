@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-10-16 — Devin — Calendar & Contacts settings layout
+
+- Goal: Henrik flagged the Settings → Calendar & Contacts sources pane as
+  rough during the #11/#14 live QA setup.
+- Changed: `PIMSourcesSettingsView` gives each source switch its own
+  full-width row, puts collections under a kind heading ("Calendars",
+  "Contact groups", "Task lists") as single-line rows with inline
+  primary/read-only markers, uses one switch size, folds the cached count
+  into the status line, and skips the macOS-only Divider inside the iOS
+  Form. Fixed a stray BEL control character in the nb "Background sync
+  for %@" accessibility label. Google system contact groups stay listed
+  (Henrik's choice).
+- Verified: `swift test --package-path packages/BrevSettings --filter
+  PIMSource` (35 passed); iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.pim-sources-{light,dark,ax3}` baselines; macOS layout checked in a
+  live Brev Test build; lint and format clean.
+- Note: on-state switches use `theme.accent`, which is greyscale in the
+  default theme, so on and off differ mostly by knob position. Not
+  changed here; it is a theme-wide decision.
+
 ## 2026-10-16 — Devin — Calendar deep-link notice
 
 - Goal: Henrik saw "That event is no longer synced" stuck on an empty

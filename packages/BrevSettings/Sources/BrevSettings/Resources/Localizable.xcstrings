@@ -1685,7 +1685,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bakgrunns\u0007dsynkronisering for %@"
+            "value": "Bakgrunnssynkronisering for %@"
           }
         }
       }
@@ -7786,6 +7786,39 @@
           "stringUnit": {
             "state": "translated",
             "value": "Forhåndsvisningslinjer"
+          }
+        }
+      }
+    },
+    "Calendars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalendere"
+          }
+        }
+      }
+    },
+    "Contact groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontaktgrupper"
+          }
+        }
+      }
+    },
+    "Task lists": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister"
           }
         }
       }
