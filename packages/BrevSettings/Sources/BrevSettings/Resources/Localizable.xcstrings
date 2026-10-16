@@ -7790,6 +7790,39 @@
         }
       }
     },
+    "Calendars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalendere"
+          }
+        }
+      }
+    },
+    "Contact groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontaktgrupper"
+          }
+        }
+      }
+    },
+    "Task lists": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister"
+          }
+        }
+      }
+    },
     "Primary": {
       "extractionState": "manual",
       "localizations": {
