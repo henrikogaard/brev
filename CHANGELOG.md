@@ -4,8 +4,16 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Fixed
+
+- Drive attachment uploads use correctly separated multipart parts. Cancelling
+  a transfer stays a cancellation, and a later upload no longer reuses an
+  invalidated session.
+
 ### Added
 
+- Calendar event attachments backed by Google Drive can be saved as a
+  copy to a folder you choose. The event keeps its original link.
 - README shows demo screenshots of the macOS and iOS apps in light and dark
   mode, kept in `docs/screenshots/` and switched by `prefers-color-scheme`.
 
