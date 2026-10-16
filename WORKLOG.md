@@ -5858,3 +5858,36 @@ buttons, and package-aware localization.
 - Verification: BrevSettings focused filter passed (40 tests/4 suites); BrevMail `SignInCodeDetectorTests` passed (8 tests/1 suite); `bash scripts/test-release-dmg.sh` passed once for stable and nightly artifacts (stapler/Gatekeeper checks skipped by the script); lint passed; format changed 0/1298 files; `git diff --check` passed.
 - Limits: no broad suites, app/runtime checks, or CI watch. The prior intermittent CI DMG negative-fixture failure remains unexplained; this local pass does not establish its cause.
 - Handoff: parent owns PR description and post-push CI follow-up.
+
+## 2026-10-15 — Devin — #11 / ADR-0089 bounded recurrence design
+
+- Goal: publish the bounded recurrence design Henrik explicitly approved,
+  in a separate ADR-only draft PR targeting `main`.
+- Changes: ADR-0089 and its index entry record a lossless eligibility
+  descriptor, bounded local projection, explicit unsupported/incomplete
+  coverage, stable occurrence/master separation and separately verified
+  future-scope writes. ADR-0088 remains reserved in PR #241.
+- Evidence: v7 on PR #245 reproduced missing later COUNT5 occurrences;
+  source review confirmed raw-record-only browsing and a summary-only,
+  lossy recurrence parser. No implementation or additional runtime evidence
+  is claimed by this design.
+- Verification: `git diff --check`, local ADR-link/index validation,
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`, and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (SwiftFormat lint:
+  0/1294 files require formatting; format: 0/1294 files formatted;
+  SwiftLint strict, coverage self-test and ADR check passed). TDD,
+  package suites, builds and UI testing were not run because this is an
+  ADR-only change.
+- Documentation sweep: ADR/index/worklog only. No product, setup, privacy,
+  network, release or workflow change; README, CHANGELOG, PRIVACY and AGENTS
+  need no update. Existing QA evidence and fixtures remain untouched.
+- Handoff: design accepted; draft PR and its automatic CI authorized.
+  No implementation, merge, issue closure, Done transition or release.
+
+## 2026-10-16 — Agent — PR #241 accepted ADR-0089 integration
+
+- Goal: integrate approved `main` `effa78b` into the sign-in branch at `c3d38ab`; this is a docs-only integration, not a design or implementation change.
+- Merge: resolved only `ADRs/README.md` and `WORKLOG.md`. Kept Accepted ADR-0088 and ADR-0089 rows in ascending order and removed the obsolete ADR-0088 reservation note. Preserved both existing Worklog histories; ADR-0089 remains byte-identical to `main`. All non-document files match `c3d38ab` and the lead-reviewed merge tree `22c844d`.
+- Verification: local links in ADR-0088, ADR-0089 and the index passed; all 89 ADR rows are unique and ascending. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
+- Limits: no Swift/package tests, DMG rerun, app/runtime/UI or CI checks; prior focused tests and DMG evidence remain frozen at `c3d38ab`. No product files changed.
+- Handoff: parent owns review, PR description and CI; no PR/issue updates or PR merge performed.
