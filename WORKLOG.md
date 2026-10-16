@@ -7,6 +7,46 @@
 - Changed: `AGENTS.md` gains "Evidence reports need new evidence".
 - Verified: docs-only; `git diff --check` clean. No code touched.
 
+## 2026-10-16 — Devin — #11
+
+- Goal: implement ADR-0089 bounded calendar occurrence projection so
+  repeating events render every date in the agenda, day, week, and
+  month surfaces instead of only the stored DTSTART.
+- Changed:
+  - `BrevCalendar`: `PIMRecurrenceDescriptor` (lossless RRULE/RDATE/
+    EXDATE + DTSTART basis), `recurrenceDescriptor` and
+    `seriesMasterItemKey` on `PIMEvent`, `ICSParser`/`PIMDAVEventSync`
+    descriptor capture, `GoogleCalendarEventSync` descriptor mapping
+    and cancelled-instance markers, the strict `PIMRecurrenceValidator`,
+    and the bounded `PIMOccurrenceProjector` with stable row IDs,
+    DST-safe generation, and defensive bounds.
+  - `BrevMail`: browsing model, grid layout, presentation helpers, and
+    agenda/day/week/month views now consume `PIMEventOccurrence`;
+    occurrence-aware selection retains the authoritative master; the
+    agenda is a navigable 30-day range; later occurrences are read-only
+    with a localized note and incomplete series get a coverage note
+    (en + nb).
+  - Docs: ADR-0089 implementation-status section, CHANGELOG entry.
+- Review fixes applied: occurrence indices are ordinal (`emitted`
+  position), so a weekly BYDAY starting mid-week and skipped monthly
+  dates keep index 0 on the series start; the detail pane renders the
+  selected occurrence's projected date via `occurrence:` on
+  `CalendarEventDetailView`; the xcstrings file was restored and now
+  carries only the two new keys (+22/0).
+- Verified: `swift test --package-path packages/BrevCalendar` — 297
+  tests green; BrevMail filtered suites (CalendarBrowsingModel,
+  CalendarGridLayout, CalendarEventPresentation,
+  PIMNativeChromePresentation, CalendarEditingModel, plus the two new
+  detail-note snapshots — 81 tests) green; `scripts/lint.sh` and
+  `scripts/format.sh` clean; `git diff --check` clean; unsigned xcodebuild
+  builds of BrevMacOS and BrevIOS succeeded in the worktree.
+- Snapshot baselines: the pre-existing `detail-*` and `month-*`
+  references also mismatch on a clean `main` checkout on this host, so
+  they were not re-recorded; only the four new note snapshots
+  (`detail-later-occurrence-*`, `detail-incomplete-series-*`) were
+  recorded.
+- Next: commit + PR when the maintainer allows pushing.
+
 ## 2026-10-13 — Agent — Demo screenshots
 
 - Goal: save demo screenshots of the iOS and macOS apps to the repository.

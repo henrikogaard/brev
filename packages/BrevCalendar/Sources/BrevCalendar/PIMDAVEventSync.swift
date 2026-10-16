@@ -323,7 +323,8 @@ public struct PIMDAVEventSync: Sendable {
                 recurrenceRule: parsed.recurrenceRule,
                 recurrenceID: parsed.recurrenceID,
                 rawPayload: calendarData,
-                providerUpdatedAt: parsed.lastModified
+                providerUpdatedAt: parsed.lastModified,
+                recurrenceDescriptor: parsed.recurrenceDescriptor
             )
         }
     }

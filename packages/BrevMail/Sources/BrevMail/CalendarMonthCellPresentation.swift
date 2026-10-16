@@ -28,12 +28,12 @@ enum CalendarMonthCellPresentation {
     ///
     /// - Parameters:
     ///   - day: The cell's day.
-    ///   - events: Events covering the day, in display order.
+    ///   - events: Occurrence rows covering the day, in display order.
     ///   - isToday: Prefixes "Today" so the highlight is not colour-only.
     ///   - calendar: Supplies the locale, time zone and calendar system.
     static func accessibilityLabel(
         day: Date,
-        events: [PIMEvent],
+        events: [PIMEventOccurrence],
         isToday: Bool,
         calendar: Calendar
     ) -> String {
@@ -48,7 +48,7 @@ enum CalendarMonthCellPresentation {
         }
 
         var titles = events.prefix(maxSpokenTitles).map {
-            $0.summary ?? CalendarEventPresentation.untitledTitle()
+            $0.event.summary ?? CalendarEventPresentation.untitledTitle()
         }
         let overflow = events.count - maxSpokenTitles
         if overflow > 0 {

@@ -36,20 +36,37 @@ public enum CalendarEventPresentation {
         return calendar.startOfDay(for: start)
     }
 
-    /// Compact row text: "All day", "9:00 – 10:30", or a start-only time
-    /// when the provider sent no end.
+    /// The day an occurrence buckets under — same rule as the
+    /// event-based variant, reading the occurrence's displayed bounds
+    /// (ADR-0089).
+    public static func dayStart(
+        for occurrence: PIMEventOccurrence,
+        calendar: Calendar
+    ) -> Date? {
+        guard let start = occurrence.start else { return nil }
+        if occurrence.event.isAllDay {
+            var utc = calendar
+            utc.timeZone = TimeZone(identifier: "UTC") ?? utc.timeZone
+            return utc.startOfDay(for: start)
+        }
+        return calendar.startOfDay(for: start)
+    }
+
+    /// Compact row text for an occurrence row: "All day",
+    /// "9:00 – 10:30", or a start-only time when the record carries no
+    /// end. Reads the occurrence's bounds, not the master's.
     public static func agendaTimeText(
-        for event: PIMEvent,
+        for occurrence: PIMEventOccurrence,
         calendar: Calendar
     ) -> String {
-        if event.isAllDay {
+        if occurrence.event.isAllDay {
             return String(localized: "All day", bundle: .module)
         }
-        guard let start = event.start else {
+        guard let start = occurrence.start else {
             return String(localized: "No time", bundle: .module)
         }
         let startText = start.formatted(.dateTime.hour().minute())
-        guard let end = event.end,
+        guard let end = occurrence.end,
               calendar.isDate(start, inSameDayAs: end)
         else {
             return startText
@@ -57,17 +74,17 @@ public enum CalendarEventPresentation {
         return "\(startText) – \(end.formatted(.dateTime.hour().minute()))"
     }
 
-    /// VoiceOver label for a grid event block or chip: title, time range and
-    /// location, e.g. "Standup, 9:00 – 9:30, Room 4" (audit finding P3).
+    /// VoiceOver label for a grid occurrence block or chip: title, time
+    /// range and location, e.g. "Standup, 9:00 – 9:30, Room 4".
     public static func accessibilityLabel(
-        for event: PIMEvent,
+        for occurrence: PIMEventOccurrence,
         calendar: Calendar
     ) -> String {
         var parts = [
-            event.summary ?? untitledTitle(),
-            agendaTimeText(for: event, calendar: calendar)
+            occurrence.event.summary ?? untitledTitle(),
+            agendaTimeText(for: occurrence, calendar: calendar)
         ]
-        if let location = event.location, !location.isEmpty {
+        if let location = occurrence.event.location, !location.isEmpty {
             parts.append(location)
         }
         return parts.joined(separator: ", ")
@@ -101,6 +118,25 @@ public enum CalendarEventPresentation {
             start: start,
             end: event.end,
             isAllDay: event.isAllDay,
+            separator: "–"
+        )
+    }
+
+    /// Long-form range for the detail header of an occurrence row —
+    /// the projected bounds, not the master's stored ones (ADR-0089).
+    public static func detailRangeText(
+        for occurrence: PIMEventOccurrence
+    ) -> String {
+        guard let start = occurrence.start else {
+            return String(
+                localized: "No scheduled time",
+                bundle: .module
+            )
+        }
+        return CalendarEventRangeFormatter.string(
+            start: start,
+            end: occurrence.end,
+            isAllDay: occurrence.event.isAllDay,
             separator: "–"
         )
     }
@@ -270,6 +306,35 @@ public enum CalendarEventPresentation {
             of: trimmed,
             options: [.caseInsensitive, .diacriticInsensitive]
         ) != nil
+    }
+
+    /// Whether the row is a projected occurrence past the series
+    /// start — single-occurrence mutation is unavailable there
+    /// (ADR-0089 §4).
+    public static func isLaterOccurrence(
+        _ occurrence: PIMEventOccurrence
+    ) -> Bool {
+        (occurrence.occurrenceIndex ?? 0) > 0
+    }
+
+    /// The detail-pane note for a selected later occurrence: mutation
+    /// of a single later date is unavailable (ADR-0089 §4).
+    public static func laterOccurrenceNote() -> String {
+        String(
+            localized:
+            "Changing a single later date of a repeating event isn't available yet. Select the first date to change the whole series.",
+            bundle: .module
+        )
+    }
+
+    /// The detail-pane note for a series that cannot be fully
+    /// projected (unsupported rule, exceptions, or bounds reached).
+    public static func incompleteSeriesNote() -> String {
+        String(
+            localized:
+            "Brev can't show every date of this repeating event yet.",
+            bundle: .module
+        )
     }
 
     /// The display name used when an event carries no summary.

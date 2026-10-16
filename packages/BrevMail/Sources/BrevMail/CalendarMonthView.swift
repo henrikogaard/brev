@@ -36,12 +36,12 @@ public struct CalendarMonthView: View {
 
     /// Weeks of seven cells covering the displayed month.
     let weeks: [[CalendarGridLayout.MonthDay]]
-    /// Events covering a day, resolved by the caller.
-    let eventsFor: (Date) -> [PIMEvent]
+    /// Occurrence rows covering a day, resolved by the caller.
+    let eventsFor: (Date) -> [PIMEventOccurrence]
     /// Resolves an event's collection for the chip color.
     let collectionFor: (PIMEvent) -> PIMCollection?
-    /// Selection shared with the detail pane.
-    @Binding var selectedEventID: PIMEvent.ID?
+    /// Selection shared with the detail pane — an occurrence row ID.
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
     /// Tapping a cell lands here — the root view switches to day layout.
     let onSelectDay: (Date) -> Void
     /// Clock for the today highlight.
@@ -52,16 +52,16 @@ public struct CalendarMonthView: View {
 
     public init(
         weeks: [[CalendarGridLayout.MonthDay]],
-        eventsFor: @escaping (Date) -> [PIMEvent],
+        eventsFor: @escaping (Date) -> [PIMEventOccurrence],
         collectionFor: @escaping (PIMEvent) -> PIMCollection? = { _ in nil },
-        selectedEventID: Binding<PIMEvent.ID?>,
+        selectedOccurrenceID: Binding<PIMEventOccurrence.ID?>,
         onSelectDay: @escaping (Date) -> Void = { _ in },
         now: Date = Date()
     ) {
         self.weeks = weeks
         self.eventsFor = eventsFor
         self.collectionFor = collectionFor
-        _selectedEventID = selectedEventID
+        _selectedOccurrenceID = selectedOccurrenceID
         self.onSelectDay = onSelectDay
         self.now = now
     }
@@ -149,7 +149,7 @@ public struct CalendarMonthView: View {
     /// The spoken label: day, event count and the first titles.
     private func cellLabel(
         _ cell: CalendarGridLayout.MonthDay,
-        events: [PIMEvent]
+        events: [PIMEventOccurrence]
     ) -> String {
         CalendarMonthCellPresentation.accessibilityLabel(
             day: cell.day,
@@ -245,13 +245,13 @@ public struct CalendarMonthView: View {
             .accessibilityHint(
                 String(localized: "Show this day", bundle: .module)
             )
-            ForEach(visible) { event in
+            ForEach(visible) { occurrence in
                 CalendarEventChip(
-                    event: event,
-                    collection: collectionFor(event),
-                    isSelected: selectedEventID == event.id
+                    occurrence: occurrence,
+                    collection: collectionFor(occurrence.event),
+                    isSelected: selectedOccurrenceID == occurrence.id
                 ) {
-                    selectedEventID = event.id
+                    selectedOccurrenceID = occurrence.id
                 }
             }
             if overflow > 0 {
@@ -296,8 +296,8 @@ public struct CalendarMonthView: View {
     }
 
     /// The event's collection color, or the accent when the provider sent none.
-    private func dotColor(for event: PIMEvent) -> Color {
-        guard let hex = collectionFor(event)?.colorHex else {
+    private func dotColor(for occurrence: PIMEventOccurrence) -> Color {
+        guard let hex = collectionFor(occurrence.event)?.colorHex else {
             return theme.accent.color
         }
         return BrevColor(hex).color

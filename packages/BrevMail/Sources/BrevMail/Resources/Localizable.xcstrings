@@ -2673,6 +2673,17 @@
         }
       }
     },
+    "Brev can't show every date of this repeating event yet.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Brev kan ikke vise alle datoene for denne gjentakende hendelsen ennå."
+          }
+        }
+      }
+    },
     "Brev cannot remove this Gmail account yet. Try again after Gmail cleanup is available.": {
       "extractionState": "manual",
       "localizations": {
@@ -3108,6 +3119,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Kopi til"
+          }
+        }
+      }
+    },
+    "Changing a single later date of a repeating event isn't available yet. Select the first date to change the whole series.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Å endre én enkelt senere dato for en gjentakende hendelse er ikke tilgjengelig ennå. Velg den første datoen for å endre hele serien."
           }
         }
       }

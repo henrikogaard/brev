@@ -148,6 +148,34 @@ evidence. Keep future reports separately versioned. Synthetic/stub evidence
 does not replace live-provider, native macOS, physical-device, accessibility or
 maintainer acceptance. No issue closure follows from this design acceptance.
 
+## Implementation status (2026-10-16)
+
+The read-model slice is implemented:
+
+- `PIMEvent` carries `recurrenceDescriptor` (lossless RRULE/RDATE/EXDATE
+  capture plus the DTSTART basis) and `seriesMasterItemKey`; old cached
+  JSON without the keys still decodes.
+- CalDAV and Google sync populate the descriptor. Google cancelled
+  recurring instances persist as marker records (never rendered as
+  generated rows) instead of master tombstones.
+- `PIMRecurrenceValidator` admits only the supported subset; every
+  rejection carries a specific `PIMRecurrenceUnsupportedReason`.
+- `PIMOccurrenceProjector` generates bounded, timezone-aware,
+  DST-safe occurrences inside the displayed interval, with stable row
+  IDs, per-series completeness, and defensive bounds (366-day window,
+  10,000 candidates per series).
+- `CalendarBrowsingModel` projects once per load/navigation; agenda,
+  day, week, and month render `PIMEventOccurrence` rows, and selection
+  is occurrence-aware while retaining the authoritative master. The
+  agenda is a navigable 30-day window.
+- Later occurrences (`occurrenceIndex > 0`) are read-only with a
+  localized explanation; incomplete series keep raw rows plus a
+  localized coverage note. Deep links and copy-link stay authoritative.
+
+Still pending: future-scope writes against projected occurrences, full
+exception-series merging (any exception marks the series incomplete
+rather than substituting the exception), and per-occurrence actions.
+
 ## References
 
 - [ADR-0072](0072-provider-neutral-calendar-contact-authoring.md): R6 and scope gating.
