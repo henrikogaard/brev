@@ -37,6 +37,12 @@
         "nb": { "stringUnit": { "state": "translated", "value": "Frakoblet kilde" } }
       }
     },
+    "Dismiss": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": { "stringUnit": { "state": "translated", "value": "Lukk" } }
+      }
+    },
     "%@ %@ the message.": {
       "extractionState": "manual",
       "localizations": {

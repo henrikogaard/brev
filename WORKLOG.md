@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-10-16 — Devin — Calendar deep-link notice
+
+- Goal: Henrik saw "That event is no longer synced" stuck on an empty
+  Calendar window in the live QA build.
+- Cause: the notice comes only from a `brev://event` link whose record is
+  not cached (both QA calendars were empty), and nothing ever cleared it.
+- Changed: `CalendarBrowsingModel.dismissDeepLinkNotice()`; navigation,
+  view-mode changes and a new selection clear the notice; the banner gets
+  a close button ("Dismiss"/"Lukk").
+- Verified: `CalendarBrowsingModel` suite 23 passed (new
+  `deepLinkNoticeClears`); lint/format clean. The `detail-*` snapshot
+  mismatches seen locally reproduce on clean `main` (host drift).
+- Not changed: Contacts and Tasks have the same never-cleared notice.
+
 ## 2026-10-16 — Devin — AGENTS.md evidence-report rule
 
 - Goal: stop sessions from producing new versioned QA reports for #11/#14

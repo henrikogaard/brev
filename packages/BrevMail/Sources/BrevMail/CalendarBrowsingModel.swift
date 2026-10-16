@@ -89,12 +89,18 @@ public final class CalendarBrowsingModel {
     /// Selection shared between the agenda and the detail pane —
     /// an occurrence row ID, never a bare record assumption (ADR-0089).
     public var selectedOccurrenceID: PIMEventOccurrence.ID? {
-        didSet { syncRetainedSelection() }
+        didSet {
+            syncRetainedSelection()
+            if selectedOccurrenceID != nil { deepLinkNotice = nil }
+        }
     }
 
     /// The active layout for the leading column.
     public var viewMode: ViewMode = .agenda {
-        didSet { recomputeProjection() }
+        didSet {
+            deepLinkNotice = nil
+            recomputeProjection()
+        }
     }
 
     /// The anchor date the day/week/month grids navigate around.
@@ -294,6 +300,7 @@ public final class CalendarBrowsingModel {
 
     /// Returns the anchor to today in the display zone.
     public func goToToday() {
+        deepLinkNotice = nil
         selectedDay = calendar.startOfDay(for: now())
         recomputeProjection()
     }
@@ -301,11 +308,13 @@ public final class CalendarBrowsingModel {
     /// Moves the anchor to a specific day — a month-cell tap lands here
     /// before the view switches to the day layout.
     public func selectDay(_ day: Date) {
+        deepLinkNotice = nil
         selectedDay = calendar.startOfDay(for: day)
         recomputeProjection()
     }
 
     private func move(by direction: Int) {
+        deepLinkNotice = nil
         switch viewMode {
         case .agenda:
             // The agenda steps its whole displayed window.
@@ -572,6 +581,12 @@ public final class CalendarBrowsingModel {
     private func sourceName(for sourceID: PIMSource.ID) -> String {
         sources.first { $0.id == sourceID }?.displayName
             ?? String(localized: "Disconnected source", bundle: .module)
+    }
+
+    /// Hides the deep-link miss notice. Navigation and a new selection
+    /// also clear it, so it never outlives the link that caused it.
+    public func dismissDeepLinkNotice() {
+        deepLinkNotice = nil
     }
 
     /// The selected occurrence: live from the projection when the row

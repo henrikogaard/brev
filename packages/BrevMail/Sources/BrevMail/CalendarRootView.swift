@@ -227,7 +227,7 @@ public struct CalendarRootView: View {
                 errorBanner(lastError)
             }
             if let deepLinkNotice = model.deepLinkNotice {
-                errorBanner(deepLinkNotice)
+                errorBanner(deepLinkNotice) { model.dismissDeepLinkNotice() }
             }
             #if os(macOS)
             if model.hasSources {
@@ -530,19 +530,32 @@ public struct CalendarRootView: View {
         .accessibilityElement(children: .combine)
     }
 
-    private func errorBanner(_ message: String) -> some View {
+    private func errorBanner(
+        _ message: String,
+        onDismiss: (() -> Void)? = nil
+    ) -> some View {
         HStack(spacing: BrevSpacing.sm) {
             Image(systemName: "exclamationmark.circle")
                 .accessibilityHidden(true)
             Text(message)
                 .brevFont(.caption)
             Spacer(minLength: BrevSpacing.sm)
+            if let onDismiss {
+                Button(action: onDismiss) {
+                    Image(systemName: "xmark")
+                        .brevFont(.caption)
+                }
+                .buttonStyle(.borderless)
+                .help(String(localized: "Dismiss", bundle: .module))
+                .accessibilityLabel(String(localized: "Dismiss", bundle: .module))
+            }
         }
         .foregroundStyle(theme.danger.color)
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, BrevSpacing.sm)
         .background(theme.bgSecondary.color)
-        .accessibilityElement(children: .combine)
+        // A dismissable banner keeps its button reachable on its own.
+        .accessibilityElement(children: onDismiss == nil ? .combine : .contain)
     }
 
     // MARK: - Empty state + toolbar
