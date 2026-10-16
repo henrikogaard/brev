@@ -5745,6 +5745,50 @@ buttons, and package-aware localization.
 - Goal: ship #238 (quiet related-mail bar, clearer nb copy) and #237 (glass envelope icons, Smoke default) as Mac `v0.2.8`. iOS TestFlight is Henrik's, from another Mac.
 - Changes: marketing version 0.2.7 → 0.2.8 in BrevConstants and both project files (regenerated in a clean env, no other diff); Unreleased entries moved under 0.2.8. Tag `v0.2.8` follows a green PR-event Build on this commit; main is fast-forwarded to it.
 
+## 2026-10-11 — Claude Code — ADR-0088 sign-in code panel (issue #239, Proposed)
+
+- Goal: assess and start issue #239 (floating panel with sign-in codes and links on arrival). The feature reads mail content and has privacy and spoofing implications, so per AGENTS.md this is an ADR-first change.
+- Assessment (read-only): feasible as a macOS view-layer feature. Gaps: the arrival hook (`MailEvent.messagesAdded`) is consumed in `BrevMailRootView` and has no age check; new mail has a snippet only, so the body and `Authentication-Results` need a fetch; only DMARC failure is parsed today; no `NSPanel` exists. Closed-window behaviour of the subscription is unverified.
+- Change: `ADRs/0088-sign-in-code-and-link-panel.md` (Proposed) and an index row. No code.
+- Next: Henrik answers the three open questions and accepts the ADR; then slice 1 (pure detector).
+
+## 2026-10-15 — Agent — PR #241 / issue #239
+
+- Goal: revise the Proposed ADR-0088 for the user-approved review direction without accepting it or implementing the feature.
+- Change: record independent per-account/device opt-ins defaulting off, provider-established trusted authentication, the conservative proposed DMARC-only policy, unchanged-message and 60-second defaults, delivery-provenance and cache-persistence limits, panel focus constraints, and deferred iOS notification privacy design. ADR status remains Proposed.
+- Merge: merged `origin/main` at `3a553ddbf754a0adb110598dec48108e8a7e8b41`. The only merge conflict was this additive WORKLOG append: kept main's “Mac release 0.2.8 prep” entry and the PR's ADR-0088 history, followed by this handoff. No rebase or force-push.
+- Verification: `git diff --check`, `git diff --check --cached`, `scripts/lint.sh`, and `scripts/format.sh` passed in that order; format changed 0/1285 files. App tests/builds and runtime focus/subscription/cache checks are skipped; the PR-specific change remains design-only, and no runtime behavior is claimed.
+- Documentation sweep: preserved main's README, CHANGELOG, release and screenshot updates. This PR ships no feature, so it adds no PRIVACY.md or ADR-0006 behavior update; ADR-0088 was already indexed.
+- Handoff: Henrik's explicit ADR acceptance and the listed provider-trust, DMARC-policy, provenance, lifecycle and focus evidence gates remain required before implementation.
+
+## 2026-10-15 — Agent — Issue #239 / ADR-0088 acceptance and provider audit
+
+- Goal: continue after Henrik's "design look good - continue", recording acceptance of the revised ADR and checking the first provider-evidence gate before feature code.
+- Scope: continued the clean `docs/adr-0088-sign-in-code-panel` worktree/PR #241 targeting `main`; no sibling PR, PR merge, or issue closure.
+- Changes: marked ADR-0088 and its index Accepted, including the aligned DMARC-only policy; added a source-linked provider-readiness audit. Both adapters currently discard duplicate authentication results in their body mapping and lack trusted receiving-service provenance. IMAP listing additions and Gmail reconcile diffs lack delivery origin. Gmail's documented timestamp can be selected for migrated mail. None of these facts proves fresh, authenticated delivery.
+- Storage/lifecycle: verified ordinary IMAP file-cache and Gmail SQLite body-write paths in source. The SwiftUI-owned event subscription is identified, but closed-window lifetime remains runtime-unverified. No raw private mail or live sign-in contents were accessed.
+- Verification: `git diff --check`, `scripts/lint.sh`, and `scripts/format.sh` passed in that order; format changed 0/1285 files (174 skipped). TDD, app builds and runtime checks were skipped because only ADR/index/worklog documentation changed; this audit is not live-provider evidence.
+- Documentation sweep: no shipped feature or changed network/storage behavior, so README, CHANGELOG, PRIVACY, ADR-0006, release/QA guides and AGENTS remain unchanged.
+- Handoff: provider-dependent implementation is blocked on receiving-service trust and delivery-origin evidence. Do not add an enabling capability, body-read hook or panel based on raw headers. Isolated synthetic provider validation is the next gate; acceptance is not a relaxation of it. GitHub Projects remains inaccessible with the available token; intended design-review status is In review, not Done.
+
+## 2026-10-15 — Agent — Issue #239 / PR #241 isolated detector
+
+- Goal: implement only the provider-independent part of ADR-0088 slice 3, following Henrik's accepted design and parallel-work request. Continued remote branch `docs/adr-0088-sign-in-code-panel` / existing PR #241 targeting `main`; isolated local worktree `/Users/devin/repos/brev-239`, local tracking branch `issue-239-detector`, root verified before edits. PR converted to draft for code WIP.
+- Changes: internal pure `SignInCodeDetector` and ephemeral `SignInCandidate` in BrevMail, plus synthetic English/Norwegian Swift Testing fixtures. Conservative explicit-context recognition, 4–8 ASCII code characters, exact HTTPS destination and actual host, exact visible-host comparison, ambiguity and numeric false-positive rejection. Unsupported markup and URL shapes fail closed. Candidate serialization is absent and standard descriptions/reflection are redacted; no production caller, cache, logging, storage, sync, network, body fetch, settings, provider capability, panel or notification was added.
+- TDD: added fixtures first; `swift test --package-path packages/BrevMail --filter SignInCodeDetectorTests` failed as expected because the detector was undefined. After implementation and a token-boundary review, the same filter passed: 8 tests / 75 parameterized and standalone cases. `scripts/lint.sh` passed (including strict SwiftLint, coverage self-test and ADR gate); `scripts/format.sh` passed with 0/1287 files changed; whitespace checks passed. Installed the missing mise/pinned tools using the existing documented setup. No effective pre-commit hook was present; its lint checks were run explicitly. Existing `EventModifiers.function` deprecation warning is unrelated.
+- Documentation sweep: ADR-0088 now records this isolated status and deliberate grammar limits without changing provider safeguards. README, CHANGELOG, PRIVACY, ADR-0006, release/QA guides and AGENTS remain unchanged: no shipped/user-facing behavior, setup contract, network or persistence behavior changes. No UI strings were introduced; detection fixtures cover EN/NB.
+- Skipped: full app builds, full package snapshot suite, live mailbox access and UI testing (no app integration or view changes). Provider trust/fresh-delivery evidence and integration-time candidate lifecycle audits remain required; these synthetic tests prove neither provider eligibility nor server-side link safety. Both adapters remain unsupported for live presentation. The installed daily-driver app and other issues' work were untouched.
+- Delivery: reviewed the focused diff and batched one implementation commit/push to the existing draft PR. Workflows were inspected: PR synchronization triggers macOS Build/Lint even for drafts; this unavoidable cost was reported before pushing, with no workflow edits, dispatches or reruns. Stop at the first pushed milestone for parent review; no open-ended CI loop, merge, issue close or Done transition. GitHub Projects again denied access; intended status is In progress → In review.
+
+## 2026-10-15 — Agent — Issue #239 / PR #241 device-local consent model
+
+- Scope: parent explicitly authorized the independent model-only part of ADR-0088 slice 4 and one batched push. Verified isolated worktree `/Users/devin/repos/brev-239`, local branch `issue-239-detector`, and matching local/remote head `5b7ec71`; continuing `docs/adr-0088-sign-in-code-panel` targeting `main`. Detector and its 75-case milestone are unchanged.
+- Changes: `SignInCodeSettings` stores independent code/link booleans per stable account ID in supplied local UserDefaults only. Both default off with no global enable; malformed or mismatched records fail closed. Explicit removal deletes persisted consent, including the key when empty. Fixed constants leave messages unchanged and specify a 60-second timeout. No settings-store, lifecycle, detector, UI, provider, body-fetch, network or notification integration; consent never establishes eligibility.
+- Verification: tests written first; focused red failed on the absent model (and a missing test-only import, subsequently corrected). `swift test --package-path packages/BrevSettings --filter 'SignInCodeSettings|BackupTests|PreferenceSync'` passed 40 tests in 4 suites, covering new consent tests, existing backup tests and preference-sync suites. New tests prove independent toggles, account isolation, injected persistence, malformed-data off, stored deletion, backup export exclusion, non-enabling/non-overwriting import in merge and replace modes, and cloud allowlist exclusion. `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed after a test-only formatting fix; `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` changed 0/1289 files; `git diff --check` passed. No installed pre-commit hook; lint ran explicitly.
+- Documentation sweep: updated ADR-0088 implementation status; no backup payload or cloud allowlist changes. README, CHANGELOG, PRIVACY, ADR-0006, QA/release docs and AGENTS remain unchanged because no shipped behavior, UI, network flow or candidate storage was added. The isolated model's consent-only persistence is documented here and in ADR-0088; integration-time privacy disclosures remain required before shipping. No user-visible strings introduced.
+- Recovery/reverification: after a tool/runtime error the unstaged consent files, ADR edits and test cache disappeared without a Git head change; cause unconfirmed. Restored the reviewed contents and repeated checks. Dependency-mirror authentication blocked the unmodified test command before build; the cache-backed equivalent `swift test --skip-update --package-path packages/BrevSettings --filter 'SignInCodeSettings|BackupTests|PreferenceSync'` passed the same 40 tests in 4 suites. Lint, format (zero changes), unstaged and staged whitespace checks passed again. No implementation changes were needed.
+- Handoff: no detector rerun (untouched), full app/native runtime or live-provider tests (no integration), servers, workflow reruns or dispatches. Both providers remain unsupported; receiving-service trust, fresh delivery, body-cache/lifecycle audits, UI and app wiring remain blocked/deferred. One push only, then stop without CI watch or PR description changes (parent owns review/update). No merge, closure or Done transition; board access previously denied, intended status In review. Future paid macOS-triggering pushes require explicit approval, not merely a warning.
+
 ## 2026-10-15 — Devin — #14 Drive attachment acceptance gaps
 
 - Goal: close reproduced transport gaps in the existing Drive implementation, not rebuild #77/#78 or configuration repair #161. Isolated worktree/branch `fix/drive-acceptance-gaps`, based on `origin/main` at `3a553dd`; target `main`.
@@ -5807,6 +5851,14 @@ buttons, and package-aware localization.
 - Documentation sweep: new v5 report and this entry only; no README, CHANGELOG, privacy/ADR, AGENTS or release change is warranted for frozen/new test evidence. TDD is not applicable to this docs-only update. Provider configuration/disposable access, positive runtime/remote outcomes, real macOS isolation, iOS/AX coverage and maintainer acceptance remain open.
 - Handoff: one Conventional Commit/push to the existing branch, then stop for parent review. No old snapshot repair, full-suite rerun, CI watch/dispatch, PR edit, merge, closure, Done transition or release.
 
+## 2026-10-15 — Agent — PR #241 main integration
+
+- Goal: integrate reviewed sign-in branch `b356355` with approved `main` `7117491`.
+- Merge: fast-forwarded from `fbcb2cd` to `b356355`, then merged `main` with `--no-ff`. The only conflict was the additive WORKLOG append; preserved sign-in and main/Drive histories verbatim. No other manual edits.
+- Verification: BrevSettings focused filter passed (40 tests/4 suites); BrevMail `SignInCodeDetectorTests` passed (8 tests/1 suite); `bash scripts/test-release-dmg.sh` passed once for stable and nightly artifacts (stapler/Gatekeeper checks skipped by the script); lint passed; format changed 0/1298 files; `git diff --check` passed.
+- Limits: no broad suites, app/runtime checks, or CI watch. The prior intermittent CI DMG negative-fixture failure remains unexplained; this local pass does not establish its cause.
+- Handoff: parent owns PR description and post-push CI follow-up.
+
 ## 2026-10-15 — Devin — #11 / ADR-0089 bounded recurrence design
 
 - Goal: publish the bounded recurrence design Henrik explicitly approved,
@@ -5831,3 +5883,11 @@ buttons, and package-aware localization.
   need no update. Existing QA evidence and fixtures remain untouched.
 - Handoff: design accepted; draft PR and its automatic CI authorized.
   No implementation, merge, issue closure, Done transition or release.
+
+## 2026-10-16 — Agent — PR #241 accepted ADR-0089 integration
+
+- Goal: integrate approved `main` `effa78b` into the sign-in branch at `c3d38ab`; this is a docs-only integration, not a design or implementation change.
+- Merge: resolved only `ADRs/README.md` and `WORKLOG.md`. Kept Accepted ADR-0088 and ADR-0089 rows in ascending order and removed the obsolete ADR-0088 reservation note. Preserved both existing Worklog histories; ADR-0089 remains byte-identical to `main`. All non-document files match `c3d38ab` and the lead-reviewed merge tree `22c844d`.
+- Verification: local links in ADR-0088, ADR-0089 and the index passed; all 89 ADR rows are unique and ascending. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
+- Limits: no Swift/package tests, DMG rerun, app/runtime/UI or CI checks; prior focused tests and DMG evidence remain frozen at `c3d38ab`. No product files changed.
+- Handoff: parent owns review, PR description and CI; no PR/issue updates or PR merge performed.
