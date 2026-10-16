@@ -158,9 +158,13 @@ struct PIMSourcesSettingsView: View {
 
                 ForEach(Array(model.sources.enumerated()), id: \.element.id) { index, source in
                     sourceRow(PIMSourceRowPresentation(source: source))
+                    // An iOS Form already separates rows; a Divider there
+                    // becomes an empty row of its own.
+                    #if os(macOS)
                     if index < model.sources.count - 1 {
                         Divider()
                     }
+                    #endif
                 }
 
                 HStack(spacing: BrevSpacing.sm) {
@@ -300,7 +304,7 @@ struct PIMSourcesSettingsView: View {
             }
             // Controls sit under the title text, not the status glyph, and
             // every switch shares one trailing edge.
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            VStack(alignment: .leading, spacing: Self.controlSpacing) {
                 sourceSyncToggle(row)
                 sourceEditingToggle(row)
                 collectionList(for: row)
@@ -311,6 +315,13 @@ struct PIMSourcesSettingsView: View {
     }
 
     private static let statusGlyphWidth: CGFloat = 18
+    /// iOS switches are taller than a footnote line, so they need more air
+    /// than macOS small switches to avoid touching.
+    #if os(iOS)
+    private static let controlSpacing = BrevSpacing.md
+    #else
+    private static let controlSpacing = BrevSpacing.xs
+    #endif
 
     /// "Provider · Kind · Status", plus the cached item count when known,
     /// so the count does not float as its own line under the list.
@@ -387,7 +398,7 @@ struct PIMSourcesSettingsView: View {
     ) -> some View {
         let collections = model.collectionsBySource[row.id] ?? []
         if !collections.isEmpty {
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+            VStack(alignment: .leading, spacing: Self.controlSpacing) {
                 Text(row.collectionsTitle)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)

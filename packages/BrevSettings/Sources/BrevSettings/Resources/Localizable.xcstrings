@@ -1685,7 +1685,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bakgrunns\u0007dsynkronisering for %@"
+            "value": "Bakgrunnssynkronisering for %@"
           }
         }
       }
