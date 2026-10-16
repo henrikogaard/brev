@@ -206,6 +206,11 @@ public struct BackendExtendedCapabilities: OptionSet, Sendable, Hashable {
     /// can supply bytes it already has; indexing itself is opt-in per account
     /// and never downloads anything.
     public static let localAttachmentIndex = BackendExtendedCapabilities(rawValue: 1 << 16)
+
+    /// The backend can assess whether a message is a trusted fresh sign-in
+    /// delivery (ADR-0088, `SignInTrustAssessing`). This stays off until the
+    /// ADR-0088 E1-E5 evidence is recorded — no backend advertises it yet.
+    public static let trustedSignInAssessment = BackendExtendedCapabilities(rawValue: 1 << 17)
 }
 
 /// Admin policy restrictions discovered for an account or tenant.
