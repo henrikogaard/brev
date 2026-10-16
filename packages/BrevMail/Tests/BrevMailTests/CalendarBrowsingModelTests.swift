@@ -797,6 +797,43 @@ struct CalendarBrowsingModelTests {
         #expect(model.deepLinkNotice != nil)
     }
 
+    @Test("a deep-link miss notice clears on dismiss, navigation, and a new selection")
+    func deepLinkNoticeClears() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+            ],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "e1", sourceID: "s1", collectionID: "c1",
+                        summary: "Target",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+
+        await model.revealEvent(id: "gone")
+        model.dismissDeepLinkNotice()
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.goToNext()
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.viewMode = .week
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.goToToday()
+        model.selectedOccurrenceID = "e1"
+        #expect(model.deepLinkNotice == nil)
+    }
+
     @Test("revealEvent loads the cache when the window is cold")
     func revealEventColdLoad() async throws {
         let model = try await makeModel(
