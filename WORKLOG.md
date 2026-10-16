@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-10-17 — Devin — #11 live parity v8
+
+- Goal: first live pass on the ADR-0089 projection fix against a real
+  CalDAV server (Radicale) with new `QA-1016-` fixtures.
+- Result: `docs/qa/pim-parity-v8-2026-10-17.md`; 7 rows Pass on iOS
+  (daily/weekly projection, third-occurrence detail, first-occurrence
+  editability, EXDATE collapse with coverage note, outage recovery), macOS
+  rows Not run/Blocked (accessibility automation unavailable; Fetch schedule
+  Manual), Google and lifecycle rows Not run.
+- Observations O13–O16 recorded (exception handling gap, permanent stale
+  banner, pre-#251 overlap, pre-#252 sticky notice).
+- Verified: `scripts/check-live-evidence-redaction.sh` OK on the evidence
+  folder. Docs-only; no code changed.
+
 ## 2026-10-17 — Devin — #11 recurrence exceptions (ADR-0089)
 
 - Goal: close observation O13 from parity v8: one EXDATE collapsed a series
