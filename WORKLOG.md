@@ -1,5 +1,17 @@
 # Worklog
 
+## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
+
+- Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model
+  for the sign-in panel instead of parking #239.
+- Changed: ADR-0088 gains "Amendment 2026-10-16: scoped Gmail trust" with
+  the topmost `mx.google.com` trust rule, the Gmail fresh-delivery rule and
+  the E1-E5 synthetic evidence table. Generic IMAP stays unsupported.
+- Verified: docs-only; `git diff --check` clean. No code touched.
+- Next: implement ordered header preservation and the assessment with unit
+  fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval because they send mail).
+
 ## 2026-10-13 — Agent — Demo screenshots
 
 - Goal: save demo screenshots of the iOS and macOS apps to the repository.
