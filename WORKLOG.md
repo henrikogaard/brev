@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-16 — Devin — AGENTS.md evidence-report rule
+
+- Goal: stop sessions from producing new versioned QA reports for #11/#14
+  when no new live evidence exists (Henrik, 2026-10-16).
+- Changed: `AGENTS.md` gains "Evidence reports need new evidence".
+- Verified: docs-only; `git diff --check` clean. No code touched.
+
 ## 2026-10-13 — Agent — Demo screenshots
 
 - Goal: save demo screenshots of the iOS and macOS apps to the repository.
