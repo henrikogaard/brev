@@ -1,5 +1,28 @@
 # Worklog
 
+## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
+
+- Goal: implement the provider-dependent gates of integration slice 1 for
+  Gmail API accounts only (ADR-0088 amendment 2026-10-16), stacked on
+  `docs/adr-0088-gmail-trust` in worktree `brev-signin-trust`
+  (`feature/gmail-signin-trust`, uncommitted).
+- Changed: `SignInTrustFailure`/`SignInTrustAssessment`/`SignInTrustAssessing`
+  + `.trustedSignInAssessment` (extended capability bit 17, never advertised)
+  in BrevBackend; `GmailSignInTrustAssessor`, `GmailFreshDeliveryRegistry`
+  (200-entry, 10-minute, in-memory) and `GmailSyncOutcome`/`syncWithProvenance()`
+  in BrevGmail; `GmailAPIBackend` conforms to `SignInTrustAssessing` with
+  account → registry → label → `internalDate` → metadata-header gates.
+  `correspondents` widened to internal for the assessor's mailbox parse.
+- No panel, detector caller, settings UI, notification, advertised
+  capability, or body fetch; the method is test-reachable only, so
+  `PRIVACY.md` and the ADR-0006 network table intentionally unchanged.
+- Verified: BrevGmail suite + BrevBackend filtered tests green;
+  `scripts/lint.sh`, `scripts/format.sh` (no changes), `git diff --check`,
+  `scripts/privacy-audit.sh` — see counts in the session report.
+- Next: record E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval — they send real mail), then flip the capability on in
+  a later slice.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
 
 - Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model

@@ -96,6 +96,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// The background network pass when `connect()` returned early on a
     /// warm cache. Cancelled by `disconnect()`.
     private var initialSyncTask: Task<Void, Never>?
+    /// Live fresh-delivery IDs observed by history deltas (ADR-0088).
+    /// In-memory only, capped and time-expired — never persisted.
+    private let freshDeliveryRegistry: GmailFreshDeliveryRegistry
+    private let signInTrustNow: @Sendable () -> Date
 
     /// Creates a Gmail API backend with injected REST and canonical-store seams.
     public init(
@@ -110,7 +114,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         offlineMutationConflictStore: (any OfflineMutationConflictStore)? = nil,
         relatedConversationConsent: (any RelatedConversationConsenting)? = nil,
         localSearchIndex: (any MailLocalSearchIndex)? = nil,
-        attachmentIndexConsent: AttachmentIndexConsentStore? = nil
+        attachmentIndexConsent: AttachmentIndexConsentStore? = nil,
+        signInTrustNow: @escaping @Sendable () -> Date = { Date() }
     ) {
         self.account = account
         self.transport = transport
@@ -124,6 +129,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         self.relatedConversationConsent = relatedConversationConsent
         self.attachmentIndexConsent = attachmentIndexConsent
         self.localSearchIndex = localSearchIndex
+        self.signInTrustNow = signInTrustNow
+        freshDeliveryRegistry = GmailFreshDeliveryRegistry(now: signInTrustNow)
         if let localSearchIndex {
             attachmentIndexer = AttachmentIndexer(
                 accountID: account.id,
@@ -2049,10 +2056,15 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         let scanner = store as? any GmailMessageSummaryScanning
         let before = try await messageSummaries(using: scanner)
         let state: GmailAccountState
+        var freshDeliveryIDs = Set<String>()
         do {
             do {
-                state = try await reconciler.sync()
+                let outcome = try await reconciler.syncWithProvenance()
+                state = outcome.state
+                freshDeliveryIDs = outcome.freshDeliveryIDs
             } catch GmailSyncError.fullSyncRequired {
+                // The full-sync fallback carries no delivery provenance, so
+                // the fresh set for this reconcile stays empty.
                 state = try await reconciler.fullSync()
             }
         } catch {
@@ -2061,6 +2073,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
         let after = try await messageSummaries(using: scanner)
         let labels = try await store.labels(accountID: account.id)
+        freshDeliveryRegistry.record(freshDeliveryIDs)
         lock.withLock {
             labelCatalog = labels
             profile = GmailProfile(emailAddress: state.emailAddress, historyID: state.historyID)
@@ -2583,7 +2596,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         return nil
     }
 
-    private static func correspondents(_ value: String) -> [Correspondent] {
+    static func correspondents(_ value: String) -> [Correspondent] {
         value.split(separator: ",").compactMap { token in
             let trimmed = token.trimmingCharacters(in: .whitespacesAndNewlines)
             guard !trimmed.isEmpty else { return nil }
@@ -2727,5 +2740,48 @@ private actor GmailMoveUndoProgress {
             try await operation(id)
             restoredIDs.insert(id)
         }
+    }
+}
+
+// MARK: - ADR-0088 scoped Gmail sign-in trust
+
+extension GmailAPIBackend: SignInTrustAssessing {
+    /// Scoped Gmail trust assessment (ADR-0088 amendment 2026-10-16).
+    ///
+    /// Gates in order: Gmail API account → live fresh-delivery registry →
+    /// cached INBOX-only label set → `internalDate` within 10 minutes → a
+    /// metadata header fetch assessed by `GmailSignInTrustAssessor`. Every
+    /// failure is closed; no caller is wired until the E1-E5 evidence is
+    /// recorded, so this is reachable from tests only.
+    public func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment {
+        guard account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier else {
+            return .unavailable(.unsupportedAccount)
+        }
+        guard freshDeliveryRegistry.contains(messageID) else {
+            return .unavailable(.notFreshDelivery)
+        }
+        guard let cached = try? await store.message(accountID: account.id, messageID: messageID) else {
+            return .unavailable(.notFreshDelivery)
+        }
+        let labelIDs = Set(cached.labelIDs.map { $0.uppercased() })
+        guard labelIDs.contains("INBOX"),
+              labelIDs.isDisjoint(with: ["SPAM", "TRASH", "SENT", "DRAFT"]) else {
+            return .unavailable(.wrongFolder)
+        }
+        guard let milliseconds = cached.internalDate.flatMap(Double.init),
+              abs(signInTrustNow().timeIntervalSince1970 - milliseconds / 1000) < 600 else {
+            return .unavailable(.stale)
+        }
+        // A failed metadata fetch supplies no trusted header evidence; the
+        // assessment fails closed rather than fabricating one.
+        guard let client,
+              let message = try? await client.getMessage(
+                  id: messageID,
+                  format: .metadata,
+                  metadataHeaders: ["Authentication-Results", "From"]
+              ) else {
+            return .unavailable(.noTrustedHeader)
+        }
+        return GmailSignInTrustAssessor.assess(headers: message.payload?.headers ?? [])
     }
 }

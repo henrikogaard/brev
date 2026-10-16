@@ -415,6 +415,25 @@ detector invocation, candidate persistence, body read, network call, UI, panel,
 notification or AppSession wiring is added; both providers remain unsupported.
 The consent explanation and integration-time privacy updates remain unshipped.
 
+### Gmail trust gates status (2026-10-16)
+
+The provider-dependent gates of integration slice 1 are implemented for
+Gmail API accounts only: provider-neutral `SignInTrustFailure`,
+`SignInTrustAssessment` and `SignInTrustAssessing` in BrevBackend; the pure
+`GmailSignInTrustAssessor` (topmost `mx.google.com` `Authentication-Results`
+rule, forged-copy fail-closed, exact-domain `header.from` match) and the
+fresh-delivery provenance path (`GmailSyncOutcome.freshDeliveryIDs` from
+`messagesAdded` history records, in-memory registry capped at 200 entries
+expiring after 10 minutes) in BrevGmail. `GmailAPIBackend` conforms to
+`SignInTrustAssessing` with the registry, label, and `internalDate` gates
+before the metadata header fetch.
+
+The `.trustedSignInAssessment` capability exists but stays off — no backend
+advertises it — pending the E1-E5 evidence recorded in a disposable Gmail
+mailbox. No panel, detector caller, settings UI, notification, capability
+advertisement, or body fetch is added; the assessment method is reachable
+only from tests. Generic IMAP remains unsupported.
+
 ### Remaining integration slices
 
 1. Verify provider delivery/backfill provenance and authentication trust
