@@ -112,6 +112,8 @@ public struct CalendarEventDraft: Sendable, Hashable {
     /// The collection the edited event came from; equal to
     /// targetCollectionID unless the user moves the event.
     var originalCollectionID: PIMCollection.ID?
+    /// The unedited component retained when a future-scope change splits a series.
+    var originalEvent: PIMEvent?
 
     /// A blank draft for a new event anchored at start.
     public init(start: Date, duration: TimeInterval = 3600) {
@@ -122,6 +124,7 @@ public struct CalendarEventDraft: Sendable, Hashable {
 
     /// A draft pre-filled from a cached event for editing.
     public init(event: PIMEvent) {
+        originalEvent = event
         summary = event.summary ?? ""
         isAllDay = event.isAllDay
         let fallbackStart = event.start ?? Date()

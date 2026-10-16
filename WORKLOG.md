@@ -5789,6 +5789,351 @@ buttons, and package-aware localization.
 - Recovery/reverification: after a tool/runtime error the unstaged consent files, ADR edits and test cache disappeared without a Git head change; cause unconfirmed. Restored the reviewed contents and repeated checks. Dependency-mirror authentication blocked the unmodified test command before build; the cache-backed equivalent `swift test --skip-update --package-path packages/BrevSettings --filter 'SignInCodeSettings|BackupTests|PreferenceSync'` passed the same 40 tests in 4 suites. Lint, format (zero changes), unstaged and staged whitespace checks passed again. No implementation changes were needed.
 - Handoff: no detector rerun (untouched), full app/native runtime or live-provider tests (no integration), servers, workflow reruns or dispatches. Both providers remain unsupported; receiving-service trust, fresh delivery, body-cache/lifecycle audits, UI and app wiring remain blocked/deferred. One push only, then stop without CI watch or PR description changes (parent owns review/update). No merge, closure or Done transition; board access previously denied, intended status In review. Future paid macOS-triggering pushes require explicit approval, not merely a warning.
 
+## 2026-10-15 — Agent — #11 / #3 PIM parity evidence v2
+
+- Goal: reconcile genuine Calendar/Contacts acceptance gaps without rebuilding
+  #3, duplicating #239/#14, or implementing Proposed ADR-0084.
+- Changes: added `docs/qa/pim-parity-v2-2026-10-15.md`; preserved the canonical
+  matrix and prior artifacts. Separates fresh automated results from inherited
+  stub/macOS/iOS evidence, live-provider gates and maintainer acceptance;
+  supplies exact isolated runtime plans and credential references, never values.
+  No new reproducible code defect established; documentation-only TDD exception.
+- Verification on base `3a553ddbf754a0adb110598dec48108e8a7e8b41`:
+  BrevCalendar 264 tests/26 suites; focused BrevMail PIM scheduler/RSVP/hint
+  22 tests/3 suites; focused BrevSettings PIM model/row/DAV form 41 tests/3
+  suites. All exited 0. `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`,
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 formatted), and
+  `scripts/privacy-audit.sh` passed. Exact filters/tool versions in the report.
+- Skipped: UI, live Google/DAV CRUD, macOS timed-idle pickup, physical iPhone,
+  full app/release builds and unrelated snapshots: no UI/live approval and
+  dedicated fixture/signing/device acceptance remains outstanding. No snapshot
+  baselines changed. Existing iOS stub 2.7/2.8/4.3 not needlessly repeated.
+- Documentation sweep: QA and this log only; no product, privacy/network,
+  architecture, release/version, or agent-policy change requiring other docs.
+- Handoff: `fix/pim-parity-gaps` targets `main`; stop after first batch push.
+  Draft PR held for parent cost direction because every PR triggers macOS
+  Build/Lint, unlike feature-branch pushes. Board access denied; intended
+  evidence-handoff state In review, never Done. #3/#11 stay open pending
+  provider/platform evidence and Henrik's sign-off. No merge/release requested.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM parity runtime v3
+
+- Goal: resume approved isolated runtime acceptance without product edits.
+- Added `docs/qa/pim-parity-v3-2026-10-15.md`; preserved prior evidence.
+  Fresh iOS 27 simulator and owned local DAV fixtures established.
+- Runtime: event/contact search and same-process offline cached reads worked;
+  All Events conditional save worked. Stopped at first product defect:
+  This and Future Events on the first occurrence leaves duplicate rows and
+  an old series with UNTIL before DTSTART, persisting after manual sync.
+  Recording, screenshots, redacted logs and cache evidence retained outside
+  the checkout; portable screenshot URLs are embedded in the v3 report.
+- Blocked: macOS no-launch app-group isolation preflight; no signing identity
+  for persistent-Keychain proof; no safe live Google attempt or dedicated DAV
+  credentials. Remaining recovery/localization/accessibility rows stopped for
+  the defect; no physical iPhone or live-provider acceptance claim.
+- No product/source/entitlement changes. Settled 327-test automated evidence
+  was not rerun. Validation passed once with
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted);
+  `git diff --check` passed before delivery.
+- Delivery: committed as `docs(qa): record isolated PIM runtime acceptance
+  findings` and pushed once to `origin/fix/pim-parity-gaps` for PR #245. No PR
+  edits/comments, CI dispatch/watch, issue closure or release. Parent decides
+  the proposed first-occurrence boundary fix and next runtime scope.
+- Documentation sweep: QA and worklog only; no product, privacy, architecture,
+  release/version or agent-policy change. Owned app/stub remain running;
+  exact PIDs, UDID, port and paths are in the report.
+
+## 2026-10-15 — Agent — #11 / PR #245 recurrence boundary correction
+
+- Goal: address the first-occurrence duplicate reproduced in v3 without
+  replacing historical evidence or changing provider/network boundaries.
+- Changes: keep the original event in the editor draft; use the ordinary
+  series update/move path when truncation would precede its start. For a
+  later split, retain the unedited original master rather than applying
+  the new series' title and dates to past occurrences. Added first-boundary
+  and original-field regression assertions.
+- Verification: the new first-occurrence regression failed against HEAD
+  source with three expected issues (split/update count, recurrence count,
+  and saved identity); after restoring the authored sources byte-for-byte,
+  the two future-scope tests passed and the combined editing/draft suites
+  passed (22 tests). `scripts/format.sh` formatted 0/1285 files (175
+  skipped); `scripts/lint.sh` passed.
+- Not verified: UI, live-provider, macOS isolation, recurrence expansion,
+  and future-scope deletion. These remain outside this verification; no
+  runtime acceptance is claimed.
+- Documentation sweep: CHANGELOG and ADR-0072 reflect the behavior fix;
+  v3 only corrects publication/access wording and retains its failure
+  evidence. No views, strings, privacy/network calls, schema, signing,
+  README setup or release settings changed. Other recurrence behaviors,
+  including future-scope deletion, require separate verification.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM runtime retest v4
+
+- Goal: execute the exact approved first-occurrence regression at
+  `9cb1cd9737ea69dc7068b70e39f42bab749dbe89`, then independent iOS/stub rows.
+- Rebuilt BrevIOS for the existing owned iOS 27 simulator, preserved v3
+  failing server/cache records separately, and reseeded the exact original
+  series. Reconnected process-only mock credentials. Stub cursor expiry/full
+  sync established one server/cache/list record before recording.
+- Runtime: title edit → All Events → title edit → This and Future Events
+  with dates unchanged → explicit sync passed. One record, original UID/key
+  and UTC dates, COUNT=5, no UNTIL; both writes were conditional PUT 204.
+- Stopped independent continuation at a newly reproduced populated AX3
+  event-detail layout defect: fixed horizontal actions fragment Delete and
+  Copy Link into narrow multiline labels. Default Large restores the normal
+  row; AX3 reproduces. Proposed adaptive action layout requires parent review;
+  no product edits made by the runner.
+- Added `docs/qa/pim-parity-v4-2026-10-15.md` with exact identity proof,
+  primary annotated recording, screenshot comparison, gaps and reusable
+  processes. Devin attachments require session access; they are not public
+  or portable GitHub embeds. Historical v2/v3 evidence remains intact.
+- Remaining NB/Contacts/reduced-motion/VoiceOver/source-failure/cache-removal
+  rows paused under the first-defect rule. No macOS launch, live-provider
+  retry, signed-Keychain or physical-device claim. Settled automated and
+  parent focused checks inherited rather than rerun.
+- Publication: the runtime runner did not run repository lint/format/diff
+  checks or commit/push; its runtime checks are reported above. This
+  publication phase passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record recurrence retest and accessibility findings`, was pushed
+  once to `origin fix/pim-parity-gaps`. Tested source revision
+  `9cb1cd9737ea69dc7068b70e39f42bab749dbe89` is distinct from the publication
+  commit; no CI was dispatched or watched. App PID 7682 and stub PID
+  5246/port 18643 remain running; owned simulator is left English/dark/AX3.
+- Documentation sweep: QA and worklog only; no product/privacy/architecture/
+  release/agent-policy change or new skill/blueprint edits. Parent decides
+  the AX3 proposal and resumption; #11/#3 remain acceptance-gated.
+
+## 2026-10-15 — Agent — #11 / PR #245 adaptive Calendar actions
+
+- Goal: correct the v4 iOS AX3 action-label wrapping without shrinking text.
+- Changes: Calendar detail measures its action row at ideal width and falls
+  back to leading-aligned vertical actions when it does not fit. Button
+  handlers, localization, roles and accessibility grouping are unchanged.
+  Added narrow-width light/dark snapshots in the existing Calendar suite.
+- Verification: `RECORD_SNAPSHOTS=YES swift test --package-path packages/BrevMail
+  --filter CalendarBrowsingSnapshotTests.eventDetailNarrowActions` recorded
+  only the new dark/light references (record mode emitted its expected
+  notices); the same focused test without recording passed both cases.
+  `scripts/format.sh` formatted 0/1285 files (176 skipped);
+  `scripts/lint.sh` passed. Historical v4 failure evidence remains intact.
+- Not verified: no runtime retest, app launch, UI driving, simulator use, or
+  broad suite was run on this worktree. The iOS AX3 retest remains assigned
+  to the isolated child after review of this pushed change.
+- Documentation sweep: CHANGELOG and WORKLOG updated. No new view API,
+  theme token, architecture, provider call, persistence, privacy, setup or
+  release behavior; README, ADRs, PRIVACY and AGENTS need no change.
+
+## 2026-10-15 — Agent — #11 / PR #245 PIM runtime retest v5
+
+- Goal: retest the approved adaptive Calendar action layout at
+  `bbe06d81b50ad19dc49169cab951f42d5a91ba6f`, then collect a bounded independent
+  populated Calendar/Contacts batch under the revised stop policy.
+- Rebuilt/installed only on owned simulator
+  `0AAE0F16-6167-435E-884F-C0BA50E05A67`, reused original stub PID 5246/18643,
+  and reconnected process-local mock credentials. Same writable event and all
+  three actions were verified before comparison. No recurrence retest.
+- Calendar actions passed EN light/dark Large and AX3, plus NB light/dark AX3:
+  full scaled labels and preserved order. Edit/cancel, safe deletion-dialog
+  dismissal and copied-link identity passed without provider mutation. An
+  explicit Cancel button was not visible in the AX3 popover. Final original
+  event and two contact payloads match their pre-v5 copies.
+- Continued independent EN/NB/light/dark/Large/AX3 lists, details and editors.
+  Collected Contacts AX3 action fragmentation and NB standard TYPE=WORK
+  rendering as English "Work"; no product fixes made. Reduced Motion is
+  preference readback plus functional navigation only; complete AX traversal
+  and actual VoiceOver spoken readback remain unverified.
+- A separate owned CardDAV source on 18644 failed as induced without blocking
+  healthy Calendar sync/read, then recovered through Sync Now. After preserving
+  state, "remove, keep cached copy" left Charlie byte-identical on disk but
+  inaccessible in list and exact-ID deep link. Froze that mutation flow;
+  delete-cache removal was not executed. No secondary PUT/DELETE/POST.
+- Added `docs/qa/pim-parity-v5-2026-10-15.md`, one primary annotated recording
+  and session-access-only screenshot links. v2/v3/v4 evidence remains intact;
+  no binary artifacts tracked. Remaining live-provider/macOS isolation/signing/
+  physical-device/acceptance gates are unchanged; no auth retries or Drive work.
+- Handoff: app PID 12451, original stub 5246/18643 and secondary stub 15161/18644
+  remain running. NB/dark/AX3 original writable Calendar detail is visible;
+  Reduce Motion preference On, VoiceOver Off. Keep the removed source's
+  preserved cache/server for review; credentials are process-only.
+- Publication: runtime runner did not run repository lint/format/diff checks or
+  commit/push; its runtime results and bounded findings are reported above.
+  Subsequent publication passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record PIM accessibility and cache acceptance findings`, was
+  pushed once to `origin fix/pim-parity-gaps`. Tested source revision
+  `bbe06d81b50ad19dc49169cab951f42d5a91ba6f` remains distinct from the
+  evidence-only publication commit. No PR comments/edits, CI dispatch/watch,
+  issue closure or merge in this publication.
+- Documentation sweep: v5 QA and appended worklog only; no product/privacy/
+  architecture/release change, no new skill/blueprint edits or proposals.
+  Parent review of the three independent findings and remaining acceptance
+  gates is required; #11/#3 remain open.
+
+## 2026-10-15 — Agent — #11 / PR #245 retained-cache browsing
+
+- Goal: preserve access to explicitly retained, disconnected PIM caches after
+  source removal without restoring active source metadata, credentials,
+  consent, provider connectivity, synchronization, or write capability.
+- Changes: added marker-based per-kind retained-cache discovery and
+  registered-source exclusion; wired active-first, duplicate-free cache
+  loading, localized disconnected-source failures, stale banners, and
+  active-source-only sync guards across Contacts, Calendar, and Tasks.
+  Added focused source-store, coordinator, and browsing-model coverage.
+  Contacts actions now use the authored adaptive narrow-width layout and
+  standard labels localize while arbitrary labels remain unchanged. The
+  duplicate `Other` catalog entry was removed while preserving the
+  pre-existing translation. ADR-0072 and CHANGELOG were updated.
+- Verification:
+  `swift test --package-path packages/BrevCalendar --filter
+  'PIMSource(Coordinator|Store)Tests'` passed 22 tests in 2 suites.
+  `swift test --package-path packages/BrevMail --filter
+  '(ContactsBrowsingModelTests|CalendarBrowsingModelTests|TasksBrowsingModelTests|ContactPresentationTests|ContactsEditingModelTests)'`
+  passed 71 tests in 5 suites; after adding the absent-source editability
+  assertion, `swift test --package-path packages/BrevMail --filter
+  'ContactsEditingModelTests'` passed 9 tests in 1 suite.
+  After changing the file-backed regression to use a fresh contact store
+  after source removal, `swift test --package-path packages/BrevMail
+  --filter 'ContactsBrowsingModelTests'` passed 18 tests in 1 suite.
+  `RECORD_SNAPSHOTS=YES swift test --package-path packages/BrevMail
+  --filter 'ContactsBrowsingSnapshotTests/contactDetailNarrowActions'`
+  recorded only the new light/dark references and exited 1 on the two
+  expected record-mode notices. The same command without recording passed
+  both snapshot cases. Generated:
+  `packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ContactsBrowsingSnapshotTests/contactDetailNarrowActions-mode.detail-narrow-actions-light.png`
+  and
+  `packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ContactsBrowsingSnapshotTests/contactDetailNarrowActions-mode.detail-narrow-actions-dark.png`.
+  The first lint run identified SwiftFormat await-hoisting issues, which
+  were corrected; the final `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`
+  passed, including SwiftLint coverage and ADR checks.
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed after the corrections,
+  formatting 3 of 1,285 files; the final format run changed 0 of 1,285
+  files, and SwiftFormat lint found 0 files requiring formatting.
+  `git diff --check` passed after the final worklog update.
+- TDD limitation: the layout and source-store API edits were authored before
+  this test pass; the retained-cache model and coordinator coverage was added
+  afterward. No provider network traffic, app launch, simulator/UI runtime
+  retest, or broad runtime QA was performed. Full package gates remain
+  optional final checks only.
+- Documentation sweep: README and PRIVACY were left unchanged because this
+  implements the existing ADR-0072 cache lifecycle without changing privacy
+  posture, setup, or provider network behavior. Remaining acceptance gates
+  are the parent review, snapshot pixel review, and isolated runtime QA.
+
+## 2026-10-15 — Agent — #11 / PR #245 bounded v6 runtime evidence
+
+- Goal: retest the approved Contacts actions/localization/retained-cache delta
+  at `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`, using the original frozen
+  v5 Charlie fixture without reconnecting/recreating/deleting it.
+- Changes: new `docs/qa/pim-parity-v6-2026-10-15.md` and this append only.
+  Earlier reports/artifacts preserved. No product edits or source revision
+  change. Evidence links require originating-session access, not public or
+  portable GitHub embeds.
+- Runtime: targeted owned iOS simulator rebuild/install; preflight and
+  post-install comparison proved frozen cache/marker identity preserved.
+  Original list/exact-link reads and read-only capabilities passed, with zero
+  frozen-source requests from 19:17:45 to 19:49:58 UTC. Contacts EN/NB
+  light/dark AX3 labels/order/scaling passed. Edit canceled; deletion popover
+  safely dismissed; initial immediate-copy assertion retained the prior link,
+  then one settled retry matched Alice. Original active contact cache unchanged.
+  No visible explicit Cancel or standalone disconnected-detail notice claimed.
+- Distinct source `pim-247b38a5-71ed-4cd5-9999-44d22e7faa53`, port 18645:
+  NB WORK displayed Arbeid and custom qa-lab stayed unchanged. UI delete-cache
+  removal eliminated only Delta's local source/cache; its exact link showed
+  the localized missing notice. Charlie remained reachable and byte-identical.
+  Both remote payloads remained unchanged; no remote PUT/DELETE.
+- Inherited parent report, not this runner's execution: CI 21/21 passed and
+  full BrevCalendar 266 tests/26 suites passed; full local BrevMail 2194
+  tests/331 suites failed with 89 snapshot mismatches across
+  Login/Compose/Mail Context/Local Folders/PIM. CI snapshots reportedly passed
+  the same SHA. Host drift is only a hypothesis, not base-verified; do not
+  claim a full local pass. No broad rerun.
+- Limits: no existing retained Calendar/Tasks fixtures, so optional smoke not
+  manufactured. AX bridge unavailable; no spoken VoiceOver or fresh motion
+  claim. Final motion/VoiceOver preferences both read 0. macOS, live providers,
+  signed-Keychain persistence and physical iPhone remain acceptance gates.
+  Recurrence and prior settled runtime/checks were not rerun.
+- Handoff: app PID 24123, stubs 5246:18643 / 15161:18644 / 23594:18645 left
+  running on owned simulator 0AAE0F16-6167-435E-884F-C0BA50E05A67, NB/dark/AX3,
+  original Charlie detail. Preserve the frozen fixture. Primary recording:
+  `/Users/devin/screencasts/pim-v6-ios-primary/pim-v6-ios-primary-edited.mp4`;
+  exact manifests/screenshots under
+  `/Users/devin/pim-parity-evidence/v6-20261015-a/`.
+- Publication: runtime runner did not run repository lint/format/diff checks
+  or commit/push; parent-reported automated results and limitations above were
+  not rerun or independently verified here. Subsequent publication passed
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record retained cache and contacts runtime verification`, was
+  pushed once to `origin fix/pim-parity-gaps`. Tested source revision
+  `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f` remains distinct from the
+  evidence-only publication commit. No CI dispatch/watch, PR/issue actions,
+  merges or releases. Documentation sweep: QA/worklog only; no product/privacy/
+  architecture/release change, no new blueprint/skill edits or proposals.
+  #11/#3 remain acceptance-gated.
+
+## 2026-10-15 — Agent — #11 / PR #245 bounded v7 runtime evidence
+
+- Goal: execute the approved still-open recurrence and Calendar/Tasks retained
+  cache cases at HEAD `3a784926563571a59e60b552ce4e7cf6180436d9`, product
+  unchanged from v6 `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`.
+  Reused app/simulator; no rebuild, reinstall, product or harness edits.
+- Changes: new `docs/qa/pim-parity-v7-2026-10-15.md` and this append only.
+  All v2-v6 evidence preserved. New distinct synthetic sources on ports
+  18646–18649 used existing DAV/VTODO support; no external providers.
+- Runtime failure: distinct daily COUNT5 masters appeared October 16, but
+  October 18 day grid was empty; actual third occurrences were unreachable.
+  Later future edit/delete stopped before any mutation. No DTSTART workaround.
+  Proposed narrow parent-review scope: bounded recurrence projection and
+  occurrence-aware selection; no split/count correctness claim or product fix.
+- Independent runtime: Calendar and Tasks keep-cache list/exact-link reads
+  passed read-only. Active Settings/registry excluded them; markers/cache
+  remained, cursors absent, Tasks toggles/sync inert. Separate delete-cache
+  fixtures removed only local state; missing exact links verified, remote
+  payloads unchanged, retained keep links still readable. First deleted Tasks
+  presentation lacked a captured notice; repeat showed the localized notice.
+  Source-specific measured removal/read windows had zero requests; all new
+  logs had zero PUT/DELETE. Diagnostic GETs attributed separately.
+- AX3: Edit text aligned behind native back chrome did not activate; the tap
+  scrolled to top. After scrolling clear, Edit opened and canceled normally.
+  No persistent untappable overlap reproduced. All prior cache bytes/mtimes,
+  registry and frozen Charlie provider payload preserved. No VoiceOver speech,
+  full AX traversal or fresh motion claim.
+- Limits/inherited: later-scope mutation QA remains blocked. No broad suites,
+  settled Contacts/first-boundary/Copy Link retests, live-provider auth, macOS
+  launch, signed-Keychain persistence or physical-device evidence. Parent
+  reports automatic CI 20 pass/0 fail/0 pending/1 snapshot skip; not rerun.
+  Prior local snapshot mismatches remain unresolved; host drift not proven.
+- Evidence: `/Users/devin/pim-parity-evidence/v7-20261015-a/`, including exact
+  identities/payload hashes/request windows and `final-evidence.json`; single
+  annotated recording
+  `/Users/devin/screencasts/pim-v7-ios-primary/pim-v7-ios-primary-edited.mp4`.
+  Attachment links require session access, not public/portable GitHub embeds.
+- Reusable state: app 24123; prior stubs 5246:18643 / 15161:18644 /
+  23594:18645; new stubs 30916:18646 / 30925:18647 / 30946:18648 /
+  30955:18649. Owned simulator 0AAE0F16-6167-435E-884F-C0BA50E05A67,
+  NB/dark/AX3, original Alice after cancellation. Keep Charlie and new retained
+  caches frozen; new delete-source provider payloads remain on their stubs.
+- Publication: the bounded runtime procedure above is complete at approved
+  checkout HEAD `3a784926563571a59e60b552ce4e7cf6180436d9`, using unchanged
+  product revision `3dc2986a2b1ae9b0a20dc4c5be0e7f26439ac83f`; no product change
+  was made. The runtime runner did not run repository publication
+  lint/format/diff checks or commit/push. This documentation-only publication
+  passed `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` and
+  `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1,285 files formatted), and
+  `git diff --check`. One documentation-only commit,
+  `docs(qa): record bounded v7 recurrence and retained-cache evidence`, was
+  pushed once to `origin fix/pim-parity-gaps`. No tests were rerun for
+  publication; TDD was skipped as docs-only. No CI dispatch/watch, PR/issue
+  actions, merge, release or Done transition. Documentation sweep: QA/worklog
+  only; no product/privacy/architecture changes or new blueprint/skill edits.
+  Parent decision needed before recurrence implementation; #11/#3 remain
+  acceptance-gated.
+
 ## 2026-10-15 — Devin — #14 Drive attachment acceptance gaps
 
 - Goal: close reproduced transport gaps in the existing Drive implementation, not rebuild #77/#78 or configuration repair #161. Isolated worktree/branch `fix/drive-acceptance-gaps`, based on `origin/main` at `3a553dd`; target `main`.
@@ -5891,3 +6236,20 @@ buttons, and package-aware localization.
 - Verification: local links in ADR-0088, ADR-0089 and the index passed; all 89 ADR rows are unique and ascending. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift/package tests, DMG rerun, app/runtime/UI or CI checks; prior focused tests and DMG evidence remain frozen at `c3d38ab`. No product files changed.
 - Handoff: parent owns review, PR description and CI; no PR/issue updates or PR merge performed.
+
+## 2026-10-16 — Agent — PR #245 main integration
+
+- Goal: integrate approved `main` `7117491` into the PIM parity branch at `bb093f0`.
+- Merge: resolved only additive CHANGELOG and WORKLOG conflicts. Unreleased has one Fixed heading retaining the PIM Calendar/Contacts and Drive multipart/cancellation fixes; the Drive Added entry remains. Preserved PIM v2–v7 and main Drive worklog history verbatim. Non-document files match the lead-reviewed merge tree `7bdb66e`.
+- Verification: BrevCalendar PIM store/coordinator filter passed (22 tests/2 suites); focused BrevMail model/presentation/Drive filter passed (138 tests/13 suites); focused Calendar browsing snapshots passed (3 tests/1 suite, six light/dark cases, recording disabled). Catalog JSON parsed; 1,293 keys checked (17 main-only, 6 PIM-only, no differing two-sided changes), with merged values matching branch changes.
+- Repository checks: `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1294 files require formatting); `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1294 files formatted); `git diff --check` and staged diff check passed.
+- Limits: no full suites, snapshot re-recording, unrelated agenda/detail snapshots, app/runtime/UI checks, or CI watch. No product edits were made during integration.
+- Handoff: parent owns post-push PR updates and CI.
+
+## 2026-10-16 — Agent — PR #245 follow-up main integration
+
+- Goal: integrate approved `main` `a624386` into the PIM parity branch at `5594453`.
+- Merge: resolved only the additive `WORKLOG.md` conflict, preserving the complete PIM v2–v7 and sign-in/Drive histories verbatim. ADR-0088, ADR-0089 and the index are byte-identical to `main`. The four sign-in source/test files are byte-identical additions from `main`; no pre-existing app/package file changed. The staged tree differs from the lead-reviewed tree only in `WORKLOG.md`.
+- Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
+- Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
+- Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.

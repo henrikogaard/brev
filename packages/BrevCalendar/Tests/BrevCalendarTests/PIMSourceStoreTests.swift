@@ -110,6 +110,53 @@ struct PIMSourceStoreTests {
         #expect(!fm.fileExists(atPath: localData.directory(for: id).path))
     }
 
+    @Test("retained cache discovery is marker- and kind-specific")
+    func retainedSourceIDsByKind() async throws {
+        let root = try makeTempDir()
+        let localData = FilePIMSourceLocalDataStore(rootURL: root)
+        let fm = FileManager.default
+
+        for (id, path) in [
+            ("contacts-retained", "contacts.json"),
+            ("calendar-retained", "events"),
+            ("tasks-retained", "tasks"),
+        ] {
+            let cachePath = localData.cacheDirectory(for: id)
+                .appendingPathComponent(path, isDirectory: path != "contacts.json")
+            try fm.createDirectory(
+                at: cachePath,
+                withIntermediateDirectories: true
+            )
+            try Data().write(
+                to: localData.directory(for: id)
+                    .appendingPathComponent("disconnected")
+            )
+        }
+
+        let unmarked = "contacts-unmarked"
+        try fm.createDirectory(
+            at: localData.cacheDirectory(for: unmarked),
+            withIntermediateDirectories: true
+        )
+        try Data().write(
+            to: localData.cacheDirectory(for: unmarked)
+                .appendingPathComponent("contacts.json")
+        )
+
+        #expect(
+            try await localData.retainedSourceIDs(for: .contacts)
+                == ["contacts-retained"]
+        )
+        #expect(
+            try await localData.retainedSourceIDs(for: .calendar)
+                == ["calendar-retained"]
+        )
+        #expect(
+            try await localData.retainedSourceIDs(for: .tasks)
+                == ["tasks-retained"]
+        )
+    }
+
     @Test("markCacheDisconnected is a no-op without a cache")
     func markDisconnectedWithoutCache() async throws {
         let root = try makeTempDir()

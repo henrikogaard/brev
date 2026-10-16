@@ -279,6 +279,7 @@ struct ContactsEditingModelTests {
         #expect(model.canEdit(Self.contact(collectionID: "book1")))
         #expect(!model.canEdit(Self.contact(collectionID: "locked")))
         #expect(!model.canEdit(Self.contact(collectionID: "gone")))
+        #expect(!model.canEdit(Self.contact(sourceID: "retained")))
     }
 
     // MARK: - Mutations

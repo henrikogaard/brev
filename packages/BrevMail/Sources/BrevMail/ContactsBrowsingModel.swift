@@ -42,6 +42,8 @@ public final class ContactsBrowsingModel {
 
     /// Contacts sources known to the coordinator, in coordinator order.
     public private(set) var sources: [PIMSource] = []
+    /// Disconnected source IDs whose retained cache may be browsed read-only.
+    public private(set) var retainedSourceIDs: [PIMSource.ID] = []
     /// Discovered collections (address books / contact groups) per
     /// source; empty when discovery never ran.
     public private(set) var collectionsBySource:
@@ -174,7 +176,12 @@ public final class ContactsBrowsingModel {
     /// Whether any contacts source exists — drives the empty state that
     /// points at Settings rather than a bare "no contacts".
     public var hasSources: Bool {
-        !sources.isEmpty
+        !sources.isEmpty || hasRetainedCache
+    }
+
+    /// Whether at least one disconnected cache is available for browsing.
+    public var hasRetainedCache: Bool {
+        !retainedSourceIDs.isEmpty
     }
 
     /// Whether Sync Now can run for a source in this session — the
@@ -251,6 +258,12 @@ public final class ContactsBrowsingModel {
             lastError = error.localizedDescription
             return
         }
+        if let coordinator {
+            await retainedSourceIDs =
+                (try? coordinator.retainedSourceIDs(for: .contacts)) ?? []
+        } else {
+            retainedSourceIDs = []
+        }
         await loadCollections()
         await loadContacts()
         reconcileSelection()
@@ -289,11 +302,11 @@ public final class ContactsBrowsingModel {
             return
         }
         var map: [PIMSource.ID: [PIMCollection]] = [:]
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             // A store read failure must not blank the source — its rows
             // render without group metadata instead.
-            await map[source.id] =
-                (try? collectionService.collections(for: source.id))
+            await map[sourceID] =
+                (try? collectionService.collections(for: sourceID))
                     ?? []
         }
         collectionsBySource = map
@@ -306,16 +319,16 @@ public final class ContactsBrowsingModel {
         }
         var all: [PIMContact] = []
         var failedSources: [String] = []
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             do {
                 try await all.append(
                     contentsOf: contactSyncService.contacts(
-                        for: source.id
+                        for: sourceID
                     )
                 )
             } catch {
                 // One unreadable cache must not blank the others.
-                failedSources.append(source.displayName)
+                failedSources.append(sourceName(for: sourceID))
             }
         }
         contacts = all.sorted {
@@ -338,7 +351,8 @@ public final class ContactsBrowsingModel {
     /// User-initiated sync for one contacts source; reloads the cache
     /// afterward so the list reflects the fresh snapshot.
     public func syncNow(sourceID: PIMSource.ID) async {
-        guard let contactSyncService,
+        guard sources.contains(where: { $0.id == sourceID }),
+              let contactSyncService,
               !syncingSourceIDs.contains(sourceID)
         else { return }
         syncingSourceIDs.insert(sourceID)
@@ -368,6 +382,19 @@ public final class ContactsBrowsingModel {
         for source in sources where canSyncNow(source) {
             await syncNow(sourceID: source.id)
         }
+    }
+
+    private var cacheSourceIDs: [PIMSource.ID] {
+        var ids = sources.map(\.id)
+        for id in retainedSourceIDs where !ids.contains(id) {
+            ids.append(id)
+        }
+        return ids
+    }
+
+    private func sourceName(for sourceID: PIMSource.ID) -> String {
+        sources.first { $0.id == sourceID }?.displayName
+            ?? String(localized: "Disconnected source", bundle: .module)
     }
 
     // MARK: - Selection

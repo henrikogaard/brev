@@ -65,6 +65,8 @@ public final class CalendarBrowsingModel {
 
     /// Calendar sources known to the coordinator, in coordinator order.
     public private(set) var sources: [PIMSource] = []
+    /// Disconnected source IDs whose retained cache may be browsed read-only.
+    public private(set) var retainedSourceIDs: [PIMSource.ID] = []
     /// Discovered collections per source; empty when discovery never ran.
     public private(set) var collectionsBySource:
         [PIMSource.ID: [PIMCollection]] = [:]
@@ -311,7 +313,12 @@ public final class CalendarBrowsingModel {
     /// Whether any calendar source exists — drives the empty state that
     /// points at Settings rather than a bare "no events".
     public var hasSources: Bool {
-        !sources.isEmpty
+        !sources.isEmpty || hasRetainedCache
+    }
+
+    /// Whether at least one disconnected cache is available for browsing.
+    public var hasRetainedCache: Bool {
+        !retainedSourceIDs.isEmpty
     }
 
     /// Whether Sync Now can run for a source in this session — the
@@ -372,6 +379,12 @@ public final class CalendarBrowsingModel {
             lastError = error.localizedDescription
             return
         }
+        if let coordinator {
+            await retainedSourceIDs =
+                (try? coordinator.retainedSourceIDs(for: .calendar)) ?? []
+        } else {
+            retainedSourceIDs = []
+        }
         await loadCollections()
         await loadEvents()
         reconcileSelection()
@@ -415,11 +428,11 @@ public final class CalendarBrowsingModel {
             return
         }
         var map: [PIMSource.ID: [PIMCollection]] = [:]
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             // A store read failure must not blank the source — its rows
             // render without color/visibility metadata instead.
-            await map[source.id] =
-                (try? collectionService.collections(for: source.id))
+            await map[sourceID] =
+                (try? collectionService.collections(for: sourceID))
                     ?? []
         }
         collectionsBySource = map
@@ -432,16 +445,16 @@ public final class CalendarBrowsingModel {
         }
         var all: [PIMEvent] = []
         var failedSources: [String] = []
-        for source in sources {
+        for sourceID in cacheSourceIDs {
             do {
                 try await all.append(
                     contentsOf: eventSyncService.events(
-                        for: source.id
+                        for: sourceID
                     )
                 )
             } catch {
                 // One unreadable cache must not blank the others.
-                failedSources.append(source.displayName)
+                failedSources.append(sourceName(for: sourceID))
             }
         }
         events = all.sorted {
@@ -463,7 +476,8 @@ public final class CalendarBrowsingModel {
     /// User-initiated sync for one calendar source; reloads the cache
     /// afterward so the agenda reflects the fresh snapshot.
     public func syncNow(sourceID: PIMSource.ID) async {
-        guard let eventSyncService, !syncingSourceIDs.contains(sourceID)
+        guard sources.contains(where: { $0.id == sourceID }),
+              let eventSyncService, !syncingSourceIDs.contains(sourceID)
         else { return }
         syncingSourceIDs.insert(sourceID)
         defer { syncingSourceIDs.remove(sourceID) }
@@ -492,6 +506,19 @@ public final class CalendarBrowsingModel {
         for source in sources where canSyncNow(source) {
             await syncNow(sourceID: source.id)
         }
+    }
+
+    private var cacheSourceIDs: [PIMSource.ID] {
+        var ids = sources.map(\.id)
+        for id in retainedSourceIDs where !ids.contains(id) {
+            ids.append(id)
+        }
+        return ids
+    }
+
+    private func sourceName(for sourceID: PIMSource.ID) -> String {
+        sources.first { $0.id == sourceID }?.displayName
+            ?? String(localized: "Disconnected source", bundle: .module)
     }
 
     // MARK: - Selection

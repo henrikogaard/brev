@@ -215,7 +215,7 @@ public struct CalendarRootView: View {
 
     private var leadingColumn: some View {
         VStack(spacing: 0) {
-            if !model.staleSources.isEmpty {
+            if !model.staleSources.isEmpty || model.hasRetainedCache {
                 staleBanner
             }
             if let lastError = model.lastError {

@@ -105,7 +105,7 @@ struct ContactPresentationTests {
 
     // MARK: - Field labels
 
-    @Test("vCard-style labels normalize to title case")
+    @Test("standard vCard-style labels use localized field types")
     func fieldLabelNormalization() {
         #expect(
             ContactPresentation.fieldLabel("WORK", fallback: "Email")
@@ -123,6 +123,14 @@ struct ContactPresentationTests {
             ContactPresentation.fieldLabel("", fallback: "Email")
                 == "Email"
         )
+    }
+
+    @Test("custom contact labels preserve their spelling")
+    func customFieldLabels() {
+        for label in ["MY OFFICE", "family address", "School", "item1"] {
+            #expect(ContactPresentation.fieldLabel(label, fallback: "Email") == label)
+        }
+        #expect(ContactPresentation.fieldLabel("cell", fallback: "Phone") == "Mobile")
     }
 
     // MARK: - Addresses

@@ -66,6 +66,14 @@ public actor PIMSourceCoordinator {
         try await loadSources()[id]
     }
 
+    /// Source IDs retained solely for cache reads, excluding every registered source.
+    public func retainedSourceIDs(for kind: PIMSourceKind) async throws -> [PIMSource.ID] {
+        let registered = try await loadSources()
+        let registeredIDs = Set(registered.keys)
+        let retainedIDs = try await localData.retainedSourceIDs(for: kind)
+        return retainedIDs.filter { !registeredIDs.contains($0) }
+    }
+
     /// Sources attached to a mail account. Account removal enumerates these
     /// so linked sources are removed or explicitly retained instead of
     /// silently orphaned (ADR-0072).

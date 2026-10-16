@@ -471,7 +471,43 @@ struct CalendarEditingModelTests {
         #expect(created.conference?.isCreationRequest == false)
     }
 
-    @Test("future scope truncates the master and creates a new series")
+    @Test("future scope at the first occurrence updates the original series")
+    func saveFutureScopeAtFirstOccurrence() async throws {
+        let (model, writer) = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+            ]
+        )
+        await model.load()
+        var original = Self.event(
+            collectionID: "c1",
+            recurrenceRule: ICSParser.RecurrenceRule(
+                frequency: .daily, interval: 1, count: 5, until: nil, byDay: nil
+            )
+        )
+        original.providerVersion = "version-1"
+        var draft = CalendarEventDraft(event: original)
+        draft.summary = "Edited series"
+
+        let saved = try await model.save(draft, scope: .future)
+
+        #expect(writer.calls.count == 1)
+        guard case .update(let updated, let collection) = writer.calls.first else {
+            Issue.record("expected one update, not a split")
+            return
+        }
+        #expect(collection == original.collectionID)
+        #expect(updated.uid == original.uid)
+        #expect(updated.providerItemKey == original.providerItemKey)
+        #expect(updated.providerVersion == original.providerVersion)
+        #expect(updated.start == original.start)
+        #expect(updated.recurrenceRule == original.recurrenceRule)
+        #expect(updated.summary == "Edited series")
+        #expect(saved.id == updated.id)
+    }
+
+    @Test("later future scope preserves the original master and creates an edited series")
     func saveFutureScope() async throws {
         let (model, writer) = try await makeModel(
             sources: [Self.source(id: "s1")],
@@ -487,6 +523,8 @@ struct CalendarEditingModelTests {
             )
         )
         draft.summary = "New time"
+        draft.start = Self.fixedNow.addingTimeInterval(3 * 86400)
+        draft.end = draft.start.addingTimeInterval(1800)
 
         _ = try await model.save(draft, scope: .future)
 
@@ -501,12 +539,15 @@ struct CalendarEditingModelTests {
         let expectedUntil = Calendar.current.date(
             byAdding: .day,
             value: -1,
-            to: Self.fixedNow
+            to: draft.start
         )
         #expect(truncated.recurrenceRule?.until == expectedUntil)
         #expect(truncated.recurrenceRule?.count == nil)
+        #expect(truncated.start == Self.fixedNow)
+        #expect(truncated.summary == "Standup")
         #expect(newCollection == "c1")
         #expect(newSeries.summary == "New time")
+        #expect(newSeries.start == draft.start)
         #expect(newSeries.uid == nil)
         #expect(newSeries.providerItemKey == "draft")
     }

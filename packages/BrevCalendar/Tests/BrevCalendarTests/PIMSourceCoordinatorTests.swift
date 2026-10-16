@@ -354,6 +354,39 @@ struct PIMSourceCoordinatorTests {
 
     // MARK: - Removal
 
+    @Test("registered disconnected caches stay excluded from retained discovery")
+    func registeredCacheIsNotRetained() async throws {
+        let root = try makeTempDir()
+        let coordinator = makeCoordinator(
+            transport: Self.okTransport(),
+            localDataRoot: root
+        )
+        let source = try await coordinator.connectDAVSource(
+            kind: .contacts,
+            endpoint: .manual(URL(string: "https://dav.example.com/")!),
+            displayName: "Contacts",
+            credential: .bearer(token: "t")
+        )
+        let localData = FilePIMSourceLocalDataStore(rootURL: root)
+        try FileManager.default.createDirectory(
+            at: localData.cacheDirectory(for: source.id),
+            withIntermediateDirectories: true
+        )
+        try Data().write(
+            to: localData.cacheDirectory(for: source.id)
+                .appendingPathComponent("contacts.json")
+        )
+        try await localData.markCacheDisconnected(for: source.id)
+
+        #expect(
+            try await localData.retainedSourceIDs(for: .contacts)
+                == [source.id]
+        )
+        #expect(
+            try await coordinator.retainedSourceIDs(for: .contacts).isEmpty
+        )
+    }
+
     @Test("removal deletes credential, record, cursors and drafts but keeps a retained cache read-only")
     func removalKeepsCacheDisconnected() async throws {
         let root = try makeTempDir()
@@ -379,7 +412,8 @@ struct PIMSourceCoordinatorTests {
             try fm.createDirectory(at: dir, withIntermediateDirectories: true)
         }
         try Data("cached".utf8).write(
-            to: localData.cacheDirectory(for: source.id).appendingPathComponent("items.json")
+            to: localData.cacheDirectory(for: source.id)
+                .appendingPathComponent("contacts.json")
         )
 
         try await coordinator.removeSource(id: source.id, deleteCachedContent: false)
@@ -396,6 +430,11 @@ struct PIMSourceCoordinatorTests {
                     .appendingPathComponent("disconnected").path
             )
         )
+        #expect(
+            try await coordinator.retainedSourceIDs(for: .contacts)
+                == [source.id]
+        )
+        #expect(try await coordinator.retainedSourceIDs(for: .calendar).isEmpty)
     }
 
     @Test("removal with cache deletion wipes the readable content too")
@@ -414,7 +453,8 @@ struct PIMSourceCoordinatorTests {
         let localData = FilePIMSourceLocalDataStore(rootURL: root)
         let fm = FileManager.default
         try fm.createDirectory(
-            at: localData.cacheDirectory(for: source.id),
+            at: localData.cacheDirectory(for: source.id)
+                .appendingPathComponent("events"),
             withIntermediateDirectories: true
         )
 
@@ -422,6 +462,7 @@ struct PIMSourceCoordinatorTests {
 
         #expect(!fm.fileExists(atPath: localData.cacheDirectory(for: source.id).path))
         #expect(!fm.fileExists(atPath: localData.directory(for: source.id).path))
+        #expect(try await coordinator.retainedSourceIDs(for: .calendar).isEmpty)
     }
 
     // MARK: - Linked sources
