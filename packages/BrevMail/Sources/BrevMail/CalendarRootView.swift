@@ -142,12 +142,13 @@ public struct CalendarRootView: View {
         .task(id: driveSaveEligibilityInput) {
             await resolveDriveSaveTargets()
         }
-        .onChange(of: model.selectedEventID) { _, newValue in
+        .onChange(of: model.selectedOccurrenceID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
             }
             if let eventSaveRequest,
-               newValue != eventSaveRequest.eventID {
+               model.selectedOccurrence?.event.id
+               != eventSaveRequest.eventID {
                 self.eventSaveRequest = nil
             }
         }
@@ -177,7 +178,8 @@ public struct CalendarRootView: View {
                     guard let currentEvent = browsingModel.event(
                         id: request.eventID
                     ),
-                        browsingModel.selectedEventID == request.eventID,
+                        browsingModel.selectedOccurrence?.event.id
+                        == request.eventID,
                         let currentCollection = browsingModel.collection(
                             for: currentEvent
                         ),
@@ -284,7 +286,8 @@ public struct CalendarRootView: View {
                 CalendarAgendaView(
                     days: model.days,
                     collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID
+                    selectedOccurrenceID: Bindable(model)
+                        .selectedOccurrenceID
                 )
             case .day:
                 CalendarDayView(
@@ -294,7 +297,8 @@ public struct CalendarRootView: View {
                     ),
                     placements: model.timedLanes(onDay: model.selectedDay),
                     collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID
+                    selectedOccurrenceID: Bindable(model)
+                        .selectedOccurrenceID
                 )
             case .week:
                 CalendarWeekView(
@@ -302,7 +306,8 @@ public struct CalendarRootView: View {
                     allDayFor: { model.allDayEvents(onDay: $0) },
                     lanesFor: { model.timedLanes(onDay: $0) },
                     collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID,
+                    selectedOccurrenceID: Bindable(model)
+                        .selectedOccurrenceID,
                     onSelectDay: { day in
                         model.selectDay(day)
                         model.viewMode = .day
@@ -313,7 +318,8 @@ public struct CalendarRootView: View {
                     weeks: model.selectedMonthWeeks,
                     eventsFor: { model.events(onDay: $0) },
                     collectionFor: { model.collection(for: $0) },
-                    selectedEventID: Bindable(model).selectedEventID,
+                    selectedOccurrenceID: Bindable(model)
+                        .selectedOccurrenceID,
                     onSelectDay: { day in
                         model.selectDay(day)
                         model.viewMode = .day
@@ -327,13 +333,22 @@ public struct CalendarRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let event = model.event(id: model.selectedEventID) {
+        if let occurrence = model.selectedOccurrence {
+            let event = occurrence.event
+            // A projected row past the first keeps selection but loses
+            // mutation: future-scope writes need the original-occurrence
+            // boundary contract that is still pending (ADR-0089 §4).
+            let laterOccurrence = CalendarEventPresentation
+                .isLaterOccurrence(occurrence)
             CalendarEventDetailView(
                 event: event,
+                occurrence: occurrence,
                 collection: model.collection(for: event),
                 source: model.source(for: event),
-                onEdit: editAction(for: event),
-                onDelete: deleteAction(for: event),
+                onEdit: laterOccurrence ? nil : editAction(for: event),
+                onDelete: laterOccurrence
+                    ? nil
+                    : deleteAction(for: event),
                 onSaveAttachment: saveAction(for: event),
                 eligibleSaveAttachments: Set(
                     resolvedDriveSaveTargets
@@ -341,7 +356,11 @@ public struct CalendarRootView: View {
                         .map(\.attachment)
                 ),
                 isRecurring: editing?.needsScopeChoice(for: event)
-                    ?? false
+                    ?? false,
+                laterOccurrenceReadOnly: laterOccurrence,
+                seriesCoverageLimited: model.incompleteSeriesReason(
+                    for: event
+                ) != nil
             )
         } else if hasSelectableEvents {
             ContentUnavailableView(
@@ -396,7 +415,7 @@ public struct CalendarRootView: View {
     }
 
     private var driveSaveEligibilityInput: DriveSaveEligibilityInput {
-        guard let event = model.event(id: model.selectedEventID) else {
+        guard let event = model.selectedOccurrence?.event else {
             return DriveSaveEligibilityInput(
                 event: nil,
                 source: nil,
@@ -446,7 +465,7 @@ public struct CalendarRootView: View {
     private func currentDriveSaveState(
         eventID: PIMEvent.ID
     ) -> CalendarDriveSaveState? {
-        guard model.selectedEventID == eventID,
+        guard model.selectedOccurrence?.event.id == eventID,
               let event = model.event(id: eventID),
               let collection = model.collection(for: event),
               let source = model.source(for: event),
@@ -588,7 +607,7 @@ public struct CalendarRootView: View {
     ) async {
         do {
             try await editing?.delete(event, scope: scope)
-            model.selectedEventID = nil
+            model.selectedOccurrenceID = nil
             await model.load()
         } catch {
             // The editing model carries the displayable error.

@@ -62,19 +62,23 @@ struct CalendarBrowsingSnapshotTests {
         // the List reuses (same convention as MessageListRowSnapshotTests).
         let rows = VStack(alignment: .leading, spacing: 0) {
             CalendarEventRowView(
-                event: Self.event(
-                    id: "e1",
-                    summary: "Design review",
-                    location: "Oslo office",
-                    conferenceURL: "https://meet.example.com/x"
+                occurrence: Self.occurrence(
+                    Self.event(
+                        id: "e1",
+                        summary: "Design review",
+                        location: "Oslo office",
+                        conferenceURL: "https://meet.example.com/x"
+                    )
                 )
             )
             CalendarEventRowView(
-                event: Self.event(
-                    id: "e2",
-                    summary: "Cancelled sync",
-                    startOffset: 7200,
-                    status: .cancelled
+                occurrence: Self.occurrence(
+                    Self.event(
+                        id: "e2",
+                        summary: "Cancelled sync",
+                        startOffset: 7200,
+                        status: .cancelled
+                    )
                 )
             )
         }
@@ -93,6 +97,21 @@ struct CalendarBrowsingSnapshotTests {
             as: .image(size: CGSize(width: 360, height: 200)),
             named: "agenda-\(mode)",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    /// A raw (non-projected) occurrence row wrapping the record —
+    /// rows render `PIMEventOccurrence` (ADR-0089).
+    private static func occurrence(
+        _ event: PIMEvent
+    ) -> PIMEventOccurrence {
+        PIMEventOccurrence(
+            id: event.id,
+            event: event,
+            originalStart: event.start,
+            start: event.start,
+            end: event.end,
+            occurrenceIndex: nil
         )
     }
 
@@ -287,6 +306,70 @@ struct CalendarBrowsingSnapshotTests {
             of: host,
             as: .image(size: CGSize(width: 420, height: 560)),
             named: "detail-drive-save-readonly-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("a later projected occurrence explains the read-only state", arguments: ["light", "dark"])
+    func eventDetailLaterOccurrence(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let master = Self.event(id: "e-later", summary: "Weekly sync")
+        // The selected row is the series' third date: the pane shows
+        // that date, not the master's start (ADR-0089 §4).
+        let third = PIMEventOccurrence(
+            id: "e-later|occ|172800",
+            event: master,
+            originalStart: master.start?.addingTimeInterval(2 * 86400),
+            start: master.start?.addingTimeInterval(2 * 86400),
+            end: master.end?.addingTimeInterval(2 * 86400),
+            occurrenceIndex: 2
+        )
+        let view = CalendarEventDetailView(
+            event: master,
+            occurrence: third,
+            collection: Self.collection(),
+            source: Self.source(writable: true),
+            laterOccurrenceReadOnly: true,
+            seriesCoverageLimited: false
+        )
+        .frame(width: 420, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 560)),
+            named: "detail-later-occurrence-\(mode)",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("an incomplete series explains the limited coverage", arguments: ["light", "dark"])
+    func eventDetailIncompleteSeries(mode: String) {
+        let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
+        let view = CalendarEventDetailView(
+            event: Self.event(id: "e-inc", summary: "Weekly sync"),
+            collection: Self.collection(),
+            source: Self.source(writable: true),
+            onEdit: {},
+            onDelete: { _ in },
+            laterOccurrenceReadOnly: false,
+            seriesCoverageLimited: true
+        )
+        .frame(width: 420, height: 560)
+        .brevTheme(theme)
+        .environment(\.colorScheme, theme.mode.colorScheme)
+
+        let host = NSHostingController(rootView: view)
+        host.view.frame = CGRect(x: 0, y: 0, width: 420, height: 560)
+
+        assertSnapshot(
+            of: host,
+            as: .image(size: CGSize(width: 420, height: 560)),
+            named: "detail-incomplete-series-\(mode)",
             record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
         )
     }

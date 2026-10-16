@@ -31,6 +31,10 @@ public struct CalendarEventDetailView: View {
     @Environment(\.openURL) private var openURL
 
     let event: PIMEvent
+    /// The occurrence row the pane was opened from. When present, the
+    /// "When" line renders its projected bounds instead of the master
+    /// record's stored start/end (ADR-0089).
+    let occurrence: PIMEventOccurrence?
     let collection: PIMCollection?
     let source: PIMSource?
     /// Opens the editor for this event; nil hides the Edit action.
@@ -46,20 +50,31 @@ public struct CalendarEventDetailView: View {
     /// Whether the event belongs to a repeating series — the delete
     /// confirmation asks for a scope only then.
     let isRecurring: Bool
+    /// The selected row is a projected occurrence past the first —
+    /// single-occurrence mutation is not available yet (ADR-0089 §4),
+    /// so the pane explains instead of offering Edit/Delete.
+    let laterOccurrenceReadOnly: Bool
+    /// The series is not fully projected (unsupported rule, exceptions,
+    /// or limits) — the pane notes the incomplete coverage.
+    let seriesCoverageLimited: Bool
 
     @State private var showsDeleteConfirmation = false
 
     public init(
         event: PIMEvent,
+        occurrence: PIMEventOccurrence? = nil,
         collection: PIMCollection? = nil,
         source: PIMSource? = nil,
         onEdit: (() -> Void)? = nil,
         onDelete: ((CalendarRecurringEditScope?) -> Void)? = nil,
         onSaveAttachment: ((PIMEventAttachment) -> Void)? = nil,
         eligibleSaveAttachments: Set<PIMEventAttachment>? = nil,
-        isRecurring: Bool = false
+        isRecurring: Bool = false,
+        laterOccurrenceReadOnly: Bool = false,
+        seriesCoverageLimited: Bool = false
     ) {
         self.event = event
+        self.occurrence = occurrence
         self.collection = collection
         self.source = source
         self.onEdit = onEdit
@@ -67,6 +82,8 @@ public struct CalendarEventDetailView: View {
         self.onSaveAttachment = onSaveAttachment
         self.eligibleSaveAttachments = eligibleSaveAttachments
         self.isRecurring = isRecurring
+        self.laterOccurrenceReadOnly = laterOccurrenceReadOnly
+        self.seriesCoverageLimited = seriesCoverageLimited
     }
 
     public var body: some View {
@@ -75,6 +92,22 @@ public struct CalendarEventDetailView: View {
                 header
                 if onEdit != nil || onDelete != nil || deepLinkURL != nil {
                     actionRow
+                }
+                if laterOccurrenceReadOnly {
+                    BrevInlineStatus(
+                        message: CalendarEventPresentation
+                            .laterOccurrenceNote(),
+                        tone: .info,
+                        lineLimit: nil
+                    )
+                }
+                if seriesCoverageLimited {
+                    BrevInlineStatus(
+                        message: CalendarEventPresentation
+                            .incompleteSeriesNote(),
+                        tone: .info,
+                        lineLimit: nil
+                    )
                 }
                 if let hint = PIMDetailEditabilityHint.text(
                     source: source,
@@ -258,9 +291,13 @@ public struct CalendarEventDetailView: View {
                 label: String(localized: "When", bundle: .module)
             ) {
                 VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(CalendarEventPresentation.detailRangeText(
-                        for: event
-                    ))
+                    Text(
+                        occurrence.map {
+                            CalendarEventPresentation
+                                .detailRangeText(for: $0)
+                        } ?? CalendarEventPresentation
+                            .detailRangeText(for: event)
+                    )
                     if let timeZoneIdentifier = event.timeZoneIdentifier,
                        !event.isAllDay {
                         Text(timeZoneIdentifier)

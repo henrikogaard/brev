@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Repeating calendar events now show every projected date in the
+  agenda, day, week, and month views, and the agenda shows a navigable
+  30-day range (ADR-0089).
 - Calendar event-detail actions stack vertically when the available width
   cannot fit their labels, preserving readability at accessibility text sizes.
 - Calendar: saving “This and Future Events” at the start of a series

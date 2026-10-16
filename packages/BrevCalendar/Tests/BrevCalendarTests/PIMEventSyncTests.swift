@@ -1317,3 +1317,266 @@ struct ICSParserSyncFieldTests {
         #expect(ICSParser.parseRecurrenceRule("X-NOT-A-RULE") == nil)
     }
 }
+
+@Suite("Recurrence descriptors (ADR-0089)")
+struct RecurrenceDescriptorTests {
+    // MARK: - ICS capture
+
+    private static func parse(_ vevent: String) -> ICSParser.ParsedEvent? {
+        ICSParser.parseFirstEvent(
+            from: "BEGIN:VCALENDAR\n\(vevent)\nEND:VCALENDAR\n"
+        )
+    }
+
+    @Test("RRULE values are captured verbatim, including unknown parts")
+    func verbatimRRule() {
+        let parsed = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART;TZID=Europe/Oslo:20261016T090000
+        DTEND;TZID=Europe/Oslo:20261016T100000
+        RRULE:FREQ=DAILY;COUNT=5;BYSETPOS=1
+        END:VEVENT
+        """)
+        #expect(
+            parsed?.recurrenceDescriptor?.rrules
+                == ["FREQ=DAILY;COUNT=5;BYSETPOS=1"]
+        )
+        #expect(
+            parsed?.recurrenceDescriptor?.startBasis
+                == .zoned("Europe/Oslo")
+        )
+        #expect(parsed?.recurrenceDescriptor?.hasRDate == false)
+        #expect(parsed?.recurrenceDescriptor?.hasExDate == false)
+    }
+
+    @Test("RDATE and EXDATE set their flags and keep every RRULE")
+    func rdateExdate() {
+        let parsed = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART:20261016T090000Z
+        RRULE:FREQ=DAILY
+        RRULE:FREQ=WEEKLY
+        RDATE:20261020T090000Z
+        EXDATE:20261017T090000Z
+        END:VEVENT
+        """)
+        let descriptor = parsed?.recurrenceDescriptor
+        #expect(descriptor?.rrules == ["FREQ=DAILY", "FREQ=WEEKLY"])
+        #expect(descriptor?.hasRDate == true)
+        #expect(descriptor?.hasExDate == true)
+    }
+
+    @Test("no descriptor is emitted without recurrence properties")
+    func noRecurrence() {
+        let parsed = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART:20261016T090000Z
+        END:VEVENT
+        """)
+        #expect(parsed?.recurrenceDescriptor == nil)
+    }
+
+    @Test("every DTSTART basis maps to its descriptor value")
+    func startBases() {
+        let dateOnly = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART;VALUE=DATE:20261016
+        RRULE:FREQ=DAILY
+        END:VEVENT
+        """)
+        #expect(dateOnly?.recurrenceDescriptor?.startBasis == .dateOnly)
+
+        let utc = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART:20261016T090000Z
+        RRULE:FREQ=DAILY
+        END:VEVENT
+        """)
+        #expect(utc?.recurrenceDescriptor?.startBasis == .utc)
+
+        let zoned = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART;TZID=Custom/Zone:20261016T090000
+        RRULE:FREQ=DAILY
+        END:VEVENT
+        """)
+        #expect(
+            zoned?.recurrenceDescriptor?.startBasis
+                == .zoned("Custom/Zone")
+        )
+
+        let floating = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        DTSTART:20261016T090000
+        RRULE:FREQ=DAILY
+        END:VEVENT
+        """)
+        #expect(floating?.recurrenceDescriptor?.startBasis == .floating)
+
+        let missing = Self.parse("""
+        BEGIN:VEVENT
+        UID:e1
+        RRULE:FREQ=DAILY
+        END:VEVENT
+        """)
+        #expect(missing?.recurrenceDescriptor?.startBasis == .unknown)
+    }
+
+    // MARK: - Google mapping
+
+    private static func googleSource() -> PIMSource {
+        PIMSource(
+            id: "pim-test",
+            kind: .calendar,
+            provider: .google,
+            displayName: "Google",
+            syncEnabled: true,
+            status: .ready,
+            createdAt: Date(timeIntervalSince1970: 0),
+            updatedAt: Date(timeIntervalSince1970: 0)
+        )
+    }
+
+    /// Syncs one Google page and returns the mapped result.
+    private static func syncGoogleItems(
+        _ items: String
+    ) async throws -> (PIMEventSyncResult) {
+        struct Transport: PIMDAVTransport {
+            let body: String
+            func send(
+                _ request: URLRequest
+            ) async throws -> (Data, HTTPURLResponse) {
+                (
+                    Data(body.utf8),
+                    HTTPURLResponse(
+                        url: request.url!,
+                        statusCode: 200,
+                        httpVersion: nil,
+                        headerFields: nil
+                    )!
+                )
+            }
+        }
+        let collection = PIMCollection(
+            id: "c1",
+            sourceID: "pim-test",
+            kind: .calendar,
+            displayName: "Cal",
+            isReadOnly: false,
+            isPrimary: true,
+            providerKey: "primary",
+            updatedAt: Date()
+        )
+        let sync = GoogleCalendarEventSync(
+            transport: Transport(body: """
+            {"items":[\(items)],"nextSyncToken":"tok"}
+            """)
+        )
+        return try await sync.syncCollection(
+            collection,
+            source: googleSource(),
+            cursorToken: "tok-0",
+            windowStart: Date(timeIntervalSince1970: 0),
+            windowEnd: Date(),
+            accessToken: "token"
+        )
+    }
+
+    @Test("a Google master maps recurrence[] into the descriptor")
+    func googleDescriptor() async throws {
+        let result = try await Self.syncGoogleItems("""
+        {"id":"g1","status":"confirmed","summary":"Standup",
+         "iCalUID":"g1@google.com",
+         "start":{"dateTime":"2026-10-16T09:00:00+02:00","timeZone":"Europe/Oslo"},
+         "end":{"dateTime":"2026-10-16T09:30:00+02:00","timeZone":"Europe/Oslo"},
+         "recurrence":["RRULE:FREQ=DAILY;COUNT=5","EXDATE:20261018T070000Z","X-ODD:1"]}
+        """)
+        let event = try #require(result.events.first)
+        let descriptor = try #require(event.recurrenceDescriptor)
+        #expect(descriptor.rrules == ["FREQ=DAILY;COUNT=5"])
+        #expect(descriptor.hasExDate)
+        #expect(!descriptor.hasRDate)
+        #expect(descriptor.hasUnrecognizedEntries)
+        #expect(descriptor.startBasis == .zoned("Europe/Oslo"))
+    }
+
+    @Test("a Google all-day series maps the date-only basis")
+    func googleDateOnlyBasis() async throws {
+        let result = try await Self.syncGoogleItems("""
+        {"id":"g1","status":"confirmed",
+         "start":{"date":"2026-10-16"},
+         "end":{"date":"2026-10-17"},
+         "recurrence":["RRULE:FREQ=DAILY;COUNT=3"]}
+        """)
+        #expect(
+            result.events.first?.recurrenceDescriptor?.startBasis
+                == .dateOnly
+        )
+        // A timed master without a reported zone keeps the unknown basis.
+        let unknown = try await Self.syncGoogleItems("""
+        {"id":"g2","status":"confirmed",
+         "start":{"dateTime":"2026-10-16T09:00:00+02:00"},
+         "end":{"dateTime":"2026-10-16T09:30:00+02:00"},
+         "recurrence":["RRULE:FREQ=DAILY;COUNT=3"]}
+        """)
+        #expect(
+            unknown.events.first?.recurrenceDescriptor?.startBasis
+                == .unknown
+        )
+    }
+
+    @Test("a cancelled recurring instance is a marker, not a tombstone")
+    func googleCancelledInstance() async throws {
+        let result = try await Self.syncGoogleItems("""
+        {"id":"m_20261018T070000Z","status":"cancelled",
+         "iCalUID":"master@google.com",
+         "recurringEventId":"m",
+         "originalStartTime":{"dateTime":"2026-10-18T09:00:00+02:00"}}
+        """)
+        #expect(result.removedItemKeys.isEmpty)
+        let marker = try #require(result.events.first)
+        #expect(marker.status == .cancelled)
+        #expect(marker.seriesMasterItemKey == "m")
+        #expect(marker.providerItemKey == "m_20261018T070000Z")
+        #expect(marker.uid == "master@google.com")
+        #expect(marker.recurrenceID != nil)
+        #expect(
+            marker.id
+                == PIMEvent.makeID(
+                    collectionID: "c1",
+                    providerItemKey: "m_20261018T070000Z",
+                    recurrenceID: marker.recurrenceID
+                )
+        )
+    }
+
+    @Test("a cancelled master stays a tombstone")
+    func googleCancelledMaster() async throws {
+        let result = try await Self.syncGoogleItems("""
+        {"id":"m","status":"cancelled","iCalUID":"master@google.com"}
+        """)
+        #expect(result.events.isEmpty)
+        #expect(result.removedItemKeys == ["m"])
+    }
+
+    @Test("a Google exception instance links its master key")
+    func googleInstanceLink() async throws {
+        let result = try await Self.syncGoogleItems("""
+        {"id":"m_20261018T070000Z","status":"confirmed","summary":"Moved",
+         "recurringEventId":"m",
+         "originalStartTime":{"dateTime":"2026-10-18T09:00:00+02:00"},
+         "start":{"dateTime":"2026-10-18T11:00:00+02:00","timeZone":"Europe/Oslo"},
+         "end":{"dateTime":"2026-10-18T11:30:00+02:00","timeZone":"Europe/Oslo"}}
+        """)
+        let event = try #require(result.events.first)
+        #expect(event.seriesMasterItemKey == "m")
+        #expect(event.recurrenceID != nil)
+    }
+}

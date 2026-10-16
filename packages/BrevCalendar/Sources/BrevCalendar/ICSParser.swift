@@ -63,6 +63,11 @@ public enum ICSParser {
         /// the URI plus `FMTTYPE` and `X-FILENAME`/`FILENAME`
         /// display metadata.
         public let attachments: [ParsedAttachment]
+        /// Lossless recurrence metadata (ADR-0089): populated whenever
+        /// the component carries RRULE, RDATE or EXDATE, so the
+        /// projector validates the complete recurrence set rather than
+        /// the lossy `recurrenceRule` summary.
+        public let recurrenceDescriptor: PIMRecurrenceDescriptor?
 
         /// Memberwise initialiser with a `nil` default for `recurrenceRule`
         /// so call-sites that construct `ParsedEvent` directly (e.g. in tests)
@@ -86,7 +91,8 @@ public enum ICSParser {
             conferenceURL: String? = nil,
             conferenceLabel: String? = nil,
             conferenceIsGoogleMeet: Bool = false,
-            attachments: [ParsedAttachment] = []
+            attachments: [ParsedAttachment] = [],
+            recurrenceDescriptor: PIMRecurrenceDescriptor? = nil
         ) {
             self.uid = uid
             self.summary = summary
@@ -107,6 +113,7 @@ public enum ICSParser {
             self.conferenceLabel = conferenceLabel
             self.conferenceIsGoogleMeet = conferenceIsGoogleMeet
             self.attachments = attachments
+            self.recurrenceDescriptor = recurrenceDescriptor
         }
     }
 
@@ -306,6 +313,22 @@ public enum ICSParser {
             }
             .filter { !$0.url.isEmpty }
 
+        let rruleValues = props.filter { $0.name == "RRULE" }
+            .map(\.value)
+        let hasRDate = props.contains { $0.name == "RDATE" }
+        let hasExDate = props.contains { $0.name == "EXDATE" }
+        let recurrenceDescriptor: PIMRecurrenceDescriptor?
+        if !rruleValues.isEmpty || hasRDate || hasExDate {
+            recurrenceDescriptor = PIMRecurrenceDescriptor(
+                rrules: rruleValues,
+                hasRDate: hasRDate,
+                hasExDate: hasExDate,
+                startBasis: Self.startBasis(for: dtstart)
+            )
+        } else {
+            recurrenceDescriptor = nil
+        }
+
         return ParsedEvent(
             uid: uid,
             summary: summary,
@@ -325,8 +348,30 @@ public enum ICSParser {
             conferenceURL: conferenceURL,
             conferenceLabel: conferenceLabel,
             conferenceIsGoogleMeet: conferenceProp?.name == "X-GOOGLE-CONFERENCE",
-            attachments: attachments
+            attachments: attachments,
+            recurrenceDescriptor: recurrenceDescriptor
         )
+    }
+
+    /// The DTSTART basis for a VEVENT (ADR-0089): `VALUE=DATE` is
+    /// date-only, a `Z` suffix is UTC, a `TZID` parameter is a named
+    /// zone kept verbatim, a bare date-time is floating, and a missing
+    /// DTSTART is unknown.
+    private static func startBasis(
+        for dtstart: Property?
+    ) -> PIMRecurrenceDescriptor.StartBasis {
+        guard let dtstart else { return .unknown }
+        if dtstart.params["VALUE"]?.uppercased() == "DATE" {
+            return .dateOnly
+        }
+        if dtstart.value.trimmingCharacters(in: .whitespaces)
+            .hasSuffix("Z") {
+            return .utc
+        }
+        if let tzid = dtstart.params["TZID"] {
+            return .zoned(tzid)
+        }
+        return .floating
     }
 
     /// Parse an RFC 5545 `RRULE` value (without the `RRULE:` prefix) into a

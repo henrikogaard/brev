@@ -26,6 +26,21 @@ struct CalendarEventPresentationTests {
         return calendar
     }
 
+    /// Raw (non-projected) occurrence row for the occurrence-based
+    /// presentation helpers (ADR-0089).
+    private static func occurrence(
+        _ event: PIMEvent
+    ) -> PIMEventOccurrence {
+        PIMEventOccurrence(
+            id: event.id,
+            event: event,
+            originalStart: event.start,
+            start: event.start,
+            end: event.end,
+            occurrenceIndex: nil
+        )
+    }
+
     private static func event(
         start: Date? = nil,
         end: Date? = nil,
@@ -103,7 +118,7 @@ struct CalendarEventPresentationTests {
         )
         #expect(
             CalendarEventPresentation.agendaTimeText(
-                for: event,
+                for: Self.occurrence(event),
                 calendar: Self.utcCalendar
             ) == "All day"
         )
@@ -126,7 +141,7 @@ struct CalendarEventPresentationTests {
         let event = Self.event(start: start, end: end)
 
         let text = CalendarEventPresentation.agendaTimeText(
-            for: event,
+            for: Self.occurrence(event),
             calendar: calendar
         )
 
@@ -242,5 +257,41 @@ struct CalendarEventPresentationTests {
         #expect(CalendarEventPresentation.matches(event, query: "oslo"))
         #expect(!CalendarEventPresentation.matches(event, query: "dentist"))
         #expect(CalendarEventPresentation.matches(event, query: "  "))
+    }
+}
+
+extension CalendarEventPresentationTests {
+    @Test("an occurrence detail range uses the projected bounds")
+    func detailRangeOccurrence() {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC")!
+        let masterStart = calendar.date(
+            from: DateComponents(year: 2026, month: 10, day: 16, hour: 9)
+        )!
+        let thirdStart = calendar.date(
+            from: DateComponents(year: 2026, month: 10, day: 18, hour: 9)
+        )!
+        let event = Self.event(
+            start: masterStart,
+            end: masterStart.addingTimeInterval(3600)
+        )
+        let third = PIMEventOccurrence(
+            id: "e1|occ|172800",
+            event: event,
+            originalStart: thirdStart,
+            start: thirdStart,
+            end: thirdStart.addingTimeInterval(3600),
+            occurrenceIndex: 2
+        )
+
+        let masterText = CalendarEventPresentation.detailRangeText(
+            for: event
+        )
+        let occurrenceText = CalendarEventPresentation
+            .detailRangeText(for: third)
+
+        #expect(masterText.contains("16"))
+        #expect(occurrenceText.contains("18"))
+        #expect(occurrenceText != masterText)
     }
 }

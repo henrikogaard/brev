@@ -263,6 +263,16 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
     public var rawPayload: String?
     /// Provider-reported modification time (LAST-MODIFIED / updated).
     public var providerUpdatedAt: Date?
+    /// Lossless recurrence metadata captured at the adapter boundary
+    /// (ADR-0089). The validator and projector read this — never the
+    /// lossy `recurrenceRule` summary — so a rule outside the
+    /// supported subset degrades visibly instead of expanding wrong.
+    /// Nil on records written before ADR-0089 landed.
+    public var recurrenceDescriptor: PIMRecurrenceDescriptor?
+    /// The series master's provider item key when this record is an
+    /// exception instance (Google `recurringEventId`). CalDAV
+    /// exceptions already share the master's `providerItemKey`.
+    public var seriesMasterItemKey: String?
     /// When Brev wrote this record into the cache.
     public var syncedAt: Date
 
@@ -291,7 +301,9 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         recurrenceID: Date? = nil,
         rawPayload: String? = nil,
         providerUpdatedAt: Date? = nil,
-        syncedAt: Date = Date()
+        syncedAt: Date = Date(),
+        recurrenceDescriptor: PIMRecurrenceDescriptor? = nil,
+        seriesMasterItemKey: String? = nil
     ) {
         self.id = id
         self.sourceID = sourceID
@@ -318,6 +330,8 @@ public struct PIMEvent: Sendable, Hashable, Codable, Identifiable {
         self.rawPayload = rawPayload
         self.providerUpdatedAt = providerUpdatedAt
         self.syncedAt = syncedAt
+        self.recurrenceDescriptor = recurrenceDescriptor
+        self.seriesMasterItemKey = seriesMasterItemKey
     }
 
     /// Composes the stable record ID for a provider item component.
