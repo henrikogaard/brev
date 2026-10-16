@@ -6089,3 +6089,74 @@ buttons, and package-aware localization.
   only; no product/privacy/architecture changes or new blueprint/skill edits.
   Parent decision needed before recurrence implementation; #11/#3 remain
   acceptance-gated.
+
+## 2026-10-15 — Devin — #14 Drive attachment acceptance gaps
+
+- Goal: close reproduced transport gaps in the existing Drive implementation, not rebuild #77/#78 or configuration repair #161. Isolated worktree/branch `fix/drive-acceptance-gaps`, based on `origin/main` at `3a553dd`; target `main`.
+- TDD: multipart create/update structure and native cancellation assertions failed; cancel-then-retry through the production upload transport crashed because its session was invalidated. All reproduction used synthetic data and injected transports/URLProtocol, not Google.
+- Changes: CRLF before multipart content boundaries; preserve native cancellation; one ephemeral upload session and immutable progress delegate per operation with explicit session cleanup. Narrow `drive.file`, UI, calendar/contact features and configuration unchanged.
+- Verification: BrevBackend GoogleDrive filter passed (12 tests, 2 suites); BrevMail GoogleDrive filter passed (16 tests, 3 suites); `scripts/format.sh` passed (0/1285 files formatted, 174 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed. The first format attempt found `mise` absent; installed it and the pinned project tools, then reran format and lint successfully. UI and live Google checks were intentionally skipped per scope; see the explicit limitations below.
+- Not verified: authenticated macOS/iOS Picker, attach/save/export/referrer/error/revoke/offline/remote cleanup. UI testing needs explicit approval, approved disposable-account access and private Picker configuration; no login challenge bypass attempted.
+- Docs sweep: Unreleased CHANGELOG and new `docs/qa/drive-attachments-acceptance-v2-2026-10-15.md` updated; README, privacy/ADR-0006, ADR-0072, AGENTS and release docs unchanged because feature/architecture/privacy/workflow boundaries did not change.
+- Handoff: stop at first push; opening even a draft PR triggers macOS CI and is held for cost authorization. Project token denied access; intended status after verified push is In review, not Done. No merge, issue close, release or version change.
+
+## 2026-10-15 — Devin — #14 calendar Drive attachment save (PR #244)
+
+- Goal: add a user-initiated way to save a supported Drive-linked calendar event attachment into a selected Drive folder without changing event persistence or contacting arbitrary URLs.
+- Changes: strict Drive URL parsing, source/account-qualified event save and Picker authorization, metadata-verified download/export, shared conflict/upload model with source-file overwrite protection, localized detail action and save sheet, and new synthetic model/snapshot coverage. Privacy, ADR-0006, ADR-0072, CHANGELOG and versioned QA evidence updated; v2 evidence preserved.
+- TDD red run: new focused tests initially failed because the new save-model types did not yet exist; persisted at `/Users/devin/Library/Logs/brev-drive-calendar-save-red-20261015.log`.
+- Verification: focused BrevMail tests passed (15 tests/2 suites for the new models; 31 tests/5 suites for all GoogleDrive tests); BrevBackend GoogleDrive passed (12 tests/2 suites, rerun after formatting). New light/dark save-action snapshots passed; four existing agenda/detail references mismatched in the full snapshot run. Their cause is unverified and all unrelated baselines were preserved. Format passed (4/1290 files formatted; 175 skipped) and lint passed (SwiftFormat, SwiftLint strict, coverage self-test, ADR check). `git diff --check` passed.
+- Not verified: live Google, app launch, or interactive runtime/UI testing; all remained on hold. No calendar writer or persistent Drive file-ID schema added.
+
+## 2026-10-15 — Devin — PR #244 Drive event-save correction batch
+
+- Goal: address the reviewed lifecycle, payload-retention, source-eligibility, Picker-authorization, error-privacy, MIME, and documentation gaps without committing or pushing before parent review.
+- Changes: operation identity and cancellation checks are enforced across async phases; terminal cancellation clears the shared staged payload and prevents restart; retryable upload errors return to Picker; source-qualified eligibility and Picker authorization remain model-tested. Restored global Workspace MIME semantics and retained event-only format restrictions. Corrected ADR-0006's Drive API row and updated v3 evidence.
+- Red/repair evidence: before the conflict fix, the real pick → conflict → Replace regression timed out with zero replacement uploads and uncleared payload bytes; it now passes for both Replace and Keep Both even when cancellation is attempted immediately. The first runnable correction suite also exposed an upload-error state that remained `.uploading`; the model now returns to a retryable Picker state. A source-invalidation assertion was aligned with the model's cancellation outcome. Other correction regressions were not all separately run against the pre-correction tree.
+- Verification: the final focused save/event filter passed (28 tests/2 suites); `CalendarDriveSaveEligibility` passed (6 tests/1 suite); the targeted snapshot filter passed 2 tests across all 4 read-only/unavailable light/dark cases. Earlier correction runs passed BrevMail GoogleDrive (43 tests/5 suites) and BrevBackend GoogleDrive (13 tests/2 suites); BrevBackend was unchanged and not rerun. Final `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed.
+- Not verified: no CI, app launch, or runtime/UI/live-provider testing, per scope. The four existing agenda/detail snapshot mismatches remain with cause unverified; unrelated baselines were preserved.
+- Handoff: one correction commit/push to existing PR #244 is authorized; the parent owns the next review, CI, and QA steps. No second commit is needed to record the push SHA.
+
+## 2026-10-15 — Devin — PR #244 Picker-failure retry correction
+
+- Goal: prevent Picker initialization errors from automatically recreating a failed Picker.
+- Changes: event Picker failures now cancel the current operation, clear staged/preparation authorization state, and return to intent with a generic error; shared save Picker failures enter an explicit Retry phase, clear Picker credentials, and retain the staged payload. Retry starts a fresh operation; stale Picker callbacks are ignored.
+- Red evidence: before the fix, the two new tests produced 10 assertion failures: the event flow remained in `.picking` with a new token and retained payload, and the shared flow retained its Picker token.
+- Verification: `swift test --package-path packages/BrevMail --filter CalendarDriveSaveEligibility` passed (7 tests/1 suite); `swift test --package-path packages/BrevMail --filter GoogleDrive` passed (47 tests/6 suites); `swift test --package-path packages/BrevMail --filter 'CalendarBrowsingSnapshotTests/eventDetailDriveSave'` passed (2 tests/1 suite, all 4 light/dark cases). The earlier focused save/retry filter passed (30 tests/3 suites); final broad GoogleDrive run reran these suites. `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed. BrevBackend GoogleDrive remains at its previously verified 13 tests/2 suites and was not rerun because it is unchanged.
+- Not verified: full snapshots, CI, app launch, or runtime/UI/live-provider testing; the four existing agenda/detail snapshot mismatches remain with cause unverified, and unrelated baselines were preserved.
+- Handoff: one correction commit/push to existing PR #244 is authorized; the parent owns the next review, CI, and QA steps. No second commit is needed to record the push SHA.
+
+## 2026-10-15 — Devin — PR #244 follow-up review nits
+
+- Goal: apply the three small, authorized follow-up corrections without changing the reviewed save implementation.
+- Changes: added the Norwegian translation for the save-preparation retry message, corrected the v3 focused-test filter, and made both event-save wait helpers record timeout failures.
+- Verification: `swift test --package-path packages/BrevMail --filter 'GoogleDrivePickerFailureRetry|GoogleDriveEventSave|GoogleDriveSave'` passed (30 tests/3 suites); the catalog JSON parsed and the exact Norwegian value was asserted; `scripts/format.sh` passed (0/1294 files formatted; 175 skipped); `scripts/lint.sh` passed (SwiftFormat lint, SwiftLint strict, coverage self-test, ADR check); `git diff --check` passed after this log entry.
+- Scope exclusions: no full suites, BrevBackend tests, snapshots, CI, UI/runtime, or live-provider testing were run.
+- Handoff: one follow-up commit containing these four paths is authorized for the existing PR branch; the parent owns the subsequent CI and QA steps.
+
+## 2026-10-15 — Devin — #14 / PR #244 bounded runtime evidence v4
+
+- Goal: establish safe authentic Drive QA prerequisites at `0f10db03ea930859e7b3fae691fc1c37087e944d`, then test only reachable isolated states.
+- Verification: built and ran the pinned iOS Debug app in a fresh owned simulator with synthetic loopback CalDAV data. Verified an actual read-only, unlinked source shows both attachment links without Save in EN/NB, including reselection and large-text reachability. Local event bytes were unchanged and no DAV PUT/DELETE occurred. Evidence is synthetic-native only; native AX/VoiceOver semantics were not verified.
+- Blocked: Picker API key/app ID are unavailable; dedicated Google credentials were not exercised and no eligible Google-linked source/real file fixtures were established. All positive provider save/export/conflict/cancel/retry and denial/revocation/offline rows remain blocked. macOS was not launched because genuine App Group isolation is unavailable.
+- Changes: new v4 evidence report; v2/v3 and production sources preserved. No package/backend/snapshot suites were rerun for this docs-only update (TDD not applicable). Prior automated results remain separate evidence.
+- Documentation sweep: README, CHANGELOG, privacy, ADRs and AGENTS need no change for this evidence-only update. Runtime skill safety corrections require a separate approved follow-up; blueprint safety guidance is proposed through its approval flow.
+- Handoff: one docs-only push to existing PR #244; parent owns review, CI and future QA. No merge, issue closure, Done transition, release or workflow dispatch. Owned simulator and local fixture server remain available; reconnect the synthetic source before additional sync after locale relaunch.
+
+## 2026-10-15 — Devin — #14 / PR #244 frozen diagnosis and evidence v5
+
+- Goal: persist the accepted base/head snapshot diagnosis and finish the two remaining bounded automated checks; preserve v2–v4 and production code.
+- Frozen evidence: base `3a553ddbf754a0adb110598dec48108e8a7e8b41` and PR `663607645ac29a87abb7a1ecee08af25811d59f5` produced byte-identical images for all four old agenda/detail cases. Locale/time-zone-sensitive references and the pre-existing Copy Link row explain visible discrepancies; no Drive regression indicated. Two synthetic OAuth callback checks passed. These accepted results were not rerun or rederived. Original raw artifacts became unavailable after inspection; v5 retains that caveat and frozen hashes rather than claiming a retained archive.
+- New checks at `6636076`: BrevMail `--filter 'ComposeNativeSheetsSnapshotTests/driveSheetChrome'` ran zero tests because the suite requires UIKit, so its structural snapshot remains unverified. BrevBackend `--filter 'OAuthTokenRefresherTests/permanentRefreshFailureRequiresSignIn'` passed (1 test/1 suite). Both commands ran once with snapshot recording disabled; no platform bootstrap or runtime launch.
+- Repository checks: passed — `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` (SwiftFormat: 0/1294 files required formatting; SwiftLint strict, coverage self-test and ADR check passed), `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` (0/1294 files formatted), and `git diff --check`.
+- Documentation sweep: new v5 report and this entry only; no README, CHANGELOG, privacy/ADR, AGENTS or release change is warranted for frozen/new test evidence. TDD is not applicable to this docs-only update. Provider configuration/disposable access, positive runtime/remote outcomes, real macOS isolation, iOS/AX coverage and maintainer acceptance remain open.
+- Handoff: one Conventional Commit/push to the existing branch, then stop for parent review. No old snapshot repair, full-suite rerun, CI watch/dispatch, PR edit, merge, closure, Done transition or release.
+
+## 2026-10-16 — Agent — PR #245 main integration
+
+- Goal: integrate approved `main` `7117491` into the PIM parity branch at `bb093f0`.
+- Merge: resolved only additive CHANGELOG and WORKLOG conflicts. Unreleased has one Fixed heading retaining the PIM Calendar/Contacts and Drive multipart/cancellation fixes; the Drive Added entry remains. Preserved PIM v2–v7 and main Drive worklog history verbatim. Non-document files match the lead-reviewed merge tree `7bdb66e`.
+- Verification: BrevCalendar PIM store/coordinator filter passed (22 tests/2 suites); focused BrevMail model/presentation/Drive filter passed (138 tests/13 suites); focused Calendar browsing snapshots passed (3 tests/1 suite, six light/dark cases, recording disabled). Catalog JSON parsed; 1,293 keys checked (17 main-only, 6 PIM-only, no differing two-sided changes), with merged values matching branch changes.
+- Repository checks: `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1294 files require formatting); `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1294 files formatted); `git diff --check` and staged diff check passed.
+- Limits: no full suites, snapshot re-recording, unrelated agenda/detail snapshots, app/runtime/UI checks, or CI watch. No product edits were made during integration.
+- Handoff: parent owns post-push PR updates and CI.

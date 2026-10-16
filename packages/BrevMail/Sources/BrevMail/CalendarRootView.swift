@@ -10,10 +10,12 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevBackend
 import BrevCalendar
 import BrevDesign
 import BrevSettings
 import BrevThemes
+import Observation
 import SwiftUI
 
 /// The Calendar browsing surface (ADR-0072, issue #6).
@@ -47,6 +49,15 @@ public struct CalendarRootView: View {
     /// The sheet request: a new event anchored at a date, or an edit
     /// of the cached event.
     @State private var editorRequest: EditorRequest?
+    @State private var eventSaveRequest: EventSaveRequest?
+    @State private var resolvedDriveSaveTargets:
+        Set<CalendarDriveSaveEligibility.Resolved> = []
+
+    private struct DriveSaveEligibilityInput: Hashable {
+        let event: PIMEvent?
+        let source: PIMSource?
+        let collection: PIMCollection?
+    }
 
     /// Identifiable sheet payload for the event editor.
     private enum EditorRequest: Identifiable {
@@ -60,6 +71,19 @@ public struct CalendarRootView: View {
             case .edit(let event):
                 "edit-\(event.id)"
             }
+        }
+    }
+
+    private struct EventSaveRequest: Identifiable {
+        let eventID: PIMEvent.ID
+        let sourceID: PIMSource.ID
+        let attachment: PIMEventAttachment
+        let accountID: BrevAccount.ID
+        let feature: GoogleDriveFeature
+        let resolved: CalendarDriveSaveEligibility.Resolved
+
+        var id: String {
+            "\(eventID)-\(sourceID)-\(attachment.url)-\(attachment.title ?? "")"
         }
     }
 
@@ -115,9 +139,26 @@ public struct CalendarRootView: View {
         .task { await editing?.load() }
         .task { await model.observeSourceChanges() }
         .task { await editing?.observeSourceChanges() }
+        .task(id: driveSaveEligibilityInput) {
+            await resolveDriveSaveTargets()
+        }
         .onChange(of: model.selectedEventID) { _, newValue in
             if newValue != nil {
                 preferredCompactColumn = .detail
+            }
+            if let eventSaveRequest,
+               newValue != eventSaveRequest.eventID {
+                self.eventSaveRequest = nil
+            }
+        }
+        .onChange(
+            of: driveSaveEligibilityInput
+        ) { _, _ in
+            guard let request = eventSaveRequest,
+                  isCurrent(request)
+            else {
+                eventSaveRequest = nil
+                return
             }
         }
         .sheet(item: $editorRequest) { request in
@@ -125,6 +166,38 @@ public struct CalendarRootView: View {
                 editorSheet(for: request, editing: editing)
                     .pimEditorSheetAppearance(theme)
             }
+        }
+        .sheet(item: $eventSaveRequest) { request in
+            let browsingModel = model
+            GoogleDriveEventSaveSheet(
+                attachment: request.attachment,
+                accountID: request.accountID,
+                feature: request.feature,
+                sourceIsValid: {
+                    guard let currentEvent = browsingModel.event(
+                        id: request.eventID
+                    ),
+                        browsingModel.selectedEventID == request.eventID,
+                        let currentCollection = browsingModel.collection(
+                            for: currentEvent
+                        ),
+                        let currentSource = browsingModel.source(for: currentEvent)
+                    else { return false }
+                    return request.resolved.isCurrent(CalendarDriveSaveState(
+                        event: currentEvent,
+                        collection: currentCollection,
+                        source: currentSource
+                    )) && currentCollection.sourceID == currentSource.id
+                        && currentCollection.id == request.resolved.collectionID
+                        && currentSource.id == request.sourceID
+                        && currentSource.linkedAccountID == request.accountID
+                        && currentEvent.sourceID == request.resolved.sourceID
+                        && currentEvent.collectionID
+                        == request.resolved.collectionID
+                        && currentEvent.attachments.contains(request.attachment)
+                }
+            )
+            .pimEditorSheetAppearance(theme)
         }
     }
 
@@ -261,6 +334,12 @@ public struct CalendarRootView: View {
                 source: model.source(for: event),
                 onEdit: editAction(for: event),
                 onDelete: deleteAction(for: event),
+                onSaveAttachment: saveAction(for: event),
+                eligibleSaveAttachments: Set(
+                    resolvedDriveSaveTargets
+                        .filter { $0.eventID == event.id }
+                        .map(\.attachment)
+                ),
                 isRecurring: editing?.needsScopeChoice(for: event)
                     ?? false
             )
@@ -281,6 +360,118 @@ public struct CalendarRootView: View {
             // explains the situation — keep the detail pane blank.
             theme.bgPrimary.color.ignoresSafeArea()
         }
+    }
+
+    private func saveAction(
+        for event: PIMEvent
+    ) -> ((PIMEventAttachment) -> Void)? {
+        guard let feature = editing?.driveFeature else { return nil }
+        let attachments = resolvedDriveSaveTargets.filter {
+            $0.eventID == event.id
+        }
+        guard !attachments.isEmpty else { return nil }
+        return { attachment in
+            Task { @MainActor in
+                guard let resolved = await CalendarDriveSaveEligibility.resolve(
+                    eventID: event.id,
+                    attachment: attachment,
+                    feature: feature,
+                    state: { currentDriveSaveState(eventID: event.id) }
+                ),
+                    attachments.contains(resolved),
+                    resolvedDriveSaveTargets.contains(resolved),
+                    let current = model.event(id: event.id),
+                    currentDriveSaveState(eventID: event.id)?.event == current
+                else { return }
+                eventSaveRequest = EventSaveRequest(
+                    eventID: event.id,
+                    sourceID: resolved.sourceID,
+                    attachment: attachment,
+                    accountID: resolved.accountID,
+                    feature: feature,
+                    resolved: resolved
+                )
+            }
+        }
+    }
+
+    private var driveSaveEligibilityInput: DriveSaveEligibilityInput {
+        guard let event = model.event(id: model.selectedEventID) else {
+            return DriveSaveEligibilityInput(
+                event: nil,
+                source: nil,
+                collection: nil
+            )
+        }
+        return DriveSaveEligibilityInput(
+            event: event,
+            source: model.source(for: event),
+            collection: model.collection(for: event)
+        )
+    }
+
+    @MainActor
+    private func resolveDriveSaveTargets() async {
+        resolvedDriveSaveTargets = []
+        guard let feature = editing?.driveFeature else { return }
+        let input = driveSaveEligibilityInput
+        guard let inputEvent = input.event,
+              input.source != nil,
+              input.collection != nil
+        else { return }
+        var resolvedTargets = Set<CalendarDriveSaveEligibility.Resolved>()
+        for attachment in inputEvent.attachments {
+            guard !Task.isCancelled,
+                  driveSaveEligibilityInput == input
+            else { return }
+            if let resolved = await CalendarDriveSaveEligibility.resolve(
+                eventID: inputEvent.id,
+                attachment: attachment,
+                feature: feature,
+                state: { currentDriveSaveState(eventID: inputEvent.id) }
+            ) {
+                guard !Task.isCancelled,
+                      driveSaveEligibilityInput == input
+                else { return }
+                resolvedTargets.insert(resolved)
+            }
+        }
+        guard !Task.isCancelled,
+              driveSaveEligibilityInput == input
+        else { return }
+        resolvedDriveSaveTargets = resolvedTargets
+    }
+
+    @MainActor
+    private func currentDriveSaveState(
+        eventID: PIMEvent.ID
+    ) -> CalendarDriveSaveState? {
+        guard model.selectedEventID == eventID,
+              let event = model.event(id: eventID),
+              let collection = model.collection(for: event),
+              let source = model.source(for: event),
+              source.id == event.sourceID,
+              collection.id == event.collectionID,
+              collection.sourceID == source.id
+        else { return nil }
+        return CalendarDriveSaveState(
+            event: event,
+            collection: collection,
+            source: source
+        )
+    }
+
+    @MainActor
+    private func isCurrent(_ request: EventSaveRequest) -> Bool {
+        guard let current = currentDriveSaveState(eventID: request.eventID) else {
+            return false
+        }
+        return request.resolved.isCurrent(current)
+            && current.source.id == request.sourceID
+            && current.source.linkedAccountID == request.accountID
+            && current.event.attachments.contains(request.attachment)
+            && current.collection.id == request.resolved.collectionID
+            && request.resolved.attachment == request.attachment
     }
 
     private var hasSelectableEvents: Bool {

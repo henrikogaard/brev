@@ -81,20 +81,18 @@ public struct GoogleDriveFileService: DriveFileServing {
         fileID: String,
         accountID: BrevAccount.ID
     ) async throws -> GoogleDriveClient.File {
-        try await client.metadata(
-            fileID: fileID,
-            accessToken: accessToken(accountID)
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.metadata(fileID: fileID, accessToken: token)
+        }
     }
 
     public func download(
         fileID: String,
         accountID: BrevAccount.ID
     ) async throws -> Data {
-        try await client.download(
-            fileID: fileID,
-            accessToken: accessToken(accountID)
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.download(fileID: fileID, accessToken: token)
+        }
     }
 
     public func export(
@@ -102,11 +100,13 @@ public struct GoogleDriveFileService: DriveFileServing {
         mimeType: String,
         accountID: BrevAccount.ID
     ) async throws -> Data {
-        try await client.export(
-            fileID: fileID,
-            mimeType: mimeType,
-            accessToken: accessToken(accountID)
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.export(
+                fileID: fileID,
+                mimeType: mimeType,
+                accessToken: token
+            )
+        }
     }
 
     @discardableResult
@@ -118,14 +118,16 @@ public struct GoogleDriveFileService: DriveFileServing {
         accountID: BrevAccount.ID,
         onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> GoogleDriveClient.File {
-        try await client.create(
-            name: name,
-            mimeType: mimeType,
-            data: data,
-            parentFolderID: parentFolderID,
-            accessToken: accessToken(accountID),
-            onProgress: onProgress
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.create(
+                name: name,
+                mimeType: mimeType,
+                data: data,
+                parentFolderID: parentFolderID,
+                accessToken: token,
+                onProgress: onProgress
+            )
+        }
     }
 
     public func existingFile(
@@ -133,11 +135,13 @@ public struct GoogleDriveFileService: DriveFileServing {
         inFolderID folderID: String?,
         accountID: BrevAccount.ID
     ) async throws -> GoogleDriveClient.File? {
-        try await client.existingFile(
-            named: name,
-            inFolderID: folderID,
-            accessToken: accessToken(accountID)
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.existingFile(
+                named: name,
+                inFolderID: folderID,
+                accessToken: token
+            )
+        }
     }
 
     @discardableResult
@@ -148,13 +152,26 @@ public struct GoogleDriveFileService: DriveFileServing {
         accountID: BrevAccount.ID,
         onProgress: (@Sendable (Int64, Int64) -> Void)? = nil
     ) async throws -> GoogleDriveClient.File {
-        try await client.update(
-            fileID: fileID,
-            mimeType: mimeType,
-            data: data,
-            accessToken: accessToken(accountID),
-            onProgress: onProgress
-        )
+        try await withAccessToken(accountID) { token in
+            try await client.update(
+                fileID: fileID,
+                mimeType: mimeType,
+                data: data,
+                accessToken: token,
+                onProgress: onProgress
+            )
+        }
+    }
+
+    private func withAccessToken<Value>(
+        _ accountID: BrevAccount.ID,
+        operation: (String) async throws -> Value
+    ) async throws -> Value {
+        let token = try await accessToken(accountID)
+        try Task.checkCancellation()
+        let result = try await operation(token)
+        try Task.checkCancellation()
+        return result
     }
 }
 
