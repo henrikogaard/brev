@@ -1,5 +1,19 @@
 # Worklog
 
+## 2026-10-17 — Devin — #239 arrival controller
+
+- Goal: ADR-0088 slices 2 and 3 wiring without UI: a controller that turns
+  `.messagesAdded` into memory-only sign-in presentations under every gate.
+- Changed: `SignInCodeArrivalController`, `SignInCodePresenting`,
+  `SignInCodePresentation` in BrevMail; ADR-0088 status subsection.
+- Verified: `swift test --package-path packages/BrevMail --filter
+  SignInCodeArrivalController` 9 green (consent before any work,
+  capability gate, folder/trust gates, link vs code consent, consent
+  recheck mid-flight, cancel/dismiss, burst cap, redaction, plain-text
+  only); lint/format clean.
+- Not changed: no AppSession owner, root-view caller, panel, settings UI,
+  PRIVACY.md (nothing reachable while the capability is off).
+
 ## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
 
 - Goal: implement the provider-dependent gates of integration slice 1 for
