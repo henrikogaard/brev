@@ -434,6 +434,25 @@ mailbox. No panel, detector caller, settings UI, notification, capability
 advertisement, or body fetch is added; the assessment method is reachable
 only from tests. Generic IMAP remains unsupported.
 
+### Arrival controller status (2026-10-17)
+
+`SignInCodeArrivalController` in BrevMail implements the gate order of
+decisions 3, 5 and 11 for `.messagesAdded`: per-account consent (codes or
+links) first, then the account's `.trustedSignInAssessment` capability and
+`SignInTrustAssessing` conformance, then an Inbox-role folder, then the
+provider assessment, a consent recheck, one `body(for:)` read of the
+plain-text part only (never flattened HTML), the detector, the per-kind
+consent check, the sender name from the folder's first page, and a final
+consent recheck before `SignInCodePresenting.present`. `cancel(accountID:)`
+drops pending work and dismisses. At most five messages per event are
+inspected. `SignInCodePresentation` carries the code or link in memory
+only, with redacted description, debug description and mirror.
+
+Not yet connected: no `AppSession` owner, no caller from
+`BrevMailRootView`, no panel, no settings UI. Because no backend advertises
+the capability, the controller cannot read a body in any shipped
+configuration. `PRIVACY.md` and ADR-0006 are still untouched for that reason.
+
 ### Remaining integration slices
 
 1. Verify provider delivery/backfill provenance and authentication trust
