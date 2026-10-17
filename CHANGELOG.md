@@ -9,6 +9,8 @@ All notable changes to Brev are documented here.
 - Repeating calendar events now show every projected date in the
   agenda, day, week, and month views, and the agenda shows a navigable
   30-day range (ADR-0089).
+- Repeating calendar events with excluded, moved, or cancelled dates now
+  show their remaining dates instead of only the first one.
 - Calendar: the "event is no longer synced" notice from a stale event link
   now has a close button and clears when you navigate or pick an event.
 - Calendar event-detail actions stack vertically when the available width

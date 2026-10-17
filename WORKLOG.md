@@ -1,5 +1,21 @@
 # Worklog
 
+## 2026-10-17 — Devin — #11 recurrence exceptions (ADR-0089)
+
+- Goal: close observation O13 from parity v8: one EXDATE collapsed a series
+  to its master date.
+- Changed: `PIMRecurrenceDescriptor.exdates` (verbatim bodies; tolerant
+  decode), ICS and Google adapters capture them (Google `EXDATE;TZID=…`
+  entries were previously classed as unrecognized), validator parses
+  exclusions per basis, projector skips excluded/overridden slots while
+  still consuming COUNT, moved instances render raw, cancelled markers
+  render nothing, in-window unmatched exceptions fail closed.
+- Verified: `swift test --package-path packages/BrevCalendar` 302 green
+  (new EXDATE/exception tests, two existing tests updated to the new
+  semantics); BrevMail calendar suites green; format clean; lint passes
+  with the ADR-0089 status update.
+- Not changed: RDATE, future-scope writes.
+
 ## 2026-10-16 — Devin — Calendar & Contacts settings layout
 
 - Goal: Henrik flagged the Settings → Calendar & Contacts sources pane as

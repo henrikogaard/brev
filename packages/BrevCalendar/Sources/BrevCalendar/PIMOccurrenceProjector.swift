@@ -143,15 +143,18 @@ public enum PIMOccurrenceProjector {
                         || (exception.uid != nil
                             && exception.uid == master.uid))
             }
-            if !linked.isEmpty {
-                // Any exception — moved or cancelled — means the master
-                // pattern alone no longer describes the series.
+            // Exception records override their original slot: a moved
+            // instance renders as its own raw row, a cancelled marker
+            // renders nothing. Either way the generated slot is dropped.
+            // Exceptions without an original start cannot be reconciled.
+            guard linked.allSatisfy({ $0.recurrenceID != nil }) else {
                 incomplete.append(
                     PIMIncompleteSeries(event: master, reason: .exceptions)
                 )
                 appendRawRow(master, into: &rows, interval: interval)
                 continue
             }
+            let overriddenStarts = Set(linked.compactMap(\.recurrenceID))
             if exceedsIntervalLimit {
                 incomplete.append(
                     PIMIncompleteSeries(
@@ -172,10 +175,25 @@ public enum PIMOccurrenceProjector {
                 switch generate(
                     master: master,
                     rule: rule,
-                    interval: interval
+                    interval: interval,
+                    overriddenStarts: overriddenStarts
                 ) {
-                case .complete(let occurrences):
-                    rows.append(contentsOf: occurrences)
+                case .complete(let occurrences, let generatedStarts):
+                    // An in-window exception whose original start the
+                    // pattern never produces means the cached series and
+                    // its exceptions disagree; fail closed for the series.
+                    let unmatched = overriddenStarts.contains { start in
+                        start >= interval.start && start < interval.end
+                            && !generatedStarts.contains(start)
+                    }
+                    if unmatched {
+                        incomplete.append(
+                            PIMIncompleteSeries(event: master, reason: .exceptions)
+                        )
+                        appendRawRow(master, into: &rows, interval: interval)
+                    } else {
+                        rows.append(contentsOf: occurrences)
+                    }
                 case .exceeded:
                     incomplete.append(
                         PIMIncompleteSeries(
@@ -258,7 +276,9 @@ public enum PIMOccurrenceProjector {
     // MARK: - Series generation
 
     private enum GenerationResult {
-        case complete([PIMEventOccurrence])
+        /// Rows for the interval plus every original start the pattern
+        /// produced inside it, including excluded and overridden slots.
+        case complete([PIMEventOccurrence], generatedStarts: Set<Date>)
         case exceeded
     }
 
@@ -276,11 +296,14 @@ public enum PIMOccurrenceProjector {
     private static func generate(
         master: PIMEvent,
         rule: PIMValidatedRecurrence,
-        interval: DateInterval
+        interval: DateInterval,
+        overriddenStarts: Set<Date> = []
     ) -> GenerationResult {
         guard let masterStart = master.start else {
-            return .complete([])
+            return .complete([], generatedStarts: [])
         }
+        let skippedStarts = rule.excludedStarts.union(overriddenStarts)
+        var generatedStarts: Set<Date> = []
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = rule.timeZone
 
@@ -318,13 +341,13 @@ public enum PIMOccurrenceProjector {
                 ) else { continue }
                 guard start >= masterStart else { continue }
                 if let until = rule.until, start > until {
-                    return .complete(occurrences)
+                    return .complete(occurrences, generatedStarts: generatedStarts)
                 }
                 if let count = rule.count, emitted >= count {
-                    return .complete(occurrences)
+                    return .complete(occurrences, generatedStarts: generatedStarts)
                 }
                 if start >= interval.end {
-                    return .complete(occurrences)
+                    return .complete(occurrences, generatedStarts: generatedStarts)
                 }
                 // The index is the ordinal position: counting emitted
                 // occurrences keeps it correct when earlier slots were
@@ -349,6 +372,12 @@ public enum PIMOccurrenceProjector {
                     )
                 }
                 emitted += 1
+                if start >= interval.start, start < interval.end {
+                    generatedStarts.insert(start)
+                }
+                // Excluded and overridden slots consume COUNT but
+                // produce no row (RFC 5545 §3.8.5.1).
+                if skippedStarts.contains(start) { continue }
                 let end = occurrenceEnd(
                     for: master,
                     rule: rule,
