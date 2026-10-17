@@ -196,6 +196,14 @@ Known limit: if the master's own first instance is excluded or overridden,
 no row has `occurrenceIndex == 0`, so whole-series Edit/Delete is only
 reachable from the moved instance's raw row until §4 writes land.
 
+### Google write basis (2026-10-17)
+
+Google rejects a timed recurring event without `timeZone` (HTTP 400). A
+series the editor leaves "Local (floating)" is therefore written with the
+device zone as its basis, so the pattern repeats at the same wall-clock time
+in that zone and reads back as a `zoned` descriptor. Single floating events
+and all-day series are unchanged.
+
 Still pending: future-scope writes against projected occurrences, RDATE,
 and per-occurrence actions.
 
