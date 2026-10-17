@@ -60,8 +60,11 @@ public enum PIMRecurrenceUnsupportedReason: Error, Sendable, Hashable {
     case malformedWkst(String)
     /// The record carries RDATE entries.
     case rdatePresent
-    /// The record carries EXDATE entries.
+    /// The record carries EXDATE entries whose values were not captured
+    /// (a cache written before exclusions were recorded).
     case exdatePresent
+    /// An EXDATE value does not parse under the series' DTSTART basis.
+    case malformedExDate(String)
     /// The provider listed recurrence entries other than
     /// RRULE/RDATE/EXDATE (Google `recurrence[]`).
     case unrecognizedRecurrenceEntries
@@ -75,8 +78,9 @@ public enum PIMRecurrenceUnsupportedReason: Error, Sendable, Hashable {
     /// DTSTART's weekday is not in the weekly BYDAY set — the pattern
     /// cannot be anchored faithfully.
     case startNotInPattern
-    /// The series has exception records (moved/cancelled instances);
-    /// generating the master pattern beside them is not supported yet.
+    /// An exception record (moved/cancelled instance) names an original
+    /// start that the master pattern never generates, so the series
+    /// cannot be reconciled.
     case exceptions
     /// The requested interval or the per-series candidate bound was
     /// exceeded; coverage is intentionally incomplete.
@@ -108,6 +112,10 @@ public struct PIMValidatedRecurrence: Sendable, Hashable {
     /// The wall-clock generation zone: the named zone for `zoned`,
     /// GMT for `utc` and `dateOnly`.
     public let timeZone: TimeZone
+    /// Original-start instants excluded by EXDATE. Excluded slots still
+    /// consume COUNT (RFC 5545 §3.8.5.1: exclusion applies after the
+    /// rule generates the set).
+    public let excludedStarts: Set<Date>
 
     public init(
         frequency: ICSParser.Frequency,
@@ -117,7 +125,8 @@ public struct PIMValidatedRecurrence: Sendable, Hashable {
         byDay: [ICSParser.Weekday]?,
         weekStart: ICSParser.Weekday,
         startBasis: PIMRecurrenceDescriptor.StartBasis,
-        timeZone: TimeZone
+        timeZone: TimeZone,
+        excludedStarts: Set<Date> = []
     ) {
         self.frequency = frequency
         self.interval = interval
@@ -127,6 +136,7 @@ public struct PIMValidatedRecurrence: Sendable, Hashable {
         self.weekStart = weekStart
         self.startBasis = startBasis
         self.timeZone = timeZone
+        self.excludedStarts = excludedStarts
     }
 }
 
@@ -158,7 +168,7 @@ public enum PIMRecurrenceValidator {
         if descriptor.hasRDate {
             return .failure(.rdatePresent)
         }
-        if descriptor.hasExDate {
+        if descriptor.hasExDate, descriptor.exdates.isEmpty {
             return .failure(.exdatePresent)
         }
         guard descriptor.rrules.count == 1 else {
@@ -182,6 +192,15 @@ public enum PIMRecurrenceValidator {
         }
         guard event.start != nil else {
             return .failure(.missingStart)
+        }
+        var excludedStarts: Set<Date> = []
+        for exdate in descriptor.exdates {
+            switch parseExDate(exdate, basis: descriptor.startBasis) {
+            case .success(let dates):
+                excludedStarts.formUnion(dates)
+            case .failure(let reason):
+                return .failure(reason)
+            }
         }
 
         var frequency: ICSParser.Frequency?
@@ -288,9 +307,63 @@ public enum PIMRecurrenceValidator {
                 byDay: byDay,
                 weekStart: weekStart,
                 startBasis: descriptor.startBasis,
-                timeZone: zone
+                timeZone: zone,
+                excludedStarts: excludedStarts
             )
         )
+    }
+
+    /// Parses one EXDATE body (`<params>:<values>`) into instants. The
+    /// value form must match the series basis: date-only series take
+    /// `VALUE=DATE` days; timed series take `Z` instants or a resolvable
+    /// `TZID`. Floating values and anything else are malformed.
+    private static func parseExDate(
+        _ body: String,
+        basis: PIMRecurrenceDescriptor.StartBasis
+    ) -> Result<Set<Date>, PIMRecurrenceUnsupportedReason> {
+        guard let colon = body.firstIndex(of: ":") else {
+            return .failure(.malformedExDate(body))
+        }
+        var params: [String: String] = [:]
+        for param in body[..<colon].split(separator: ";") {
+            let pair = param.split(separator: "=", maxSplits: 1)
+            guard pair.count == 2 else { return .failure(.malformedExDate(body)) }
+            params[String(pair[0]).uppercased()] = String(pair[1])
+        }
+        let values = body[body.index(after: colon)...].split(separator: ",")
+        guard !values.isEmpty else { return .failure(.malformedExDate(body)) }
+        let isDateValue = params["VALUE"]?.uppercased() == "DATE"
+        var dates: Set<Date> = []
+        for raw in values.map(String.init) {
+            switch basis {
+            case .dateOnly:
+                guard isDateValue, raw.count == 8, raw.allSatisfy(\.isNumber),
+                      let date = untilDateOnly.date(from: raw)
+                else { return .failure(.malformedExDate(body)) }
+                dates.insert(date)
+            case .utc, .zoned:
+                guard !isDateValue else { return .failure(.malformedExDate(body)) }
+                if raw.hasSuffix("Z") {
+                    guard let date = untilUTC.date(from: raw)
+                    else { return .failure(.malformedExDate(body)) }
+                    dates.insert(date)
+                } else if let tzid = params["TZID"],
+                          let zone = TimeZone(identifier: tzid) {
+                    let formatter = DateFormatter()
+                    formatter.locale = Locale(identifier: "en_US_POSIX")
+                    formatter.timeZone = zone
+                    formatter.dateFormat = "yyyyMMdd'T'HHmmss"
+                    guard let date = formatter.date(from: raw)
+                    else { return .failure(.malformedExDate(body)) }
+                    dates.insert(date)
+                } else {
+                    return .failure(.malformedExDate(body))
+                }
+            case .floating, .unknown:
+                return .failure(.malformedExDate(body))
+            }
+        }
+        return .success(dates)
     }
 
     /// Maps a Foundation weekday index (Sunday = 1) onto the RFC 5545

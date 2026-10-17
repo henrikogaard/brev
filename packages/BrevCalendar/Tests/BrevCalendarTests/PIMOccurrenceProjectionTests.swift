@@ -56,6 +56,7 @@ struct PIMOccurrenceProjectionTests {
         status: PIMEventStatus = .confirmed,
         rdate: Bool = false,
         exdate: Bool = false,
+        exdates: [String] = [],
         unrecognized: Bool = false,
         version: Int = PIMRecurrenceDescriptor.currentVersion
     ) -> PIMEvent {
@@ -76,7 +77,8 @@ struct PIMOccurrenceProjectionTests {
                 version: version,
                 rrules: [rrule],
                 hasRDate: rdate,
-                hasExDate: exdate,
+                hasExDate: exdate || !exdates.isEmpty,
+                exdates: exdates,
                 hasUnrecognizedEntries: unrecognized,
                 startBasis: startBasis
             )
@@ -616,16 +618,21 @@ struct PIMOccurrenceProjectionTests {
             [event, exception],
             in: Self.interval("2026-10-16 00:00", "2026-10-23 00:00")
         )
+        // The moved instance replaces its generated slot; the other four
+        // dates still project and the series is complete.
+        #expect(projection.incompleteSeries.isEmpty)
         #expect(
-            projection.incompleteSeries.map(\.reason) == [.exceptions]
+            Self.projectedStarts(projection) == [
+                start,
+                Self.zoneDate(Self.oslo, "2026-10-17 15:00"),
+                Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+                Self.zoneDate(Self.oslo, "2026-10-19 09:00"),
+                Self.zoneDate(Self.oslo, "2026-10-20 09:00"),
+            ]
         )
-        // Master raw row + exception raw row; no generated occurrences.
-        #expect(
-            projection.occurrences.map(\.id).sorted() == ["exc1", "m1"]
-        )
-        #expect(
-            projection.occurrences.allSatisfy { !($0.isProjected) }
-        )
+        let moved = projection.occurrences.first { $0.id == "exc1" }
+        #expect(moved?.isProjected == false)
+        #expect(projection.occurrences.filter(\.isProjected).count == 4)
     }
 
     @Test("a Google cancelled instance is a marker, never a row")
@@ -648,11 +655,156 @@ struct PIMOccurrenceProjectionTests {
             [event, marker],
             in: Self.interval("2026-10-16 00:00", "2026-10-23 00:00")
         )
-        #expect(
-            projection.incompleteSeries.map(\.reason) == [.exceptions]
-        )
+        #expect(projection.incompleteSeries.isEmpty)
         #expect(!projection.occurrences.contains { $0.id == "inst2" })
-        #expect(projection.occurrences.map(\.id) == ["m1"])
+        // 16, 17, 19, 20 — the cancelled 18th is dropped but still
+        // consumed COUNT, so no sixth date appears.
+        #expect(
+            Self.projectedStarts(projection).map {
+                Calendar(identifier: .gregorian).dateComponents(in: Self.oslo, from: $0).day!
+            } == [16, 17, 19, 20]
+        )
+    }
+
+    @Test("EXDATE drops its slot but still consumes COUNT")
+    func exdateConsumesCount() {
+        let event = Self.master(
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+            exdates: ["TZID=Europe/Oslo:20261020T090000"]
+        )
+        let projection = PIMOccurrenceProjector.project(
+            [event],
+            in: Self.interval("2026-10-17 00:00", "2026-10-31 00:00")
+        )
+        #expect(projection.incompleteSeries.isEmpty)
+        #expect(
+            Self.projectedStarts(projection) == [
+                Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+                Self.zoneDate(Self.oslo, "2026-10-19 09:00"),
+                Self.zoneDate(Self.oslo, "2026-10-21 09:00"),
+                Self.zoneDate(Self.oslo, "2026-10-22 09:00"),
+            ]
+        )
+    }
+
+    @Test("EXDATE in UTC form, with several values, and for date-only series")
+    func exdateForms() {
+        let timed = Self.master(
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+            exdates: [":20261019T070000Z,20261021T070000Z"]
+        )
+        let timedProjection = PIMOccurrenceProjector.project(
+            [timed],
+            in: Self.interval("2026-10-17 00:00", "2026-10-31 00:00")
+        )
+        #expect(
+            Self.projectedStarts(timedProjection).map {
+                Calendar(identifier: .gregorian).dateComponents(in: Self.oslo, from: $0).day!
+            } == [18, 20, 22]
+        )
+
+        let allDay = Self.master(
+            id: "ad",
+            rrule: "FREQ=DAILY;COUNT=3",
+            startBasis: .dateOnly,
+            start: Self.utc("2026-10-18 00:00"),
+            end: Self.utc("2026-10-19 00:00"),
+            isAllDay: true,
+            exdates: ["VALUE=DATE:20261019"]
+        )
+        let allDayProjection = PIMOccurrenceProjector.project(
+            [allDay],
+            in: Self.interval("2026-10-17 00:00", "2026-10-31 00:00")
+        )
+        #expect(allDayProjection.incompleteSeries.isEmpty)
+        #expect(
+            Self.projectedStarts(allDayProjection)
+                == [Self.utc("2026-10-18 00:00"), Self.utc("2026-10-20 00:00")]
+        )
+    }
+
+    @Test("malformed EXDATE and legacy EXDATE flags stay unsupported")
+    func exdateUnsupported() {
+        let floating = Self.master(
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+            exdates: [":20261020T090000"]
+        )
+        let legacy = Self.master(
+            id: "legacy",
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+            exdate: true
+        )
+        let dateOnDateTime = Self.master(
+            id: "mix",
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-18 09:00"),
+            exdates: ["VALUE=DATE:20261020"]
+        )
+        let projection = PIMOccurrenceProjector.project(
+            [floating, legacy, dateOnDateTime],
+            in: Self.interval("2026-10-17 00:00", "2026-10-31 00:00")
+        )
+        #expect(projection.incompleteSeries.count == 3)
+        #expect(
+            projection.incompleteSeries.contains { $0.event.id == "legacy" && $0.reason == .exdatePresent }
+        )
+        #expect(
+            projection.incompleteSeries.contains {
+                $0.event.id == "m1" && $0.reason == .malformedExDate(":20261020T090000")
+            }
+        )
+        #expect(projection.occurrences.allSatisfy { !$0.isProjected })
+    }
+
+    @Test("an in-window exception the pattern never generates fails the series closed")
+    func unmatchedException() {
+        let event = Self.master(
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-16 09:00")
+        )
+        let stray = PIMEvent(
+            id: "stray",
+            sourceID: "s1",
+            collectionID: "c1",
+            providerItemKey: "item-m1",
+            uid: "uid-m1",
+            summary: "Stray",
+            start: Self.zoneDate(Self.oslo, "2026-10-17 15:00"),
+            recurrenceID: Self.zoneDate(Self.oslo, "2026-10-17 10:30")
+        )
+        let projection = PIMOccurrenceProjector.project(
+            [event, stray],
+            in: Self.interval("2026-10-16 00:00", "2026-10-23 00:00")
+        )
+        #expect(projection.incompleteSeries.map(\.reason) == [.exceptions])
+        #expect(projection.occurrences.map(\.id).sorted() == ["m1", "stray"])
+    }
+
+    @Test("an exception outside the window does not block projection inside it")
+    func outOfWindowException() {
+        let event = Self.master(
+            startBasis: .zoned("Europe/Oslo"),
+            start: Self.zoneDate(Self.oslo, "2026-10-16 09:00")
+        )
+        let later = PIMEvent(
+            id: "later",
+            sourceID: "s1",
+            collectionID: "c1",
+            providerItemKey: "item-m1",
+            uid: "uid-m1",
+            start: Self.zoneDate(Self.oslo, "2026-10-20 12:00"),
+            recurrenceID: Self.zoneDate(Self.oslo, "2026-10-20 09:00")
+        )
+        let projection = PIMOccurrenceProjector.project(
+            [event, later],
+            in: Self.interval("2026-10-16 00:00", "2026-10-18 00:00")
+        )
+        #expect(projection.incompleteSeries.isEmpty)
+        #expect(projection.occurrences.filter(\.isProjected).count == 2)
     }
 
     @Test("a legacy record without a descriptor renders raw and reports")

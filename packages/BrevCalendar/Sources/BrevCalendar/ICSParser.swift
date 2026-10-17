@@ -316,13 +316,21 @@ public enum ICSParser {
         let rruleValues = props.filter { $0.name == "RRULE" }
             .map(\.value)
         let hasRDate = props.contains { $0.name == "RDATE" }
-        let hasExDate = props.contains { $0.name == "EXDATE" }
+        // EXDATE bodies keep their parameters (`TZID`, `VALUE=DATE`) so
+        // the validator can place each exclusion in the right zone.
+        let exdates = props.filter { $0.name == "EXDATE" }.map { property in
+            property.params.keys.sorted()
+                .map { "\($0)=\(property.params[$0] ?? "")" }
+                .joined(separator: ";") + ":" + property.value
+        }
+        let hasExDate = !exdates.isEmpty
         let recurrenceDescriptor: PIMRecurrenceDescriptor?
         if !rruleValues.isEmpty || hasRDate || hasExDate {
             recurrenceDescriptor = PIMRecurrenceDescriptor(
                 rrules: rruleValues,
                 hasRDate: hasRDate,
                 hasExDate: hasExDate,
+                exdates: exdates,
                 startBasis: Self.startBasis(for: dtstart)
             )
         } else {

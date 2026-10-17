@@ -51,6 +51,12 @@ public struct PIMRecurrenceDescriptor: Sendable, Hashable, Codable {
     /// Whether the record carries any `EXDATE` property (Google
     /// `EXDATE:` recurrence entry).
     public var hasExDate: Bool
+    /// Raw EXDATE property bodies in source order, each as
+    /// `<params>:<values>` without the `EXDATE` name (for example
+    /// `TZID=Europe/Oslo:20261020T090000` or `:20261020T070000Z`).
+    /// Empty on caches written before exclusions were captured; the
+    /// validator then treats `hasExDate` as unsupported.
+    public var exdates: [String]
     /// Google `recurrence[]` held entries other than RRULE/RDATE/EXDATE.
     /// Always false for ICS sources, where unknown properties stay in
     /// `rawPayload` only.
@@ -63,6 +69,7 @@ public struct PIMRecurrenceDescriptor: Sendable, Hashable, Codable {
         rrules: [String] = [],
         hasRDate: Bool = false,
         hasExDate: Bool = false,
+        exdates: [String] = [],
         hasUnrecognizedEntries: Bool = false,
         startBasis: StartBasis = .unknown
     ) {
@@ -70,6 +77,7 @@ public struct PIMRecurrenceDescriptor: Sendable, Hashable, Codable {
         self.rrules = rrules
         self.hasRDate = hasRDate
         self.hasExDate = hasExDate
+        self.exdates = exdates
         self.hasUnrecognizedEntries = hasUnrecognizedEntries
         self.startBasis = startBasis
     }
@@ -86,6 +94,8 @@ public struct PIMRecurrenceDescriptor: Sendable, Hashable, Codable {
             ?? false
         hasExDate = try container.decodeIfPresent(Bool.self, forKey: .hasExDate)
             ?? false
+        exdates = try container.decodeIfPresent([String].self, forKey: .exdates)
+            ?? []
         hasUnrecognizedEntries = try container.decodeIfPresent(
             Bool.self,
             forKey: .hasUnrecognizedEntries

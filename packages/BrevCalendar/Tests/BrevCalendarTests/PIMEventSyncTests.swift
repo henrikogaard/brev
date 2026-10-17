@@ -1360,12 +1360,18 @@ struct RecurrenceDescriptorTests {
         RRULE:FREQ=WEEKLY
         RDATE:20261020T090000Z
         EXDATE:20261017T090000Z
+        EXDATE;TZID=Europe/Oslo:20261018T090000,20261019T090000
         END:VEVENT
         """)
         let descriptor = parsed?.recurrenceDescriptor
         #expect(descriptor?.rrules == ["FREQ=DAILY", "FREQ=WEEKLY"])
         #expect(descriptor?.hasRDate == true)
         #expect(descriptor?.hasExDate == true)
+        // EXDATE bodies keep their parameters and value lists verbatim.
+        #expect(descriptor?.exdates == [
+            ":20261017T090000Z",
+            "TZID=Europe/Oslo:20261018T090000,20261019T090000",
+        ])
     }
 
     @Test("no descriptor is emitted without recurrence properties")
@@ -1496,12 +1502,14 @@ struct RecurrenceDescriptorTests {
          "iCalUID":"g1@google.com",
          "start":{"dateTime":"2026-10-16T09:00:00+02:00","timeZone":"Europe/Oslo"},
          "end":{"dateTime":"2026-10-16T09:30:00+02:00","timeZone":"Europe/Oslo"},
-         "recurrence":["RRULE:FREQ=DAILY;COUNT=5","EXDATE:20261018T070000Z","X-ODD:1"]}
+         "recurrence":["RRULE:FREQ=DAILY;COUNT=5","EXDATE:20261018T070000Z",
+                       "EXDATE;TZID=Europe/Oslo:20261019T090000","X-ODD:1"]}
         """)
         let event = try #require(result.events.first)
         let descriptor = try #require(event.recurrenceDescriptor)
         #expect(descriptor.rrules == ["FREQ=DAILY;COUNT=5"])
         #expect(descriptor.hasExDate)
+        #expect(descriptor.exdates == [":20261018T070000Z", "TZID=Europe/Oslo:20261019T090000"])
         #expect(!descriptor.hasRDate)
         #expect(descriptor.hasUnrecognizedEntries)
         #expect(descriptor.startBasis == .zoned("Europe/Oslo"))

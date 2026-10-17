@@ -325,21 +325,26 @@ public struct GoogleCalendarEventSync: Sendable {
         guard let recurrence, !recurrence.isEmpty else { return nil }
         var rrules: [String] = []
         var hasRDate = false
-        var hasExDate = false
+        var exdates: [String] = []
         var hasUnrecognized = false
         for entry in recurrence {
             guard let colon = entry.firstIndex(of: ":") else {
                 hasUnrecognized = true
                 continue
             }
-            let name = entry[..<colon].uppercased()
+            // Entries look like "RRULE:FREQ=WEEKLY" or
+            // "EXDATE;TZID=Europe/Oslo:20261020T090000" — the property
+            // name ends at the first ';' or ':'.
+            let head = entry[..<colon]
+            let name = head.split(separator: ";", maxSplits: 1)[0].uppercased()
             switch name {
             case "RRULE":
                 rrules.append(String(entry[entry.index(after: colon)...]))
             case "RDATE":
                 hasRDate = true
             case "EXDATE":
-                hasExDate = true
+                let params = head.dropFirst(name.count).drop(while: { $0 == ";" })
+                exdates.append(String(params) + ":" + entry[entry.index(after: colon)...])
             default:
                 hasUnrecognized = true
             }
@@ -355,7 +360,8 @@ public struct GoogleCalendarEventSync: Sendable {
         return PIMRecurrenceDescriptor(
             rrules: rrules,
             hasRDate: hasRDate,
-            hasExDate: hasExDate,
+            hasExDate: !exdates.isEmpty,
+            exdates: exdates,
             hasUnrecognizedEntries: hasUnrecognized,
             startBasis: basis
         )

@@ -172,9 +172,32 @@ The read-model slice is implemented:
   localized explanation; incomplete series keep raw rows plus a
   localized coverage note. Deep links and copy-link stay authoritative.
 
-Still pending: future-scope writes against projected occurrences, full
-exception-series merging (any exception marks the series incomplete
-rather than substituting the exception), and per-occurrence actions.
+### Read-side exceptions (2026-10-17)
+
+Live evidence v8 showed that one EXDATE collapsed a whole series to its
+master date. The read model now merges exceptions instead of refusing them:
+
+- The descriptor keeps every EXDATE body verbatim (`exdates`, with `TZID`
+  and `VALUE=DATE` parameters). The validator parses them under the series
+  basis: `Z` instants or a resolvable `TZID` for timed series, `VALUE=DATE`
+  days for date-only series. Any other form is `malformedExDate`. A cache
+  written before bodies were captured (`hasExDate` without `exdates`) stays
+  `exdatePresent`, never guessed.
+- Excluded and overridden slots consume COUNT but produce no row (RFC 5545
+  §3.8.5.1). A moved instance renders as its own raw row; a cancelled Google
+  marker renders nothing.
+- An exception inside the displayed interval whose original start the
+  pattern never generates fails the series closed (`exceptions`) with the
+  raw master row and the coverage note. Exceptions outside the interval are
+  not checked, so coverage stays bounded.
+- RDATE remains unsupported.
+
+Known limit: if the master's own first instance is excluded or overridden,
+no row has `occurrenceIndex == 0`, so whole-series Edit/Delete is only
+reachable from the moved instance's raw row until §4 writes land.
+
+Still pending: future-scope writes against projected occurrences, RDATE,
+and per-occurrence actions.
 
 ## References
 
