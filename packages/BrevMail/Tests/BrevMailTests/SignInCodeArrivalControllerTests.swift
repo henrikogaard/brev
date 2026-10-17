@@ -87,8 +87,20 @@ struct SignInCodeArrivalControllerTests {
         func extensionService<Service>(_ type: Service.Type) -> Service? { nil }
     }
 
+    /// Settings can be mutated from the stub's non-isolated assessment
+    /// while the controller reads them on the main actor, so access goes
+    /// through a lock.
     private final class ConsentBox: @unchecked Sendable {
-        var settings = SignInCodeSettings()
+        private let lock = NSLock()
+        private var storage = SignInCodeSettings()
+
+        var settings: SignInCodeSettings {
+            lock.withLock { storage }
+        }
+
+        func mutate(_ body: (inout SignInCodeSettings) -> Void) {
+            lock.withLock { body(&storage) }
+        }
     }
 
     private func makeBackend(consentedCode: Bool = true) -> (TrustedBackend, ConsentBox) {
@@ -103,7 +115,9 @@ struct SignInCodeArrivalControllerTests {
             ),
         ]
         let box = ConsentBox()
-        box.settings.setAccountOverride(accountID: "acct", codesEnabled: consentedCode, linksEnabled: false)
+        box.mutate {
+            $0.setAccountOverride(accountID: "acct", codesEnabled: consentedCode, linksEnabled: false)
+        }
         return (backend, box)
     }
 
@@ -168,7 +182,7 @@ struct SignInCodeArrivalControllerTests {
         await controller.settle()
         #expect(presenter.presented.isEmpty)
 
-        box.settings.setAccountOverride(accountID: "acct", codesEnabled: false, linksEnabled: true)
+        box.mutate { $0.setAccountOverride(accountID: "acct", codesEnabled: false, linksEnabled: true) }
         controller.handle(.messagesAdded(folderID: "inbox", messageIDs: ["m1"]), from: backend)
         await controller.settle()
         #expect(
@@ -180,7 +194,9 @@ struct SignInCodeArrivalControllerTests {
     @Test("consent withdrawn during the assessment stops before the body read")
     func consentRecheckedBeforeBodyRead() async {
         let (backend, box) = makeBackend()
-        backend.onAssess = { box.settings.setAccountOverride(accountID: "acct", codesEnabled: false, linksEnabled: false) }
+        backend.onAssess = {
+            box.mutate { $0.setAccountOverride(accountID: "acct", codesEnabled: false, linksEnabled: false) }
+        }
         let presenter = SpyPresenter()
         let controller = SignInCodeArrivalController(settings: { box.settings }, presenter: presenter)
         controller.handle(.messagesAdded(folderID: "inbox", messageIDs: ["m1"]), from: backend)
