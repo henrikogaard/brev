@@ -7790,6 +7790,94 @@
         }
       }
     },
+    "Sign-in codes and links": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Innloggingskoder og -lenker"
+          }
+        }
+      }
+    },
+    "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Viser en engangskode eller innloggingslenke på skjermen i det den kommer. For aktuelle nye meldinger leser Brev meldingsteksten over kontoens egen tilkobling, og koder kan vises over andre apper. Ingenting lagres, logges eller synkroniseres."
+          }
+        }
+      }
+    },
+    "Connect an account to turn this on per mailbox.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til en konto for å slå dette på per postkasse."
+          }
+        }
+      }
+    },
+    "Show one-time codes": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis engangskoder"
+          }
+        }
+      }
+    },
+    "Copy a sign-in code without opening the message.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopier en innloggingskode uten å åpne meldingen."
+          }
+        }
+      }
+    },
+    "Show sign-in links": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vis innloggingslenker"
+          }
+        }
+      }
+    },
+    "Open a sign-in link after seeing its real destination.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Åpne en innloggingslenke etter å ha sett det faktiske målet."
+          }
+        }
+      }
+    },
+    "Not available for this account yet. Brev only enables this where the provider's sender checks have been verified.": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ikke tilgjengelig for denne kontoen ennå. Brev slår dette på bare der leverandørens avsenderkontroller er verifisert."
+          }
+        }
+      }
+    },
     "Primary": {
       "extractionState": "manual",
       "localizations": {

@@ -1,5 +1,18 @@
 # Worklog
 
+## 2026-10-17 — Devin — #239 consent settings
+
+- Goal: ADR-0088 slice 4 UI: per-account codes/links opt-ins.
+- Changed: `SignInCodeSettingsGroup` (BrevSettings) appended to the
+  Notifications pane; `NotificationSection` gains
+  `signInAssessmentAvailable`, fed by `SettingsView` from the backend's
+  extended capabilities; eight new strings with nb translations.
+- Verified: iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.signin-codes-{light,dark,ax3}`; BrevSettings SignInCode /
+  Notification / navigation / search suites 69 green; lint/format clean.
+- Not changed: no AppSession wiring of `onChange`; PRIVACY.md waits for
+  the first enabled provider.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
 
 - Goal: implement the provider-dependent gates of integration slice 1 for

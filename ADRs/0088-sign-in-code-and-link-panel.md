@@ -434,6 +434,21 @@ mailbox. No panel, detector caller, settings UI, notification, capability
 advertisement, or body fetch is added; the assessment method is reachable
 only from tests. Generic IMAP remains unsupported.
 
+### Consent settings status (2026-10-17)
+
+`SignInCodeSettingsGroup` sits at the end of Settings → Notifications. Each
+account shows its name and address; accounts whose backend advertises
+`.trustedSignInAssessment` get two independent switches ("Show one-time
+codes", "Show sign-in links"), both off by default, saved through
+`SignInCodeSettings` into the local defaults only. Other accounts show "Not
+available for this account yet" instead of a dead switch. The group footer
+is the in-context explanation from decision 11: eligible new messages may
+cause a body read over the account's own connection, and codes may appear
+over other apps. Because no backend advertises the capability, every account
+currently shows the unavailable note. The `onChange` hook exists for the
+arrival controller's `cancel(accountID:)` but is not wired until an
+`AppSession` owner lands.
+
 ### Remaining integration slices
 
 1. Verify provider delivery/backfill provenance and authentication trust
