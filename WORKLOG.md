@@ -1,5 +1,16 @@
 # Worklog
 
+## 2026-10-17 — Devin — #11 v8 addendum (iOS Google create + DAV lifecycle attempt)
+
+- Goal: extend v8 with the second-session iOS legs and record the
+  recurring-create defect found live.
+- Changed: addendum table + O17-O19; two screenshots
+  (`ios-google-recurring-create-error`,
+  `ios-settings-google-event-cached-after-create`, both downscaled).
+- Verified: `check-live-evidence-redaction.sh` clean over the evidence dir.
+- Not run: DAV invalid-credential row — Norwegian keyboard mangles URL
+  characters under `idb ui text`; noted the workaround for the next pass.
+
 ## 2026-10-17 — Devin — #11 live parity v8
 
 - Goal: first live pass on the ADR-0089 projection fix against a real
