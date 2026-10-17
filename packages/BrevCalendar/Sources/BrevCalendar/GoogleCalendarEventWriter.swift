@@ -93,7 +93,13 @@ public struct GoogleCalendarEventWriter: Sendable {
         "https://www.googleapis.com/calendar/v3/calendars"
 
     private let transport: Transport
+    private let localTimeZone: @Sendable () -> TimeZone
 
+    /// - Parameters:
+    ///   - transport: Sends one request; tests inject a stub.
+    ///   - localTimeZone: The zone a "local" (floating) recurring event is
+    ///     pinned to, because Google requires `timeZone` on recurring
+    ///     events. Defaults to the device zone.
     public init(
         transport: @escaping Transport = { request in
             let (data, response) = try await URLSession.shared.data(
@@ -103,9 +109,11 @@ public struct GoogleCalendarEventWriter: Sendable {
                 throw WriteError.invalidResponse
             }
             return (data, http)
-        }
+        },
+        localTimeZone: @escaping @Sendable () -> TimeZone = { .current }
     ) {
         self.transport = transport
+        self.localTimeZone = localTimeZone
     }
 
     // MARK: - Writes
@@ -197,15 +205,21 @@ public struct GoogleCalendarEventWriter: Sendable {
             dict["location"] = location
         }
         dict["status"] = googleStatus(event.status)
+        // Google rejects a timed recurring event without `timeZone`
+        // (HTTP 400), so a floating series is pinned to the device zone;
+        // the wall-clock time then repeats in that zone (ADR-0089).
+        let timeZoneIdentifier = event.timeZoneIdentifier
+            ?? (event.recurrenceRule != nil && !event.isAllDay
+                ? localTimeZone().identifier : nil)
         dict["start"] = startEndDict(
             date: event.start,
             isAllDay: event.isAllDay,
-            timeZoneIdentifier: event.timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier
         )
         dict["end"] = startEndDict(
             date: event.end,
             isAllDay: event.isAllDay,
-            timeZoneIdentifier: event.timeZoneIdentifier
+            timeZoneIdentifier: timeZoneIdentifier
         )
         if let rule = event.recurrenceRule {
             dict["recurrence"] = ["RRULE:" + recurrenceText(rule)]

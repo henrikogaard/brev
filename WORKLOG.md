@@ -1,5 +1,23 @@
 # Worklog
 
+## 2026-10-17 — Devin — #11 Google recurring create fix
+
+- Found during the iOS live pass: creating a daily series on the Google
+  calendar with the editor's default "Lokal (flytende)" time zone failed
+  with "Leverandøren returnerte et svar Brev ikke kunne bruke"; a
+  non-recurring event with the same settings saved fine.
+- Cause: Google requires `start.timeZone`/`end.timeZone` on timed recurring
+  events and answers 400, which `GoogleCalendarEventWriter` maps to
+  `invalidResponse`.
+- Changed: the writer pins a floating timed recurring event to the injected
+  `localTimeZone` (device zone by default); single floating events are
+  unchanged.
+- Verified: `swift test --package-path packages/BrevCalendar --filter
+  PIMEventWrite` 39 green (new `googleFloatingRecurrenceGetsTimeZone`);
+  lint/format clean. Live retest pending a rebuilt simulator app.
+- Observation: a 400 from Google surfaces as a generic "response Brev could
+  not use"; the provider's error message is dropped. Not changed here.
+
 ## 2026-10-17 — Devin — #11 live parity v8
 
 - Goal: first live pass on the ADR-0089 projection fix against a real
