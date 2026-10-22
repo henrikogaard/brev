@@ -120,6 +120,62 @@ struct MessageListDatePresentationTests {
         ) == "2d")
     }
 
+    @Test("compact relative labels use a floored reference and hit the cache within its second")
+    func compactRelativeLabelsUseFlooredReferenceAndCacheHits() {
+        let referenceDate = Self.date(year: 2031, month: 2, day: 4, hour: 5, minute: 6)
+        let flooredReferenceDate = Date(
+            timeIntervalSinceReferenceDate: referenceDate.timeIntervalSinceReferenceDate.rounded(.down)
+        )
+        let referenceDates = [
+            referenceDate.addingTimeInterval(0.2),
+            referenceDate.addingTimeInterval(0.7)
+        ]
+        let dates = [
+            flooredReferenceDate,
+            flooredReferenceDate.addingTimeInterval(-120),
+            flooredReferenceDate.addingTimeInterval(60)
+        ]
+
+        for locale in [Locale(identifier: "en"), Locale(identifier: "nb")] {
+            for date in dates {
+                let first = MessageListDatePresentation.compactRelativeLabel(
+                    for: date,
+                    referenceDate: referenceDates[0],
+                    calendar: Self.calendar,
+                    locale: locale
+                )
+                #expect(first == MessageListDatePresentation.compactRelativeLabelUncached(
+                    for: date,
+                    referenceDate: flooredReferenceDate,
+                    calendar: Self.calendar,
+                    locale: locale
+                ))
+
+                let hitsBeforeSecondCall = MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
+                    for: date,
+                    referenceDate: referenceDates[1],
+                    calendar: Self.calendar,
+                    locale: locale
+                )
+                let second = MessageListDatePresentation.compactRelativeLabel(
+                    for: date,
+                    referenceDate: referenceDates[1],
+                    calendar: Self.calendar,
+                    locale: locale
+                )
+                #expect(second == first)
+                #expect(
+                    MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
+                        for: date,
+                        referenceDate: referenceDates[1],
+                        calendar: Self.calendar,
+                        locale: locale
+                    ) == hitsBeforeSecondCall + 1
+                )
+            }
+        }
+    }
+
     @Test("compact style never shortens the absolute-time preference")
     func compactStyleNeverShortensAbsoluteTimePreference() {
         let label = MessageListDatePresentation.label(
