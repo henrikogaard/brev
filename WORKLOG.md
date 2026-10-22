@@ -6365,26 +6365,10 @@ buttons, and package-aware localization.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
 
-## 2026-10-22 — Agent — UI polish batch (no issue number)
+## 2026-10-22 — Devin — UI polish branch follow-up (no issue number)
 
-- Goal: implement critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
-- Changes: aligned macOS toolbar, thread header, and Appearance controls; grouped iOS Mailboxes and polished compose fields; suppressed compact Unified Inbox footer and aligned list row sizing. Updated Unreleased changelog and localized-string usage relies on the existing English source and Bokmål `Remove %@` entry.
-- Verification: `scripts/format.sh` and `scripts/lint.sh` passed; macOS and iOS mock builds succeeded. Focused Swift Testing passed: native toolbar (24), Unified Inbox presentation (4), PhoneMailbox snapshots (6 tests/9 cases), FolderSidebarPresentation (41), and ComposeView snapshots (2). Re-recorded affected snapshots: 9 PhoneMailbox files plus empty/reply ComposeView images.
-- Limits: no macOS snapshot covers the desktop ThreadMessageCard or Appearance layout; these states were visually checked in after screenshots. CI was not watched per request. No issue number or authenticated board access was available, so no board update was made.
-- Handoff: branch is intended for review; the user creates the PR.
-
-## 2026-10-22 — Agent — UI polish correction pass
-
-- Goal: correct the reviewed macOS Appearance control widths and iOS recipient-chip overlap/To-row height.
-- Changes: expanded the segmented picker into its fixed-width frame; reserved a separate 44 pt remove target after recipient text; reduced the iOS recipient-input minimum width so a single chip and input stay on one line. Updated affected Compose snapshots only.
-- Verification: `scripts/format.sh` and `scripts/lint.sh` passed. Focused ComposeView/PhoneMailbox compose snapshots passed (4 tests, including both Dynamic Type cases). Full PhoneMailbox snapshots had unrelated mismatches; the same five failures were reproduced on clean `origin/main` (`06c7b19`), and no unrelated snapshots were recorded. macOS mock build succeeded.
-- Limits: iOS app rebuild and after-screenshot recapture remain pending; CI was not watched per request.
-- Handoff: push the correction commit on `fix/macos-ios-polish-pass`; user owns CI follow-up.
-
-## 2026-10-22 — Agent — UI polish follow-up
-
-- Goal: finish the reviewed Appearance/chip follow-up, disposition the branch-only Mailboxes snapshots, and capture the requested post-build states.
-- Changes: macOS Appearance controls now use equal-width segments at a shared 320 pt width, aligned to the Fonts popups. The iOS recipient chip now has balanced sm/text/xs/glyph/sm capsule spacing while preserving the extended 44 pt remove target; the fresh capture shows no overlap. Re-recorded only the affected Compose baselines (`replyCompose.reply-compose.png` and `invalidRecipient.invalid-recipient.png`). The three branch-only Mailboxes snapshots were diffed against clean main and re-recorded; their differences were the intended I1 grouping/regular weight/no-inline-ellipsis changes.
-- Verification: format, lint, macOS mock build, and Xcode 27 RC iOS build passed. Fresh captures: `mac/settings-appearance-light.png`, `mac/inbox-reader-light.png`, `ios/compose-with-recipient-light.png`, `ios/mailboxes-root-light.png`, `ios/message-open-light.png`, and `ios/mailboxes-smartviews-contextmenu.png` under `/Users/devin/brev-after/`. The prior focused snapshot results remain applicable: ComposeViewSnapshotTests 3 passed; PhoneMailboxSnapshotTests 19 total (14 passed, 5 failed), with the Favorites editor, Settings standard/accessibility, and Conversation standard/accessibility failures also present on clean main. The PhoneMailbox command hung after reporting results and was interrupted with exit 143 (`BUILD INTERRUPTED`); log: `/Users/devin/brev-after/logs/followup-snapshot-assertions.log`.
-- Limits: ComposeViewSnapshotTests and PhoneMailboxSnapshotTests were not rerun after the macOS-only Appearance change; no CI watch or PR action.
-- Handoff: one follow-up commit/push on `fix/macos-ios-polish-pass`; user owns PR and CI follow-up.
+- Goal: implement and refine critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
+- Changes: aligned macOS toolbar/thread presentation and equal-width Appearance controls; grouped iOS Mailboxes, polished compose chips and row geometry, and normalized compact Unified Inbox presentation. The AppKit Appearance segmented control now receives the theme accent through `selectedSegmentBezelColor` on updates; the iOS Cc/Bcc accessory retains its 44 pt hit shape while reducing the one-line To row height. Updated Unreleased changelog. Re-recorded only affected Compose, Mailboxes, and Appearance snapshot references.
+- Verification: format and lint passed; macOS and iOS mock builds passed. Focused toolbar (24), Unified Inbox (4), FolderSidebar (41), PhoneMailbox (6 tests/9 cases), and Compose tests passed in prior runs. ComposeViewSnapshotTests passed (3/3) after refreshing only empty/reply references. The BrevSettings macOS surfaces test exercised light and dark; the Appearance references now pass, while 10 snapshots for other surfaces still mismatch on this host. Fresh captures are under `/Users/devin/brev-after/`; the iOS compose capture shows one recipient chip, the keyboard, and a one-line To row comparable in height to From.
+- Limits: the 10 non-Appearance BrevSettings snapshot mismatches were not compared against clean main in this run. Five PhoneMailbox snapshot failures (19 total, 14 passed) were previously reproduced on clean main (`06c7b19`); the full-suite run hung after results and was interrupted with exit 143. No CI watch or PR action.
+- Handoff: parent creates the PR and owns the CI follow-up.

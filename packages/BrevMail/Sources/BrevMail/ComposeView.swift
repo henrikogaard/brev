@@ -1723,8 +1723,11 @@ public struct ComposeView: View {
                             .padding(.horizontal, BrevSpacing.xs)
                         #if os(iOS)
                             .frame(minWidth: 44, minHeight: 44)
-                        #endif
                             .contentShape(Rectangle())
+                            .padding(.vertical, isAccessibilityFieldLayout ? 0 : -10)
+                        #else
+                            .contentShape(Rectangle())
+                        #endif
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(field.accessibilityLabel)

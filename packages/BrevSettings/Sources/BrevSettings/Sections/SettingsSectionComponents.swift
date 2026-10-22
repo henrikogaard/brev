@@ -513,6 +513,8 @@ struct SettingsEqualWidthSegmentedRow<Selection: Hashable>: View {
 }
 
 struct SettingsEqualWidthSegmentedControl<Selection: Hashable>: NSViewRepresentable {
+    @Environment(\.brevTheme) private var theme
+
     @Binding var selection: Selection
     let segments: [SettingsSegment<Selection>]
     let segmentWidth: CGFloat
@@ -539,6 +541,7 @@ struct SettingsEqualWidthSegmentedControl<Selection: Hashable>: NSViewRepresenta
         }
         control.segmentDistribution = .fillEqually
         control.selectedSegment = segments.firstIndex { $0.value == selection } ?? -1
+        control.selectedSegmentBezelColor = NSColor(theme.accent.color)
     }
 
     func makeCoordinator() -> Coordinator {
