@@ -6,6 +6,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows share a trailing edge.
+- iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, and compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
 - Repeating calendar events now show every projected date in the
   agenda, day, week, and month views, and the agenda shows a navigable
   30-day range (ADR-0089).

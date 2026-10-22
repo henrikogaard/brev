@@ -2964,22 +2964,13 @@ public struct BrevMailRootView: View {
         }
 
         #if os(macOS)
-        // Search rides with the reader's actions rather than being pinned to the
-        // window's trailing edge. `.primaryAction` is one group that runs to the
-        // window edge, over the AI Sidebar when it is open, and no spacer can
-        // hold an item off that edge by a fixed amount — macOS 26 ignores a
-        // toolbar spacer's requested width. Placed here, ahead of the flexible
-        // spacer, search stays inside the reader whether the sidebar is open or
-        // not.
+        // Search stays in the reader action cluster, immediately before the
+        // inspector toggle.
         #if compiler(>=6.2)
         if #available(macOS 26.0, *) { ToolbarSpacer(.fixed, placement: .primaryAction) }
         #endif
         ToolbarItem(placement: .primaryAction) {
             searchToolbarControl
-        }
-        // Keeps the reader's own actions off the message list's section.
-        ToolbarItem(placement: .primaryAction) {
-            Spacer()
         }
         // Trailing-edge toggle for the right column, like Apple's inspector
         // buttons; the column takes reader width instead of growing the window.

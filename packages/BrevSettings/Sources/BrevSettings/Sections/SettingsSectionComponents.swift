@@ -25,6 +25,7 @@ enum SettingsLayout {
     /// Trailing slot for popups; each popup hugs its value and ends on the
     /// same right edge as the switches above and below it.
     static let trailingControlWidth: CGFloat = 220
+    static let segmentedControlWidth: CGFloat = 256
 
     /// Leading/trailing inset shared by pane headers, scope bars and content.
     /// iOS menu pickers pad their label inside the tappable button; offset it
@@ -411,6 +412,7 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
     let subtitle: String
     @Binding var selection: Selection
     var isEnabled = true
+    var controlWidth: CGFloat?
     @ViewBuilder let content: Content
 
     var body: some View {
@@ -431,28 +433,38 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
         .accessibilityHint(subtitle)
         .padding(.vertical, BrevSpacing.xxs)
         #else
-        // Same trailing column as switches and popups when it fits; otherwise
-        // the control drops under the title text, never under the symbol.
-        ViewThatFits(in: .horizontal) {
-            if !dynamicTypeSize.isAccessibilitySize {
-                HStack(alignment: .center, spacing: BrevSpacing.md) {
-                    label
-                    Spacer(minLength: BrevSpacing.md)
-                    picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+        if let controlWidth {
+            HStack(alignment: .center, spacing: BrevSpacing.md) {
+                label
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                picker.pickerStyle(.segmented)
+                    .frame(width: controlWidth)
+            }
+            .opacity(isEnabled ? 1 : 0.55)
+        } else {
+            // Same trailing column as switches and popups when it fits; otherwise
+            // the control drops under the title text, never under the symbol.
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .center, spacing: BrevSpacing.md) {
+                        label
+                        Spacer(minLength: BrevSpacing.md)
+                        picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+                    }
+                    VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                        label
+                        picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+                            .settingsStackedControl()
+                    }
                 }
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                     label
-                    picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
-                        .settingsStackedControl()
+                    picker.pickerStyle(.menu)
+                        .settingsStackedControl(isMenu: true)
                 }
             }
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                label
-                picker.pickerStyle(.menu)
-                    .settingsStackedControl(isMenu: true)
-            }
+            .opacity(isEnabled ? 1 : 0.55)
         }
-        .opacity(isEnabled ? 1 : 0.55)
         #endif
     }
 

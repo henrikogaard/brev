@@ -2063,7 +2063,11 @@ public struct ComposeView: View {
         } else {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
+                #if os(iOS)
+                    .frame(width: ComposeLayout.fieldLabelWidth, alignment: .leading)
+                #else
                     .frame(width: ComposeLayout.fieldLabelWidth, alignment: .trailing)
+                #endif
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)

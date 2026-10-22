@@ -6364,3 +6364,11 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-22 — Agent — UI polish batch (no issue number)
+
+- Goal: implement critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
+- Changes: aligned macOS toolbar, thread header, and Appearance controls; grouped iOS Mailboxes and polished compose fields; suppressed compact Unified Inbox footer and aligned list row sizing. Updated Unreleased changelog and localized-string usage relies on the existing English source and Bokmål `Remove %@` entry.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed; macOS and iOS mock builds succeeded. Focused Swift Testing passed: native toolbar (24), Unified Inbox presentation (4), PhoneMailbox snapshots (6 tests/9 cases), FolderSidebarPresentation (41), and ComposeView snapshots (2). Re-recorded affected snapshots: 9 PhoneMailbox files plus empty/reply ComposeView images.
+- Limits: no macOS snapshot covers the desktop ThreadMessageCard or Appearance layout; these states were visually checked in after screenshots. CI was not watched per request. No issue number or authenticated board access was available, so no board update was made.
+- Handoff: branch is intended for review; the user creates the PR.

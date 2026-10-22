@@ -821,7 +821,7 @@ public struct SettingsView: View {
     #endif
 
     private func settingsScopeCaption(for section: SettingsSection) -> String? {
-        [.appearance, .mailboxView, .compose, .vipAndReminders, .privacy, .preferenceSync].contains(section)
+        [.mailboxView, .compose, .vipAndReminders, .privacy, .preferenceSync].contains(section)
             ? String(localized: "Applies to all mailboxes", bundle: .module)
             : nil
     }
