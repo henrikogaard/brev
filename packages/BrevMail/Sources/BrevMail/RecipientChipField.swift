@@ -198,39 +198,42 @@ struct RecipientChipField<Accessory: View>: View {
             ? address
             : String(localized: "\(address) doesn't look like a valid email address", bundle: .module)
         #if os(iOS)
-        Text(address)
-            .brevFont(.footnote)
-            .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
-            .lineLimit(1)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.leading, BrevSpacing.sm)
-            .padding(.trailing, 44 + BrevSpacing.xxs)
-            .padding(.vertical, BrevSpacing.xxs)
-            .background(
-                RoundedRectangle(cornerRadius: BrevRadius.pill)
-                    .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: BrevRadius.pill)
-                    .stroke(theme.danger.color.opacity(isValid ? 0 : 0.7), lineWidth: 1)
-            )
-            .overlay(alignment: .trailing) {
-                Button {
-                    recipients.removeAll { $0 == address }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 12))
-                        .foregroundStyle(theme.textSecondary.color)
-                        .frame(width: 44, height: 44)
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(String(localized: "Remove \(address)", bundle: .module))
-            }
-            .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
+        HStack(spacing: BrevSpacing.xs) {
+            Text(address)
+                .brevFont(.footnote)
+                .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Button {
                 recipients.removeAll { $0 == address }
-            })
-            .help(helpText)
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: 12, height: 12)
+                    .frame(width: 44, height: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(.trailing, -32)
+                    .padding(.vertical, -16)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Remove \(address)", bundle: .module))
+        }
+        .padding(.leading, BrevSpacing.sm)
+        .padding(.trailing, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.xxs)
+        .background(
+            RoundedRectangle(cornerRadius: BrevRadius.pill)
+                .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: BrevRadius.pill)
+                .stroke(theme.danger.color.opacity(isValid ? 0 : 0.7), lineWidth: 1)
+        )
+        .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
+            recipients.removeAll { $0 == address }
+        })
+        .help(helpText)
         #else
         HStack(spacing: BrevSpacing.xxs) {
             Text(address)

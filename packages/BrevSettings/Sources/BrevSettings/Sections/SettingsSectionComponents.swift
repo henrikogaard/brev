@@ -10,6 +10,9 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+#if os(macOS)
+import AppKit
+#endif
 import BrevDesign
 import BrevThemes
 import SwiftUI
@@ -25,7 +28,7 @@ enum SettingsLayout {
     /// Trailing slot for popups; each popup hugs its value and ends on the
     /// same right edge as the switches above and below it.
     static let trailingControlWidth: CGFloat = 220
-    static let segmentedControlWidth: CGFloat = 256
+    static let segmentedControlWidth: CGFloat = 320
 
     /// Leading/trailing inset shared by pane headers, scope bars and content.
     /// iOS menu pickers pad their label inside the tappable button; offset it
@@ -479,6 +482,85 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
             .disabled(!isEnabled)
     }
 }
+
+#if os(macOS)
+struct SettingsSegment<Value: Hashable> {
+    let title: String
+    let value: Value
+}
+
+struct SettingsEqualWidthSegmentedRow<Selection: Hashable>: View {
+    let symbolName: String
+    let title: String
+    let subtitle: String
+    @Binding var selection: Selection
+    let segments: [SettingsSegment<Selection>]
+    let controlWidth: CGFloat
+
+    var body: some View {
+        HStack(alignment: .center, spacing: BrevSpacing.md) {
+            SettingsRowLabel(symbolName: symbolName, title: title, subtitle: subtitle)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            SettingsEqualWidthSegmentedControl(
+                selection: $selection,
+                segments: segments,
+                segmentWidth: controlWidth / CGFloat(max(segments.count, 1))
+            )
+            .frame(width: controlWidth)
+            .accessibilityLabel(title)
+        }
+    }
+}
+
+struct SettingsEqualWidthSegmentedControl<Selection: Hashable>: NSViewRepresentable {
+    @Binding var selection: Selection
+    let segments: [SettingsSegment<Selection>]
+    let segmentWidth: CGFloat
+
+    func makeNSView(context: Context) -> NSSegmentedControl {
+        let control = NSSegmentedControl(
+            labels: segments.map(\.title),
+            trackingMode: .selectOne,
+            target: context.coordinator,
+            action: #selector(Coordinator.selectionDidChange(_:))
+        )
+        control.segmentDistribution = .fillEqually
+        return control
+    }
+
+    func updateNSView(_ control: NSSegmentedControl, context: Context) {
+        context.coordinator.parent = self
+        if control.segmentCount != segments.count {
+            control.segmentCount = segments.count
+        }
+        for (index, segment) in segments.enumerated() {
+            control.setLabel(segment.title, forSegment: index)
+            control.setWidth(segmentWidth, forSegment: index)
+        }
+        control.segmentDistribution = .fillEqually
+        control.selectedSegment = segments.firstIndex { $0.value == selection } ?? -1
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(parent: self)
+    }
+
+    final class Coordinator: NSObject {
+        var parent: SettingsEqualWidthSegmentedControl
+
+        init(parent: SettingsEqualWidthSegmentedControl) {
+            self.parent = parent
+        }
+
+        @objc
+        func selectionDidChange(_ sender: NSSegmentedControl) {
+            let index = sender.selectedSegment
+            guard parent.segments.indices.contains(index) else { return }
+            parent.selection = parent.segments[index].value
+        }
+    }
+}
+#endif
 
 struct SettingsInfoCallout: View {
     @Environment(\.brevTheme) private var theme

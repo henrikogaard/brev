@@ -796,18 +796,15 @@ struct DesktopInterfaceSettings: View {
             subtitle: String(localized: "Customize the whole desktop app without changing message formatting.", bundle: .module),
             symbolName: "textformat.size"
         ) {
-            SettingsSegmentedRow(
+            SettingsEqualWidthSegmentedRow(
                 symbolName: "textformat.size",
                 title: String(localized: "Text size", bundle: .module),
                 subtitle: String(localized: "Applies to sidebars, lists, reading, composing, and settings.", bundle: .module),
                 selection: $textSizeRaw,
+                segments: MailboxTextSize.allCases.map { SettingsSegment(title: $0.title, value: $0.rawValue) },
                 controlWidth: SettingsLayout.segmentedControlWidth
-            ) {
-                ForEach(MailboxTextSize.allCases) { size in
-                    Text(size.title).tag(size.rawValue)
-                }
-            }
-            SettingsSegmentedRow(
+            )
+            SettingsEqualWidthSegmentedRow(
                 symbolName: "rectangle.compress.vertical",
                 title: String(localized: "Interface density", bundle: .module),
                 subtitle: String(
@@ -815,12 +812,9 @@ struct DesktopInterfaceSettings: View {
                     bundle: .module
                 ),
                 selection: $densityRaw,
+                segments: MailboxListDensity.allCases.map { SettingsSegment(title: $0.title, value: $0.rawValue) },
                 controlWidth: SettingsLayout.segmentedControlWidth
-            ) {
-                ForEach(MailboxListDensity.allCases) { density in
-                    Text(density.title).tag(density.rawValue)
-                }
-            }
+            )
             SettingsMailPreview(settings: previewSettings)
         }
     }
