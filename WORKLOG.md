@@ -6372,3 +6372,11 @@ buttons, and package-aware localization.
 - Verification: `scripts/format.sh` and `scripts/lint.sh` passed; macOS and iOS mock builds succeeded. Focused Swift Testing passed: native toolbar (24), Unified Inbox presentation (4), PhoneMailbox snapshots (6 tests/9 cases), FolderSidebarPresentation (41), and ComposeView snapshots (2). Re-recorded affected snapshots: 9 PhoneMailbox files plus empty/reply ComposeView images.
 - Limits: no macOS snapshot covers the desktop ThreadMessageCard or Appearance layout; these states were visually checked in after screenshots. CI was not watched per request. No issue number or authenticated board access was available, so no board update was made.
 - Handoff: branch is intended for review; the user creates the PR.
+
+## 2026-10-22 — Agent — UI polish correction pass
+
+- Goal: correct the reviewed macOS Appearance control widths and iOS recipient-chip overlap/To-row height.
+- Changes: expanded the segmented picker into its fixed-width frame; reserved a separate 44 pt remove target after recipient text; reduced the iOS recipient-input minimum width so a single chip and input stay on one line. Updated affected Compose snapshots only.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed. Focused ComposeView/PhoneMailbox compose snapshots passed (4 tests, including both Dynamic Type cases). Full PhoneMailbox snapshots had unrelated mismatches; the same five failures were reproduced on clean `origin/main` (`06c7b19`), and no unrelated snapshots were recorded. macOS mock build succeeded.
+- Limits: iOS app rebuild and after-screenshot recapture remain pending; CI was not watched per request.
+- Handoff: push the correction commit on `fix/macos-ios-polish-pass`; user owns CI follow-up.

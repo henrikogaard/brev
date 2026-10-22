@@ -438,7 +438,8 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
                 label
                     .frame(maxWidth: .infinity, alignment: .leading)
                 picker.pickerStyle(.segmented)
-                    .frame(width: controlWidth)
+                    .frame(maxWidth: .infinity)
+                    .frame(width: controlWidth, alignment: .trailing)
             }
             .opacity(isEnabled ? 1 : 0.55)
         } else {

@@ -129,7 +129,11 @@ struct RecipientChipField<Accessory: View>: View {
                     .foregroundStyle(theme.textPrimary.color)
                     .modifier(RecipientFocusModifier(own: $ownFocus, external: focusedField, field: field))
                     .accessibilityLabel(label)
+                #if os(iOS)
+                    .frame(minWidth: 24)
+                #else
                     .frame(minWidth: 120)
+                #endif
                     .autocorrectionDisabled()
                 #if os(iOS)
                     .keyboardType(.emailAddress)
@@ -198,8 +202,9 @@ struct RecipientChipField<Accessory: View>: View {
             .brevFont(.footnote)
             .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
             .lineLimit(1)
+            .fixedSize(horizontal: true, vertical: false)
             .padding(.leading, BrevSpacing.sm)
-            .padding(.trailing, BrevSpacing.xl)
+            .padding(.trailing, 44 + BrevSpacing.xxs)
             .padding(.vertical, BrevSpacing.xxs)
             .background(
                 RoundedRectangle(cornerRadius: BrevRadius.pill)
@@ -221,7 +226,6 @@ struct RecipientChipField<Accessory: View>: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Remove \(address)", bundle: .module))
-                .offset(x: BrevSpacing.xs)
             }
             .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
                 recipients.removeAll { $0 == address }
