@@ -1304,7 +1304,47 @@ struct UnifiedInboxListView: View {
             }
         }
         .contextMenu {
-            messageContextMenu(for: item)
+            MessageRowContextMenu(
+                item: item,
+                presentation: { contextMenuPresentation(for: $0) },
+                actionButton: { presentation, item in
+                    messageContextMenuButton(presentation, for: item)
+                },
+                pluginItems: { pluginMessageContextMenuItems },
+                categoryMenu: {
+                    let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+                    let currentCategory = InboxClassificationPolicy.classification(
+                        for: item.header,
+                        sourceID: item.sourceID,
+                        overrideStore: inboxCategoryOverrideStore
+                    ).category
+                    return Menu {
+                        ForEach(InboxCategory.assignableCases) { category in
+                            Button {
+                                inboxCategoryOverrideStore.set(category, for: messageID)
+                                inboxCategoryOverrideRevision += 1
+                            } label: {
+                                Label(
+                                    category.title,
+                                    systemImage: currentCategory == category ? "checkmark" : category.symbolName
+                                )
+                            }
+                        }
+                        Divider()
+                        Button {
+                            inboxCategoryOverrideStore.clear(messageID)
+                            inboxCategoryOverrideRevision += 1
+                        } label: {
+                            Label(
+                                String(localized: "Use automatic category", bundle: .module),
+                                systemImage: "wand.and.stars"
+                            )
+                        }
+                    } label: {
+                        Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
+                    }
+                }
+            )
         }
         .onAppear {
             guard shouldLoadMore(
@@ -1349,41 +1389,6 @@ struct UnifiedInboxListView: View {
         )
     }
 
-    @ViewBuilder
-    private func messageContextMenu(for item: UnifiedInboxItem) -> some View {
-        let menu = contextMenuPresentation(for: item)
-        ForEach(menu.sections.indices, id: \.self) { sectionIndex in
-            if sectionIndex > 0 {
-                Divider()
-            }
-            ForEach(menu.sections[sectionIndex].actions, id: \.action) { action in
-                messageContextMenuButton(action, for: item)
-            }
-        }
-        if menu.overflowSections.isEmpty {
-            Divider()
-            inboxCategoryMenu(for: item)
-            pluginMessageContextMenuItems
-        } else {
-            Divider()
-            Menu {
-                ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
-                    if sectionIndex > 0 {
-                        Divider()
-                    }
-                    ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
-                        messageContextMenuButton(action, for: item)
-                    }
-                }
-                Divider()
-                inboxCategoryMenu(for: item)
-                pluginMessageContextMenuItems
-            } label: {
-                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
-            }
-        }
-    }
-
     /// Actions behind the phone's trailing "More" swipe button.
     @ViewBuilder
     private func swipeMoreActionButtons(for item: UnifiedInboxItem) -> some View {
@@ -1410,34 +1415,45 @@ struct UnifiedInboxListView: View {
         }
     }
 
-    private func inboxCategoryMenu(for item: UnifiedInboxItem) -> some View {
-        let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
-        let currentCategory = InboxClassificationPolicy.classification(
-            for: item.header,
-            sourceID: item.sourceID,
-            overrideStore: inboxCategoryOverrideStore
-        ).category
-        return Menu {
-            ForEach(InboxCategory.assignableCases) { category in
-                Button {
-                    inboxCategoryOverrideStore.set(category, for: messageID)
-                    inboxCategoryOverrideRevision += 1
-                } label: {
-                    Label(
-                        category.title,
-                        systemImage: currentCategory == category ? "checkmark" : category.symbolName
-                    )
+    private struct MessageRowContextMenu<ActionButton: View, PluginItems: View, CategoryMenu: View>: View {
+        let item: UnifiedInboxItem
+        let presentation: (UnifiedInboxItem) -> MessageContextMenuPresentation
+        let actionButton: (MessageContextMenuActionPresentation, UnifiedInboxItem) -> ActionButton
+        let pluginItems: () -> PluginItems
+        let categoryMenu: () -> CategoryMenu
+
+        var body: some View {
+            let menu = presentation(item)
+            ForEach(menu.sections.indices, id: \.self) { sectionIndex in
+                if sectionIndex > 0 {
+                    Divider()
+                }
+                ForEach(menu.sections[sectionIndex].actions, id: \.action) { action in
+                    actionButton(action, item)
                 }
             }
-            Divider()
-            Button {
-                inboxCategoryOverrideStore.clear(messageID)
-                inboxCategoryOverrideRevision += 1
-            } label: {
-                Label(String(localized: "Use automatic category", bundle: .module), systemImage: "wand.and.stars")
+            if menu.overflowSections.isEmpty {
+                Divider()
+                categoryMenu()
+                pluginItems()
+            } else {
+                Divider()
+                Menu {
+                    ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
+                        if sectionIndex > 0 {
+                            Divider()
+                        }
+                        ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
+                            actionButton(action, item)
+                        }
+                    }
+                    Divider()
+                    categoryMenu()
+                    pluginItems()
+                } label: {
+                    Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+                }
             }
-        } label: {
-            Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
         }
     }
 

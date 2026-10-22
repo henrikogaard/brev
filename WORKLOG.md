@@ -6364,3 +6364,43 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-22 — Agent — Mail-list selection CPU
+
+- Goal: reduce repeated message-row date formatting, macOS sidebar selection,
+  and message context-menu work during rapid list selection.
+- Changed: added a bounded compact-date-label cache and locale parity test;
+  hoisted the active desktop favorite lookup out of per-folder selection;
+  moved row menu construction into `MessageRowContextMenu`.
+- Verification: focused suites passed after formatting — date presentation
+  10 tests, `FolderSidebarPresentationTests` 41 tests, and
+  `MessageCommandPresentationTests` 29 tests. `scripts/format.sh` passed
+  (1/1302 files formatted; the follow-up format lint found 0/1302 files
+  needing changes); `scripts/lint.sh` passed.
+- Measurements: three alternating matched Debug runs per side (main totals
+  5,664/5,566/5,454; branch 5,441/5,512/5,448). Median row-body samples were
+  532 main / 345 branch; sidebar-row samples 256 / 92 and favorite-candidate
+  samples 145 / 14. Relative-label samples were 209 / 11; the extracted menu
+  initializer had 1 branch sample median, while its body and legacy helpers
+  were unsampled. See
+  `/Users/devin/brev-perf-out/REPORT.md` for per-run data and artifacts.
+- Limits: matched C emitted 4 main and 7 branch `ui.body.visible` spans,
+  not ten; `cached_thread_open_ms` was absent and IDs are not logged. No iOS
+  simulator interaction or live-provider measurement was performed.
+- Net: Brev-owned per-row and sidebar samples fell ~85%, but total
+  main-thread samples for the burst moved only ~2% (SwiftUI/AttributeGraph
+  dominate in Debug), so no user-visible speedup is claimed and CHANGELOG is
+  unchanged. A Release-config trace is the next measurement.
+- Handoff: committed on `fix/mail-list-selection-cpu`; parent owns the PR.
+
+## 2026-10-22 — Agent — PR #261 CI repair
+
+- Goal: make the date-cache tests compile in CI's Release configuration.
+- Changed: guarded the Debug-only hit-counter assertions while keeping the
+  cached-label equality assertion active in Release.
+- Verification: Release and Debug `MessageListDatePresentationTests` each
+  passed 10 tests; targeted SwiftFormat and strict SwiftLint passed; diff check
+  passed.
+- CI evidence: Release compilation reported the Debug-only accessor missing at
+  test lines 154 and 168, failing both `snapshot-test` and `test (BrevMail)`.
+- Handoff: this is the single mechanical fix for PR #261; awaiting its rerun.
