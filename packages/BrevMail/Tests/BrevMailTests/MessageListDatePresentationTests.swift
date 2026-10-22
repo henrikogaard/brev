@@ -151,12 +151,14 @@ struct MessageListDatePresentationTests {
                     locale: locale
                 ))
 
+                #if DEBUG
                 let hitsBeforeSecondCall = MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
                     for: date,
                     referenceDate: referenceDates[1],
                     calendar: Self.calendar,
                     locale: locale
                 )
+                #endif
                 let second = MessageListDatePresentation.compactRelativeLabel(
                     for: date,
                     referenceDate: referenceDates[1],
@@ -164,6 +166,7 @@ struct MessageListDatePresentationTests {
                     locale: locale
                 )
                 #expect(second == first)
+                #if DEBUG
                 #expect(
                     MessageListDatePresentation.compactRelativeLabelCacheHitCountForTesting(
                         for: date,
@@ -172,6 +175,7 @@ struct MessageListDatePresentationTests {
                         locale: locale
                     ) == hitsBeforeSecondCall + 1
                 )
+                #endif
             }
         }
     }

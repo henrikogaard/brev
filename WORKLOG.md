@@ -6392,3 +6392,15 @@ buttons, and package-aware localization.
   dominate in Debug), so no user-visible speedup is claimed and CHANGELOG is
   unchanged. A Release-config trace is the next measurement.
 - Handoff: committed on `fix/mail-list-selection-cpu`; parent owns the PR.
+
+## 2026-10-22 — Agent — PR #261 CI repair
+
+- Goal: make the date-cache tests compile in CI's Release configuration.
+- Changed: guarded the Debug-only hit-counter assertions while keeping the
+  cached-label equality assertion active in Release.
+- Verification: Release and Debug `MessageListDatePresentationTests` each
+  passed 10 tests; targeted SwiftFormat and strict SwiftLint passed; diff check
+  passed.
+- CI evidence: Release compilation reported the Debug-only accessor missing at
+  test lines 154 and 168, failing both `snapshot-test` and `test (BrevMail)`.
+- Handoff: this is the single mechanical fix for PR #261; awaiting its rerun.
