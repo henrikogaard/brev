@@ -62,10 +62,38 @@ final class ReaderThreadHeadersMemo {
 
 /// Policy for which card starts expanded in ThreadConversationView.
 enum ThreadConversationExpansionPolicy {
+    struct InitialExpansion: Equatable {
+        let expandedIDs: Set<MessageHeader.ID>
+        let anchorID: MessageHeader.ID?
+    }
+
     /// Returns the ID of the newest (last) header — the default-expanded card.
     /// Assumes headers are sorted oldest → newest (as returned by ThreadMessageDerivation).
     static func defaultExpandedID(in headers: [MessageHeader]) -> MessageHeader.ID? {
         headers.last?.id
+    }
+
+    /// Returns the initial expanded cards and scroll target for a conversation.
+    static func initialExpansion(
+        selectedID: MessageHeader.ID?,
+        isSearching: Bool,
+        in headers: [MessageHeader]
+    ) -> InitialExpansion {
+        var expandedIDs = Set(headers.filter { !$0.isRead }.map(\.id))
+        let newestID = defaultExpandedID(in: headers)
+        if let newestID {
+            expandedIDs.insert(newestID)
+        }
+        let searchSelection = isSearching
+            ? selectedID.flatMap { id in headers.contains(where: { $0.id == id }) ? id : nil }
+            : nil
+        if let searchSelection {
+            expandedIDs.insert(searchSelection)
+        }
+        return InitialExpansion(
+            expandedIDs: expandedIDs,
+            anchorID: searchSelection ?? newestID
+        )
     }
 
     /// Returns the selected message when it belongs to this thread,

@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Conversation readers now open on the newest message while keeping unread messages and search matches expanded. Compact iPhone readers no longer show the quick-reply field; Reply, Reply All and Forward remain in the Reply menu.
+- Mac message lists use unread dots, remove selected-row bars and date-header counts, and hide folder statistics by default. Folder statistics remain available in Settings.
+- Reader message cards no longer show selected accent bars, and iPhone Compose has its own bottom-bar glass button.
 - macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
 - iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
 - Repeating calendar events now show every projected date in the

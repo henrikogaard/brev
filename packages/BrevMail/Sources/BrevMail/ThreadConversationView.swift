@@ -268,17 +268,16 @@ public struct ThreadConversationView: View {
                 .scrollClipDisabled()
             #endif
                 .onAppear {
-                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                    let initialExpansion = ThreadConversationExpansionPolicy.initialExpansion(
                         selectedID: navigation.selectedMessageID,
+                        isSearching: !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                         in: visibleHeaders
                     )
-                    if let defaultID {
-                        expandedMessageIDs = [defaultID]
-                    }
-                    if shouldAutoScrollToExpandedMessage, let defaultID {
+                    expandedMessageIDs = initialExpansion.expandedIDs
+                    if shouldAutoScrollToExpandedMessage, let anchorID = initialExpansion.anchorID {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                             animate {
-                                proxy.scrollTo(defaultID, anchor: .top)
+                                proxy.scrollTo(anchorID, anchor: .top)
                             }
                         }
                     }
@@ -289,16 +288,17 @@ public struct ThreadConversationView: View {
                     // Drop the previous thread's pooled renderers — their card
                     // identities are gone, so nothing still needs them warm.
                     renderPool = ThreadConversationRenderPool()
-                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                    let initialExpansion = ThreadConversationExpansionPolicy.initialExpansion(
                         selectedID: navigation.selectedMessageID,
+                        isSearching: !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                         in: visibleHeaders
                     )
                     animate(.easeInOut(duration: 0.15)) {
-                        expandedMessageIDs = defaultID.map { [$0] } ?? []
+                        expandedMessageIDs = initialExpansion.expandedIDs
                     }
-                    if shouldAutoScrollToExpandedMessage, let defaultID {
+                    if shouldAutoScrollToExpandedMessage, let anchorID = initialExpansion.anchorID {
                         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                            animate { proxy.scrollTo(defaultID, anchor: .top) }
+                            animate { proxy.scrollTo(anchorID, anchor: .top) }
                         }
                     }
                 }
@@ -306,12 +306,13 @@ public struct ThreadConversationView: View {
                     guard !visibleIDs.isEmpty,
                           expandedMessageIDs.isDisjoint(with: visibleIDs)
                     else { return }
-                    let defaultID = ThreadConversationExpansionPolicy.expandedID(
+                    let initialExpansion = ThreadConversationExpansionPolicy.initialExpansion(
                         selectedID: navigation.selectedMessageID,
+                        isSearching: !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                         in: visibleHeaders
                     )
                     animate(.easeInOut(duration: 0.15)) {
-                        expandedMessageIDs = defaultID.map { [$0] } ?? []
+                        expandedMessageIDs = initialExpansion.expandedIDs
                     }
                 }
                 .onChange(of: navigation.selectedMessageID) { _, selectedID in

@@ -126,7 +126,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =

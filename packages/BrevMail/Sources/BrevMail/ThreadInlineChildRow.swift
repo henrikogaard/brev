@@ -157,13 +157,6 @@ struct ThreadInlineChildRow: View {
         .padding(.vertical, usesAccessibilityLayout ? BrevSpacing.md : density.verticalPadding * 0.75)
         .padding(.horizontal, BrevSpacing.md)
         .background(rowBackground)
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1).fill(selectionPalette.indicator.color)
-                    .frame(width: 2).padding(.vertical, BrevSpacing.xs)
-                    .padding(.leading, ThreadInlineChildRowPresentation.selectionHorizontalInset)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture { onSelect() }
         .accessibilityElement(children: .combine)

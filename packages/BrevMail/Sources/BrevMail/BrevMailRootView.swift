@@ -1631,7 +1631,8 @@ public struct BrevMailRootView: View {
                     )
                 }
             }
-            if let quickReplyTarget,
+            if showsQuickReplyBar,
+               let quickReplyTarget,
                let quickReplyBackend,
                quickReplyBackend.capabilities.contains(.smtpOAuth) {
                 ReaderQuickReplyBar(
@@ -1678,6 +1679,14 @@ public struct BrevMailRootView: View {
                     backend: selectedBackend
                 )
             }
+    }
+
+    private var showsQuickReplyBar: Bool {
+        #if os(iOS)
+        horizontalSizeClass != .compact
+        #else
+        true
+        #endif
     }
 
     private var readingPaneDetailPane: some View {
@@ -2325,14 +2334,14 @@ public struct BrevMailRootView: View {
                 }
             }
         }
-        // The search capsule lives inside the bottom bar — Apple's iOS 26
-        // Mail idiom — expanding to fill the space between the list's
-        // stats label and Compose rather than floating over the rows.
+        // The iOS 26 search capsule is separated from Compose so each keeps
+        // its own glass button.
         // Selection mode replaces the whole bar with the bulk actions.
         if !navigation.isInSelectionMode {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                ToolbarSpacer(.fixed, placement: .bottomBar)
             } else {
                 ToolbarItem(placement: .bottomBar) { Spacer() }
             }
