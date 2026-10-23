@@ -153,7 +153,7 @@ public struct MessageListView: View {
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
@@ -759,7 +759,6 @@ public struct MessageListView: View {
     #endif
 
     #if os(macOS)
-    @ViewBuilder
     private func bulkActionBar(visibleHeaders: [MessageHeader]) -> some View {
         let actions = makeBulkSelectionActions()
         return MailBulkActionBar(
@@ -4059,8 +4058,7 @@ struct MessageListRow: View {
     @ScaledMetric(relativeTo: .body) private var scaledSelectionTargetSize: CGFloat = 44
     #endif
 
-    /// Whether this platform marks unread rows with iOS Mail's leading dot (the phone)
-    /// instead of the desktop's thin bar.
+    /// Whether unread senders use iPhone's semibold weight.
     private var usesUnreadDot: Bool {
         #if os(iOS)
         true
@@ -4201,7 +4199,7 @@ struct MessageListRow: View {
                 .buttonStyle(.plain)
                 .accessibilityHidden(true)
             }
-            unreadMarker
+            unreadDot
             if showAvatar, !usesAccessibilityLayout {
                 BrevAvatarView(
                     email: header.from.email,
@@ -4270,15 +4268,6 @@ struct MessageListRow: View {
                     .fill(theme.separator.color)
                     .frame(height: 0.5)
                     .padding(.leading, BrevSpacing.md)
-            }
-        }
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(selectionPalette.indicator.color)
-                    .frame(width: 2)
-                    .padding(.vertical, BrevSpacing.xs)
-                    .padding(.leading, BrevSpacing.xxs)
             }
         }
         .contentShape(Rectangle())
@@ -4392,52 +4381,26 @@ struct MessageListRow: View {
 
     private var selectionFill: Color { selectionPalette.background.color }
 
-    /// Unread marker: a thin bar in the row's leading gutter.
-    ///
-    /// The row used to open with an 8-point dot beside the avatar — two
-    /// circles competing before any text was read. The bar keeps the gutter
-    /// width stable between read and unread rows, carries the same "Unread"
-    /// label for the combined accessibility element, and leaves colour and
-    /// weight to the subject line.
+    /// The macOS row uses the same leading unread dot as iPhone.
     @ViewBuilder
-    private var unreadMarker: some View {
-        #if os(iOS)
-        unreadDot
-        #else
-        unreadBar
-        #endif
-    }
-
-    #if os(iOS)
-    /// iOS Mail's unread indicator: a filled accent dot in the leading gutter (audit L2).
-    /// Read rows keep the gutter so text columns line up, but expose no accessibility
-    /// element; compact rows already carry "Unread" in their status value.
     private var unreadDot: some View {
+        #if os(iOS)
         Circle()
             .fill(header.isRead ? Color.clear : theme.accent.color)
             .frame(width: unreadDotSize, height: unreadDotSize)
-            // Centre the dot on the sender's first line, tracking the text size.
             .padding(.top, max(0, (senderPointSize * 1.2 - unreadDotSize) / 2))
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
             .accessibilityHidden(header.isRead || isCompactWidth)
-    }
-    #endif
-
-    #if os(macOS)
-    @ViewBuilder
-    private var unreadBar: some View {
-        let width: CGFloat = 3
-        let height = max(12, textSize.listTitlePointSize * 1.1)
-        return RoundedRectangle(cornerRadius: width / 2)
+        #else
+        let diameter: CGFloat = 8
+        Circle()
             .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-            .frame(width: width, height: height)
-            // Align the bar with the sender's first line so it tracks the
-            // mailbox text-size preference.
-            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - height) / 2))
+            .frame(width: diameter, height: diameter)
+            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - diameter) / 2))
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
             .accessibilityHidden(header.isRead)
+        #endif
     }
-    #endif
 
     /// Provider label chips (Gmail labels). `header.labels` is only populated
     /// by backends advertising `.labels`, so an empty set renders nothing and
@@ -4739,13 +4702,6 @@ struct MessageListDateSectionHeader: View {
                 .brevFont(.caption)
                 .foregroundStyle(titleColor(for: presentation.style))
 
-            // The count stays with its label: pushed to the far edge it
-            // lost the connection to the group it counts.
-            Text(verbatim: "· \(count)")
-                .brevFont(.caption)
-                .foregroundStyle(countColor(for: presentation.style))
-                .monospacedDigit()
-
             Spacer(minLength: BrevSpacing.xs)
         }
         .textCase(nil)
@@ -4770,12 +4726,6 @@ struct MessageListDateSectionHeader: View {
     }
 
     private func titleColor(
-        for style: MessageListSectionHeaderPresentation.Style
-    ) -> Color {
-        style == .pinned ? theme.accent.color : theme.textTertiary.color
-    }
-
-    private func countColor(
         for style: MessageListSectionHeaderPresentation.Style
     ) -> Color {
         style == .pinned ? theme.accent.color : theme.textTertiary.color

@@ -35,7 +35,7 @@ struct MailboxViewSettingsTests {
         #expect(settings.listDensity == MailboxListDensity.platformDefault)
         #expect(settings.sortOrder == .newestFirst)
         #expect(settings.readingPanePlacement == .side)
-        #expect(settings.showFolderStats == true)
+        #expect(settings.showFolderStats == false)
         #expect(settings.folderStatsDetail == .compact)
         #expect(settings.showAbsoluteArrivalTime == false)
     }

@@ -19,7 +19,11 @@ import Testing
 struct ThreadConversationExpansionTests {
     private static let epoch = Date(timeIntervalSince1970: 0)
 
-    private static func makeHeader(id: String, date: Date = epoch) -> MessageHeader {
+    private static func makeHeader(
+        id: String,
+        date: Date = epoch,
+        isRead: Bool = false
+    ) -> MessageHeader {
         MessageHeader(
             id: id,
             threadID: "t",
@@ -28,7 +32,7 @@ struct ThreadConversationExpansionTests {
             subject: "Subject",
             snippet: "",
             date: date,
-            isRead: false
+            isRead: isRead
         )
     }
 
@@ -45,6 +49,63 @@ struct ThreadConversationExpansionTests {
     func defaultExpandedIDIsNilForEmpty() {
         let result = ThreadConversationExpansionPolicy.defaultExpandedID(in: [])
         #expect(result == nil)
+    }
+
+    @Test("initial expansion contains only the newest message when every message is read")
+    func initialExpansionContainsNewestOnly() {
+        let older = Self.makeHeader(id: "older", isRead: true)
+        let newer = Self.makeHeader(id: "newer", date: Self.epoch.addingTimeInterval(60), isRead: true)
+
+        let result = ThreadConversationExpansionPolicy.initialExpansion(
+            selectedID: older.id,
+            isSearching: false,
+            in: [older, newer]
+        )
+
+        #expect(result.expandedIDs == [newer.id])
+        #expect(result.anchorID == newer.id)
+    }
+
+    @Test("initial expansion includes unread messages and the newest message")
+    func initialExpansionContainsNewestAndUnread() {
+        let older = Self.makeHeader(id: "older")
+        let newer = Self.makeHeader(id: "newer", date: Self.epoch.addingTimeInterval(60), isRead: true)
+
+        let result = ThreadConversationExpansionPolicy.initialExpansion(
+            selectedID: nil,
+            isSearching: false,
+            in: [older, newer]
+        )
+
+        #expect(result.expandedIDs == [older.id, newer.id])
+        #expect(result.anchorID == newer.id)
+    }
+
+    @Test("initial expansion includes and anchors an older search hit")
+    func initialExpansionIncludesOlderSearchHit() {
+        let older = Self.makeHeader(id: "older", isRead: true)
+        let newer = Self.makeHeader(id: "newer", date: Self.epoch.addingTimeInterval(60), isRead: true)
+
+        let result = ThreadConversationExpansionPolicy.initialExpansion(
+            selectedID: older.id,
+            isSearching: true,
+            in: [older, newer]
+        )
+
+        #expect(result.expandedIDs == [older.id, newer.id])
+        #expect(result.anchorID == older.id)
+    }
+
+    @Test("initial expansion is empty without headers")
+    func initialExpansionIsEmptyWithoutHeaders() {
+        let result = ThreadConversationExpansionPolicy.initialExpansion(
+            selectedID: "missing",
+            isSearching: true,
+            in: []
+        )
+
+        #expect(result.expandedIDs.isEmpty)
+        #expect(result.anchorID == nil)
     }
 
     @Test("default expanded ID is the only element for single-message thread")
