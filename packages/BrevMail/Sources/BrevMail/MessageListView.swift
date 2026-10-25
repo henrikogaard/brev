@@ -153,7 +153,7 @@ public struct MessageListView: View {
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
@@ -1071,7 +1071,7 @@ public struct MessageListView: View {
                         isThreadingEnabled: backend.groupsMessagesIntoThreads,
                         in: &expandedThreadIDs
                     )
-                    selectMessage(header)
+                    selectMessage(header, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: header)
                 }
@@ -2100,13 +2100,17 @@ public struct MessageListView: View {
         return threadCounts[header.threadID] ?? 1
     }
 
-    private func selectMessage(_ header: MessageHeader) {
+    private func selectMessage(_ header: MessageHeader, expandsSelectedMessage: Bool = true) {
         #if os(macOS)
         // Pointer selection claims container focus too: the focused list is
         // the one arrow keys drive, matching Apple Mail's ring-follows-focus.
         listKeyboardFocus = true
         #endif
-        navigation.selectMessage(header, from: navigationHeaders(for: headers))
+        navigation.selectMessage(
+            header,
+            from: navigationHeaders(for: headers),
+            expandsSelectedMessage: expandsSelectedMessage
+        )
         onSelectMessage?(header)
     }
 
@@ -4057,10 +4061,13 @@ struct MessageListRow: View {
     @ScaledMetric(relativeTo: .body) private var unreadDotSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var scaledSelectionCircleSize: CGFloat = 22
     @ScaledMetric(relativeTo: .body) private var scaledSelectionTargetSize: CGFloat = 44
+    #else
+    private var unreadDotSize: CGFloat {
+        max(7, textSize.listTitlePointSize * 0.6)
+    }
     #endif
 
-    /// Whether this platform marks unread rows with iOS Mail's leading dot (the phone)
-    /// instead of the desktop's thin bar.
+    /// Whether the sender weight reinforces the unread marker on this platform.
     private var usesUnreadDot: Bool {
         #if os(iOS)
         true
@@ -4392,52 +4399,30 @@ struct MessageListRow: View {
 
     private var selectionFill: Color { selectionPalette.background.color }
 
-    /// Unread marker: a thin bar in the row's leading gutter.
-    ///
-    /// The row used to open with an 8-point dot beside the avatar — two
-    /// circles competing before any text was read. The bar keeps the gutter
-    /// width stable between read and unread rows, carries the same "Unread"
-    /// label for the combined accessibility element, and leaves colour and
-    /// weight to the subject line.
+    /// The leading accent dot marks unread state without competing with sender
+    /// weight or the subject line.
     @ViewBuilder
     private var unreadMarker: some View {
-        #if os(iOS)
         unreadDot
-        #else
-        unreadBar
-        #endif
     }
 
-    #if os(iOS)
-    /// iOS Mail's unread indicator: a filled accent dot in the leading gutter (audit L2).
-    /// Read rows keep the gutter so text columns line up, but expose no accessibility
-    /// element; compact rows already carry "Unread" in their status value.
+    /// A filled accent dot in the leading gutter.
     private var unreadDot: some View {
         Circle()
             .fill(header.isRead ? Color.clear : theme.accent.color)
             .frame(width: unreadDotSize, height: unreadDotSize)
-            // Centre the dot on the sender's first line, tracking the text size.
+        #if os(iOS)
             .padding(.top, max(0, (senderPointSize * 1.2 - unreadDotSize) / 2))
+        #else
+            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - unreadDotSize) / 2))
+        #endif
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
+        #if os(iOS)
             .accessibilityHidden(header.isRead || isCompactWidth)
-    }
-    #endif
-
-    #if os(macOS)
-    @ViewBuilder
-    private var unreadBar: some View {
-        let width: CGFloat = 3
-        let height = max(12, textSize.listTitlePointSize * 1.1)
-        return RoundedRectangle(cornerRadius: width / 2)
-            .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-            .frame(width: width, height: height)
-            // Align the bar with the sender's first line so it tracks the
-            // mailbox text-size preference.
-            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - height) / 2))
-            .accessibilityLabel(String(localized: "Unread", bundle: .module))
+        #else
             .accessibilityHidden(header.isRead)
+        #endif
     }
-    #endif
 
     /// Provider label chips (Gmail labels). `header.labels` is only populated
     /// by backends advertising `.labels`, so an empty set renders nothing and
@@ -4739,13 +4724,6 @@ struct MessageListDateSectionHeader: View {
                 .brevFont(.caption)
                 .foregroundStyle(titleColor(for: presentation.style))
 
-            // The count stays with its label: pushed to the far edge it
-            // lost the connection to the group it counts.
-            Text(verbatim: "· \(count)")
-                .brevFont(.caption)
-                .foregroundStyle(countColor(for: presentation.style))
-                .monospacedDigit()
-
             Spacer(minLength: BrevSpacing.xs)
         }
         .textCase(nil)
@@ -4770,12 +4748,6 @@ struct MessageListDateSectionHeader: View {
     }
 
     private func titleColor(
-        for style: MessageListSectionHeaderPresentation.Style
-    ) -> Color {
-        style == .pinned ? theme.accent.color : theme.textTertiary.color
-    }
-
-    private func countColor(
         for style: MessageListSectionHeaderPresentation.Style
     ) -> Color {
         style == .pinned ? theme.accent.color : theme.textTertiary.color

@@ -64,6 +64,7 @@ public struct ThreadConversationView: View {
     let showsAvatars: Bool
     let autoScrollsToExpandedMessage: Bool
     let dateTextProvider: ((MessageHeader) -> String)?
+    let readerFooter: AnyView?
     private let aiBackend: (any AIBackend)?
     /// Shared-calendar RSVP reconciliation (#10); nil leaves the
     /// mail-only confirmation unchanged.
@@ -113,7 +114,8 @@ public struct ThreadConversationView: View {
         showsAvatars: Bool = true,
         autoScrollsToExpandedMessage: Bool = true,
         dateTextProvider: ((MessageHeader) -> String)? = nil,
-        inviteReconciler: CalendarInviteReconciler? = nil
+        inviteReconciler: CalendarInviteReconciler? = nil,
+        readerFooter: AnyView? = nil
     ) {
         self.threadHeaders = threadHeaders
         self.backend = backend
@@ -129,6 +131,7 @@ public struct ThreadConversationView: View {
         self.autoScrollsToExpandedMessage = autoScrollsToExpandedMessage
         self.dateTextProvider = dateTextProvider
         self.inviteReconciler = inviteReconciler
+        self.readerFooter = readerFooter
     }
 
     // MARK: - Derived state
@@ -253,13 +256,15 @@ public struct ThreadConversationView: View {
                             // root view's shared handlers.
                             .contextMenu { cardMenuButtons(for: header) }
                         }
-
-                        if hiddenReadCount > 0 {
-                            hiddenReadMessagesFooter
-                        }
                     }
-                    .padding(.bottom, BrevSpacing.lg)
+                    if hiddenReadCount > 0 {
+                        hiddenReadMessagesFooter
+                    }
+                    if let readerFooter {
+                        readerFooter
+                    }
                 }
+                .padding(.bottom, BrevSpacing.lg)
                 .frame(maxWidth: 840)
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
@@ -269,7 +274,7 @@ public struct ThreadConversationView: View {
             #endif
                 .onAppear {
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                        selectedID: navigation.selectedMessageID,
+                        selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders
                     )
                     if let defaultID {
@@ -290,7 +295,7 @@ public struct ThreadConversationView: View {
                     // identities are gone, so nothing still needs them warm.
                     renderPool = ThreadConversationRenderPool()
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                        selectedID: navigation.selectedMessageID,
+                        selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders
                     )
                     animate(.easeInOut(duration: 0.15)) {
@@ -307,21 +312,26 @@ public struct ThreadConversationView: View {
                           expandedMessageIDs.isDisjoint(with: visibleIDs)
                     else { return }
                     let defaultID = ThreadConversationExpansionPolicy.expandedID(
-                        selectedID: navigation.selectedMessageID,
+                        selectedID: navigation.readerExpansionSelectionID,
                         in: visibleHeaders
                     )
                     animate(.easeInOut(duration: 0.15)) {
                         expandedMessageIDs = defaultID.map { [$0] } ?? []
                     }
                 }
-                .onChange(of: navigation.selectedMessageID) { _, selectedID in
-                    guard let selectedID,
-                          visibleHeaders.contains(where: { $0.id == selectedID })
-                    else { return }
+                .onChange(of: navigation.selectedMessageID) { _, _ in
+                    guard let expandedID = ThreadConversationExpansionPolicy.expandedID(
+                        selectedID: navigation.readerExpansionSelectionID,
+                        in: visibleHeaders
+                    ) else { return }
                     animate(.easeInOut(duration: 0.15)) {
-                        expandedMessageIDs.insert(selectedID)
+                        if navigation.readerExpansionSelectionID == nil {
+                            expandedMessageIDs = [expandedID]
+                        } else {
+                            expandedMessageIDs.insert(expandedID)
+                        }
                         if shouldAutoScrollToExpandedMessage {
-                            proxy.scrollTo(selectedID, anchor: .top)
+                            proxy.scrollTo(expandedID, anchor: .top)
                         }
                     }
                 }
@@ -879,7 +889,7 @@ public struct ThreadConversationView: View {
             // an arbitrary member of the conversation (ADR-0033).
             if canOpenCardInNewWindow,
                let messageID = ThreadConversationExpansionPolicy.expandedID(
-                   selectedID: navigation.selectedMessageID, in: threadHeaders
+                   selectedID: navigation.readerExpansionSelectionID, in: threadHeaders
                ),
                let header = threadHeaders.first(where: { $0.id == messageID }) {
                 Button {
