@@ -753,13 +753,29 @@ struct UnifiedInboxListView: View {
             title: section.title,
             count: section.totalCount,
             isCollapsed: section.isCollapsed,
-            isCollapsible: !usesCompactMessageRows
+            isCollapsible: dateSectionsAreCollapsible
         ) {
             toggleDateSection(section.id)
         }
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .messageListThemedRowBackground()
+    }
+
+    private var dateSectionsAreCollapsible: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var rowSeparatorVisibility: Visibility {
+        #if os(iOS)
+        return .visible
+        #else
+        return .hidden
+        #endif
     }
 
     private func toggleDateSection(_ sectionID: MessageListDateSection.ID) {
@@ -1286,7 +1302,7 @@ struct UnifiedInboxListView: View {
         .accessibilityHint(item.sourceSubtitle)
         .draggable(item.dragRepresentation)
         .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
+        .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             ForEach(

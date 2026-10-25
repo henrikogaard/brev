@@ -1020,13 +1020,29 @@ public struct MessageListView: View {
             title: section.title,
             count: section.totalCount,
             isCollapsed: section.isCollapsed,
-            isCollapsible: !usesCompactMessageRows
+            isCollapsible: dateSectionsAreCollapsible
         ) {
             toggleDateSection(section.id)
         }
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .messageListThemedRowBackground()
+    }
+
+    private var dateSectionsAreCollapsible: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var rowSeparatorVisibility: Visibility {
+        #if os(iOS)
+        return .visible
+        #else
+        return .hidden
+        #endif
     }
 
     @ViewBuilder
@@ -1096,7 +1112,7 @@ public struct MessageListView: View {
         #endif
         .draggable(draggablePayload(for: header))
         .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
+        .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
         // Double-click opens the message in its own window. A simultaneous
         // high-count tap gesture (rather than a second `onTapGesture(count:)`)
@@ -4264,6 +4280,7 @@ struct MessageListRow: View {
                             .previewLineCount)
                 }
             }
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, isCompactWidth ? max(12, density.verticalPadding) : density.verticalPadding)
@@ -4271,78 +4288,80 @@ struct MessageListRow: View {
         // Rows hid the list separator, so length alone separated them and long
         // snippets merged into one block. A hairline keeps the continuous
         // surface while giving the eye a stopping point.
-        .overlay(alignment: .bottom) {
-            if !isSelected {
-                Rectangle()
-                    .fill(theme.separator.color)
-                    .frame(height: 0.5)
-                    .padding(.leading, BrevSpacing.md)
+        #if os(macOS)
+            .overlay(alignment: .bottom) {
+                if !isSelected {
+                    Rectangle()
+                        .fill(theme.separator.color)
+                        .frame(height: 0.5)
+                        .padding(.leading, BrevSpacing.md)
+                }
             }
-        }
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(selectionPalette.indicator.color)
-                    .frame(width: 2)
-                    .padding(.vertical, BrevSpacing.xs)
-                    .padding(.leading, BrevSpacing.xxs)
+        #endif
+            .overlay(alignment: .leading) {
+                if isSelected {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(selectionPalette.indicator.color)
+                        .frame(width: 2)
+                        .padding(.vertical, BrevSpacing.xs)
+                        .padding(.leading, BrevSpacing.xxs)
+                }
             }
-        }
-        .contentShape(Rectangle())
-        .coordinateSpace(name: Self.rowCoordinateSpace)
-        .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
-            threadToggleFrame = frame
-        }
-        .highPriorityGesture(
-            SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
-                .onEnded { value in
-                    #if canImport(AppKit)
-                    // Secondary clicks arrive here too and would otherwise run
-                    // the primary action, swallowing the context menu. Platform
-                    // convention selects the row under the pointer instead.
-                    if NSApp.currentEvent?.type == .rightMouseUp {
-                        if !isSelected {
-                            onActivate()
-                        }
-                        return
-                    }
-                    #endif
-                    switch MessageListRowTapRouting.destination(
-                        for: value.location,
-                        threadToggleFrame: threadToggleFrame
-                    ) {
-                    case .toggleThread:
-                        onToggleThread()
-                    case .activate:
+            .contentShape(Rectangle())
+            .coordinateSpace(name: Self.rowCoordinateSpace)
+            .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
+                threadToggleFrame = frame
+            }
+            .highPriorityGesture(
+                SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
+                    .onEnded { value in
                         #if canImport(AppKit)
-                        let flags = NSApp.currentEvent?.modifierFlags ?? []
-                        if let onModifiedClick,
-                           let modifier = MessageListClickModifier(
-                               command: flags.contains(.command),
-                               shift: flags.contains(.shift)
-                           ) {
-                            onModifiedClick(modifier)
+                        // Secondary clicks arrive here too and would otherwise run
+                        // the primary action, swallowing the context menu. Platform
+                        // convention selects the row under the pointer instead.
+                        if NSApp.currentEvent?.type == .rightMouseUp {
+                            if !isSelected {
+                                onActivate()
+                            }
                             return
                         }
                         #endif
-                        onActivate()
+                        switch MessageListRowTapRouting.destination(
+                            for: value.location,
+                            threadToggleFrame: threadToggleFrame
+                        ) {
+                        case .toggleThread:
+                            onToggleThread()
+                        case .activate:
+                            #if canImport(AppKit)
+                            let flags = NSApp.currentEvent?.modifierFlags ?? []
+                            if let onModifiedClick,
+                               let modifier = MessageListClickModifier(
+                                   command: flags.contains(.command),
+                                   shift: flags.contains(.shift)
+                               ) {
+                                onModifiedClick(modifier)
+                                return
+                            }
+                            #endif
+                            onActivate()
+                        }
                     }
-                }
-        )
-        .onHover { isHovered = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAddTraits(isInSelectionMode && isChecked ? .isSelected : [])
-        .accessibilityCompactStatusValue(
-            isCompactWidth,
-            value: compactAccessibilityStatusValue
-        )
-        .accessibilityAction(named: "Open", onActivate)
-        .accessibilityThreadToggleAction(
-            isThreadExpanded: isThreadExpanded,
-            isThread: threadCount > 1,
-            action: onToggleThread
-        )
+            )
+            .onHover { isHovered = $0 }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAddTraits(isInSelectionMode && isChecked ? .isSelected : [])
+            .accessibilityCompactStatusValue(
+                isCompactWidth,
+                value: compactAccessibilityStatusValue
+            )
+            .accessibilityAction(named: "Open", onActivate)
+            .accessibilityThreadToggleAction(
+                isThreadExpanded: isThreadExpanded,
+                isThread: threadCount > 1,
+                action: onToggleThread
+            )
     }
 
     private var compactAccessibilityStatusValue: String {
@@ -4514,35 +4533,27 @@ struct MessageListRow: View {
     ) -> some View {
         HStack(spacing: BrevSpacing.xs) {
             senderIdentityRow(senderMinimumWidth: senderMinimumWidth)
-            metadataDateLabel(dateLabel)
+            metadataTail(dateLabel: dateLabel)
         }
     }
 
     private func stackedSenderMetadata(dateLabel: String) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
-            metadataDateLabel(dateLabel)
+            metadataTail(dateLabel: dateLabel)
                 .frame(maxWidth: .infinity, alignment: usesAccessibilityLayout ? .leading : .trailing)
         }
     }
 
-    @ViewBuilder
     private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
-        if usesAccessibilityLayout, threadCount > 1 {
-            // At accessibility sizes the thread badge would squeeze the name into
-            // "Marte Solh…"; it moves below the name instead (audit L9).
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                senderName(minimumWidth: senderMinimumWidth)
-                HStack(spacing: BrevSpacing.xs) {
-                    threadControls
-                }
-            }
-        } else {
-            HStack(spacing: BrevSpacing.xs) {
-                senderName(minimumWidth: senderMinimumWidth)
-                if threadCount > 1 {
-                    threadControls
-                }
+        senderName(minimumWidth: senderMinimumWidth)
+    }
+
+    private func metadataTail(dateLabel: String) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            metadataDateLabel(dateLabel)
+            if threadCount > 1 {
+                threadControls
             }
         }
     }
@@ -4569,16 +4580,24 @@ struct MessageListRow: View {
 
     @ViewBuilder
     private var threadControls: some View {
-        Text(verbatim: "\(threadCount)")
-            .font(fontFamily.font(size: metadataPointSize))
-            .foregroundStyle(theme.textSecondary.color)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(theme.bgSecondary.color))
-        // Rendered as a plain glyph, not a Button: the row's
-        // high-priority tap gesture wins over nested buttons, so the
-        // tap is routed by hit frame instead.
+        HStack(spacing: BrevSpacing.xs) {
+            Text(verbatim: "\(threadCount)")
+                .font(fontFamily.font(size: metadataPointSize))
+                .foregroundStyle(theme.textSecondary.color)
+                .fixedSize(horizontal: true, vertical: false)
+            #if os(macOS)
+            if isHovered || isSelected {
+                threadToggle
+            } else {
+                Color.clear
+                    .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
+            }
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    private var threadToggle: some View {
         Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
             .font(fontFamily.font(size: metadataPointSize, weight: .medium))
             .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
@@ -4593,6 +4612,7 @@ struct MessageListRow: View {
                 }
             }
     }
+    #endif
 
     private func metadataDateLabel(_ dateLabel: String) -> some View {
         Text(dateLabel)
@@ -4667,6 +4687,7 @@ struct MessageListRow: View {
 /// `UnifiedInboxListView` so both group by date identically.
 struct MessageListDateSectionHeader: View {
     @Environment(\.brevTheme) private var theme
+    @State private var isHovered = false
     let title: String
     let count: Int
     let isCollapsed: Bool
@@ -4677,7 +4698,7 @@ struct MessageListDateSectionHeader: View {
         let presentation = MessageListPresentation.sectionHeader(title: title)
         if isCollapsible {
             Button(action: onToggle) {
-                headerContent(presentation, showsDisclosure: true)
+                headerContent(presentation, showsDisclosure: isHovered)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
@@ -4689,6 +4710,7 @@ struct MessageListDateSectionHeader: View {
                 localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",
                 bundle: .module
             ))
+            .onHover { isHovered = $0 }
             .mailDenseListChromeDynamicType()
         } else {
             headerContent(presentation, showsDisclosure: false)
@@ -4722,6 +4744,7 @@ struct MessageListDateSectionHeader: View {
 
             Text(presentation.title)
                 .brevFont(.caption)
+                .fontWeight(.semibold)
                 .foregroundStyle(titleColor(for: presentation.style))
 
             Spacer(minLength: BrevSpacing.xs)

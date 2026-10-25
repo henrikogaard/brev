@@ -2234,31 +2234,17 @@ public struct BrevMailRootView: View {
     }
 
     #if os(macOS)
-    private func unreadCountPill(_ count: Int) -> some View {
-        Text(String(localized: "\(count) unread", bundle: .module))
-            .brevFont(.caption)
-            .monospacedDigit()
-            .foregroundStyle(theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.xs)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(theme.bgSecondary.color))
-    }
-    #endif
-
-    #if os(macOS)
     private var macToolbarDestinationTitle: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
-                Text(verbatim: selectedMessageDestinationTitle)
-                    .brevFont(.headline)
-                    .lineLimit(1)
-                if let selectedMessageDestinationUnreadCount {
-                    unreadCountPill(selectedMessageDestinationUnreadCount)
-                }
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            if let selectedMessageDestinationContext {
-                Text(verbatim: selectedMessageDestinationContext)
+        let subtitle = [selectedMessageDestinationContext, selectedMessageDestinationSubtitle]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: selectedMessageDestinationTitle)
+                .brevFont(.headline)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            if !subtitle.isEmpty {
+                Text(verbatim: subtitle)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
