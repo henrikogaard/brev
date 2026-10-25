@@ -106,30 +106,30 @@ public struct ContactsRootView: View {
             isEnabled: showsSearch
         ))
         .task { await model.load() }
-        .task { await editing?.load() }
-        .task { await model.observeSourceChanges() }
-        .task { await editing?.observeSourceChanges() }
-        .onChange(of: model.selectedContactID) { _, newValue in
-            if newValue != nil {
-                preferredCompactColumn = .detail
+        #if os(macOS)
+            .onChange(of: shouldShowNoSourcesInDetail, initial: true) { _, shouldShow in
+                columnVisibility = shouldShow ? .detailOnly : .doubleColumn
             }
-        }
-        .sheet(item: $editorRequest) { request in
-            if let editing {
-                editorSheet(for: request, editing: editing)
-                    .pimEditorSheetAppearance(theme)
+        #endif
+            .task { await editing?.load() }
+            .task { await model.observeSourceChanges() }
+            .task { await editing?.observeSourceChanges() }
+            .onChange(of: model.selectedContactID) { _, newValue in
+                if newValue != nil {
+                    preferredCompactColumn = .detail
+                }
             }
-        }
+            .sheet(item: $editorRequest) { request in
+                if let editing {
+                    editorSheet(for: request, editing: editing)
+                        .pimEditorSheetAppearance(theme)
+                }
+            }
     }
 
-    /// The search field needs contacts to search; with no source connected
-    /// it is hidden on iOS.
+    /// Search is available only while a source can provide contacts.
     private var showsSearch: Bool {
-        #if os(iOS)
         model.hasSources
-        #else
-        true
-        #endif
     }
 
     private var shouldShowNoSourcesInDetail: Bool {

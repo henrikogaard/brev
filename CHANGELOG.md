@@ -7,7 +7,8 @@ All notable changes to Brev are documented here.
 ### Fixed
 
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
-  with a single action to connect an account.
+  with a single action to open Calendar & Contacts settings and connect an
+  account.
 - Repeating calendar events now show every projected date in the
   agenda, day, week, and month views, and the agenda shows a navigable
   30-day range (ADR-0089).

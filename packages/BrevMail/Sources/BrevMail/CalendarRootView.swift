@@ -136,81 +136,81 @@ public struct CalendarRootView: View {
             isEnabled: showsSearch
         ))
         .task { await model.load() }
-        .task { await editing?.load() }
-        .task { await model.observeSourceChanges() }
-        .task { await editing?.observeSourceChanges() }
-        .task(id: driveSaveEligibilityInput) {
-            await resolveDriveSaveTargets()
-        }
-        .onChange(of: model.selectedOccurrenceID) { _, newValue in
-            if newValue != nil {
-                preferredCompactColumn = .detail
+        #if os(macOS)
+            .onChange(of: shouldShowNoSourcesInDetail, initial: true) { _, shouldShow in
+                columnVisibility = shouldShow ? .detailOnly : .doubleColumn
             }
-            if let eventSaveRequest,
-               model.selectedOccurrence?.event.id
-               != eventSaveRequest.eventID {
-                self.eventSaveRequest = nil
+        #endif
+            .task { await editing?.load() }
+            .task { await model.observeSourceChanges() }
+            .task { await editing?.observeSourceChanges() }
+            .task(id: driveSaveEligibilityInput) {
+                await resolveDriveSaveTargets()
             }
-        }
-        .onChange(
-            of: driveSaveEligibilityInput
-        ) { _, _ in
-            guard let request = eventSaveRequest,
-                  isCurrent(request)
-            else {
-                eventSaveRequest = nil
-                return
-            }
-        }
-        .sheet(item: $editorRequest) { request in
-            if let editing {
-                editorSheet(for: request, editing: editing)
-                    .pimEditorSheetAppearance(theme)
-            }
-        }
-        .sheet(item: $eventSaveRequest) { request in
-            let browsingModel = model
-            GoogleDriveEventSaveSheet(
-                attachment: request.attachment,
-                accountID: request.accountID,
-                feature: request.feature,
-                sourceIsValid: {
-                    guard let currentEvent = browsingModel.event(
-                        id: request.eventID
-                    ),
-                        browsingModel.selectedOccurrence?.event.id
-                        == request.eventID,
-                        let currentCollection = browsingModel.collection(
-                            for: currentEvent
-                        ),
-                        let currentSource = browsingModel.source(for: currentEvent)
-                    else { return false }
-                    return request.resolved.isCurrent(CalendarDriveSaveState(
-                        event: currentEvent,
-                        collection: currentCollection,
-                        source: currentSource
-                    )) && currentCollection.sourceID == currentSource.id
-                        && currentCollection.id == request.resolved.collectionID
-                        && currentSource.id == request.sourceID
-                        && currentSource.linkedAccountID == request.accountID
-                        && currentEvent.sourceID == request.resolved.sourceID
-                        && currentEvent.collectionID
-                        == request.resolved.collectionID
-                        && currentEvent.attachments.contains(request.attachment)
+            .onChange(of: model.selectedOccurrenceID) { _, newValue in
+                if newValue != nil {
+                    preferredCompactColumn = .detail
                 }
-            )
-            .pimEditorSheetAppearance(theme)
-        }
+                if let eventSaveRequest,
+                   model.selectedOccurrence?.event.id
+                   != eventSaveRequest.eventID {
+                    self.eventSaveRequest = nil
+                }
+            }
+            .onChange(
+                of: driveSaveEligibilityInput
+            ) { _, _ in
+                guard let request = eventSaveRequest,
+                      isCurrent(request)
+                else {
+                    eventSaveRequest = nil
+                    return
+                }
+            }
+            .sheet(item: $editorRequest) { request in
+                if let editing {
+                    editorSheet(for: request, editing: editing)
+                        .pimEditorSheetAppearance(theme)
+                }
+            }
+            .sheet(item: $eventSaveRequest) { request in
+                let browsingModel = model
+                GoogleDriveEventSaveSheet(
+                    attachment: request.attachment,
+                    accountID: request.accountID,
+                    feature: request.feature,
+                    sourceIsValid: {
+                        guard let currentEvent = browsingModel.event(
+                            id: request.eventID
+                        ),
+                            browsingModel.selectedOccurrence?.event.id
+                            == request.eventID,
+                            let currentCollection = browsingModel.collection(
+                                for: currentEvent
+                            ),
+                            let currentSource = browsingModel.source(for: currentEvent)
+                        else { return false }
+                        return request.resolved.isCurrent(CalendarDriveSaveState(
+                            event: currentEvent,
+                            collection: currentCollection,
+                            source: currentSource
+                        )) && currentCollection.sourceID == currentSource.id
+                            && currentCollection.id == request.resolved.collectionID
+                            && currentSource.id == request.sourceID
+                            && currentSource.linkedAccountID == request.accountID
+                            && currentEvent.sourceID == request.resolved.sourceID
+                            && currentEvent.collectionID
+                            == request.resolved.collectionID
+                            && currentEvent.attachments.contains(request.attachment)
+                    }
+                )
+                .pimEditorSheetAppearance(theme)
+            }
     }
 
-    /// The search field needs events to search; with no source connected
-    /// it is hidden on iOS.
+    /// Search is available only while a source can provide events.
     private var showsSearch: Bool {
-        #if os(iOS)
         model.hasSources
-        #else
-        true
-        #endif
     }
 
     private var shouldShowNoSourcesInDetail: Bool {
@@ -270,8 +270,7 @@ public struct CalendarRootView: View {
             PIMNoSourcesView(
                 kind: .calendar,
                 symbol: "calendar.badge.plus",
-                onOpenSettings: onOpenSettings,
-                fillsBackgroundOnMac: true
+                onOpenSettings: onOpenSettings
             )
             #endif
         } else if model.days.isEmpty, model.viewMode == .agenda {
@@ -349,8 +348,7 @@ public struct CalendarRootView: View {
             PIMNoSourcesView(
                 kind: .calendar,
                 symbol: "calendar.badge.plus",
-                onOpenSettings: onOpenSettings,
-                fillsBackgroundOnMac: true
+                onOpenSettings: onOpenSettings
             )
         } else if let occurrence = model.selectedOccurrence {
             let event = occurrence.event

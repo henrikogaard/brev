@@ -23,9 +23,6 @@ struct PIMNoSourcesView: View {
     let symbol: String
     /// Opens the Settings pane; nil hides the button.
     let onOpenSettings: ((SettingsSection) -> Void)?
-    /// Whether the macOS state paints the theme background (Calendar did,
-    /// Contacts and Tasks did not); iOS always paints it.
-    var fillsBackgroundOnMac = false
 
     var body: some View {
         let copy = PIMNoSourcesPresentation.copy(for: kind)
@@ -47,6 +44,8 @@ struct PIMNoSourcesView: View {
                 }
                 #if os(iOS)
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(minHeight: 44)
                 .tint(theme.accent.color)
                 .foregroundStyle(theme.bgPrimary.color)
                 #else
@@ -56,10 +55,6 @@ struct PIMNoSourcesView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        #if os(iOS)
-            .background(theme.bgPrimary.color)
-        #else
-            .background(fillsBackgroundOnMac ? theme.bgPrimary.color : Color.clear)
-        #endif
+        .background(theme.bgPrimary.color)
     }
 }
