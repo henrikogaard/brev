@@ -362,7 +362,7 @@ struct AccountsSection: View {
     private var accountListGroup: some View {
         SettingsGroup(
             title: String(localized: "Signed-in accounts", bundle: .module),
-            subtitle: String(localized: "Manage the mail accounts connected to Brev.", bundle: .module),
+            subtitle: "",
             symbolName: "person.crop.circle"
         ) {
             SettingsRowStack {
@@ -1171,12 +1171,7 @@ private struct AccountRow: View {
             avatar
             VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                 accountIdentity(emailLineLimit: 2)
-                HStack(spacing: BrevSpacing.xs) {
-                    backendBadge
-                    if isCurrent {
-                        defaultBadge
-                    }
-                }
+                backendBadge
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .layoutPriority(1)
@@ -1204,7 +1199,7 @@ private struct AccountRow: View {
                     .foregroundStyle(theme.textPrimary.color)
                     .lineLimit(2)
                     .fixedSize(horizontal: false, vertical: true)
-                if isCurrent, layoutKind == .horizontal {
+                if isCurrent {
                     defaultBadge
                 }
             }
@@ -1232,12 +1227,8 @@ private struct AccountRow: View {
     private var defaultBadge: some View {
         Text("Default account", bundle: .module)
             .brevFont(.footnote)
-            .foregroundStyle(theme.accent.color)
+            .foregroundStyle(theme.textSecondary.color)
             .lineLimit(1)
-            .padding(.horizontal, BrevSpacing.sm)
-            .padding(.vertical, BrevSpacing.xs)
-            .background(theme.accentMuted.color.opacity(0.35))
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
     }
 
     private var compactActionsMenu: some View {
@@ -1326,10 +1317,10 @@ private struct AccountRow: View {
                 VStack(alignment: .leading, spacing: BrevSpacing.xs) {
                     mailboxIdentity(mailbox)
                     HStack(spacing: BrevSpacing.sm) {
-                        mailboxToggle(presentation: presentation, mailbox: mailbox)
                         mailboxDefaultControl(presentation: presentation, mailbox: mailbox)
                             .frame(height: 28, alignment: .leading)
-                        Spacer(minLength: 0)
+                        Spacer(minLength: BrevSpacing.sm)
+                        mailboxToggle(presentation: presentation, mailbox: mailbox)
                     }
                 }
             } else {
@@ -1338,10 +1329,10 @@ private struct AccountRow: View {
 
                     Spacer(minLength: BrevSpacing.sm)
 
-                    mailboxToggle(presentation: presentation, mailbox: mailbox)
-
                     mailboxDefaultControl(presentation: presentation, mailbox: mailbox)
                         .frame(width: 122, height: 28, alignment: .leading)
+
+                    mailboxToggle(presentation: presentation, mailbox: mailbox)
                 }
             }
         }

@@ -24,6 +24,9 @@ All notable changes to Brev are documented here.
 - Settings → Calendar & Contacts lists each collection on one line with a
   trailing switch, gives source switches their own rows, moves cached
   counts into the status line, and drops the empty separator rows on iOS.
+- Settings keeps explanatory notes in section footers, gives previews their
+  own sections, aligns account controls consistently, and hides Developer
+  and plugin entries until developer settings are enabled in every build.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an
@@ -59,8 +62,8 @@ All notable changes to Brev are documented here.
 ### Changed
 
 - iOS Settings: Add DAV Source and Reconnect Source open as a page on the Settings stack instead of a sheet over the Settings sheet. On iOS 27 the nested sheet made SwiftUI close the whole Settings sheet. iPad and Mac keep the sheet.
-- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone.
-- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. Mac Settings is unchanged.
+- iOS: Settings opens as a sheet over the mailbox instead of replacing it, so list selection and scroll position survive, and it follows the app theme and color scheme. The root is one grouped list under the task headers App, Reading & Composing, Organization and so on, and its rows push straight to their pane and use the standard list row height; the extra category level and the clipped "Accounts & Connectio…" title are gone. Section headers use the system's small grey style, and compact search sits below the navigation title while regular-width search remains in the sidebar.
+- iOS: every Settings pane is a native inset-grouped form. Explanations moved from always-visible captions under each switch into section footers, pills became plain rows, and nested cards are gone. macOS Settings now uses native grouped forms with sidebar names as pane titles and explanations in section footers.
 - iOS Accounts: each account opens its own page with a labeled "Show in Mail" switch per mailbox and a checkmark list for the default mailbox. Sign out and Remove ask for confirmation; so do removing a restored account, a Privacy allowlist entry, an AI provider and a Smart View.
 - iOS Notifications: "Show dock badge" is now "App icon badge", the delivery explanation is plain language, per-account switches sit one level down, and a denied permission shows an Open Settings row. The Test notification row only appears once notifications are allowed instead of fading below contrast.
 - iOS Smart Views: reorder by dragging (Edit, then drag) instead of up and down buttons, and the editor and saved-search sheets have Cancel and Save in the navigation bar. Folder Sync lists folders and opens one page per folder instead of a three-column table.

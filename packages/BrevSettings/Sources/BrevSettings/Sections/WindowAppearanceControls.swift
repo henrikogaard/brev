@@ -67,71 +67,85 @@ struct WindowAppearanceControls: View {
     private var selection: WindowTransparencySelection { WindowTransparencySelection(preferences) }
 
     var body: some View {
-        SettingsGroup(title: String(localized: "Window transparency", bundle: .module),
-                      subtitle: String(localized: "Choose where the background shows through.", bundle: .module),
-                      symbolName: "macwindow") {
-            VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                Picker(String(localized: "Transparency", bundle: .module), selection: Binding(
-                    get: { selection }, set: { $0.apply(to: &preferences); onChange() }
-                )) {
+        SettingsGroup(
+            title: String(localized: "Window transparency", bundle: .module),
+            subtitle: groupFooter,
+            symbolName: "macwindow"
+        ) {
+            SettingsRowStack {
+                SettingsSegmentedRow(
+                    symbolName: "macwindow",
+                    title: String(localized: "Transparency", bundle: .module),
+                    subtitle: selection.detail,
+                    selection: Binding(
+                        get: { selection },
+                        set: { $0.apply(to: &preferences); onChange() }
+                    )
+                ) {
                     ForEach(WindowTransparencySelection.allCases) { Text($0.title).tag($0) }
                 }
-                .pickerStyle(.segmented)
                 .id(String(localized: "Transparency", bundle: .module))
-                .labelsHidden()
-                Text(selection.detail).brevFont(.caption).foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: false, vertical: true)
+
                 WindowTransparencyPreview(preferences: preferences)
 
                 if selection != .off {
-                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
-                        opacityControl(String(localized: "Sidebar background opacity", bundle: .module),
-                                       value: binding(\.sidebarOpacity), range: WindowAppearancePreferences.sidebarOpacityRange)
+                    SettingsRowStack {
+                        opacityControl(
+                            String(localized: "Sidebar background opacity", bundle: .module),
+                            value: binding(\.sidebarOpacity),
+                            range: WindowAppearancePreferences.sidebarOpacityRange
+                        )
                         if selection == .fullWindows {
-                            opacityControl(String(localized: "Window background opacity", bundle: .module),
-                                           value: binding(\.surfaceOpacity),
-                                           range: WindowAppearancePreferences.surfaceOpacityRange)
+                            opacityControl(
+                                String(localized: "Window background opacity", bundle: .module),
+                                value: binding(\.surfaceOpacity),
+                                range: WindowAppearancePreferences.surfaceOpacityRange
+                            )
                         }
-                        Text("Lower opacity shows more of the blurred background. Text and icons stay opaque.", bundle: .module)
-                            .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
                     }
                     .disabled(reduceTransparency)
                 }
 
                 DisclosureGroup(String(localized: "Advanced", bundle: .module), isExpanded: $showsAdvanced) {
-                    VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                    SettingsRowStack {
                         if selection != .off {
-                            SettingsPickerRow(symbolName: "circle.lefthalf.filled",
-                                              title: String(localized: "Background effect", bundle: .module),
-                                              subtitle: String(
-                                                  localized: "Choose the blur style for transparent areas.",
-                                                  bundle: .module
-                                              ),
-                                              selection: binding(\.mode)) {
-                                ForEach(WindowTranslucencyMode.allCases.filter { $0 != .solid }) { Text($0.title).tag($0) }
+                            SettingsPickerRow(
+                                symbolName: "circle.lefthalf.filled",
+                                title: String(localized: "Background effect", bundle: .module),
+                                subtitle: String(
+                                    localized: "Choose the blur style for transparent areas.",
+                                    bundle: .module
+                                ),
+                                selection: binding(\.mode)
+                            ) {
+                                ForEach(WindowTranslucencyMode.allCases.filter { $0 != .solid }) {
+                                    Text($0.title).tag($0)
+                                }
                             }
                             .disabled(reduceTransparency)
                         }
-                        SettingsToggleRow(symbolName: "macwindow.on.rectangle",
-                                          title: String(localized: "Unified title bar", bundle: .module),
-                                          subtitle: String(
-                                              localized: "Extend content behind the title bar. This does not change transparency.",
-                                              bundle: .module
-                                          ), isOn: $unifiedTitlebar, isEnabled: true)
+                        SettingsToggleRow(
+                            symbolName: "macwindow.on.rectangle",
+                            title: String(localized: "Unified title bar", bundle: .module),
+                            subtitle: String(
+                                localized: "Extend content behind the title bar. This does not change transparency.",
+                                bundle: .module
+                            ),
+                            isOn: $unifiedTitlebar,
+                            isEnabled: true
+                        )
                     }
-                    .padding(.top, BrevSpacing.sm)
-                }
-                .brevFont(.caption)
-
-                if reduceTransparency {
-                    SettingsInfoCallout(symbolName: "accessibility",
-                                        message: String(
-                                            localized: "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings.",
-                                            bundle: .module
-                                        ), tone: .warning)
                 }
             }
         }
+    }
+
+    private var groupFooter: String {
+        guard reduceTransparency else { return selection.detail }
+        return selection.detail + " " + String(
+            localized: "macOS Reduce Transparency is enabled. Backgrounds stay solid until it is turned off in System Settings.",
+            bundle: .module
+        )
     }
 
     private func binding<Value>(_ path: WritableKeyPath<WindowAppearancePreferences, Value>) -> Binding<Value> {

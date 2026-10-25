@@ -16,7 +16,6 @@ import SwiftUI
 
 /// Appearance group with one font family picker per window section (ADR-0086).
 struct FontSectionSettings: View {
-    @Environment(\.brevTheme) private var theme
     @SectionFontFamily private var sidebarFamily: MailboxFontFamily
     @SectionFontFamily private var listFamily: MailboxFontFamily
     @SectionFontFamily private var readerFamily: MailboxFontFamily
@@ -59,39 +58,19 @@ struct FontSectionSettings: View {
                     }
                 }
 
-                // No fixedSize: at accessibility sizes the label must wrap
-                // rather than widen the whole pane.
-                Menu(String(localized: "Use One Font Everywhere", bundle: .module)) {
-                    ForEach(MailboxFontFamily.allCases) { family in
-                        Button(family.title) {
-                            Self.applyToAll(family, in: defaults)
+                HStack {
+                    Spacer(minLength: 0)
+                    Menu(String(localized: "Use One Font Everywhere", bundle: .module)) {
+                        ForEach(MailboxFontFamily.allCases) { family in
+                            Button(family.title) {
+                                Self.applyToAll(family, in: defaults)
+                            }
                         }
                     }
                 }
-
-                preview
+                .frame(maxWidth: .infinity)
             }
         }
-    }
-
-    private var preview: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-            ForEach(BrevFontSection.allCases) { section in
-                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                    Text(verbatim: section.title)
-                        .brevFont(.caption)
-                        .foregroundStyle(theme.textTertiary.color)
-                    Text("Brev keeps message text calm, readable, and easy to scan.", bundle: .module)
-                        .brevFont(.body)
-                        .environment(\.brevFontFamily, family(for: section))
-                        .foregroundStyle(theme.textPrimary.color)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        }
-        .padding(BrevSpacing.sm)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .settingsInlineSurface(cornerRadius: BrevRadius.sm)
     }
 
     private func family(for section: BrevFontSection) -> MailboxFontFamily {

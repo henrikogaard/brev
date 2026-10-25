@@ -406,8 +406,15 @@ struct AIWriterSectionMacSnapshotTests {
                 \.colorScheme,
                 theme.mode.colorScheme
             ))
+        let environment = ProcessInfo.processInfo.environment
+        let selectedSnapshotNames = environment["RECORD_SNAPSHOT_NAMES"]?.split(separator: ",").map(String.init)
+        if let selectedSnapshotNames, !selectedSnapshotNames.contains(name) {
+            return
+        }
+        let shouldRecord = environment["RECORD_SNAPSHOTS"] == "YES" &&
+            (selectedSnapshotNames?.contains(name) ?? true)
         assertSnapshot(of: Self.retinaImage(of: host, size: size), as: .image, named: name,
-                       record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES")
+                       record: shouldRecord)
     }
 
     @Test("Settings navigation presents searchable task groups")

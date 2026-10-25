@@ -14,7 +14,18 @@ import BrevDesign
 import BrevThemes
 import SwiftUI
 
-/// One grid for every Settings pane: a fixed symbol column, one gap between
+private struct SettingsUsesNativeFormKey: EnvironmentKey {
+    static let defaultValue = false
+}
+
+extension EnvironmentValues {
+    var settingsUsesNativeForm: Bool {
+        get { self[SettingsUsesNativeFormKey.self] }
+        set { self[SettingsUsesNativeFormKey.self] = newValue }
+    }
+}
+
+/// One grid for every legacy Settings pane: a fixed symbol column, one gap between
 /// symbol and text, and a fixed trailing control slot. Group content indents
 /// by exactly one symbol column, so row symbols sit under the group title and
 /// stacked controls, previews and notes share the row text edge.
@@ -70,14 +81,14 @@ enum SettingsCalloutTone {
     }
 }
 
-/// A titled group of settings rows. macOS draws it like System Settings: a
-/// plain heading and footnote above one rounded inset surface. iOS renders a
-/// native `Section` inside the pane's `Form`, with the subtitle as footer.
+/// A titled group of settings rows. Native panes render it as a grouped-form
+/// section with an optional footer; legacy desktop contexts retain a card.
 struct SettingsGroup<Content: View>: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var interfaceDensityRaw = MailboxListDensity.platformDefault
         .rawValue
     private var interfaceDensity: MailboxListDensity { MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable }
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     let title: String
     let subtitle: String
     /// Kept for call sites and search metadata; Apple's grouped headings
@@ -87,10 +98,48 @@ struct SettingsGroup<Content: View>: View {
 
     var body: some View {
         #if os(iOS)
+        nativeSection
+        #else
+        if settingsUsesNativeForm {
+            nativeSection
+        } else {
+            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+                    Text(title)
+                        .id(title)
+                        .brevFont(.headline)
+                        .foregroundStyle(theme.textPrimary.color)
+                    Text(subtitle)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.md)) {
+                    content
+                }
+                .settingsGroupedSurface()
+            }
+            .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.xs))
+        }
+        #endif
+    }
+
+    private var nativeSection: some View {
         Section {
             Group { content }
                 .listRowBackground(theme.bgPrimary.color)
                 .listRowSeparatorTint(theme.separator.color)
+            #if os(macOS)
+                .listRowInsets(
+                    EdgeInsets(
+                        top: interfaceDensity.desktopSpacing(BrevSpacing.xs),
+                        leading: BrevSpacing.md,
+                        bottom: interfaceDensity.desktopSpacing(BrevSpacing.xs),
+                        trailing: BrevSpacing.md
+                    )
+                )
+            #endif
         } header: {
             Text(title)
                 .id(title)
@@ -104,26 +153,6 @@ struct SettingsGroup<Content: View>: View {
                     .foregroundStyle(theme.textSecondary.color)
             }
         }
-        #else
-        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(title)
-                    .id(title)
-                    .brevFont(.headline)
-                    .foregroundStyle(theme.textPrimary.color)
-                Text(subtitle)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            VStack(alignment: .leading, spacing: interfaceDensity.desktopSpacing(BrevSpacing.md)) {
-                content
-            }
-            .settingsGroupedSurface()
-        }
-        .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.xs))
-        #endif
     }
 }
 
@@ -131,13 +160,18 @@ struct SettingsGroup<Content: View>: View {
 /// stack disappears so every `SettingsGroup` becomes a `Section` of the
 /// enclosing `Form` (a real `VStack` would collapse them into one row).
 struct SettingsGroupStack<Content: View>: View {
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     @ViewBuilder let content: Content
 
     var body: some View {
         #if os(iOS)
         Group { content }
         #else
-        VStack(alignment: .leading, spacing: BrevSpacing.xl) { content }
+        if settingsUsesNativeForm {
+            Group { content }
+        } else {
+            VStack(alignment: .leading, spacing: BrevSpacing.xl) { content }
+        }
         #endif
     }
 }
@@ -145,6 +179,7 @@ struct SettingsGroupStack<Content: View>: View {
 /// Stacks the rows of a group. macOS spaces them in a `VStack`; on iOS each
 /// child becomes its own `Form` row with native separators.
 struct SettingsRowStack<Content: View>: View {
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     var spacing: CGFloat = BrevSpacing.md
     @ViewBuilder let content: Content
 
@@ -152,16 +187,20 @@ struct SettingsRowStack<Content: View>: View {
         #if os(iOS)
         Group { content }
         #else
-        VStack(alignment: .leading, spacing: spacing) { content }
+        if settingsUsesNativeForm {
+            Group { content }
+        } else {
+            VStack(alignment: .leading, spacing: spacing) { content }
+        }
         #endif
     }
 }
 
-/// A button inside a settings pane. macOS keeps the sanctioned `BrevButton`
-/// pill; iOS draws a plain accent row (red for destructive actions) the way
-/// iOS Settings does, so a Form never carries bordered pills inside rows.
+/// A button inside a settings pane. Native forms use bordered platform
+/// controls; legacy desktop contexts retain the sanctioned `BrevButton` pill.
 struct SettingsButton: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
 
     private enum Title {
         case verbatim(String)
@@ -227,26 +266,50 @@ struct SettingsButton: View {
             Button(String(localized: "Cancel", bundle: .module), role: .cancel) {}
         }
         #else
-        switch title {
-        case .verbatim(let text): BrevButton(verbatim: text, style: style, action: action)
-        case .localized(let key, let bundle): BrevButton(key, style: style, bundle: bundle, action: action)
+        if settingsUsesNativeForm {
+            HStack {
+                Spacer(minLength: 0)
+                Button(role: style == .destructive ? .destructive : nil, action: action) {
+                    titleContent
+                }
+                .buttonStyle(.bordered)
+                .tint(style == .destructive ? theme.danger.color : theme.accent.color)
+            }
+        } else {
+            switch title {
+            case .verbatim(let text): BrevButton(verbatim: text, style: style, action: action)
+            case .localized(let key, let bundle): BrevButton(key, style: style, bundle: bundle, action: action)
+            }
         }
         #endif
+    }
+
+    @ViewBuilder
+    private var titleContent: some View {
+        switch title {
+        case .verbatim(let text): Text(verbatim: text)
+        case .localized(let key, let bundle): Text(key, bundle: bundle)
+        }
     }
 }
 
 /// Lays a pane's action buttons side by side on macOS; on iOS each button is
 /// its own tappable row, so none of them shares a row with another control.
 struct SettingsButtonRow<Content: View>: View {
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     @ViewBuilder let content: Content
 
     var body: some View {
         #if os(iOS)
         Group { content }
         #else
-        HStack(spacing: BrevSpacing.sm) {
-            content
-            Spacer(minLength: 0)
+        if settingsUsesNativeForm {
+            Group { content }
+        } else {
+            HStack(spacing: BrevSpacing.sm) {
+                content
+                Spacer(minLength: 0)
+            }
         }
         #endif
     }
@@ -300,6 +363,7 @@ struct SettingsToggleRow: View {
 struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     let symbolName: String
     let title: String
     let subtitle: String
@@ -339,16 +403,26 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
         .tint(theme.textSecondary.color)
         .accessibilityHint(subtitle)
         #else
-        ViewThatFits(in: .horizontal) {
-            if !dynamicTypeSize.isAccessibilitySize {
-                HStack(alignment: .center, spacing: BrevSpacing.md) {
-                    label
-                    Spacer(minLength: BrevSpacing.md)
-                    picker
-                        .frame(width: SettingsLayout.trailingControlWidth, alignment: .trailing)
-                }
+        if settingsUsesNativeForm {
+            Picker(title, selection: $selection) {
+                content
             }
-            stacked
+            .pickerStyle(.menu)
+            .accessibilityHint(subtitle)
+            .help(subtitle)
+            .tint(theme.accent.color)
+        } else {
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .center, spacing: BrevSpacing.md) {
+                        label
+                        Spacer(minLength: BrevSpacing.md)
+                        picker
+                            .frame(width: SettingsLayout.trailingControlWidth, alignment: .trailing)
+                    }
+                }
+                stacked
+            }
         }
         #endif
     }
@@ -406,6 +480,7 @@ struct SettingsPickerRow<Selection: Hashable, Content: View>: View {
 struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     let symbolName: String
     let title: String
     let subtitle: String
@@ -431,28 +506,40 @@ struct SettingsSegmentedRow<Selection: Hashable, Content: View>: View {
         .accessibilityHint(subtitle)
         .padding(.vertical, BrevSpacing.xxs)
         #else
-        // Same trailing column as switches and popups when it fits; otherwise
-        // the control drops under the title text, never under the symbol.
-        ViewThatFits(in: .horizontal) {
-            if !dynamicTypeSize.isAccessibilitySize {
-                HStack(alignment: .center, spacing: BrevSpacing.md) {
-                    label
-                    Spacer(minLength: BrevSpacing.md)
-                    picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+        if settingsUsesNativeForm {
+            Picker(title, selection: $selection) {
+                content
+            }
+            .pickerStyle(.segmented)
+            .accessibilityHint(subtitle)
+            .help(subtitle)
+            .tint(theme.accent.color)
+            .disabled(!isEnabled)
+            .opacity(isEnabled ? 1 : 0.55)
+        } else {
+            // Same trailing column as switches and popups when it fits; otherwise
+            // the control drops under the title text, never under the symbol.
+            ViewThatFits(in: .horizontal) {
+                if !dynamicTypeSize.isAccessibilitySize {
+                    HStack(alignment: .center, spacing: BrevSpacing.md) {
+                        label
+                        Spacer(minLength: BrevSpacing.md)
+                        picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+                    }
+                    VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                        label
+                        picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
+                            .settingsStackedControl()
+                    }
                 }
                 VStack(alignment: .leading, spacing: BrevSpacing.sm) {
                     label
-                    picker.pickerStyle(.segmented).fixedSize(horizontal: true, vertical: false)
-                        .settingsStackedControl()
+                    picker.pickerStyle(.menu)
+                        .settingsStackedControl(isMenu: true)
                 }
             }
-            VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-                label
-                picker.pickerStyle(.menu)
-                    .settingsStackedControl(isMenu: true)
-            }
+            .opacity(isEnabled ? 1 : 0.55)
         }
-        .opacity(isEnabled ? 1 : 0.55)
         #endif
     }
 
@@ -493,16 +580,30 @@ struct SettingsInfoCallout: View {
 
 struct SettingsRowLabel: View {
     @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
     let symbolName: String
     let title: String
     let subtitle: String
 
     var body: some View {
+        #if os(macOS)
+        if settingsUsesNativeForm {
+            Text(title)
+                .id(title)
+                .brevFont(.body)
+                .foregroundStyle(theme.textPrimary.color)
+                .fixedSize(horizontal: false, vertical: true)
+        } else {
+            rowLabel
+        }
+        #else
+        rowLabel
+        #endif
+    }
+
+    private var rowLabel: some View {
         HStack(alignment: .firstTextBaseline, spacing: SettingsLayout.symbolSpacing) {
             SettingsSymbol(symbolName: symbolName)
-            // `.body` is the token's documented size for settings rows.
-            // These were a step down at `.subheadline`, which left the
-            // controls reading as secondary to the sidebar next to them.
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 Text(title)
                     .id(title)
@@ -581,29 +682,52 @@ extension View {
         #endif
     }
 
-    /// The rounded inset surface every Settings group draws its rows on.
-    /// iOS rows already sit on the `Form`'s grouped surface, so nothing is added.
-    @ViewBuilder
+    /// Adds a card only outside the native grouped-form path.
     func settingsGroupedSurface() -> some View {
-        #if os(iOS)
-        self
-        #else
-        padding(.horizontal, BrevSpacing.md)
-            .padding(.vertical, BrevSpacing.md)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .brevQuietSurface(cornerRadius: BrevRadius.md)
-        #endif
+        modifier(SettingsGroupedSurface())
     }
 
-    /// A quiet card for content nested inside a settings row. macOS keeps the
-    /// shared quiet surface; on iOS the enclosing `Form` row is already the
-    /// surface, so a second card would read as card-in-card.
-    @ViewBuilder
+    /// Adds an inset surface only outside the native grouped-form path.
     func settingsInlineSurface(cornerRadius: CGFloat = BrevRadius.md) -> some View {
+        modifier(SettingsInlineSurface(cornerRadius: cornerRadius))
+    }
+}
+
+private struct SettingsGroupedSurface: ViewModifier {
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
         #if os(iOS)
-        self
+        content
         #else
-        brevQuietSurface(cornerRadius: cornerRadius)
+        if settingsUsesNativeForm {
+            content
+        } else {
+            content
+                .padding(.horizontal, BrevSpacing.md)
+                .padding(.vertical, BrevSpacing.md)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .brevQuietSurface(cornerRadius: BrevRadius.md)
+        }
+        #endif
+    }
+}
+
+private struct SettingsInlineSurface: ViewModifier {
+    @Environment(\.settingsUsesNativeForm) private var settingsUsesNativeForm
+    let cornerRadius: CGFloat
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        #if os(iOS)
+        content
+        #else
+        if settingsUsesNativeForm {
+            content
+        } else {
+            content.brevQuietSurface(cornerRadius: cornerRadius)
+        }
         #endif
     }
 }

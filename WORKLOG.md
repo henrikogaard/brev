@@ -6364,3 +6364,21 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-25 — Devin — macOS Settings native forms (#14/#15)
+
+- Goal: move macOS Settings to grouped native forms and standardize iPhone Settings headers and compact search placement.
+- Changes: amended ADR-0002; migrated shared Settings rows and all requested panes to the grouped `Form` path; gated Developer and Extensions entries behind developer availability; changed iPhone root headers and search placement. The root snapshots for light, dark, and AX3 were re-recorded.
+- Verification: `DeveloperSettingsTests` passed; `scripts/format.sh` passed after code edits and `scripts/lint.sh` passed after the documentation update; the focused iPhone root snapshot test passed for all three variants. A Debug iOS mock app build succeeded and ran on an iOS 27 simulator. Mock macOS builds launched on clean `origin/main` and the feature branch. The clean-main snapshot comparison showed 15 mismatches on this host; only the three root variants changed on this branch.
+- Visual evidence: window-only before/after Appearance and Accounts screenshots in Light and Dark, remaining migrated panes in Light, and Norwegian Appearance are in `~/evidence/settings-form/`. Live iPhone Settings root captures in Light and Dark show the small grey headers and the search drawer under the large title; the three root snapshot captures are also retained there.
+- Limits: Release-build sidebar visibility and full macOS Settings snapshot coverage were not verified. DEBUG mock builds retain Developer and Example Plugin entries. Custom account, import/export, and folder-sync controls remain purpose-built subviews inside the native form sections; their behavior was not changed. No clean-main drift-only snapshots were re-recorded.
+- Handoff: work remains uncommitted and unpushed for lead review; do not open a PR or change PR #264.
+
+## 2026-10-25 — Devin — Native Settings review follow-up
+
+- Goal: apply Henrik's follow-up review to native Settings rows and verify the mock build.
+- Changes: Developer and Extensions remain hidden in mock builds unless the persisted About toggle is enabled. Removed the notification authorization subtext; moved preference-sync privacy/status copy to the group footer; removed the Folder Sync and Mail Storage scope subtitles on macOS; moved Import/Export privacy and capability notes from icon callouts into group footers. Existing section footers remain for undo-send and privacy details; redundant group subtitles were dropped.
+- Verification: `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check` passed. `DeveloperSettingsTests` and the selected Settings surface snapshots passed (7 tests in 2 suites); only `folder-workspace-light` and `folder-workspace-dark` were re-recorded. `./script/build_and_run.sh --mock` succeeded.
+- Evidence: refreshed Light captures for Accounts, About with the developer toggle visible, Notifications, Folder Sync, and Preferences in `/Users/devin/evidence/settings-form/`.
+- Limits: Appearance Dark/Accounts Dark and Norwegian Appearance captures were not refreshed in this handoff. Host appearance remains Light. No commit or push was made.
+- Handoff: source and evidence are ready for review; no PR was opened and #264 was not changed.
