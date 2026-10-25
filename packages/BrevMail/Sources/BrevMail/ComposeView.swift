@@ -1574,6 +1574,24 @@ public struct ComposeView: View {
         composeLayoutPlatform == .compactIOSAccessibility
     }
 
+    private var fieldLabelWidth: CGFloat {
+        #if os(macOS)
+        ComposeLayout.fieldLabelWidth(
+            for: [
+                String(localized: "To", bundle: .module),
+                String(localized: "Cc", bundle: .module),
+                String(localized: "Bcc", bundle: .module),
+                String(localized: "From", bundle: .module),
+                String(localized: "Subject", bundle: .module),
+                String(localized: "Cc/Bcc, From:", bundle: .module),
+            ],
+            textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
+        )
+        #else
+        ComposeLayout.fieldLabelWidth
+        #endif
+    }
+
     private var fieldVerticalPadding: CGFloat {
         #if os(macOS)
         return (MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable).desktopSpacing(BrevSpacing.md)
@@ -1602,7 +1620,7 @@ public struct ComposeView: View {
             if isAccessibilityFieldLayout {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $to,
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
@@ -1617,7 +1635,7 @@ public struct ComposeView: View {
             } else {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $to,
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
@@ -1630,12 +1648,27 @@ public struct ComposeView: View {
                     EmptyView()
                 }
             }
+            BrevDivider()
+                .padding(.vertical, fieldVerticalPadding)
             if isOptionalFieldsCollapsed {
                 Button {
                     showCc = true
                     showBcc = true
                     showFrom = true
                 } label: {
+                    #if os(macOS)
+                    HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                        ComposeFieldLabel(String(localized: "Cc/Bcc, From:", bundle: .module))
+                            .frame(width: fieldLabelWidth, alignment: .trailing)
+                        Text(currentFromEmail)
+                            .brevFont(.subheadline)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    #else
                     Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
                         .brevFont(.subheadline)
                         .foregroundStyle(theme.textSecondary.color)
@@ -1643,13 +1676,14 @@ public struct ComposeView: View {
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
+                    #endif
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
             } else if isCcFieldVisible {
                 RecipientChipField(
                     label: String(localized: "Cc", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $cc,
                     inputText: $ccInputText,
                     suggestions: suggestions(for: .cc),
@@ -1663,7 +1697,7 @@ public struct ComposeView: View {
             if !isOptionalFieldsCollapsed && isBccFieldVisible {
                 RecipientChipField(
                     label: String(localized: "Bcc", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $bcc,
                     inputText: $bccInputText,
                     suggestions: suggestions(for: .bcc),
@@ -2011,9 +2045,9 @@ public struct ComposeView: View {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
                 #if os(iOS)
-                    .frame(width: ComposeLayout.fieldLabelWidth, alignment: .leading)
+                    .frame(width: fieldLabelWidth, alignment: .leading)
                 #else
-                    .frame(width: ComposeLayout.fieldLabelWidth, alignment: .trailing)
+                    .frame(width: fieldLabelWidth, alignment: .trailing)
                 #endif
                 content()
             }
@@ -4067,6 +4101,23 @@ private final class ComposeWindowTitleView: NSView {
 
 private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
+    #if os(macOS)
+    static func fieldLabelWidth(for labels: [String], textSize: MailboxTextSize) -> CGFloat {
+        let adjustment: CGFloat = switch textSize {
+        case .small: -1
+        case .medium: 0
+        case .large: 2
+        }
+        let font = NSFont.systemFont(
+            ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize + adjustment,
+            weight: .medium
+        )
+        let widestLabel = labels
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return ceil(widestLabel)
+    }
+    #endif
     static let fieldAccessorySize: CGFloat = 24
     static let aiPreviewMaxHeight: CGFloat = 180
     /// Ideal width reported for sheet sizing on compact iOS. Matches the

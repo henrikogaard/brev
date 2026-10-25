@@ -6421,3 +6421,12 @@ buttons, and package-aware localization.
 - Limits: the iOS snapshot test remains unavailable because `BrevMailTests` is not in the `BrevIOS` scheme. The complete requested set is not finished: valid base and after Mailboxes light/dark captures and a Bokmål iPhone compose capture are still missing; the earlier `before-iphone-parent-mailboxes-light.png` depicts the inbox rather than Mailboxes. The Mac captures include a macOS notification banner.
 - Evidence: compose captures are in `/Users/devin/evidence/mailboxes-compose/` as `after-iphone-compose-{empty,long-recipient}-{light,dark}.png` and `after-mac-compose-{light,dark}.png`.
 - Handoff: host appearance restored to Light. No post-push CI watch requested.
+
+## 2026-10-25 — Agent — stacked Mailboxes and compose review follow-up
+
+- Goal: finish the review fixes for locale-aligned Mac compose labels, To-row separators, and the iPhone Mailboxes toolbar.
+- Changes: Mac compose labels now share a locale-sized, trailing-aligned column; the collapsed Cc/Bcc/From row keeps its address in the content column; the To separator begins at the label edge on both platforms. The iOS sidebar's leading Settings gear is the only Settings entry point, leaving Edit alone at trailing.
+- Verification: `scripts/format.sh`, `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`, and the focused BrevMail tests passed. The Xcode 27.0 RC iPhone 17 build succeeded; `./script/build_and_run.sh --mock` rebuilt and launched the Mac app. Visually inspected the Mailboxes-root, empty/long-recipient compose, Bokmål compose, and clean Mac compose window captures.
+- Limits: iOS snapshot tests remain unavailable through the `BrevIOS` scheme because `BrevMailTests` is not part of its test plan; live iPhone captures were inspected instead. The Mac build retains existing warnings for deprecated `EventModifiers.function` and non-Sendable closure conversions.
+- Evidence: refreshed after captures are in `/Users/devin/evidence/mailboxes-compose/`; valid base Mailboxes captures remain there. The Mac screenshots are window-only and contain no notification banners.
+- Handoff: host appearance is Light. Commit and push the completed follow-up; do not open a PR or watch CI.

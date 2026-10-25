@@ -3129,6 +3129,17 @@
         }
       }
     },
+    "Cc/Bcc, From:": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kopi/Blindkopi, Fra:"
+          }
+        }
+      }
+    },
     "Cc": {
       "extractionState": "manual",
       "localizations": {

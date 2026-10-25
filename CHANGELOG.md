@@ -11,6 +11,7 @@ All notable changes to Brev are documented here.
 - Unread messages use dots instead of bars, thread cards no longer show accent bars, and Compose has its own iPhone toolbar button.
 - macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
 - iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
+- Compose field labels share a locale-sized, trailing-aligned column on Mac, and the To row separator now appears on both platforms.
 - Repeating calendar events now show every projected date in the
   agenda, day, week, and month views, and the agenda shows a navigable
   30-day range (ADR-0089).
@@ -35,7 +36,7 @@ All notable changes to Brev are documented here.
 - iPhone Mailboxes uses a leading Settings gear menu, keeps Edit trailing, uses outline row icons, and spells Favorites consistently; Calendar, Contacts and Tasks no longer have an Apps header.
 - iPhone compose collapses optional recipient and sender fields into a localized summary, truncates long recipient chips, and uses a circular theme-backed Send button.
 - Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
-- Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
+- Mac compose labels share a locale-sized trailing column, and To fields have an inset separator.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an

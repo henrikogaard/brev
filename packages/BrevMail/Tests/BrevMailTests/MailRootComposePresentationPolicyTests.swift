@@ -311,9 +311,9 @@ struct MailRootSettingsToolbarPolicyTests {
         #expect(!MailRootDetailToolbarPolicy.showsExtendedResponseActions(platform: .iOS))
     }
 
-    @Test("settings has one entry point in the iOS mailbox sidebar")
-    func settingsShowsInSidebarAndIOSMessageListToolbars() {
-        #expect(MailRootSettingsToolbarPolicy.showsSettingsButton(
+    @Test("the iOS sidebar owns Settings without a duplicate toolbar button")
+    func settingsDoesNotDuplicateTheIOSSidebarEntryPoint() {
+        #expect(!MailRootSettingsToolbarPolicy.showsSettingsButton(
             on: .sidebar,
             platform: .iOS
         ))
