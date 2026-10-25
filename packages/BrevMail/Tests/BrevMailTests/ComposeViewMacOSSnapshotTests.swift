@@ -20,15 +20,12 @@ import SnapshotTesting
 import SwiftUI
 import Testing
 
-/// macOS snapshot coverage for `ComposeView`'s chrome: the desktop toolbar
-/// (text Send on the trailing edge) and the header field rows, including
-/// the From picker row whose address must align with the plain-text field
-/// contents below it. Set `RECORD_SNAPSHOTS=YES` to record or refresh the
-/// baselines.
+/// macOS snapshot coverage for `ComposeView`'s header field rows.
+/// Set `RECORD_SNAPSHOTS=YES` to record or refresh the baselines.
 @Suite("ComposeView macOS snapshots")
 @MainActor
 struct ComposeViewMacOSSnapshotTests {
-    @Test("compose chrome renders text Send and an aligned From row", arguments: ["light", "dark"])
+    @Test("compose header renders aligned optional and subject rows", arguments: ["light", "dark"])
     func composeChrome(mode: String) {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
         let backend = MockBackend()
@@ -52,7 +49,11 @@ struct ComposeViewMacOSSnapshotTests {
         let view = ComposeView(
             backend: backend,
             from: Correspondent(name: "Henrik Øgård", email: "henrik@ogard.example"),
-            senderOptions: senderOptions
+            senderOptions: senderOptions,
+            prefill: ComposePrefill(
+                cc: ["team@acme.example"],
+                bcc: ["audit@acme.example"]
+            )
         )
         .frame(width: 700, height: 560)
         .brevTheme(theme)

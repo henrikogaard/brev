@@ -33,6 +33,9 @@ All notable changes to Brev are documented here.
 - Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results only when a mailbox search fails.
 - Reader body text aligns with the sender column, and the Mac conversation summary shows only its message count.
 - iPhone Mailboxes uses a leading Settings gear menu, keeps Edit trailing, uses outline row icons, and spells Favorites consistently; Calendar, Contacts and Tasks no longer have an Apps header.
+- iPhone compose collapses optional recipient and sender fields into a localized summary, truncates long recipient chips, and uses a circular theme-backed Send button.
+- Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
+- Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an
