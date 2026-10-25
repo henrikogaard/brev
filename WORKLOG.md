@@ -6388,3 +6388,11 @@ buttons, and package-aware localization.
 - Verification: focused BrevMail tests passed (36 tests/5 suites); snapshot tests passed (11 tests/2 suites) after updating only five affected references. The Mac mock build and requested iOS 27.0 iPhone 17 simulator build succeeded. `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check` passed. Before/after UI evidence is saved in `/Users/devin/evidence/list-reader-search/`.
 - Limits: the iOS package-scheme snapshot route did not produce test results; the workspace lacks a `BrevMail` scheme, and the package-scheme attempt reported `command failed with exit code 0 but produced no further output`. The simulator build and live captures are not reported as iOS snapshot-test coverage.
 - Handoff: branch is stacked on `origin/fix/reader-list-chrome`; no reactions action was added or moved. The lone trailing subject control is the existing `threadActionsMenu` in `ThreadConversationView.swift`. No PR or post-push CI watch is requested.
+
+## 2026-10-25 — Devin — PR #263 review fixes
+
+- Goal: show Mac partial-results status only for completed searches with failures, align it with row text, and remove the custom selection bar.
+- Changes: `.unverified`-only searches remain retryable but no longer count as partial; the status line uses the list text-column inset. Removed the explicit `RoundedRectangle` selection overlay from shared message rows; selected rows use the system highlight.
+- Verification: `MailSearchProgressTests` passed; the affected search-status and selected-row snapshots passed after re-recording only the two search-state images and the selected-row image. `scripts/format.sh`, `scripts/lint.sh`, and `./script/build_and_run.sh --mock` passed. Refreshed and visually inspected the Mac Light list, Dark list, and search-query evidence in `/Users/devin/evidence/list-reader-search/`.
+- Limits: no CI checks were watched per the handoff scope.
+- Handoff: ready to commit and push `fix/list-reader-search-polish`; do not open a PR.

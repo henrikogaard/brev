@@ -19,7 +19,20 @@ struct MailSearchStatusView: View {
     @Environment(\.brevTheme) private var theme
     let progress: MailSearchProgressState
     let checksAttachments: Bool
+    let leadingInset: CGFloat
     let retry: () -> Void
+
+    init(
+        progress: MailSearchProgressState,
+        checksAttachments: Bool,
+        leadingInset: CGFloat = BrevSpacing.lg,
+        retry: @escaping () -> Void
+    ) {
+        self.progress = progress
+        self.checksAttachments = checksAttachments
+        self.leadingInset = leadingInset
+        self.retry = retry
+    }
 
     private var title: String {
         if progress.sourceCount == 0 { return String(localized: "No mailboxes searched", bundle: .module) }
@@ -84,7 +97,9 @@ struct MailSearchStatusView: View {
                     .accessibilityLabel(String(localized: "Retry search", bundle: .module))
                 }
             }
-            .padding(.horizontal, BrevSpacing.lg)
+            .padding(.leading, leadingInset)
+            .padding(.trailing, BrevSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, BrevSpacing.xs)
             .accessibilityElement(children: .contain)
         }

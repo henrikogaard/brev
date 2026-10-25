@@ -280,6 +280,12 @@ struct UnifiedInboxListView: View {
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
                         queries: activeAttachmentSearchQueries,
                         isLoading: searchProgress.isSearching
+                    ),
+                    leadingInset: MessageListRow.textColumnLeadingInset(
+                        isInSelectionMode: navigation.isInSelectionMode,
+                        showAvatar: showSenderAvatars,
+                        textSize: mailboxTextSize,
+                        density: mailboxListDensity
                     )
                 ) {
                     Task { await reloadVisibleItems() }

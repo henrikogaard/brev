@@ -453,6 +453,12 @@ public struct MessageListView: View {
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
                         queries: [activeAttachmentSearchQuery].compactMap { $0 },
                         isLoading: searchProgress.isSearching
+                    ),
+                    leadingInset: MessageListRow.textColumnLeadingInset(
+                        isInSelectionMode: navigation.isInSelectionMode,
+                        showAvatar: showSenderAvatars,
+                        textSize: mailboxTextSize,
+                        density: mailboxListDensity
                     )
                 ) {
                     Task { await reloadForSearchChange() }
@@ -4090,7 +4096,7 @@ struct MessageListRow: View {
         #if os(iOS)
         scaledSelectionCircleSize
         #else
-        20
+        Self.macOSSelectionControlWidth
         #endif
     }
 
@@ -4201,6 +4207,24 @@ struct MessageListRow: View {
         self.onToggleThread = onToggleThread
     }
 
+    private static let macOSSelectionControlWidth: CGFloat = 20
+
+    static func textColumnLeadingInset(
+        isInSelectionMode: Bool,
+        showAvatar: Bool,
+        textSize: MailboxTextSize,
+        density: MailboxListDensity
+    ) -> CGFloat {
+        let unreadDotSize = max(7, textSize.listTitlePointSize * 0.6)
+        let selectionControlInset = isInSelectionMode
+            ? macOSSelectionControlWidth + BrevSpacing.sm
+            : 0
+        let avatarInset = showAvatar
+            ? density.avatarSize + BrevSpacing.sm
+            : 0
+        return BrevSpacing.md + selectionControlInset + unreadDotSize + BrevSpacing.sm + avatarInset
+    }
+
     var body: some View {
         let contentPresentation = MessageListRowContentPolicy.presentation(
             isCompactWidth: isCompactWidth,
@@ -4292,15 +4316,6 @@ struct MessageListRow: View {
                 }
             }
         #endif
-            .overlay(alignment: .leading) {
-                if isSelected {
-                    RoundedRectangle(cornerRadius: 1)
-                        .fill(selectionPalette.indicator.color)
-                        .frame(width: 2)
-                        .padding(.vertical, BrevSpacing.xs)
-                        .padding(.leading, BrevSpacing.xxs)
-                }
-            }
             .contentShape(Rectangle())
             .coordinateSpace(name: Self.rowCoordinateSpace)
             .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in

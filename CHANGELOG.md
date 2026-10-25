@@ -29,8 +29,8 @@ All notable changes to Brev are documented here.
 - Settings → Calendar & Contacts lists each collection on one line with a
   trailing switch, gives source switches their own rows, moves cached
   counts into the status line, and drops the empty separator rows on iOS.
-- Message-list thread counts sit beside arrival times, Mac thread chevrons appear on hover or selection, and iPhone separators align with sender names. Mac folder unread counts appear in the window subtitle, and date sections collapse only on Mac.
-- Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results with an inline Retry action.
+- Message-list thread counts sit beside arrival times, Mac thread chevrons appear on hover or selection, and iPhone separators align with sender names. Mac folder unread counts appear in the window subtitle, date sections collapse only on Mac, and selected rows use the system highlight without a leading bar.
+- Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results only when a mailbox search fails.
 - Reader body text aligns with the sender column, and the Mac conversation summary shows only its message count.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling

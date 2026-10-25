@@ -20,15 +20,15 @@ struct MailSearchProgressTests {
     let source = MailSourceID(accountID: "a", mailboxID: "a")
     let other = MailSourceID(accountID: "b", mailboxID: "b")
 
-    @Test("unverified results offer retry only after the search has finished")
-    func unverifiedResultsOfferRecovery() {
+    @Test("unverified results remain retryable without reporting partial results")
+    func unverifiedResultsRemainRetryableWithoutReportingPartialResults() {
         var state = MailSearchProgressState()
         let request = state.begin(sources: [source])
         state.apply(MailSearchUpdate(headers: [], coverage: .unverified), source: source, request: request)
         #expect(!state.hasPartialResults)
         #expect(!state.canRetry)
         state.apply(MailSearchUpdate(headers: [], coverage: .unverified, isComplete: true), source: source, request: request)
-        #expect(state.hasPartialResults)
+        #expect(!state.hasPartialResults)
         #expect(state.canRetry)
     }
 
