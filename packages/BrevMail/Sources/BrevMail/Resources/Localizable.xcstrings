@@ -5489,7 +5489,7 @@
         }
       }
     },
-    "Reorder or hide your favourites.": {
+    "Reorder or hide your favorites.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
@@ -6126,7 +6126,7 @@
         }
       }
     },
-    "Edit favourites": {
+    "Edit Favorites": {
       "localizations": {
         "nb": {
           "stringUnit": {
@@ -6587,7 +6587,7 @@
         }
       }
     },
-    "Favourites": {
+    "Favorites": {
       "localizations": {
         "nb": {
           "stringUnit": {

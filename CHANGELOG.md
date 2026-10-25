@@ -32,6 +32,7 @@ All notable changes to Brev are documented here.
 - Message-list thread counts sit beside arrival times, Mac thread chevrons appear on hover or selection, and iPhone separators align with sender names. Mac folder unread counts appear in the window subtitle, date sections collapse only on Mac, and selected rows use the system highlight without a leading bar.
 - Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results only when a mailbox search fails.
 - Reader body text aligns with the sender column, and the Mac conversation summary shows only its message count.
+- iPhone Mailboxes uses a leading Settings gear menu, keeps Edit trailing, uses outline row icons, and spells Favorites consistently; Calendar, Contacts and Tasks no longer have an Apps header.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an

@@ -23,7 +23,42 @@ import UIKit
 @Suite("Phone mailbox snapshots", .serialized)
 @MainActor
 struct PhoneMailboxSnapshotTests {
-    @Test("favourites editor distinguishes account inboxes and optional shortcuts")
+    @Test("Mailboxes separates the leading Settings menu from trailing Edit")
+    func mailboxesToolbar() {
+        let account = BrevAccount(id: "account", displayName: "Henrik", emailAddress: "me@example.org")
+        let source = MailSourceID(accountID: account.id, mailboxID: "private")
+        let section = MailSourceSection(
+            id: source,
+            account: account,
+            mailbox: Mailbox(id: "private", email: "me@example.org", displayName: "Personal"),
+            folders: [Folder(id: "inbox", name: "Inbox", role: .inbox, unreadCount: 3)]
+        )
+        let view = NavigationStack {
+            FolderSidebar(
+                navigation: MailNavigationState(),
+                folders: [],
+                sourceSections: [section],
+                profiles: [.allMailboxes(sourceIDs: [source])],
+                activeProfileID: MailProfile.allMailboxesID,
+                onSelectProfile: { _ in },
+                onManageProfiles: {},
+                onOpenSettings: {}
+            )
+            .navigationTitle("Mailboxes")
+        }
+        .frame(width: 390, height: 844)
+        .brevTheme(.brevMonoLight)
+        .environment(\.colorScheme, .light)
+        let host = UIHostingController(rootView: view)
+        assertSnapshot(
+            of: host,
+            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            named: "mailboxes-toolbar",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
+    @Test("Favorites editor distinguishes account inboxes and optional shortcuts")
     func favoritesEditor() {
         let account = BrevAccount(id: "account", displayName: "Henrik", emailAddress: "me@example.org")
         let sections = ["Personal", "Work"].map { name in
@@ -44,7 +79,7 @@ struct PhoneMailboxSnapshotTests {
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
     }
 
-    @Test("favourites keep long account identities readable at accessibility text sizes")
+    @Test("Favorites keep long account identities readable at accessibility text sizes")
     func accessibleFavorites() throws {
         let defaults = try #require(UserDefaults(suiteName: "AccessibleFavorites-" + UUID().uuidString))
         let account = BrevAccount(id: "account", displayName: "Harbour Logistics", emailAddress: "team@example.org")

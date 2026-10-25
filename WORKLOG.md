@@ -6396,3 +6396,11 @@ buttons, and package-aware localization.
 - Verification: `MailSearchProgressTests` passed; the affected search-status and selected-row snapshots passed after re-recording only the two search-state images and the selected-row image. `scripts/format.sh`, `scripts/lint.sh`, and `./script/build_and_run.sh --mock` passed. Refreshed and visually inspected the Mac Light list, Dark list, and search-query evidence in `/Users/devin/evidence/list-reader-search/`.
 - Limits: no CI checks were watched per the handoff scope.
 - Handoff: ready to commit and push `fix/list-reader-search-polish`; do not open a PR.
+
+## 2026-10-25 — Devin — stacked Mailboxes and compose polish
+
+- Goal: implement direction-spec items #9, #11, and #13 on `fix/iphone-mailboxes-compose`, stacked on `fix/list-reader-search-polish`.
+- Changes: #9 moves Settings to a leading gear menu, preserves profile switching there, keeps Edit at trailing, uses outline favorite icons, renames Favourites to Favorites without changing Bokmål, and removes the Apps header.
+- Verification: `MailboxFavoritesTests` passed (3 tests); the desktop Favorites/editor snapshot suite passed all 4 cases after re-recording the 8 American-English copy references.
+- Limits: baseline live evidence is incomplete; the Mac mock build triggered a system permission prompt and the iPhone simulator remains on a reader/list surface. Compose work, remaining verification, evidence, and pushes are pending.
+- Handoff: push the #9 WIP milestone before compose changes, then push the final compose changes. Do not open a PR or watch CI.
