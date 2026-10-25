@@ -271,15 +271,10 @@ struct UnifiedInboxListView: View {
             // footnote under the results (audit Q2); macOS keeps its bands.
             #if os(macOS)
             if !trimmedSearchText.isEmpty {
-                CollapsibleOptionsStrip(
-                    isExpanded: $isSearchOptionsExpanded,
-                    hasNonDefaultOptions: hasNonDefaultUnifiedSearchOptions,
-                    summary: unifiedSearchOptionsSummary
-                ) {
-                    unifiedSearchExecutionBar
-                }
+                unifiedSearchExecutionBar
             }
-            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, searchProgress.request != nil {
+            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               searchProgress.hasPartialResults {
                 MailSearchStatusView(
                     progress: searchProgress,
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(

@@ -445,15 +445,9 @@ public struct MessageListView: View {
             // above the list (audit Q2).
             #if os(macOS)
             if !trimmedSearchText.isEmpty {
-                CollapsibleOptionsStrip(
-                    isExpanded: $isSearchOptionsExpanded,
-                    hasNonDefaultOptions: hasNonDefaultSearchOptions,
-                    summary: searchOptionsSummary
-                ) {
-                    searchScopeBar
-                }
+                searchScopeBar
             }
-            if !trimmedSearchText.isEmpty, searchProgress.request != nil {
+            if !trimmedSearchText.isEmpty, searchProgress.hasPartialResults {
                 MailSearchStatusView(
                     progress: searchProgress,
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(

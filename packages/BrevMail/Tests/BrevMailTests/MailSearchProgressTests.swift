@@ -25,9 +25,20 @@ struct MailSearchProgressTests {
         var state = MailSearchProgressState()
         let request = state.begin(sources: [source])
         state.apply(MailSearchUpdate(headers: [], coverage: .unverified), source: source, request: request)
+        #expect(!state.hasPartialResults)
         #expect(!state.canRetry)
         state.apply(MailSearchUpdate(headers: [], coverage: .unverified, isComplete: true), source: source, request: request)
+        #expect(state.hasPartialResults)
         #expect(state.canRetry)
+    }
+
+    @Test("normal completion does not report partial results")
+    func normalCompletionDoesNotReportPartialResults() {
+        var state = MailSearchProgressState()
+        let request = state.begin(sources: [source])
+        state.apply(MailSearchUpdate(headers: [], coverage: .server, isComplete: true), source: source, request: request)
+        #expect(!state.hasPartialResults)
+        #expect(!state.canRetry)
     }
 
     @MainActor
@@ -56,8 +67,10 @@ struct MailSearchProgressTests {
         var state = MailSearchProgressState()
         let request = state.begin(sources: [source, other])
         state.fail(source: source, request: request)
+        #expect(!state.hasPartialResults)
         #expect(!state.canRetry)
         state.apply(MailSearchUpdate(headers: [], coverage: .server, isComplete: true), source: other, request: request)
+        #expect(state.hasPartialResults)
         #expect(state.canRetry)
     }
 
