@@ -87,16 +87,44 @@ struct PIMNativeChromePresentationTests {
         #expect(PIMNoSourcesPresentation.settingsSection == .calendarContacts)
     }
 
-    @Test("empty-state copy names the Settings path for the layout", arguments: PIMNoSourcesPresentation.Kind.allCases)
-    func emptyStateCopyNamesPath(kind: PIMNoSourcesPresentation.Kind) {
-        let phone = PIMNoSourcesPresentation.copy(for: kind, usesCategorySettings: false)
-        let pad = PIMNoSourcesPresentation.copy(for: kind, usesCategorySettings: true)
+    @Test("empty-state copy is specific to each PIM surface")
+    func emptyStateCopyIsSurfaceSpecific() {
+        for kind in PIMNoSourcesPresentation.Kind.allCases {
+            let expected: PIMNoSourcesPresentation.Copy
+            switch kind {
+            case .calendar:
+                expected = .init(
+                    title: "No Calendars",
+                    message: "Connect a calendar account to see your events here.",
+                    actionTitle: "Connect a Calendar…"
+                )
+            case .contacts:
+                expected = .init(
+                    title: "No Address Books",
+                    message: "Connect a contacts account to see people here.",
+                    actionTitle: "Connect Contacts…"
+                )
+            case .tasks:
+                expected = .init(
+                    title: "No Task Lists",
+                    message: "Connect an account with task lists to see your tasks here.",
+                    actionTitle: "Connect Task Lists…"
+                )
+            }
 
-        #expect(phone.message.contains("Settings → Calendar & Contacts"))
-        #expect(!phone.message.contains("Accounts & Connections"))
-        #expect(pad.message.contains("Settings → Accounts & Connections → Calendar & Contacts"))
-        #expect(phone.actionTitle == "Open Calendar & Contacts Settings")
-        #expect(phone.title == pad.title)
+            let compact = PIMNoSourcesPresentation.copy(
+                for: kind,
+                usesCategorySettings: false
+            )
+            let regular = PIMNoSourcesPresentation.copy(
+                for: kind,
+                usesCategorySettings: true
+            )
+
+            #expect(compact == expected)
+            #expect(regular == expected)
+            #expect(!compact.message.contains("Settings →"))
+        }
     }
 
     // MARK: Calendar navigation (P2)
@@ -273,10 +301,15 @@ struct PIMNativeChromePresentationTests {
     func newStringsAreTranslated() throws {
         let strings = try LocalizationCatalogTestSupport.loadCatalogStrings()
         let keys = [
-            "Open Calendar & Contacts Settings",
-            "Connect a calendar in Settings → Accounts & Connections → Calendar & Contacts to see events here.",
-            "Connect a contacts source in Settings → Accounts & Connections → Calendar & Contacts to see people here.",
-            "Connect a tasks source in Settings → Accounts & Connections → Calendar & Contacts to see tasks here.",
+            "No Calendars",
+            "Connect a calendar account to see your events here.",
+            "Connect a Calendar…",
+            "No Address Books",
+            "Connect a contacts account to see people here.",
+            "Connect Contacts…",
+            "No Task Lists",
+            "Connect an account with task lists to see your tasks here.",
+            "Connect Task Lists…",
             "Previous Day", "Previous Week", "Previous Month",
             "Next Day", "Next Week", "Next Month",
             "No", "Overdue", "Due %@",
