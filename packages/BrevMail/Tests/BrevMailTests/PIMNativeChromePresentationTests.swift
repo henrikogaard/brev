@@ -112,18 +112,10 @@ struct PIMNativeChromePresentationTests {
                 )
             }
 
-            let compact = PIMNoSourcesPresentation.copy(
-                for: kind,
-                usesCategorySettings: false
-            )
-            let regular = PIMNoSourcesPresentation.copy(
-                for: kind,
-                usesCategorySettings: true
-            )
+            let copy = PIMNoSourcesPresentation.copy(for: kind)
 
-            #expect(compact == expected)
-            #expect(regular == expected)
-            #expect(!compact.message.contains("Settings →"))
+            #expect(copy == expected)
+            #expect(!copy.message.contains("Settings →"))
         }
     }
 

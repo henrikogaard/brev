@@ -154,6 +154,14 @@ public struct TasksRootView: View {
         #endif
     }
 
+    private var shouldShowNoSourcesInDetail: Bool {
+        #if os(macOS)
+        !model.isLoading && !model.hasSources
+        #else
+        false
+        #endif
+    }
+
     // MARK: - List column
 
     private var listColumn: some View {
@@ -188,11 +196,15 @@ public struct TasksRootView: View {
                     String(localized: "Loading tasks", bundle: .module)
                 )
         } else if !model.hasSources {
+            #if os(macOS)
+            EmptyView()
+            #else
             PIMNoSourcesView(
                 kind: .tasks,
                 symbol: "checklist",
                 onOpenSettings: onOpenSettings
             )
+            #endif
         } else if model.sections.isEmpty {
             emptyState(
                 symbol: "checklist",
@@ -243,7 +255,13 @@ public struct TasksRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let task = model.task(id: model.selectedTaskID) {
+        if shouldShowNoSourcesInDetail {
+            PIMNoSourcesView(
+                kind: .tasks,
+                symbol: "checklist",
+                onOpenSettings: onOpenSettings
+            )
+        } else if let task = model.task(id: model.selectedTaskID) {
             TaskDetailView(
                 task: task,
                 collection: model.collection(for: task),

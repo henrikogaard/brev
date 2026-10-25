@@ -3656,68 +3656,46 @@
         }
       }
     },
-    "Connect a calendar in Settings → Accounts & Connections → Calendar & Contacts to see events here.": {
+    "Connect a calendar account to see your events here.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Koble til en kalender i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se hendelser her."
+            "value": "Koble til en kalenderkonto for å se hendelsene dine her."
           }
         }
       }
     },
-    "Connect a calendar in Settings → Calendar & Contacts to see events here.": {
+    "Connect a Calendar…": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Koble til en kalender i Innstillinger → Kalender og kontakter for å se hendelser her."
+            "value": "Koble til kalender…"
           }
         }
       }
     },
-    "Connect a contacts source in Settings → Accounts & Connections → Calendar & Contacts to see people here.": {
+    "Connect a contacts account to see people here.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Koble til en kontaktkilde i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se personer her."
+            "value": "Koble til en kontaktkonto for å se personer her."
           }
         }
       }
     },
-    "Connect a contacts source in Settings → Calendar & Contacts to see people here.": {
+    "Connect an account with task lists to see your tasks here.": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Koble til en kontaktkilde i Innstillinger → Kalender og kontakter for å se personer her."
-          }
-        }
-      }
-    },
-    "Connect a tasks source in Settings → Accounts & Connections → Calendar & Contacts to see tasks here.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koble til en oppgavekilde i Innstillinger → Kontoer og tilkoblinger → Kalender og Kontakter for å se oppgaver her."
-          }
-        }
-      }
-    },
-    "Connect a tasks source in Settings → Calendar & Contacts to see tasks here.": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Koble til en oppgavekilde i Innstillinger → Kalender og kontakter for å se oppgaver her."
+            "value": "Koble til en konto med oppgavelister for å se oppgavene dine her."
           }
         }
       }
@@ -3729,6 +3707,28 @@
           "stringUnit": {
             "state": "translated",
             "value": "Koble til en konto"
+          }
+        }
+      }
+    },
+    "Connect Contacts…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til kontakter…"
+          }
+        }
+      }
+    },
+    "Connect Task Lists…": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Koble til oppgavelister…"
           }
         }
       }
@@ -3833,6 +3833,17 @@
       }
     },
     "Contact details": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontaktdetaljer"
+          }
+        }
+      }
+    },
+    "Contact information": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
@@ -5408,17 +5419,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Nei"
-          }
-        }
-      }
-    },
-    "Open Calendar & Contacts Settings": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Åpne innstillinger for Kalender og Kontakter"
           }
         }
       }
@@ -9015,6 +9015,17 @@
         }
       }
     },
+    "No Address Books": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ingen adressebøker"
+          }
+        }
+      }
+    },
     "No body content.": {
       "extractionState": "manual",
       "localizations": {
@@ -9026,13 +9037,13 @@
         }
       }
     },
-    "No calendars connected": {
+    "No Calendars": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen kalendere tilkoblet"
+            "value": "Ingen kalendere"
           }
         }
       }
@@ -9066,17 +9077,6 @@
           "stringUnit": {
             "state": "translated",
             "value": "Ingen kontakter samsvarer med søket ditt."
-          }
-        }
-      }
-    },
-    "No contacts sources connected": {
-      "extractionState": "manual",
-      "localizations": {
-        "nb": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Ingen kontaktkilder tilkoblet"
           }
         }
       }
@@ -9345,13 +9345,13 @@
         }
       }
     },
-    "No tasks sources connected": {
+    "No Task Lists": {
       "extractionState": "manual",
       "localizations": {
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Ingen oppgavekilder tilkoblet"
+            "value": "Ingen oppgavelister"
           }
         }
       }

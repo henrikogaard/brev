@@ -213,6 +213,14 @@ public struct CalendarRootView: View {
         #endif
     }
 
+    private var shouldShowNoSourcesInDetail: Bool {
+        #if os(macOS)
+        !model.isLoading && !model.hasSources
+        #else
+        false
+        #endif
+    }
+
     // MARK: - Leading column
 
     private var leadingColumn: some View {
@@ -256,12 +264,16 @@ public struct CalendarRootView: View {
                     String(localized: "Loading events", bundle: .module)
                 )
         } else if !model.hasSources {
+            #if os(macOS)
+            EmptyView()
+            #else
             PIMNoSourcesView(
                 kind: .calendar,
                 symbol: "calendar.badge.plus",
                 onOpenSettings: onOpenSettings,
                 fillsBackgroundOnMac: true
             )
+            #endif
         } else if model.days.isEmpty, model.viewMode == .agenda {
             emptyState(
                 symbol: "calendar",
@@ -333,7 +345,14 @@ public struct CalendarRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let occurrence = model.selectedOccurrence {
+        if shouldShowNoSourcesInDetail {
+            PIMNoSourcesView(
+                kind: .calendar,
+                symbol: "calendar.badge.plus",
+                onOpenSettings: onOpenSettings,
+                fillsBackgroundOnMac: true
+            )
+        } else if let occurrence = model.selectedOccurrence {
             let event = occurrence.event
             // A projected row past the first keeps selection but loses
             // mutation: future-scope writes need the original-occurrence

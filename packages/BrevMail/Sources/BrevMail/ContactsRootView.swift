@@ -132,6 +132,14 @@ public struct ContactsRootView: View {
         #endif
     }
 
+    private var shouldShowNoSourcesInDetail: Bool {
+        #if os(macOS)
+        !model.isLoading && !model.hasSources
+        #else
+        false
+        #endif
+    }
+
     // MARK: - List column
 
     private var listColumn: some View {
@@ -166,11 +174,15 @@ public struct ContactsRootView: View {
                     String(localized: "Loading contacts", bundle: .module)
                 )
         } else if !model.hasSources {
+            #if os(macOS)
+            EmptyView()
+            #else
             PIMNoSourcesView(
                 kind: .contacts,
                 symbol: "person.crop.circle.badge.plus",
                 onOpenSettings: onOpenSettings
             )
+            #endif
         } else if model.sections.isEmpty {
             emptyState(
                 symbol: "person.crop.circle",
@@ -201,7 +213,13 @@ public struct ContactsRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let contact = model.contact(id: model.selectedContactID) {
+        if shouldShowNoSourcesInDetail {
+            PIMNoSourcesView(
+                kind: .contacts,
+                symbol: "person.crop.circle.badge.plus",
+                onOpenSettings: onOpenSettings
+            )
+        } else if let contact = model.contact(id: model.selectedContactID) {
             ContactDetailView(
                 contact: contact,
                 collection: model.collection(for: contact),
