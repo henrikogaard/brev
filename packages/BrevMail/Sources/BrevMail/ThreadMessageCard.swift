@@ -122,9 +122,17 @@ struct ThreadMessageCard: View {
         MailboxListDensity(rawValue: interfaceDensityRaw) ?? .comfortable
     }
 
+    #if os(macOS)
+    private var headerLayoutAlignment: VerticalAlignment { .firstTextBaseline }
+    private var headerLayoutSpacing: CGFloat { BrevSpacing.sm }
+    #else
+    private var headerLayoutAlignment: VerticalAlignment { .top }
+    private var headerLayoutSpacing: CGFloat { 0 }
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
-            HStack(alignment: .top, spacing: 0) {
+            HStack(alignment: headerLayoutAlignment, spacing: headerLayoutSpacing) {
                 Button(action: onToggle) {
                     cardHeader
                     #if os(macOS)
@@ -319,7 +327,7 @@ struct ThreadMessageCard: View {
             }
 
             VStack(alignment: .leading, spacing: 2) {
-                HStack {
+                HStack(alignment: .firstTextBaseline) {
                     // Expanded cards share the reader's sender pattern —
                     // display name with the address inline — while collapsed
                     // rows keep the compact name-only line.
