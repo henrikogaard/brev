@@ -298,11 +298,6 @@ struct ThreadMessageCard: View {
         }
         .padding(.horizontal, BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.sm)
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2)
-            }
-        }
     }
 
     /// Short date for the phone card header; an explicit override (previews,
@@ -386,11 +381,6 @@ struct ThreadMessageCard: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.sm))
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2, height: 24)
-            }
-        }
     }
 
     @ViewBuilder

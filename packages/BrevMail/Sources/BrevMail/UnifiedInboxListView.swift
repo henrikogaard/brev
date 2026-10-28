@@ -126,7 +126,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
@@ -1266,7 +1266,7 @@ struct UnifiedInboxListView: View {
                         isThreadingEnabled: true,
                         in: &expandedThreadKeys
                     )
-                    selectMessage(item)
+                    selectMessage(item, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: item)
                 }
@@ -2239,7 +2239,8 @@ struct UnifiedInboxListView: View {
     private func selectMessage(
         _ item: UnifiedInboxItem,
         claimsKeyboardFocus: Bool = true,
-        clearsBulkSelection: Bool = true
+        clearsBulkSelection: Bool = true,
+        expandsSelectedMessage: Bool = true
     ) {
         #if os(macOS)
         if claimsKeyboardFocus {
@@ -2253,7 +2254,8 @@ struct UnifiedInboxListView: View {
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
-            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header)
+            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header),
+            expandsSelectedMessage: expandsSelectedMessage
         )
         if clearsBulkSelection {
             selectedItemIDs.removeAll()
@@ -2275,7 +2277,7 @@ struct UnifiedInboxListView: View {
             }
         }
         guard selectFirstIfNeeded, let first = presentationSnapshot.visibleItems.first else { return }
-        selectMessage(first, claimsKeyboardFocus: false)
+        selectMessage(first, claimsKeyboardFocus: false, expandsSelectedMessage: false)
     }
 
     #if os(macOS)
