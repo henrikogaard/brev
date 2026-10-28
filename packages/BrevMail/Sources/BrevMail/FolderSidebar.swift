@@ -222,7 +222,7 @@ public struct FolderSidebar: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         #if os(iOS)
             .toolbar {
-                if !profiles.isEmpty || onManageProfiles != nil {
+                if !profiles.isEmpty || onManageProfiles != nil || onOpenSettings != nil {
                     ToolbarItem(placement: .topBarLeading) {
                         profileSwitcher
                     }
@@ -232,7 +232,7 @@ public struct FolderSidebar: View {
                         Button(String(localized: "Edit", bundle: .module)) {
                             showsFavoritesEditor = true
                         }
-                        .accessibilityHint(String(localized: "Reorder or hide your favourites.", bundle: .module))
+                        .accessibilityHint(String(localized: "Reorder or hide your favorites.", bundle: .module))
                     }
                 }
             }
@@ -281,7 +281,7 @@ public struct FolderSidebar: View {
             .sheet(isPresented: $showsSmartViewSettings) {
                 #if os(iOS)
                 // A navigation-bar sheet with Done in the bar, like the
-                // favourites editor, instead of an in-content button row.
+                // favorites editor, instead of an in-content button row.
                 NavigationStack {
                     SmartViewsSection(mailboxes: smartViewMailboxes)
                         .navigationTitle(String(localized: "Smart Views", bundle: .module))
@@ -417,7 +417,7 @@ public struct FolderSidebar: View {
 
     // MARK: - iOS Mailboxes list
 
-    /// The Mailboxes screen as an inset-grouped list: Favourites and Smart Views,
+    /// The Mailboxes screen as an inset-grouped list: Favorites and Smart Views,
     /// apps, then one collapsible Accounts section.
     private var mailboxesList: some View {
         List {
@@ -521,7 +521,7 @@ public struct FolderSidebar: View {
         )
     }
 
-    // MARK: Favourites
+    // MARK: Favorites
 
     @ViewBuilder
     private var favoritesListSection: some View {
@@ -533,9 +533,7 @@ public struct FolderSidebar: View {
                         title: favorite.title,
                         subtitle: favorite.subtitle,
                         systemImage: favorite.symbol,
-                        // Favourites are shortcuts, not folders: a filled glyph keeps
-                        // a shortcut from reading as the folder of the same name.
-                        fillsSymbol: true,
+                        fillsSymbol: false,
                         unreadCount: favorite.count,
                         spokenValue: favorite.count > 0 ? favorite.countDescription : nil,
                         isSelected: isFavoriteSelected(favorite.id)
@@ -553,7 +551,7 @@ public struct FolderSidebar: View {
                     smartViewsListRows
                 }
             } header: {
-                listSectionHeader(String(localized: "Favourites", bundle: .module))
+                listSectionHeader(String(localized: "Favorites", bundle: .module))
             }
         }
     }
@@ -665,8 +663,7 @@ public struct FolderSidebar: View {
     /// glance from the top however many folders an account expands to.
     @ViewBuilder
     private var appsListSection: some View {
-        if onOpenSettings != nil || onOpenCalendar != nil
-            || onOpenContacts != nil || onOpenTasks != nil {
+        if onOpenCalendar != nil || onOpenContacts != nil || onOpenTasks != nil {
             Section {
                 if let onOpenCalendar {
                     destinationRow(
@@ -692,16 +689,6 @@ public struct FolderSidebar: View {
                         action: onOpenTasks
                     )
                 }
-                if let onOpenSettings {
-                    destinationRow(
-                        title: String(localized: "Settings", bundle: .module),
-                        systemImage: "gearshape",
-                        isSelected: false,
-                        action: onOpenSettings
-                    )
-                }
-            } header: {
-                listSectionHeader(String(localized: "Apps", bundle: .module))
             }
         }
     }
@@ -844,7 +831,7 @@ public struct FolderSidebar: View {
             title: displayName(for: folder, sourceID: sourceID),
             systemImage: systemImage(for: folder.role),
             unreadCount: folder.unreadCount,
-            isSelected: isSelected(folder, in: sourceID),
+            isSelected: isSelected(folder, in: sourceID, activeFavoriteID: nil),
             depth: row.depth,
             // A folder with children shows its disclosure control instead of a
             // second chevron.
@@ -868,8 +855,11 @@ public struct FolderSidebar: View {
     #if os(macOS)
     @ViewBuilder
     private var sourceTree: some View {
+        let activeFavoriteID = activeDesktopFavoriteID
         VStack(alignment: .leading, spacing: 0) {
-            if !sourceSections.isEmpty { desktopFavoritesSection }
+            if !sourceSections.isEmpty {
+                desktopFavoritesSection(activeFavoriteID: activeFavoriteID)
+            }
             if showsSmartViews, smartViewSettings.showInSidebar {
                 VStack(alignment: .leading, spacing: 0) {
                     smartViewsSection
@@ -884,7 +874,12 @@ public struct FolderSidebar: View {
             if normalizedActiveProfileID == MailProfile.allMailboxesID {
                 // Preserve the existing startup/cache/error presentation while
                 // the all-mailbox workspace is still discovering its sources.
-                folderList(folders: folders, sourceID: nil, loadError: loadError)
+                folderList(
+                    folders: folders,
+                    sourceID: nil,
+                    loadError: loadError,
+                    activeFavoriteID: activeFavoriteID
+                )
             } else {
                 Text(
                     "No available mailboxes in this profile. Check Accounts in Settings or choose another profile.",
@@ -907,7 +902,12 @@ public struct FolderSidebar: View {
             VStack(alignment: .leading, spacing: 0) {
                 mailboxDisclosureHeader(section)
                 if expandedSourceIDs.contains(section.id) {
-                    folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                    folderList(
+                        folders: section.folders,
+                        sourceID: section.id,
+                        loadError: section.loadError,
+                        activeFavoriteID: activeFavoriteID
+                    )
                 }
             }
         }
@@ -926,6 +926,16 @@ public struct FolderSidebar: View {
 
     private var profileSwitcher: some View {
         Menu {
+            #if os(iOS)
+            if let onOpenSettings {
+                Button(action: onOpenSettings) {
+                    Label(String(localized: "Settings", bundle: .module), systemImage: "gearshape")
+                }
+                if !profiles.isEmpty || onManageProfiles != nil {
+                    Divider()
+                }
+            }
+            #endif
             ForEach(profiles) { profile in
                 Button { onSelectProfile?(profile.id) } label: {
                     menuChoice(profile.name, isSelected: profile.id == normalizedActiveProfileID)
@@ -940,11 +950,11 @@ public struct FolderSidebar: View {
             }
         } label: {
             #if os(iOS)
-            // The active profile names the large title; the menu is just its handle.
-            Image(systemName: "person.crop.rectangle.stack")
+            Image(systemName: "gearshape")
                 .foregroundStyle(theme.accent.color)
                 .frame(minWidth: sidebarMetrics.profilePickerMinimumHeight, minHeight: sidebarMetrics.profilePickerMinimumHeight)
                 .contentShape(Rectangle())
+                .accessibilityLabel(String(localized: "Settings", bundle: .module))
             #else
             HStack(spacing: BrevSpacing.xxs) {
                 Text(verbatim: profileHeaderTitle)
@@ -1022,10 +1032,10 @@ public struct FolderSidebar: View {
         return (folder, destination.sourceID)
     }
 
-    private var desktopFavoritesSection: some View {
+    private func desktopFavoritesSection(activeFavoriteID: MailboxFavoriteID?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text("Favourites", bundle: .module)
+                Text("Favorites", bundle: .module)
                     .brevFont(.caption).fontWeight(.semibold)
                     .foregroundStyle(theme.textSecondary.color)
                 Spacer()
@@ -1037,7 +1047,7 @@ public struct FolderSidebar: View {
                 Button { selectFavorite(favorite.id) } label: {
                     sidebarActionRow(
                         title: [favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: " · "),
-                        isSelected: activeDesktopFavoriteID == favorite.id
+                        isSelected: activeFavoriteID == favorite.id
                     ) {
                         if showSidebarIcons {
                             Image(systemName: favorite.symbol)
@@ -1055,7 +1065,7 @@ public struct FolderSidebar: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
-                .accessibilityAddTraits(activeDesktopFavoriteID == favorite.id ? .isSelected : [])
+                .accessibilityAddTraits(activeFavoriteID == favorite.id ? .isSelected : [])
                 .help([favorite.title, favorite.subtitle, favorite.count > 0 ? favorite.countDescription : nil]
                     .compactMap { $0 }.joined(separator: "\n"))
                 .dropDestination(for: String.self) { representations, _ in
@@ -1063,7 +1073,7 @@ public struct FolderSidebar: View {
                     return handleDrop(representations, on: destination.folder, sourceID: destination.sourceID)
                 }
                 .contextMenu {
-                    Button(String(localized: "Edit favourites", bundle: .module)) { showsFavoritesEditor = true }
+                    Button(String(localized: "Edit Favorites", bundle: .module)) { showsFavoritesEditor = true }
                     if let destination = favoriteFolder(favorite.id) {
                         Divider()
                         folderContextMenu(folder: destination.folder, sourceID: destination.sourceID)
@@ -1525,7 +1535,7 @@ public struct FolderSidebar: View {
     #if os(macOS)
     private var favoritesActions: some View {
         Menu {
-            Button(String(localized: "Edit favourites", bundle: .module)) {
+            Button(String(localized: "Edit Favorites", bundle: .module)) {
                 showsFavoritesEditor = true
             }
         } label: {
@@ -1534,8 +1544,8 @@ public struct FolderSidebar: View {
         .menuStyle(.button)
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
-        .accessibilityLabel(String(localized: "Edit favourites", bundle: .module))
-        .help(String(localized: "Edit favourites", bundle: .module))
+        .accessibilityLabel(String(localized: "Edit Favorites", bundle: .module))
+        .help(String(localized: "Edit Favorites", bundle: .module))
     }
     #endif
 
@@ -1646,7 +1656,8 @@ public struct FolderSidebar: View {
     private func folderList(
         folders: [Folder],
         sourceID: MailSourceID?,
-        loadError: FolderLoadError?
+        loadError: FolderLoadError?,
+        activeFavoriteID: MailboxFavoriteID? = nil
     ) -> some View {
         if let status = FolderSidebarPresentation.status(
             folders: folders,
@@ -1662,11 +1673,11 @@ public struct FolderSidebar: View {
             )
             if let sourceID {
                 ForEach(rows.map { ScopedFolderRow(row: $0, sourceID: sourceID) }) { scoped in
-                    folderRow(scoped.row, sourceID: sourceID)
+                    folderRow(scoped.row, sourceID: sourceID, activeFavoriteID: activeFavoriteID)
                 }
             } else {
                 ForEach(rows) { row in
-                    folderRow(row, sourceID: nil)
+                    folderRow(row, sourceID: nil, activeFavoriteID: activeFavoriteID)
                 }
             }
         }
@@ -1707,7 +1718,8 @@ public struct FolderSidebar: View {
     #if os(macOS)
     private func folderRow(
         _ row: FolderSidebarRow,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        activeFavoriteID: MailboxFavoriteID?
     ) -> some View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
@@ -1745,7 +1757,7 @@ public struct FolderSidebar: View {
             alignment: .leading
         )
         .background {
-            if isSelected(folder, in: sourceID) {
+            if isSelected(folder, in: sourceID, activeFavoriteID: activeFavoriteID) {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(folderSelectionColor)
             } else {
@@ -1915,9 +1927,13 @@ public struct FolderSidebar: View {
         BrevSpacing.xs
     }
 
-    private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {
+    private func isSelected(
+        _ folder: Folder,
+        in sourceID: MailSourceID?,
+        activeFavoriteID: MailboxFavoriteID?
+    ) -> Bool {
         #if os(macOS)
-        if activeDesktopFavoriteID != nil { return false }
+        if activeFavoriteID != nil { return false }
         #endif
         return navigation.selectedCollectionFolderID == nil
             && navigation.selectedFolderID == folder.id

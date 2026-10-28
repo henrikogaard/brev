@@ -85,6 +85,35 @@ struct ComposeViewSnapshotTests {
         )
     }
 
+    @Test("Long recipient address truncates inside the compact field")
+    func longRecipientAddress() {
+        let theme = BrevTheme.brevPaper
+        let backend = MockBackend()
+        let view = ComposeView(
+            backend: backend,
+            from: backend.account,
+            prefill: ComposePrefill(
+                to: ["an.exceptionally.long.recipient.address.with.many.parts@example.superlongdomain.example"]
+            )
+        )
+        .frame(width: 390, height: 844)
+        .background(theme.bgPrimary.color)
+        .brevTheme(theme)
+        .htmlBodyRenderTarget(.staticSnapshot)
+
+        let host = UIHostingController(rootView: view)
+        host.view.backgroundColor = .clear
+        host.view.frame = CGRect(x: 0, y: 0, width: 390, height: 844)
+        host.view.setNeedsLayout()
+        host.view.layoutIfNeeded()
+        assertSnapshot(
+            of: host,
+            as: .image(on: .iPhone13Pro, traits: .init(displayScale: 2)),
+            named: "long-recipient-compose",
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+        )
+    }
+
     @Test("Reply compose renders with prefilled subject and recipients in default theme")
     func replyCompose() {
         // The attribution line is localized and shown in local time; pin both
