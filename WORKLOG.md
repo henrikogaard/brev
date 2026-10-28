@@ -1,5 +1,24 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #248 integration review
+
+- Reviewed the scoped Gmail proposal and its explicit E1-E5 activation gate under Henrik's request to prepare and merge the open PRs.
+- Integrated main and preserved both worklog histories. The amendment does not enable Gmail trust, change account settings or authorize sending test mail.
+- Verification: diff and conflict-marker checks; updated-head CI required before merge. Live mailbox evidence is not available and remains required before capability activation.
+- Documentation sweep: ADR-only integration; no product or network behavior changed, so no changelog or privacy update is needed for this PR.
+
+## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
+
+- Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model
+  for the sign-in panel instead of parking #239.
+- Changed: ADR-0088 gains "Amendment 2026-10-16: scoped Gmail trust" with
+  the topmost `mx.google.com` trust rule, the Gmail fresh-delivery rule and
+  the E1-E5 synthetic evidence table. Generic IMAP stays unsupported.
+- Verified: docs-only; `git diff --check` clean. No code touched.
+- Next: implement ordered header preservation and the assessment with unit
+  fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval because they send mail).
+
 ## 2026-10-28 — Agent — PR #264 integration review
 
 - Reviewed no-source presentation, settings handoff, source-change visibility, localized copy and snapshot coverage.
