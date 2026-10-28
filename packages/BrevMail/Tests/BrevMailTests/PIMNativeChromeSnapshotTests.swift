@@ -90,11 +90,27 @@ struct PIMNativeChromeSnapshotTests {
         updatedAt: today
     )
 
-    private static func eventsOn(_ day: Date) -> [PIMEvent] {
+    /// Raw (non-projected) occurrence rows — the grid API takes
+    /// `PIMEventOccurrence` (ADR-0089).
+    private static func occurrence(
+        _ event: PIMEvent
+    ) -> PIMEventOccurrence {
+        PIMEventOccurrence(
+            id: event.id,
+            event: event,
+            originalStart: event.start,
+            start: event.start,
+            end: event.end,
+            occurrenceIndex: nil
+        )
+    }
+
+    private static func eventsOn(_ day: Date) -> [PIMEventOccurrence] {
         events.filter { event in
             guard let start = event.start else { return false }
             return calendar.isDate(start, inSameDayAs: day)
         }
+        .map(occurrence)
     }
 
     private static func task(
@@ -177,7 +193,7 @@ struct PIMNativeChromeSnapshotTests {
             weeks: weeks,
             eventsFor: { Self.eventsOn($0) },
             collectionFor: { _ in Self.collection },
-            selectedEventID: .constant(nil),
+            selectedOccurrenceID: .constant(nil),
             now: Self.today
         )
         Self.snapshot(view, variant: variant, named: "month")
@@ -191,7 +207,7 @@ struct PIMNativeChromeSnapshotTests {
             allDayEvents: [],
             placements: CalendarGridLayout.timedLanes(Self.eventsOn(day), onDay: day, calendar: Self.calendar),
             collectionFor: { _ in Self.collection },
-            selectedEventID: .constant(nil)
+            selectedOccurrenceID: .constant(nil)
         )
         Self.snapshot(view, variant: variant, named: "day")
     }

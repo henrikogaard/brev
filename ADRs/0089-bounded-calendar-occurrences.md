@@ -148,6 +148,65 @@ evidence. Keep future reports separately versioned. Synthetic/stub evidence
 does not replace live-provider, native macOS, physical-device, accessibility or
 maintainer acceptance. No issue closure follows from this design acceptance.
 
+## Implementation status (2026-10-16)
+
+The read-model slice is implemented:
+
+- `PIMEvent` carries `recurrenceDescriptor` (lossless RRULE/RDATE/EXDATE
+  capture plus the DTSTART basis) and `seriesMasterItemKey`; old cached
+  JSON without the keys still decodes.
+- CalDAV and Google sync populate the descriptor. Google cancelled
+  recurring instances persist as marker records (never rendered as
+  generated rows) instead of master tombstones.
+- `PIMRecurrenceValidator` admits only the supported subset; every
+  rejection carries a specific `PIMRecurrenceUnsupportedReason`.
+- `PIMOccurrenceProjector` generates bounded, timezone-aware,
+  DST-safe occurrences inside the displayed interval, with stable row
+  IDs, per-series completeness, and defensive bounds (366-day window,
+  10,000 candidates per series).
+- `CalendarBrowsingModel` projects once per load/navigation; agenda,
+  day, week, and month render `PIMEventOccurrence` rows, and selection
+  is occurrence-aware while retaining the authoritative master. The
+  agenda is a navigable 30-day window.
+- Later occurrences (`occurrenceIndex > 0`) are read-only with a
+  localized explanation; incomplete series keep raw rows plus a
+  localized coverage note. Deep links and copy-link stay authoritative.
+
+### Read-side exceptions (2026-10-17)
+
+Live evidence v8 showed that one EXDATE collapsed a whole series to its
+master date. The read model now merges exceptions instead of refusing them:
+
+- The descriptor keeps every EXDATE body verbatim (`exdates`, with `TZID`
+  and `VALUE=DATE` parameters). The validator parses them under the series
+  basis: `Z` instants or a resolvable `TZID` for timed series, `VALUE=DATE`
+  days for date-only series. Any other form is `malformedExDate`. A cache
+  written before bodies were captured (`hasExDate` without `exdates`) stays
+  `exdatePresent`, never guessed.
+- Excluded and overridden slots consume COUNT but produce no row (RFC 5545
+  §3.8.5.1). A moved instance renders as its own raw row; a cancelled Google
+  marker renders nothing.
+- An exception inside the displayed interval whose original start the
+  pattern never generates fails the series closed (`exceptions`) with the
+  raw master row and the coverage note. Exceptions outside the interval are
+  not checked, so coverage stays bounded.
+- RDATE remains unsupported.
+
+Known limit: if the master's own first instance is excluded or overridden,
+no row has `occurrenceIndex == 0`, so whole-series Edit/Delete is only
+reachable from the moved instance's raw row until §4 writes land.
+
+### Google write basis (2026-10-17)
+
+Google rejects a timed recurring event without `timeZone` (HTTP 400). A
+series the editor leaves "Local (floating)" is therefore written with the
+device zone as its basis, so the pattern repeats at the same wall-clock time
+in that zone and reads back as a `zoned` descriptor. Single floating events
+and all-day series are unchanged.
+
+Still pending: future-scope writes against projected occurrences, RDATE,
+and per-occurrence actions.
+
 ## References
 
 - [ADR-0072](0072-provider-neutral-calendar-contact-authoring.md): R6 and scope gating.

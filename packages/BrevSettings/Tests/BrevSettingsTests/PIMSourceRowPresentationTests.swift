@@ -58,6 +58,14 @@ struct PIMSourceRowPresentationTests {
         #expect(google.subtitle == "Google · Contacts")
     }
 
+    @Test("collection list heading names the source kind")
+    func collectionsTitleNamesKind() {
+        let titles = [PIMSourceKind.calendar, .contacts, .tasks].map {
+            PIMSourceRowPresentation(source: Self.source(status: .ready, kind: $0)).collectionsTitle
+        }
+        #expect(titles == ["Calendars", "Contact groups", "Task lists"])
+    }
+
     @Test("connected states allow sync toggling and disconnect")
     func connectedStatesAllowSyncAndDisconnect() {
         for status: PIMSourceStatus in [.ready, .syncing, .permissionLimited] {

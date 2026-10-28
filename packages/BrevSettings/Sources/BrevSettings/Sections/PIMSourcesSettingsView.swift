@@ -35,6 +35,8 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
     let displayName: String
     /// "Provider · Kind" — e.g. "CalDAV · Calendar".
     let subtitle: String
+    /// Heading above the source's collection list, named for its kind.
+    let collectionsTitle: String
     /// Menu title for the reconnect action — OAuth-backed sources name
     /// the grant they re-run, credential-backed ones the sheet they open.
     let reconnectTitle: String
@@ -58,6 +60,11 @@ struct PIMSourceRowPresentation: Sendable, Hashable, Identifiable {
         id = source.id
         displayName = source.displayName
         subtitle = Self.subtitle(provider: source.provider, kind: source.kind)
+        collectionsTitle = switch source.kind {
+        case .calendar: String(localized: "Calendars", bundle: .module)
+        case .contacts: String(localized: "Contact groups", bundle: .module)
+        case .tasks: String(localized: "Task lists", bundle: .module)
+        }
         reconnectTitle = source.provider == .google
             ? String(localized: "Re-authorize with Google…", bundle: .module)
             : String(localized: "Reconnect…", bundle: .module)
@@ -151,9 +158,13 @@ struct PIMSourcesSettingsView: View {
 
                 ForEach(Array(model.sources.enumerated()), id: \.element.id) { index, source in
                     sourceRow(PIMSourceRowPresentation(source: source))
+                    // An iOS Form already separates rows; a Divider there
+                    // becomes an empty row of its own.
+                    #if os(macOS)
                     if index < model.sources.count - 1 {
                         Divider()
                     }
+                    #endif
                 }
 
                 HStack(spacing: BrevSpacing.sm) {
@@ -274,7 +285,7 @@ struct PIMSourcesSettingsView: View {
                     Text(row.displayName)
                         .brevFont(.subheadline)
                         .foregroundStyle(theme.textPrimary.color)
-                    Text(row.subtitle + " · " + row.statusTitle)
+                    Text(statusLine(for: row))
                         .brevFont(.caption)
                         .foregroundStyle(theme.textSecondary.color)
                     if let detail = row.statusDetail {
@@ -291,26 +302,56 @@ struct PIMSourcesSettingsView: View {
                 }
                 sourceMenu(row)
             }
-            sourceToggleControls(row)
-            collectionList(for: row)
+            // Controls sit under the title text, not the status glyph, and
+            // every switch shares one trailing edge.
+            VStack(alignment: .leading, spacing: Self.controlSpacing) {
+                sourceSyncToggle(row)
+                sourceEditingToggle(row)
+                collectionList(for: row)
+            }
+            .padding(.leading, Self.statusGlyphWidth + BrevSpacing.sm)
         }
         .padding(.vertical, BrevSpacing.xxs)
     }
 
-    @ViewBuilder
-    private func sourceToggleControls(
-        _ row: PIMSourceRowPresentation
+    private static let statusGlyphWidth: CGFloat = 18
+    /// iOS switches are taller than a footnote line, so they need more air
+    /// than macOS small switches to avoid touching.
+    #if os(iOS)
+    private static let controlSpacing = BrevSpacing.md
+    #else
+    private static let controlSpacing = BrevSpacing.xs
+    #endif
+
+    /// "Provider · Kind · Status", plus the cached item count when known,
+    /// so the count does not float as its own line under the list.
+    private func statusLine(for row: PIMSourceRowPresentation) -> String {
+        var parts = [row.subtitle, row.statusTitle]
+        if let count = model.eventCountsBySource[row.id] {
+            parts.append(String(localized: "\(count) events cached", bundle: .module))
+        }
+        if let count = model.contactCountsBySource[row.id] {
+            parts.append(String(localized: "\(count) contacts cached", bundle: .module))
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    /// A full-width switch row: label leading, switch trailing. A macOS
+    /// switch otherwise hugs its label and lands at a different x per row.
+    private func settingsSwitch(
+        _ title: String,
+        isOn: Binding<Bool>
     ) -> some View {
+        Toggle(isOn: isOn) {
+            Text(title)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textPrimary.color)
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .toggleStyle(.switch)
+        .tint(theme.accent.color)
         #if os(macOS)
-        HStack(spacing: BrevSpacing.md) {
-            sourceSyncToggle(row)
-            sourceEditingToggle(row)
-        }
-        #else
-        VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-            sourceSyncToggle(row)
-            sourceEditingToggle(row)
-        }
+            .controlSize(.small)
         #endif
     }
 
@@ -319,19 +360,15 @@ struct PIMSourcesSettingsView: View {
         _ row: PIMSourceRowPresentation
     ) -> some View {
         if row.canToggleSync {
-            Toggle(
+            settingsSwitch(
                 PIMSourceRowPresentation.syncToggleTitle,
                 isOn: syncBinding(for: row.id, enabled: row.syncEnabled)
             )
-            .toggleStyle(.switch)
-            #if os(macOS)
-                .controlSize(.small)
-            #endif
-                .accessibilityLabel(String(
-                    localized: "Background sync for \(row.displayName)",
-                    bundle: .module
-                ))
-                .disabled(model.pendingSourceID == row.id)
+            .accessibilityLabel(String(
+                localized: "Background sync for \(row.displayName)",
+                bundle: .module
+            ))
+            .disabled(model.pendingSourceID == row.id)
         }
     }
 
@@ -340,19 +377,15 @@ struct PIMSourcesSettingsView: View {
         _ row: PIMSourceRowPresentation
     ) -> some View {
         if model.canToggleWrite(sourceID: row.id) {
-            Toggle(
+            settingsSwitch(
                 PIMSourceRowPresentation.editingToggleTitle,
                 isOn: writeBinding(for: row.id)
             )
-            .toggleStyle(.switch)
-            #if os(macOS)
-                .controlSize(.small)
-            #endif
-                .accessibilityLabel(String(
-                    localized: "Editing for \(row.displayName)",
-                    bundle: .module
-                ))
-                .disabled(model.pendingSourceID == row.id)
+            .accessibilityLabel(String(
+                localized: "Editing for \(row.displayName)",
+                bundle: .module
+            ))
+            .disabled(model.pendingSourceID == row.id)
         }
     }
 
@@ -365,28 +398,16 @@ struct PIMSourcesSettingsView: View {
     ) -> some View {
         let collections = model.collectionsBySource[row.id] ?? []
         if !collections.isEmpty {
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
+            VStack(alignment: .leading, spacing: Self.controlSpacing) {
+                Text(row.collectionsTitle)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityAddTraits(.isHeader)
                 ForEach(collections) { collection in
                     collectionRow(collection, sourceID: row.id)
                 }
-                if let count = model.eventCountsBySource[row.id] {
-                    Text(String(
-                        localized: "\(count) events cached",
-                        bundle: .module
-                    ))
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                }
-                if let count = model.contactCountsBySource[row.id] {
-                    Text(String(
-                        localized: "\(count) contacts cached",
-                        bundle: .module
-                    ))
-                    .brevFont(.caption)
-                    .foregroundStyle(theme.textSecondary.color)
-                }
             }
-            .padding(.top, BrevSpacing.xxs)
+            .padding(.top, BrevSpacing.xs)
         } else if row.canRefreshCollections, model.canManageCollections {
             Text(String(
                 localized: "No collections discovered yet.",
@@ -407,30 +428,28 @@ struct PIMSourcesSettingsView: View {
                 .fill(collectionColor(for: collection))
                 .frame(width: 7, height: 7)
                 .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                Text(collection.displayName)
+            // One line per collection: name, then the primary and
+            // read-only markers inline, so long group lists stay scannable.
+            Text(collection.displayName)
+                .brevFont(.footnote)
+                .foregroundStyle(theme.textPrimary.color)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .help(collection.displayName)
+            if collection.isPrimary {
+                Text(String(localized: "Primary", bundle: .module))
                     .brevFont(.caption)
-                    .foregroundStyle(theme.textPrimary.color)
-                    .lineLimit(2)
-                    .fixedSize(horizontal: false, vertical: true)
-                HStack(spacing: BrevSpacing.xxs) {
-                    if collection.isPrimary {
-                        Text(String(localized: "Primary", bundle: .module))
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.textSecondary.color)
-                    }
-                    if collection.isReadOnly {
-                        Image(systemName: "lock")
-                            .brevFont(.caption)
-                            .foregroundStyle(theme.textSecondary.color)
-                            .accessibilityLabel(String(
-                                localized: "Read-only",
-                                bundle: .module
-                            ))
-                    }
-                }
+                    .foregroundStyle(theme.textSecondary.color)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            if collection.isReadOnly {
+                Image(systemName: "lock")
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                    .accessibilityLabel(String(
+                        localized: "Read-only",
+                        bundle: .module
+                    ))
+            }
             Spacer(minLength: BrevSpacing.xs)
             Toggle(
                 String(localized: "Visible", bundle: .module),
@@ -441,12 +460,15 @@ struct PIMSourcesSettingsView: View {
             )
             .toggleStyle(.switch)
             .labelsHidden()
-            .controlSize(.mini)
-            .accessibilityLabel(String(
-                localized: "Show \(collection.displayName)",
-                bundle: .module
-            ))
-            .disabled(model.pendingSourceID == sourceID)
+            .tint(theme.accent.color)
+            #if os(macOS)
+                .controlSize(.small)
+            #endif
+                .accessibilityLabel(String(
+                    localized: "Show \(collection.displayName)",
+                    bundle: .module
+                ))
+                .disabled(model.pendingSourceID == sourceID)
         }
     }
 
