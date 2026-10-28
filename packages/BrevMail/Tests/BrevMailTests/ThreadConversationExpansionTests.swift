@@ -67,6 +67,37 @@ struct ThreadConversationExpansionTests {
         #expect(result == older.id)
     }
 
+    @Test("an older parent-row selection opens newest while an explicit child selection stays selected")
+    @MainActor
+    func parentRowSelectionOfOlderHeaderOpensNewestAndChildSelectionStaysSelected() {
+        let older = Self.makeHeader(id: "older", date: Self.epoch)
+        let newer = Self.makeHeader(id: "newer", date: Self.epoch.addingTimeInterval(60))
+        let headers = [older, newer]
+        let navigation = MailNavigationState()
+
+        navigation.selectMessage(
+            older,
+            from: headers,
+            expandsSelectedMessage: false
+        )
+        #expect(navigation.selectedMessageID == older.id)
+        #expect(navigation.readerExpansionSelectionID == nil)
+        #expect(
+            ThreadConversationExpansionPolicy.expandedID(
+                selectedID: navigation.readerExpansionSelectionID,
+                in: headers
+            ) == newer.id
+        )
+
+        navigation.selectMessage(older, from: headers)
+        #expect(
+            ThreadConversationExpansionPolicy.expandedID(
+                selectedID: navigation.readerExpansionSelectionID,
+                in: headers
+            ) == older.id
+        )
+    }
+
     @Test("selected header falls back to newest when it is not in the thread")
     func selectedHeaderFallsBackToNewestWhenMissing() {
         let older = Self.makeHeader(id: "older", date: Self.epoch)

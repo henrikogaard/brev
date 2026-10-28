@@ -68,7 +68,7 @@ struct FolderSidebarSnapshotTests {
         }
     }
 
-    @Test("Desktop favourites and editor support both sizing extremes", arguments: [false, true], [false, true])
+    @Test("Desktop Favorites and editor support both sizing extremes", arguments: [false, true], [false, true])
     func desktopFavorites(large: Bool, dark: Bool) throws {
         let suite = "DesktopFavorites-" + UUID().uuidString
         let defaults = try #require(UserDefaults(suiteName: suite))

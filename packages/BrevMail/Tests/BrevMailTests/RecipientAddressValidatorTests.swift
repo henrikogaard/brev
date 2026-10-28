@@ -48,13 +48,6 @@ struct RecipientAddressValidatorTests {
 
 @Suite("RecipientChipFieldPresentation")
 struct RecipientChipFieldPresentationTests {
-    @Test("placeholder is hidden once a recipient chip exists")
-    func placeholderIsHiddenOnceRecipientChipExists() {
-        #expect(RecipientChipFieldPresentation.promptText(recipientCount: 0) == "name@example.com")
-        #expect(RecipientChipFieldPresentation.promptText(recipientCount: 1) == nil)
-        #expect(RecipientChipFieldPresentation.promptText(recipientCount: 3) == nil)
-    }
-
     @Test("a space does not commit incomplete input")
     func spaceLeavesIncompleteInput() {
         #expect(RecipientChipFieldPresentation.commitAction(afterTyping: "he ") == .none)

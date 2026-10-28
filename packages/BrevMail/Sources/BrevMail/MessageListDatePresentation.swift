@@ -110,7 +110,74 @@ enum MessageListDatePresentation {
             .string(from: date)
     }
 
-    private static func compactRelativeLabel(
+    static func compactRelativeLabel(
+        for date: Date,
+        referenceDate: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> String {
+        let referenceSecond = referenceDate.timeIntervalSinceReferenceDate.rounded(.down)
+        let key = CompactRelativeLabelCacheKey(
+            dateInterval: date.timeIntervalSinceReferenceDate,
+            referenceSecond: referenceSecond,
+            localeIdentifier: locale.identifier,
+            calendarIdentifier: calendar.identifier
+        )
+        formatterLock.lock()
+        if let cached = compactRelativeLabelCache[key] {
+            #if DEBUG
+            compactRelativeLabelCacheHitCountsForTesting[key, default: 0] += 1
+            #endif
+            formatterLock.unlock()
+            return cached
+        }
+        formatterLock.unlock()
+
+        let label = compactRelativeLabelUncached(
+            for: date,
+            referenceDate: Date(timeIntervalSinceReferenceDate: referenceSecond),
+            calendar: calendar,
+            locale: locale
+        )
+
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        if let cached = compactRelativeLabelCache[key] {
+            #if DEBUG
+            compactRelativeLabelCacheHitCountsForTesting[key, default: 0] += 1
+            #endif
+            return cached
+        }
+        if compactRelativeLabelCache.count >= 512 {
+            compactRelativeLabelCache.removeAll(keepingCapacity: true)
+            #if DEBUG
+            compactRelativeLabelCacheHitCountsForTesting.removeAll(keepingCapacity: true)
+            #endif
+        }
+        compactRelativeLabelCache[key] = label
+        return label
+    }
+
+    #if DEBUG
+    static func compactRelativeLabelCacheHitCountForTesting(
+        for date: Date,
+        referenceDate: Date,
+        calendar: Calendar,
+        locale: Locale
+    ) -> Int {
+        let key = CompactRelativeLabelCacheKey(
+            dateInterval: date.timeIntervalSinceReferenceDate,
+            referenceSecond: referenceDate.timeIntervalSinceReferenceDate.rounded(.down),
+            localeIdentifier: locale.identifier,
+            calendarIdentifier: calendar.identifier
+        )
+        formatterLock.lock()
+        defer { formatterLock.unlock() }
+        return compactRelativeLabelCacheHitCountsForTesting[key, default: 0]
+    }
+    #endif
+
+    static func compactRelativeLabelUncached(
         for date: Date,
         referenceDate: Date,
         calendar: Calendar,
@@ -136,6 +203,17 @@ enum MessageListDatePresentation {
     // reused. `DateFormatter`/`RelativeDateTimeFormatter` are safe to read from
     // multiple threads once configured; the cache dictionaries are guarded by a lock.
     private static let formatterLock = NSLock()
+    private struct CompactRelativeLabelCacheKey: Hashable {
+        let dateInterval: TimeInterval
+        let referenceSecond: TimeInterval
+        let localeIdentifier: String
+        let calendarIdentifier: Calendar.Identifier
+    }
+
+    private nonisolated(unsafe) static var compactRelativeLabelCache: [CompactRelativeLabelCacheKey: String] = [:]
+    #if DEBUG
+    private nonisolated(unsafe) static var compactRelativeLabelCacheHitCountsForTesting: [CompactRelativeLabelCacheKey: Int] = [:]
+    #endif
     private nonisolated(unsafe) static var dateFormatterCache: [String: DateFormatter] = [:]
     private nonisolated(unsafe) static var relativeFormatterCache: [String: RelativeDateTimeFormatter] = [:]
     private nonisolated(unsafe) static var compactElapsedFormatterCache: [String: DateComponentsFormatter] = [:]

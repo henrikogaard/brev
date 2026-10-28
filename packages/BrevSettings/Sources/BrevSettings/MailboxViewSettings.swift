@@ -44,7 +44,7 @@ struct MailboxViewSettings: Equatable, Sendable, Codable {
         sortOrder: .newestFirst,
         threadMessageOrder: .oldestFirst,
         readingPanePlacement: .side,
-        showFolderStats: true,
+        showFolderStats: false,
         folderStatsDetail: .compact
     )
 

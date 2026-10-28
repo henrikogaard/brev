@@ -89,7 +89,7 @@ struct MailboxFavoritesEditor: View {
             .environment(\.editMode, .constant(.active))
             .scrollContentBackground(.hidden)
             .background(theme.bgSecondary.color)
-            .navigationTitle(String(localized: "Favourites", bundle: .module))
+            .navigationTitle(String(localized: "Favorites", bundle: .module))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -104,7 +104,7 @@ struct MailboxFavoritesEditor: View {
     #if os(macOS)
     private var desktopEditor: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.md) {
-            Text("Favourites", bundle: .module).brevFont(.title).fontWeight(.semibold)
+            Text("Favorites", bundle: .module).brevFont(.title).fontWeight(.semibold)
             Text(
                 "Choose your shortcuts and drag to reorder. Inbox counts show unread mail; Drafts counts show all drafts.",
                 bundle: .module

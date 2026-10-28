@@ -246,7 +246,10 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     // MARK: Lifecycle
 
     public func connect() async throws {
-        let generation = lock.withLock { connectionGeneration }
+        let generation = lock.withLock {
+            freshDeliveryRegistry.removeAll()
+            return connectionGeneration
+        }
         let draftGeneration = await draftOperations.connectionGeneration()
         do {
             let cachedState = try await store.accountState(accountID: account.id)
@@ -319,7 +322,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// preparation.
     private func performConnectSync(generation: UUID, draftGeneration: UUID) async throws {
         if let syncReconciler {
-            try await reconcileExclusive(syncReconciler)
+            try await reconcileExclusive(syncReconciler, allowsFreshDeliveries: false)
             await probeSendAsMetadata()
             try await draftOperations.activate(generation: draftGeneration)
             try requireConnectionGeneration(generation)
@@ -437,6 +440,7 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         let continuations = lock.withLock { () -> [AsyncStream<MailEvent>.Continuation] in
             isConnected = false
             connectionGeneration = UUID()
+            freshDeliveryRegistry.removeAll()
             scheduledPollTask?.cancel()
             scheduledPollTask = nil
             recoveredSchedules = false
@@ -2032,11 +2036,14 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
     /// is in flight — including the background pass started by `connect()`
     /// on a warm cache — await the same task instead of racing a second
     /// pass over the same store.
-    private func reconcileExclusive(_ reconciler: GmailSyncReconciler) async throws {
+    private func reconcileExclusive(
+        _ reconciler: GmailSyncReconciler,
+        allowsFreshDeliveries: Bool = true
+    ) async throws {
         if let inFlight = lock.withLock({ reconcileTask }) {
             return try await inFlight.value
         }
-        let task = Task { try await self.reconcile(reconciler) }
+        let task = Task { try await self.reconcile(reconciler, allowsFreshDeliveries: allowsFreshDeliveries) }
         let raced = lock.withLock { () -> Task<Void, Error>? in
             if let existing = reconcileTask { return existing }
             reconcileTask = task
@@ -2052,7 +2059,8 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         try await task.value
     }
 
-    private func reconcile(_ reconciler: GmailSyncReconciler) async throws {
+    private func reconcile(_ reconciler: GmailSyncReconciler, allowsFreshDeliveries: Bool) async throws {
+        let generation = lock.withLock { connectionGeneration }
         let scanner = store as? any GmailMessageSummaryScanning
         let before = try await messageSummaries(using: scanner)
         let state: GmailAccountState
@@ -2073,8 +2081,12 @@ public final class GmailAPIBackend: MailBackend, MessageLabelManaging, ProviderL
         }
         let after = try await messageSummaries(using: scanner)
         let labels = try await store.labels(accountID: account.id)
-        freshDeliveryRegistry.record(freshDeliveryIDs)
         lock.withLock {
+            // Initial/reconnect catch-up is not an arrival. An obsolete
+            // connection must not repopulate the registry after disconnect.
+            if allowsFreshDeliveries, connectionGeneration == generation, isConnected {
+                freshDeliveryRegistry.record(freshDeliveryIDs)
+            }
             labelCatalog = labels
             profile = GmailProfile(emailAddress: state.emailAddress, historyID: state.historyID)
             lastSyncError = nil
@@ -2757,6 +2769,9 @@ extension GmailAPIBackend: SignInTrustAssessing {
         guard account.backendIdentifier == BrevAccount.gmailAPIBackendIdentifier else {
             return .unavailable(.unsupportedAccount)
         }
+        guard let generation = lock.withLock({ isConnected ? connectionGeneration : nil }) else {
+            return .unavailable(.notFreshDelivery)
+        }
         guard freshDeliveryRegistry.contains(messageID) else {
             return .unavailable(.notFreshDelivery)
         }
@@ -2781,6 +2796,9 @@ extension GmailAPIBackend: SignInTrustAssessing {
                   metadataHeaders: ["Authentication-Results", "From"]
               ) else {
             return .unavailable(.noTrustedHeader)
+        }
+        guard lock.withLock({ isConnected && connectionGeneration == generation }) else {
+            return .unavailable(.notFreshDelivery)
         }
         return GmailSignInTrustAssessor.assess(headers: message.payload?.headers ?? [])
     }

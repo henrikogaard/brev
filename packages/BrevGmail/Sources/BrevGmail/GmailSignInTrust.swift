@@ -42,6 +42,9 @@ public enum GmailSignInTrustAssessor {
             return .unavailable(.conflictingTrustedHeaders)
         }
 
+        let methodTokens = topmost.split(whereSeparator: { $0 == ";" || $0.isWhitespace })
+            .filter { $0.prefix(6).caseInsensitiveCompare("dmarc=") == .orderedSame }
+        guard methodTokens.count <= 1 else { return .unavailable(.duplicateDMARC) }
         let dmarcResults = dmarcSegments(topmost)
         guard !dmarcResults.isEmpty else { return .unavailable(.missingDMARC) }
         guard dmarcResults.count == 1 else { return .unavailable(.duplicateDMARC) }
@@ -119,17 +122,19 @@ public enum GmailSignInTrustAssessor {
             }
             var result: String?
             var headerFrom: String?
+            var headerFromCount = 0
             for token in segment.split(whereSeparator: { $0 == " " || $0 == "\t" }) {
                 if result == nil, token.count > 6,
                    token.prefix(6).caseInsensitiveCompare("dmarc=") == .orderedSame {
                     result = String(token.dropFirst(6))
-                } else if headerFrom == nil, token.count > 12,
+                } else if token.count >= 12,
                           token.prefix(12).caseInsensitiveCompare("header.from=") == .orderedSame {
+                    headerFromCount += 1
                     headerFrom = String(token.dropFirst(12)).trimmingCharacters(
                         in: CharacterSet(charactersIn: "<>; "))
                 }
             }
-            return DmarcResult(result: result, headerFrom: headerFrom)
+            return DmarcResult(result: result, headerFrom: headerFromCount == 1 ? headerFrom : nil)
         }
     }
 
@@ -188,6 +193,11 @@ final class GmailFreshDeliveryRegistry: @unchecked Sendable {
             pruneExpired(at: now())
             return entries.contains { $0.id == id }
         }
+    }
+
+    /// Invalidates delivery provenance when a provider connection ends or restarts.
+    func removeAll() {
+        lock.withLock { entries.removeAll() }
     }
 
     private func pruneExpired(at instant: Date) {
