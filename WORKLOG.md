@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #250 trust corrections
+
+- Excluded initial/reconnect reconciliation from fresh-delivery recording, cleared provenance on connect/disconnect and checked connection generation before returning an assessment.
+- Rejected duplicate DMARC tokens and duplicate header.from properties, including duplicates within the same segment.
+- Regression tests were written first. Their first CI attempt exposed a test-call compilation error, corrected separately. Assertion-level red evidence was not obtained before correction: CI remains queued, and the Space became unreachable after its incompatible-toolchain failures. Do not count that attempt as red-green verification.
+- Verification pending updated CI; targeted format and diff checks are run before push. No capability advertisement, production caller, mail send, privacy/network activation, release or issue closure.
+- Documentation sweep: these are corrections to the disabled ADR-0088 implementation, not new user-facing behavior; no additional changelog or privacy-table change is needed.
+
 ## 2026-10-28 — Agent — PR #250 trust regression tests
 
 - Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
