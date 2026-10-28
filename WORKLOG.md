@@ -1,5 +1,33 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #255 arrival corrections
+
+- Recheck the specific code/link consent after asynchronous sender lookup, rather than accepting either consent. Already-cancelled work stops before folder/provider reads.
+- Remove completed task handles so the controller does not retain every past inspection. Added empty-pending assertions and retained the lock-protected test recorder.
+- Verification: targeted format and diff checks before push; updated CI remains mandatory. Regression assertions were added first, but compatible local execution is blocked by the Space toolchain and later network failure; no assertion-level red or local green is claimed.
+- No production owner/caller or advertised provider capability is added. Existing ADR-0088 documents the disabled slice; no user-facing/network activation or additional privacy change.
+
+## 2026-10-28 — Agent — PR #255 consent regression
+
+- Review found that withdrawing code consent during sender lookup can still present a code when link consent remains enabled. Added a regression at that await boundary before changing production behavior.
+- Protected the test double's concurrent body-read recording with a lock; the burst test previously mutated the same array from nonisolated async calls.
+- Verification: diff check; regression execution pending CI. Space CommandLineTools cannot compile Swift Testing/SwiftUI macro dependencies, so no local test pass is claimed.
+- Capability remains disabled and no production controller caller exists. No mail sent, account settings changed or live evidence claimed.
+
+## 2026-10-17 — Devin — #239 arrival controller
+
+- Goal: ADR-0088 slices 2 and 3 wiring without UI: a controller that turns
+  `.messagesAdded` into memory-only sign-in presentations under every gate.
+- Changed: `SignInCodeArrivalController`, `SignInCodePresenting`,
+  `SignInCodePresentation` in BrevMail; ADR-0088 status subsection.
+- Verified: `swift test --package-path packages/BrevMail --filter
+  SignInCodeArrivalController` 9 green (consent before any work,
+  capability gate, folder/trust gates, link vs code consent, consent
+  recheck mid-flight, cancel/dismiss, burst cap, redaction, plain-text
+  only); lint/format clean.
+- Not changed: no AppSession owner, root-view caller, panel, settings UI,
+  PRIVACY.md (nothing reachable while the capability is off).
+
 ## 2026-10-28 — Agent — PR #250 trust corrections
 
 - Excluded initial/reconnect reconciliation from fresh-delivery recording, cleared provenance on connect/disconnect and checked connection generation before returning an assessment.
