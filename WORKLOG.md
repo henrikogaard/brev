@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-10-29 — Agent — #271 legacy migration fixtures
+
+- Fresh CI at `c8a681e8`, run `40781250508`, compiled successfully and passed all seven transactional page-window tests. BrevSyncEngine still failed three existing v4/v5 migration tests because they rewound the current database version without removing the v7 paging column. Other Build jobs passed.
+- Corrected those synthetic fixtures to remove `imap_page_windows` and `next_page_token` before stamping the older version. Kept production migration strict; no duplicate-column suppression or data deletion outside disposable test stores.
+- Pinned SwiftFormat lint passed for both changed test files; strict SwiftLint passed for AttachmentSearchIndexTests but reported the pre-existing optional-array `references == []` assertion in ConversationIndexTests at line 133. Left that unrelated assertion unchanged. Diff/ADR checks before push; fresh package CI remains required. No host/native tests or real-account operations. Scope remains partial slice 2a, with the runtime measurement gate unresolved.
+
 ## 2026-10-28 — Agent — #271 CI compilation correction
 
 - CI at `d9795bb7`, run `40778430918`, failed BrevSyncEngine test compilation because the throwing `imapPageState` expression inside `#require` lacked an inner `try`; the other 20 checks passed. The new tests did not execute in that run.
