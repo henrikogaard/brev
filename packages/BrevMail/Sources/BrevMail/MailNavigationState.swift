@@ -91,6 +91,8 @@ public final class MailNavigationState {
         }
     }
 
+    var readerExpansionSelectionID: MessageHeader.ID?
+
     /// Distinguishes a user selection made while an asynchronous mutation is pending.
     public private(set) var readerSelectionRevision = 0
 
@@ -298,6 +300,7 @@ public final class MailNavigationState {
         self.selectedSourceID = selectedSourceID
         self.selectedFolderID = selectedFolderID
         self.selectedMessageID = selectedMessageID
+        readerExpansionSelectionID = selectedMessageID
         searchFreeText = searchText
         self.searchExecution = searchExecution
         self.hasUserSelectedSearchExecution = hasUserSelectedSearchExecution
@@ -380,6 +383,7 @@ public final class MailNavigationState {
         selectedSourceID = nil
         selectedFolderID = Self.unifiedInboxFolderID
         selectedMessageID = nil
+        readerExpansionSelectionID = nil
         currentFolderHeaders = []
         endSelection()
         mailboxFilter = .none
@@ -439,6 +443,7 @@ public final class MailNavigationState {
         selectedSourceID = nil
         selectedFolderID = folderID
         selectedMessageID = nil
+        readerExpansionSelectionID = nil
         currentFolderHeaders = []
         endSelection()
         mailboxFilter = .none
@@ -450,6 +455,7 @@ public final class MailNavigationState {
         selectedSourceID = sourceID
         selectedFolderID = folderID
         selectedMessageID = nil
+        readerExpansionSelectionID = nil
         currentFolderHeaders = []
         endSelection()
         mailboxFilter = .none
@@ -463,25 +469,37 @@ public final class MailNavigationState {
         selectedFolderID = collection
         selectedCollectionFolderID = nil
         selectedMessageID = nil
+        readerExpansionSelectionID = nil
         currentFolderHeaders = []
         endSelection()
         mailboxFilter = .none
     }
 
     /// Selects a row from the visible list without changing its folder/search scope.
-    public func selectMessage(_ header: MessageHeader, from headers: [MessageHeader]) {
+    public func selectMessage(
+        _ header: MessageHeader,
+        from headers: [MessageHeader],
+        expandsSelectedMessage: Bool = true
+    ) {
         restoredSelectionHeader = nil
         currentFolderHeaders = headers
+        readerExpansionSelectionID = expandsSelectedMessage ? header.id : nil
         selectedMessageID = header.id
         endSelection()
     }
 
     /// Selects a source-owned message for the reader.
-    public func selectMessage(_ header: MessageHeader, in sourceID: MailSourceID, headers: [MessageHeader]) {
+    public func selectMessage(
+        _ header: MessageHeader,
+        in sourceID: MailSourceID,
+        headers: [MessageHeader],
+        expandsSelectedMessage: Bool = true
+    ) {
         restoredSelectionHeader = nil
         selectedCollectionFolderID = browsingFolderID
         selectedSourceID = sourceID
         selectedFolderID = header.folderID
+        readerExpansionSelectionID = expandsSelectedMessage ? header.id : nil
         selectedMessageID = header.id
         currentFolderHeaders = headers
         endSelection()

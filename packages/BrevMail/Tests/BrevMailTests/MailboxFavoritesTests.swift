@@ -31,7 +31,7 @@ struct MailboxFavoritesTests {
         let candidates = MailboxFavorite.candidates(sections: [section("private"), section("work")])
         let visible = MailboxFavorites(data: Data()).ordered(candidates, visibleOnly: true)
         // Account inboxes are no longer on by default: the folder tree owns
-        // them, and Favourites shows the same mailbox twice when they are both
+        // them, and Favorites shows the same mailbox twice when they are both
         // visible. Adding one through the editor brings it back.
         #expect(visible.map(\.title) == ["All Inboxes"])
         #expect(Set(candidates.map(\.id)).count == 7)

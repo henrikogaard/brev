@@ -56,6 +56,15 @@ struct MailSearchOptionsBar: View {
     @ViewBuilder
     private var mailboxScope: some View {
         if let folderScope {
+            #if os(macOS)
+            Picker(String(localized: "Search folder scope", bundle: .module), selection: folderScope) {
+                Text("This folder", bundle: .module).tag(false)
+                Text("All mailboxes", bundle: .module).tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(String(localized: "Search folder scope", bundle: .module))
+            #else
             Menu {
                 Picker(String(localized: "Search folder scope", bundle: .module), selection: folderScope) {
                     Text("This folder", bundle: .module).tag(false)
@@ -69,6 +78,7 @@ struct MailSearchOptionsBar: View {
             }
             .menuStyle(.borderlessButton)
             .accessibilityLabel(String(localized: "Search folder scope", bundle: .module))
+            #endif
         } else {
             Label(String(localized: "All mailboxes", bundle: .module), systemImage: "tray.2")
                 .searchOptionsTouchTarget()

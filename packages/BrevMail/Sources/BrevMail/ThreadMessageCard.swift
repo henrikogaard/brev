@@ -125,9 +125,15 @@ struct ThreadMessageCard: View {
     #if os(macOS)
     private var headerLayoutAlignment: VerticalAlignment { .firstTextBaseline }
     private var headerLayoutSpacing: CGFloat { BrevSpacing.sm }
+    private var bodyLeadingInset: CGFloat {
+        showsAvatar ? 32 + 2 * BrevSpacing.sm : BrevSpacing.md
+    }
     #else
     private var headerLayoutAlignment: VerticalAlignment { .top }
     private var headerLayoutSpacing: CGFloat { 0 }
+    private var bodyLeadingInset: CGFloat {
+        showsAvatar && !dynamicTypeSize.isAccessibilitySize ? 32 + 2 * BrevSpacing.sm : BrevSpacing.sm
+    }
     #endif
 
     var body: some View {
@@ -169,7 +175,8 @@ struct ThreadMessageCard: View {
 
             if isExpanded {
                 cardBody
-                    .padding(.horizontal, BrevSpacing.lg)
+                    .padding(.leading, bodyLeadingInset)
+                    .padding(.trailing, BrevSpacing.lg)
                     .padding(.bottom, interfaceDensity.desktopSpacing(BrevSpacing.lg))
                     .padding(.top, BrevSpacing.xxs)
             }
@@ -298,11 +305,6 @@ struct ThreadMessageCard: View {
         }
         .padding(.horizontal, BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.sm)
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2)
-            }
-        }
     }
 
     /// Short date for the phone card header; an explicit override (previews,
@@ -317,7 +319,7 @@ struct ThreadMessageCard: View {
     #endif
 
     private var desktopCardHeader: some View {
-        HStack(spacing: BrevSpacing.sm) {
+        HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
             if showsAvatar {
                 BrevAvatarView(
                     email: header.from.email,
@@ -386,11 +388,6 @@ struct ThreadMessageCard: View {
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, interfaceDensity.desktopSpacing(BrevSpacing.sm))
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1).fill(theme.accent.color).frame(width: 2, height: 24)
-            }
-        }
     }
 
     @ViewBuilder

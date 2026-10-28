@@ -153,7 +153,7 @@ public struct MessageListView: View {
     @AppStorage(MailboxViewPreferenceKey.textSize) private var textSizeRaw = MailboxTextSize.medium.rawValue
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
@@ -445,20 +445,20 @@ public struct MessageListView: View {
             // above the list (audit Q2).
             #if os(macOS)
             if !trimmedSearchText.isEmpty {
-                CollapsibleOptionsStrip(
-                    isExpanded: $isSearchOptionsExpanded,
-                    hasNonDefaultOptions: hasNonDefaultSearchOptions,
-                    summary: searchOptionsSummary
-                ) {
-                    searchScopeBar
-                }
+                searchScopeBar
             }
-            if !trimmedSearchText.isEmpty, searchProgress.request != nil {
+            if !trimmedSearchText.isEmpty, searchProgress.hasPartialResults {
                 MailSearchStatusView(
                     progress: searchProgress,
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
                         queries: [activeAttachmentSearchQuery].compactMap { $0 },
                         isLoading: searchProgress.isSearching
+                    ),
+                    leadingInset: MessageListRow.textColumnLeadingInset(
+                        isInSelectionMode: navigation.isInSelectionMode,
+                        showAvatar: showSenderAvatars,
+                        textSize: mailboxTextSize,
+                        density: mailboxListDensity
                     )
                 ) {
                     Task { await reloadForSearchChange() }
@@ -1020,13 +1020,29 @@ public struct MessageListView: View {
             title: section.title,
             count: section.totalCount,
             isCollapsed: section.isCollapsed,
-            isCollapsible: !usesCompactMessageRows
+            isCollapsible: dateSectionsAreCollapsible
         ) {
             toggleDateSection(section.id)
         }
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .messageListThemedRowBackground()
+    }
+
+    private var dateSectionsAreCollapsible: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var rowSeparatorVisibility: Visibility {
+        #if os(iOS)
+        return .visible
+        #else
+        return .hidden
+        #endif
     }
 
     @ViewBuilder
@@ -1071,7 +1087,7 @@ public struct MessageListView: View {
                         isThreadingEnabled: backend.groupsMessagesIntoThreads,
                         in: &expandedThreadIDs
                     )
-                    selectMessage(header)
+                    selectMessage(header, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: header)
                 }
@@ -1096,7 +1112,7 @@ public struct MessageListView: View {
         #endif
         .draggable(draggablePayload(for: header))
         .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
+        .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
         // Double-click opens the message in its own window. A simultaneous
         // high-count tap gesture (rather than a second `onTapGesture(count:)`)
@@ -2100,13 +2116,17 @@ public struct MessageListView: View {
         return threadCounts[header.threadID] ?? 1
     }
 
-    private func selectMessage(_ header: MessageHeader) {
+    private func selectMessage(_ header: MessageHeader, expandsSelectedMessage: Bool = true) {
         #if os(macOS)
         // Pointer selection claims container focus too: the focused list is
         // the one arrow keys drive, matching Apple Mail's ring-follows-focus.
         listKeyboardFocus = true
         #endif
-        navigation.selectMessage(header, from: navigationHeaders(for: headers))
+        navigation.selectMessage(
+            header,
+            from: navigationHeaders(for: headers),
+            expandsSelectedMessage: expandsSelectedMessage
+        )
         onSelectMessage?(header)
     }
 
@@ -4057,10 +4077,13 @@ struct MessageListRow: View {
     @ScaledMetric(relativeTo: .body) private var unreadDotSize: CGFloat = 10
     @ScaledMetric(relativeTo: .body) private var scaledSelectionCircleSize: CGFloat = 22
     @ScaledMetric(relativeTo: .body) private var scaledSelectionTargetSize: CGFloat = 44
+    #else
+    private var unreadDotSize: CGFloat {
+        max(7, textSize.listTitlePointSize * 0.6)
+    }
     #endif
 
-    /// Whether this platform marks unread rows with iOS Mail's leading dot (the phone)
-    /// instead of the desktop's thin bar.
+    /// Whether the sender weight reinforces the unread marker on this platform.
     private var usesUnreadDot: Bool {
         #if os(iOS)
         true
@@ -4073,7 +4096,7 @@ struct MessageListRow: View {
         #if os(iOS)
         scaledSelectionCircleSize
         #else
-        20
+        Self.macOSSelectionControlWidth
         #endif
     }
 
@@ -4184,6 +4207,24 @@ struct MessageListRow: View {
         self.onToggleThread = onToggleThread
     }
 
+    private static let macOSSelectionControlWidth: CGFloat = 20
+
+    static func textColumnLeadingInset(
+        isInSelectionMode: Bool,
+        showAvatar: Bool,
+        textSize: MailboxTextSize,
+        density: MailboxListDensity
+    ) -> CGFloat {
+        let unreadDotSize = max(7, textSize.listTitlePointSize * 0.6)
+        let selectionControlInset = isInSelectionMode
+            ? macOSSelectionControlWidth + BrevSpacing.sm
+            : 0
+        let avatarInset = showAvatar
+            ? density.avatarSize + BrevSpacing.sm
+            : 0
+        return BrevSpacing.md + selectionControlInset + unreadDotSize + BrevSpacing.sm + avatarInset
+    }
+
     var body: some View {
         let contentPresentation = MessageListRowContentPolicy.presentation(
             isCompactWidth: isCompactWidth,
@@ -4257,6 +4298,7 @@ struct MessageListRow: View {
                             .previewLineCount)
                 }
             }
+            .alignmentGuide(.listRowSeparatorLeading) { $0[.leading] }
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.vertical, isCompactWidth ? max(12, density.verticalPadding) : density.verticalPadding)
@@ -4264,78 +4306,71 @@ struct MessageListRow: View {
         // Rows hid the list separator, so length alone separated them and long
         // snippets merged into one block. A hairline keeps the continuous
         // surface while giving the eye a stopping point.
-        .overlay(alignment: .bottom) {
-            if !isSelected {
-                Rectangle()
-                    .fill(theme.separator.color)
-                    .frame(height: 0.5)
-                    .padding(.leading, BrevSpacing.md)
+        #if os(macOS)
+            .overlay(alignment: .bottom) {
+                if !isSelected {
+                    Rectangle()
+                        .fill(theme.separator.color)
+                        .frame(height: 0.5)
+                        .padding(.leading, BrevSpacing.md)
+                }
             }
-        }
-        .overlay(alignment: .leading) {
-            if isSelected {
-                RoundedRectangle(cornerRadius: 1)
-                    .fill(selectionPalette.indicator.color)
-                    .frame(width: 2)
-                    .padding(.vertical, BrevSpacing.xs)
-                    .padding(.leading, BrevSpacing.xxs)
+        #endif
+            .contentShape(Rectangle())
+            .coordinateSpace(name: Self.rowCoordinateSpace)
+            .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
+                threadToggleFrame = frame
             }
-        }
-        .contentShape(Rectangle())
-        .coordinateSpace(name: Self.rowCoordinateSpace)
-        .onPreferenceChange(MessageListThreadTogglePreference.self) { frame in
-            threadToggleFrame = frame
-        }
-        .highPriorityGesture(
-            SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
-                .onEnded { value in
-                    #if canImport(AppKit)
-                    // Secondary clicks arrive here too and would otherwise run
-                    // the primary action, swallowing the context menu. Platform
-                    // convention selects the row under the pointer instead.
-                    if NSApp.currentEvent?.type == .rightMouseUp {
-                        if !isSelected {
-                            onActivate()
-                        }
-                        return
-                    }
-                    #endif
-                    switch MessageListRowTapRouting.destination(
-                        for: value.location,
-                        threadToggleFrame: threadToggleFrame
-                    ) {
-                    case .toggleThread:
-                        onToggleThread()
-                    case .activate:
+            .highPriorityGesture(
+                SpatialTapGesture(coordinateSpace: .named(Self.rowCoordinateSpace))
+                    .onEnded { value in
                         #if canImport(AppKit)
-                        let flags = NSApp.currentEvent?.modifierFlags ?? []
-                        if let onModifiedClick,
-                           let modifier = MessageListClickModifier(
-                               command: flags.contains(.command),
-                               shift: flags.contains(.shift)
-                           ) {
-                            onModifiedClick(modifier)
+                        // Secondary clicks arrive here too and would otherwise run
+                        // the primary action, swallowing the context menu. Platform
+                        // convention selects the row under the pointer instead.
+                        if NSApp.currentEvent?.type == .rightMouseUp {
+                            if !isSelected {
+                                onActivate()
+                            }
                             return
                         }
                         #endif
-                        onActivate()
+                        switch MessageListRowTapRouting.destination(
+                            for: value.location,
+                            threadToggleFrame: threadToggleFrame
+                        ) {
+                        case .toggleThread:
+                            onToggleThread()
+                        case .activate:
+                            #if canImport(AppKit)
+                            let flags = NSApp.currentEvent?.modifierFlags ?? []
+                            if let onModifiedClick,
+                               let modifier = MessageListClickModifier(
+                                   command: flags.contains(.command),
+                                   shift: flags.contains(.shift)
+                               ) {
+                                onModifiedClick(modifier)
+                                return
+                            }
+                            #endif
+                            onActivate()
+                        }
                     }
-                }
-        )
-        .onHover { isHovered = $0 }
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAddTraits(isInSelectionMode && isChecked ? .isSelected : [])
-        .accessibilityCompactStatusValue(
-            isCompactWidth,
-            value: compactAccessibilityStatusValue
-        )
-        .accessibilityAction(named: "Open", onActivate)
-        .accessibilityThreadToggleAction(
-            isThreadExpanded: isThreadExpanded,
-            isThread: threadCount > 1,
-            action: onToggleThread
-        )
+            )
+            .onHover { isHovered = $0 }
+            .accessibilityElement(children: .combine)
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAddTraits(isInSelectionMode && isChecked ? .isSelected : [])
+            .accessibilityCompactStatusValue(
+                isCompactWidth,
+                value: compactAccessibilityStatusValue
+            )
+            .accessibilityAction(named: "Open", onActivate)
+            .accessibilityThreadToggleAction(
+                isThreadExpanded: isThreadExpanded,
+                isThread: threadCount > 1,
+                action: onToggleThread
+            )
     }
 
     private var compactAccessibilityStatusValue: String {
@@ -4392,52 +4427,30 @@ struct MessageListRow: View {
 
     private var selectionFill: Color { selectionPalette.background.color }
 
-    /// Unread marker: a thin bar in the row's leading gutter.
-    ///
-    /// The row used to open with an 8-point dot beside the avatar — two
-    /// circles competing before any text was read. The bar keeps the gutter
-    /// width stable between read and unread rows, carries the same "Unread"
-    /// label for the combined accessibility element, and leaves colour and
-    /// weight to the subject line.
+    /// The leading accent dot marks unread state without competing with sender
+    /// weight or the subject line.
     @ViewBuilder
     private var unreadMarker: some View {
-        #if os(iOS)
         unreadDot
-        #else
-        unreadBar
-        #endif
     }
 
-    #if os(iOS)
-    /// iOS Mail's unread indicator: a filled accent dot in the leading gutter (audit L2).
-    /// Read rows keep the gutter so text columns line up, but expose no accessibility
-    /// element; compact rows already carry "Unread" in their status value.
+    /// A filled accent dot in the leading gutter.
     private var unreadDot: some View {
         Circle()
             .fill(header.isRead ? Color.clear : theme.accent.color)
             .frame(width: unreadDotSize, height: unreadDotSize)
-            // Centre the dot on the sender's first line, tracking the text size.
+        #if os(iOS)
             .padding(.top, max(0, (senderPointSize * 1.2 - unreadDotSize) / 2))
+        #else
+            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - unreadDotSize) / 2))
+        #endif
             .accessibilityLabel(String(localized: "Unread", bundle: .module))
+        #if os(iOS)
             .accessibilityHidden(header.isRead || isCompactWidth)
-    }
-    #endif
-
-    #if os(macOS)
-    @ViewBuilder
-    private var unreadBar: some View {
-        let width: CGFloat = 3
-        let height = max(12, textSize.listTitlePointSize * 1.1)
-        return RoundedRectangle(cornerRadius: width / 2)
-            .fill(header.isRead ? Color.clear : theme.textPrimary.color)
-            .frame(width: width, height: height)
-            // Align the bar with the sender's first line so it tracks the
-            // mailbox text-size preference.
-            .padding(.top, max(0, (textSize.listTitlePointSize * 1.2 - height) / 2))
-            .accessibilityLabel(String(localized: "Unread", bundle: .module))
+        #else
             .accessibilityHidden(header.isRead)
+        #endif
     }
-    #endif
 
     /// Provider label chips (Gmail labels). `header.labels` is only populated
     /// by backends advertising `.labels`, so an empty set renders nothing and
@@ -4529,35 +4542,27 @@ struct MessageListRow: View {
     ) -> some View {
         HStack(spacing: BrevSpacing.xs) {
             senderIdentityRow(senderMinimumWidth: senderMinimumWidth)
-            metadataDateLabel(dateLabel)
+            metadataTail(dateLabel: dateLabel)
         }
     }
 
     private func stackedSenderMetadata(dateLabel: String) -> some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
             senderIdentityRow(senderMinimumWidth: MessageListSenderPresentation.minimumWidth)
-            metadataDateLabel(dateLabel)
+            metadataTail(dateLabel: dateLabel)
                 .frame(maxWidth: .infinity, alignment: usesAccessibilityLayout ? .leading : .trailing)
         }
     }
 
-    @ViewBuilder
     private func senderIdentityRow(senderMinimumWidth: CGFloat) -> some View {
-        if usesAccessibilityLayout, threadCount > 1 {
-            // At accessibility sizes the thread badge would squeeze the name into
-            // "Marte Solh…"; it moves below the name instead (audit L9).
-            VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-                senderName(minimumWidth: senderMinimumWidth)
-                HStack(spacing: BrevSpacing.xs) {
-                    threadControls
-                }
-            }
-        } else {
-            HStack(spacing: BrevSpacing.xs) {
-                senderName(minimumWidth: senderMinimumWidth)
-                if threadCount > 1 {
-                    threadControls
-                }
+        senderName(minimumWidth: senderMinimumWidth)
+    }
+
+    private func metadataTail(dateLabel: String) -> some View {
+        HStack(spacing: BrevSpacing.xs) {
+            metadataDateLabel(dateLabel)
+            if threadCount > 1 {
+                threadControls
             }
         }
     }
@@ -4584,16 +4589,24 @@ struct MessageListRow: View {
 
     @ViewBuilder
     private var threadControls: some View {
-        Text(verbatim: "\(threadCount)")
-            .font(fontFamily.font(size: metadataPointSize))
-            .foregroundStyle(theme.textSecondary.color)
-            .fixedSize(horizontal: true, vertical: false)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(theme.bgSecondary.color))
-        // Rendered as a plain glyph, not a Button: the row's
-        // high-priority tap gesture wins over nested buttons, so the
-        // tap is routed by hit frame instead.
+        HStack(spacing: BrevSpacing.xs) {
+            Text(verbatim: "\(threadCount)")
+                .font(fontFamily.font(size: metadataPointSize))
+                .foregroundStyle(theme.textSecondary.color)
+                .fixedSize(horizontal: true, vertical: false)
+            #if os(macOS)
+            if isHovered || isSelected {
+                threadToggle
+            } else {
+                Color.clear
+                    .frame(width: usesAccessibilityLayout ? 44 : 18, height: usesAccessibilityLayout ? 44 : 18)
+            }
+            #endif
+        }
+    }
+
+    #if os(macOS)
+    private var threadToggle: some View {
         Image(systemName: isThreadExpanded ? "chevron.down" : "chevron.right")
             .font(fontFamily.font(size: metadataPointSize, weight: .medium))
             .foregroundStyle(isSelected ? selectionPalette.detail.color : theme.textTertiary.color)
@@ -4608,6 +4621,7 @@ struct MessageListRow: View {
                 }
             }
     }
+    #endif
 
     private func metadataDateLabel(_ dateLabel: String) -> some View {
         Text(dateLabel)
@@ -4682,6 +4696,7 @@ struct MessageListRow: View {
 /// `UnifiedInboxListView` so both group by date identically.
 struct MessageListDateSectionHeader: View {
     @Environment(\.brevTheme) private var theme
+    @State private var isHovered = false
     let title: String
     let count: Int
     let isCollapsed: Bool
@@ -4692,7 +4707,7 @@ struct MessageListDateSectionHeader: View {
         let presentation = MessageListPresentation.sectionHeader(title: title)
         if isCollapsible {
             Button(action: onToggle) {
-                headerContent(presentation, showsDisclosure: true)
+                headerContent(presentation, showsDisclosure: isHovered)
             }
             .buttonStyle(.plain)
             .accessibilityLabel(
@@ -4704,6 +4719,7 @@ struct MessageListDateSectionHeader: View {
                 localized: "Double-tap to \(isCollapsed ? "expand" : "collapse") this section",
                 bundle: .module
             ))
+            .onHover { isHovered = $0 }
             .mailDenseListChromeDynamicType()
         } else {
             headerContent(presentation, showsDisclosure: false)
@@ -4737,14 +4753,8 @@ struct MessageListDateSectionHeader: View {
 
             Text(presentation.title)
                 .brevFont(.caption)
+                .fontWeight(.semibold)
                 .foregroundStyle(titleColor(for: presentation.style))
-
-            // The count stays with its label: pushed to the far edge it
-            // lost the connection to the group it counts.
-            Text(verbatim: "· \(count)")
-                .brevFont(.caption)
-                .foregroundStyle(countColor(for: presentation.style))
-                .monospacedDigit()
 
             Spacer(minLength: BrevSpacing.xs)
         }
@@ -4770,12 +4780,6 @@ struct MessageListDateSectionHeader: View {
     }
 
     private func titleColor(
-        for style: MessageListSectionHeaderPresentation.Style
-    ) -> Color {
-        style == .pinned ? theme.accent.color : theme.textTertiary.color
-    }
-
-    private func countColor(
         for style: MessageListSectionHeaderPresentation.Style
     ) -> Color {
         style == .pinned ? theme.accent.color : theme.textTertiary.color
