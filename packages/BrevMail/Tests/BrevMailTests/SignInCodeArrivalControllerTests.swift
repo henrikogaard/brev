@@ -140,6 +140,7 @@ struct SignInCodeArrivalControllerTests {
         #expect(presenter.presented.first?.sender == "Example Login")
         #expect(presenter.presented.first?.timeout == SignInCodeSettings.panelTimeout)
         #expect(backend.bodyReads == ["m1"])
+        #expect(controller.pendingInspectionCount == 0)
     }
 
     @Test("no consent means no assessment and no body read")
@@ -252,6 +253,7 @@ struct SignInCodeArrivalControllerTests {
         )
         await controller.settle()
         #expect(backend.bodyReads.count == SignInCodeArrivalController.maxMessagesPerEvent)
+        #expect(controller.pendingInspectionCount == 0)
     }
 
     @Test("presentations redact themselves and HTML-only bodies are ignored")

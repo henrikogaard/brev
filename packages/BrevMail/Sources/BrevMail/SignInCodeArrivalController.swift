@@ -69,7 +69,9 @@ public final class SignInCodeArrivalController {
 
     private let settings: () -> SignInCodeSettings
     private let presenter: any SignInCodePresenting
-    private var tasks: [String: [Task<Void, Never>]] = [:]
+    private var tasks: [String: [UUID: Task<Void, Never>]] = [:]
+
+    var pendingInspectionCount: Int { tasks.values.reduce(0) { $0 + $1.count } }
 
     /// - Parameters:
     ///   - settings: Reads the current device-local consent on each check.
@@ -93,8 +95,13 @@ public final class SignInCodeArrivalController {
               let assessor = backend as? any SignInTrustAssessing
         else { return }
         for messageID in messageIDs.prefix(Self.maxMessagesPerEvent) {
+            let taskID = UUID()
             let task = Task { [weak self] in
                 guard let self else { return }
+                defer {
+                    tasks[accountID]?[taskID] = nil
+                    if tasks[accountID]?.isEmpty == true { tasks[accountID] = nil }
+                }
                 await inspect(
                     messageID: messageID,
                     folderID: folderID,
@@ -102,21 +109,21 @@ public final class SignInCodeArrivalController {
                     assessor: assessor
                 )
             }
-            tasks[accountID, default: []].append(task)
+            tasks[accountID, default: [:]][taskID] = task
         }
     }
 
     /// Cancels pending work for the account and hides its panel. Call on
     /// consent changes and account removal.
     public func cancel(accountID: String) {
-        tasks[accountID]?.forEach { $0.cancel() }
+        tasks[accountID]?.values.forEach { $0.cancel() }
         tasks[accountID] = nil
         presenter.dismiss(accountID: accountID)
     }
 
     /// Waits for in-flight inspections to settle (tests).
     public func settle() async {
-        for task in tasks.values.flatMap({ $0 }) {
+        for task in tasks.values.flatMap({ $0.values }) {
             await task.value
         }
     }
@@ -128,6 +135,7 @@ public final class SignInCodeArrivalController {
         assessor: any SignInTrustAssessing
     ) async {
         let accountID = backend.account.id
+        guard !Task.isCancelled, isConsented(accountID) else { return }
         guard let folder = try? await backend.folders().first(where: { $0.id == folderID }),
               folder.role == .inbox
         else { return }
@@ -151,7 +159,12 @@ public final class SignInCodeArrivalController {
         }
         guard !Task.isCancelled else { return }
         let sender = await senderName(for: messageID, in: folder, backend: backend)
-        guard !Task.isCancelled, isConsented(accountID) else { return }
+        guard !Task.isCancelled else { return }
+        let latestConsent = settings().accountOverride(for: accountID)
+        switch content {
+        case .code: guard latestConsent.codesEnabled else { return }
+        case .link: guard latestConsent.linksEnabled else { return }
+        }
         presenter.present(
             SignInCodePresentation(
                 accountID: accountID,

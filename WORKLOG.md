@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #255 arrival corrections
+
+- Recheck the specific code/link consent after asynchronous sender lookup, rather than accepting either consent. Already-cancelled work stops before folder/provider reads.
+- Remove completed task handles so the controller does not retain every past inspection. Added empty-pending assertions and retained the lock-protected test recorder.
+- Verification: targeted format and diff checks before push; updated CI remains mandatory. Regression assertions were added first, but compatible local execution is blocked by the Space toolchain and later network failure; no assertion-level red or local green is claimed.
+- No production owner/caller or advertised provider capability is added. Existing ADR-0088 documents the disabled slice; no user-facing/network activation or additional privacy change.
+
 ## 2026-10-28 — Agent — PR #255 consent regression
 
 - Review found that withdrawing code consent during sender lookup can still present a code when link consent remains enabled. Added a regression at that await boundary before changing production behavior.
