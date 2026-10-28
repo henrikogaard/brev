@@ -233,7 +233,7 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |
 | Synthetic read comparison | `IMAPHeaderReadBaselineTests`, 10k/50k | Passed package CI at `208960eb`, run `40772828311`, BrevSyncEngine job `123114265373`; no runtime/cutover claim | #270 |
 | Formatting and lint of new suite | Pinned SwiftFormat lint and SwiftLint strict on the test file | Passed | Slice 1 |
-| Transactional page-store foundation | `IMAPPageWindowStoreTests`, upgrade and existing store tests | Implemented; package CI pending | Slice 2a |
+| Transactional page-store foundation | `IMAPPageWindowStoreTests`, upgrade and existing store tests | CI at `d9795bb7` failed test compilation before execution; corrected throwing `#require` input, fresh CI pending | #271 |
 | Runtime baseline and UI measurements | Authorized optimized native run | Blocked on Q-1 | Not claimed |
 
 ## Codebase deltas and change log
