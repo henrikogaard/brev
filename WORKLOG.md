@@ -19,6 +19,13 @@
   fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
   per-run approval because they send mail).
 
+## 2026-10-28 — Agent — PR #264 integration review
+
+- Reviewed no-source presentation, settings handoff, source-change visibility, localized copy and snapshot coverage.
+- Integrated main; preserved both sets of changelog and worklog additions. Settings source merged automatically.
+- Verification: diff and conflict-marker checks; updated-head CI must pass before merging. Existing native UI evidence is earlier evidence; no additional local app run for this documentation-only conflict resolution.
+- Documentation sweep: existing changelog covers the behavior; no new privacy, network or architectural decision. No issue closure or branch cleanup.
+
 ## 2026-10-28 — Agent — PR #261 integration review
 
 - Reviewed date-cache bounds, locking, Release test guards, sidebar selection and lazy context menus against current main.
@@ -6419,6 +6426,35 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-25 — Devin — PR #264
+
+- Goal: finish the Calendar, Contacts and Tasks no-sources empty-state pass on
+  `fix/pim-empty-states`.
+- Changes: wired macOS actions to open Calendar & Contacts Settings at the
+  requested pane; hide the middle/list and search chrome when no sources exist;
+  paint the theme background on all surfaces; keep the iOS action at a 44-point
+  minimum. The English/Norwegian Bokmål catalog and CHANGELOG entries are
+  included. No split-view restructuring was needed.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed after the last
+  code change. `PIMNativeChromePresentationTests` passed 18/18. The six changed
+  iOS no-source baselines were limited to three Calendar native-chrome variants
+  (Light, Dark, AX3) and three compact PIM root covers (Calendar, Contacts,
+  Tasks). `ios-pim-root-after-record.xcresult` passed 3/3; the native-chrome
+  rerun passed its dynamic test across three variants. The mock app and required
+  screenshots are saved under `~/evidence/pim-empty/` (macOS
+  Calendar/Contacts/Tasks in Light and Dark, iOS Calendar in Light and Dark,
+  Settings on Calendar & Contacts, and Norwegian Calendar).
+- Localization: the requested `open -n` launch left the Calendar empty-state
+  copy in English. The direct test-binary launch with `-AppleLanguages "(nb)"`
+  rendered `Ingen kalendere` with the translated message and action.
+- Skips/limits: no full suites or CI watch per scope; live iOS accessibility
+  frame measurement remains unavailable, though `.frame(minHeight: 44)` and the
+  presentation test cover the target. The optional `origin/main` comparison
+  screenshot was not taken. No board transition was made because the PR
+  description has no issue ID; intended status is In review.
+- Handoff: PR #264 description, CI and merge decision stay with the lead and
+  Henrik.
 
 ## 2026-10-22 — Agent — Mail-list selection CPU
 

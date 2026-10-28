@@ -13,11 +13,7 @@
 import BrevSettings
 import Foundation
 
-/// Copy and destination for the Calendar, Contacts and Tasks "nothing is
-/// connected" empty state (audit finding P1).
-///
-/// All three surfaces are fed by the same Settings pane, so they share one
-/// destination and one button title; only the sentence differs per surface.
+/// Copy and destination for the Calendar, Contacts and Tasks empty states.
 enum PIMNoSourcesPresentation {
     /// The PIM surface the empty state belongs to.
     enum Kind: CaseIterable {
@@ -26,7 +22,7 @@ enum PIMNoSourcesPresentation {
         case tasks
     }
 
-    /// Title, explanation and button title for one surface.
+    /// Title, explanation and action title for one surface.
     struct Copy: Equatable {
         let title: String
         let message: String
@@ -36,64 +32,35 @@ enum PIMNoSourcesPresentation {
     /// The Settings pane that connects calendar, contacts and task sources.
     static let settingsSection: SettingsSection = .calendarContacts
 
-    /// - Parameters:
-    ///   - kind: The surface showing the empty state.
-    ///   - usesCategorySettings: True when Settings shows the category sidebar
-    ///     (regular width), where the pane sits under "Accounts & Connections".
-    ///     Compact Settings lists the pane directly.
-    static func copy(for kind: Kind, usesCategorySettings: Bool) -> Copy {
-        Copy(
-            title: title(for: kind),
-            message: message(for: kind, usesCategorySettings: usesCategorySettings),
-            actionTitle: String(localized: "Open Calendar & Contacts Settings", bundle: .module)
-        )
-    }
-
-    private static func title(for kind: Kind) -> String {
+    /// Returns the copy for the surface showing the empty state.
+    static func copy(for kind: Kind) -> Copy {
         switch kind {
         case .calendar:
-            String(localized: "No calendars connected", bundle: .module)
+            Copy(
+                title: String(localized: "No Calendars", bundle: .module),
+                message: String(
+                    localized: "Connect a calendar account to see your events here.",
+                    bundle: .module
+                ),
+                actionTitle: String(localized: "Connect a Calendar…", bundle: .module)
+            )
         case .contacts:
-            String(localized: "No contacts sources connected", bundle: .module)
+            Copy(
+                title: String(localized: "No Address Books", bundle: .module),
+                message: String(
+                    localized: "Connect a contacts account to see people here.",
+                    bundle: .module
+                ),
+                actionTitle: String(localized: "Connect Contacts…", bundle: .module)
+            )
         case .tasks:
-            String(localized: "No tasks sources connected", bundle: .module)
-        }
-    }
-
-    private static func message(for kind: Kind, usesCategorySettings: Bool) -> String {
-        switch (kind, usesCategorySettings) {
-        case (.calendar, false):
-            String(
-                localized: "Connect a calendar in Settings → Calendar & Contacts to see events here.",
-                bundle: .module
-            )
-        case (.calendar, true):
-            String(
-                localized:
-                "Connect a calendar in Settings → Accounts & Connections → Calendar & Contacts to see events here.",
-                bundle: .module
-            )
-        case (.contacts, false):
-            String(
-                localized: "Connect a contacts source in Settings → Calendar & Contacts to see people here.",
-                bundle: .module
-            )
-        case (.contacts, true):
-            String(
-                localized:
-                "Connect a contacts source in Settings → Accounts & Connections → Calendar & Contacts to see people here.",
-                bundle: .module
-            )
-        case (.tasks, false):
-            String(
-                localized: "Connect a tasks source in Settings → Calendar & Contacts to see tasks here.",
-                bundle: .module
-            )
-        case (.tasks, true):
-            String(
-                localized:
-                "Connect a tasks source in Settings → Accounts & Connections → Calendar & Contacts to see tasks here.",
-                bundle: .module
+            Copy(
+                title: String(localized: "No Task Lists", bundle: .module),
+                message: String(
+                    localized: "Connect an account with task lists to see your tasks here.",
+                    bundle: .module
+                ),
+                actionTitle: String(localized: "Connect Task Lists…", bundle: .module)
             )
         }
     }
