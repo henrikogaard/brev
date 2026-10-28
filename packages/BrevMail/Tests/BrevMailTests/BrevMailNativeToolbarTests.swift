@@ -276,8 +276,8 @@ struct BrevMailNativeToolbarTests {
             .map(\.rawValue)
 
         #expect(identifiers == [
-            "app.brev.mail.compose",
             "NSToolbarFlexibleSpaceItem",
+            "app.brev.mail.compose",
             "app.brev.mail.reply",
             "app.brev.mail.archive",
             "app.brev.mail.delete",
