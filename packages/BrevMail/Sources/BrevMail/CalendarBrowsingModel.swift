@@ -27,11 +27,17 @@ public final class CalendarBrowsingModel {
     /// One day bucket in the agenda list.
     public struct DaySection: Identifiable, Hashable, Sendable {
         public let id: String
-        /// Start-of-day in the display zone; nil buckets undated events.
+        /// Start-of-day in the display zone; nil buckets undated rows.
         public let day: Date?
-        public var events: [PIMEvent]
+        /// Occurrence rows — projected series members and raw records
+        /// alike (ADR-0089).
+        public var events: [PIMEventOccurrence]
 
-        public init(id: String, day: Date?, events: [PIMEvent]) {
+        public init(
+            id: String,
+            day: Date?,
+            events: [PIMEventOccurrence]
+        ) {
             self.id = id
             self.day = day
             self.events = events
@@ -80,10 +86,23 @@ public final class CalendarBrowsingModel {
 
     /// Local-only query over the cached event fields.
     public var searchText = ""
-    /// Selection shared between the agenda and the detail pane.
-    public var selectedEventID: PIMEvent.ID?
+    /// Selection shared between the agenda and the detail pane —
+    /// an occurrence row ID, never a bare record assumption (ADR-0089).
+    public var selectedOccurrenceID: PIMEventOccurrence.ID? {
+        didSet {
+            syncRetainedSelection()
+            if selectedOccurrenceID != nil { deepLinkNotice = nil }
+        }
+    }
+
     /// The active layout for the leading column.
-    public var viewMode: ViewMode = .agenda
+    public var viewMode: ViewMode = .agenda {
+        didSet {
+            deepLinkNotice = nil
+            recomputeProjection()
+        }
+    }
+
     /// The anchor date the day/week/month grids navigate around.
     /// Always a start-of-day in the display zone.
     public private(set) var selectedDay: Date
@@ -100,6 +119,16 @@ public final class CalendarBrowsingModel {
     /// cache is loaded before they reveal so a cold window cannot
     /// report a miss on data it never read.
     private var didLoad = false
+    /// The bounded read model over `events` for the active interval
+    /// (ADR-0089) — recomputed once per load/navigation, never per cell.
+    public private(set) var projection = PIMOccurrenceProjection(
+        interval: DateInterval(start: .distantPast, end: .distantPast),
+        occurrences: [],
+        incompleteSeries: []
+    )
+    /// The last resolved occurrence for the selection; survives
+    /// navigating the interval away from it.
+    private var retainedOccurrence: PIMEventOccurrence?
 
     /// - Parameters:
     ///   - coordinator: Source registry; nil in sessions without PIM.
@@ -124,36 +153,39 @@ public final class CalendarBrowsingModel {
 
     // MARK: - Derived state
 
-    /// Events the agenda shows: hidden collections excluded, search
-    /// applied, sorted by start. An event whose collection has no
+    /// Occurrence rows the surfaces show: hidden collections excluded,
+    /// search applied, sorted by start. A row whose collection has no
     /// discovery record still shows — it was synced while visible.
-    public var visibleEvents: [PIMEvent] {
+    public var visibleOccurrences: [PIMEventOccurrence] {
         let hiddenCollectionIDs = Set(
             collectionsBySource.values.flatMap { $0 }
                 .filter { !$0.isVisible }
                 .map(\.id)
         )
-        return events.filter {
-            !hiddenCollectionIDs.contains($0.collectionID)
-                && CalendarEventPresentation.matches($0, query: searchText)
+        return projection.occurrences.filter {
+            !hiddenCollectionIDs.contains($0.event.collectionID)
+                && CalendarEventPresentation.matches(
+                    $0.event,
+                    query: searchText
+                )
         }
     }
 
-    /// Agenda sections in chronological order; undated events trail the
+    /// Agenda sections in chronological order; undated rows trail the
     /// dated sections rather than being dropped.
     public var days: [DaySection] {
         var order: [Date] = []
-        var byDay: [Date: [PIMEvent]] = [:]
-        var undated: [PIMEvent] = []
-        for event in visibleEvents {
+        var byDay: [Date: [PIMEventOccurrence]] = [:]
+        var undated: [PIMEventOccurrence] = []
+        for occurrence in visibleOccurrences {
             if let day = CalendarEventPresentation.dayStart(
-                for: event,
+                for: occurrence,
                 calendar: calendar
             ) {
                 if byDay[day] == nil { order.append(day) }
-                byDay[day, default: []].append(event)
+                byDay[day, default: []].append(occurrence)
             } else {
-                undated.append(event)
+                undated.append(occurrence)
             }
         }
         var sections = order.sorted().map { day in
@@ -173,21 +205,23 @@ public final class CalendarBrowsingModel {
 
     // MARK: - Grid navigation
 
-    /// The events covering one day — hidden collections and the search
-    /// query applied, all-day first then chronological.
-    public func events(onDay day: Date) -> [PIMEvent] {
+    /// The occurrences covering one day — hidden collections and the
+    /// search query applied, all-day first then chronological.
+    public func events(onDay day: Date) -> [PIMEventOccurrence] {
         CalendarGridLayout.events(
-            visibleEvents,
+            visibleOccurrences,
             onDay: day,
             calendar: calendar
         )
     }
 
-    /// The all-day events covering one day — the grid views pin these
-    /// above the hour lanes.
-    public func allDayEvents(onDay day: Date) -> [PIMEvent] {
+    /// The all-day occurrences covering one day — the grid views pin
+    /// these above the hour lanes.
+    public func allDayEvents(
+        onDay day: Date
+    ) -> [PIMEventOccurrence] {
         CalendarGridLayout.allDayEvents(
-            visibleEvents,
+            visibleOccurrences,
             onDay: day,
             calendar: calendar
         )
@@ -199,7 +233,7 @@ public final class CalendarBrowsingModel {
         onDay day: Date
     ) -> [CalendarGridLayout.LanePlacement] {
         CalendarGridLayout.timedLanes(
-            visibleEvents,
+            visibleOccurrences,
             onDay: day,
             calendar: calendar
         )
@@ -225,7 +259,10 @@ public final class CalendarBrowsingModel {
     public var rangeTitle: String {
         switch viewMode {
         case .agenda:
-            String(localized: "Agenda", bundle: .module)
+            CalendarGridLayout.agendaTitle(
+                covering: activeInterval,
+                calendar: calendar
+            )
         case .day:
             CalendarGridLayout.dayTitle(
                 for: selectedDay,
@@ -244,10 +281,11 @@ public final class CalendarBrowsingModel {
         }
     }
 
-    /// Whether the previous/next/today controls apply to the active
-    /// mode — the agenda has no date anchor, so they hide there.
+    /// Whether the previous/next/today controls apply — every mode has
+    /// a bounded, navigable interval now (ADR-0089): the agenda steps
+    /// its 30-day window.
     public var showsDateNavigation: Bool {
-        viewMode != .agenda
+        true
     }
 
     /// Steps the anchor one day, week, or month back per the active mode.
@@ -262,32 +300,46 @@ public final class CalendarBrowsingModel {
 
     /// Returns the anchor to today in the display zone.
     public func goToToday() {
+        deepLinkNotice = nil
         selectedDay = calendar.startOfDay(for: now())
+        recomputeProjection()
     }
 
     /// Moves the anchor to a specific day — a month-cell tap lands here
     /// before the view switches to the day layout.
     public func selectDay(_ day: Date) {
+        deepLinkNotice = nil
         selectedDay = calendar.startOfDay(for: day)
+        recomputeProjection()
     }
 
     private func move(by direction: Int) {
-        let component: Calendar.Component
+        deepLinkNotice = nil
         switch viewMode {
-        case .agenda, .day:
-            component = .day
-        case .week:
-            component = .weekOfYear
-        case .month:
-            component = .month
+        case .agenda:
+            // The agenda steps its whole displayed window.
+            if let next = calendar.date(
+                byAdding: .day,
+                value: direction * 30,
+                to: selectedDay
+            ) {
+                selectedDay = calendar.startOfDay(for: next)
+            }
+        case .day, .week, .month:
+            let component: Calendar.Component = switch viewMode {
+            case .day: .day
+            case .week: .weekOfYear
+            default: .month
+            }
+            if let next = calendar.date(
+                byAdding: component,
+                value: direction,
+                to: selectedDay
+            ) {
+                selectedDay = calendar.startOfDay(for: next)
+            }
         }
-        if let next = calendar.date(
-            byAdding: component,
-            value: direction,
-            to: selectedDay
-        ) {
-            selectedDay = calendar.startOfDay(for: next)
-        }
+        recomputeProjection()
     }
 
     /// The most recent cache write across loaded events — the "Updated"
@@ -387,6 +439,7 @@ public final class CalendarBrowsingModel {
         }
         await loadCollections()
         await loadEvents()
+        recomputeProjection()
         reconcileSelection()
     }
 
@@ -403,7 +456,7 @@ public final class CalendarBrowsingModel {
     public func revealEvent(id: PIMEvent.ID) async {
         if !didLoad { await load() }
         guard let event = events.first(where: { $0.id == id }) else {
-            selectedEventID = nil
+            selectedOccurrenceID = nil
             deepLinkNotice = String(
                 localized:
                 "That event is no longer synced. It may have been deleted or its calendar source removed.",
@@ -413,12 +466,21 @@ public final class CalendarBrowsingModel {
         }
         deepLinkNotice = nil
         searchText = ""
-        selectedEventID = event.id
         if let day = CalendarEventPresentation.dayStart(
             for: event,
             calendar: calendar
         ) {
             selectedDay = day
+        }
+        recomputeProjection()
+        // A supported series master reveals at its index-0 occurrence;
+        // every other record selects its raw row (ADR-0089).
+        if let firstOccurrence = projection.occurrences.first(where: {
+            $0.event.id == event.id && $0.occurrenceIndex == 0
+        }) {
+            selectedOccurrenceID = firstOccurrence.id
+        } else {
+            selectedOccurrenceID = event.id
         }
     }
 
@@ -521,14 +583,146 @@ public final class CalendarBrowsingModel {
             ?? String(localized: "Disconnected source", bundle: .module)
     }
 
+    /// Hides the deep-link miss notice. Navigation and a new selection
+    /// also clear it, so it never outlives the link that caused it.
+    public func dismissDeepLinkNotice() {
+        deepLinkNotice = nil
+    }
+
+    /// The selected occurrence: live from the projection when the row
+    /// is inside the active interval, else the retained snapshot so
+    /// navigating away never loses the selection (ADR-0089 §4).
+    public var selectedOccurrence: PIMEventOccurrence? {
+        guard let selectedOccurrenceID else { return nil }
+        if let live = projection.occurrences.first(where: {
+            $0.id == selectedOccurrenceID
+        }) {
+            return live
+        }
+        return retainedOccurrence
+    }
+
+    /// Why a series is not fully projected, for the detail pane's
+    /// coverage note. Nil when the record is not an incomplete master.
+    public func incompleteSeriesReason(
+        for event: PIMEvent
+    ) -> PIMRecurrenceUnsupportedReason? {
+        projection.incompleteSeries.first {
+            $0.event.id == event.id
+        }?.reason
+    }
+
+    /// The bounded interval the projection covers for the active mode:
+    /// the selected day, the displayed week, the full month grid, or
+    /// the agenda's navigable 30-day window.
+    private var activeInterval: DateInterval {
+        switch viewMode {
+        case .agenda:
+            let start = calendar.startOfDay(for: selectedDay)
+            let end = calendar.date(
+                byAdding: .day,
+                value: 30,
+                to: start
+            ) ?? start
+            return DateInterval(start: start, end: end)
+        case .day:
+            let start = calendar.startOfDay(for: selectedDay)
+            let end = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: start
+            ) ?? start
+            return DateInterval(start: start, end: end)
+        case .week:
+            let start = selectedWeekDays.first
+                ?? calendar.startOfDay(for: selectedDay)
+            let end = calendar.date(
+                byAdding: .day,
+                value: 7,
+                to: start
+            ) ?? start
+            return DateInterval(start: start, end: end)
+        case .month:
+            let weeks = selectedMonthWeeks
+            let start = weeks.first?.first?.day
+                ?? calendar.startOfDay(for: selectedDay)
+            let last = weeks.last?.last?.day ?? start
+            let end = calendar.date(
+                byAdding: .day,
+                value: 1,
+                to: last
+            ) ?? last
+            return DateInterval(start: start, end: end)
+        }
+    }
+
+    private func recomputeProjection() {
+        projection = PIMOccurrenceProjector.project(
+            events,
+            in: activeInterval
+        )
+    }
+
     // MARK: - Selection
+
+    /// The authoritative record ID behind an occurrence row ID —
+    /// projected IDs carry a `|occ|` suffix on the master record ID.
+    private static func recordID(for occurrenceID: String) -> String {
+        occurrenceID.components(separatedBy: "|occ|").first
+            ?? occurrenceID
+    }
+
+    /// Keeps the retained snapshot in step with selection changes:
+    /// refreshed when the row resolves in the current projection,
+    /// cleared with the selection, untouched while the row is simply
+    /// outside the displayed interval.
+    private func syncRetainedSelection() {
+        guard let selectedOccurrenceID else {
+            retainedOccurrence = nil
+            return
+        }
+        if let live = projection.occurrences.first(where: {
+            $0.id == selectedOccurrenceID
+        }) {
+            retainedOccurrence = live
+        }
+    }
 
     /// Drops a stale selection after reloads; never auto-selects — the
     /// detail pane shows a placeholder until the user picks an event.
     private func reconcileSelection() {
-        guard let selectedEventID else { return }
-        if !events.contains(where: { $0.id == selectedEventID }) {
-            self.selectedEventID = nil
+        guard let selectedOccurrenceID else { return }
+        let recordID = Self.recordID(for: selectedOccurrenceID)
+        guard let record = events.first(where: { $0.id == recordID })
+        else {
+            self.selectedOccurrenceID = nil
+            retainedOccurrence = nil
+            return
+        }
+        if let live = projection.occurrences.first(where: {
+            $0.id == selectedOccurrenceID
+        }) {
+            retainedOccurrence = live
+        } else if let retainedOccurrence {
+            // Refresh the snapshot's authoritative record so detail
+            // shows post-sync fields.
+            self.retainedOccurrence = PIMEventOccurrence(
+                id: retainedOccurrence.id,
+                event: record,
+                originalStart: retainedOccurrence.originalStart,
+                start: retainedOccurrence.start,
+                end: retainedOccurrence.end,
+                occurrenceIndex: retainedOccurrence.occurrenceIndex
+            )
+        } else {
+            retainedOccurrence = PIMEventOccurrence(
+                id: record.id,
+                event: record,
+                originalStart: record.start,
+                start: record.start,
+                end: record.end,
+                occurrenceIndex: nil
+            )
         }
     }
 }

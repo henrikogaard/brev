@@ -43,13 +43,13 @@ struct CalendarGridSnapshotTests {
         durationMinutes: Int = 60,
         isAllDay: Bool = false,
         status: PIMEventStatus = .confirmed
-    ) -> PIMEvent {
+    ) -> PIMEventOccurrence {
         let start = utc.date(
             from: DateComponents(
                 year: 2026, month: 9, day: 21, hour: hour, minute: minute
             )
         )!
-        return PIMEvent(
+        let record = PIMEvent(
             id: id,
             sourceID: "s1",
             collectionID: "c1",
@@ -64,6 +64,14 @@ struct CalendarGridSnapshotTests {
             isAllDay: isAllDay,
             status: status,
             syncedAt: monday
+        )
+        return PIMEventOccurrence(
+            id: record.id,
+            event: record,
+            originalStart: record.start,
+            start: record.start,
+            end: record.end,
+            occurrenceIndex: nil
         )
     }
 
@@ -104,7 +112,7 @@ struct CalendarGridSnapshotTests {
         let view = CalendarDayColumn(
             placements: placements,
             collectionFor: { _ in Self.collection },
-            selectedEventID: .constant("e2"),
+            selectedOccurrenceID: .constant("e2"),
             hourHeight: 40,
             showsHourLabels: true
         )
@@ -132,7 +140,7 @@ struct CalendarGridSnapshotTests {
             containing: Self.monday,
             calendar: Self.utc
         )
-        let events: [PIMEvent] = [
+        let events: [PIMEventOccurrence] = [
             Self.event(id: "e1", summary: "Standup", hour: 9),
             Self.event(id: "e2", summary: "Review", hour: 11),
             Self.event(id: "e3", summary: "Lunch", hour: 12),
@@ -150,7 +158,7 @@ struct CalendarGridSnapshotTests {
                 )
             },
             collectionFor: { _ in Self.collection },
-            selectedEventID: .constant(nil),
+            selectedOccurrenceID: .constant(nil),
             onSelectDay: { _ in },
             now: Self.monday
         )

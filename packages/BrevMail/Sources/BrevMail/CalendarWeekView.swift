@@ -31,14 +31,14 @@ public struct CalendarWeekView: View {
 
     /// The week's seven day-starts, first-weekday aware.
     let days: [Date]
-    /// All-day events per day, resolved by the caller.
-    let allDayFor: (Date) -> [PIMEvent]
-    /// Lane-placed timed events per day, resolved by the caller.
+    /// All-day occurrences per day, resolved by the caller.
+    let allDayFor: (Date) -> [PIMEventOccurrence]
+    /// Lane-placed timed occurrences per day, resolved by the caller.
     let lanesFor: (Date) -> [CalendarGridLayout.LanePlacement]
     /// Resolves an event's collection for the block color.
     let collectionFor: (PIMEvent) -> PIMCollection?
-    /// Selection shared with the detail pane.
-    @Binding var selectedEventID: PIMEvent.ID?
+    /// Selection shared with the detail pane — an occurrence row ID.
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
     /// Tapping a day header lands here — the root view switches to the
     /// day layout.
     let onSelectDay: (Date) -> Void
@@ -47,10 +47,10 @@ public struct CalendarWeekView: View {
 
     public init(
         days: [Date],
-        allDayFor: @escaping (Date) -> [PIMEvent],
+        allDayFor: @escaping (Date) -> [PIMEventOccurrence],
         lanesFor: @escaping (Date) -> [CalendarGridLayout.LanePlacement],
         collectionFor: @escaping (PIMEvent) -> PIMCollection? = { _ in nil },
-        selectedEventID: Binding<PIMEvent.ID?>,
+        selectedOccurrenceID: Binding<PIMEventOccurrence.ID?>,
         onSelectDay: @escaping (Date) -> Void = { _ in },
         now: Date = Date()
     ) {
@@ -58,7 +58,7 @@ public struct CalendarWeekView: View {
         self.allDayFor = allDayFor
         self.lanesFor = lanesFor
         self.collectionFor = collectionFor
-        _selectedEventID = selectedEventID
+        _selectedOccurrenceID = selectedOccurrenceID
         self.onSelectDay = onSelectDay
         self.now = now
     }
@@ -76,7 +76,7 @@ public struct CalendarWeekView: View {
                         CalendarDayColumn(
                             placements: lanesFor(day),
                             collectionFor: collectionFor,
-                            selectedEventID: $selectedEventID,
+                            selectedOccurrenceID: $selectedOccurrenceID,
                             hourHeight: hourHeight,
                             showsHourLabels: false
                         )
@@ -154,13 +154,13 @@ public struct CalendarWeekView: View {
                 .accessibilityHidden(true)
             ForEach(days, id: \.self) { day in
                 VStack(spacing: BrevSpacing.xxs) {
-                    ForEach(allDayFor(day)) { event in
+                    ForEach(allDayFor(day)) { occurrence in
                         CalendarEventChip(
-                            event: event,
-                            collection: collectionFor(event),
-                            isSelected: selectedEventID == event.id
+                            occurrence: occurrence,
+                            collection: collectionFor(occurrence.event),
+                            isSelected: selectedOccurrenceID == occurrence.id
                         ) {
-                            selectedEventID = event.id
+                            selectedOccurrenceID = occurrence.id
                         }
                     }
                 }
