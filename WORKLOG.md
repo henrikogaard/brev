@@ -1,5 +1,44 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #250 trust corrections
+
+- Excluded initial/reconnect reconciliation from fresh-delivery recording, cleared provenance on connect/disconnect and checked connection generation before returning an assessment.
+- Rejected duplicate DMARC tokens and duplicate header.from properties, including duplicates within the same segment.
+- Regression tests were written first. Their first CI attempt exposed a test-call compilation error, corrected separately. Assertion-level red evidence was not obtained before correction: CI remains queued, and the Space became unreachable after its incompatible-toolchain failures. Do not count that attempt as red-green verification.
+- Verification pending updated CI; targeted format and diff checks are run before push. No capability advertisement, production caller, mail send, privacy/network activation, release or issue closure.
+- Documentation sweep: these are corrections to the disabled ADR-0088 implementation, not new user-facing behavior; no additional changelog or privacy-table change is needed.
+
+## 2026-10-28 — Agent — PR #250 trust regression tests
+
+- Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
+- Added regression assertions for both header cases, connect/reconnect exclusion and disconnect invalidation; existing label/time checks now run after a live refresh.
+- Local test attempt in local:mac-12gb is blocked: CommandLineTools lacks the Testing module. Regression execution is delegated to CI, not reported as a red pass. Capability activation remains disabled and no mail was sent.
+- Next: verify the expected CI failure, make the narrow correction, and require a green rerun before merging.
+- First CI attempt did not reach assertions: the new refresh calls omitted the required folder argument. Corrected the test call sites; this compilation failure is not the expected regression evidence.
+
+## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
+
+- Goal: implement the provider-dependent gates of integration slice 1 for
+  Gmail API accounts only (ADR-0088 amendment 2026-10-16), stacked on
+  `docs/adr-0088-gmail-trust` in worktree `brev-signin-trust`
+  (`feature/gmail-signin-trust`, uncommitted).
+- Changed: `SignInTrustFailure`/`SignInTrustAssessment`/`SignInTrustAssessing`
+  + `.trustedSignInAssessment` (extended capability bit 17, never advertised)
+  in BrevBackend; `GmailSignInTrustAssessor`, `GmailFreshDeliveryRegistry`
+  (200-entry, 10-minute, in-memory) and `GmailSyncOutcome`/`syncWithProvenance()`
+  in BrevGmail; `GmailAPIBackend` conforms to `SignInTrustAssessing` with
+  account → registry → label → `internalDate` → metadata-header gates.
+  `correspondents` widened to internal for the assessor's mailbox parse.
+- No panel, detector caller, settings UI, notification, advertised
+  capability, or body fetch; the method is test-reachable only, so
+  `PRIVACY.md` and the ADR-0006 network table intentionally unchanged.
+- Verified: BrevGmail suite + BrevBackend filtered tests green;
+  `scripts/lint.sh`, `scripts/format.sh` (no changes), `git diff --check`,
+  `scripts/privacy-audit.sh` — see counts in the session report.
+- Next: record E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval — they send real mail), then flip the capability on in
+  a later slice.
+
 ## 2026-10-28 — Agent — PR #248 integration review
 
 - Reviewed the scoped Gmail proposal and its explicit E1-E5 activation gate under Henrik's request to prepare and merge the open PRs.

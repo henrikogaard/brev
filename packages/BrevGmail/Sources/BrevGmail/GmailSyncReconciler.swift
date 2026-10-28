@@ -79,6 +79,18 @@ public struct GmailSyncConfiguration: Sendable, Equatable {
     }
 }
 
+/// Result of a reconciliation pass that additionally reports fresh-delivery
+/// provenance (ADR-0088): message IDs that appeared in a `messagesAdded`
+/// history record of an incremental delta and were not deleted in the same
+/// delta. The set is empty for `fullSync()` and for the `fullSyncRequired`
+/// fallback — those paths carry no delivery provenance.
+public struct GmailSyncOutcome: Sendable, Equatable {
+    /// The committed account state.
+    public let state: GmailAccountState
+    /// IDs observed as fresh deliveries in this delta.
+    public let freshDeliveryIDs: Set<String>
+}
+
 /// Builds and atomically commits Gmail account snapshots and history deltas.
 public final class GmailSyncReconciler: @unchecked Sendable {
     private let client: any GmailAPIClientProtocol
@@ -133,6 +145,14 @@ public final class GmailSyncReconciler: @unchecked Sendable {
     /// persisted cursor or cached messages.
     @discardableResult
     public func deltaSync() async throws -> GmailAccountState {
+        try await deltaSyncWithProvenance().state
+    }
+
+    /// Delta sync that additionally reports which message IDs arrived through
+    /// a `messagesAdded` history record and were not deleted in the same
+    /// delta (ADR-0088 fresh-delivery provenance).
+    @discardableResult
+    public func deltaSyncWithProvenance() async throws -> GmailSyncOutcome {
         try Task.checkCancellation()
         guard let current = try await store.accountState(accountID: accountID),
               let historyID = current.historyID,
@@ -156,10 +176,13 @@ public final class GmailSyncReconciler: @unchecked Sendable {
         }
 
         var finalActions: [String: Bool] = [:]
+        var addedIDs = Set<String>()
+        var deletedIDs = Set<String>()
         for page in pages {
             for event in page.history {
                 for change in event.messagesAdded {
                     finalActions[change.message.id] = true
+                    addedIDs.insert(change.message.id)
                 }
                 for change in event.labelsAdded {
                     finalActions[change.message.id] = true
@@ -171,12 +194,14 @@ public final class GmailSyncReconciler: @unchecked Sendable {
                 // event representation for that message.
                 for change in event.messagesDeleted {
                     finalActions[change.message.id] = false
+                    deletedIDs.insert(change.message.id)
                 }
             }
         }
+        let freshDeliveryIDs = addedIDs.subtracting(deletedIDs)
 
         let changedIDs = finalActions.compactMap { $0.value ? $0.key : nil }.sorted()
-        let deletedIDs = finalActions.compactMap { $0.value ? nil : $0.key }.sorted()
+        let removedIDs = finalActions.compactMap { $0.value ? nil : $0.key }.sorted()
         let details = try await fetchDetails(for: changedIDs)
         let currentLabels = try await store.labels(accountID: accountID)
         let labels = try await api { try await client.listLabels() }
@@ -190,7 +215,7 @@ public final class GmailSyncReconciler: @unchecked Sendable {
             upsertedMessages: details.messages,
             // A changed message whose detail fetch returns 404 no longer exists
             // server-side, so it is removed locally instead of aborting the delta.
-            removedMessageIDs: (deletedIDs + details.missingIDs).sorted(),
+            removedMessageIDs: (removedIDs + details.missingIDs).sorted(),
             historyID: finalHistoryID,
             lastDeltaSyncAt: Date()
         )
@@ -199,7 +224,7 @@ public final class GmailSyncReconciler: @unchecked Sendable {
             guard let updated = try await store.accountState(accountID: accountID) else {
                 throw GmailSyncError.store(.accountMismatch)
             }
-            return updated
+            return GmailSyncOutcome(state: updated, freshDeliveryIDs: freshDeliveryIDs)
         } catch let error as GmailSyncError {
             throw error
         } catch let error as GmailAccountStoreError {
@@ -212,11 +237,19 @@ public final class GmailSyncReconciler: @unchecked Sendable {
     /// Chooses a full or delta sync based on the persisted cursor.
     @discardableResult
     public func sync() async throws -> GmailAccountState {
+        try await syncWithProvenance().state
+    }
+
+    /// Chooses a full or delta sync based on the persisted cursor and reports
+    /// which message IDs were fresh deliveries (ADR-0088). A full sync has no
+    /// fresh-delivery provenance, so the set is empty.
+    @discardableResult
+    public func syncWithProvenance() async throws -> GmailSyncOutcome {
         if let historyID = try await store.accountState(accountID: accountID)?.historyID,
            !historyID.isEmpty {
-            return try await deltaSync()
+            return try await deltaSyncWithProvenance()
         }
-        return try await fullSync()
+        return try await GmailSyncOutcome(state: fullSync(), freshDeliveryIDs: [])
     }
 
     private func collectMessageReferences() async throws -> [GmailMessageReference] {
