@@ -831,7 +831,7 @@ public struct FolderSidebar: View {
             title: displayName(for: folder, sourceID: sourceID),
             systemImage: systemImage(for: folder.role),
             unreadCount: folder.unreadCount,
-            isSelected: isSelected(folder, in: sourceID),
+            isSelected: isSelected(folder, in: sourceID, activeFavoriteID: nil),
             depth: row.depth,
             // A folder with children shows its disclosure control instead of a
             // second chevron.
@@ -855,8 +855,11 @@ public struct FolderSidebar: View {
     #if os(macOS)
     @ViewBuilder
     private var sourceTree: some View {
+        let activeFavoriteID = activeDesktopFavoriteID
         VStack(alignment: .leading, spacing: 0) {
-            if !sourceSections.isEmpty { desktopFavoritesSection }
+            if !sourceSections.isEmpty {
+                desktopFavoritesSection(activeFavoriteID: activeFavoriteID)
+            }
             if showsSmartViews, smartViewSettings.showInSidebar {
                 VStack(alignment: .leading, spacing: 0) {
                     smartViewsSection
@@ -871,7 +874,12 @@ public struct FolderSidebar: View {
             if normalizedActiveProfileID == MailProfile.allMailboxesID {
                 // Preserve the existing startup/cache/error presentation while
                 // the all-mailbox workspace is still discovering its sources.
-                folderList(folders: folders, sourceID: nil, loadError: loadError)
+                folderList(
+                    folders: folders,
+                    sourceID: nil,
+                    loadError: loadError,
+                    activeFavoriteID: activeFavoriteID
+                )
             } else {
                 Text(
                     "No available mailboxes in this profile. Check Accounts in Settings or choose another profile.",
@@ -894,7 +902,12 @@ public struct FolderSidebar: View {
             VStack(alignment: .leading, spacing: 0) {
                 mailboxDisclosureHeader(section)
                 if expandedSourceIDs.contains(section.id) {
-                    folderList(folders: section.folders, sourceID: section.id, loadError: section.loadError)
+                    folderList(
+                        folders: section.folders,
+                        sourceID: section.id,
+                        loadError: section.loadError,
+                        activeFavoriteID: activeFavoriteID
+                    )
                 }
             }
         }
@@ -1019,7 +1032,7 @@ public struct FolderSidebar: View {
         return (folder, destination.sourceID)
     }
 
-    private var desktopFavoritesSection: some View {
+    private func desktopFavoritesSection(activeFavoriteID: MailboxFavoriteID?) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
                 Text("Favorites", bundle: .module)
@@ -1034,7 +1047,7 @@ public struct FolderSidebar: View {
                 Button { selectFavorite(favorite.id) } label: {
                     sidebarActionRow(
                         title: [favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: " · "),
-                        isSelected: activeDesktopFavoriteID == favorite.id
+                        isSelected: activeFavoriteID == favorite.id
                     ) {
                         if showSidebarIcons {
                             Image(systemName: favorite.symbol)
@@ -1052,7 +1065,7 @@ public struct FolderSidebar: View {
                 .accessibilityAddTraits(.isButton)
                 .accessibilityLabel([favorite.title, favorite.subtitle].compactMap { $0 }.joined(separator: ", "))
                 .accessibilityValue(favorite.count > 0 ? favorite.countDescription : "")
-                .accessibilityAddTraits(activeDesktopFavoriteID == favorite.id ? .isSelected : [])
+                .accessibilityAddTraits(activeFavoriteID == favorite.id ? .isSelected : [])
                 .help([favorite.title, favorite.subtitle, favorite.count > 0 ? favorite.countDescription : nil]
                     .compactMap { $0 }.joined(separator: "\n"))
                 .dropDestination(for: String.self) { representations, _ in
@@ -1643,7 +1656,8 @@ public struct FolderSidebar: View {
     private func folderList(
         folders: [Folder],
         sourceID: MailSourceID?,
-        loadError: FolderLoadError?
+        loadError: FolderLoadError?,
+        activeFavoriteID: MailboxFavoriteID? = nil
     ) -> some View {
         if let status = FolderSidebarPresentation.status(
             folders: folders,
@@ -1659,11 +1673,11 @@ public struct FolderSidebar: View {
             )
             if let sourceID {
                 ForEach(rows.map { ScopedFolderRow(row: $0, sourceID: sourceID) }) { scoped in
-                    folderRow(scoped.row, sourceID: sourceID)
+                    folderRow(scoped.row, sourceID: sourceID, activeFavoriteID: activeFavoriteID)
                 }
             } else {
                 ForEach(rows) { row in
-                    folderRow(row, sourceID: nil)
+                    folderRow(row, sourceID: nil, activeFavoriteID: activeFavoriteID)
                 }
             }
         }
@@ -1704,7 +1718,8 @@ public struct FolderSidebar: View {
     #if os(macOS)
     private func folderRow(
         _ row: FolderSidebarRow,
-        sourceID: MailSourceID?
+        sourceID: MailSourceID?,
+        activeFavoriteID: MailboxFavoriteID?
     ) -> some View {
         let folder = row.folder
         let title = displayName(for: folder, sourceID: sourceID)
@@ -1742,7 +1757,7 @@ public struct FolderSidebar: View {
             alignment: .leading
         )
         .background {
-            if isSelected(folder, in: sourceID) {
+            if isSelected(folder, in: sourceID, activeFavoriteID: activeFavoriteID) {
                 RoundedRectangle(cornerRadius: FolderSidebarSelectionPresentation.cornerRadius)
                     .fill(folderSelectionColor)
             } else {
@@ -1912,9 +1927,13 @@ public struct FolderSidebar: View {
         BrevSpacing.xs
     }
 
-    private func isSelected(_ folder: Folder, in sourceID: MailSourceID?) -> Bool {
+    private func isSelected(
+        _ folder: Folder,
+        in sourceID: MailSourceID?,
+        activeFavoriteID: MailboxFavoriteID?
+    ) -> Bool {
         #if os(macOS)
-        if activeDesktopFavoriteID != nil { return false }
+        if activeFavoriteID != nil { return false }
         #endif
         return navigation.selectedCollectionFolderID == nil
             && navigation.selectedFolderID == folder.id
