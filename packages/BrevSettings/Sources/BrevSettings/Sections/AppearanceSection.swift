@@ -855,29 +855,25 @@ struct DesktopInterfaceSettings: View {
             subtitle: "",
             symbolName: "textformat.size"
         ) {
-            SettingsSegmentedRow(
+            SettingsEqualWidthSegmentedRow(
                 symbolName: "textformat.size",
                 title: String(localized: "Text size", bundle: .module),
                 subtitle: String(localized: "Applies to sidebars, lists, reading, composing, and settings.", bundle: .module),
-                selection: $textSizeRaw
-            ) {
-                ForEach(MailboxTextSize.allCases) { size in
-                    Text(size.title).tag(size.rawValue)
-                }
-            }
-            SettingsSegmentedRow(
+                selection: $textSizeRaw,
+                segments: MailboxTextSize.allCases.map { SettingsSegment(title: $0.title, value: $0.rawValue) },
+                controlWidth: SettingsLayout.segmentedControlWidth
+            )
+            SettingsEqualWidthSegmentedRow(
                 symbolName: "rectangle.compress.vertical",
                 title: String(localized: "Interface density", bundle: .module),
                 subtitle: String(
                     localized: "Adjust spacing in sidebars, mail views, and settings independently of text size.",
                     bundle: .module
                 ),
-                selection: $densityRaw
-            ) {
-                ForEach(MailboxListDensity.allCases) { density in
-                    Text(density.title).tag(density.rawValue)
-                }
-            }
+                selection: $densityRaw,
+                segments: MailboxListDensity.allCases.map { SettingsSegment(title: $0.title, value: $0.rawValue) },
+                controlWidth: SettingsLayout.segmentedControlWidth
+            )
         }
     }
 }

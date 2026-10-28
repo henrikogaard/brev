@@ -359,8 +359,8 @@ struct BrevMailNativeToolbarBridge: NSViewRepresentable {
 
         func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
             [
-                .brevCompose,
                 .flexibleSpace,
+                .brevCompose,
                 .brevReply,
                 .brevArchive,
                 .brevDelete,

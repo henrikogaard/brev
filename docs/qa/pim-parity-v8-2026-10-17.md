@@ -75,3 +75,36 @@ not #11/#3 acceptance.
 No product code changed. No Google data was created or modified. The Radicale
 QA fixtures remain on the server for the next pass. Radicale (PID 81721) and
 the simulator are left running.
+
+---
+
+## Addendum 2026-10-17 (second session, iOS only)
+
+New evidence from a continuation pass on the same simulator build
+(`Brev Test`, adhoc-signed, same Radicale fixtures). No new versioned
+report per the AGENTS.md rule; these rows changed.
+
+| Row | Platform | Provider | Result | Evidence |
+|---|---|---|---|---|
+| Create a single timed event on the default calendar | iOS | Google | Pass | Sheet "Ny hendelse" accepted a title and default times; the source row then showed "1 hendelser bufret" ([`ios-settings-google-event-cached-after-create.png`](./pim-parity-v8-2026-10-17/ios-settings-google-event-cached-after-create.png)). The stale banner cleared on sync. |
+| Create a daily recurring event (COUNT 5) | iOS | Google | Fail | "Leverandøren returnerte et svar Brev ikke kunne bruke" ([`ios-google-recurring-create-error.png`](./pim-parity-v8-2026-10-17/ios-google-recurring-create-error.png)) |
+| DAV source add with invalid credentials | iOS | Radicale | Not run | Manual-URL field entry not completed; the Norwegian software keyboard mangles `:`/`/` under `idb ui text`, and paste was not reached before the pass ended. Try `simctl pbcopy` + long-press paste, or a mock-mode credential field. |
+
+New observations:
+
+- O17 (defect, fixed): a timed recurring Google event with the editor's
+  default "Lokal (flytende)" zone fails to create. Google requires
+  `timeZone` on recurring events and answers 400, which the writer maps to
+  a generic `invalidResponse`. Fixed in #258 by pinning a floating timed
+  series to the device zone (ADR-0089 write-basis note added).
+- O18: Google's 400 body carries a specific reason but the user sees only
+  "response Brev could not use". Provider error text is dropped; worth a
+  follow-up to surface it.
+- O19: the pre-existing "Stiv CalDAV" stub source showed "Misluktes ·
+  Kilden har ingen lagret legitimasjon" after the app relaunched, matching
+  the documented in-memory credential model for mock-mode builds.
+- The earlier Recurrence rows remain as recorded; #254 (EXDATE merge) had
+  not been retested live in this pass — the simulator build predates it.
+
+Still blocking: macOS AX automation (unchanged), Fetch schedule is Manual,
+no team-signed iOS device.
