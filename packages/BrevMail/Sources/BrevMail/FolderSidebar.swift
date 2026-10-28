@@ -417,15 +417,12 @@ public struct FolderSidebar: View {
 
     // MARK: - iOS Mailboxes list
 
-    /// The Mailboxes screen as an inset-grouped list, like iOS Mail: Favourites,
-    /// Smart Views, the apps, then one collapsible section per account.
+    /// The Mailboxes screen as an inset-grouped list: Favourites and Smart Views,
+    /// apps, then one collapsible Accounts section.
     private var mailboxesList: some View {
         List {
             if !sourceSections.isEmpty {
                 favoritesListSection
-                if showsSmartViews, smartViewSettings.showInSidebar {
-                    smartViewsListSection
-                }
             }
             outboxListSection
             appsListSection
@@ -529,7 +526,7 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var favoritesListSection: some View {
         let favorites = visibleFavorites
-        if !favorites.isEmpty {
+        if !favorites.isEmpty || (showsSmartViews && smartViewSettings.showInSidebar) {
             Section {
                 ForEach(favorites) { favorite in
                     destinationRow(
@@ -552,6 +549,9 @@ public struct FolderSidebar: View {
                         }
                     }
                 }
+                if showsSmartViews, smartViewSettings.showInSidebar {
+                    smartViewsListRows
+                }
             } header: {
                 listSectionHeader(String(localized: "Favourites", bundle: .module))
             }
@@ -561,13 +561,13 @@ public struct FolderSidebar: View {
     // MARK: Smart Views
 
     @ViewBuilder
-    private var smartViewsListSection: some View {
+    private var smartViewsListRows: some View {
         let settings = smartViewSettings
         let isExpanded = FolderSidebarSmartViewPresentation.isExpanded(
             userExpanded: smartViewsUserExpanded,
             hasSelectedSmartView: hasSelectedSmartView
         )
-        Section {
+        Group {
             MailboxDisclosureRow(
                 title: String(localized: "Smart Views", bundle: .module),
                 systemImage: showSidebarIcons ? "rectangle.stack" : nil,
@@ -587,24 +587,18 @@ public struct FolderSidebar: View {
                         hasSelectedSmartView: hasSelectedSmartView
                     )
                 },
-                accessory: {
-                    Menu {
-                        Button(String(localized: "New Smart View", bundle: .module)) {
-                            savedSearchEditorTarget = .create
-                        }
-                        Button(String(localized: "Manage Smart Views", bundle: .module)) {
-                            showsSmartViewSettings = true
-                        }
-                    } label: {
-                        sidebarActionsLabel
-                    }
-                    .buttonStyle(.plain)
-                    .menuIndicator(.hidden)
-                    .accessibilityLabel(String(localized: "Smart View Actions", bundle: .module))
-                }
+                accessory: { EmptyView() }
             )
             .listRowBackground(theme.bgPrimary.color)
-            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.xs))
+            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
+            .contextMenu {
+                Button(String(localized: "New Smart View", bundle: .module)) {
+                    savedSearchEditorTarget = .create
+                }
+                Button(String(localized: "Manage Smart Views", bundle: .module)) {
+                    showsSmartViewSettings = true
+                }
+            }
             if isExpanded {
                 ForEach(settings.orderedEntries.filter(\.isEnabled)) { entry in
                     if let builtInID = entry.builtInID {
@@ -736,8 +730,12 @@ public struct FolderSidebar: View {
     @ViewBuilder
     private var accountListSections: some View {
         if !sourceSections.isEmpty {
-            ForEach(sourceSections) { section in
-                accountListSection(section)
+            Section {
+                ForEach(sourceSections) { section in
+                    accountListRows(section)
+                }
+            } header: {
+                listSectionHeader(String(localized: "Accounts", bundle: .module))
             }
         } else if !profiles.isEmpty, normalizedActiveProfileID != MailProfile.allMailboxesID {
             Section {
@@ -764,49 +762,48 @@ public struct FolderSidebar: View {
         }
     }
 
-    private func accountListSection(_ section: MailSourceSection) -> some View {
+    @ViewBuilder
+    private func accountListRows(_ section: MailSourceSection) -> some View {
         let isExpanded = expandedSourceIDs.contains(section.id)
         let inboxUnread = section.folders.first { $0.role == .inbox }?.unreadCount ?? 0
-        return Section {
-            MailboxDisclosureRow(
-                title: section.title,
-                systemImage: showSidebarIcons
-                    ? (section.account.id == LocalMailBackend.accountID ? "internaldrive" : "envelope")
-                    : nil,
+        MailboxDisclosureRow(
+            title: section.title,
+            systemImage: showSidebarIcons
+                ? (section.account.id == LocalMailBackend.accountID ? "internaldrive" : "envelope")
+                : nil,
+            isExpanded: isExpanded,
+            collapsedCount: section.loadError == nil ? inboxUnread : 0,
+            showsWarning: section.loadError != nil,
+            spokenLabel: "\(section.title), \(section.subtitle)",
+            spokenValue: FolderSidebarAccessibility.accountHeaderValue(
                 isExpanded: isExpanded,
-                collapsedCount: section.loadError == nil ? inboxUnread : 0,
-                showsWarning: section.loadError != nil,
-                spokenLabel: "\(section.title), \(section.subtitle)",
-                spokenValue: FolderSidebarAccessibility.accountHeaderValue(
-                    isExpanded: isExpanded,
-                    unreadCount: inboxUnread
-                ),
-                iconWidth: sidebarMetrics.iconWidth,
-                minHeight: sidebarMetrics.sourceHeaderMinimumHeight,
-                action: {
-                    expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
-                },
-                accessory: { EmptyView() }
-            )
-            .listRowBackground(theme.bgPrimary.color)
-            .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
-            .contextMenu {
-                // The local account's account-level menu (ADR-0077).
-                if section.account.id == LocalMailBackend.accountID,
-                   let onNewLocalFolder {
-                    Button {
-                        onNewLocalFolder()
-                    } label: {
-                        Label(
-                            String(localized: "New Local Folder…", bundle: .module),
-                            systemImage: "folder.badge.plus"
-                        )
-                    }
+                unreadCount: inboxUnread
+            ),
+            iconWidth: sidebarMetrics.iconWidth,
+            minHeight: sidebarMetrics.sourceHeaderMinimumHeight,
+            action: {
+                expandedSourceIDs = FolderSidebarSourceExpansionPolicy.toggling(section.id, in: expandedSourceIDs)
+            },
+            accessory: { EmptyView() }
+        )
+        .listRowBackground(theme.bgPrimary.color)
+        .listRowInsets(EdgeInsets(top: 0, leading: BrevSpacing.md, bottom: 0, trailing: BrevSpacing.md))
+        .contextMenu {
+            // The local account's account-level menu (ADR-0077).
+            if section.account.id == LocalMailBackend.accountID,
+               let onNewLocalFolder {
+                Button {
+                    onNewLocalFolder()
+                } label: {
+                    Label(
+                        String(localized: "New Local Folder…", bundle: .module),
+                        systemImage: "folder.badge.plus"
+                    )
                 }
             }
-            if isExpanded {
-                folderListRows(folders: section.folders, sourceID: section.id, loadError: section.loadError)
-            }
+        }
+        if isExpanded {
+            folderListRows(folders: section.folders, sourceID: section.id, loadError: section.loadError)
         }
     }
 
@@ -2606,7 +2603,7 @@ private struct MailboxDisclosureRow<Accessory: View>: View {
                     }
                     VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                         Text(verbatim: title)
-                            .brevFont(.body).fontWeight(.semibold)
+                            .brevFont(.body).fontWeight(.regular)
                             .foregroundStyle(theme.textPrimary.color)
                             // Two lines so a long account name wraps instead of truncating.
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)

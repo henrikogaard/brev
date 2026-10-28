@@ -358,6 +358,7 @@ struct UnifiedInboxListView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
+                            .environment(\.defaultMinListRowHeight, 1)
                             #if os(macOS)
                                 .scrollClipDisabled()
                             #endif
@@ -822,6 +823,9 @@ struct UnifiedInboxListView: View {
         for presentation: UnifiedInboxPresentationSnapshot
     ) -> MessageListFolderStatsFooterPresentation? {
         guard showFolderStats else { return nil }
+        #if os(iOS)
+        guard horizontalSizeClass != .compact else { return nil }
+        #endif
         // Smart views and saved searches are scoped lists, not inboxes —
         // counting the unified inbox's totals against them reports mail the
         // view can never show. Their scope is the view's own matching items.

@@ -502,6 +502,46 @@ struct PIMEventWriteTests {
         #expect(reminders["useDefault"] as? Bool == false)
     }
 
+    @Test("a floating recurring Google insert is pinned to the device zone")
+    func googleFloatingRecurrenceGetsTimeZone() async throws {
+        let transport = ScriptedTransport(steps: [
+            .response(200, body: #"{"id":"g-2","etag":"\"v1\""}"#),
+            .response(200, body: #"{"id":"g-3","etag":"\"v1\""}"#),
+        ])
+        let writer = GoogleCalendarEventWriter(
+            transport: { try await transport.send($0) },
+            localTimeZone: { TimeZone(identifier: "Europe/Oslo")! }
+        )
+        let collection = PIMCollection(
+            id: "c1", sourceID: "pim-test", kind: .calendar,
+            displayName: "Work", providerKey: "primary"
+        )
+        var recurring = Self.event(
+            collectionID: "c1", uid: "uid-r@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        recurring.recurrenceRule = ICSParser.RecurrenceRule(frequency: .daily, count: 5)
+        recurring.end = Date(timeIntervalSince1970: 1_800_003_600)
+        _ = try await writer.insert(recurring, into: collection, accessToken: "token")
+        let single = Self.event(
+            collectionID: "c1", uid: "uid-s@brev",
+            start: Date(timeIntervalSince1970: 1_800_000_000)
+        )
+        _ = try await writer.insert(single, into: collection, accessToken: "token")
+
+        func startDict(_ index: Int) throws -> [String: Any] {
+            let body = try #require(transport.requests[index].httpBody)
+            let json = try #require(JSONSerialization.jsonObject(with: body) as? [String: Any])
+            return try #require(json["start"] as? [String: Any])
+        }
+        #expect(try startDict(0)["timeZone"] as? String == "Europe/Oslo")
+        let endBody = try #require(transport.requests[0].httpBody)
+        let endJSON = try #require(JSONSerialization.jsonObject(with: endBody) as? [String: Any])
+        #expect((endJSON["end"] as? [String: Any])?["timeZone"] as? String == "Europe/Oslo")
+        // A floating single event keeps Google's own zone handling.
+        #expect(try startDict(1)["timeZone"] == nil)
+    }
+
     @Test("Google patch sends the cached etag as If-Match")
     func googlePatchPrecondition() async throws {
         let transport = ScriptedTransport(steps: [

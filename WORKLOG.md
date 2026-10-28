@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #261 integration review
+
+- Reviewed date-cache bounds, locking, Release test guards, sidebar selection and lazy context menus against current main.
+- Integrated main; resolved only the additive worklog conflict and preserved both histories. Code merged automatically.
+- Verification: diff and conflict-marker checks; updated-head CI is the merge gate. No new local build or UI run, because the integration changes no behavior beyond the reviewed PR. Existing profiling and UI evidence remains earlier evidence.
+- Documentation sweep: no new product, privacy or architecture change; existing PR documentation remains applicable. Do not close issues or delete branches.
+
+## 2026-10-17 — Devin — #11 Google recurring create fix
+
+- Found during the iOS live pass: creating a daily series on the Google
+  calendar with the editor's default "Lokal (flytende)" time zone failed
+  with "Leverandøren returnerte et svar Brev ikke kunne bruke"; a
+  non-recurring event with the same settings saved fine.
+- Cause: Google requires `start.timeZone`/`end.timeZone` on timed recurring
+  events and answers 400, which `GoogleCalendarEventWriter` maps to
+  `invalidResponse`.
+- Changed: the writer pins a floating timed recurring event to the injected
+  `localTimeZone` (device zone by default); single floating events are
+  unchanged.
+- Verified: `swift test --package-path packages/BrevCalendar --filter
+  PIMEventWrite` 39 green (new `googleFloatingRecurrenceGetsTimeZone`);
+  lint/format clean. Live retest pending a rebuilt simulator app.
+- Observation: a 400 from Google surfaces as a generic "response Brev could
+  not use"; the provider's error message is dropped. Not changed here.
+
+## 2026-10-17 — Devin — #11 v8 addendum (iOS Google create + DAV lifecycle attempt)
+
+- Goal: extend v8 with the second-session iOS legs and record the
+  recurring-create defect found live.
+- Changed: addendum table + O17-O19; two screenshots
+  (`ios-google-recurring-create-error`,
+  `ios-settings-google-event-cached-after-create`, both downscaled).
+- Verified: `check-live-evidence-redaction.sh` clean over the evidence dir.
+- Not run: DAV invalid-credential row — Norwegian keyboard mangles URL
+  characters under `idb ui text`; noted the workaround for the next pass.
+
 ## 2026-10-17 — Devin — #11 live parity v8
 
 - Goal: first live pass on the ADR-0089 projection fix against a real
@@ -6404,3 +6440,11 @@ buttons, and package-aware localization.
 - CI evidence: Release compilation reported the Debug-only accessor missing at
   test lines 154 and 168, failing both `snapshot-test` and `test (BrevMail)`.
 - Handoff: this is the single mechanical fix for PR #261; awaiting its rerun.
+
+## 2026-10-22 — Devin — UI polish branch follow-up (no issue number)
+
+- Goal: implement and refine critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
+- Changes: aligned macOS toolbar/thread presentation and equal-width Appearance controls; grouped iOS Mailboxes, polished compose chips and row geometry, and normalized compact Unified Inbox presentation. The AppKit Appearance segmented control now receives the theme accent through `selectedSegmentBezelColor` on updates; the iOS Cc/Bcc accessory retains its 44 pt hit shape while reducing the one-line To row height. Updated Unreleased changelog. Re-recorded only affected Compose, Mailboxes, and Appearance snapshot references.
+- Verification: format and lint passed; macOS and iOS mock builds passed. Focused toolbar (24), Unified Inbox (4), FolderSidebar (41), PhoneMailbox (6 tests/9 cases), and Compose tests passed in prior runs. ComposeViewSnapshotTests passed (3/3) after refreshing only empty/reply references. The BrevSettings macOS surfaces test exercised light and dark; the Appearance references now pass, while 10 snapshots for other surfaces still mismatch on this host. Fresh captures are under `/Users/devin/brev-after/`; the iOS compose capture shows one recipient chip, the keyboard, and a one-line To row comparable in height to From.
+- Limits: the 10 non-Appearance BrevSettings snapshot mismatches were not compared against clean main in this run. Five PhoneMailbox snapshot failures (19 total, 14 passed) were previously reproduced on clean main (`06c7b19`); the full-suite run hung after results and was interrupted with exit 143. No CI watch or PR action.
+- Handoff: parent creates the PR and owns the CI follow-up.
