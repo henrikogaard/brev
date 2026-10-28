@@ -203,7 +203,7 @@ struct RecipientChipField<Accessory: View>: View {
                 .brevFont(.footnote)
                 .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
                 .lineLimit(1)
-                .fixedSize(horizontal: true, vertical: false)
+                .truncationMode(.middle)
             Button {
                 recipients.removeAll { $0 == address }
             } label: {
@@ -240,6 +240,7 @@ struct RecipientChipField<Accessory: View>: View {
                 .brevFont(.footnote)
                 .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
                 .lineLimit(1)
+                .truncationMode(.middle)
             BrevIconButton(
                 systemName: "xmark.circle.fill",
                 accessibilityLabel: "Remove \(address)",
@@ -267,10 +268,7 @@ struct RecipientChipField<Accessory: View>: View {
     }
 
     private var recipientPrompt: Text? {
-        RecipientChipFieldPresentation.promptText(
-            recipientCount: recipients.count
-        )
-        .map { Text($0) }
+        nil
     }
 
     private func selectSuggestion(_ suggestion: RecipientAutocompleteSuggestion) {
@@ -433,10 +431,6 @@ enum RecipientCommitAction: Equatable {
 }
 
 enum RecipientChipFieldPresentation {
-    static func promptText(recipientCount: Int) -> String? {
-        recipientCount == 0 ? "name@example.com" : nil
-    }
-
     /// Comma and semicolon always commit the preceding text as an
     /// address. A space commits only when the text already looks like an
     /// email address — iOS autocorrection appends spaces after partial

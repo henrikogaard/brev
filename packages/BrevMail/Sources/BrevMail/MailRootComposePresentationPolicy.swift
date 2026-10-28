@@ -237,12 +237,11 @@ enum MailRootSettingsToolbarPolicy {
         on surface: MailRootToolbarSurface,
         platform: MailRootToolbarPlatform
     ) -> Bool {
-        // macOS reaches Settings through the app menu (Cmd-,), so the window
-        // chrome carries no Settings control on any surface. iOS has no menu
-        // bar, so the sidebar keeps it as the primary entry point.
+        // macOS reaches Settings through the app menu (Cmd-,). On iOS the
+        // sidebar's leading control provides access without a duplicate item.
         switch surface {
         case .sidebar:
-            platform == .iOS
+            false
         case .messageList, .detail:
             false
         }
