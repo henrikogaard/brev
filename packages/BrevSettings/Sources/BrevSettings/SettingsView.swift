@@ -31,6 +31,7 @@ public struct SettingsView: View {
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
     @State private var navigation: SettingsNavigationState
+    @State private var developerSettings: DeveloperSettings
     /// The pane the compact stack pushes on first appearance (deep link).
     @State private var compactDeepLinkedSection: SettingsSection?
     @State private var selectedPluginContribution: RegisteredContribution?
@@ -48,6 +49,7 @@ public struct SettingsView: View {
     @State private var folderExportController = MailFolderExportController()
     @State private var pimSourceModel: PIMSourceSettingsModel?
     private let mailboxContext: SettingsMailboxContext
+    private let sectionAvailability: SettingsSectionAvailability
 
     private let accountStore: any AccountStore
     private let settingsStore: SettingsPersistenceStore
@@ -106,6 +108,7 @@ public struct SettingsView: View {
     ) {
         self.accountStore = accountStore
         self.mailboxContext = mailboxContext
+        self.sectionAvailability = sectionAvailability
         _selectedSourceID = State(initialValue: mailboxContext.selectedSourceID)
         self.settingsStore = settingsStore
         _interfaceDensityRaw = AppStorage(wrappedValue: MailboxListDensity.platformDefault.rawValue,
@@ -122,14 +125,20 @@ public struct SettingsView: View {
                 accounts: initialAccounts
             )
         )
+        let developerSettings = settingsStore.developerSettings()
+        _developerSettings = State(initialValue: developerSettings)
+        let effectiveAvailability = SettingsDeveloperModePolicy.availability(
+            base: sectionAvailability,
+            showDeveloperSettings: developerSettings.showDeveloperSettings
+        )
         _navigation = State(
             initialValue: SettingsNavigationState(
                 selected: initialSection,
-                availability: sectionAvailability
+                availability: effectiveAvailability
             )
         )
         _compactDeepLinkedSection = State(
-            initialValue: pushesInitialSection ? sectionAvailability.fallback(for: initialSection) : nil
+            initialValue: pushesInitialSection ? effectiveAvailability.fallback(for: initialSection) : nil
         )
         self.allFolders = allFolders
         self.currentFolderSourceID = currentFolderSourceID
@@ -311,11 +320,19 @@ public struct SettingsView: View {
             .navigationDestination(item: $compactDeepLinkedSection) { section in
                 compactPane(for: section)
             }
+            #if os(iOS)
             .searchable(
                 text: $searchText,
-                placement: .automatic,
+                placement: .navigationBarDrawer(displayMode: .automatic),
                 prompt: String(localized: "Search Settings", bundle: .module)
             )
+            #else
+            .searchable(
+                    text: $searchText,
+                    placement: .automatic,
+                    prompt: String(localized: "Search Settings", bundle: .module)
+                )
+            #endif
             #if os(iOS)
             .toolbar { settingsDismissToolbar }
             #endif
@@ -348,8 +365,6 @@ public struct SettingsView: View {
             } header: {
                 if let label = entry.group.headerLabel {
                     Text(label)
-                        .textCase(nil)
-                        .foregroundStyle(theme.textSecondary.color)
                 }
             }
         }
@@ -493,42 +508,46 @@ public struct SettingsView: View {
 
     @ViewBuilder
     private var pluginSettingsGroup: some View {
-        let contributions = BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel)
-        if !contributions.isEmpty {
-            Section {
-                ForEach(contributions) { contribution in
-                    #if os(iOS)
-                    NavigationLink {
-                        if let view = BrevPluginRegistry.shared.view(for: contribution) {
-                            view
-                                .environment(\.brevTheme, theme)
-                                .navigationTitle(contribution.displayName)
+        if SettingsDeveloperModePolicy.showsDeveloperEntries(
+            showDeveloperSettings: developerSettings.showDeveloperSettings
+        ) {
+            let contributions = BrevPluginRegistry.shared.registeredContributions(for: .settingsPanel)
+            if !contributions.isEmpty {
+                Section {
+                    ForEach(contributions) { contribution in
+                        #if os(iOS)
+                        NavigationLink {
+                            if let view = BrevPluginRegistry.shared.view(for: contribution) {
+                                view
+                                    .environment(\.brevTheme, theme)
+                                    .navigationTitle(contribution.displayName)
+                            }
+                        } label: {
+                            pluginSettingsRow(contribution)
                         }
-                    } label: {
-                        pluginSettingsRow(contribution)
+                        .listRowBackground(theme.bgPrimary.color)
+                        #else
+                        Button {
+                            selectedPluginContribution = contribution
+                        } label: {
+                            sidebarRowChrome(
+                                pluginSettingsRow(contribution),
+                                selected: selectedPluginContribution == contribution
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(selectedPluginContribution == contribution ? .isSelected : [])
+                        .listRowInsets(sidebarRowInsets)
+                        #endif
                     }
-                    .listRowBackground(theme.bgPrimary.color)
-                    #else
-                    Button {
-                        selectedPluginContribution = contribution
-                    } label: {
-                        sidebarRowChrome(
-                            pluginSettingsRow(contribution),
-                            selected: selectedPluginContribution == contribution
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityAddTraits(selectedPluginContribution == contribution ? .isSelected : [])
-                    .listRowInsets(sidebarRowInsets)
+                } header: {
+                    Text("Extensions", bundle: .module)
+                        .brevFont(.footnote)
+                        .foregroundStyle(theme.textSecondary.color)
+                    #if os(macOS)
+                        .padding(.leading, BrevSpacing.sm)
                     #endif
                 }
-            } header: {
-                Text("Extensions", bundle: .module)
-                    .brevFont(.footnote)
-                    .foregroundStyle(theme.textSecondary.color)
-                #if os(macOS)
-                    .padding(.leading, BrevSpacing.sm)
-                #endif
             }
         }
     }
@@ -662,7 +681,9 @@ public struct SettingsView: View {
         case .developer:
             DeveloperSection(settingsStore: settingsStore, actions: developerActions)
         case .about:
-            AboutSection()
+            AboutSection(
+                showDeveloperSettings: developerVisibilityBinding
+            )
         }
     }
 
@@ -678,8 +699,10 @@ public struct SettingsView: View {
                 let sections = category.sections(in: navigation.availability)
                 if sections.count > 1 {
                     VStack(alignment: .leading, spacing: BrevSpacing.md) {
+                        #if os(iOS)
                         Text(category.title).brevFont(.headline)
                             .foregroundStyle(theme.textPrimary.color)
+                        #endif
                         ViewThatFits(in: .horizontal) {
                             if !dynamicTypeSize.isAccessibilitySize {
                                 sectionPicker(category: category, sections: sections)
@@ -830,6 +853,14 @@ public struct SettingsView: View {
         mailboxContext.mailboxes.first { $0.id == selectedSourceID }
     }
 
+    private var mailboxScopeSubtitle: String {
+        #if os(macOS)
+        ""
+        #else
+        String(localized: "These settings apply only to the selected mailbox.", bundle: .module)
+        #endif
+    }
+
     @ViewBuilder
     private func settingsScope(for section: SettingsSection) -> some View {
         if section == .mailStorage {
@@ -837,9 +868,11 @@ public struct SettingsView: View {
                 Text(currentAccount?.emailAddress ?? String(localized: "No account selected", bundle: .module))
                     .brevFont(.body)
                     .foregroundStyle(theme.textPrimary.color)
+                #if os(iOS)
                 Text("Storage and repair actions apply to this entire account.", bundle: .module)
                     .brevFont(.footnote)
                     .foregroundStyle(theme.textSecondary.color)
+                #endif
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.horizontal, SettingsLayout.paneHorizontalInset(interfaceDensity))
@@ -848,16 +881,24 @@ public struct SettingsView: View {
         } else if section == .folderSync {
             Group {
                 if mailboxContext.mailboxes.isEmpty {
+                    #if os(macOS)
+                    SettingsRowLabel(
+                        symbolName: "tray",
+                        title: String(localized: "Mailbox", bundle: .module),
+                        subtitle: ""
+                    )
+                    #else
                     SettingsRowLabel(
                         symbolName: "tray",
                         title: String(localized: "Mailbox", bundle: .module),
                         subtitle: String(localized: "Open a mailbox in Mail to choose its settings.", bundle: .module)
                     )
+                    #endif
                 } else {
                     SettingsPickerRow(
                         symbolName: "tray",
                         title: String(localized: "Mailbox", bundle: .module),
-                        subtitle: String(localized: "These settings apply only to the selected mailbox.", bundle: .module),
+                        subtitle: mailboxScopeSubtitle,
                         selection: $selectedSourceID
                     ) {
                         if selectedMailbox == nil {
@@ -940,6 +981,24 @@ public struct SettingsView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, BrevSpacing.lg)
+    }
+
+    private var effectiveSectionAvailability: SettingsSectionAvailability {
+        SettingsDeveloperModePolicy.availability(
+            base: sectionAvailability,
+            showDeveloperSettings: developerSettings.showDeveloperSettings
+        )
+    }
+
+    private var developerVisibilityBinding: Binding<Bool> {
+        Binding(
+            get: { developerSettings.showDeveloperSettings },
+            set: { isEnabled in
+                developerSettings.showDeveloperSettings = isEnabled
+                settingsStore.save(developerSettings)
+                navigation.updateAvailability(effectiveSectionAvailability)
+            }
+        )
     }
 }
 

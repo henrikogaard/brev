@@ -15,26 +15,33 @@ import Foundation
 public struct DeveloperSettings: Codable, Equatable, Sendable {
     enum Key {
         static let demoModeEnabled = "developer.demoModeEnabled"
+        static let showDeveloperSettings = "developer.showDeveloperSettings"
     }
 
     public var demoModeEnabled: Bool
+    public var showDeveloperSettings: Bool
 
-    public static let defaults = DeveloperSettings(demoModeEnabled: false)
+    public static let defaults = DeveloperSettings(demoModeEnabled: false, showDeveloperSettings: false)
 
-    public init(demoModeEnabled: Bool = false) {
+    public init(demoModeEnabled: Bool = false, showDeveloperSettings: Bool = false) {
         self.demoModeEnabled = demoModeEnabled
+        self.showDeveloperSettings = showDeveloperSettings
     }
 
     public static func load(from defaults: UserDefaults = .standard) -> DeveloperSettings {
         DeveloperSettings(
             demoModeEnabled: defaults.object(forKey: Key.demoModeEnabled) != nil
                 ? defaults.bool(forKey: Key.demoModeEnabled)
-                : Self.defaults.demoModeEnabled
+                : Self.defaults.demoModeEnabled,
+            showDeveloperSettings: defaults.object(forKey: Key.showDeveloperSettings) != nil
+                ? defaults.bool(forKey: Key.showDeveloperSettings)
+                : Self.defaults.showDeveloperSettings
         )
     }
 
     public func save(to defaults: UserDefaults = .standard) {
         defaults.set(demoModeEnabled, forKey: Key.demoModeEnabled)
+        defaults.set(showDeveloperSettings, forKey: Key.showDeveloperSettings)
     }
 
     public static func isDemoModeRequested(

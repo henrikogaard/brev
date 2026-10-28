@@ -38,20 +38,18 @@ struct SettingsMailPreview: View {
     }
 
     private var macBody: some View {
-        VStack(alignment: .leading, spacing: BrevSpacing.sm) {
-            Text("Mail preview", bundle: .module)
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
-            VStack(spacing: 0) {
-                sample(sender: String(localized: "Alex Morgan", bundle: .module),
-                       subject: String(localized: "Plans for the weekend", bundle: .module), selected: true)
-                sample(sender: String(localized: "Design team", bundle: .module),
-                       subject: String(localized: "Updated project notes", bundle: .module), selected: false)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: BrevRadius.sm))
-            .overlay {
-                RoundedRectangle(cornerRadius: BrevRadius.sm).stroke(theme.border.color, lineWidth: 1)
-            }
+        VStack(spacing: 0) {
+            sample(
+                sender: String(localized: "Alex Morgan", bundle: .module),
+                subject: String(localized: "Plans for the weekend", bundle: .module),
+                selected: false
+            )
+            Rectangle().fill(theme.separator.color).frame(height: 1)
+            sample(
+                sender: String(localized: "Design team", bundle: .module),
+                subject: String(localized: "Updated project notes", bundle: .module),
+                selected: false
+            )
         }
         .accessibilityElement(children: .combine)
     }
@@ -83,9 +81,11 @@ struct SettingsMailPreview: View {
         .padding(.vertical, verticalPadding)
         .background(selected ? theme.selection.color : theme.bgPrimary.color)
         .overlay(alignment: .leading) {
+            #if os(iOS)
             if selected {
                 Rectangle().fill(theme.textPrimary.color).frame(width: 2)
             }
+            #endif
         }
         #if os(iOS)
         .listRowInsets(EdgeInsets())

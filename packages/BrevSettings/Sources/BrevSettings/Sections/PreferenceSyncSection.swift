@@ -32,10 +32,7 @@ struct PreferenceSyncSection: View {
     private var preferenceSyncGroup: some View {
         SettingsGroup(
             title: String(localized: "iCloud sync", bundle: .module),
-            subtitle: String(
-                localized: "Mirror a small set of preferences between your devices through your own iCloud account.",
-                bundle: .module
-            ),
+            subtitle: preferenceSyncStatus,
             symbolName: "icloud"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -47,11 +44,6 @@ struct PreferenceSyncSection: View {
                         bundle: .module
                     ),
                     isOn: preferenceSyncBinding
-                )
-                SettingsInfoCallout(
-                    symbolName: preferenceSyncSettings.isICloudSyncEnabled ? "icloud.fill" : "icloud.slash",
-                    message: preferenceSyncStatus,
-                    tone: preferenceSyncSettings.isICloudSyncEnabled ? .info : .success
                 )
             }
         }

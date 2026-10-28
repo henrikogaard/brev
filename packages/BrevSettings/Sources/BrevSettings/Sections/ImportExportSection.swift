@@ -159,7 +159,9 @@ struct ImportExportSection: View {
                 #endif
                 exportGroup
                 backupGroup
+                #if os(iOS)
                 privacyNote
+                #endif
             }
         }
         // The app hands this section no folders — nothing upstream keeps a
@@ -296,7 +298,7 @@ struct ImportExportSection: View {
     private var importGroup: some View {
         SettingsGroup(
             title: String(localized: "Import mail", bundle: .module),
-            subtitle: String(localized: "Import MBOX archives or Maildir folders into Brev.", bundle: .module),
+            subtitle: importGroupFooter,
             symbolName: "tray.and.arrow.down"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -314,13 +316,6 @@ struct ImportExportSection: View {
                     .disabled(!canImport)
                 }
 
-                if currentBackend != nil && currentBackend?.extensionService(MailImporting.self) == nil {
-                    SettingsInfoCallout(symbolName: "info.circle",
-                                        message: String(
-                                            localized: "Mail import is not supported by this account yet.",
-                                            bundle: .module
-                                        ), tone: .info)
-                }
                 #if os(iOS)
                 Text("Mail import is currently available on Mac.", bundle: .module)
                     .brevFont(.caption).foregroundStyle(theme.textSecondary.color)
@@ -406,10 +401,7 @@ struct ImportExportSection: View {
     private var exportGroup: some View {
         SettingsGroup(
             title: String(localized: "Export mail", bundle: .module),
-            subtitle: String(
-                localized: "Save the entire folder, including attachments. EML files are grouped in a new folder.",
-                bundle: .module
-            ),
+            subtitle: exportGroupFooter,
             symbolName: "tray.and.arrow.up"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -442,17 +434,6 @@ struct ImportExportSection: View {
                 } else if let error = exportFolderError {
                     SettingsInfoCallout(symbolName: "exclamationmark.triangle", message: error, tone: .warning)
                     Button(String(localized: "Retry", bundle: .module)) { exportReloadRevision &+= 1 }
-                } else if let backend = currentBackend, !backend.extendedCapabilities.contains(.rawMessageBytes) {
-                    SettingsInfoCallout(symbolName: "info.circle",
-                                        message: String(
-                                            localized: "This account does not provide original message source for export.",
-                                            bundle: .module
-                                        ),
-                                        tone: .info)
-                } else if currentBackend == nil {
-                    SettingsInfoCallout(symbolName: "person.crop.circle",
-                                        message: String(localized: "Sign in to an account to export mail.", bundle: .module),
-                                        tone: .info)
                 }
 
                 HStack(spacing: BrevSpacing.sm) {
@@ -710,6 +691,37 @@ struct ImportExportSection: View {
             ),
             tone: .info
         )
+    }
+
+    private var importGroupFooter: String {
+        var messages = [
+            String(
+                localized: "Files are processed locally. Import adds messages to a mailbox; provider accounts may upload them. Export may download missing originals from your mail provider.",
+                bundle: .module
+            )
+        ]
+        if currentBackend != nil && currentBackend?.extensionService(MailImporting.self) == nil {
+            messages.append(String(localized: "Mail import is not supported by this account yet.", bundle: .module))
+        }
+        return messages.joined(separator: " ")
+    }
+
+    private var exportGroupFooter: String {
+        var messages = [
+            String(
+                localized: "Save the entire folder, including attachments. EML files are grouped in a new folder.",
+                bundle: .module
+            )
+        ]
+        if let backend = currentBackend, !backend.extendedCapabilities.contains(.rawMessageBytes) {
+            messages.append(String(
+                localized: "This account does not provide original message source for export.",
+                bundle: .module
+            ))
+        } else if currentBackend == nil {
+            messages.append(String(localized: "Sign in to an account to export mail.", bundle: .module))
+        }
+        return messages.joined(separator: " ")
     }
 
     private func progressRow(symbol: String, text: String) -> some View {

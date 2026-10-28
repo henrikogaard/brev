@@ -34,6 +34,29 @@ struct DeveloperSettingsTests {
         #expect(DeveloperSettings.load(from: defaults).demoModeEnabled)
     }
 
+    @Test("developer visibility defaults off and persists")
+    func developerVisibilityDefaultsOffAndPersists() throws {
+        let defaults = try temporaryDefaults()
+
+        #expect(DeveloperSettings.load(from: defaults).showDeveloperSettings == false)
+
+        DeveloperSettings(showDeveloperSettings: true).save(to: defaults)
+
+        #expect(DeveloperSettings.load(from: defaults).showDeveloperSettings)
+    }
+
+    @Test("developer visibility follows persisted opt in")
+    func developerVisibilityFollowsPersistedOptIn() {
+        let base = SettingsSectionAvailability.macOSDeveloperDirectDownload
+        let hidden = SettingsDeveloperModePolicy.availability(base: base, showDeveloperSettings: false)
+        let shown = SettingsDeveloperModePolicy.availability(base: base, showDeveloperSettings: true)
+
+        #expect(!hidden.visibleSections.contains(.developer))
+        #expect(shown.visibleSections.contains(.developer))
+        #expect(!SettingsDeveloperModePolicy.showsDeveloperEntries(showDeveloperSettings: false))
+        #expect(SettingsDeveloperModePolicy.showsDeveloperEntries(showDeveloperSettings: true))
+    }
+
     @Test("demo launch request is ignored outside developer builds")
     func demoLaunchRequestIsIgnoredOutsideDeveloperBuilds() throws {
         let defaults = try temporaryDefaults()

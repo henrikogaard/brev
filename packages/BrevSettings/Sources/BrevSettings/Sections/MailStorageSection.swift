@@ -822,27 +822,25 @@ struct MailStorageSection: View {
     private var indexGroup: some View {
         SettingsGroup(
             title: String(localized: "Search index", bundle: .module),
-            subtitle: String(localized: "Download mail locally so all-mail search can use the durable index.", bundle: .module),
+            subtitle: indexFooter,
             symbolName: "magnifyingglass"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
-                SettingsInfoCallout(
-                    symbolName: "doc.text.magnifyingglass",
-                    message: MailStoragePresentation.indexSummary(for: syncHealth),
-                    tone: indexCalloutTone
-                )
                 if supportsAttachmentIndexing {
                     attachmentIndexRow
                 }
-                if let statusMessage {
-                    SettingsInfoCallout(
-                        symbolName: "info.circle",
-                        message: statusMessage,
-                        tone: .info
-                    )
-                }
             }
         }
+    }
+
+    private var indexFooter: String {
+        let explanation = String(
+            localized: "Download mail locally so all-mail search can use the durable index.",
+            bundle: .module
+        )
+        return [explanation, MailStoragePresentation.indexSummary(for: syncHealth), statusMessage]
+            .compactMap { $0 }
+            .joined(separator: " ")
     }
 
     /// Whether the account's backend can index attachment text locally
@@ -899,7 +897,11 @@ struct MailStorageSection: View {
         let summary = MailStoragePresentation.retentionSummary(for: syncSettings)
         return SettingsGroup(
             title: String(localized: "Local retention", bundle: .module),
-            subtitle: String(localized: "Default for all accounts. Set per-folder exceptions in Folder Sync.", bundle: .module),
+            subtitle: [
+                String(localized: "Default for all accounts. Set per-folder exceptions in Folder Sync.", bundle: .module),
+                MailStoragePresentation.retentionDownloadExplanation,
+                MailStoragePresentation.localSearchExplanation
+            ].joined(separator: " "),
             symbolName: "calendar.badge.clock"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -914,13 +916,6 @@ struct MailStorageSection: View {
                         Text(policy.displayName).tag(policy)
                     }
                 }
-
-                SettingsInfoCallout(
-                    symbolName: "info.circle",
-                    message: MailStoragePresentation.retentionDownloadExplanation
-                        + " " + MailStoragePresentation.localSearchExplanation,
-                    tone: .info
-                )
             }
         }
     }
@@ -1001,17 +996,6 @@ struct MailStorageSection: View {
             syncHealthState: syncHealth?.state,
             indexStatus: syncHealth?.indexStatus
         )
-    }
-
-    private var indexCalloutTone: SettingsCalloutTone {
-        switch syncHealth?.indexStatus {
-        case .ready:
-            return .success
-        case .failed:
-            return .warning
-        case .notBuilt, .rebuilding, .none:
-            return .info
-        }
     }
 
     @ViewBuilder

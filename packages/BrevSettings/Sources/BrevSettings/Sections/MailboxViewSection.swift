@@ -36,14 +36,14 @@ struct MailboxViewSection: View {
     var body: some View {
         SectionScaffold(
             title: String(localized: "Mailbox View", bundle: .module),
-            subtitle: String(localized: "Reading, list layout, sidebar folders, and links.", bundle: .module),
-            showsTitle: false
+            subtitle: String(localized: "Reading, list layout, sidebar folders, and links.", bundle: .module)
         ) {
             // One scroll instead of a segmented control nested inside a tabbed
             // pane: the four groups are short enough to read together, and
             // settings search scrolls straight to the group it names.
             SettingsGroupStack {
                 readingGroup
+                previewGroup
                 listGroup
                 folderVisibilityGroup
                 BrowserSettingsGroup(settingsStore: settingsStore)
@@ -54,7 +54,7 @@ struct MailboxViewSection: View {
     private var folderVisibilityGroup: some View {
         SettingsGroup(
             title: String(localized: "Folders", bundle: .module),
-            subtitle: String(localized: "Show or hide standard folders in the mailbox sidebar.", bundle: .module),
+            subtitle: "",
             symbolName: "folder"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -123,7 +123,10 @@ struct MailboxViewSection: View {
     private var readingGroup: some View {
         SettingsGroup(
             title: String(localized: "Reading", bundle: .module),
-            subtitle: String(localized: "Rendering, conversation order, and type.", bundle: .module),
+            subtitle: String(
+                localized: "Remote images, web fonts, and tracking pixels stay blocked unless you opt in.",
+                bundle: .module
+            ),
             symbolName: "text.alignleft"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -162,27 +165,27 @@ struct MailboxViewSection: View {
 
                 fontPreview
                 #endif
-
-                SettingsInfoCallout(
-                    symbolName: "shield",
-                    message: String(
-                        localized: "Remote images, web fonts, and tracking pixels stay blocked unless you opt in.",
-                        bundle: .module
-                    ),
-                    tone: .info
-                )
             }
+        }
+    }
+
+    private var previewGroup: some View {
+        SettingsGroup(
+            title: String(localized: "Preview", bundle: .module),
+            subtitle: "",
+            symbolName: "list.bullet.rectangle"
+        ) {
+            SettingsMailPreview(settings: mailboxSettings)
         }
     }
 
     private var listGroup: some View {
         SettingsGroup(
             title: String(localized: "Mailbox list", bundle: .module),
-            subtitle: String(localized: "Tune the overview columns for scanning and triage.", bundle: .module),
+            subtitle: "",
             symbolName: "list.bullet.rectangle"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
-                SettingsMailPreview(settings: mailboxSettings)
                 SettingsToggleRow(
                     symbolName: "rectangle.stack",
                     title: String(localized: "Group conversations", bundle: .module),

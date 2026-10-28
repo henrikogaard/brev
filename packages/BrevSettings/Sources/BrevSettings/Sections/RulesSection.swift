@@ -498,7 +498,7 @@ private struct LocalRulesPane: View {
     private var controlsGroup: some View {
         SettingsGroup(
             title: String(localized: "Local rules", bundle: .module),
-            subtitle: String(localized: "Provider-neutral rules evaluated deterministically by Brev.", bundle: .module),
+            subtitle: controlsFooter,
             symbolName: "line.3.horizontal.decrease.circle"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
@@ -508,30 +508,30 @@ private struct LocalRulesPane: View {
                     subtitle: String(localized: "Apply enabled local rules whenever a folder reloads.", bundle: .module),
                     isOn: automaticExecutionBinding
                 )
-                SettingsInfoCallout(
-                    symbolName: "info.circle",
-                    message: String(
-                        localized: "Local rules work for every account, including providers that don't expose server rules.",
-                        bundle: .module
-                    ),
-                    tone: .info
-                )
                 manageSieveSyncControls
             }
         }
     }
 
+    private var controlsFooter: String {
+        if let syncErrorMessage {
+            return syncErrorMessage
+        }
+        if isManageSieveAvailable {
+            return String(
+                localized: "This account can push compatible local rules to a Brev-owned server script.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Local rules work for every account, including providers that don't expose server rules.",
+            bundle: .module
+        )
+    }
+
     @ViewBuilder
     private var manageSieveSyncControls: some View {
         if isManageSieveAvailable {
-            SettingsInfoCallout(
-                symbolName: "server.rack",
-                message: String(
-                    localized: "This account can push compatible local rules to a Brev-owned server script.",
-                    bundle: .module
-                ),
-                tone: .info
-            )
             SettingsButtonRow {
                 SettingsButton(
                     isSyncingServerRules ? String(localized: "Syncing...", bundle: .module) : String(
@@ -544,36 +544,17 @@ private struct LocalRulesPane: View {
                 }
                 .disabled(isSyncingServerRules || settings.rules.isEmpty)
             }
-            if let syncErrorMessage {
-                SettingsInfoCallout(
-                    symbolName: "exclamationmark.triangle",
-                    message: syncErrorMessage,
-                    tone: .warning
-                )
-            }
         }
     }
 
     private var listGroup: some View {
         SettingsGroup(
             title: String(localized: "Configured rules", bundle: .module),
-            subtitle: String(
-                localized: "Local rules are evaluated in order. The first matching rule wins per message.",
-                bundle: .module
-            ),
+            subtitle: listFooter,
             symbolName: "list.bullet.rectangle"
         ) {
             SettingsRowStack(spacing: BrevSpacing.md) {
-                if settings.rules.isEmpty {
-                    SettingsInfoCallout(
-                        symbolName: "checklist.unchecked",
-                        message: String(
-                            localized: "No local rules yet. Add one to enable deterministic local filtering.",
-                            bundle: .module
-                        ),
-                        tone: .info
-                    )
-                } else {
+                if !settings.rules.isEmpty {
                     SettingsRowStack(spacing: BrevSpacing.xs) {
                         ForEach(Array(settings.rules.enumerated()), id: \.element.id) { index, rule in
                             LocalRuleRow(
@@ -604,14 +585,6 @@ private struct LocalRulesPane: View {
                         editorDraft = LocalRuleEditorDraft.newRule()
                     }
                 }
-
-                if let statusMessage {
-                    SettingsInfoCallout(
-                        symbolName: "checkmark.circle",
-                        message: statusMessage,
-                        tone: .success
-                    )
-                }
             }
         }
         .sheet(item: $editorDraft) { draft in
@@ -628,6 +601,22 @@ private struct LocalRulesPane: View {
                 onClose: { editorDraft = nil }
             )
         }
+    }
+
+    private var listFooter: String {
+        if let statusMessage {
+            return statusMessage
+        }
+        if settings.rules.isEmpty {
+            return String(
+                localized: "No local rules yet. Add one to enable deterministic local filtering.",
+                bundle: .module
+            )
+        }
+        return String(
+            localized: "Local rules are evaluated in order. The first matching rule wins per message.",
+            bundle: .module
+        )
     }
 
     private var automaticExecutionBinding: Binding<Bool> {

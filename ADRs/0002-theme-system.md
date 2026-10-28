@@ -182,7 +182,38 @@ bordered `BrevButton` pill inside a row. `SettingsButton` is the pane-level
 wrapper: it delegates to `BrevButton` on macOS and renders a plain accent
 row on iOS (`Button(role: .destructive)` for destructive actions, with a
 `confirmationDialog` where the action is not already confirmed). macOS
-Settings keeps the card layout unchanged.
+Settings followed on 2026-10-25 (below).
+
+**macOS Settings forms (2026-10-25).** macOS Settings panes move from the
+card layout to the same native grouped `Form` the iOS panes use, drawn with
+`.formStyle(.grouped)`. This supersedes "macOS Settings keeps the card layout
+unchanged" above. Inside a macOS Settings pane:
+
+- **Structure is native.** `SectionScaffold` renders a `Form`; every
+  `SettingsGroup` is a `Section` with a plain header (the group title) and an
+  optional footer. Panes draw no in-pane page title, no subtitle under the
+  title and no custom card (`settingsGroupedSurface()`, `brevQuietSurface()`)
+  around rows; the selected sidebar row names the pane.
+- **Rows are native.** Each Settings component (`SettingsToggleRow`, `SettingsPickerRow`, `SettingsSegmentedRow`, `SettingsButton`, `SettingsRowLabel`) renders the same Form row on macOS as on iOS, using the system controls with their row label, so every control ends on the Form's one trailing edge with no nested indent. `SettingsLayout.trailingControlWidth` and the symbol-column indent no longer apply on macOS. Platform branches remain only where a control differs by platform.
+- **Explanation is sparing.** A row carries no grey text beneath its title.
+  Its explanation stays available as the control's help tag and accessibility
+  hint. Text that a user needs before acting (consequences, privacy, data
+  loss) moves into the section footer; everything else is dropped from view.
+- **Theming still applies through tokens only.** The system grouped
+  background is hidden (`scrollContentBackground(.hidden)`) and replaced with
+  the window content surface; row backgrounds use `theme.bgPrimary`,
+  separators `theme.separator`, header and footer text `theme.textSecondary`,
+  row titles `theme.textPrimary`, and control tint `theme.accent`. Fonts keep
+  the `brevFont` scale and the per-section font family (ADR-0086). Density
+  only adjusts the vertical row padding the Form already exposes; it does not
+  reintroduce custom spacing between groups.
+- **Standalone recipes are unchanged.** `BrevButton`, `BrevChip`,
+  `BrevStatusBanner` and `brevQuietSurface()` remain the sanctioned recipes
+  outside Settings forms. Inside a form, `SettingsButton` renders a
+  standard push button aligned to the trailing edge (or a row of buttons in a
+  section's last row), not a bordered pill in a card.
+- **Sheets and pushed detail panes** opened from Settings (account details,
+  rule editors, source connection) follow the same rules.
 
 ### Theme distribution
 
