@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Calendar, Contacts and Tasks now show a centered, per-surface empty state
+  with a single action to open Calendar & Contacts settings and connect an
+  account.
 - Thread readers open on the newest message by default, and message-list counts no longer repeat.
 - On iPad and Mac, quick reply follows the conversation; on iPhone, Reply offers Reply All and Forward on long press.
 - Unread messages use dots instead of bars, thread cards no longer show accent bars, and Compose has its own iPhone toolbar button.

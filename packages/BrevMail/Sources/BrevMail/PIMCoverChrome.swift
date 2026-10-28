@@ -34,8 +34,7 @@ struct PIMDoneButton: View {
 
 /// Adds the search field only while it has something to search.
 ///
-/// A cover with no connected source has nothing to filter, so the field is
-/// hidden there (audit finding P1). The condition is constant on macOS.
+/// A surface without a connected source has nothing to filter.
 struct PIMSearchableModifier: ViewModifier {
     @Binding var text: String
     let prompt: String
