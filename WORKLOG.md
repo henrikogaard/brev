@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-10-28 — Agent — #271 CI compilation correction
+
+- CI at `d9795bb7`, run `40778430918`, failed BrevSyncEngine test compilation because the throwing `imapPageState` expression inside `#require` lacked an inner `try`; the other 20 checks passed. The new tests did not execute in that run.
+- Separated the throwing metadata read from the optional requirement so Swift Testing's macro receives a nonthrowing value. No production code or acceptance criterion changed.
+- Focused pinned formatting/lint and diff checks are repeated before push; package compilation and all seven page-store tests require fresh CI. Earlier app-build/other-package passes do not override this failed compilation. Host testing remains deferred.
+
 ## 2026-10-28 — Agent — #269 transactional page-store foundation
 
 - Continued the approved plan on `feature/imap-page-window-store` in its own worktree, based on #270 at `208960eb`; the dependent PR targets `feature/imap-cache-baselines`, eventual integration main. #269 stays In progress. #270's BrevSyncEngine CI passed at `208960eb`, job `123114265373`, run `40772828311`.
