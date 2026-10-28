@@ -9,9 +9,14 @@ All notable changes to Brev are documented here.
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an
   account.
+- macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
+- iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
 - Repeating calendar events now show every projected date in the
   agenda, day, week, and month views, and the agenda shows a navigable
   30-day range (ADR-0089).
+- Creating a repeating Google Calendar event with the "Local" time zone no
+  longer fails; the series is pinned to the device time zone, which Google
+  requires for recurring events.
 - Repeating calendar events with excluded, moved, or cancelled dates now
   show their remaining dates instead of only the first one.
 - Calendar: the "event is no longer synced" notice from a stale event link
