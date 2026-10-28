@@ -174,15 +174,8 @@ struct ComposeErrorStatus: Equatable, Sendable {
 }
 
 struct ComposeChromePresentation: Equatable, Sendable {
-    let toolbarClusterTreatment: ComposeToolbarClusterTreatment
     let fieldPanelTreatment: ComposeFieldPanelTreatment
     let fieldRows: [ComposeFieldRow]
-}
-
-/// How primary-toolbar control clusters are drawn on the shared surface.
-enum ComposeToolbarClusterTreatment: Equatable, Sendable {
-    /// Borderless icon/menu buttons with no pill background.
-    case borderless
 }
 
 enum ComposeFieldPanelTreatment: Equatable, Sendable {
@@ -196,27 +189,6 @@ enum ComposeFieldRow: Equatable, Sendable, Hashable {
     case sender
 }
 
-enum ComposeCarbonCopyField: Equatable, Sendable, Hashable, Identifiable {
-    case cc
-    case bcc
-
-    var id: Self { self }
-
-    var label: String {
-        switch self {
-        case .cc: return String(localized: "Cc", bundle: .module)
-        case .bcc: return String(localized: "Bcc", bundle: .module)
-        }
-    }
-
-    var accessibilityLabel: String {
-        switch self {
-        case .cc: return String(localized: "Add Cc", bundle: .module)
-        case .bcc: return String(localized: "Add Bcc", bundle: .module)
-        }
-    }
-}
-
 enum ComposePresentation {
     static let aiShortcutStaleResponseMessage = String(
         localized: "The draft changed before AI Writer finished. Try again with the current text.",
@@ -224,7 +196,6 @@ enum ComposePresentation {
     )
 
     static let chrome = ComposeChromePresentation(
-        toolbarClusterTreatment: .borderless,
         fieldPanelTreatment: .flatHairline,
         fieldRows: [.recipients, .sender, .subject]
     )
@@ -235,20 +206,6 @@ enum ComposePresentation {
         isAIWorking: Bool
     ) -> Bool {
         isSending || isSavingDraft || isAIWorking
-    }
-
-    static func hiddenCarbonCopyFields(
-        isCcVisible: Bool,
-        isBccVisible: Bool
-    ) -> [ComposeCarbonCopyField] {
-        var fields: [ComposeCarbonCopyField] = []
-        if !isCcVisible {
-            fields.append(.cc)
-        }
-        if !isBccVisible {
-            fields.append(.bcc)
-        }
-        return fields
     }
 
     static func toolbarActionLayout(for platform: ComposeLayoutPlatform) -> ComposeToolbarActionLayout {
@@ -297,6 +254,13 @@ enum ComposePresentation {
             return String(localized: "Forward", bundle: .module)
         }
         return String(localized: "New Message", bundle: .module)
+    }
+
+    static func windowTitle(subject: String) -> String {
+        let subject = subject.trimmingCharacters(in: .whitespacesAndNewlines)
+        return subject.isEmpty
+            ? String(localized: "New Message", bundle: .module)
+            : subject
     }
 
     static func errorStatus(_ message: String) -> ComposeErrorStatus {

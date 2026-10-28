@@ -29,14 +29,14 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
         switch sheet {
         case .compose:
             return Self(
-                title: "Compose",
+                title: String(localized: "New Message", bundle: .module),
                 defaultSize: CGSize(width: 820, height: 700),
                 minimumSize: CGSize(width: 680, height: 560),
                 frameAutosaveName: "BrevComposeWindow",
                 styleMask: composeStyleMask,
-                titleVisibility: .hidden,
+                titleVisibility: .visible,
                 titlebarAppearsTransparent: true,
-                toolbarStyle: .automatic,
+                toolbarStyle: .unified,
                 isMovableByWindowBackground: false
             )
         case .profiles:
@@ -241,6 +241,77 @@ struct MacMailAuxiliaryWindowConfiguration: Equatable {
     ]
 }
 
+enum MacComposeToolbarItemIdentifier {
+    static let send = NSToolbarItem.Identifier("BrevComposeSend")
+    static let format = NSToolbarItem.Identifier("BrevComposeFormat")
+    static let attachment = NSToolbarItem.Identifier("BrevComposeAttachment")
+    static let more = NSToolbarItem.Identifier("BrevComposeMore")
+
+    static let defaultOrder: [NSToolbarItem.Identifier] = [
+        send,
+        .flexibleSpace,
+        format,
+        attachment,
+        more
+    ]
+}
+
+@MainActor
+final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
+    private var contentViews: [NSToolbarItem.Identifier: AnyView] = [:]
+
+    func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        MacComposeToolbarItemIdentifier.defaultOrder
+    }
+
+    func toolbarAllowedItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+        MacComposeToolbarItemIdentifier.defaultOrder
+    }
+
+    func toolbar(
+        _ toolbar: NSToolbar,
+        itemForItemIdentifier itemIdentifier: NSToolbarItem.Identifier,
+        willBeInsertedIntoToolbar flag: Bool
+    ) -> NSToolbarItem? {
+        guard let action = action(for: itemIdentifier) else { return nil }
+        let item = NSToolbarItem(itemIdentifier: itemIdentifier)
+        item.label = action.accessibilityLabel
+        item.paletteLabel = action.accessibilityLabel
+        let content = contentViews[itemIdentifier] ?? AnyView(EmptyView())
+        let hostingView = NSHostingView(rootView: AnyView(content.frame(width: 42, height: 36)))
+        hostingView.frame = NSRect(x: 0, y: 0, width: 42, height: 36)
+        item.view = hostingView
+        return item
+    }
+
+    func updateContentViews(_ views: [NSToolbarItem.Identifier: AnyView], in toolbar: NSToolbar?) {
+        contentViews = views
+        for item in toolbar?.items ?? [] {
+            guard let content = views[item.itemIdentifier],
+                  let hostingView = item.view as? NSHostingView<AnyView> else {
+                continue
+            }
+            hostingView.rootView = AnyView(content.frame(width: 42, height: 36))
+            hostingView.frame = NSRect(x: 0, y: 0, width: 42, height: 36)
+        }
+    }
+
+    private func action(for identifier: NSToolbarItem.Identifier) -> ComposeToolbarAction? {
+        switch identifier {
+        case MacComposeToolbarItemIdentifier.send:
+            .send
+        case MacComposeToolbarItemIdentifier.format:
+            .format
+        case MacComposeToolbarItemIdentifier.attachment:
+            .attach
+        case MacComposeToolbarItemIdentifier.more:
+            .moreActions
+        default:
+            nil
+        }
+    }
+}
+
 enum MacMailAuxiliaryWindowActivationPolicy {
     static func shouldActivate(
         hasWindow: Bool,
@@ -317,6 +388,7 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
         coordinator.closeWindow(updateBinding: false)
     }
 
+    @MainActor
     final class Coordinator: NSObject, NSWindowDelegate {
         private var sheet: Binding<MailNavigationState.Sheet?>
         private var makeContent: (MailNavigationState.Sheet, @escaping () -> Void) -> AnyView
@@ -324,6 +396,7 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
         private var window: NSWindow?
         private var hostingController: NSHostingController<AnyView>?
         private var activeSheet: MailNavigationState.Sheet?
+        private var composeToolbarDelegate: MacComposeToolbarDelegate?
 
         init(
             sheet: Binding<MailNavigationState.Sheet?>,
@@ -421,6 +494,16 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
             window.titleVisibility = configuration.titleVisibility
             window.titlebarAppearsTransparent = configuration.titlebarAppearsTransparent
             window.toolbarStyle = configuration.toolbarStyle
+            if sheet == .compose {
+                let toolbarDelegate = MacComposeToolbarDelegate()
+                let toolbar = NSToolbar(identifier: "BrevComposeToolbar")
+                toolbar.delegate = toolbarDelegate
+                toolbar.displayMode = .iconOnly
+                window.toolbar = toolbar
+                composeToolbarDelegate = toolbarDelegate
+            } else {
+                composeToolbarDelegate = nil
+            }
             window.isMovableByWindowBackground = configuration.isMovableByWindowBackground
             window.isReleasedWhenClosed = false
             window.isRestorable = false

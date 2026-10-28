@@ -43,7 +43,7 @@ struct NaturalLanguageSearchPlannerTests {
         let expectedEnd = try date(year: 2026, month: 6, day: 1).addingTimeInterval(-0.001)
         #expect(range.lowerBound == expectedStart)
         #expect(range.upperBound == expectedEnd)
-        #expect(plan.chips.map(\.label) == ["Keyword: invoices", "Date: last month"])
+        #expect(plan.chips.map(\.label) == ["Date: last month"])
         #expect(plan.requiresAI == false)
     }
 
@@ -78,10 +78,7 @@ struct NaturalLanguageSearchPlannerTests {
 
         #expect(plan.query.from == "alice@example.com")
         #expect(plan.query.text == "invoices")
-        #expect(plan.chips.map(\.label) == [
-            "Keyword: invoices",
-            "From: alice@example.com",
-        ])
+        #expect(plan.chips.map(\.label) == ["From: alice@example.com"])
     }
 
     @Test("ordinary text falls closed to keyword cache search")
@@ -94,7 +91,7 @@ struct NaturalLanguageSearchPlannerTests {
         )
 
         #expect(plan.query == SearchQuery(text: "quarterly budget", execution: .cacheOnly))
-        #expect(plan.chips.map(\.label) == ["Keyword: quarterly budget"])
+        #expect(plan.chips.isEmpty)
         #expect(plan.requiresAI == false)
     }
 
