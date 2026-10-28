@@ -150,7 +150,7 @@ struct GmailSignInTrustProvenanceTests {
 
         // A later incremental refresh in this connection is eligible, but
         // reconnect catch-up and disconnected state never are (ADR-0088).
-        try await backend.refresh()
+        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
         #expect(await backend.signInTrustAssessment(for: "m1") == .pass(fromDomain: "bank.example"))
         await backend.disconnect()
         #expect(await backend.signInTrustAssessment(for: "m1") == .unavailable(.notFreshDelivery))
@@ -177,7 +177,7 @@ struct GmailSignInTrustProvenanceTests {
         let backend = Self.backend(client: client, store: store, now: { clock.now })
         try await backend.connect()
         await backend.initialSyncSettled()
-        try await backend.refresh()
+        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
         let result = await backend.signInTrustAssessment(for: "m1")
         #expect(result == .unavailable(.wrongFolder))
     }
@@ -200,7 +200,7 @@ struct GmailSignInTrustProvenanceTests {
         let backend = Self.backend(client: client, store: store, now: { clock.now })
         try await backend.connect()
         await backend.initialSyncSettled()
-        try await backend.refresh()
+        try await backend.refresh(folder: Folder(id: "INBOX", name: "Inbox", role: .inbox))
         let result = await backend.signInTrustAssessment(for: "m1")
         #expect(result == .unavailable(.stale))
     }
