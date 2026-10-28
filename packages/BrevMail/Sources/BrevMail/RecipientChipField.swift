@@ -80,8 +80,13 @@ struct RecipientChipField<Accessory: View>: View {
                 }
             } else {
                 HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                    #if os(iOS)
+                    labelView
+                        .frame(width: labelWidth, alignment: .leading)
+                    #else
                     labelView
                         .frame(width: labelWidth, alignment: .trailing)
+                    #endif
                     fieldContent
                     trailingAccessory
                 }
@@ -124,7 +129,11 @@ struct RecipientChipField<Accessory: View>: View {
                     .foregroundStyle(theme.textPrimary.color)
                     .modifier(RecipientFocusModifier(own: $ownFocus, external: focusedField, field: field))
                     .accessibilityLabel(label)
+                #if os(iOS)
+                    .frame(minWidth: 24)
+                #else
                     .frame(minWidth: 120)
+                #endif
                     .autocorrectionDisabled()
                 #if os(iOS)
                     .keyboardType(.emailAddress)
@@ -185,6 +194,47 @@ struct RecipientChipField<Accessory: View>: View {
     @ViewBuilder
     private func chip(for address: String) -> some View {
         let isValid = RecipientAddressValidator.isLikelyEmailAddress(address)
+        let helpText = isValid
+            ? address
+            : String(localized: "\(address) doesn't look like a valid email address", bundle: .module)
+        #if os(iOS)
+        HStack(spacing: BrevSpacing.xs) {
+            Text(address)
+                .brevFont(.footnote)
+                .foregroundStyle(isValid ? theme.textPrimary.color : theme.danger.color)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            Button {
+                recipients.removeAll { $0 == address }
+            } label: {
+                Image(systemName: "xmark.circle.fill")
+                    .font(.system(size: 12))
+                    .foregroundStyle(theme.textSecondary.color)
+                    .frame(width: 12, height: 12)
+                    .frame(width: 44, height: 44, alignment: .leading)
+                    .contentShape(Rectangle())
+                    .padding(.trailing, -32)
+                    .padding(.vertical, -16)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(String(localized: "Remove \(address)", bundle: .module))
+        }
+        .padding(.leading, BrevSpacing.sm)
+        .padding(.trailing, BrevSpacing.sm)
+        .padding(.vertical, BrevSpacing.xxs)
+        .background(
+            RoundedRectangle(cornerRadius: BrevRadius.pill)
+                .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: BrevRadius.pill)
+                .stroke(theme.danger.color.opacity(isValid ? 0 : 0.7), lineWidth: 1)
+        )
+        .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
+            recipients.removeAll { $0 == address }
+        })
+        .help(helpText)
+        #else
         HStack(spacing: BrevSpacing.xxs) {
             Text(address)
                 .brevFont(.footnote)
@@ -201,9 +251,6 @@ struct RecipientChipField<Accessory: View>: View {
         }
         .padding(.horizontal, BrevSpacing.sm)
         .padding(.vertical, BrevSpacing.xxs)
-        .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
-            recipients.removeAll { $0 == address }
-        })
         .background(
             RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .fill((isValid ? theme.bgSecondary.color : theme.danger.color).opacity(isValid ? 1 : 0.16))
@@ -212,11 +259,11 @@ struct RecipientChipField<Accessory: View>: View {
             RoundedRectangle(cornerRadius: BrevRadius.sm)
                 .stroke(theme.danger.color.opacity(isValid ? 0 : 0.7), lineWidth: 1)
         )
-        .help(
-            isValid
-                ? address
-                : String(localized: "\(address) doesn't look like a valid email address", bundle: .module)
-        )
+        .modifier(RecipientChipAccessibility(address: address, isValid: isValid) {
+            recipients.removeAll { $0 == address }
+        })
+        .help(helpText)
+        #endif
     }
 
     private var recipientPrompt: Text? {

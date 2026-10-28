@@ -120,6 +120,21 @@ struct PIMNativeChromePresentationTests {
 
     // MARK: Month cells (P3)
 
+    /// Raw (non-projected) occurrence row for the presentation
+    /// helpers (ADR-0089).
+    private static func occurrence(
+        _ event: PIMEvent
+    ) -> PIMEventOccurrence {
+        PIMEventOccurrence(
+            id: event.id,
+            event: event,
+            originalStart: event.start,
+            start: event.start,
+            end: event.end,
+            occurrenceIndex: nil
+        )
+    }
+
     @Test("a month cell label names the day, the event count and the titles")
     func monthCellLabelListsEvents() {
         let events = [
@@ -128,7 +143,7 @@ struct PIMNativeChromePresentationTests {
             Self.event("e3", "Lunch", hour: 12)
         ]
         let label = CalendarMonthCellPresentation.accessibilityLabel(
-            day: Self.day, events: events, isToday: false, calendar: Self.calendar
+            day: Self.day, events: events.map(Self.occurrence), isToday: false, calendar: Self.calendar
         )
         #expect(label == "Wednesday, October 14, 3 events: Standup, Review, Lunch")
     }
@@ -137,7 +152,7 @@ struct PIMNativeChromePresentationTests {
     func monthCellLabelCountsOverflow() {
         let events = (1 ... 5).map { Self.event("e\($0)", "Event \($0)", hour: 8 + $0) }
         let label = CalendarMonthCellPresentation.accessibilityLabel(
-            day: Self.day, events: events, isToday: false, calendar: Self.calendar
+            day: Self.day, events: events.map(Self.occurrence), isToday: false, calendar: Self.calendar
         )
         #expect(label == "Wednesday, October 14, 5 events: Event 1, Event 2, Event 3, +2 more")
     }
@@ -145,10 +160,10 @@ struct PIMNativeChromePresentationTests {
     @Test("a month cell label says so for a day without events and for today")
     func monthCellLabelEmptyAndToday() {
         let empty = CalendarMonthCellPresentation.accessibilityLabel(
-            day: Self.day, events: [], isToday: false, calendar: Self.calendar
+            day: Self.day, events: [].map(Self.occurrence), isToday: false, calendar: Self.calendar
         )
         let today = CalendarMonthCellPresentation.accessibilityLabel(
-            day: Self.day, events: [], isToday: true, calendar: Self.calendar
+            day: Self.day, events: [].map(Self.occurrence), isToday: true, calendar: Self.calendar
         )
         #expect(empty == "Wednesday, October 14, No events")
         #expect(today == "Today, Wednesday, October 14, No events")
@@ -158,7 +173,7 @@ struct PIMNativeChromePresentationTests {
     func monthCellLabelUntitled() {
         let label = CalendarMonthCellPresentation.accessibilityLabel(
             day: Self.day,
-            events: [Self.event("e1", nil), Self.event("e2", "Standup")],
+            events: [Self.event("e1", nil), Self.event("e2", "Standup")].map(Self.occurrence),
             isToday: false,
             calendar: Self.calendar
         )
@@ -189,15 +204,17 @@ struct PIMNativeChromePresentationTests {
     @Test("an event block label carries the title and the time range")
     func eventBlockLabel() {
         let event = Self.event("e1", "Standup", hour: 9, minutes: 30)
-        let label = CalendarEventPresentation.accessibilityLabel(for: event, calendar: Self.calendar)
-        let time = CalendarEventPresentation.agendaTimeText(for: event, calendar: Self.calendar)
+        let label = CalendarEventPresentation.accessibilityLabel(for: Self.occurrence(event), calendar: Self.calendar)
+        let time = CalendarEventPresentation.agendaTimeText(for: Self.occurrence(event), calendar: Self.calendar)
         #expect(label == "Standup, \(time)")
     }
 
     @Test("an all-day event label says all day and keeps the location")
     func eventBlockLabelAllDayWithLocation() {
         let label = CalendarEventPresentation.accessibilityLabel(
-            for: Self.event("e1", "Offsite", isAllDay: true, location: "Oslo"),
+            for: Self.occurrence(
+                Self.event("e1", "Offsite", isAllDay: true, location: "Oslo")
+            ),
             calendar: Self.calendar
         )
         #expect(label == "Offsite, All day, Oslo")

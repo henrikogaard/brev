@@ -1723,8 +1723,11 @@ public struct ComposeView: View {
                             .padding(.horizontal, BrevSpacing.xs)
                         #if os(iOS)
                             .frame(minWidth: 44, minHeight: 44)
-                        #endif
                             .contentShape(Rectangle())
+                            .padding(.vertical, isAccessibilityFieldLayout ? 0 : -10)
+                        #else
+                            .contentShape(Rectangle())
+                        #endif
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(field.accessibilityLabel)
@@ -2063,7 +2066,11 @@ public struct ComposeView: View {
         } else {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
+                #if os(iOS)
+                    .frame(width: ComposeLayout.fieldLabelWidth, alignment: .leading)
+                #else
                     .frame(width: ComposeLayout.fieldLabelWidth, alignment: .trailing)
+                #endif
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)

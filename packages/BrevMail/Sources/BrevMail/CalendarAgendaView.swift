@@ -29,32 +29,33 @@ public struct CalendarAgendaView: View {
     let days: [CalendarBrowsingModel.DaySection]
     /// Resolves an event's collection for color and provenance.
     let collectionFor: (PIMEvent) -> PIMCollection?
-    /// Selection shared with the detail pane.
-    @Binding var selectedEventID: PIMEvent.ID?
+    /// Selection shared with the detail pane — an occurrence row ID.
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
     /// Clock for the "Today"/"Tomorrow" section titles.
     let now: Date
 
     public init(
         days: [CalendarBrowsingModel.DaySection],
         collectionFor: @escaping (PIMEvent) -> PIMCollection? = { _ in nil },
-        selectedEventID: Binding<PIMEvent.ID?>,
+        selectedOccurrenceID: Binding<PIMEventOccurrence.ID?>,
         now: Date = Date()
     ) {
         self.days = days
         self.collectionFor = collectionFor
-        _selectedEventID = selectedEventID
+        _selectedOccurrenceID = selectedOccurrenceID
         self.now = now
     }
 
     public var body: some View {
-        List(selection: $selectedEventID) {
+        List(selection: $selectedOccurrenceID) {
             ForEach(days) { section in
                 Section {
-                    ForEach(section.events) { event in
-                        eventRow(event)
-                            .tag(event.id)
+                    ForEach(section.events) { occurrence in
+                        eventRow(occurrence)
+                            .tag(occurrence.id)
                             .listRowBackground(PIMSelectionRowBackground(
-                                isSelected: selectedEventID == event.id
+                                isSelected: selectedOccurrenceID
+                                    == occurrence.id
                             ))
                     }
                 } header: {
@@ -83,10 +84,12 @@ public struct CalendarAgendaView: View {
         )
     }
 
-    private func eventRow(_ event: PIMEvent) -> some View {
+    private func eventRow(
+        _ occurrence: PIMEventOccurrence
+    ) -> some View {
         CalendarEventRowView(
-            event: event,
-            collection: collectionFor(event)
+            occurrence: occurrence,
+            collection: collectionFor(occurrence.event)
         )
     }
 }
@@ -99,11 +102,17 @@ public struct CalendarEventRowView: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.calendar) private var calendar
 
-    let event: PIMEvent
+    /// The occurrence row — projected or raw — being rendered.
+    let occurrence: PIMEventOccurrence
     let collection: PIMCollection?
 
-    public init(event: PIMEvent, collection: PIMCollection? = nil) {
-        self.event = event
+    private var event: PIMEvent { occurrence.event }
+
+    public init(
+        occurrence: PIMEventOccurrence,
+        collection: PIMCollection? = nil
+    ) {
+        self.occurrence = occurrence
         self.collection = collection
     }
 
@@ -117,7 +126,7 @@ public struct CalendarEventRowView: View {
             VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
                 HStack(spacing: BrevSpacing.xs) {
                     Text(CalendarEventPresentation.agendaTimeText(
-                        for: event,
+                        for: occurrence,
                         calendar: calendar
                     ))
                     .brevFont(.caption)

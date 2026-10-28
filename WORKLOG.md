@@ -21,6 +21,13 @@
 - Not changed: no AppSession owner, root-view caller, panel, settings UI,
   PRIVACY.md (nothing reachable while the capability is off).
 
+## 2026-10-28 — Agent — PR #250 trust regression tests
+
+- Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
+- Added regression assertions for both header cases, connect/reconnect exclusion and disconnect invalidation; existing label/time checks now run after a live refresh.
+- Local test attempt in local:mac-12gb is blocked: CommandLineTools lacks the Testing module. Regression execution is delegated to CI, not reported as a red pass. Capability activation remains disabled and no mail was sent.
+- Next: verify the expected CI failure, make the narrow correction, and require a green rerun before merging.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
 
 - Goal: implement the provider-dependent gates of integration slice 1 for
@@ -44,6 +51,13 @@
   per-run approval — they send real mail), then flip the capability on in
   a later slice.
 
+## 2026-10-28 — Agent — PR #248 integration review
+
+- Reviewed the scoped Gmail proposal and its explicit E1-E5 activation gate under Henrik's request to prepare and merge the open PRs.
+- Integrated main and preserved both worklog histories. The amendment does not enable Gmail trust, change account settings or authorize sending test mail.
+- Verification: diff and conflict-marker checks; updated-head CI required before merge. Live mailbox evidence is not available and remains required before capability activation.
+- Documentation sweep: ADR-only integration; no product or network behavior changed, so no changelog or privacy update is needed for this PR.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
 
 - Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model
@@ -55,6 +69,146 @@
 - Next: implement ordered header preservation and the assessment with unit
   fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
   per-run approval because they send mail).
+
+## 2026-10-17 — Devin — #11 Google recurring create fix
+
+- Found during the iOS live pass: creating a daily series on the Google
+  calendar with the editor's default "Lokal (flytende)" time zone failed
+  with "Leverandøren returnerte et svar Brev ikke kunne bruke"; a
+  non-recurring event with the same settings saved fine.
+- Cause: Google requires `start.timeZone`/`end.timeZone` on timed recurring
+  events and answers 400, which `GoogleCalendarEventWriter` maps to
+  `invalidResponse`.
+- Changed: the writer pins a floating timed recurring event to the injected
+  `localTimeZone` (device zone by default); single floating events are
+  unchanged.
+- Verified: `swift test --package-path packages/BrevCalendar --filter
+  PIMEventWrite` 39 green (new `googleFloatingRecurrenceGetsTimeZone`);
+  lint/format clean. Live retest pending a rebuilt simulator app.
+- Observation: a 400 from Google surfaces as a generic "response Brev could
+  not use"; the provider's error message is dropped. Not changed here.
+
+## 2026-10-17 — Devin — #11 v8 addendum (iOS Google create + DAV lifecycle attempt)
+
+- Goal: extend v8 with the second-session iOS legs and record the
+  recurring-create defect found live.
+- Changed: addendum table + O17-O19; two screenshots
+  (`ios-google-recurring-create-error`,
+  `ios-settings-google-event-cached-after-create`, both downscaled).
+- Verified: `check-live-evidence-redaction.sh` clean over the evidence dir.
+- Not run: DAV invalid-credential row — Norwegian keyboard mangles URL
+  characters under `idb ui text`; noted the workaround for the next pass.
+
+## 2026-10-17 — Devin — #11 live parity v8
+
+- Goal: first live pass on the ADR-0089 projection fix against a real
+  CalDAV server (Radicale) with new `QA-1016-` fixtures.
+- Result: `docs/qa/pim-parity-v8-2026-10-17.md`; 7 rows Pass on iOS
+  (daily/weekly projection, third-occurrence detail, first-occurrence
+  editability, EXDATE collapse with coverage note, outage recovery), macOS
+  rows Not run/Blocked (accessibility automation unavailable; Fetch schedule
+  Manual), Google and lifecycle rows Not run.
+- Observations O13–O16 recorded (exception handling gap, permanent stale
+  banner, pre-#251 overlap, pre-#252 sticky notice).
+- Verified: `scripts/check-live-evidence-redaction.sh` OK on the evidence
+  folder. Docs-only; no code changed.
+
+## 2026-10-17 — Devin — #11 recurrence exceptions (ADR-0089)
+
+- Goal: close observation O13 from parity v8: one EXDATE collapsed a series
+  to its master date.
+- Changed: `PIMRecurrenceDescriptor.exdates` (verbatim bodies; tolerant
+  decode), ICS and Google adapters capture them (Google `EXDATE;TZID=…`
+  entries were previously classed as unrecognized), validator parses
+  exclusions per basis, projector skips excluded/overridden slots while
+  still consuming COUNT, moved instances render raw, cancelled markers
+  render nothing, in-window unmatched exceptions fail closed.
+- Verified: `swift test --package-path packages/BrevCalendar` 302 green
+  (new EXDATE/exception tests, two existing tests updated to the new
+  semantics); BrevMail calendar suites green; format clean; lint passes
+  with the ADR-0089 status update.
+- Not changed: RDATE, future-scope writes.
+
+## 2026-10-16 — Devin — Calendar & Contacts settings layout
+
+- Goal: Henrik flagged the Settings → Calendar & Contacts sources pane as
+  rough during the #11/#14 live QA setup.
+- Changed: `PIMSourcesSettingsView` gives each source switch its own
+  full-width row, puts collections under a kind heading ("Calendars",
+  "Contact groups", "Task lists") as single-line rows with inline
+  primary/read-only markers, uses one switch size, folds the cached count
+  into the status line, and skips the macOS-only Divider inside the iOS
+  Form. Fixed a stray BEL control character in the nb "Background sync
+  for %@" accessibility label. Google system contact groups stay listed
+  (Henrik's choice).
+- Verified: `swift test --package-path packages/BrevSettings --filter
+  PIMSource` (35 passed); iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.pim-sources-{light,dark,ax3}` baselines; macOS layout checked in a
+  live Brev Test build; lint and format clean.
+- Note: on-state switches use `theme.accent`, which is greyscale in the
+  default theme, so on and off differ mostly by knob position. Not
+  changed here; it is a theme-wide decision.
+
+## 2026-10-16 — Devin — Calendar deep-link notice
+
+- Goal: Henrik saw "That event is no longer synced" stuck on an empty
+  Calendar window in the live QA build.
+- Cause: the notice comes only from a `brev://event` link whose record is
+  not cached (both QA calendars were empty), and nothing ever cleared it.
+- Changed: `CalendarBrowsingModel.dismissDeepLinkNotice()`; navigation,
+  view-mode changes and a new selection clear the notice; the banner gets
+  a close button ("Dismiss"/"Lukk").
+- Verified: `CalendarBrowsingModel` suite 23 passed (new
+  `deepLinkNoticeClears`); lint/format clean. The `detail-*` snapshot
+  mismatches seen locally reproduce on clean `main` (host drift).
+- Not changed: Contacts and Tasks have the same never-cleared notice.
+
+## 2026-10-16 — Devin — AGENTS.md evidence-report rule
+
+- Goal: stop sessions from producing new versioned QA reports for #11/#14
+  when no new live evidence exists (Henrik, 2026-10-16).
+- Changed: `AGENTS.md` gains "Evidence reports need new evidence".
+- Verified: docs-only; `git diff --check` clean. No code touched.
+
+## 2026-10-16 — Devin — #11
+
+- Goal: implement ADR-0089 bounded calendar occurrence projection so
+  repeating events render every date in the agenda, day, week, and
+  month surfaces instead of only the stored DTSTART.
+- Changed:
+  - `BrevCalendar`: `PIMRecurrenceDescriptor` (lossless RRULE/RDATE/
+    EXDATE + DTSTART basis), `recurrenceDescriptor` and
+    `seriesMasterItemKey` on `PIMEvent`, `ICSParser`/`PIMDAVEventSync`
+    descriptor capture, `GoogleCalendarEventSync` descriptor mapping
+    and cancelled-instance markers, the strict `PIMRecurrenceValidator`,
+    and the bounded `PIMOccurrenceProjector` with stable row IDs,
+    DST-safe generation, and defensive bounds.
+  - `BrevMail`: browsing model, grid layout, presentation helpers, and
+    agenda/day/week/month views now consume `PIMEventOccurrence`;
+    occurrence-aware selection retains the authoritative master; the
+    agenda is a navigable 30-day range; later occurrences are read-only
+    with a localized note and incomplete series get a coverage note
+    (en + nb).
+  - Docs: ADR-0089 implementation-status section, CHANGELOG entry.
+- Review fixes applied: occurrence indices are ordinal (`emitted`
+  position), so a weekly BYDAY starting mid-week and skipped monthly
+  dates keep index 0 on the series start; the detail pane renders the
+  selected occurrence's projected date via `occurrence:` on
+  `CalendarEventDetailView`; the xcstrings file was restored and now
+  carries only the two new keys (+22/0).
+- Verified: `swift test --package-path packages/BrevCalendar` — 297
+  tests green; BrevMail filtered suites (CalendarBrowsingModel,
+  CalendarGridLayout, CalendarEventPresentation,
+  PIMNativeChromePresentation, CalendarEditingModel, plus the two new
+  detail-note snapshots — 81 tests) green; `scripts/lint.sh` and
+  `scripts/format.sh` clean; `git diff --check` clean; unsigned xcodebuild
+  builds of BrevMacOS and BrevIOS succeeded in the worktree.
+- Snapshot baselines: the pre-existing `detail-*` and `month-*`
+  references also mismatch on a clean `main` checkout on this host, so
+  they were not re-recorded; only the four new note snapshots
+  (`detail-later-occurrence-*`, `detail-incomplete-series-*`) were
+  recorded.
+- Next: commit + PR when the maintainer allows pushing.
 
 ## 2026-10-13 — Agent — Demo screenshots
 
@@ -6309,3 +6463,11 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-22 — Devin — UI polish branch follow-up (no issue number)
+
+- Goal: implement and refine critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
+- Changes: aligned macOS toolbar/thread presentation and equal-width Appearance controls; grouped iOS Mailboxes, polished compose chips and row geometry, and normalized compact Unified Inbox presentation. The AppKit Appearance segmented control now receives the theme accent through `selectedSegmentBezelColor` on updates; the iOS Cc/Bcc accessory retains its 44 pt hit shape while reducing the one-line To row height. Updated Unreleased changelog. Re-recorded only affected Compose, Mailboxes, and Appearance snapshot references.
+- Verification: format and lint passed; macOS and iOS mock builds passed. Focused toolbar (24), Unified Inbox (4), FolderSidebar (41), PhoneMailbox (6 tests/9 cases), and Compose tests passed in prior runs. ComposeViewSnapshotTests passed (3/3) after refreshing only empty/reply references. The BrevSettings macOS surfaces test exercised light and dark; the Appearance references now pass, while 10 snapshots for other surfaces still mismatch on this host. Fresh captures are under `/Users/devin/brev-after/`; the iOS compose capture shows one recipient chip, the keyboard, and a one-line To row comparable in height to From.
+- Limits: the 10 non-Appearance BrevSettings snapshot mismatches were not compared against clean main in this run. Five PhoneMailbox snapshot failures (19 total, 14 passed) were previously reproduced on clean main (`06c7b19`); the full-suite run hung after results and was interrupted with exit 143. No CI watch or PR action.
+- Handoff: parent creates the PR and owns the CI follow-up.

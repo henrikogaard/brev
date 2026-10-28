@@ -44,13 +44,15 @@ struct CalendarGridLayoutTests {
         )!
     }
 
+    /// A raw (non-projected) occurrence row wrapping the record —
+    /// the grid layout operates on `PIMEventOccurrence` (ADR-0089).
     private static func event(
         id: String,
         start: Date? = nil,
         end: Date? = nil,
         isAllDay: Bool = false
-    ) -> PIMEvent {
-        PIMEvent(
+    ) -> PIMEventOccurrence {
+        let record = PIMEvent(
             id: id,
             sourceID: "s",
             collectionID: "c",
@@ -59,6 +61,14 @@ struct CalendarGridLayoutTests {
             start: start,
             end: end,
             isAllDay: isAllDay
+        )
+        return PIMEventOccurrence(
+            id: record.id,
+            event: record,
+            originalStart: record.start,
+            start: record.start,
+            end: record.end,
+            occurrenceIndex: nil
         )
     }
 

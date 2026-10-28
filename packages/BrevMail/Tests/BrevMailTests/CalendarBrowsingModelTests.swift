@@ -311,7 +311,7 @@ struct CalendarBrowsingModelTests {
 
         await model.load()
 
-        #expect(model.visibleEvents.map(\.id) == ["e1", "e2"])
+        #expect(model.visibleOccurrences.map(\.id) == ["e1", "e2"])
         #expect(model.lastError == nil)
         #expect(model.hasSources)
     }
@@ -339,12 +339,12 @@ struct CalendarBrowsingModelTests {
         #expect(model.hasSources)
         #expect(model.sources.isEmpty)
         #expect(model.canSyncAny == false)
-        #expect(model.visibleEvents.map(\.id) == ["retained-event"])
+        #expect(model.visibleOccurrences.map(\.id) == ["retained-event"])
 
         await model.syncNow(sourceID: "retained")
         #expect(model.lastError == nil)
         await model.revealEvent(id: "retained-event")
-        #expect(model.selectedEventID == "retained-event")
+        #expect(model.selectedOccurrenceID == "retained-event")
         #expect(model.deepLinkNotice == nil)
     }
 
@@ -400,7 +400,7 @@ struct CalendarBrowsingModelTests {
 
         await model.load()
 
-        #expect(model.visibleEvents.map(\.id) == ["shown"])
+        #expect(model.visibleOccurrences.map(\.id) == ["shown"])
     }
 
     @Test("one unreadable source cache keeps the others and reports inline")
@@ -423,7 +423,7 @@ struct CalendarBrowsingModelTests {
 
         await model.load()
 
-        #expect(model.visibleEvents.map(\.id) == ["e1"])
+        #expect(model.visibleOccurrences.map(\.id) == ["e1"])
         #expect(model.lastError?.contains("bad") == true)
     }
 
@@ -456,16 +456,16 @@ struct CalendarBrowsingModelTests {
         await model.load()
 
         model.searchText = "dentist"
-        #expect(model.visibleEvents.map(\.id) == ["e1"])
+        #expect(model.visibleOccurrences.map(\.id) == ["e1"])
 
         model.searchText = "OSLO"
-        #expect(model.visibleEvents.map(\.id) == ["e1"])
+        #expect(model.visibleOccurrences.map(\.id) == ["e1"])
 
         model.searchText = "ada@"
-        #expect(model.visibleEvents.map(\.id) == ["e2"])
+        #expect(model.visibleOccurrences.map(\.id) == ["e2"])
 
         model.searchText = "   "
-        #expect(model.visibleEvents.count == 2)
+        #expect(model.visibleOccurrences.count == 2)
     }
 
     // MARK: - Day bucketing
@@ -501,6 +501,8 @@ struct CalendarBrowsingModelTests {
         )
 
         await model.load()
+        // The agenda's bounded window starts at the anchor day.
+        model.selectDay(dayOne)
 
         #expect(model.days.count == 3)
         #expect(model.days[0].events.map(\.id) == ["earlier"])
@@ -610,14 +612,14 @@ struct CalendarBrowsingModelTests {
             collectionID: "c1"
         )
         await model.load()
-        model.selectedEventID = "e1"
+        model.selectedOccurrenceID = "e1"
 
         // The next generation no longer contains the event — the
         // selection must clear rather than point at a dead record.
         try await eventStore.saveEvents([], for: "s1", collectionID: "c1")
         await model.load()
 
-        #expect(model.selectedEventID == nil)
+        #expect(model.selectedOccurrenceID == nil)
     }
 
     // MARK: - Grid navigation
@@ -631,7 +633,17 @@ struct CalendarBrowsingModelTests {
         let todayStart = utc.startOfDay(for: Self.fixedNow)
 
         #expect(model.selectedDay == todayStart)
-        #expect(!model.showsDateNavigation)
+        // Every mode navigates now — the agenda steps a 30-day window.
+        #expect(model.showsDateNavigation)
+        model.goToNext()
+        #expect(
+            model.selectedDay == todayStart.addingTimeInterval(
+                30 * 86400
+            )
+        )
+        model.viewMode = .agenda
+        model.goToPrevious()
+        #expect(model.selectedDay == todayStart)
 
         model.viewMode = .day
         #expect(model.showsDateNavigation)
@@ -749,7 +761,7 @@ struct CalendarBrowsingModelTests {
 
         await model.revealEvent(id: "e1")
 
-        #expect(model.selectedEventID == "e1")
+        #expect(model.selectedOccurrenceID == "e1")
         #expect(model.searchText == "")
         #expect(model.deepLinkNotice == nil)
         var utc = Calendar(identifier: .gregorian)
@@ -777,12 +789,49 @@ struct CalendarBrowsingModelTests {
             ]
         )
         await model.load()
-        model.selectedEventID = "e1"
+        model.selectedOccurrenceID = "e1"
 
         await model.revealEvent(id: "gone")
 
-        #expect(model.selectedEventID == nil)
+        #expect(model.selectedOccurrenceID == nil)
         #expect(model.deepLinkNotice != nil)
+    }
+
+    @Test("a deep-link miss notice clears on dismiss, navigation, and a new selection")
+    func deepLinkNoticeClears() async throws {
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            collections: [
+                "s1": [Self.collection(id: "c1", sourceID: "s1")],
+            ],
+            events: [
+                "s1|c1": [
+                    Self.event(
+                        id: "e1", sourceID: "s1", collectionID: "c1",
+                        summary: "Target",
+                        start: Self.fixedNow
+                    ),
+                ],
+            ]
+        )
+        await model.load()
+
+        await model.revealEvent(id: "gone")
+        model.dismissDeepLinkNotice()
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.goToNext()
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.viewMode = .week
+        #expect(model.deepLinkNotice == nil)
+
+        await model.revealEvent(id: "gone")
+        model.goToToday()
+        model.selectedOccurrenceID = "e1"
+        #expect(model.deepLinkNotice == nil)
     }
 
     @Test("revealEvent loads the cache when the window is cold")
@@ -803,7 +852,211 @@ struct CalendarBrowsingModelTests {
         // a hit or a miss.
         await model.revealEvent(id: "e1")
 
-        #expect(model.selectedEventID == "e1")
+        #expect(model.selectedOccurrenceID == "e1")
         #expect(model.deepLinkNotice == nil)
+    }
+}
+
+// MARK: - Occurrence projection (ADR-0089)
+
+extension CalendarBrowsingModelTests {
+    /// A daily COUNT=5 series master starting 2026-10-16 09:00 UTC.
+    private static func seriesMaster(
+        id: String,
+        sourceID: String,
+        collectionID: String,
+        start: Date
+    ) -> PIMEvent {
+        PIMEvent(
+            id: id,
+            sourceID: sourceID,
+            collectionID: collectionID,
+            providerItemKey: id,
+            summary: "Daily sync",
+            start: start,
+            end: start.addingTimeInterval(3600),
+            recurrenceRule: ICSParser.parseRecurrenceRule(
+                "FREQ=DAILY;COUNT=5"
+            ),
+            recurrenceDescriptor: PIMRecurrenceDescriptor(
+                rrules: ["FREQ=DAILY;COUNT=5"],
+                startBasis: .utc
+            )
+        )
+    }
+
+    private static var oct16: Date {
+        Date(timeIntervalSince1970: 1_792_141_200) // 2026-10-16 09:00 UTC
+    }
+
+    @Test("a COUNT=5 series projects into day, agenda and month surfaces")
+    func seriesProjectsAcrossModes() async throws {
+        let master = Self.seriesMaster(
+            id: "m1", sourceID: "s1", collectionID: "c1",
+            start: Self.oct16
+        )
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            events: ["s1|c1": [master]]
+        )
+        await model.load()
+
+        // Day view on Oct 18 — the reported empty day — shows an
+        // occurrence of the master.
+        model.viewMode = .day
+        model.selectDay(Self.oct16.addingTimeInterval(2 * 86400))
+        let dayRows = model.events(onDay: model.selectedDay)
+        #expect(dayRows.count == 1)
+        #expect(dayRows[0].event.id == "m1")
+        #expect(dayRows[0].occurrenceIndex == 2)
+        #expect(dayRows[0].id != "m1")
+
+        // Agenda: five day sections from Oct 16.
+        model.viewMode = .agenda
+        model.selectDay(Self.oct16)
+        #expect(model.days.count == 5)
+        #expect(
+            model.days.map { $0.events.map(\.occurrenceIndex) }
+                == [[0], [1], [2], [3], [4]]
+        )
+
+        // Month: five cells carry the series.
+        model.viewMode = .month
+        let covered = model.selectedMonthWeeks.flatMap { $0 }
+            .filter { !model.events(onDay: $0.day).isEmpty }
+        #expect(covered.count == 5)
+    }
+
+    @Test("selecting a later occurrence keeps identity across navigation")
+    func laterOccurrenceSelection() async throws {
+        let eventStore = EventStore()
+        let source = Self.source(id: "s1")
+        let sourceStore = SourceStore()
+        try await sourceStore.save(source)
+        let coordinator = PIMSourceCoordinator(
+            store: sourceStore,
+            credentials: CredentialStore(),
+            localData: LocalDataStore(),
+            now: { Self.fixedNow }
+        )
+        let eventSyncService = PIMEventSyncService(
+            coordinator: coordinator,
+            collectionStore: CollectionStore(),
+            eventStore: eventStore,
+            cursorStore: CursorStore(),
+            credentials: CredentialStore(),
+            now: { Self.fixedNow }
+        )
+        let model = CalendarBrowsingModel(
+            coordinator: coordinator,
+            eventSyncService: eventSyncService,
+            now: { Self.fixedNow },
+            calendar: {
+                var calendar = Calendar(identifier: .gregorian)
+                calendar.timeZone = TimeZone(identifier: "UTC")!
+                return calendar
+            }()
+        )
+        let master = Self.seriesMaster(
+            id: "m1", sourceID: "s1", collectionID: "c1",
+            start: Self.oct16
+        )
+        try await eventStore.saveEvents(
+            [master],
+            for: "s1",
+            collectionID: "c1"
+        )
+        await model.load()
+        model.viewMode = .agenda
+        model.selectDay(Self.oct16)
+
+        let third = try #require(
+            model.visibleOccurrences.first { $0.occurrenceIndex == 2 }
+        )
+        model.selectedOccurrenceID = third.id
+
+        // The selection names the third occurrence but carries the
+        // authoritative master — never a synthesized record.
+        #expect(
+            model.selectedOccurrence?.originalStart
+                == Self.oct16.addingTimeInterval(2 * 86400)
+        )
+        #expect(model.selectedOccurrence?.event == master)
+
+        // Navigating away keeps the selection via the retained snapshot.
+        model.selectDay(Self.oct16.addingTimeInterval(60 * 86400))
+        #expect(model.selectedOccurrence?.id == third.id)
+
+        // A reload without the record clears the selection.
+        try await eventStore.saveEvents([], for: "s1", collectionID: "c1")
+        await model.load()
+        #expect(model.selectedOccurrenceID == nil)
+        #expect(model.selectedOccurrence == nil)
+    }
+
+    @Test("a deep link to a series master selects the first occurrence")
+    func revealMasterSelectsIndex0() async throws {
+        let master = Self.seriesMaster(
+            id: "m1", sourceID: "s1", collectionID: "c1",
+            start: Self.oct16
+        )
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            events: ["s1|c1": [master]]
+        )
+        await model.revealEvent(id: "m1")
+
+        #expect(model.selectedOccurrence?.occurrenceIndex == 0)
+        #expect(model.selectedOccurrence?.event.id == "m1")
+        #expect(model.selectedOccurrence?.originalStart == Self.oct16)
+        #expect(model.deepLinkNotice == nil)
+    }
+
+    @Test("later-occurrence selection gates mutation and explains itself")
+    func laterOccurrenceGating() async throws {
+        let master = Self.seriesMaster(
+            id: "m1", sourceID: "s1", collectionID: "c1",
+            start: Self.oct16
+        )
+        let model = try await makeModel(
+            sources: [Self.source(id: "s1")],
+            events: ["s1|c1": [master]]
+        )
+        await model.load()
+        model.viewMode = .agenda
+        model.selectDay(Self.oct16)
+
+        let third = try #require(
+            model.visibleOccurrences.first { $0.occurrenceIndex == 2 }
+        )
+        let first = try #require(
+            model.visibleOccurrences.first { $0.occurrenceIndex == 0 }
+        )
+        model.selectedOccurrenceID = third.id
+
+        // Edit/Delete gating keys off isLaterOccurrence; the detail
+        // pane explains via the shared localized notes, and any editor
+        // path still receives the authoritative master record.
+        #expect(CalendarEventPresentation.isLaterOccurrence(third))
+        #expect(!CalendarEventPresentation.isLaterOccurrence(first))
+        #expect(model.selectedOccurrence?.event == master)
+        #expect(
+            !CalendarEventPresentation.laterOccurrenceNote().isEmpty
+        )
+        #expect(
+            !CalendarEventPresentation.incompleteSeriesNote().isEmpty
+        )
+        #expect(model.incompleteSeriesReason(for: master) == nil)
+    }
+
+    @Test("the agenda title names the bounded 30-day window")
+    func agendaRangeTitle() async throws {
+        let model = try await makeModel(sources: [])
+        model.viewMode = .agenda
+        model.selectDay(Self.oct16)
+        // Day numbers only — month names localize.
+        #expect(model.rangeTitle.contains("16"))
+        #expect(model.rangeTitle.contains("14"))
+        #expect(model.rangeTitle.contains("–"))
     }
 }

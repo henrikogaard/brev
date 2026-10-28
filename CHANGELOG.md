@@ -6,6 +6,18 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
+- iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
+- Repeating calendar events now show every projected date in the
+  agenda, day, week, and month views, and the agenda shows a navigable
+  30-day range (ADR-0089).
+- Creating a repeating Google Calendar event with the "Local" time zone no
+  longer fails; the series is pinned to the device time zone, which Google
+  requires for recurring events.
+- Repeating calendar events with excluded, moved, or cancelled dates now
+  show their remaining dates instead of only the first one.
+- Calendar: the "event is no longer synced" notice from a stale event link
+  now has a close button and clears when you navigate or pick an event.
 - Calendar event-detail actions stack vertically when the available width
   cannot fit their labels, preserving readability at accessibility text sizes.
 - Calendar: saving “This and Future Events” at the start of a series
@@ -14,6 +26,9 @@ All notable changes to Brev are documented here.
 - Contacts detail actions stack vertically when their labels cannot fit,
   while standard contact labels are localized and arbitrary custom labels
   retain their original spelling.
+- Settings → Calendar & Contacts lists each collection on one line with a
+  trailing switch, gives source switches their own rows, moves cached
+  counts into the status line, and drops the empty separator rows on iOS.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an
