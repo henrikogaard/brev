@@ -15,32 +15,17 @@ import BrevSettings
 import BrevThemes
 import SwiftUI
 
-/// The "nothing is connected" empty state shared by the Calendar, Contacts
-/// and Tasks surfaces (audit finding P1).
-///
-/// On iOS the explanation is followed by a button that opens the Settings
-/// pane that connects sources. macOS keeps the text-only state its windows
-/// have always had.
+/// The shared empty state for Calendar, Contacts and Tasks without sources.
 struct PIMNoSourcesView: View {
     @Environment(\.brevTheme) private var theme
-    #if os(iOS)
-    @Environment(\.horizontalSizeClass) private var horizontalSizeClass
-    #endif
 
     let kind: PIMNoSourcesPresentation.Kind
     let symbol: String
     /// Opens the Settings pane; nil hides the button.
     let onOpenSettings: ((SettingsSection) -> Void)?
-    /// Whether the macOS state paints the theme background (Calendar did,
-    /// Contacts and Tasks did not); iOS always paints it.
-    var fillsBackgroundOnMac = false
 
     var body: some View {
-        #if os(iOS)
-        let copy = PIMNoSourcesPresentation.copy(
-            for: kind,
-            usesCategorySettings: horizontalSizeClass == .regular
-        )
+        let copy = PIMNoSourcesPresentation.copy(for: kind)
         ContentUnavailableView {
             Label {
                 Text(copy.title)
@@ -57,23 +42,19 @@ struct PIMNoSourcesView: View {
                 Button(copy.actionTitle) {
                     onOpenSettings(PIMNoSourcesPresentation.settingsSection)
                 }
+                #if os(iOS)
                 .buttonStyle(.borderedProminent)
+                .controlSize(.large)
+                .frame(minHeight: 44)
                 .tint(theme.accent.color)
                 .foregroundStyle(theme.bgPrimary.color)
+                #else
+                .buttonStyle(.bordered)
+                .controlSize(.large)
+                #endif
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(theme.bgPrimary.color)
-        #else
-        let copy = PIMNoSourcesPresentation.copy(for: kind, usesCategorySettings: false)
-        ContentUnavailableView(
-            copy.title,
-            systemImage: symbol,
-            description: Text(copy.message)
-        )
-        .foregroundStyle(theme.textSecondary.color)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(fillsBackgroundOnMac ? theme.bgPrimary.color : Color.clear)
-        #endif
     }
 }

@@ -106,29 +106,37 @@ public struct ContactsRootView: View {
             isEnabled: showsSearch
         ))
         .task { await model.load() }
-        .task { await editing?.load() }
-        .task { await model.observeSourceChanges() }
-        .task { await editing?.observeSourceChanges() }
-        .onChange(of: model.selectedContactID) { _, newValue in
-            if newValue != nil {
-                preferredCompactColumn = .detail
+        #if os(macOS)
+            .onChange(of: shouldShowNoSourcesInDetail, initial: true) { _, shouldShow in
+                columnVisibility = shouldShow ? .detailOnly : .doubleColumn
             }
-        }
-        .sheet(item: $editorRequest) { request in
-            if let editing {
-                editorSheet(for: request, editing: editing)
-                    .pimEditorSheetAppearance(theme)
+        #endif
+            .task { await editing?.load() }
+            .task { await model.observeSourceChanges() }
+            .task { await editing?.observeSourceChanges() }
+            .onChange(of: model.selectedContactID) { _, newValue in
+                if newValue != nil {
+                    preferredCompactColumn = .detail
+                }
             }
-        }
+            .sheet(item: $editorRequest) { request in
+                if let editing {
+                    editorSheet(for: request, editing: editing)
+                        .pimEditorSheetAppearance(theme)
+                }
+            }
     }
 
-    /// The search field needs contacts to search; with no source connected
-    /// it is hidden on iOS.
+    /// Search is available only while a source can provide contacts.
     private var showsSearch: Bool {
-        #if os(iOS)
         model.hasSources
+    }
+
+    private var shouldShowNoSourcesInDetail: Bool {
+        #if os(macOS)
+        !model.isLoading && !model.hasSources
         #else
-        true
+        false
         #endif
     }
 
@@ -166,11 +174,15 @@ public struct ContactsRootView: View {
                     String(localized: "Loading contacts", bundle: .module)
                 )
         } else if !model.hasSources {
+            #if os(macOS)
+            EmptyView()
+            #else
             PIMNoSourcesView(
                 kind: .contacts,
                 symbol: "person.crop.circle.badge.plus",
                 onOpenSettings: onOpenSettings
             )
+            #endif
         } else if model.sections.isEmpty {
             emptyState(
                 symbol: "person.crop.circle",
@@ -201,7 +213,13 @@ public struct ContactsRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let contact = model.contact(id: model.selectedContactID) {
+        if shouldShowNoSourcesInDetail {
+            PIMNoSourcesView(
+                kind: .contacts,
+                symbol: "person.crop.circle.badge.plus",
+                onOpenSettings: onOpenSettings
+            )
+        } else if let contact = model.contact(id: model.selectedContactID) {
             ContactDetailView(
                 contact: contact,
                 collection: model.collection(for: contact),
