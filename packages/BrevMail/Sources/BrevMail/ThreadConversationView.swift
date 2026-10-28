@@ -776,6 +776,11 @@ public struct ThreadConversationView: View {
 
     private var conversationMetadataRow: some View {
         HStack(spacing: BrevSpacing.xs) {
+            #if os(macOS)
+            participantSummary
+            Spacer(minLength: BrevSpacing.sm)
+            threadActionsMenu
+            #else
             Text(verbatim: mailboxLabel ?? backend.account.emailAddress)
                 .brevFont(.footnote)
                 .foregroundStyle(theme.textSecondary.color)
@@ -792,6 +797,7 @@ public struct ThreadConversationView: View {
             Spacer(minLength: BrevSpacing.sm)
 
             threadActionsMenu
+            #endif
         }
         .padding(.horizontal, BrevSpacing.md)
         .padding(.bottom, BrevSpacing.sm)

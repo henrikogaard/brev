@@ -271,20 +271,21 @@ struct UnifiedInboxListView: View {
             // footnote under the results (audit Q2); macOS keeps its bands.
             #if os(macOS)
             if !trimmedSearchText.isEmpty {
-                CollapsibleOptionsStrip(
-                    isExpanded: $isSearchOptionsExpanded,
-                    hasNonDefaultOptions: hasNonDefaultUnifiedSearchOptions,
-                    summary: unifiedSearchOptionsSummary
-                ) {
-                    unifiedSearchExecutionBar
-                }
+                unifiedSearchExecutionBar
             }
-            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, searchProgress.request != nil {
+            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               searchProgress.hasPartialResults {
                 MailSearchStatusView(
                     progress: searchProgress,
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
                         queries: activeAttachmentSearchQueries,
                         isLoading: searchProgress.isSearching
+                    ),
+                    leadingInset: MessageListRow.textColumnLeadingInset(
+                        isInSelectionMode: navigation.isInSelectionMode,
+                        showAvatar: showSenderAvatars,
+                        textSize: mailboxTextSize,
+                        density: mailboxListDensity
                     )
                 ) {
                     Task { await reloadVisibleItems() }
@@ -753,13 +754,29 @@ struct UnifiedInboxListView: View {
             title: section.title,
             count: section.totalCount,
             isCollapsed: section.isCollapsed,
-            isCollapsible: !usesCompactMessageRows
+            isCollapsible: dateSectionsAreCollapsible
         ) {
             toggleDateSection(section.id)
         }
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .messageListThemedRowBackground()
+    }
+
+    private var dateSectionsAreCollapsible: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var rowSeparatorVisibility: Visibility {
+        #if os(iOS)
+        return .visible
+        #else
+        return .hidden
+        #endif
     }
 
     private func toggleDateSection(_ sectionID: MessageListDateSection.ID) {
@@ -1286,7 +1303,7 @@ struct UnifiedInboxListView: View {
         .accessibilityHint(item.sourceSubtitle)
         .draggable(item.dragRepresentation)
         .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
+        .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             ForEach(
