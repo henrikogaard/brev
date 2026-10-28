@@ -194,7 +194,24 @@ public struct GoogleCalendarEventSync: Sendable {
             return
         }
         if (item["status"] as? String)?.lowercased() == "cancelled" {
-            result.removedItemKeys.append(itemID)
+            // A cancelled recurring instance is a marker record, not a
+            // tombstone (ADR-0089): the projector needs it to flag the
+            // series as exception-bearing rather than silently
+            // resurrecting the instance. Cancelled masters and plain
+            // events keep the tombstone path.
+            if let masterKey = item["recurringEventId"] as? String {
+                result.events.append(
+                    Self.cancelledMarker(
+                        item,
+                        itemID: itemID,
+                        masterKey: masterKey,
+                        collection: collection,
+                        source: source
+                    )
+                )
+            } else {
+                result.removedItemKeys.append(itemID)
+            }
             return
         }
 
@@ -203,9 +220,8 @@ public struct GoogleCalendarEventSync: Sendable {
         let isAllDay = start?["date"] != nil
         let timeZoneIdentifier = start?["timeZone"] as? String
 
-        let recurrenceID = Self.parseGoogleDateTime(
-            (item["originalStartTime"] as? [String: Any])?["dateTime"]
-                as? String
+        let recurrenceID = Self.parseGoogleStartEnd(
+            item["originalStartTime"] as? [String: Any]
         )
 
         let conference = GoogleConferenceMapping.conference(from: item)
@@ -251,8 +267,103 @@ public struct GoogleCalendarEventSync: Sendable {
                 rawPayload: Self.rawPayload(for: item),
                 providerUpdatedAt: Self.parseGoogleDateTime(
                     item["updated"] as? String
-                )
+                ),
+                recurrenceDescriptor: Self.mapDescriptor(
+                    recurrence: item["recurrence"] as? [String],
+                    start: start
+                ),
+                seriesMasterItemKey: item["recurringEventId"] as? String
             )
+        )
+    }
+
+    /// A cancelled recurring instance as a marker record (ADR-0089):
+    /// `status: .cancelled`, `seriesMasterItemKey` naming the master,
+    /// and `recurrenceID` from `originalStartTime` (which carries
+    /// `date` for all-day series, `dateTime` otherwise). The projector
+    /// never renders markers — they only flag the series as
+    /// exception-bearing.
+    private static func cancelledMarker(
+        _ item: [String: Any],
+        itemID: String,
+        masterKey: String,
+        collection: PIMCollection,
+        source: PIMSource
+    ) -> PIMEvent {
+        let recurrenceID = Self.parseGoogleStartEnd(
+            item["originalStartTime"] as? [String: Any]
+        )
+        return PIMEvent(
+            id: PIMEvent.makeID(
+                collectionID: collection.id,
+                providerItemKey: itemID,
+                recurrenceID: recurrenceID
+            ),
+            sourceID: source.id,
+            collectionID: collection.id,
+            providerItemKey: itemID,
+            providerVersion: item["etag"] as? String,
+            uid: item["iCalUID"] as? String,
+            status: .cancelled,
+            recurrenceID: recurrenceID,
+            rawPayload: Self.rawPayload(for: item),
+            providerUpdatedAt: Self.parseGoogleDateTime(
+                item["updated"] as? String
+            ),
+            seriesMasterItemKey: masterKey
+        )
+    }
+
+    /// The lossless descriptor for a Google `recurrence[]` list
+    /// (ADR-0089): RRULE values verbatim and in order, RDATE/EXDATE as
+    /// flags, anything else marked unrecognized so the validator
+    /// refuses to expand what it cannot see.
+    private static func mapDescriptor(
+        recurrence: [String]?,
+        start: [String: Any]?
+    ) -> PIMRecurrenceDescriptor? {
+        guard let recurrence, !recurrence.isEmpty else { return nil }
+        var rrules: [String] = []
+        var hasRDate = false
+        var exdates: [String] = []
+        var hasUnrecognized = false
+        for entry in recurrence {
+            guard let colon = entry.firstIndex(of: ":") else {
+                hasUnrecognized = true
+                continue
+            }
+            // Entries look like "RRULE:FREQ=WEEKLY" or
+            // "EXDATE;TZID=Europe/Oslo:20261020T090000" — the property
+            // name ends at the first ';' or ':'.
+            let head = entry[..<colon]
+            let name = head.split(separator: ";", maxSplits: 1)[0].uppercased()
+            switch name {
+            case "RRULE":
+                rrules.append(String(entry[entry.index(after: colon)...]))
+            case "RDATE":
+                hasRDate = true
+            case "EXDATE":
+                let params = head.dropFirst(name.count).drop(while: { $0 == ";" })
+                exdates.append(String(params) + ":" + entry[entry.index(after: colon)...])
+            default:
+                hasUnrecognized = true
+            }
+        }
+        let basis: PIMRecurrenceDescriptor.StartBasis
+        if start?["date"] != nil {
+            basis = .dateOnly
+        } else if let zone = start?["timeZone"] as? String {
+            basis = .zoned(zone)
+        } else {
+            basis = .unknown
+        }
+        return PIMRecurrenceDescriptor(
+            rrules: rrules,
+            hasRDate: hasRDate,
+            hasExDate: !exdates.isEmpty,
+            exdates: exdates,
+            hasUnrecognizedEntries: hasUnrecognized,
+            startBasis: basis
         )
     }
 

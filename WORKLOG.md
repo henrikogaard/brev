@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #256 integration review
+
+- Reviewed per-account capability resolution, independent default-off consent switches and device-local persistence. No backend advertises the capability and the controller remains unconnected.
+- Integrated the arrival-controller parent, preserving both ADR implementation-status sections, worklog histories, all consent strings and the main Calendar/Contacts/Tasks translations.
+- Verification: structured catalog comparison and duplicate-key validation, targeted format and diff checks; updated CI required before merge. Existing iOS snapshots are earlier evidence, not a new runtime run. The Space is unavailable and no host test permission is assumed.
+- Documentation sweep: added an Unreleased note for the explanatory Notifications section. No feature activation, new reachable network call, privacy-table change, release or issue closure.
+
 ## 2026-10-17 — Devin — #239 consent settings
 
 - Goal: ADR-0088 slice 4 UI: per-account codes/links opt-ins.
@@ -12,6 +19,50 @@
   Notification / navigation / search suites 69 green; lint/format clean.
 - Not changed: no AppSession wiring of `onChange`; PRIVACY.md waits for
   the first enabled provider.
+
+## 2026-10-28 — Agent — PR #255 arrival corrections
+
+- Recheck the specific code/link consent after asynchronous sender lookup, rather than accepting either consent. Already-cancelled work stops before folder/provider reads.
+- Remove completed task handles so the controller does not retain every past inspection. Added empty-pending assertions and retained the lock-protected test recorder.
+- Verification: targeted format and diff checks before push; updated CI remains mandatory. Regression assertions were added first, but compatible local execution is blocked by the Space toolchain and later network failure; no assertion-level red or local green is claimed.
+- No production owner/caller or advertised provider capability is added. Existing ADR-0088 documents the disabled slice; no user-facing/network activation or additional privacy change.
+
+## 2026-10-28 — Agent — PR #255 consent regression
+
+- Review found that withdrawing code consent during sender lookup can still present a code when link consent remains enabled. Added a regression at that await boundary before changing production behavior.
+- Protected the test double's concurrent body-read recording with a lock; the burst test previously mutated the same array from nonisolated async calls.
+- Verification: diff check; regression execution pending CI. Space CommandLineTools cannot compile Swift Testing/SwiftUI macro dependencies, so no local test pass is claimed.
+- Capability remains disabled and no production controller caller exists. No mail sent, account settings changed or live evidence claimed.
+
+## 2026-10-17 — Devin — #239 arrival controller
+
+- Goal: ADR-0088 slices 2 and 3 wiring without UI: a controller that turns
+  `.messagesAdded` into memory-only sign-in presentations under every gate.
+- Changed: `SignInCodeArrivalController`, `SignInCodePresenting`,
+  `SignInCodePresentation` in BrevMail; ADR-0088 status subsection.
+- Verified: `swift test --package-path packages/BrevMail --filter
+  SignInCodeArrivalController` 9 green (consent before any work,
+  capability gate, folder/trust gates, link vs code consent, consent
+  recheck mid-flight, cancel/dismiss, burst cap, redaction, plain-text
+  only); lint/format clean.
+- Not changed: no AppSession owner, root-view caller, panel, settings UI,
+  PRIVACY.md (nothing reachable while the capability is off).
+
+## 2026-10-28 — Agent — PR #250 trust corrections
+
+- Excluded initial/reconnect reconciliation from fresh-delivery recording, cleared provenance on connect/disconnect and checked connection generation before returning an assessment.
+- Rejected duplicate DMARC tokens and duplicate header.from properties, including duplicates within the same segment.
+- Regression tests were written first. Their first CI attempt exposed a test-call compilation error, corrected separately. Assertion-level red evidence was not obtained before correction: CI remains queued, and the Space became unreachable after its incompatible-toolchain failures. Do not count that attempt as red-green verification.
+- Verification pending updated CI; targeted format and diff checks are run before push. No capability advertisement, production caller, mail send, privacy/network activation, release or issue closure.
+- Documentation sweep: these are corrections to the disabled ADR-0088 implementation, not new user-facing behavior; no additional changelog or privacy-table change is needed.
+
+## 2026-10-28 — Agent — PR #250 trust regression tests
+
+- Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
+- Added regression assertions for both header cases, connect/reconnect exclusion and disconnect invalidation; existing label/time checks now run after a live refresh.
+- Local test attempt in local:mac-12gb is blocked: CommandLineTools lacks the Testing module. Regression execution is delegated to CI, not reported as a red pass. Capability activation remains disabled and no mail was sent.
+- Next: verify the expected CI failure, make the narrow correction, and require a green rerun before merging.
+- First CI attempt did not reach assertions: the new refresh calls omitted the required folder argument. Corrected the test call sites; this compilation failure is not the expected regression evidence.
 
 ## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
 
@@ -36,6 +87,13 @@
   per-run approval — they send real mail), then flip the capability on in
   a later slice.
 
+## 2026-10-28 — Agent — PR #248 integration review
+
+- Reviewed the scoped Gmail proposal and its explicit E1-E5 activation gate under Henrik's request to prepare and merge the open PRs.
+- Integrated main and preserved both worklog histories. The amendment does not enable Gmail trust, change account settings or authorize sending test mail.
+- Verification: diff and conflict-marker checks; updated-head CI required before merge. Live mailbox evidence is not available and remains required before capability activation.
+- Documentation sweep: ADR-only integration; no product or network behavior changed, so no changelog or privacy update is needed for this PR.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
 
 - Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model
@@ -47,6 +105,153 @@
 - Next: implement ordered header preservation and the assessment with unit
   fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
   per-run approval because they send mail).
+
+## 2026-10-28 — Agent — PR #261 integration review
+
+- Reviewed date-cache bounds, locking, Release test guards, sidebar selection and lazy context menus against current main.
+- Integrated main; resolved only the additive worklog conflict and preserved both histories. Code merged automatically.
+- Verification: diff and conflict-marker checks; updated-head CI is the merge gate. No new local build or UI run, because the integration changes no behavior beyond the reviewed PR. Existing profiling and UI evidence remains earlier evidence.
+- Documentation sweep: no new product, privacy or architecture change; existing PR documentation remains applicable. Do not close issues or delete branches.
+
+## 2026-10-17 — Devin — #11 Google recurring create fix
+
+- Found during the iOS live pass: creating a daily series on the Google
+  calendar with the editor's default "Lokal (flytende)" time zone failed
+  with "Leverandøren returnerte et svar Brev ikke kunne bruke"; a
+  non-recurring event with the same settings saved fine.
+- Cause: Google requires `start.timeZone`/`end.timeZone` on timed recurring
+  events and answers 400, which `GoogleCalendarEventWriter` maps to
+  `invalidResponse`.
+- Changed: the writer pins a floating timed recurring event to the injected
+  `localTimeZone` (device zone by default); single floating events are
+  unchanged.
+- Verified: `swift test --package-path packages/BrevCalendar --filter
+  PIMEventWrite` 39 green (new `googleFloatingRecurrenceGetsTimeZone`);
+  lint/format clean. Live retest pending a rebuilt simulator app.
+- Observation: a 400 from Google surfaces as a generic "response Brev could
+  not use"; the provider's error message is dropped. Not changed here.
+
+## 2026-10-17 — Devin — #11 v8 addendum (iOS Google create + DAV lifecycle attempt)
+
+- Goal: extend v8 with the second-session iOS legs and record the
+  recurring-create defect found live.
+- Changed: addendum table + O17-O19; two screenshots
+  (`ios-google-recurring-create-error`,
+  `ios-settings-google-event-cached-after-create`, both downscaled).
+- Verified: `check-live-evidence-redaction.sh` clean over the evidence dir.
+- Not run: DAV invalid-credential row — Norwegian keyboard mangles URL
+  characters under `idb ui text`; noted the workaround for the next pass.
+
+## 2026-10-17 — Devin — #11 live parity v8
+
+- Goal: first live pass on the ADR-0089 projection fix against a real
+  CalDAV server (Radicale) with new `QA-1016-` fixtures.
+- Result: `docs/qa/pim-parity-v8-2026-10-17.md`; 7 rows Pass on iOS
+  (daily/weekly projection, third-occurrence detail, first-occurrence
+  editability, EXDATE collapse with coverage note, outage recovery), macOS
+  rows Not run/Blocked (accessibility automation unavailable; Fetch schedule
+  Manual), Google and lifecycle rows Not run.
+- Observations O13–O16 recorded (exception handling gap, permanent stale
+  banner, pre-#251 overlap, pre-#252 sticky notice).
+- Verified: `scripts/check-live-evidence-redaction.sh` OK on the evidence
+  folder. Docs-only; no code changed.
+
+## 2026-10-17 — Devin — #11 recurrence exceptions (ADR-0089)
+
+- Goal: close observation O13 from parity v8: one EXDATE collapsed a series
+  to its master date.
+- Changed: `PIMRecurrenceDescriptor.exdates` (verbatim bodies; tolerant
+  decode), ICS and Google adapters capture them (Google `EXDATE;TZID=…`
+  entries were previously classed as unrecognized), validator parses
+  exclusions per basis, projector skips excluded/overridden slots while
+  still consuming COUNT, moved instances render raw, cancelled markers
+  render nothing, in-window unmatched exceptions fail closed.
+- Verified: `swift test --package-path packages/BrevCalendar` 302 green
+  (new EXDATE/exception tests, two existing tests updated to the new
+  semantics); BrevMail calendar suites green; format clean; lint passes
+  with the ADR-0089 status update.
+- Not changed: RDATE, future-scope writes.
+
+## 2026-10-16 — Devin — Calendar & Contacts settings layout
+
+- Goal: Henrik flagged the Settings → Calendar & Contacts sources pane as
+  rough during the #11/#14 live QA setup.
+- Changed: `PIMSourcesSettingsView` gives each source switch its own
+  full-width row, puts collections under a kind heading ("Calendars",
+  "Contact groups", "Task lists") as single-line rows with inline
+  primary/read-only markers, uses one switch size, folds the cached count
+  into the status line, and skips the macOS-only Divider inside the iOS
+  Form. Fixed a stray BEL control character in the nb "Background sync
+  for %@" accessibility label. Google system contact groups stay listed
+  (Henrik's choice).
+- Verified: `swift test --package-path packages/BrevSettings --filter
+  PIMSource` (35 passed); iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.pim-sources-{light,dark,ax3}` baselines; macOS layout checked in a
+  live Brev Test build; lint and format clean.
+- Note: on-state switches use `theme.accent`, which is greyscale in the
+  default theme, so on and off differ mostly by knob position. Not
+  changed here; it is a theme-wide decision.
+
+## 2026-10-16 — Devin — Calendar deep-link notice
+
+- Goal: Henrik saw "That event is no longer synced" stuck on an empty
+  Calendar window in the live QA build.
+- Cause: the notice comes only from a `brev://event` link whose record is
+  not cached (both QA calendars were empty), and nothing ever cleared it.
+- Changed: `CalendarBrowsingModel.dismissDeepLinkNotice()`; navigation,
+  view-mode changes and a new selection clear the notice; the banner gets
+  a close button ("Dismiss"/"Lukk").
+- Verified: `CalendarBrowsingModel` suite 23 passed (new
+  `deepLinkNoticeClears`); lint/format clean. The `detail-*` snapshot
+  mismatches seen locally reproduce on clean `main` (host drift).
+- Not changed: Contacts and Tasks have the same never-cleared notice.
+
+## 2026-10-16 — Devin — AGENTS.md evidence-report rule
+
+- Goal: stop sessions from producing new versioned QA reports for #11/#14
+  when no new live evidence exists (Henrik, 2026-10-16).
+- Changed: `AGENTS.md` gains "Evidence reports need new evidence".
+- Verified: docs-only; `git diff --check` clean. No code touched.
+
+## 2026-10-16 — Devin — #11
+
+- Goal: implement ADR-0089 bounded calendar occurrence projection so
+  repeating events render every date in the agenda, day, week, and
+  month surfaces instead of only the stored DTSTART.
+- Changed:
+  - `BrevCalendar`: `PIMRecurrenceDescriptor` (lossless RRULE/RDATE/
+    EXDATE + DTSTART basis), `recurrenceDescriptor` and
+    `seriesMasterItemKey` on `PIMEvent`, `ICSParser`/`PIMDAVEventSync`
+    descriptor capture, `GoogleCalendarEventSync` descriptor mapping
+    and cancelled-instance markers, the strict `PIMRecurrenceValidator`,
+    and the bounded `PIMOccurrenceProjector` with stable row IDs,
+    DST-safe generation, and defensive bounds.
+  - `BrevMail`: browsing model, grid layout, presentation helpers, and
+    agenda/day/week/month views now consume `PIMEventOccurrence`;
+    occurrence-aware selection retains the authoritative master; the
+    agenda is a navigable 30-day range; later occurrences are read-only
+    with a localized note and incomplete series get a coverage note
+    (en + nb).
+  - Docs: ADR-0089 implementation-status section, CHANGELOG entry.
+- Review fixes applied: occurrence indices are ordinal (`emitted`
+  position), so a weekly BYDAY starting mid-week and skipped monthly
+  dates keep index 0 on the series start; the detail pane renders the
+  selected occurrence's projected date via `occurrence:` on
+  `CalendarEventDetailView`; the xcstrings file was restored and now
+  carries only the two new keys (+22/0).
+- Verified: `swift test --package-path packages/BrevCalendar` — 297
+  tests green; BrevMail filtered suites (CalendarBrowsingModel,
+  CalendarGridLayout, CalendarEventPresentation,
+  PIMNativeChromePresentation, CalendarEditingModel, plus the two new
+  detail-note snapshots — 81 tests) green; `scripts/lint.sh` and
+  `scripts/format.sh` clean; `git diff --check` clean; unsigned xcodebuild
+  builds of BrevMacOS and BrevIOS succeeded in the worktree.
+- Snapshot baselines: the pre-existing `detail-*` and `month-*`
+  references also mismatch on a clean `main` checkout on this host, so
+  they were not re-recorded; only the four new note snapshots
+  (`detail-later-occurrence-*`, `detail-incomplete-series-*`) were
+  recorded.
+- Next: commit + PR when the maintainer allows pushing.
 
 ## 2026-10-13 — Agent — Demo screenshots
 
@@ -6301,3 +6506,109 @@ buttons, and package-aware localization.
 - Verification: ADR relative links passed; the index has 89 unique ascending rows, with ADR-0088 and ADR-0089 Accepted. `MISE_EXEC_AUTO_INSTALL=0 scripts/format.sh` passed (0/1298 files formatted; 185 skipped); `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed (0/1298 files require formatting; SwiftLint strict, coverage self-test and ADR check passed); `git diff --check` passed after this entry.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
+
+## 2026-10-22 — Agent — Mail-list selection CPU
+
+- Goal: reduce repeated message-row date formatting, macOS sidebar selection,
+  and message context-menu work during rapid list selection.
+- Changed: added a bounded compact-date-label cache and locale parity test;
+  hoisted the active desktop favorite lookup out of per-folder selection;
+  moved row menu construction into `MessageRowContextMenu`.
+- Verification: focused suites passed after formatting — date presentation
+  10 tests, `FolderSidebarPresentationTests` 41 tests, and
+  `MessageCommandPresentationTests` 29 tests. `scripts/format.sh` passed
+  (1/1302 files formatted; the follow-up format lint found 0/1302 files
+  needing changes); `scripts/lint.sh` passed.
+- Measurements: three alternating matched Debug runs per side (main totals
+  5,664/5,566/5,454; branch 5,441/5,512/5,448). Median row-body samples were
+  532 main / 345 branch; sidebar-row samples 256 / 92 and favorite-candidate
+  samples 145 / 14. Relative-label samples were 209 / 11; the extracted menu
+  initializer had 1 branch sample median, while its body and legacy helpers
+  were unsampled. See
+  `/Users/devin/brev-perf-out/REPORT.md` for per-run data and artifacts.
+- Limits: matched C emitted 4 main and 7 branch `ui.body.visible` spans,
+  not ten; `cached_thread_open_ms` was absent and IDs are not logged. No iOS
+  simulator interaction or live-provider measurement was performed.
+- Net: Brev-owned per-row and sidebar samples fell ~85%, but total
+  main-thread samples for the burst moved only ~2% (SwiftUI/AttributeGraph
+  dominate in Debug), so no user-visible speedup is claimed and CHANGELOG is
+  unchanged. A Release-config trace is the next measurement.
+- Handoff: committed on `fix/mail-list-selection-cpu`; parent owns the PR.
+
+## 2026-10-22 — Agent — PR #261 CI repair
+
+- Goal: make the date-cache tests compile in CI's Release configuration.
+- Changed: guarded the Debug-only hit-counter assertions while keeping the
+  cached-label equality assertion active in Release.
+- Verification: Release and Debug `MessageListDatePresentationTests` each
+  passed 10 tests; targeted SwiftFormat and strict SwiftLint passed; diff check
+  passed.
+- CI evidence: Release compilation reported the Debug-only accessor missing at
+  test lines 154 and 168, failing both `snapshot-test` and `test (BrevMail)`.
+- Handoff: this is the single mechanical fix for PR #261; awaiting its rerun.
+
+## 2026-10-22 — Devin — UI polish branch follow-up (no issue number)
+
+- Goal: implement and refine critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
+- Changes: aligned macOS toolbar/thread presentation and equal-width Appearance controls; grouped iOS Mailboxes, polished compose chips and row geometry, and normalized compact Unified Inbox presentation. The AppKit Appearance segmented control now receives the theme accent through `selectedSegmentBezelColor` on updates; the iOS Cc/Bcc accessory retains its 44 pt hit shape while reducing the one-line To row height. Updated Unreleased changelog. Re-recorded only affected Compose, Mailboxes, and Appearance snapshot references.
+- Verification: format and lint passed; macOS and iOS mock builds passed. Focused toolbar (24), Unified Inbox (4), FolderSidebar (41), PhoneMailbox (6 tests/9 cases), and Compose tests passed in prior runs. ComposeViewSnapshotTests passed (3/3) after refreshing only empty/reply references. The BrevSettings macOS surfaces test exercised light and dark; the Appearance references now pass, while 10 snapshots for other surfaces still mismatch on this host. Fresh captures are under `/Users/devin/brev-after/`; the iOS compose capture shows one recipient chip, the keyboard, and a one-line To row comparable in height to From.
+- Limits: the 10 non-Appearance BrevSettings snapshot mismatches were not compared against clean main in this run. Five PhoneMailbox snapshot failures (19 total, 14 passed) were previously reproduced on clean main (`06c7b19`); the full-suite run hung after results and was interrupted with exit 143. No CI watch or PR action.
+- Handoff: parent creates the PR and owns the CI follow-up.
+
+## 2026-10-24 — Agent — PR #260 reader/list polish
+
+- Goal: reduce reader/list chrome and make thread opening target the newest message unless a specific message was selected.
+- Changes: removed thread-card accent bars; separated explicit reader selection from parent thread-row selection; moved quick reply into reader scroll content, hid it at compact width, and added Reply All/Forward to the compact Reply menu; made the unread marker a dot sized to `max(7, textSize.listTitlePointSize * 0.6)` on macOS (iOS remains 10 pt), defaulted folder statistics off in both list views and `MailboxViewSettings.defaults`, removed visible date-header counts, and separated iOS 26 Search and Compose toolbar items. Added the Fixed changelog entry.
+- Verification: focused ThreadConversationExpansionPolicy, MailRootQuickReplyPolicy, and BrevMailNativeToolbar suites passed (37 tests); MailboxViewSettings passed (3 tests). After the macOS dot-size correction, ThreadConversationExpansionPolicy passed (11 tests), MessageListRowSnapshotTests passed (9/9) after re-recording the dot-affected references (five MessageListRow PNGs differ in the final diff), MailRootComposePresentationPolicy and BrevMailNativeToolbar passed (27 tests), and MailboxViewSettings passed (3 tests). `scripts/format.sh` and `scripts/lint.sh` passed. The parent-row regression is `parentRowSelectionOfOlderHeaderOpensNewestAndChildSelectionStaysSelected`.
+- Screenshots: refreshed Mac inbox/reader and iPhone list/reader/Reply-menu captures are saved in `/Users/devin/brev-review/chrome/`; the before captures are retained there as well. The E80 light-mode captures show Compose separate from Search, the newest message expanded without a compact quick-reply bar, and the Reply menu options. Final Mac captures: `/Users/devin/brev-review/chrome/after-mac-inbox-reader-light-v2.png` and `/Users/devin/brev-review/chrome/after-mac-inbox-reader-dark-v2.png`.
+- Handoff: `fix/reader-list-chrome` remains stacked on PR #260 (`fix/macos-ios-polish-pass`); no clean-main PhoneMailbox/BrevSettings snapshot drift or new user-visible strings were introduced.
+
+## 2026-10-25 — Devin — UI polish branch follow-up (stacked on PR #263)
+
+- Goal: implement UI direction items #5, #6 remainder, #10 without reactions, and #12 on `fix/list-reader-search-polish`.
+- Changes: thread counts are plain secondary text; Mac row toggles remain geometrically stable and show only on hover/selection, while iPhone separators align with sender text and thread chevrons are hidden. Mac unread count remains in the window subtitle; date sections collapse only on Mac. `showFolderStats` still has a Settings consumer, so its setting and list footer remain. Reader body/header alignment and Mac subject metadata now match the requested layout; the existing trailing subject menu was not changed. Mac search uses a segmented scope row, keeps free text out of filter tokens, and shows retry only for finished partial results.
+- Verification: focused BrevMail tests passed (36 tests/5 suites); snapshot tests passed (11 tests/2 suites) after updating only five affected references. The Mac mock build and requested iOS 27.0 iPhone 17 simulator build succeeded. `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check` passed. Before/after UI evidence is saved in `/Users/devin/evidence/list-reader-search/`.
+- Limits: the iOS package-scheme snapshot route did not produce test results; the workspace lacks a `BrevMail` scheme, and the package-scheme attempt reported `command failed with exit code 0 but produced no further output`. The simulator build and live captures are not reported as iOS snapshot-test coverage.
+- Handoff: branch is stacked on `origin/fix/reader-list-chrome`; no reactions action was added or moved. The lone trailing subject control is the existing `threadActionsMenu` in `ThreadConversationView.swift`. No PR or post-push CI watch is requested.
+
+## 2026-10-25 — Devin — PR #263 review fixes
+
+- Goal: show Mac partial-results status only for completed searches with failures, align it with row text, and remove the custom selection bar.
+- Changes: `.unverified`-only searches remain retryable but no longer count as partial; the status line uses the list text-column inset. Removed the explicit `RoundedRectangle` selection overlay from shared message rows; selected rows use the system highlight.
+- Verification: `MailSearchProgressTests` passed; the affected search-status and selected-row snapshots passed after re-recording only the two search-state images and the selected-row image. `scripts/format.sh`, `scripts/lint.sh`, and `./script/build_and_run.sh --mock` passed. Refreshed and visually inspected the Mac Light list, Dark list, and search-query evidence in `/Users/devin/evidence/list-reader-search/`.
+- Limits: no CI checks were watched per the handoff scope.
+- Handoff: ready to commit and push `fix/list-reader-search-polish`; do not open a PR.
+
+## 2026-10-25 — Devin — stacked Mailboxes and compose polish
+
+- Goal: implement direction-spec items #9, #11, and #13 on `fix/iphone-mailboxes-compose`, stacked on `fix/list-reader-search-polish`.
+- Changes: #9 moves Settings to a leading gear menu, preserves profile switching there, keeps Edit at trailing, uses outline sidebar symbols, renames Favourites to Favorites without changing Bokmål, and removes the Apps header. #11 adds the iPhone collapsed Cc/Bcc/From summary, circular theme-backed Send state, inset separators and recipient truncation. #13 adds the live subject title, a unified-window style, and SwiftUI toolbar items in ComposeView.
+- Verification: `scripts/format.sh` and `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed. Targeted macOS compose tests passed (39 tests, 5 suites) after re-recording the light/dark ComposeView macOS snapshots. The Mac mock app built and launched. The base-branch snapshot run also mismatched those same ComposeView references on this host before they were re-recorded.
+- Limits: a live capture of the presenter-created “New Message” window (`/Users/devin/evidence/mailboxes-compose/diagnostic-mac-compose-no-toolbar.png`) shows the titlebar/toolbar is blank: the window has `.unified` style, but the presenter creates an `NSWindow` and sets `toolbarStyle` without assigning an `NSToolbar`, so the SwiftUI `.toolbar` items are not installed. The fallback title is “New Message” in the window list and the field summary renders, but Send/format/attachment/overflow controls are absent. Installing a native toolbar or changing the presenter/window architecture is a structural change; stop here pending direction. The iOS simulator build emitted no conclusive completion result (`error: the following command failed with exit code 0 but produced no further output` after compile warnings), so iPhone live captures and iOS snapshot recording remain incomplete. No base/after screenshot set was completed. No TDD skill was available in the active plugin set, so no red/green cycle was run.
+- Handoff: #9 WIP `c98e5aa` remains pushed. Compose and documentation edits are local and uncommitted; no final commit or push was made because the Mac toolbar requires a structural decision. Do not open a PR or watch CI.
+
+## 2026-10-25 — Devin — native compose toolbar follow-up
+
+- Goal: finish the approved native toolbar bridge and verify compose items #9, #11, and #13.
+- Changes: the auxiliary compose presenter now retains a delegate-backed unified `NSToolbar` with Send, flexible space, format, attachment, and overflow in the requested order. Toolbar controls reuse the compose's existing SwiftUI actions; the duplicate SwiftUI toolbar was removed. Added configuration coverage for item order and title fallback.
+- Verification: the focused BrevMail run passed 40 tests in five suites, including auxiliary-window configuration and Mac compose snapshots. `scripts/format.sh` and `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed. The Xcode 27.0 RC iOS simulator build succeeded; the live iPhone 17 compose showed the collapsed row, expanded fields, grey invalid Send, accent valid Send, no placeholder, and a middle-truncated long recipient chip.
+- Limits: the Xcode workspace `BrevIOS` scheme does not include `BrevMailTests`; the targeted `xcodebuild test` request for `longRecipientAddress` exited 70 with “Tests in the target ‘BrevMailTests’ can’t be run because ‘BrevMailTests’ isn’t a member of the specified test plan or scheme.” The on-device live check covered the long chip, but its iOS snapshot test was not executed. Mac native-toolbar visual evidence and the complete before/after light/dark screenshot set are still pending.
+- Handoff: native toolbar configuration tests pass; next capture the native Mac compose window and finish the evidence set before commit/push.
+
+## 2026-10-25 — Devin — compose toolbar rendering follow-up
+
+- Goal: verify the native compose toolbar after its hosted controls received explicit AppKit sizing and complete the available compose evidence.
+- Changes: the presenter now gives toolbar-hosted SwiftUI controls explicit 42 × 36 point frames. The Mac mock shows the title and all four requested controls in one native unified toolbar.
+- Verification: focused compose tests passed (40 tests/5 suites); format and lint passed; the Mac mock rebuilt and launched. Visually inspected Mac compose light/dark and iPhone compose empty/long-recipient light/dark. The iPhone captures show To directly below the title bar, disabled/enabled Send styling, a collapsed optional-field summary, no recipient placeholder, and the long address middle-truncated in its chip.
+- Limits: the iOS snapshot test remains unavailable because `BrevMailTests` is not in the `BrevIOS` scheme. The complete requested set is not finished: valid base and after Mailboxes light/dark captures and a Bokmål iPhone compose capture are still missing; the earlier `before-iphone-parent-mailboxes-light.png` depicts the inbox rather than Mailboxes. The Mac captures include a macOS notification banner.
+- Evidence: compose captures are in `/Users/devin/evidence/mailboxes-compose/` as `after-iphone-compose-{empty,long-recipient}-{light,dark}.png` and `after-mac-compose-{light,dark}.png`.
+- Handoff: host appearance restored to Light. No post-push CI watch requested.
+
+## 2026-10-25 — Agent — stacked Mailboxes and compose review follow-up
+
+- Goal: finish the review fixes for locale-aligned Mac compose labels, To-row separators, and the iPhone Mailboxes toolbar.
+- Changes: Mac compose labels now share a locale-sized, trailing-aligned column; the collapsed Cc/Bcc/From row keeps its address in the content column; the To separator begins at the label edge on both platforms. The iOS sidebar's leading Settings gear is the only Settings entry point, leaving Edit alone at trailing.
+- Verification: `scripts/format.sh`, `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`, and the focused BrevMail tests passed. The Xcode 27.0 RC iPhone 17 build succeeded; `./script/build_and_run.sh --mock` rebuilt and launched the Mac app. Visually inspected the Mailboxes-root, empty/long-recipient compose, Bokmål compose, and clean Mac compose window captures.
+- Limits: iOS snapshot tests remain unavailable through the `BrevIOS` scheme because `BrevMailTests` is not part of its test plan; live iPhone captures were inspected instead. The Mac build retains existing warnings for deprecated `EventModifiers.function` and non-Sendable closure conversions.
+- Evidence: refreshed after captures are in `/Users/devin/evidence/mailboxes-compose/`; valid base Mailboxes captures remain there. The Mac screenshots are window-only and contain no notification banners.
+- Handoff: host appearance is Light. Commit and push the completed follow-up; do not open a PR or watch CI.

@@ -6,6 +6,22 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Thread readers open on the newest message by default, and message-list counts no longer repeat.
+- On iPad and Mac, quick reply follows the conversation; on iPhone, Reply offers Reply All and Forward on long press.
+- Unread messages use dots instead of bars, thread cards no longer show accent bars, and Compose has its own iPhone toolbar button.
+- macOS reader actions and conversation controls align as a trailing group, and Appearance segmented rows use the theme's monochrome accent, share equal widths, and align at a trailing edge.
+- iOS Mailboxes groups Smart Views with Favourites and accounts in one card; compose recipients use compact chips with aligned labels, non-overlapping remove controls, and a compact one-line To row that still wraps when needed. Compact All Inboxes hides redundant folder statistics with consistent date-header spacing.
+- Compose field labels share a locale-sized, trailing-aligned column on Mac, and the To row separator now appears on both platforms.
+- Repeating calendar events now show every projected date in the
+  agenda, day, week, and month views, and the agenda shows a navigable
+  30-day range (ADR-0089).
+- Creating a repeating Google Calendar event with the "Local" time zone no
+  longer fails; the series is pinned to the device time zone, which Google
+  requires for recurring events.
+- Repeating calendar events with excluded, moved, or cancelled dates now
+  show their remaining dates instead of only the first one.
+- Calendar: the "event is no longer synced" notice from a stale event link
+  now has a close button and clears when you navigate or pick an event.
 - Calendar event-detail actions stack vertically when the available width
   cannot fit their labels, preserving readability at accessibility text sizes.
 - Calendar: saving “This and Future Events” at the start of a series
@@ -14,6 +30,16 @@ All notable changes to Brev are documented here.
 - Contacts detail actions stack vertically when their labels cannot fit,
   while standard contact labels are localized and arbitrary custom labels
   retain their original spelling.
+- Settings → Calendar & Contacts lists each collection on one line with a
+  trailing switch, gives source switches their own rows, moves cached
+  counts into the status line, and drops the empty separator rows on iOS.
+- Message-list thread counts sit beside arrival times, Mac thread chevrons appear on hover or selection, and iPhone separators align with sender names. Mac folder unread counts appear in the window subtitle, date sections collapse only on Mac, and selected rows use the system highlight without a leading bar.
+- Mac search keeps its mailbox scope visible, shows only structured filter tokens, and reports partial results only when a mailbox search fails.
+- Reader body text aligns with the sender column, and the Mac conversation summary shows only its message count.
+- iPhone Mailboxes uses a leading Settings gear menu, keeps Edit trailing, uses outline row icons, and spells Favorites consistently; Calendar, Contacts and Tasks no longer have an Apps header.
+- iPhone compose collapses optional recipient and sender fields into a localized summary, truncates long recipient chips, and uses a circular theme-backed Send button.
+- Mac compose uses a unified native toolbar for Send, formatting, attachments, and secondary actions, with a live subject title and localized fallback.
+- Mac compose labels share a locale-sized trailing column, and To fields have an inset separator.
 
 - Drive attachment uploads use correctly separated multipart parts. Cancelling
   a transfer stays a cancellation, and a later upload no longer reuses an
@@ -21,6 +47,8 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Notifications settings explains sign-in code and link availability per account.
+  The feature remains unavailable until provider trust evidence and panel wiring are complete.
 - Calendar event attachments backed by Google Drive can be saved as a
   copy to a folder you choose. The event keeps its original link.
 - README shows demo screenshots of the macOS and iOS apps in light and dark

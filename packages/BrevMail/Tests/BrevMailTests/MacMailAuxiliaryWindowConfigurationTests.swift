@@ -51,15 +51,30 @@ struct MacMailAuxiliaryWindowConfigurationTests {
         #expect(configuration.defaultSize.height >= 660)
     }
 
-    @Test("compose windows use full-size content with an inset custom toolbar")
-    func composeWindowsUseFullSizeContentWithInsetCustomToolbar() {
+    @Test("compose windows use a unified toolbar and message title")
+    func composeWindowsUseUnifiedToolbar() {
         let configuration = MacMailAuxiliaryWindowConfiguration.configuration(for: .compose)
 
         #expect(configuration.styleMask.contains(.fullSizeContentView))
-        #expect(configuration.titleVisibility == .hidden)
+        #expect(configuration.title == ComposePresentation.windowTitle(subject: ""))
+        #expect(configuration.titleVisibility == .visible)
         #expect(configuration.titlebarAppearsTransparent)
-        #expect(configuration.toolbarStyle == .automatic)
+        #expect(configuration.toolbarStyle == .unified)
         #expect(!configuration.isMovableByWindowBackground)
+    }
+
+    @Test("compose toolbar orders Send before format, attachment, and overflow")
+    func composeToolbarOrderAndTitleFallback() {
+        let configuration = MacMailAuxiliaryWindowConfiguration.configuration(for: .compose)
+
+        #expect(MacComposeToolbarItemIdentifier.defaultOrder == [
+            MacComposeToolbarItemIdentifier.send,
+            .flexibleSpace,
+            MacComposeToolbarItemIdentifier.format,
+            MacComposeToolbarItemIdentifier.attachment,
+            MacComposeToolbarItemIdentifier.more
+        ])
+        #expect(configuration.title == String(localized: "New Message", bundle: .module))
     }
 
     @Test("detached readers retain a descriptive title with utility chrome")

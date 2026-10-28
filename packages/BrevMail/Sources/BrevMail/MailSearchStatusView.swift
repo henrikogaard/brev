@@ -19,7 +19,20 @@ struct MailSearchStatusView: View {
     @Environment(\.brevTheme) private var theme
     let progress: MailSearchProgressState
     let checksAttachments: Bool
+    let leadingInset: CGFloat
     let retry: () -> Void
+
+    init(
+        progress: MailSearchProgressState,
+        checksAttachments: Bool,
+        leadingInset: CGFloat = BrevSpacing.lg,
+        retry: @escaping () -> Void
+    ) {
+        self.progress = progress
+        self.checksAttachments = checksAttachments
+        self.leadingInset = leadingInset
+        self.retry = retry
+    }
 
     private var title: String {
         if progress.sourceCount == 0 { return String(localized: "No mailboxes searched", bundle: .module) }
@@ -68,6 +81,29 @@ struct MailSearchStatusView: View {
     }
 
     var body: some View {
+        #if os(macOS)
+        if progress.hasPartialResults {
+            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                Text(title)
+                    .brevFont(.caption)
+                    .foregroundStyle(theme.textSecondary.color)
+                if progress.canRetry {
+                    Button(action: retry) {
+                        Text("Retry", bundle: .module)
+                    }
+                    .buttonStyle(.borderless)
+                    .fixedSize()
+                    .foregroundStyle(theme.accent.color)
+                    .accessibilityLabel(String(localized: "Retry search", bundle: .module))
+                }
+            }
+            .padding(.leading, leadingInset)
+            .padding(.trailing, BrevSpacing.lg)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, BrevSpacing.xs)
+            .accessibilityElement(children: .contain)
+        }
+        #else
         HStack(alignment: .top, spacing: BrevSpacing.sm) {
             if progress.isSearching {
                 ProgressView().controlSize(.small).tint(theme.accent.color)
@@ -103,8 +139,8 @@ struct MailSearchStatusView: View {
         #else
         .padding(.horizontal, BrevSpacing.lg)
         .padding(.vertical, BrevSpacing.sm)
-        .background(theme.bgSecondary.color)
         .accessibilityElement(children: .contain)
+        #endif
         #endif
     }
 }

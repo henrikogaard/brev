@@ -151,13 +151,18 @@ struct ComposePresentationTests {
         #expect(ComposeBodyAppearance.dark.editorTheme.textPrimary.hex != ComposeBodyAppearance.dark.editorTheme.bgPrimary.hex)
     }
 
-    @Test("compose chrome uses flat hairline fields under the full-size titlebar")
-    func composeChromeUsesFlatHairlineFieldsUnderFullSizeTitlebar() {
+    @Test("compose chrome uses flat hairline fields under the unified toolbar")
+    func composeChromeUsesFlatHairlineFieldsUnderUnifiedToolbar() {
         let chrome = ComposePresentation.chrome
 
         #expect(chrome.fieldPanelTreatment == .flatHairline)
-        #expect(chrome.toolbarClusterTreatment == .borderless)
         #expect(chrome.fieldRows == [.recipients, .sender, .subject])
+    }
+
+    @Test("compose window title follows the subject and localizes the empty fallback")
+    func composeWindowTitle() {
+        #expect(ComposePresentation.windowTitle(subject: "  ") == "New Message")
+        #expect(ComposePresentation.windowTitle(subject: "  Release plan  ") == "Release plan")
     }
 
     @Test("compact compose separates primary and utility actions")
@@ -265,29 +270,5 @@ struct ComposePresentationTests {
         #expect(ComposeToolbarAction.preview.accessibilityLabel == "Preview")
         #expect(ComposeToolbarAction.moreActions.accessibilityLabel == "Compose actions")
         #expect(ComposeToolbarAction.scheduleSend.accessibilityLabel == "Schedule send")
-    }
-
-    @Test("carbon copy controls expose only hidden recipient fields")
-    func carbonCopyControlsExposeOnlyHiddenRecipientFields() {
-        #expect(ComposePresentation.hiddenCarbonCopyFields(
-            isCcVisible: false,
-            isBccVisible: false
-        ) == [.cc, .bcc])
-        #expect(ComposePresentation.hiddenCarbonCopyFields(
-            isCcVisible: true,
-            isBccVisible: false
-        ) == [.bcc])
-        #expect(ComposePresentation.hiddenCarbonCopyFields(
-            isCcVisible: false,
-            isBccVisible: true
-        ) == [.cc])
-        #expect(ComposePresentation.hiddenCarbonCopyFields(
-            isCcVisible: true,
-            isBccVisible: true
-        ).isEmpty)
-        #expect(ComposeCarbonCopyField.cc.label == "Cc")
-        #expect(ComposeCarbonCopyField.cc.accessibilityLabel == "Add Cc")
-        #expect(ComposeCarbonCopyField.bcc.label == "Bcc")
-        #expect(ComposeCarbonCopyField.bcc.accessibilityLabel == "Add Bcc")
     }
 }

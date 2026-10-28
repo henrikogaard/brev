@@ -72,6 +72,7 @@ public struct MessageDetailView: View {
     /// The opt-in Google Drive feature (#14); nil hides the
     /// Save-to-Drive attachment action.
     private let driveFeature: GoogleDriveFeature?
+    private let readerFooter: AnyView?
     private let readReceiptNotificationStore = MessageReadReceiptNotificationStore.shared
     private let bodyRenderer = BodyRenderer()
 
@@ -188,7 +189,8 @@ public struct MessageDetailView: View {
         closeWindow: (() -> Void)? = nil,
         inviteReconciler: CalendarInviteReconciler? = nil,
         contactActions: MailSenderContactActions? = nil,
-        driveFeature: GoogleDriveFeature? = nil
+        driveFeature: GoogleDriveFeature? = nil,
+        readerFooter: AnyView? = nil
     ) {
         self.backend = backend
         self.sourceID = sourceID
@@ -202,6 +204,7 @@ public struct MessageDetailView: View {
         self.inviteReconciler = inviteReconciler
         self.contactActions = contactActions
         self.driveFeature = driveFeature
+        self.readerFooter = readerFooter
     }
 
     public var body: some View {
@@ -690,6 +693,9 @@ public struct MessageDetailView: View {
                     if let attachments = messageBody?.attachments, !attachments.isEmpty {
                         BrevDivider()
                         attachmentsSection(attachments)
+                    }
+                    if let readerFooter {
+                        readerFooter
                     }
                 }
             }

@@ -185,6 +185,7 @@ public struct ComposeView: View {
     private let restoredDraft: Draft?
     private let aiBackend: (any AIBackend)?
     private let backendSupportsAIWriter: Bool
+    private let defaultSenderOptionID: String
     private let signatureContext: ComposeSignatureContext?
     private let composeSecurityDefaults: ComposeSecurityDefaultState
     private let hasTrustedSigningIdentity: Bool
@@ -206,6 +207,7 @@ public struct ComposeView: View {
     @State private var recipientLookupTask: Task<Void, Never>?
     @State private var showCc = false
     @State private var showBcc = false
+    @State private var showFrom = false
     @State private var subject = ""
     @State private var bodyText = ""
     @State private var bodyHTML: String?
@@ -450,6 +452,7 @@ public struct ComposeView: View {
         self.sourceID = sourceID
         self.senderOptions = resolvedSenderOptions
         self.fallbackSenderOption = fallbackSenderOption
+        defaultSenderOptionID = selectedSenderOption.id
         self.backendForSenderSource = backendForSenderSource ?? { _ in backend }
         self.replyingTo = replyingTo
         self.replyMode = replyMode
@@ -589,6 +592,28 @@ public struct ComposeView: View {
                 ? ComposeLayout.compactSheetIdealWidth : nil)
             .accessibilityAddTraits(.isModal)
             .brevWindowTranslucency(windowRole: .utility)
+        #if os(macOS)
+            .background {
+                ZStack {
+                    ComposeWindowTitleBridge(title: windowTitle)
+                    ComposeNativeToolbarContentBridge(items: [
+                        MacComposeToolbarItemIdentifier.send: AnyView(sendButton),
+                        MacComposeToolbarItemIdentifier.format: AnyView(formatMenu),
+                        MacComposeToolbarItemIdentifier.attachment: AnyView(
+                            toolbarButton(
+                                label: ComposeToolbarAction.attach.accessibilityLabel,
+                                systemImage: "paperclip",
+                                isDisabled: isBusy
+                            ) {
+                                isPickingFile = true
+                            }
+                        ),
+                        MacComposeToolbarItemIdentifier.more: AnyView(composeSecondaryActionsMenu)
+                    ])
+                }
+                .frame(width: 0, height: 0)
+            }
+        #endif
             .sheet(isPresented: $isPresentingDriveAttach) {
                 if let driveFeature {
                     GoogleDriveAttachSheet(
@@ -762,7 +787,11 @@ public struct ComposeView: View {
                     .frame(idealWidth: ComposeLayout.compactSheetIdealWidth)
                 }
             } else {
+                #if os(macOS)
+                fieldPanel
+                #else
                 header
+                #endif
                 composeEditorContent
             }
             #if os(iOS)
@@ -880,53 +909,9 @@ public struct ComposeView: View {
     private var toolbar: some View {
         switch composeLayoutPlatform {
         case .macOS:
-            desktopToolbar
+            EmptyView()
         case .compactIOS, .compactIOSAccessibility, .regularIOS:
             mobileToolbar
-        }
-    }
-
-    private var desktopToolbar: some View {
-        HStack(spacing: BrevSpacing.xs) {
-            if toolbarMetrics.leadingInset > 0 {
-                Color.clear
-                    .frame(width: toolbarMetrics.leadingInset, height: 1)
-                    .accessibilityHidden(true)
-            }
-
-            // Apple Mail-style chrome: one quiet pill groups the action
-            // controls on the left, the circular send button sits right.
-            toolbarCluster {
-                toolbarButton(
-                    label: ComposeToolbarAction.attach.accessibilityLabel,
-                    systemImage: "paperclip",
-                    isDisabled: isBusy
-                ) {
-                    isPickingFile = true
-                }
-                formatMenu
-                composeSecondaryActionsMenu
-            }
-
-            Spacer(minLength: BrevSpacing.sm)
-
-            sendButton
-        }
-        .padding(.leading, BrevSpacing.sm)
-        .padding(.trailing, BrevSpacing.md)
-        .frame(maxWidth: .infinity, minHeight: toolbarMetrics.height, maxHeight: toolbarMetrics.height)
-    }
-
-    /// Groups toolbar controls according to chrome cluster treatment.
-    @ViewBuilder
-    private func toolbarCluster<Content: View>(@ViewBuilder _ content: () -> Content) -> some View {
-        switch ComposePresentation.chrome.toolbarClusterTreatment {
-        case .borderless:
-            HStack(spacing: BrevSpacing.xxs) {
-                content()
-            }
-            .padding(.horizontal, BrevSpacing.xxs)
-            .brevQuietSurface(cornerRadius: BrevRadius.pill)
         }
     }
 
@@ -1500,49 +1485,16 @@ public struct ComposeView: View {
             }
         } label: {
             #if os(macOS)
-            // macOS has room for a real primary action: a plain label at the
-            // window edge read as static text, and its disabled state was a
-            // dimmed grey that gave no hint it was a control. The capsule uses
-            // the theme accent and keeps the same hit target; iOS keeps Apple
-            // Mail's text treatment.
-            Group {
-                if isSending {
-                    ProgressView()
-                        .controlSize(.small)
-                        .accessibilityHidden(true)
-                } else {
-                    Text(verbatim: pendingUndoSendTask != nil
-                        ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
-                        .foregroundStyle(
-                            isDisabled ? theme.textTertiary.color : theme.bgPrimary.color
-                        )
-                }
-            }
-            .brevFont(.subheadline).fontWeight(.semibold)
-            .lineLimit(1)
-            .padding(.horizontal, BrevSpacing.md)
-            .frame(minHeight: toolbarMetrics.hitTargetSize)
-            .background(
-                Capsule().fill(
-                    isDisabled ? theme.accentMuted.color : theme.accent.color
-                )
-            )
-            .contentShape(Rectangle())
+            Image(systemName: "paperplane.fill")
+                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
+                .accessibilityHidden(true)
             #else
-            // Apple Mail-style Send: bold accent text in the chrome row
-            // rather than a capsule, keeping the 44pt hit area.
-            Text(verbatim: pendingUndoSendTask != nil
-                ? String(localized: "Cancel Send", bundle: .module) : sendButtonLabel)
-                .brevFont(.subheadline).fontWeight(.semibold)
-                .foregroundStyle(
-                    isDisabled
-                        ? theme.textTertiary.color
-                        : theme.accent.color
-                )
-                .lineLimit(1)
-                .dynamicTypeSize(denseChromeDynamicTypeRange)
-                .padding(.horizontal, BrevSpacing.xs)
-                .frame(minHeight: toolbarMetrics.hitTargetSize)
+            Image(systemName: "arrow.up")
+                .foregroundStyle(isDisabled ? theme.textTertiary.color : theme.bgPrimary.color)
+                .frame(width: toolbarMetrics.hitTargetSize, height: toolbarMetrics.hitTargetSize)
+                .background(Circle().fill(isDisabled ? theme.bgSecondary.color : theme.accent.color))
                 .contentShape(Rectangle())
             #endif
         }
@@ -1587,6 +1539,10 @@ public struct ComposeView: View {
         return String(localized: "Send", bundle: .module)
     }
 
+    private var windowTitle: String {
+        ComposePresentation.windowTitle(subject: subject)
+    }
+
     // Header fields sit directly on the window surface — flat rows with
     // hairline dividers, matching the message list rather than floating in
     // a glass card inside an already-translucent window.
@@ -1606,15 +1562,34 @@ public struct ComposeView: View {
                     .padding(.horizontal, horizontalInset)
                 if index < rows.count - 1 {
                     BrevDivider()
+                        .padding(.leading, horizontalInset)
                 }
             }
             BrevDivider()
+                .padding(.leading, horizontalInset)
         }
-        .padding(.top, BrevSpacing.xs)
     }
 
     private var isAccessibilityFieldLayout: Bool {
         composeLayoutPlatform == .compactIOSAccessibility
+    }
+
+    private var fieldLabelWidth: CGFloat {
+        #if os(macOS)
+        ComposeLayout.fieldLabelWidth(
+            for: [
+                String(localized: "To", bundle: .module),
+                String(localized: "Cc", bundle: .module),
+                String(localized: "Bcc", bundle: .module),
+                String(localized: "From", bundle: .module),
+                String(localized: "Subject", bundle: .module),
+                String(localized: "Cc/Bcc, From:", bundle: .module),
+            ],
+            textSize: MailboxTextSize(rawValue: mailboxTextSizeRaw) ?? .medium
+        )
+        #else
+        ComposeLayout.fieldLabelWidth
+        #endif
     }
 
     private var fieldVerticalPadding: CGFloat {
@@ -1633,7 +1608,9 @@ public struct ComposeView: View {
         case .subject:
             subjectField
         case .sender:
-            fromField
+            if isFromFieldVisible {
+                fromField
+            }
         }
     }
 
@@ -1643,7 +1620,7 @@ public struct ComposeView: View {
             if isAccessibilityFieldLayout {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $to,
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
@@ -1653,12 +1630,12 @@ public struct ComposeView: View {
                     field: .to,
                     onSubmit: { advanceFocus(from: .to) }
                 ) {
-                    carbonCopyControls
+                    EmptyView()
                 }
             } else {
                 RecipientChipField(
                     label: String(localized: "To", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $to,
                     inputText: $toInputText,
                     suggestions: suggestions(for: .to),
@@ -1668,13 +1645,45 @@ public struct ComposeView: View {
                     field: .to,
                     onSubmit: { advanceFocus(from: .to) }
                 ) {
-                    carbonCopyControls
+                    EmptyView()
                 }
             }
-            if isCcFieldVisible {
+            BrevDivider()
+                .padding(.vertical, fieldVerticalPadding)
+            if isOptionalFieldsCollapsed {
+                Button {
+                    showCc = true
+                    showBcc = true
+                    showFrom = true
+                } label: {
+                    #if os(macOS)
+                    HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
+                        ComposeFieldLabel(String(localized: "Cc/Bcc, From:", bundle: .module))
+                            .frame(width: fieldLabelWidth, alignment: .trailing)
+                        Text(currentFromEmail)
+                            .brevFont(.subheadline)
+                            .foregroundStyle(theme.textSecondary.color)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                    }
+                    #else
+                    Text(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+                        .brevFont(.subheadline)
+                        .foregroundStyle(theme.textSecondary.color)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                    #endif
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(String(localized: "Cc/Bcc, From: \(currentFromEmail)", bundle: .module))
+            } else if isCcFieldVisible {
                 RecipientChipField(
                     label: String(localized: "Cc", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $cc,
                     inputText: $ccInputText,
                     suggestions: suggestions(for: .cc),
@@ -1685,10 +1694,10 @@ public struct ComposeView: View {
                     onSubmit: { advanceFocus(from: .cc) }
                 )
             }
-            if isBccFieldVisible {
+            if !isOptionalFieldsCollapsed && isBccFieldVisible {
                 RecipientChipField(
                     label: String(localized: "Bcc", bundle: .module),
-                    labelWidth: ComposeLayout.fieldLabelWidth,
+                    labelWidth: fieldLabelWidth,
                     recipients: $bcc,
                     inputText: $bccInputText,
                     suggestions: suggestions(for: .bcc),
@@ -1704,36 +1713,6 @@ public struct ComposeView: View {
         .padding(.vertical, fieldVerticalPadding)
     }
 
-    @ViewBuilder
-    private var carbonCopyControls: some View {
-        let fields = ComposePresentation.hiddenCarbonCopyFields(
-            isCcVisible: isCcFieldVisible,
-            isBccVisible: isBccFieldVisible
-        )
-        if !fields.isEmpty {
-            HStack(spacing: BrevSpacing.xs) {
-                ForEach(fields) { field in
-                    Button {
-                        revealCarbonCopyField(field)
-                    } label: {
-                        Text(field.label)
-                            .brevFont(.subheadline)
-                            .foregroundStyle(theme.accent.color)
-                            .frame(height: ComposeLayout.fieldAccessorySize)
-                            .padding(.horizontal, BrevSpacing.xs)
-                        #if os(iOS)
-                            .frame(minWidth: 44, minHeight: 44)
-                        #endif
-                            .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel(field.accessibilityLabel)
-                    .help(field.accessibilityLabel)
-                }
-            }
-        }
-    }
-
     private var isCcFieldVisible: Bool {
         showCc || !cc.isEmpty
     }
@@ -1742,13 +1721,15 @@ public struct ComposeView: View {
         showBcc || !bcc.isEmpty
     }
 
-    private func revealCarbonCopyField(_ field: ComposeCarbonCopyField) {
-        switch field {
-        case .cc:
-            showCc = true
-        case .bcc:
-            showBcc = true
-        }
+    private var isFromFieldVisible: Bool {
+        showFrom
+            || selectedSenderOption.id != defaultSenderOptionID
+            || isCcFieldVisible
+            || isBccFieldVisible
+    }
+
+    private var isOptionalFieldsCollapsed: Bool {
+        !isCcFieldVisible && !isBccFieldVisible && !isFromFieldVisible
     }
 
     private func suggestions(for field: ComposeRecipientField) -> [RecipientAutocompleteSuggestion] {
@@ -2063,7 +2044,11 @@ public struct ComposeView: View {
         } else {
             HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.sm) {
                 fieldLabel(label)
-                    .frame(width: ComposeLayout.fieldLabelWidth, alignment: .trailing)
+                #if os(iOS)
+                    .frame(width: fieldLabelWidth, alignment: .leading)
+                #else
+                    .frame(width: fieldLabelWidth, alignment: .trailing)
+                #endif
                 content()
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -4041,8 +4026,98 @@ struct ComposeFieldLabel: View {
     }
 }
 
+#if os(macOS)
+private struct ComposeWindowTitleBridge: NSViewRepresentable {
+    let title: String
+
+    func makeNSView(context _: Context) -> ComposeWindowTitleView {
+        ComposeWindowTitleView(title: title)
+    }
+
+    func updateNSView(_ view: ComposeWindowTitleView, context: Context) {
+        view.title = title
+        view.window?.title = title
+    }
+}
+
+private struct ComposeNativeToolbarContentBridge: NSViewRepresentable {
+    let items: [NSToolbarItem.Identifier: AnyView]
+
+    func makeNSView(context _: Context) -> ComposeNativeToolbarContentView {
+        ComposeNativeToolbarContentView(items: items)
+    }
+
+    func updateNSView(_ view: ComposeNativeToolbarContentView, context: Context) {
+        view.items = items
+        view.updateToolbar()
+    }
+}
+
+@MainActor
+private final class ComposeNativeToolbarContentView: NSView {
+    var items: [NSToolbarItem.Identifier: AnyView]
+
+    init(items: [NSToolbarItem.Identifier: AnyView]) {
+        self.items = items
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        nil
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        updateToolbar()
+    }
+
+    func updateToolbar() {
+        guard let toolbar = window?.toolbar,
+              let delegate = toolbar.delegate as? MacComposeToolbarDelegate else {
+            return
+        }
+        delegate.updateContentViews(items, in: toolbar)
+    }
+}
+
+private final class ComposeWindowTitleView: NSView {
+    var title = ""
+
+    init(title: String) {
+        self.title = title
+        super.init(frame: .zero)
+    }
+
+    required init?(coder: NSCoder) {
+        super.init(coder: coder)
+    }
+
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        window?.title = title
+    }
+}
+#endif
+
 private enum ComposeLayout {
     static let fieldLabelWidth: CGFloat = 64
+    #if os(macOS)
+    static func fieldLabelWidth(for labels: [String], textSize: MailboxTextSize) -> CGFloat {
+        let adjustment: CGFloat = switch textSize {
+        case .small: -1
+        case .medium: 0
+        case .large: 2
+        }
+        let font = NSFont.systemFont(
+            ofSize: NSFont.preferredFont(forTextStyle: .subheadline).pointSize + adjustment,
+            weight: .medium
+        )
+        let widestLabel = labels
+            .map { ($0 as NSString).size(withAttributes: [.font: font]).width }
+            .max() ?? 0
+        return ceil(widestLabel)
+    }
+    #endif
     static let fieldAccessorySize: CGFloat = 24
     static let aiPreviewMaxHeight: CGFloat = 180
     /// Ideal width reported for sheet sizing on compact iOS. Matches the

@@ -25,27 +25,27 @@ public struct CalendarDayView: View {
     @ScaledMetric(relativeTo: .caption) private var hourHeight: CGFloat = 48
     /// The displayed day (start-of-day in the display zone).
     let day: Date
-    /// All-day events covering the day, pinned above the hour grid.
-    let allDayEvents: [PIMEvent]
-    /// Lane-placed timed events covering the day.
+    /// All-day occurrences covering the day, pinned above the hour grid.
+    let allDayEvents: [PIMEventOccurrence]
+    /// Lane-placed timed occurrences covering the day.
     let placements: [CalendarGridLayout.LanePlacement]
     /// Resolves an event's collection for the block color.
     let collectionFor: (PIMEvent) -> PIMCollection?
-    /// Selection shared with the detail pane.
-    @Binding var selectedEventID: PIMEvent.ID?
+    /// Selection shared with the detail pane — an occurrence row ID.
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
 
     public init(
         day: Date,
-        allDayEvents: [PIMEvent],
+        allDayEvents: [PIMEventOccurrence],
         placements: [CalendarGridLayout.LanePlacement],
         collectionFor: @escaping (PIMEvent) -> PIMCollection? = { _ in nil },
-        selectedEventID: Binding<PIMEvent.ID?>
+        selectedOccurrenceID: Binding<PIMEventOccurrence.ID?>
     ) {
         self.day = day
         self.allDayEvents = allDayEvents
         self.placements = placements
         self.collectionFor = collectionFor
-        _selectedEventID = selectedEventID
+        _selectedOccurrenceID = selectedOccurrenceID
     }
 
     public var body: some View {
@@ -54,14 +54,14 @@ public struct CalendarDayView: View {
                 AllDayStrip(
                     events: allDayEvents,
                     collectionFor: collectionFor,
-                    selectedEventID: $selectedEventID
+                    selectedOccurrenceID: $selectedOccurrenceID
                 )
             }
             ScrollView {
                 CalendarDayColumn(
                     placements: placements,
                     collectionFor: collectionFor,
-                    selectedEventID: $selectedEventID,
+                    selectedOccurrenceID: $selectedOccurrenceID,
                     hourHeight: hourHeight,
                     showsHourLabels: true
                 )
@@ -78,19 +78,19 @@ public struct CalendarDayView: View {
 struct AllDayStrip: View {
     @Environment(\.brevTheme) private var theme
 
-    let events: [PIMEvent]
+    let events: [PIMEventOccurrence]
     let collectionFor: (PIMEvent) -> PIMCollection?
-    @Binding var selectedEventID: PIMEvent.ID?
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
 
     var body: some View {
         VStack(alignment: .leading, spacing: BrevSpacing.xxs) {
-            ForEach(events) { event in
+            ForEach(events) { occurrence in
                 CalendarEventChip(
-                    event: event,
-                    collection: collectionFor(event),
-                    isSelected: selectedEventID == event.id
+                    occurrence: occurrence,
+                    collection: collectionFor(occurrence.event),
+                    isSelected: selectedOccurrenceID == occurrence.id
                 ) {
-                    selectedEventID = event.id
+                    selectedOccurrenceID = occurrence.id
                 }
             }
         }
@@ -110,10 +110,12 @@ struct CalendarEventChip: View {
     @Environment(\.brevTheme) private var theme
     @Environment(\.calendar) private var calendar
 
-    let event: PIMEvent
+    let occurrence: PIMEventOccurrence
     let collection: PIMCollection?
     let isSelected: Bool
     let action: () -> Void
+
+    private var event: PIMEvent { occurrence.event }
 
     var body: some View {
         Button(action: action) {
@@ -149,7 +151,7 @@ struct CalendarEventChip: View {
         #endif
             .accessibilityLabel(
                 CalendarEventPresentation.accessibilityLabel(
-                    for: event,
+                    for: occurrence,
                     calendar: calendar
                 )
             )
@@ -177,7 +179,7 @@ struct CalendarDayColumn: View {
 
     let placements: [CalendarGridLayout.LanePlacement]
     let collectionFor: (PIMEvent) -> PIMCollection?
-    @Binding var selectedEventID: PIMEvent.ID?
+    @Binding var selectedOccurrenceID: PIMEventOccurrence.ID?
     /// Points per hour — 48 in the day view, tighter in week columns.
     var hourHeight: CGFloat = 48
     /// Whether a leading hour ruler renders inside this column.
@@ -244,9 +246,10 @@ struct CalendarDayColumn: View {
             CGFloat(placement.durationMinutes / 60) * hourHeight,
             18
         )
-        let event = placement.event
+        let occurrence = placement.occurrence
+        let event = occurrence.event
         return Button {
-            selectedEventID = event.id
+            selectedOccurrenceID = occurrence.id
         } label: {
             VStack(alignment: .leading, spacing: 0) {
                 Text(
@@ -259,7 +262,7 @@ struct CalendarDayColumn: View {
                 .lineLimit(2)
                 if height >= 36 {
                     Text(CalendarEventPresentation.agendaTimeText(
-                        for: event,
+                        for: occurrence,
                         calendar: calendar
                     ))
                     .brevFont(.caption)
@@ -278,14 +281,14 @@ struct CalendarDayColumn: View {
                 RoundedRectangle(cornerRadius: BrevRadius.sm)
                     .fill(blockColor(for: event))
                     .opacity(
-                        selectedEventID == event.id ? 1 : 0.85
+                        selectedOccurrenceID == occurrence.id ? 1 : 0.85
                     )
             )
             .overlay(
                 RoundedRectangle(cornerRadius: BrevRadius.sm)
                     .stroke(
                         theme.accent.color,
-                        lineWidth: selectedEventID == event.id ? 2 : 0
+                        lineWidth: selectedOccurrenceID == occurrence.id ? 2 : 0
                     )
             )
             .contentShape(Rectangle())
@@ -294,12 +297,12 @@ struct CalendarDayColumn: View {
         .offset(x: x, y: y)
         .accessibilityLabel(
             CalendarEventPresentation.accessibilityLabel(
-                for: event,
+                for: occurrence,
                 calendar: calendar
             )
         )
         .accessibilityAddTraits(
-            selectedEventID == event.id ? .isSelected : []
+            selectedOccurrenceID == occurrence.id ? .isSelected : []
         )
     }
 

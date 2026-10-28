@@ -46,7 +46,8 @@ public enum CalendarGridLayout {
     /// A timed event assigned to a horizontal lane inside a day column.
     /// `lane` / `laneCount` position the block when events overlap.
     public struct LanePlacement: Identifiable, Hashable, Sendable {
-        public let event: PIMEvent
+        /// The projected or raw occurrence row backing the block.
+        public let occurrence: PIMEventOccurrence
         /// Minutes from the day's midnight to the event's visible start
         /// (clamped to the day boundary for spanning events).
         public let startMinute: Double
@@ -58,16 +59,16 @@ public enum CalendarGridLayout {
         /// Assigned when the sweep closes the group.
         public var laneCount: Int
 
-        public var id: PIMEvent.ID { event.id }
+        public var id: PIMEventOccurrence.ID { occurrence.id }
 
         public init(
-            event: PIMEvent,
+            occurrence: PIMEventOccurrence,
             startMinute: Double,
             durationMinutes: Double,
             lane: Int,
             laneCount: Int
         ) {
-            self.event = event
+            self.occurrence = occurrence
             self.startMinute = startMinute
             self.durationMinutes = durationMinutes
             self.lane = lane
@@ -77,16 +78,16 @@ public enum CalendarGridLayout {
 
     // MARK: - Day coverage
 
-    /// Whether an event should render on the given day (start-of-day in
-    /// the display zone). Undated events cover no day.
+    /// Whether an occurrence should render on the given day
+    /// (start-of-day in the display zone). Undated rows cover no day.
     public static func coversDay(
-        _ event: PIMEvent,
+        _ occurrence: PIMEventOccurrence,
         day: Date,
         calendar: Calendar
     ) -> Bool {
-        guard let start = event.start else { return false }
+        guard let start = occurrence.start else { return false }
         var zone = calendar
-        if event.isAllDay {
+        if occurrence.event.isAllDay {
             zone.timeZone = TimeZone(identifier: "UTC") ?? zone.timeZone
         }
         let dayStart = zone.startOfDay(for: day)
@@ -95,38 +96,38 @@ public enum CalendarGridLayout {
             value: 1,
             to: dayStart
         ) else { return false }
-        let eventEnd = event.end ?? start
+        let eventEnd = occurrence.end ?? start
         // Half-open interval intersection: [start, end) ∩ [day, day+1).
         return start < dayEnd && eventEnd > dayStart
     }
 
-    /// The events covering one day, display-sorted: all-day events
-    /// first, then timed events by start.
+    /// The occurrences covering one day, display-sorted: all-day rows
+    /// first, then timed rows by start.
     public static func events(
-        _ events: [PIMEvent],
+        _ occurrences: [PIMEventOccurrence],
         onDay day: Date,
         calendar: Calendar
-    ) -> [PIMEvent] {
-        events
+    ) -> [PIMEventOccurrence] {
+        occurrences
             .filter { coversDay($0, day: day, calendar: calendar) }
             .sorted { lhs, rhs in
-                if lhs.isAllDay != rhs.isAllDay {
-                    return lhs.isAllDay
+                if lhs.event.isAllDay != rhs.event.isAllDay {
+                    return lhs.event.isAllDay
                 }
                 return (lhs.start ?? .distantPast)
                     < (rhs.start ?? .distantPast)
             }
     }
 
-    /// The all-day events covering one day — the day/week views pin
-    /// these to a strip above the hour lanes.
+    /// The all-day occurrences covering one day — the day/week views
+    /// pin these to a strip above the hour lanes.
     public static func allDayEvents(
-        _ events: [PIMEvent],
+        _ occurrences: [PIMEventOccurrence],
         onDay day: Date,
         calendar: Calendar
-    ) -> [PIMEvent] {
-        self.events(events, onDay: day, calendar: calendar)
-            .filter(\.isAllDay)
+    ) -> [PIMEventOccurrence] {
+        events(occurrences, onDay: day, calendar: calendar)
+            .filter { $0.event.isAllDay }
     }
 
     // MARK: - Week
@@ -208,7 +209,7 @@ public enum CalendarGridLayout {
     /// Overlapping events share a group; each takes its own lane and the
     /// group's lane count so the view can split the column width.
     public static func timedLanes(
-        _ events: [PIMEvent],
+        _ occurrences: [PIMEventOccurrence],
         onDay day: Date,
         calendar: Calendar
     ) -> [LanePlacement] {
@@ -218,23 +219,27 @@ public enum CalendarGridLayout {
             value: 1,
             to: dayStart
         ) else { return [] }
-        let timed = events.filter {
-            !$0.isAllDay && coversDay($0, day: day, calendar: calendar)
+        let timed = occurrences.filter {
+            !$0.event.isAllDay && coversDay($0, day: day, calendar: calendar)
         }
         // Clip each event to the visible day.
         struct Clip {
-            let event: PIMEvent
+            let occurrence: PIMEventOccurrence
             let start: Date
             let end: Date
         }
-        var clips: [Clip] = timed.compactMap { event in
-            guard let start = event.start else { return nil }
+        var clips: [Clip] = timed.compactMap { occurrence in
+            guard let start = occurrence.start else { return nil }
             let clipStart = max(start, dayStart)
-            let clipEnd = min(event.end ?? start, dayEnd)
+            let clipEnd = min(occurrence.end ?? start, dayEnd)
             // Zero-length and inverted events still get a minimum
             // visible block rather than vanishing.
             let visibleEnd = max(clipEnd, clipStart)
-            return Clip(event: event, start: clipStart, end: visibleEnd)
+            return Clip(
+                occurrence: occurrence,
+                start: clipStart,
+                end: visibleEnd
+            )
         }
         clips.sort { $0.start < $1.start }
 
@@ -268,7 +273,7 @@ public enum CalendarGridLayout {
             }
             placements.append(
                 LanePlacement(
-                    event: clip.event,
+                    occurrence: clip.occurrence,
                     startMinute: clip.start.timeIntervalSince(dayStart) / 60,
                     durationMinutes: max(
                         clip.end.timeIntervalSince(clip.start) / 60,
@@ -296,6 +301,27 @@ public enum CalendarGridLayout {
         styled.calendar = calendar
         styled.timeZone = calendar.timeZone
         return styled
+    }
+
+    /// Toolbar title for the agenda's bounded 30-day window:
+    /// "Oct 16 – Nov 14".
+    public static func agendaTitle(
+        covering interval: DateInterval,
+        calendar: Calendar
+    ) -> String {
+        let style = Date.FormatStyle.dateTime.month(.abbreviated).day()
+        let last = calendar.date(
+            byAdding: .day,
+            value: -1,
+            to: interval.end
+        ) ?? interval.end
+        let startText = interval.start.formatted(
+            titleStyle(style, calendar: calendar)
+        )
+        let endText = last.formatted(
+            titleStyle(style, calendar: calendar)
+        )
+        return "\(startText) – \(endText)"
     }
 
     /// Toolbar title for the day view: "Tuesday, September 22".

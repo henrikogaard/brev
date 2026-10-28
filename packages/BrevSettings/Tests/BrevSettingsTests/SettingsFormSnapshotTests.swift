@@ -12,6 +12,7 @@
 
 #if os(iOS)
 import BrevBackend
+import BrevCalendar
 @testable import BrevSettings
 import BrevThemes
 import SnapshotTesting
@@ -148,6 +149,85 @@ struct SettingsFormSnapshotTests {
                 .navigationTitle("Appearance")
             }
         }
+    }
+
+    @Test("calendar & contacts sources list one line per collection", arguments: Variant.allCases)
+    func pimSources(variant: Variant) async throws {
+        let model = try await PIMSourcesFixture.model()
+        try snapshot("pim-sources", variant: variant) { _ in
+            NavigationStack {
+                Form {
+                    PIMSourcesSettingsView(model: model, googleAccounts: [])
+                }
+                .navigationTitle("Calendar & Contacts")
+            }
+        }
+    }
+}
+
+/// Seeded Google calendar + contacts sources and a DAV calendar, so the
+/// snapshot shows source switches and a long contact-group list.
+@MainActor
+private enum PIMSourcesFixture {
+    actor SourceStore: PIMSourceStore {
+        var records: [PIMSource]
+        init(_ records: [PIMSource]) { self.records = records }
+        func allSources() async throws -> [PIMSource] { records }
+        func save(_ source: PIMSource) async throws {}
+        func deleteSource(id: PIMSource.ID) async throws {}
+    }
+
+    actor CollectionStore: PIMCollectionStore {
+        var records: [PIMSource.ID: [PIMCollection]]
+        init(_ records: [PIMSource.ID: [PIMCollection]]) { self.records = records }
+        func collections(for sourceID: PIMSource.ID) async throws -> [PIMCollection] { records[sourceID] ?? [] }
+        func saveCollections(_ collections: [PIMCollection], for sourceID: PIMSource.ID) async throws {}
+        func deleteCollections(for sourceID: PIMSource.ID) async throws {}
+    }
+
+    struct LocalData: PIMSourceLocalDataStore {
+        func deleteSyncAndDraftData(for sourceID: PIMSource.ID) async throws {}
+        func deleteCachedContent(for sourceID: PIMSource.ID) async throws {}
+        func markCacheDisconnected(for sourceID: PIMSource.ID) async throws {}
+    }
+
+    static func model() async throws -> PIMSourceSettingsModel {
+        let sources = [
+            PIMSource(id: "g-cal", kind: .calendar, provider: .google, linkedAccountID: "demo",
+                      displayName: "henrik@ogard.example", syncEnabled: true, status: .ready),
+            PIMSource(id: "g-con", kind: .contacts, provider: .google, linkedAccountID: "demo",
+                      displayName: "henrik@ogard.example", status: .ready),
+            PIMSource(id: "dav", kind: .calendar, provider: .calDAV, displayName: "dav.example.com",
+                      endpointURL: URL(string: "https://dav.example.com/"), status: .ready)
+        ]
+        func collection(_ id: String, _ source: String, _ kind: PIMSourceKind, _ name: String,
+                        primary: Bool = false, readOnly: Bool = false, color: String? = nil) -> PIMCollection {
+            PIMCollection(id: id, sourceID: source, kind: kind, displayName: name, colorHex: color,
+                          isReadOnly: readOnly, isPrimary: primary, providerKey: id)
+        }
+        let groups = ["All contacts", "Blocked", "Family", "Coworkers", "Chat contacts", "Starred", "Friends"]
+        let collections: [PIMSource.ID: [PIMCollection]] = [
+            "g-cal": [collection("c1", "g-cal", .calendar, "henrik@ogard.example", primary: true, color: "#4FC3F7")],
+            "g-con": [collection("my", "g-con", .contacts, "My contacts", primary: true, readOnly: true)]
+                + groups.map { collection($0, "g-con", .contacts, $0, readOnly: true) },
+            "dav": [collection("qa", "dav", .calendar, "QA Calendar", color: "#E57373")]
+        ]
+        let credentials = InMemoryCalDAVCredentialStore()
+        let coordinator = PIMSourceCoordinator(
+            store: SourceStore(sources),
+            credentials: credentials,
+            localData: LocalData()
+        )
+        let model = PIMSourceSettingsModel(
+            coordinator: coordinator,
+            collectionService: PIMCollectionService(
+                coordinator: coordinator,
+                store: CollectionStore(collections),
+                credentials: credentials
+            )
+        )
+        await model.load()
+        return model
     }
 }
 

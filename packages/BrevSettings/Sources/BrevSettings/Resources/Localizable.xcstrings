@@ -1685,7 +1685,7 @@
         "nb": {
           "stringUnit": {
             "state": "translated",
-            "value": "Bakgrunns\u0007dsynkronisering for %@"
+            "value": "Bakgrunnssynkronisering for %@"
           }
         }
       }
@@ -7790,6 +7790,17 @@
         }
       }
     },
+    "Calendars": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kalendere"
+          }
+        }
+      }
+    },
     "Sign-in codes and links": {
       "extractionState": "manual",
       "localizations": {
@@ -7801,6 +7812,17 @@
         }
       }
     },
+    "Contact groups": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Kontaktgrupper"
+          }
+        }
+      }
+    },
     "Shows a one-time code or sign-in link on screen the moment it arrives. For eligible new messages Brev reads the message body over the account's own connection, and codes may appear over other apps. Nothing is stored, logged, or synced.": {
       "extractionState": "manual",
       "localizations": {
@@ -7808,6 +7830,17 @@
           "stringUnit": {
             "state": "translated",
             "value": "Viser en engangskode eller innloggingslenke på skjermen i det den kommer. For aktuelle nye meldinger leser Brev meldingsteksten over kontoens egen tilkobling, og koder kan vises over andre apper. Ingenting lagres, logges eller synkroniseres."
+          }
+        }
+      }
+    },
+    "Task lists": {
+      "extractionState": "manual",
+      "localizations": {
+        "nb": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Oppgavelister"
           }
         }
       }

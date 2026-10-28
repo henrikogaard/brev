@@ -126,7 +126,7 @@ struct UnifiedInboxListView: View {
     @AppStorage(MailboxViewPreferenceKey.listDensity) private var listDensityRaw = MailboxListDensity.platformDefault.rawValue
     @AppStorage(MailboxViewPreferenceKey.sortOrder) private var sortOrderRaw = MailboxSortOrder.newestFirst.rawValue
     @AppStorage(MailboxViewPreferenceKey.groupByDate) private var groupByDate = true
-    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = true
+    @AppStorage(MailboxViewPreferenceKey.showFolderStats) private var showFolderStats = false
     @AppStorage(MailboxViewPreferenceKey.folderStatsDetail) private var folderStatsDetailRaw =
         MailboxFolderStatsDetail.compact.rawValue
     @AppStorage(MailboxViewPreferenceKey.inboxClassificationMode) private var inboxClassificationModeRaw =
@@ -271,20 +271,21 @@ struct UnifiedInboxListView: View {
             // footnote under the results (audit Q2); macOS keeps its bands.
             #if os(macOS)
             if !trimmedSearchText.isEmpty {
-                CollapsibleOptionsStrip(
-                    isExpanded: $isSearchOptionsExpanded,
-                    hasNonDefaultOptions: hasNonDefaultUnifiedSearchOptions,
-                    summary: unifiedSearchOptionsSummary
-                ) {
-                    unifiedSearchExecutionBar
-                }
+                unifiedSearchExecutionBar
             }
-            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, searchProgress.request != nil {
+            if !navigation.searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+               searchProgress.hasPartialResults {
                 MailSearchStatusView(
                     progress: searchProgress,
                     checksAttachments: MessageListAttachmentSearchDisclosurePolicy.shouldShowDisclosure(
                         queries: activeAttachmentSearchQueries,
                         isLoading: searchProgress.isSearching
+                    ),
+                    leadingInset: MessageListRow.textColumnLeadingInset(
+                        isInSelectionMode: navigation.isInSelectionMode,
+                        showAvatar: showSenderAvatars,
+                        textSize: mailboxTextSize,
+                        density: mailboxListDensity
                     )
                 ) {
                     Task { await reloadVisibleItems() }
@@ -358,6 +359,7 @@ struct UnifiedInboxListView: View {
                             }
                             .listStyle(.plain)
                             .scrollContentBackground(.hidden)
+                            .environment(\.defaultMinListRowHeight, 1)
                             #if os(macOS)
                                 .scrollClipDisabled()
                             #endif
@@ -752,13 +754,29 @@ struct UnifiedInboxListView: View {
             title: section.title,
             count: section.totalCount,
             isCollapsed: section.isCollapsed,
-            isCollapsible: !usesCompactMessageRows
+            isCollapsible: dateSectionsAreCollapsible
         ) {
             toggleDateSection(section.id)
         }
         .listRowInsets(EdgeInsets())
         .listRowSeparator(.hidden)
         .messageListThemedRowBackground()
+    }
+
+    private var dateSectionsAreCollapsible: Bool {
+        #if os(macOS)
+        return true
+        #else
+        return false
+        #endif
+    }
+
+    private var rowSeparatorVisibility: Visibility {
+        #if os(iOS)
+        return .visible
+        #else
+        return .hidden
+        #endif
     }
 
     private func toggleDateSection(_ sectionID: MessageListDateSection.ID) {
@@ -822,6 +840,9 @@ struct UnifiedInboxListView: View {
         for presentation: UnifiedInboxPresentationSnapshot
     ) -> MessageListFolderStatsFooterPresentation? {
         guard showFolderStats else { return nil }
+        #if os(iOS)
+        guard horizontalSizeClass != .compact else { return nil }
+        #endif
         // Smart views and saved searches are scoped lists, not inboxes —
         // counting the unified inbox's totals against them reports mail the
         // view can never show. Their scope is the view's own matching items.
@@ -1262,7 +1283,7 @@ struct UnifiedInboxListView: View {
                         isThreadingEnabled: true,
                         in: &expandedThreadKeys
                     )
-                    selectMessage(item)
+                    selectMessage(item, expandsSelectedMessage: false)
                 } else {
                     toggleSelection(for: item)
                 }
@@ -1282,7 +1303,7 @@ struct UnifiedInboxListView: View {
         .accessibilityHint(item.sourceSubtitle)
         .draggable(item.dragRepresentation)
         .listRowInsets(EdgeInsets())
-        .listRowSeparator(.hidden)
+        .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             ForEach(
@@ -1304,7 +1325,47 @@ struct UnifiedInboxListView: View {
             }
         }
         .contextMenu {
-            messageContextMenu(for: item)
+            MessageRowContextMenu(
+                item: item,
+                presentation: { contextMenuPresentation(for: $0) },
+                actionButton: { presentation, item in
+                    messageContextMenuButton(presentation, for: item)
+                },
+                pluginItems: { pluginMessageContextMenuItems },
+                categoryMenu: {
+                    let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
+                    let currentCategory = InboxClassificationPolicy.classification(
+                        for: item.header,
+                        sourceID: item.sourceID,
+                        overrideStore: inboxCategoryOverrideStore
+                    ).category
+                    return Menu {
+                        ForEach(InboxCategory.assignableCases) { category in
+                            Button {
+                                inboxCategoryOverrideStore.set(category, for: messageID)
+                                inboxCategoryOverrideRevision += 1
+                            } label: {
+                                Label(
+                                    category.title,
+                                    systemImage: currentCategory == category ? "checkmark" : category.symbolName
+                                )
+                            }
+                        }
+                        Divider()
+                        Button {
+                            inboxCategoryOverrideStore.clear(messageID)
+                            inboxCategoryOverrideRevision += 1
+                        } label: {
+                            Label(
+                                String(localized: "Use automatic category", bundle: .module),
+                                systemImage: "wand.and.stars"
+                            )
+                        }
+                    } label: {
+                        Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
+                    }
+                }
+            )
         }
         .onAppear {
             guard shouldLoadMore(
@@ -1349,41 +1410,6 @@ struct UnifiedInboxListView: View {
         )
     }
 
-    @ViewBuilder
-    private func messageContextMenu(for item: UnifiedInboxItem) -> some View {
-        let menu = contextMenuPresentation(for: item)
-        ForEach(menu.sections.indices, id: \.self) { sectionIndex in
-            if sectionIndex > 0 {
-                Divider()
-            }
-            ForEach(menu.sections[sectionIndex].actions, id: \.action) { action in
-                messageContextMenuButton(action, for: item)
-            }
-        }
-        if menu.overflowSections.isEmpty {
-            Divider()
-            inboxCategoryMenu(for: item)
-            pluginMessageContextMenuItems
-        } else {
-            Divider()
-            Menu {
-                ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
-                    if sectionIndex > 0 {
-                        Divider()
-                    }
-                    ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
-                        messageContextMenuButton(action, for: item)
-                    }
-                }
-                Divider()
-                inboxCategoryMenu(for: item)
-                pluginMessageContextMenuItems
-            } label: {
-                Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
-            }
-        }
-    }
-
     /// Actions behind the phone's trailing "More" swipe button.
     @ViewBuilder
     private func swipeMoreActionButtons(for item: UnifiedInboxItem) -> some View {
@@ -1410,34 +1436,45 @@ struct UnifiedInboxListView: View {
         }
     }
 
-    private func inboxCategoryMenu(for item: UnifiedInboxItem) -> some View {
-        let messageID = SourceMessageID(sourceID: item.sourceID, messageID: item.header.id)
-        let currentCategory = InboxClassificationPolicy.classification(
-            for: item.header,
-            sourceID: item.sourceID,
-            overrideStore: inboxCategoryOverrideStore
-        ).category
-        return Menu {
-            ForEach(InboxCategory.assignableCases) { category in
-                Button {
-                    inboxCategoryOverrideStore.set(category, for: messageID)
-                    inboxCategoryOverrideRevision += 1
-                } label: {
-                    Label(
-                        category.title,
-                        systemImage: currentCategory == category ? "checkmark" : category.symbolName
-                    )
+    private struct MessageRowContextMenu<ActionButton: View, PluginItems: View, CategoryMenu: View>: View {
+        let item: UnifiedInboxItem
+        let presentation: (UnifiedInboxItem) -> MessageContextMenuPresentation
+        let actionButton: (MessageContextMenuActionPresentation, UnifiedInboxItem) -> ActionButton
+        let pluginItems: () -> PluginItems
+        let categoryMenu: () -> CategoryMenu
+
+        var body: some View {
+            let menu = presentation(item)
+            ForEach(menu.sections.indices, id: \.self) { sectionIndex in
+                if sectionIndex > 0 {
+                    Divider()
+                }
+                ForEach(menu.sections[sectionIndex].actions, id: \.action) { action in
+                    actionButton(action, item)
                 }
             }
-            Divider()
-            Button {
-                inboxCategoryOverrideStore.clear(messageID)
-                inboxCategoryOverrideRevision += 1
-            } label: {
-                Label(String(localized: "Use automatic category", bundle: .module), systemImage: "wand.and.stars")
+            if menu.overflowSections.isEmpty {
+                Divider()
+                categoryMenu()
+                pluginItems()
+            } else {
+                Divider()
+                Menu {
+                    ForEach(menu.overflowSections.indices, id: \.self) { sectionIndex in
+                        if sectionIndex > 0 {
+                            Divider()
+                        }
+                        ForEach(menu.overflowSections[sectionIndex].actions, id: \.action) { action in
+                            actionButton(action, item)
+                        }
+                    }
+                    Divider()
+                    categoryMenu()
+                    pluginItems()
+                } label: {
+                    Label(String(localized: "More", bundle: .module), systemImage: "ellipsis.circle")
+                }
             }
-        } label: {
-            Label(String(localized: "Category", bundle: .module), systemImage: "tray.2")
         }
     }
 
@@ -2235,7 +2272,8 @@ struct UnifiedInboxListView: View {
     private func selectMessage(
         _ item: UnifiedInboxItem,
         claimsKeyboardFocus: Bool = true,
-        clearsBulkSelection: Bool = true
+        clearsBulkSelection: Bool = true,
+        expandsSelectedMessage: Bool = true
     ) {
         #if os(macOS)
         if claimsKeyboardFocus {
@@ -2249,7 +2287,8 @@ struct UnifiedInboxListView: View {
         navigation.selectMessage(
             item.header,
             in: item.sourceID,
-            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header)
+            headers: workflowNavigationItems.filter { $0.sourceID == item.sourceID }.map(\.header),
+            expandsSelectedMessage: expandsSelectedMessage
         )
         if clearsBulkSelection {
             selectedItemIDs.removeAll()
@@ -2271,7 +2310,7 @@ struct UnifiedInboxListView: View {
             }
         }
         guard selectFirstIfNeeded, let first = presentationSnapshot.visibleItems.first else { return }
-        selectMessage(first, claimsKeyboardFocus: false)
+        selectMessage(first, claimsKeyboardFocus: false, expandsSelectedMessage: false)
     }
 
     #if os(macOS)
