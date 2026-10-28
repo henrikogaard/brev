@@ -1,5 +1,25 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #256 integration review
+
+- Reviewed per-account capability resolution, independent default-off consent switches and device-local persistence. No backend advertises the capability and the controller remains unconnected.
+- Integrated the arrival-controller parent, preserving both ADR implementation-status sections, worklog histories, all consent strings and the main Calendar/Contacts/Tasks translations.
+- Verification: structured catalog comparison and duplicate-key validation, targeted format and diff checks; updated CI required before merge. Existing iOS snapshots are earlier evidence, not a new runtime run. The Space is unavailable and no host test permission is assumed.
+- Documentation sweep: added an Unreleased note for the explanatory Notifications section. No feature activation, new reachable network call, privacy-table change, release or issue closure.
+
+## 2026-10-17 — Devin — #239 consent settings
+
+- Goal: ADR-0088 slice 4 UI: per-account codes/links opt-ins.
+- Changed: `SignInCodeSettingsGroup` (BrevSettings) appended to the
+  Notifications pane; `NotificationSection` gains
+  `signInAssessmentAvailable`, fed by `SettingsView` from the backend's
+  extended capabilities; eight new strings with nb translations.
+- Verified: iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.signin-codes-{light,dark,ax3}`; BrevSettings SignInCode /
+  Notification / navigation / search suites 69 green; lint/format clean.
+- Not changed: no AppSession wiring of `onChange`; PRIVACY.md waits for
+  the first enabled provider.
+
 ## 2026-10-28 — Agent — PR #255 arrival corrections
 
 - Recheck the specific code/link consent after asynchronous sender lookup, rather than accepting either consent. Already-cancelled work stops before folder/provider reads.

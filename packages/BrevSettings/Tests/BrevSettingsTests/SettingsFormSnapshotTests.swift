@@ -120,6 +120,23 @@ struct SettingsFormSnapshotTests {
         }
     }
 
+    @Test("sign-in code consent shows switches only for assessed accounts", arguments: Variant.allCases)
+    func signInCodes(variant: Variant) throws {
+        try snapshot("signin-codes", variant: variant) { fixture in
+            let other = BrevAccount(id: "imap", displayName: "Work IMAP", emailAddress: "work@ogard.example")
+            return NavigationStack {
+                Form {
+                    SignInCodeSettingsGroup(
+                        accounts: [fixture.account, other],
+                        settingsStore: fixture.store,
+                        isAvailable: { $0 == fixture.account.id }
+                    )
+                }
+                .navigationTitle("Notifications")
+            }
+        }
+    }
+
     @Test("appearance pane is a form", arguments: Variant.allCases)
     func appearance(variant: Variant) throws {
         try snapshot("appearance", variant: variant) { fixture in

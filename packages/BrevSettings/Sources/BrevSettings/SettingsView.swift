@@ -654,7 +654,14 @@ public struct SettingsView: View {
         case .privacy:
             PrivacySection(settingsStore: settingsStore)
         case .notifications:
-            NotificationSection(settingsStore: settingsStore, accounts: accounts)
+            NotificationSection(
+                settingsStore: settingsStore,
+                accounts: accounts,
+                signInAssessmentAvailable: { accountID in
+                    backendProvider(accountID)?.extendedCapabilities
+                        .contains(.trustedSignInAssessment) ?? false
+                }
+            )
         case .updates:
             UpdatesSection(
                 settingsStore: settingsStore,

@@ -434,6 +434,21 @@ mailbox. No panel, detector caller, settings UI, notification, capability
 advertisement, or body fetch is added; the assessment method is reachable
 only from tests. Generic IMAP remains unsupported.
 
+### Consent settings status (2026-10-17)
+
+`SignInCodeSettingsGroup` sits at the end of Settings → Notifications. Each
+account shows its name and address; accounts whose backend advertises
+`.trustedSignInAssessment` get two independent switches ("Show one-time
+codes", "Show sign-in links"), both off by default, saved through
+`SignInCodeSettings` into the local defaults only. Other accounts show "Not
+available for this account yet" instead of a dead switch. The group footer
+is the in-context explanation from decision 11: eligible new messages may
+cause a body read over the account's own connection, and codes may appear
+over other apps. Because no backend advertises the capability, every account
+currently shows the unavailable note. The `onChange` hook exists for the
+arrival controller's `cancel(accountID:)` but is not wired until an
+`AppSession` owner lands.
+
 ### Arrival controller status (2026-10-17)
 
 `SignInCodeArrivalController` in BrevMail implements the gate order of
@@ -449,7 +464,8 @@ inspected. `SignInCodePresentation` carries the code or link in memory
 only, with redacted description, debug description and mirror.
 
 Not yet connected: no `AppSession` owner, no caller from
-`BrevMailRootView`, no panel, no settings UI. Because no backend advertises
+`BrevMailRootView` and no panel. The consent settings above remain unavailable
+for every production account. Because no backend advertises
 the capability, the controller cannot read a body in any shipped
 configuration. `PRIVACY.md` and ADR-0006 are still untouched for that reason.
 

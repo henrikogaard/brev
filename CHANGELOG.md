@@ -50,6 +50,8 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Notifications settings explains sign-in code and link availability per account.
+  The feature remains unavailable until provider trust evidence and panel wiring are complete.
 - Calendar event attachments backed by Google Drive can be saved as a
   copy to a folder you choose. The event keeps its original link.
 - README shows demo screenshots of the macOS and iOS apps in light and dark
