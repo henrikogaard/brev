@@ -67,6 +67,7 @@ struct SignInCodeArrivalControllerTests {
             onHeaders?()
             return (headers, nil)
         }
+
         func body(for messageID: String) async throws -> MessageBody {
             bodyReadLock.withLock { recordedBodyReads.append(messageID) }
             return MessageBody(messageID: messageID, plainText: bodies[messageID])
