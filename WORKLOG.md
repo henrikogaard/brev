@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #250 trust regression tests
+
+- Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
+- Added regression assertions for both header cases, connect/reconnect exclusion and disconnect invalidation; existing label/time checks now run after a live refresh.
+- Local test attempt in local:mac-12gb is blocked: CommandLineTools lacks the Testing module. Regression execution is delegated to CI, not reported as a red pass. Capability activation remains disabled and no mail was sent.
+- Next: verify the expected CI failure, make the narrow correction, and require a green rerun before merging.
+
 ## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
 
 - Goal: implement the provider-dependent gates of integration slice 1 for

@@ -38,6 +38,24 @@ struct GmailSignInTrustAssessorTests {
         #expect(assessment == .pass(fromDomain: "bank.example"))
     }
 
+    @Test("duplicate DMARC tokens inside one segment fail closed")
+    func duplicateDMARCWithinSegment() {
+        let assessment = GmailSignInTrustAssessor.assess(headers: [
+            ar("mx.google.com; dmarc=pass header.from=bank.example dmarc=fail"),
+            from("alerts@bank.example")
+        ])
+        #expect(assessment == .unavailable(.duplicateDMARC))
+    }
+
+    @Test("duplicate header.from properties fail closed")
+    func duplicateHeaderFromWithinSegment() {
+        let assessment = GmailSignInTrustAssessor.assess(headers: [
+            ar("mx.google.com; dmarc=pass header.from=bank.example header.from=other.example"),
+            from("alerts@bank.example")
+        ])
+        #expect(assessment == .unavailable(.malformedHeader))
+    }
+
     @Test("E2: a lower forged mx.google.com header fails closed")
     func lowerForgedGoogleHeader() {
         let assessment = GmailSignInTrustAssessor.assess(headers: [
