@@ -116,13 +116,6 @@ enum NaturalLanguageSearchPlanner {
         query.text = cleanedKeywordText(workingText)
 
         var chips: [NaturalLanguageSearchChip] = []
-        if !query.text.isEmpty {
-            chips.append(.init(
-                kind: .keyword,
-                label: String(format: String(localized: "Keyword: %@", bundle: .module), query.text),
-                value: query.text
-            ))
-        }
         chips.append(contentsOf: parsedChips)
 
         return NaturalLanguageSearchPlan(

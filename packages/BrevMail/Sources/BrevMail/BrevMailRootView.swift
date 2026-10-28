@@ -1594,6 +1594,43 @@ public struct BrevMailRootView: View {
                 accountEmail: quickReplyBackend?.account.emailAddress
                     ?? selectedBackend.account.emailAddress
             )
+            let readerFooter: AnyView? = {
+                guard let quickReplyTarget,
+                      let quickReplyBackend,
+                      quickReplyBackend.capabilities.contains(.smtpOAuth)
+                else { return nil }
+                #if os(iOS)
+                guard horizontalSizeClass != .compact else { return nil }
+                #endif
+                return AnyView(
+                    ReaderQuickReplyBar(
+                        recipientName: quickReplyRecipientName(
+                            for: quickReplyTarget,
+                            accountEmail: quickReplyBackend.account.emailAddress
+                        ),
+                        onSend: { [quickReplyBackend, quickReplySourceID, quickReplyTarget] text in
+                            let result = await sendQuickReply(
+                                text,
+                                header: quickReplyTarget,
+                                sourceID: quickReplySourceID,
+                                backend: quickReplyBackend
+                            )
+                            quickReplyDraftWasSaved = result.draftWasSaved
+                            return result.sent
+                        },
+                        onExpand: { [quickReplySourceID, quickReplyTarget] text in
+                            presentReply(
+                                to: quickReplyTarget,
+                                sourceID: quickReplySourceID,
+                                prefillBodyText: text
+                            )
+                        },
+                        isDisabled: isCommandMutationBlocked || isComposePresentationBlocked,
+                        draftWasSaved: $quickReplyDraftWasSaved
+                    )
+                    .id(quickReplyTarget.id)
+                )
+            }()
             #if os(macOS)
             if showsRelatedConversationBar(fallbackHeader: fallbackHeader) {
                 RelatedConversationBar(controller: relatedConversation)
@@ -1613,7 +1650,8 @@ public struct BrevMailRootView: View {
                         isWorkBlocked: isCommandMutationBlocked || isComposePresentationBlocked,
                         allFolders: folders,
                         canFileLocally: localBackend != nil,
-                        inviteReconciler: inviteReconciler
+                        inviteReconciler: inviteReconciler,
+                        readerFooter: readerFooter
                     )
                 } else {
                     MessageDetailView(
@@ -1627,39 +1665,10 @@ public struct BrevMailRootView: View {
                         canFileLocally: localBackend != nil,
                         inviteReconciler: inviteReconciler,
                         contactActions: senderContactActions,
-                        driveFeature: driveFeature
+                        driveFeature: driveFeature,
+                        readerFooter: readerFooter
                     )
                 }
-            }
-            if let quickReplyTarget,
-               let quickReplyBackend,
-               quickReplyBackend.capabilities.contains(.smtpOAuth) {
-                ReaderQuickReplyBar(
-                    recipientName: quickReplyRecipientName(
-                        for: quickReplyTarget,
-                        accountEmail: quickReplyBackend.account.emailAddress
-                    ),
-                    onSend: { [quickReplyBackend, quickReplySourceID, quickReplyTarget] text in
-                        let result = await sendQuickReply(
-                            text,
-                            header: quickReplyTarget,
-                            sourceID: quickReplySourceID,
-                            backend: quickReplyBackend
-                        )
-                        quickReplyDraftWasSaved = result.draftWasSaved
-                        return result.sent
-                    },
-                    onExpand: { [quickReplySourceID, quickReplyTarget] text in
-                        presentReply(
-                            to: quickReplyTarget,
-                            sourceID: quickReplySourceID,
-                            prefillBodyText: text
-                        )
-                    },
-                    isDisabled: isCommandMutationBlocked || isComposePresentationBlocked,
-                    draftWasSaved: $quickReplyDraftWasSaved
-                )
-                .id(quickReplyTarget.id)
             }
         }
         // The compact iPhone reader is a sibling of the background workspace,
@@ -2225,31 +2234,17 @@ public struct BrevMailRootView: View {
     }
 
     #if os(macOS)
-    private func unreadCountPill(_ count: Int) -> some View {
-        Text(String(localized: "\(count) unread", bundle: .module))
-            .brevFont(.caption)
-            .monospacedDigit()
-            .foregroundStyle(theme.textSecondary.color)
-            .padding(.horizontal, BrevSpacing.xs)
-            .padding(.vertical, 1)
-            .background(Capsule().fill(theme.bgSecondary.color))
-    }
-    #endif
-
-    #if os(macOS)
     private var macToolbarDestinationTitle: some View {
-        VStack(alignment: .leading, spacing: 1) {
-            HStack(alignment: .firstTextBaseline, spacing: BrevSpacing.xs) {
-                Text(verbatim: selectedMessageDestinationTitle)
-                    .brevFont(.headline)
-                    .lineLimit(1)
-                if let selectedMessageDestinationUnreadCount {
-                    unreadCountPill(selectedMessageDestinationUnreadCount)
-                }
-            }
-            .fixedSize(horizontal: true, vertical: false)
-            if let selectedMessageDestinationContext {
-                Text(verbatim: selectedMessageDestinationContext)
+        let subtitle = [selectedMessageDestinationContext, selectedMessageDestinationSubtitle]
+            .compactMap { $0 }
+            .joined(separator: " · ")
+        return VStack(alignment: .leading, spacing: 1) {
+            Text(verbatim: selectedMessageDestinationTitle)
+                .brevFont(.headline)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
+            if !subtitle.isEmpty {
+                Text(verbatim: subtitle)
                     .brevFont(.caption)
                     .foregroundStyle(theme.textSecondary.color)
                     .lineLimit(1)
@@ -2326,13 +2321,13 @@ public struct BrevMailRootView: View {
             }
         }
         // The search capsule lives inside the bottom bar — Apple's iOS 26
-        // Mail idiom — expanding to fill the space between the list's
-        // stats label and Compose rather than floating over the rows.
+        // Mail idiom — while Compose keeps its own glass button.
         // Selection mode replaces the whole bar with the bulk actions.
         if !navigation.isInSelectionMode {
             #if compiler(>=6.2)
             if #available(iOS 26.0, *) {
                 DefaultToolbarItem(kind: .search, placement: .bottomBar)
+                ToolbarSpacer(.fixed, placement: .bottomBar)
             } else {
                 ToolbarItem(placement: .bottomBar) { Spacer() }
             }
@@ -2595,6 +2590,44 @@ public struct BrevMailRootView: View {
         if let header = navigation.selectedHeader {
             if MailRootDetailToolbarPolicy.usesCondensedLayout(platform: toolbarPlatform) {
                 ToolbarItemGroup(placement: .primaryAction) {
+                    #if os(iOS)
+                    if horizontalSizeClass == .compact {
+                        Menu {
+                            Button {
+                                presentReplyAll(to: header)
+                            } label: {
+                                Label(
+                                    String(localized: "Reply All", bundle: .module),
+                                    systemImage: "arrowshape.turn.up.left.2"
+                                )
+                            }
+                            Button {
+                                presentForward(of: header)
+                            } label: {
+                                Label(
+                                    String(localized: "Forward", bundle: .module),
+                                    systemImage: "arrowshape.turn.up.right"
+                                )
+                            }
+                        } label: {
+                            Image(systemName: "arrowshape.turn.up.left")
+                        } primaryAction: {
+                            presentReply(to: header)
+                        }
+                        .disabled(!canPresentCompose())
+                        .accessibilityLabel(String(localized: "Reply", bundle: .module))
+                        .help(String(localized: "Reply", bundle: .module))
+                    } else {
+                        Button {
+                            presentReply(to: header)
+                        } label: {
+                            Image(systemName: "arrowshape.turn.up.left")
+                        }
+                        .disabled(!canPresentCompose())
+                        .accessibilityLabel(String(localized: "Reply", bundle: .module))
+                        .help(String(localized: "Reply", bundle: .module))
+                    }
+                    #else
                     Button {
                         presentReply(to: header)
                     } label: {
@@ -2603,6 +2636,7 @@ public struct BrevMailRootView: View {
                     .disabled(!canPresentCompose())
                     .accessibilityLabel(String(localized: "Reply", bundle: .module))
                     .help(String(localized: "Reply", bundle: .module))
+                    #endif
 
                     if MailRootDetailToolbarPolicy.showsExtendedResponseActions(
                         platform: toolbarPlatform,

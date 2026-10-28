@@ -19,6 +19,13 @@
   fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
   per-run approval because they send mail).
 
+## 2026-10-28 — Agent — PR #261 integration review
+
+- Reviewed date-cache bounds, locking, Release test guards, sidebar selection and lazy context menus against current main.
+- Integrated main; resolved only the additive worklog conflict and preserved both histories. Code merged automatically.
+- Verification: diff and conflict-marker checks; updated-head CI is the merge gate. No new local build or UI run, because the integration changes no behavior beyond the reviewed PR. Existing profiling and UI evidence remains earlier evidence.
+- Documentation sweep: no new product, privacy or architecture change; existing PR documentation remains applicable. Do not close issues or delete branches.
+
 ## 2026-10-17 — Devin — #11 Google recurring create fix
 
 - Found during the iOS live pass: creating a daily series on the Google
@@ -6413,6 +6420,46 @@ buttons, and package-aware localization.
 - Limits: no Swift tests, builds, DMG, app/runtime/UI or CI checks were run. The four additions are the exact tested main files already covered by PR #241; the frozen PR #245 focused 22 Calendar, 138 Mail, six snapshot cases, and 40 settings/8 detector results were not rerun. The new automatic CI run is the combined gate.
 - Handoff: parent owns PR description, CI and PR merge. No PR/issue actions performed.
 
+## 2026-10-22 — Agent — Mail-list selection CPU
+
+- Goal: reduce repeated message-row date formatting, macOS sidebar selection,
+  and message context-menu work during rapid list selection.
+- Changed: added a bounded compact-date-label cache and locale parity test;
+  hoisted the active desktop favorite lookup out of per-folder selection;
+  moved row menu construction into `MessageRowContextMenu`.
+- Verification: focused suites passed after formatting — date presentation
+  10 tests, `FolderSidebarPresentationTests` 41 tests, and
+  `MessageCommandPresentationTests` 29 tests. `scripts/format.sh` passed
+  (1/1302 files formatted; the follow-up format lint found 0/1302 files
+  needing changes); `scripts/lint.sh` passed.
+- Measurements: three alternating matched Debug runs per side (main totals
+  5,664/5,566/5,454; branch 5,441/5,512/5,448). Median row-body samples were
+  532 main / 345 branch; sidebar-row samples 256 / 92 and favorite-candidate
+  samples 145 / 14. Relative-label samples were 209 / 11; the extracted menu
+  initializer had 1 branch sample median, while its body and legacy helpers
+  were unsampled. See
+  `/Users/devin/brev-perf-out/REPORT.md` for per-run data and artifacts.
+- Limits: matched C emitted 4 main and 7 branch `ui.body.visible` spans,
+  not ten; `cached_thread_open_ms` was absent and IDs are not logged. No iOS
+  simulator interaction or live-provider measurement was performed.
+- Net: Brev-owned per-row and sidebar samples fell ~85%, but total
+  main-thread samples for the burst moved only ~2% (SwiftUI/AttributeGraph
+  dominate in Debug), so no user-visible speedup is claimed and CHANGELOG is
+  unchanged. A Release-config trace is the next measurement.
+- Handoff: committed on `fix/mail-list-selection-cpu`; parent owns the PR.
+
+## 2026-10-22 — Agent — PR #261 CI repair
+
+- Goal: make the date-cache tests compile in CI's Release configuration.
+- Changed: guarded the Debug-only hit-counter assertions while keeping the
+  cached-label equality assertion active in Release.
+- Verification: Release and Debug `MessageListDatePresentationTests` each
+  passed 10 tests; targeted SwiftFormat and strict SwiftLint passed; diff check
+  passed.
+- CI evidence: Release compilation reported the Debug-only accessor missing at
+  test lines 154 and 168, failing both `snapshot-test` and `test (BrevMail)`.
+- Handoff: this is the single mechanical fix for PR #261; awaiting its rerun.
+
 ## 2026-10-22 — Devin — UI polish branch follow-up (no issue number)
 
 - Goal: implement and refine critique items M1–M3 and I1–I3; “Ask Henrik” excluded.
@@ -6420,3 +6467,61 @@ buttons, and package-aware localization.
 - Verification: format and lint passed; macOS and iOS mock builds passed. Focused toolbar (24), Unified Inbox (4), FolderSidebar (41), PhoneMailbox (6 tests/9 cases), and Compose tests passed in prior runs. ComposeViewSnapshotTests passed (3/3) after refreshing only empty/reply references. The BrevSettings macOS surfaces test exercised light and dark; the Appearance references now pass, while 10 snapshots for other surfaces still mismatch on this host. Fresh captures are under `/Users/devin/brev-after/`; the iOS compose capture shows one recipient chip, the keyboard, and a one-line To row comparable in height to From.
 - Limits: the 10 non-Appearance BrevSettings snapshot mismatches were not compared against clean main in this run. Five PhoneMailbox snapshot failures (19 total, 14 passed) were previously reproduced on clean main (`06c7b19`); the full-suite run hung after results and was interrupted with exit 143. No CI watch or PR action.
 - Handoff: parent creates the PR and owns the CI follow-up.
+
+## 2026-10-24 — Agent — PR #260 reader/list polish
+
+- Goal: reduce reader/list chrome and make thread opening target the newest message unless a specific message was selected.
+- Changes: removed thread-card accent bars; separated explicit reader selection from parent thread-row selection; moved quick reply into reader scroll content, hid it at compact width, and added Reply All/Forward to the compact Reply menu; made the unread marker a dot sized to `max(7, textSize.listTitlePointSize * 0.6)` on macOS (iOS remains 10 pt), defaulted folder statistics off in both list views and `MailboxViewSettings.defaults`, removed visible date-header counts, and separated iOS 26 Search and Compose toolbar items. Added the Fixed changelog entry.
+- Verification: focused ThreadConversationExpansionPolicy, MailRootQuickReplyPolicy, and BrevMailNativeToolbar suites passed (37 tests); MailboxViewSettings passed (3 tests). After the macOS dot-size correction, ThreadConversationExpansionPolicy passed (11 tests), MessageListRowSnapshotTests passed (9/9) after re-recording the dot-affected references (five MessageListRow PNGs differ in the final diff), MailRootComposePresentationPolicy and BrevMailNativeToolbar passed (27 tests), and MailboxViewSettings passed (3 tests). `scripts/format.sh` and `scripts/lint.sh` passed. The parent-row regression is `parentRowSelectionOfOlderHeaderOpensNewestAndChildSelectionStaysSelected`.
+- Screenshots: refreshed Mac inbox/reader and iPhone list/reader/Reply-menu captures are saved in `/Users/devin/brev-review/chrome/`; the before captures are retained there as well. The E80 light-mode captures show Compose separate from Search, the newest message expanded without a compact quick-reply bar, and the Reply menu options. Final Mac captures: `/Users/devin/brev-review/chrome/after-mac-inbox-reader-light-v2.png` and `/Users/devin/brev-review/chrome/after-mac-inbox-reader-dark-v2.png`.
+- Handoff: `fix/reader-list-chrome` remains stacked on PR #260 (`fix/macos-ios-polish-pass`); no clean-main PhoneMailbox/BrevSettings snapshot drift or new user-visible strings were introduced.
+
+## 2026-10-25 — Devin — UI polish branch follow-up (stacked on PR #263)
+
+- Goal: implement UI direction items #5, #6 remainder, #10 without reactions, and #12 on `fix/list-reader-search-polish`.
+- Changes: thread counts are plain secondary text; Mac row toggles remain geometrically stable and show only on hover/selection, while iPhone separators align with sender text and thread chevrons are hidden. Mac unread count remains in the window subtitle; date sections collapse only on Mac. `showFolderStats` still has a Settings consumer, so its setting and list footer remain. Reader body/header alignment and Mac subject metadata now match the requested layout; the existing trailing subject menu was not changed. Mac search uses a segmented scope row, keeps free text out of filter tokens, and shows retry only for finished partial results.
+- Verification: focused BrevMail tests passed (36 tests/5 suites); snapshot tests passed (11 tests/2 suites) after updating only five affected references. The Mac mock build and requested iOS 27.0 iPhone 17 simulator build succeeded. `scripts/format.sh`, `scripts/lint.sh`, and `git diff --check` passed. Before/after UI evidence is saved in `/Users/devin/evidence/list-reader-search/`.
+- Limits: the iOS package-scheme snapshot route did not produce test results; the workspace lacks a `BrevMail` scheme, and the package-scheme attempt reported `command failed with exit code 0 but produced no further output`. The simulator build and live captures are not reported as iOS snapshot-test coverage.
+- Handoff: branch is stacked on `origin/fix/reader-list-chrome`; no reactions action was added or moved. The lone trailing subject control is the existing `threadActionsMenu` in `ThreadConversationView.swift`. No PR or post-push CI watch is requested.
+
+## 2026-10-25 — Devin — PR #263 review fixes
+
+- Goal: show Mac partial-results status only for completed searches with failures, align it with row text, and remove the custom selection bar.
+- Changes: `.unverified`-only searches remain retryable but no longer count as partial; the status line uses the list text-column inset. Removed the explicit `RoundedRectangle` selection overlay from shared message rows; selected rows use the system highlight.
+- Verification: `MailSearchProgressTests` passed; the affected search-status and selected-row snapshots passed after re-recording only the two search-state images and the selected-row image. `scripts/format.sh`, `scripts/lint.sh`, and `./script/build_and_run.sh --mock` passed. Refreshed and visually inspected the Mac Light list, Dark list, and search-query evidence in `/Users/devin/evidence/list-reader-search/`.
+- Limits: no CI checks were watched per the handoff scope.
+- Handoff: ready to commit and push `fix/list-reader-search-polish`; do not open a PR.
+
+## 2026-10-25 — Devin — stacked Mailboxes and compose polish
+
+- Goal: implement direction-spec items #9, #11, and #13 on `fix/iphone-mailboxes-compose`, stacked on `fix/list-reader-search-polish`.
+- Changes: #9 moves Settings to a leading gear menu, preserves profile switching there, keeps Edit at trailing, uses outline sidebar symbols, renames Favourites to Favorites without changing Bokmål, and removes the Apps header. #11 adds the iPhone collapsed Cc/Bcc/From summary, circular theme-backed Send state, inset separators and recipient truncation. #13 adds the live subject title, a unified-window style, and SwiftUI toolbar items in ComposeView.
+- Verification: `scripts/format.sh` and `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed. Targeted macOS compose tests passed (39 tests, 5 suites) after re-recording the light/dark ComposeView macOS snapshots. The Mac mock app built and launched. The base-branch snapshot run also mismatched those same ComposeView references on this host before they were re-recorded.
+- Limits: a live capture of the presenter-created “New Message” window (`/Users/devin/evidence/mailboxes-compose/diagnostic-mac-compose-no-toolbar.png`) shows the titlebar/toolbar is blank: the window has `.unified` style, but the presenter creates an `NSWindow` and sets `toolbarStyle` without assigning an `NSToolbar`, so the SwiftUI `.toolbar` items are not installed. The fallback title is “New Message” in the window list and the field summary renders, but Send/format/attachment/overflow controls are absent. Installing a native toolbar or changing the presenter/window architecture is a structural change; stop here pending direction. The iOS simulator build emitted no conclusive completion result (`error: the following command failed with exit code 0 but produced no further output` after compile warnings), so iPhone live captures and iOS snapshot recording remain incomplete. No base/after screenshot set was completed. No TDD skill was available in the active plugin set, so no red/green cycle was run.
+- Handoff: #9 WIP `c98e5aa` remains pushed. Compose and documentation edits are local and uncommitted; no final commit or push was made because the Mac toolbar requires a structural decision. Do not open a PR or watch CI.
+
+## 2026-10-25 — Devin — native compose toolbar follow-up
+
+- Goal: finish the approved native toolbar bridge and verify compose items #9, #11, and #13.
+- Changes: the auxiliary compose presenter now retains a delegate-backed unified `NSToolbar` with Send, flexible space, format, attachment, and overflow in the requested order. Toolbar controls reuse the compose's existing SwiftUI actions; the duplicate SwiftUI toolbar was removed. Added configuration coverage for item order and title fallback.
+- Verification: the focused BrevMail run passed 40 tests in five suites, including auxiliary-window configuration and Mac compose snapshots. `scripts/format.sh` and `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh` passed. The Xcode 27.0 RC iOS simulator build succeeded; the live iPhone 17 compose showed the collapsed row, expanded fields, grey invalid Send, accent valid Send, no placeholder, and a middle-truncated long recipient chip.
+- Limits: the Xcode workspace `BrevIOS` scheme does not include `BrevMailTests`; the targeted `xcodebuild test` request for `longRecipientAddress` exited 70 with “Tests in the target ‘BrevMailTests’ can’t be run because ‘BrevMailTests’ isn’t a member of the specified test plan or scheme.” The on-device live check covered the long chip, but its iOS snapshot test was not executed. Mac native-toolbar visual evidence and the complete before/after light/dark screenshot set are still pending.
+- Handoff: native toolbar configuration tests pass; next capture the native Mac compose window and finish the evidence set before commit/push.
+
+## 2026-10-25 — Devin — compose toolbar rendering follow-up
+
+- Goal: verify the native compose toolbar after its hosted controls received explicit AppKit sizing and complete the available compose evidence.
+- Changes: the presenter now gives toolbar-hosted SwiftUI controls explicit 42 × 36 point frames. The Mac mock shows the title and all four requested controls in one native unified toolbar.
+- Verification: focused compose tests passed (40 tests/5 suites); format and lint passed; the Mac mock rebuilt and launched. Visually inspected Mac compose light/dark and iPhone compose empty/long-recipient light/dark. The iPhone captures show To directly below the title bar, disabled/enabled Send styling, a collapsed optional-field summary, no recipient placeholder, and the long address middle-truncated in its chip.
+- Limits: the iOS snapshot test remains unavailable because `BrevMailTests` is not in the `BrevIOS` scheme. The complete requested set is not finished: valid base and after Mailboxes light/dark captures and a Bokmål iPhone compose capture are still missing; the earlier `before-iphone-parent-mailboxes-light.png` depicts the inbox rather than Mailboxes. The Mac captures include a macOS notification banner.
+- Evidence: compose captures are in `/Users/devin/evidence/mailboxes-compose/` as `after-iphone-compose-{empty,long-recipient}-{light,dark}.png` and `after-mac-compose-{light,dark}.png`.
+- Handoff: host appearance restored to Light. No post-push CI watch requested.
+
+## 2026-10-25 — Agent — stacked Mailboxes and compose review follow-up
+
+- Goal: finish the review fixes for locale-aligned Mac compose labels, To-row separators, and the iPhone Mailboxes toolbar.
+- Changes: Mac compose labels now share a locale-sized, trailing-aligned column; the collapsed Cc/Bcc/From row keeps its address in the content column; the To separator begins at the label edge on both platforms. The iOS sidebar's leading Settings gear is the only Settings entry point, leaving Edit alone at trailing.
+- Verification: `scripts/format.sh`, `MISE_EXEC_AUTO_INSTALL=0 scripts/lint.sh`, and the focused BrevMail tests passed. The Xcode 27.0 RC iPhone 17 build succeeded; `./script/build_and_run.sh --mock` rebuilt and launched the Mac app. Visually inspected the Mailboxes-root, empty/long-recipient compose, Bokmål compose, and clean Mac compose window captures.
+- Limits: iOS snapshot tests remain unavailable through the `BrevIOS` scheme because `BrevMailTests` is not part of its test plan; live iPhone captures were inspected instead. The Mac build retains existing warnings for deprecated `EventModifiers.function` and non-Sendable closure conversions.
+- Evidence: refreshed after captures are in `/Users/devin/evidence/mailboxes-compose/`; valid base Mailboxes captures remain there. The Mac screenshots are window-only and contain no notification banners.
+- Handoff: host appearance is Light. Commit and push the completed follow-up; do not open a PR or watch CI.
