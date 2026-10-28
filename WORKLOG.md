@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-28 — Agent — #269 approved design and baseline slice
+
+- Henrik approved the three-outcome design and requested work to start. Created tracking issue #269 and moved its card to In progress; integration remains main, with design PR #268 and a genuinely dependent baseline slice.
+- Marked the design approved/building and wrote slice 1's detailed design before code: one synthetic JSON-versus-SQLite read suite at 10k/50k, alternating fresh readers, explicit open/query timings, functional parity assertions and no CI speed inequalities.
+- Plan adjustment: keep the cross-store comparison in BrevSyncEngine tests, whose existing dependency direction permits both stores, rather than add a reverse dependency to BrevBackend. Existing baseline suites remain unchanged.
+- Verification: document links, references and diff checks before push; no app, benchmark or snapshot run in this design update. Runtime profiling/host tests remain deferred under Q-1; no schema change, migration, merge or release performed.
+
 ## 2026-10-28 — Agent — Visuals/performance implementation design
 
 - Goal: plan all three selected recommendations: ADR-0087 storage work, measured UI responsiveness and visual consistency. Branch `chore/visual-performance-plan` in its own worktree, based on `origin/main` `5ad74c0b`; target `main`. No existing PR covers this combined plan; Settings continues through #265 rather than a duplicate implementation.

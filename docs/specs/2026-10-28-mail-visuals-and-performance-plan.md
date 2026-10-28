@@ -1,8 +1,9 @@
 # Mail visuals and performance
 
 Size: Full, spanning persistence, backend queries and shared UI.
-Status: Draft
-Owner: Henrik · Started: 2026-10-28 · Design approval: pending, Q-2
+Status: Building, slice 1 of 8
+Owner: Henrik · Started: 2026-10-28 · Approved: 2026-10-28, Henrik
+Tracking: [#269](https://github.com/henrikogaard/brev/issues/269).
 Baseline: `origin/main` at `5ad74c0b388466a5f842dcb43b8834f74cc413ee`.
 Working assumptions: synthetic benchmarks can run in CI; runtime profiling and visual acceptance wait for an authorized, compatible environment. No performance improvement has been measured for this plan.
 
@@ -133,15 +134,15 @@ These contracts follow D-1's existing designs, D-2's preservation rule, D-3's ev
 
 ADR-0087 governs persistence; the existing body-parity design and ADR-0002 govern shared appearance/focus. This plan coordinates their remaining work rather than introducing a competing architecture or new design system. Protected-path changes still follow the repository ADR gate.
 
-### D-2: Preserve future/failed schema data (Proposed, recommended)
+### D-2: Preserve future/failed schema data (Accepted, 2026-10-28)
 
 Keep the current unknown-schema fail-closed behavior and accepted memory-only fallback. Do not automatically wipe/recreate a newer or unsuccessfully migrated database. This trades temporary offline unavailability on manual downgrade for preservation of local data. It settles the optional wipe suggestion in ADR-0087's risk section without introducing a destructive recovery path.
 
-### D-3: Measure before choosing a UI refactor (Proposed, recommended)
+### D-3: Measure before choosing a UI refactor (Accepted, 2026-10-28)
 
 Reuse current projection caches and renderer prewarming. Select one observed expensive boundary, characterize it, change it, then compare. Moving files or adding caches without trace evidence is not a delivered optimization.
 
-### D-4: Start with a conservative reading measure (Proposed, recommended)
+### D-4: Start with a conservative reading measure (Accepted, 2026-10-28)
 
 Evaluate approximately 72 characters for plain/Brev-generated text on wide Mac readers, through the existing style/layout ownership. Narrow layouts use available width; arbitrary sender HTML, print and compose remain unchanged. No new preference or public design-system API is proposed. Native review may adjust the exact measure before implementation is accepted.
 
@@ -166,7 +167,7 @@ Each numbered slice is a coherent PR. Independent outcomes target `main`; only g
 
 | Slice | Deliverable and verification target | Requirements | State |
 |---|---|---|---|
-| 1 | Add cold JSON-versus-SQLite synthetic benchmarks at 10k/50k, preserve the existing 10k tests, and collect an authorized cold-folder/selection baseline. No production behavior change. | NFR-1/2, FR-4 | Planned; runtime part waits on Q-1. |
+| 1 | Add cold JSON-versus-SQLite synthetic benchmarks at 10k/50k, preserve the existing 10k tests, and collect an authorized cold-folder/selection baseline. No production behavior change. | NFR-1/2, FR-4 | Building synthetic suite; runtime part waits on Q-1. |
 | 2 | Detail schema/page-window contracts, add migration/transaction/restart tests first, then implement the ADR-0087 metadata/window write slice. Use actual schema version at implementation time, not a stale constant. | FR-1–3, NFR-3 | Planned. |
 | 3 | Migrate per folder and switch bounded read/lookup/thread paths, proving old/new parity, token/generation behavior and measured query targets before cutover. | FR-1–3, NFR-1 | Planned; measurement gate required. |
 | 4 | Replace remaining full-folder consumers and storage-UI reads, verify retention/removal/flag paths, then retire the duplicate file-backed cache and validate cleanup/recovery. | FR-2/3, NFR-1/3 | Planned. |
@@ -184,7 +185,43 @@ Documentation is updated with each slice: README for actual current behavior, CH
 | ID | Question | Blocks | Recommendation |
 |---|---|---|---|
 | Q-1 | Which compatible isolated runtime environment is available, or when will Henrik authorize focused host native testing/profiling? | Runtime part of slice 1, measured cutover, slices 5–8 acceptance. | Keep host tests deferred. Implement synthetic validation through CI where available; do not claim the blocked gates pass. |
-| Q-2 | Approve the coordinated design, including D-2's no-auto-wipe choice and D-4's conservative plain-text reading measure? | Phase 2 behavior changes. | Approve; leave exact UI boundary to trace evidence. |
+
+Q-2 resolved: Henrik approved the design on 2026-10-28 and requested implementation. This does not resolve Q-1 or authorize host testing, real-account migration or merges.
+
+## 9. Detailed design
+
+### Slice 1: synthetic header-read comparison
+
+**Placement.** Add `IMAPHeaderReadBaselineTests.swift` to `packages/BrevSyncEngine/Tests/BrevSyncEngineTests/`. This package already depends on BrevBackend, so one suite can seed both stores with identical headers without introducing the forbidden reverse dependency from BrevBackend to BrevSyncEngine. Preserve the existing `PerformanceBaselineTests` and `SearchPerformanceBaselineTests` unchanged.
+
+**Interfaces.** Use existing `FileBackedIMAPMailboxHeaderCache(rootDirectory:)`, `setSnapshot`, `flushPendingWrites`, `snapshot`, and test-visible `SQLiteSyncStore(databaseURL:)`, `ensureAccount`, `upsertHeaders`, `headers(accountID:folderID:limit:offset:)`. No production API, schema, package dependency or runtime option changes.
+
+**Fixture and literal example.** For `rows = 10_000` and `rows = 50_000`, generate deterministic synthetic `INBOX:<uid>` headers in newest-first order with whole-second dates, fixed synthetic addresses and predictable read/flag state. Store the same values in a legacy snapshot and the database. A first-page request is `headers(accountID: "imap-baseline", folderID: "INBOX", limit: 50, offset: 0)`; expected IDs are `INBOX:10000` through `INBOX:9951` for the 10k fixture. JSON metadata uses fixed UIDVALIDITY, MODSEQ and a `before:<uid>` cursor. SQLite page metadata is not compared because implementing it belongs to slice 2.
+
+**Measurement sequence.** Seed/flush the legacy cache and populate/close the database before timing. Run four samples, alternating JSON-first and SQLite-first, with a new cache actor and a new database connection for every sample. Time JSON cache creation plus its full snapshot read; separately time SQLite open and first 50-row query, also reporting their total. Assertions and second-page checks happen outside the measured interval. Record sample values and medians, fixture JSON byte count, rows returned, sample order and Debug/Release compilation mode in content-free `PERF` lines.
+
+**Meaning of cold.** `cold=store-reopen` means a fresh application-level cache/connection, not a purged OS page cache, a process-cold launch or a live folder-open measurement. Fixture generation/seeding is excluded. These timings cannot establish the runtime cutover budget or justify a Release performance claim when CI uses Debug.
+
+**Assertions and failure handling.** Require a persisted JSON snapshot containing every seeded header; verify its metadata; require exactly the expected first 50 headers from both paths, full-value parity, and correct/disjoint SQLite second-page IDs. Disk/open/seed errors or missing snapshots fail the test instead of yielding empty benchmark results. Assert no relative or absolute speed relationship on shared CI runners. Each test owns a unique temporary root and cleans up only that synthetic root, including SQLite sidecars. No provider, credential, network client or real account store is constructed.
+
+**Verification mapping.**
+
+| Criterion | Test/check | Evidence limit |
+|---|---|---|
+| Same synthetic data yields the expected bounded page after reopen | `IMAPHeaderReadBaselineTests.coldHeaderReads`, arguments 10k and 50k | Covers current store read parity only, not new migration/page-window behavior. |
+| Reopen measurements exclude seed work and distinguish open/query cost | Four alternating `PERF` samples plus summary per fixture | Informational; no flaky timing inequality. |
+| Paging metadata/offset and fixture count are validated | Metadata assertions, first-page value equality and untimed second-page check in the same test | SQLite metadata ownership is deferred to slice 2. |
+| Existing baselines remain available | Existing backend/search baseline files unchanged; existing CI package jobs | New runtime traces are still required by Q-1. |
+
+**Budget and rollout.** Test instrumentation only. Read 50 SQL rows per measured query versus a complete 10k/50k legacy snapshot. Report both SQLite open and query cost so neither is hidden. No production rollout, data migration or performance-budget threshold changes occur. TDD red/green is not applicable to this record-only measurement addition; correctness assertions validate existing behavior. CI will supply automated verification while local long-running work/native tests remain constrained.
+
+## 10. Verification
+
+| Criterion | Check | Result | Change |
+|---|---|---|---|
+| Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |
+| Synthetic read comparison | Focused BrevSyncEngine suite and package CI | Pending implementation | Slice 1 |
+| Runtime baseline and UI measurements | Authorized optimized native run | Blocked on Q-1 | Not claimed |
 
 ## Codebase deltas and change log
 
@@ -193,3 +230,4 @@ Documentation is updated with each slice: README for actual current behavior, CH
 - Current list projections already use retained-buffer cache keys and WebView prewarming exists. The design preserves these; no duplicate optimization layer is proposed.
 - The accepted body-parity design remains authoritative. This adds readable-measure/state checks, not a second body renderer or compose redesign.
 - 2026-10-28: Drafted after Henrik selected all three recommendations. No behavior, runtime test, baseline or speedup is claimed by this document.
+- 2026-10-28: Henrik approved the design. Recorded slice 1's detailed design and tracking issue #269 before implementation. Runtime permission remains unresolved.
