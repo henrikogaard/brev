@@ -4,6 +4,12 @@ All notable changes to Brev are documented here.
 
 ## [Unreleased]
 
+### Changed
+
+- Prepare transactional IMAP page-window metadata in cache schema v7. Existing
+  mail reads still use the current cache paths; the SQLite read cutover remains
+  gated on performance measurements.
+
 ### Fixed
 
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
