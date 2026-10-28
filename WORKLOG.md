@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-28 — Agent — PR #255 consent regression
+
+- Review found that withdrawing code consent during sender lookup can still present a code when link consent remains enabled. Added a regression at that await boundary before changing production behavior.
+- Protected the test double's concurrent body-read recording with a lock; the burst test previously mutated the same array from nonisolated async calls.
+- Verification: diff check; regression execution pending CI. Space CommandLineTools cannot compile Swift Testing/SwiftUI macro dependencies, so no local test pass is claimed.
+- Capability remains disabled and no production controller caller exists. No mail sent, account settings changed or live evidence claimed.
+
 ## 2026-10-17 — Devin — #239 arrival controller
 
 - Goal: ADR-0088 slices 2 and 3 wiring without UI: a controller that turns

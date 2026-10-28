@@ -41,9 +41,12 @@ struct SignInCodeArrivalControllerTests {
         var bodies: [String: String] = [:]
         var headers: [MessageHeader] = []
         var folderList: [Folder] = [inbox, spam]
-        private(set) var bodyReads: [String] = []
+        private let bodyReadLock = NSLock()
+        private var recordedBodyReads: [String] = []
+        var bodyReads: [String] { bodyReadLock.withLock { recordedBodyReads } }
         /// Lets a test flip consent while the assessment is in flight.
         var onAssess: (@Sendable () -> Void)?
+        var onHeaders: (@Sendable () -> Void)?
 
         func signInTrustAssessment(for messageID: String) async -> SignInTrustAssessment {
             onAssess?()
@@ -60,9 +63,12 @@ struct SignInCodeArrivalControllerTests {
 
         func switchMailbox(id: String) async throws {}
         func messages(in folder: Folder, pageToken: String?) async throws
-            -> (headers: [MessageHeader], nextPageToken: String?) { (headers, nil) }
+            -> (headers: [MessageHeader], nextPageToken: String?) {
+            onHeaders?()
+            return (headers, nil)
+        }
         func body(for messageID: String) async throws -> MessageBody {
-            bodyReads.append(messageID)
+            bodyReadLock.withLock { recordedBodyReads.append(messageID) }
             return MessageBody(messageID: messageID, plainText: bodies[messageID])
         }
 
@@ -203,6 +209,20 @@ struct SignInCodeArrivalControllerTests {
         await controller.settle()
         #expect(presenter.presented.isEmpty)
         #expect(backend.bodyReads.isEmpty)
+    }
+
+    @Test("withdrawing code consent during sender lookup does not use link consent")
+    func specificConsentRecheckedBeforePresentation() async {
+        let (backend, box) = makeBackend()
+        backend.onHeaders = {
+            box.mutate { $0.setAccountOverride(accountID: "acct", codesEnabled: false, linksEnabled: true) }
+        }
+        let presenter = SpyPresenter()
+        let controller = SignInCodeArrivalController(settings: { box.settings }, presenter: presenter)
+        controller.handle(.messagesAdded(folderID: "inbox", messageIDs: ["m1"]), from: backend)
+        await controller.settle()
+        #expect(backend.bodyReads == ["m1"])
+        #expect(presenter.presented.isEmpty)
     }
 
     @Test("cancel dismisses the account's panel and drops pending work")
