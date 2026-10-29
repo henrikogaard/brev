@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- IMAP pages dual-write their headers and paging metadata transactionally to
+  the local index while retaining the legacy cache during the staged rollout.
+
 - Prepare transactional IMAP page-window metadata in cache schema v7. Existing
   mail reads still use the current cache paths; the SQLite read cutover remains
   gated on performance measurements.
