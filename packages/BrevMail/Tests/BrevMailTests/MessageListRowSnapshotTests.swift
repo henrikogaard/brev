@@ -335,8 +335,20 @@ struct MessageListRowSnapshotTests {
         )
     }
 
+    @Test("Mono Grey captures unread, selected, inactive and disabled rows", arguments: [0, 1, 2, 3])
+    func monoGreyStates(variant: Int) {
+        assertRowState(named: "mono-grey-\(variant)", isRead: variant != 0, isSelected: variant != 0,
+                       theme: .brevMonoGrey, active: variant != 2, enabled: variant != 3, testName: #function)
+    }
+
     private func assertRow(named name: String, isRead: Bool, isSelected: Bool) {
-        let theme = BrevTheme.brevSlate
+        // Existing reference filenames include this helper's signature.
+        assertRowState(named: name, isRead: isRead, isSelected: isSelected,
+                       theme: .brevSlate, active: true, enabled: true, testName: #function)
+    }
+
+    private func assertRowState(named name: String, isRead: Bool, isSelected: Bool,
+                                theme: BrevTheme, active: Bool, enabled: Bool, testName: String) {
         let header = MessageHeader(
             id: "inbox:\(name)",
             threadID: "thread-\(name)",
@@ -371,6 +383,8 @@ struct MessageListRowSnapshotTests {
         .frame(width: 360, height: 84)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .environment(\.controlActiveState, active ? .active : .inactive)
+        .disabled(!enabled)
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 360, height: 84)
@@ -379,7 +393,8 @@ struct MessageListRowSnapshotTests {
             of: host,
             as: .image(size: CGSize(width: 360, height: 84)),
             named: name,
-            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil
+            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : .never,
+            testName: testName
         )
     }
 

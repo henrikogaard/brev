@@ -1,0 +1,98 @@
+name: Reader visual review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/reader-visual-review.yml'
+      - 'packages/BrevMail/Sources/BrevMail/MessageBodyStyle.swift'
+      - 'packages/BrevMail/Sources/BrevMail/MessageDetailView.swift'
+      - 'packages/BrevMail/Sources/BrevMail/ThreadMessageCard.swift'
+      - 'packages/BrevMail/Tests/BrevMailTests/ReaderMeasureSnapshotTests.swift'
+      - 'packages/BrevMail/Tests/BrevMailTests/MessageListRowSnapshotTests.swift'
+      - 'packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ReaderMeasureSnapshotTests/**'
+      - 'packages/BrevMail/Tests/BrevMailTests/__Snapshots__/MessageListRowSnapshotTests/**'
+permissions:
+  contents: read
+concurrency:
+  group: reader-visual-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  record-review-images:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      # Verify before recording: generated candidates must never satisfy this gate.
+      - name: Verify committed reader and row baselines
+        id: verify
+        working-directory: packages/BrevMail
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'NO'
+        run: |
+          xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/reader-visual-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/reader-verification.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:BrevMailTests/ReaderMeasureSnapshotTests \
+            -only-testing:BrevMailTests/MessageListRowSnapshotTests test
+      - name: Record synthetic candidates, not accepted baselines
+        id: record
+        if: success() || failure()
+        continue-on-error: true
+        working-directory: packages/BrevMail
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'YES'
+        run: |
+          set +e
+          xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/reader-visual-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/reader-recording.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:BrevMailTests/ReaderMeasureSnapshotTests \
+            -only-testing:BrevMailTests/MessageListRowSnapshotTests test-without-building
+          status=$?
+          echo "exit_code=$status" >> "$GITHUB_OUTPUT"
+          exit "$status"
+      - name: Reject unexpected recording failures
+        if: success() || failure()
+        env:
+          RECORD_EXIT_CODE: ${{ steps.record.outputs.exit_code }}
+        run: |
+          test "$RECORD_EXIT_CODE" = 65
+          xcrun xcresulttool get object --legacy --format json \
+            --path "$RUNNER_TEMP/reader-recording.xcresult" > "$RUNNER_TEMP/reader-recording.json"
+          python3 - "$RUNNER_TEMP/reader-recording.json" <<'PY'
+          import json
+          import sys
+
+          with open(sys.argv[1]) as file:
+              result = json.load(file)
+          failures = result.get("issues", {}).get("testFailureSummaries", {}).get("_values", [])
+          metrics = result.get("metrics", {})
+          count = int(metrics.get("testsCount", {}).get("_value", 0))
+          failed = int(metrics.get("testsFailedCount", {}).get("_value", 0))
+          assert count == failed == len(failures) > 0, "Incomplete snapshot recording"
+          for failure in failures:
+              message = failure.get("message", {}).get("_value", "")
+              assert message.startswith("Issue recorded: Record mode is on. Automatically recorded snapshot:"), message
+              assert "Turn record mode off and re-run" in message, message
+          # The legacy object retains every parameterized failure, unlike the summary endpoint.
+          for action in result.get("actions", {}).get("_values", []):
+              for key in ("buildResult", "actionResult"):
+                  errors = action.get(key, {}).get("issues", {}).get("errorSummaries", {}).get("_values", [])
+                  assert not errors, errors
+          assert not result.get("issues", {}).get("errorSummaries", {}).get("_values", []), "Recording errors"
+          print(f"Only {len(failures)} expected recording assertions; strict verification remains authoritative")
+          PY
+      - name: Upload images for review, not automatic acceptance
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reader-review-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ReaderMeasureSnapshotTests/*.png
+            packages/BrevMail/Tests/BrevMailTests/__Snapshots__/MessageListRowSnapshotTests/*.png
+            ${{ runner.temp }}/reader-verification.xcresult
+            ${{ runner.temp }}/reader-recording.xcresult
+            ${{ runner.temp }}/reader-recording.json

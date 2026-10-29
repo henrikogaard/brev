@@ -1,7 +1,7 @@
 # Mail visuals and performance
 
 Size: Full, spanning persistence, backend queries and shared UI.
-Status: Building, slice 2 of 8; slice 1 runtime gate remains open
+Status: Building, implementation PRs open through slice 8; review and runtime gates remain open
 Owner: Henrik · Started: 2026-10-28 · Approved: 2026-10-28, Henrik
 Tracking: [#269](https://github.com/henrikogaard/brev/issues/269).
 Baseline: `origin/main` at `5ad74c0b388466a5f842dcb43b8834f74cc413ee`.
@@ -167,14 +167,14 @@ Each numbered slice is a coherent PR. Independent outcomes target `main`; only g
 
 | Slice | Deliverable and verification target | Requirements | State |
 |---|---|---|---|
-| 1 | Add cold JSON-versus-SQLite synthetic benchmarks at 10k/50k, preserve the existing 10k tests, and collect an authorized cold-folder/selection baseline. No production behavior change. | NFR-1/2, FR-4 | Building synthetic suite; runtime part waits on Q-1. |
-| 2 | Detail schema/page-window contracts, add migration/transaction/restart tests first, then implement the ADR-0087 metadata/window write slice. Use actual schema version at implementation time, not a stale constant. | FR-1–3, NFR-3 | Store foundation implemented; CI pending. Backend dual-writes still pending. |
-| 3 | Migrate per folder and switch bounded read/lookup/thread paths, proving old/new parity, token/generation behavior and measured query targets before cutover. | FR-1–3, NFR-1 | Planned; measurement gate required. |
-| 4 | Replace remaining full-folder consumers and storage-UI reads, verify retention/removal/flag paths, then retire the duplicate file-backed cache and validate cleanup/recovery. | FR-2/3, NFR-1/3 | Planned. |
-| 5 | Repeat the optimized selection/scroll trace after the storage slices and identify one expensive UI boundary. | FR-4, NFR-2 | Planned; no guessed refactor. |
-| 6 | Add characterization coverage, make the smallest demonstrated UI update-scope change and verify matched timings, memory and navigation behavior. | FR-4, NFR-2/3 | Planned. |
-| 7 | Implement/verify plain-text readable measure, shared alignment and missing default-theme interaction-state cases. Preserve sender HTML and existing style/privacy contracts. | FR-5/6, CON-1 | Planned; rendered acceptance required. |
-| 8 | Continue #265, integrate current main and perform its focused native verification; deliver it for review without assuming merge permission. | FR-7, CON-2/3 | Blocked on Q-1 for native verification. |
+| 1 | Add cold JSON-versus-SQLite synthetic benchmarks at 10k/50k, preserve the existing 10k tests, and collect an authorized cold-folder/selection baseline. No production behavior change. | NFR-1/2, FR-4 | #270 synthetic suite passed; runtime baseline remains open. |
+| 2 | Detail schema/page-window contracts, add migration/transaction/restart tests first, then implement the ADR-0087 metadata/window write slice. Use actual schema version at implementation time, not a stale constant. | FR-1–3, NFR-3 | #271 foundation passed; #272 dual-writes staged for review. |
+| 3 | Migrate per folder and switch bounded read/lookup/thread paths, proving old/new parity, token/generation behavior and measured query targets before cutover. | FR-1–3, NFR-1 | #273 draft implementation; parity/runtime acceptance pending. |
+| 4 | Replace remaining full-folder consumers and storage-UI reads, verify retention/removal/flag paths, then retire the duplicate file-backed cache and validate cleanup/recovery. | FR-2/3, NFR-1/3 | #274 draft implementation; review/verification pending. |
+| 5 | Repeat the optimized selection/scroll trace after the storage slices and identify one expensive UI boundary. | FR-4, NFR-2 | #275 Release selection profiling harness staged; actual capture and full UI trace pending. |
+| 6 | Add characterization coverage, make the smallest demonstrated UI update-scope change and verify matched timings, memory and navigation behavior. | FR-4, NFR-2/3 | #276 draft candidate; requires fresh profiling support before acceptance. |
+| 7 | Implement/verify plain-text readable measure, shared alignment and missing default-theme interaction-state cases. Preserve sender HTML and existing style/privacy contracts. | FR-5/6, CON-1 | #277 draft implementation and recording CI; rendered acceptance pending. |
+| 8 | Continue #265, integrate current main and perform its focused native verification; deliver it for review without assuming merge permission. | FR-7, CON-2/3 | #265 existing implementation and recording CI; main conflicts and combined rendering pending review. |
 
 Write each slice's detailed design immediately before its code, including literal contract examples, failure modes, test scope and current commit. Do not pre-design a new UI state architecture before slice 5 supplies evidence. TDD applies to meaningful behavior; docs-only and measurement-only changes state their exceptions explicitly.
 
@@ -227,6 +227,30 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 - Package tests execute in CI because host testing remains deferred. Record the absence of a locally observed red run rather than claiming TDD red/green evidence. Do not change production read defaults or claim cutover latency from these tests.
 
 ## 10. Verification
+
+### Slice 8 implementation contract
+
+Continue #265 in place rather than duplicate native Settings work. Its grouped forms, quieter compact root and existing snapshots are already implemented. Add isolated macOS-26/iPhone recording of the existing changed Settings/Appearance suites and retain their PNGs for review. The PR currently conflicts with main; integration resolution and combined rendering with current-main consent controls belong to the subsequent review/fix pass. Do not merge/rebase unrelated work or infer host-test permission. Recording the old head alone is not combined-main acceptance.
+
+### Implementation review map, 2026-10-29
+
+| Slice | PR | Implementation/review state |
+|---|---|---|
+| 1 | #270 | Synthetic baseline verified at `208960eb`; live baseline remains missing. |
+| 2a | #271 | Store foundation verified at `652242e6`; not merged. |
+| 2b | #272 | Dual-write bridge implemented; draft, CI/review pending. |
+| 3 | #273 | Migration and bounded reads implemented; draft, correctness/runtime gates pending. |
+| 4 | #274 | Selective maintenance and production JSON-writer retirement implemented; draft, review pending. |
+| 5 | #275 | Release profiling workload/CI implemented; fresh capture/result still pending. |
+| 6 | #276 | Navigation projection candidate implemented; requires fresh matched profiling and acceptance. |
+| 7 | #277 | Reader measure and visual-review coverage implemented; image recording/inspection pending. |
+| 8 | #265 | Existing native Settings implementation retained; CI image capture added, main conflicts/combined acceptance pending. |
+
+Storage/UI draft review order is #268 → #270 → #271 → #272 → #273 → #274 → #275 → #276 → #277. Settings #265 remains a separate main-targeting outcome. Open PRs and implemented candidates are not completed acceptance criteria. No merge, release or issue closure is authorized by this map.
+
+### Slice 7 implementation contract
+
+Shared body style supplies a roughly 72-character native measure, 36 times the resolved point size, via an internal reading-column modifier. Detail plain/quoted text and Thread plain text use the same leading-aligned constraint; narrower proposals stay at available width and accessibility scaling increases the point measure. Brev-generated bare-text HTML receives an owned wrapper capped at 72ch; arbitrary sender HTML, print blocks and compose remain unconstrained. Add native snapshots for narrow/wide/light/dark/accessibility variants and Mono Grey row selection/unread/inactive/disabled states without inventing theme changes where existing contrast contracts already hold. A macOS-26 CI recording job produces review artifacts; recording is not approval and baselines must be inspected before normal comparison acceptance. No host-native tests or icons.
 
 ### Slice 6 implementation contract
 

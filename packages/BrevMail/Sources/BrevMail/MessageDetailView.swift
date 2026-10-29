@@ -505,7 +505,7 @@ public struct MessageDetailView: View {
         return "\(sourceID.accountID):\(sourceID.mailboxID)"
     }
 
-    private var messageBodyFont: Font {
+    private var messageBodyStyle: MessageBodyStyle {
         MessageBodyStyle.resolve(
             theme: theme,
             fontFamily: mailboxFontFamily,
@@ -513,8 +513,10 @@ public struct MessageDetailView: View {
             renderingMode: .original,
             bodyInsetPoints: 0,
             bodyScale: messageBodyScale
-        ).swiftUIBodyFont
+        )
     }
+
+    private var messageBodyFont: Font { messageBodyStyle.swiftUIBodyFont }
 
     private var messageBodyScale: CGFloat {
         #if os(iOS)
@@ -2556,35 +2558,38 @@ public struct MessageDetailView: View {
     @ViewBuilder
     private func quotedPlainBody(_ text: String) -> some View {
         let segments = PlainBodyQuoteSegmentation.segments(of: text)
-        if segments.count == 1, case .text(let only) = segments[0] {
-            Text(only)
-                .font(messageBodyFont)
-                .foregroundStyle(theme.textPrimary.color)
-                .textSelection(.enabled)
-        } else {
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                ForEach(segments.indices, id: \.self) { index in
-                    switch segments[index] {
-                    case .text(let run):
-                        Text(run)
-                            .font(messageBodyFont)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .textSelection(.enabled)
-                    case .quote(let run):
-                        HStack(spacing: BrevSpacing.sm) {
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(theme.textTertiary.color)
-                                .frame(width: 3)
+        Group {
+            if segments.count == 1, case .text(let only) = segments[0] {
+                Text(only)
+                    .font(messageBodyFont)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .textSelection(.enabled)
+            } else {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    ForEach(segments.indices, id: \.self) { index in
+                        switch segments[index] {
+                        case .text(let run):
                             Text(run)
                                 .font(messageBodyFont)
-                                .foregroundStyle(theme.textSecondary.color)
+                                .foregroundStyle(theme.textPrimary.color)
                                 .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        case .quote(let run):
+                            HStack(spacing: BrevSpacing.sm) {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(theme.textTertiary.color)
+                                    .frame(width: 3)
+                                Text(run)
+                                    .font(messageBodyFont)
+                                    .foregroundStyle(theme.textSecondary.color)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                 }
             }
         }
+        .modifier(MessageReadingColumn(style: messageBodyStyle))
     }
 
     @ViewBuilder
