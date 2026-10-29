@@ -46,6 +46,20 @@ public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
     /// Writes a compatibility snapshot or imports missing legacy rows atomically.
     func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
                           account: BrevAccount, importingLegacy: Bool) async throws
+    /// Selects only rows needed by a cache consumer.
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, folderID: Folder.ID,
+                           account: BrevAccount) async throws -> [MessageHeader]
+    /// Changes the folder watermark without touching header rows or the paging cursor.
+    func updateIMAPModSeq(_ modSeq: UInt64, folderID: Folder.ID, account: BrevAccount) async throws
+}
+
+/// Explicit local query shapes used by cache maintenance and reconciliation.
+public enum IMAPHeaderSelection: Sendable {
+    case window(String)
+    case olderThan(Date)
+    case invalidDates
+    case attachmentsOrCachedBodies
+    case excludingIDs([MessageHeader.ID])
 }
 
 /// Small metadata projection for a cached IMAP folder.

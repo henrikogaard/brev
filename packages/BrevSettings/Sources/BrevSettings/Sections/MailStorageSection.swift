@@ -41,18 +41,6 @@ private struct MailStorageDirectoryMetrics: Equatable, Sendable {
     var objectCount = 0
 }
 
-/// Counting view over `IMAPMailboxHeaderCacheSnapshot` files. The
-/// placeholder element lets the decoder report `headers.count` without
-/// materializing every `MessageHeader` — the storage audit only needs the
-/// count, and full decoding was the dominant cost on large snapshots.
-private struct HeaderSnapshotCountEnvelope: Decodable {
-    let headers: [SkippedHeader]
-
-    struct SkippedHeader: Decodable {
-        init(from _: any Decoder) throws {}
-    }
-}
-
 enum MailStorageInfo {
     static func cacheRoot(fileManager: FileManager = .default) -> URL? {
         fileManager
@@ -216,13 +204,8 @@ enum MailStorageInfo {
             else {
                 return
             }
-            guard let data = try? Data(contentsOf: url),
-                  let snapshot = try? JSONDecoder().decode(HeaderSnapshotCountEnvelope.self, from: data)
-            else {
-                count += 1
-                return
-            }
-            count += snapshot.headers.count
+            // Legacy snapshots count as files. Indexed header counts come from backend metrics.
+            count += 1
         }
     }
 

@@ -624,6 +624,53 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         }
     }
 
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) throws -> [MessageHeader] {
+        try lock.withLock {
+            let predicate: String
+            var extra: Binding?
+            switch selection {
+            case .window(let token):
+                predicate = "EXISTS (SELECT 1 FROM imap_page_windows w WHERE w.account_id = h.account_id AND w.folder_id = h.folder_id AND w.uid = h.uid AND w.page_key = ?)"
+                extra = .text(token)
+            case .olderThan(let date): predicate = "h.date_ts < ?"; extra = .int64(Int64(ceil(date.timeIntervalSince1970)))
+            case .invalidDates: predicate = "h.date_ts <= 0"
+            case .attachmentsOrCachedBodies:
+                predicate = "(json_extract(CAST(h.header_json AS TEXT), '$.hasAttachments') = 1 OR EXISTS (SELECT 1 FROM message_bodies b WHERE b.account_id = h.account_id AND b.message_id = h.message_id))"
+            case .excludingIDs(let ids):
+                predicate = "h.message_id NOT IN (SELECT value FROM json_each(?))"
+                extra = .text(String(decoding: try JSONEncoder().encode(ids), as: UTF8.self))
+            }
+            let sql = "SELECT h.header_json FROM message_headers h WHERE h.account_id = ? AND h.folder_id = ? AND \(predicate) ORDER BY h.date_ts DESC, h.uid DESC;"
+            var stmt: OpaquePointer?
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            sqlite3_bind_text(stmt, 2, folderID, -1, Self.transient)
+            switch extra {
+            case .text(let token): sqlite3_bind_text(stmt, 3, token, -1, Self.transient)
+            case .int64(let value): sqlite3_bind_int64(stmt, 3, value)
+            default: break
+            }
+            var result: [MessageHeader] = []
+            var step = sqlite3_step(stmt)
+            while step == SQLITE_ROW {
+                guard let bytes = sqlite3_column_blob(stmt, 0) else { throw SyncStoreError.executeFailed("Missing header bytes") }
+                let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
+                result.append(try Self.decoder.decode(MessageHeader.self, from: data))
+                step = sqlite3_step(stmt)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return result
+        }
+    }
+
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) throws {
+        try lock.withLock {
+            try execStmt("UPDATE folder_sync_state SET highest_mod_seq = ? WHERE account_id = ? AND folder_id = ?;",
+                         bindings: [.int64(Int64(bitPattern: modSeq)), .text(accountID), .text(folderID)])
+        }
+    }
+
     func imapSnapshot(accountID: String, folderID: String) throws -> IMAPMailboxHeaderCacheSnapshot? {
         try lock.withLock {
             guard let state = try readIMAPPageState(accountID: accountID, folderID: folderID) else { return nil }
@@ -1600,6 +1647,8 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         );
         CREATE INDEX IF NOT EXISTS idx_imap_window_header
             ON imap_page_windows(account_id, folder_id, uid);
+        CREATE INDEX IF NOT EXISTS idx_imap_attachment_headers
+            ON message_headers(account_id, folder_id, json_extract(CAST(header_json AS TEXT), '$.hasAttachments'));
         """)
     }
 

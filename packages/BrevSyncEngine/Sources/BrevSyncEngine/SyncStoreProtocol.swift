@@ -69,6 +69,8 @@ protocol SyncStoreProtocol: Sendable {
     func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
                            folderID: String, importingLegacy: Bool) async throws
     func headersByID(_ ids: [String], accountID: String, folderID: String) async throws -> [MessageHeader]
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) async throws -> [MessageHeader]
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) async throws
 
     /// Deletes headers whose `MessageHeader.ID` is in `messageIDs`.
     func deleteHeaders(messageIDs: [MessageHeader.ID], accountID: String) async throws
@@ -349,6 +351,26 @@ actor InMemorySyncStore: SyncStoreProtocol {
     func headersByID(_ ids: [String], accountID: String, folderID: String) -> [MessageHeader] {
         let stored = headersByFolder[folderKey(accountID, folderID)] ?? [:]
         return ids.compactMap { stored[$0] }
+    }
+
+    func selectIMAPHeaders(_ selection: IMAPHeaderSelection, accountID: String, folderID: String) -> [MessageHeader] {
+        let key = folderKey(accountID, folderID)
+        return headers(accountID: accountID, folderID: folderID, limit: Int.max, offset: 0).filter { header in
+            switch selection {
+            case .window(let token): return imapWindows[key]?[token]?.contains(Self.uid(from: header.id)) == true
+            case .olderThan(let date): return header.date < date
+            case .invalidDates: return header.date.timeIntervalSince1970 <= 0
+            case .attachmentsOrCachedBodies: return header.hasAttachments || bodies["\(accountID)|\(header.id)"] != nil
+            case .excludingIDs(let ids): return !ids.contains(header.id)
+            }
+        }
+    }
+
+    func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) {
+        let key = folderKey(accountID, folderID)
+        guard var state = syncStates[key] else { return }
+        state.highestModSeq = modSeq
+        syncStates[key] = state
     }
 
     func imapSnapshot(accountID: String, folderID: String) -> IMAPMailboxHeaderCacheSnapshot? {

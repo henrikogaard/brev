@@ -227,13 +227,8 @@ enum MailboxStorageInfo {
             else {
                 return
             }
-            guard let data = try? Data(contentsOf: url),
-                  let snapshot = try? JSONDecoder().decode(IMAPMailboxHeaderCacheSnapshot.self, from: data)
-            else {
-                count += 1
-                return
-            }
-            count += snapshot.headers.count
+            // Legacy snapshots count as files; the authoritative store reports indexed rows.
+            count += 1
         }
     }
 

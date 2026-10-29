@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 selective cache consumers and writer retirement
+
+- Branch `feature/imap-selective-cache`, based on #273; target `feature/imap-sqlite-reads`, eventual main. Implementation-first draft stack continues per Henrik's instruction.
+- Added selective windows/date/attachment/body query shapes and targeted flag/label/CONDSTORE/date-repair updates. Reconciliation reads affected rows; no-index production caching is memory-only. Moved the historical JSON writer into backend test fixtures and added a production read-only migration reader. Existing cross-store benchmarks seed historical JSON directly.
+- Storage helpers no longer decode header JSON to count objects; existing backend metrics report indexed records. Updated fixture counts, lifecycle privacy documentation, accepted ADR implementation note, design and CHANGELOG.
+- Added both-store selection and row/window-isolation tests. Diff/ADR checks before push; package/lint/native verification pending the requested review/fix pass. Known inherited formatting issues remain. No host-native test or real-account migration occurred. No performance or merge-ready claim.
+
 ## 2026-10-29 — Agent — #269 indexed IMAP read/migration slice
 
 - Branch `feature/imap-sqlite-reads`, based on #272; target immediate parent `feature/imap-page-dual-write`, eventual main. Continuing all implementation PRs before the requested review/fix pass.
