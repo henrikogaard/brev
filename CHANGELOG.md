@@ -12,6 +12,9 @@ All notable changes to Brev are documented here.
   recovery payloads while retaining minimal anti-replay identifiers; account
   removal deletes those identifiers too.
 
+- Plain-text readers share a leading-aligned readable column on wide layouts,
+  scaled with the selected font size. Sender HTML, print and compose keep their existing layout.
+
 - Reuse the current list presentation's reader navigation context during
   repeated selection, preserving reply visibility and refreshing changed headers.
 
