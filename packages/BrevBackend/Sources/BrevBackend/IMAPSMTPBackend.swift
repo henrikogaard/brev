@@ -867,6 +867,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         guard let deleteFolderOperation else {
             throw MailBackendError.notSupported(.folderDelete)
         }
+        try await prepareIndexedHeaderCaches(folderIDs: [id])
         try await withAuthenticatedOAuthRetry { credential in
             try await deleteFolderOperation(self.configuration, credential, id)
         }
@@ -887,6 +888,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             throw MailBackendError.notSupported(.folderFlush)
         }
 
+        try await prepareIndexedHeaderCaches(folderIDs: [id])
         var pageToken: String?
         var visitedPageTokens = Set<String>()
         while true {
@@ -1788,6 +1790,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                                        expectedGeneration: Int? = nil) async throws -> IMAPMoveResult {
         try await state.requireConnected()
         guard let operation = moveMessagesWithResultOperation else { throw MailBackendError.notSupported(capabilities) }
+        try await prepareIndexedHeaderCaches(folderIDs: [source])
         try Task.checkCancellation()
         let result: IMAPMoveResult
         do {
@@ -1851,8 +1854,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             throw MailBackendError.notSupported(capabilities)
         }
 
-        for group in try Self.messageReferencesByFolder(from: messageIDs)
-            where group.folderID != folderID {
+        let groups = try Self.messageReferencesByFolder(from: messageIDs).filter { $0.folderID != folderID }
+        try await prepareIndexedHeaderCaches(folderIDs: groups.map(\.folderID))
+        for group in groups {
             try await withAuthenticatedOAuthRetry { credential in
                 try await moveMessagesOperation(
                     self.configuration,
@@ -1974,6 +1978,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
         let trashFolder = folders.first { $0.role == .trash }
         let groups = try Self.messageReferencesByFolder(from: messageIDs)
+        try await prepareIndexedHeaderCaches(folderIDs: groups.map(\.folderID))
 
         for group in groups {
             if let trashFolder, group.folderID != trashFolder.id {
@@ -4294,6 +4299,20 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         )
     }
 
+    private func prepareIndexedHeaderCaches(folderIDs: [Folder.ID]) async throws {
+        guard let indexed = headerCache as? IndexedIMAPMailboxHeaderCache else { return }
+        for folderID in Set(folderIDs).sorted() {
+            try Task.checkCancellation()
+            do {
+                try await indexed.prepare(folderID: folderID)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch {
+                throw MailBackendError.backendSpecific(message: Self.userFacingDescription(for: error))
+            }
+        }
+    }
+
     private func removeCachedHeaders(folderID: Folder.ID, uids: [Int]) async {
         let targetIDs = Set(Self.messageIDs(folderID: folderID, uids: uids))
         await localSearchIndex?.deleteMessages(Array(targetIDs), account: account)
@@ -5332,7 +5351,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             throw MailBackendError.notSupported(.junkAPI)
         }
 
-        for group in try Self.messageReferencesByFolder(from: messageIDs) {
+        let groups = try Self.messageReferencesByFolder(from: messageIDs)
+        try await prepareIndexedHeaderCaches(folderIDs: groups.map(\.folderID))
+        for group in groups {
             try await withAuthenticatedOAuthRetry { credential in
                 try await setMessageKeywordOperation(
                     self.configuration,
@@ -5621,6 +5642,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         guard let permanentlyDeleteMessagesOperation else {
             throw MailBackendError.notSupported(capabilities)
         }
+        try await prepareIndexedHeaderCaches(folderIDs: [reference.folderID])
         try await withAuthenticatedOAuthRetry { credential in
             try await permanentlyDeleteMessagesOperation(
                 self.configuration,

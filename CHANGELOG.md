@@ -19,6 +19,12 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Destructive IMAP actions now complete legacy-cache migration before
+  changing server messages. Migration failure stops the action instead of
+  silently queueing it, and headers deleted by these actions cannot return
+  through a later first import. Previously ambiguous cache histories remain
+  unresolved.
+
 - Retrying a legacy IMAP cache import after failed file cleanup no longer
   restores messages already removed from the index. Cached-page threading
   shares bounded reply-link lookups instead of traversing once per message.

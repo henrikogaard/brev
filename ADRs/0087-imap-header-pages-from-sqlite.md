@@ -22,9 +22,9 @@ IMAP folders keep two local copies of their headers:
 2. The per-account SQLite store (`BrevSyncEngine`, `SQLiteSyncStore`,
    `sync-cache/<account>.sqlite`) has a `message_headers` table with the
    full `MessageHeader` as `header_json`, keyed by `(account, folder, uid)`
-   and indexed by `(account, folder, date_ts DESC)`. `cacheHeaders` already
-   writes every header here first, so SQLite is a superset of the JSON
-   headers. It has none of the paging metadata.
+   and indexed by `(account, folder, date_ts DESC)`. `cacheHeaders` attempts
+   to write every header here first, but failed index writes can leave newer
+   legacy-only rows. It initially has none of the paging metadata.
 
 Page-1 cache hits already read 50 rows from SQLite. The JSON file is still
 decoded in full on the first open of a folder after launch, in three places:
@@ -118,6 +118,27 @@ shipped. Henrik asked for faster folder switching on 2026-10-09.
    after a restart must not reinsert deleted headers from a surviving JSON
    file. Markers survive folder-cache clearing and generation invalidation;
    account deletion removes them with the account's other metadata.
+
+   Destructive operations preflight this migration before contacting the
+   server or removing cached headers, including moves/undo, trash/permanent
+   deletion, remote-draft cleanup and folder deletion/flush. Multi-folder
+   batches prepare every source before the first mutation. Junk training
+   prepares before its keyword changes and optional move. Migration errors
+   propagate as local backend failures, not successful offline enqueueing;
+   cancellation remains cancellation. Server reconciliation already prepares
+   the indexed snapshot before selecting removed rows.
+
+   This ordering prevents new deletions from preceding the first import; it
+   does not reconstruct historical deletions from pre-cutover caches. A
+   missing indexed UID may be deleted or never successfully indexed. The
+   latest global cursor can be overwritten by an older-page write or first
+   refresh; UIDVALIDITY identifies a generation, not authoritative coverage.
+   Neither proves deletion, including a null cursor added by migration.
+   Preserve legacy-only rows under the existing import policy, including
+   newer UIDs after failed dual-writes. Quarantining ambiguous legacy rows
+   pending server validation would change offline recovery and local data
+   lifecycle, and requires explicit maintainer acceptance; this repair does
+   not implement that policy or claim historical resurrection is solved.
 
 6. **Storage UI reads SQLite.** `MailboxStorageInfo` and
    `MailStorageSection` stop decoding JSON files. They use per-folder
