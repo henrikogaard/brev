@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 indexed IMAP read/migration slice
+
+- Branch `feature/imap-sqlite-reads`, based on #272; target immediate parent `feature/imap-page-dual-write`, eventual main. Continuing all implementation PRs before the requested review/fix pass.
+- Added account-bound indexed cache adapter, transactional missing-row legacy import and metadata/ID projections. Page cursors and indexed thread inputs no longer require a whole-folder snapshot; cached header lookup is bounded. Legacy data is retained when import fails. Compatibility SQL snapshots remain for the consumers replaced in slice 4.
+- Added both-store import tests for newer-row preservation, migrated windows, generation rejection and source cleanup. Checks: diff/ADR before push; focused formatting reports outstanding indentation/loop-wrap issues, deferred to the requested review/fix pass. Package compilation/execution pending CI. No locally observed red run, host app test or real cache migration.
+- Updated approved design and CHANGELOG. Privacy posture/network behavior unchanged; local lifecycle remains governed by ADR-0087. Runtime/cutover gates stay open; draft code is not a verified or shipped migration.
+
 ## 2026-10-29 — Agent — #269 IMAP page dual-write
 
 - Continued slice 2b on `feature/imap-page-dual-write`, based on #271 at `652242e6`; target immediate parent `feature/imap-page-window-store`, eventual main. Henrik requested implementation PRs for all slices before the review/fix pass; work continues without waiting for each CI run.
@@ -6699,3 +6706,17 @@ buttons, and package-aware localization.
 - Limits: iOS snapshot tests remain unavailable through the `BrevIOS` scheme because `BrevMailTests` is not part of its test plan; live iPhone captures were inspected instead. The Mac build retains existing warnings for deprecated `EventModifiers.function` and non-Sendable closure conversions.
 - Evidence: refreshed after captures are in `/Users/devin/evidence/mailboxes-compose/`; valid base Mailboxes captures remain there. The Mac screenshots are window-only and contain no notification banners.
 - Handoff: host appearance is Light. Commit and push the completed follow-up; do not open a PR or watch CI.
+
+## 2026-10-29 — Agent — PR #273 review repairs
+
+- Goal: prevent stale legacy JSON from restoring deleted indexed rows and remove per-message conversation traversal from cached page reads.
+- Changes: schema v8 persists account/folder import-completion markers in the import transaction. Markers survive folder clearing and generation changes and cascade on account deletion. Both stores share retry behavior. Page threading batches indexed reply identifiers across the page, preserving cross-folder links and account isolation; inherited formatting findings are fixed. ADR-0087 and CHANGELOG updated; no new network calls, opt-ins, UI strings, or privacy-policy changes.
+- Verification: reproduced the resurrection failure before the fix. The final BrevSyncEngine run passed 78 XCTest and 28 Swift Testing tests, excluding the expensive header-read baseline; new coverage exercises failed cleanup, reopen/deletion/retry, generation reset, schema-v7 upgrade, transaction rollback and page graph isolation/deduplication. The focused IMAP backend cache/thread run passed 73 tests. Pinned repository lint/format, focused lint on the final schema expectations, and diff checks passed.
+- Limits: the original full Debug run was cancelled during the 50k-header baseline after revealing stale schema expectations; no complete new cold-header baseline, native app acceptance, live-mailbox migration, or Release performance claim. CI/review settlement and combined validation with PR #274 are still required. The merge credential currently cannot merge PRs; no merge performed.
+
+## 2026-10-29 — Agent — PR #273 destructive-mutation migration preflight
+
+- Goal: stop move/delete operations from removing indexed headers before an unopened folder's first legacy import, without inferring historical deletion from paging cursors.
+- Changes: preflight every source folder before server/cache mutation for move/undo, trash/permanent deletion, remote-draft cleanup, folder deletion/flush and junk training. Local migration errors propagate rather than reporting successful offline enqueueing; cancellation is preserved. No schema or import-filter change. ADR-0087 and CHANGELOG distinguish this fix from unresolved historical absence ambiguity; no network, privacy policy, setup, UI-string or release change.
+- Verification: red-green SQLite regressions cover eight entry points, multi-folder batch failure, reopening with retained stale JSON, undo-source migration and preservation of a newer legacy-only UID. Initial tests failed with 36 assertions; adding an offline queue exposed 12 further swallowed-error/queued assertions before error classification was fixed. Final four parameterized tests (17 cases) pass, as do 1,163 backend tests, 78 XCTest plus 32 Swift Testing sync tests (excluding IMAPHeaderReadBaselineTests), pinned repository lint/format and focused final lint/format. Privacy-audit coverage, public-source markers, OpenPGP-retirement and telemetry-artifact self-tests pass; non-executable self-test scripts were invoked with bash. Telemetry bundle checks skip absent app builds.
+- Handoff: isolated repair based on `8ba8154fa827a8d7d0025a96bc571b7bb95e62df`; parent owns integration into existing PR #273, stacked validation, review replies and hosted CI. No native/live tests or new header-read performance run requested. Review 4413521103 remains unresolved for already-shipped ambiguous histories; no quarantine or authoritative-source policy is implemented, and newer legacy-only rows remain recoverable. No new PR, merge, issue change or original-branch push.

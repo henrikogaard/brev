@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Indexed IMAP accounts migrate legacy header caches on first folder access.
+  Cached page cursors and individual header lookups use bounded index reads;
+  legacy files are removed only after a successful import.
+
 - IMAP pages dual-write their headers and paging metadata transactionally to
   the local index while retaining the legacy cache during the staged rollout.
 
@@ -14,6 +18,16 @@ All notable changes to Brev are documented here.
   gated on performance measurements.
 
 ### Fixed
+
+- Destructive IMAP actions now complete legacy-cache migration before
+  changing server messages. Migration failure stops the action instead of
+  silently queueing it, and headers deleted by these actions cannot return
+  through a later first import. Previously ambiguous cache histories remain
+  unresolved.
+
+- Retrying a legacy IMAP cache import after failed file cleanup no longer
+  restores messages already removed from the index. Cached-page threading
+  shares bounded reply-link lookups instead of traversing once per message.
 
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an

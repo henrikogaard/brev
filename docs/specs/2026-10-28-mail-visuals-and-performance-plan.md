@@ -234,6 +234,10 @@ The caller requested opening implementation PRs for every slice before the revie
 
 Add a BrevBackend-owned `IMAPHeaderPageWrite` value and `IMAPHeaderPageIndex` write capability. The engine forwards one page to its store transaction and propagates errors. The in-memory store follows the same membership/generation semantics for fixtures. `IMAPSMTPBackend.cacheHeaders` prefers this capability for first or explicitly identified older pages, while continuing its existing JSON write unchanged. Unidentified merges keep ordinary header writes rather than accidentally replacing the first window. On a page-write failure retain best-effort header indexing and the legacy cache; do not acknowledge migration/readiness or switch reads. Verify engine forwarding, empty pages, page replacement and fallback using synthetic stores. No live-provider sends or host-native tests.
 
+### Slice 3 implementation contract
+
+Add an account-bound index cache adapter at the backend boundary. It imports a legacy snapshot transactionally, filling missing rows without overwriting newer indexed headers, and deletes the legacy source only after success. Failed import keeps the source and retries on later access. The index capability exposes metadata-only reads and bounded ID lookups; cold page cursors and page-thread inputs use those instead of whole snapshots. Existing mutation consumers temporarily retain a compatibility SQL snapshot until slice 4 replaces them. The adapter never writes JSON. Header rows, metadata and all migrated windows commit together; generation disagreement fails closed. Synthetic tests cover migration/retry, newer-row preservation and metadata/lookup reads. This PR remains draft until the outstanding runtime cutover gates are met.
+
 | Criterion | Check | Result | Change |
 |---|---|---|---|
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |

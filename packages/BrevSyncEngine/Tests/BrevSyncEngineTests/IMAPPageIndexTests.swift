@@ -10,7 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevBackend
+@testable import BrevBackend
 @testable import BrevSyncEngine
 import Foundation
 import Testing
@@ -48,11 +48,79 @@ struct IMAPPageIndexTests {
         #expect(try await store.imapPageState(accountID: account.id, folderID: "INBOX") == nil)
     }
 
+    @Test("legacy retry after cleanup failure never restores deleted rows", arguments: [false, true])
+    func legacyRetryAfterDeletion(sqlite: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-import-retry-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let databaseURL = root.appendingPathComponent("index.sqlite")
+        var store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: databaseURL) : InMemorySyncStore()
+        let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
+        let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: page([1, 2], token: nil).headers,
+                                                      uidValidity: 777, firstPageHeaderIDs: ["INBOX:1", "INBOX:2"])
+        let legacy = NonClearingLegacyCache(value: snapshot)
+        try await IndexedIMAPMailboxHeaderCache(index: BrevSyncEngine(store: store), account: account, legacy: legacy)
+            .prepare(folderID: "INBOX")
+        #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") != nil)
+        try await store.deleteHeaders(messageIDs: ["INBOX:1"], accountID: "synthetic")
+        if sqlite { store = try SQLiteSyncStore(databaseURL: databaseURL) }
+        try await IndexedIMAPMailboxHeaderCache(index: BrevSyncEngine(store: store), account: account, legacy: legacy)
+            .prepare(folderID: "INBOX")
+        #expect(try await store.headersByID(["INBOX:1"], accountID: "synthetic", folderID: "INBOX").isEmpty)
+        #expect(try await store.imapPageUIDs(accountID: "synthetic", folderID: "INBOX", pageKey: "first") == [2])
+        try await store.clearFolder(accountID: "synthetic", folderID: "INBOX")
+        try await store.storeIMAPPage(IMAPHeaderPageWrite(folderID: "INBOX", pageToken: nil, headers: [],
+                                                          uidValidity: 999, highestModSeq: nil, nextPageToken: nil),
+                                      accountID: "synthetic")
+        try await store.storeIMAPSnapshot(snapshot, accountID: "synthetic", folderID: "INBOX", importingLegacy: true)
+        #expect(try await store.headersByID(["INBOX:1", "INBOX:2"], accountID: "synthetic", folderID: "INBOX").isEmpty)
+    }
+
     private func page(_ uids: [Int], token: String?) -> IMAPHeaderPageWrite {
         IMAPHeaderPageWrite(folderID: "INBOX", pageToken: token, headers: uids.map {
             MessageHeader(id: "INBOX:\($0)", threadID: "thread-\($0)", folderID: "INBOX",
                           from: Correspondent(email: "sender@example.test"), subject: "Synthetic \($0)", snippet: "",
                           date: Date(timeIntervalSince1970: TimeInterval($0)))
         }, uidValidity: 777, highestModSeq: 888, nextPageToken: "before:1")
+    }
+
+    private struct NonClearingLegacyCache: IMAPMailboxHeaderCache {
+        let value: IMAPMailboxHeaderCacheSnapshot
+        func snapshot(accountID _: BrevAccount.ID, folderID _: Folder.ID) async -> IMAPMailboxHeaderCacheSnapshot? { value }
+        func setSnapshot(_: IMAPMailboxHeaderCacheSnapshot, accountID _: BrevAccount.ID, folderID _: Folder.ID) async {}
+        func clear(accountID _: BrevAccount.ID, folderID _: Folder.ID) async {}
+        func clear(accountID _: BrevAccount.ID) async {}
+    }
+
+    @Test("legacy import preserves newer rows and only removes the source after success", arguments: [false, true])
+    func legacyImport(sqlite: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-import-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
+        try await engine.storeIMAPPage(page([3], token: nil), account: account)
+        var stale = page([1, 3], token: nil).headers
+        stale[1].isRead = true
+        let legacy = InMemoryIMAPMailboxHeaderCache()
+        let wrongGeneration = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 999)
+        await legacy.setSnapshot(wrongGeneration, accountID: account.id, folderID: "INBOX")
+        let retry = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)
+        await #expect(throws: (any Error).self) { try await retry.prepare(folderID: "INBOX") }
+        #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") != nil)
+        let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 777, highestModSeq: 1,
+                                                      nextPageToken: "stale", firstPageHeaderIDs: ["INBOX:1", "INBOX:3"],
+                                                      pageHeaderIDsByToken: ["before:3": ["INBOX:1"]])
+        await legacy.setSnapshot(snapshot, accountID: account.id, folderID: "INBOX")
+        let adapter = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)
+        try await adapter.prepare(folderID: "INBOX")
+        #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") == nil)
+        let restored = try await engine.imapHeaders(ids: ["INBOX:1", "INBOX:3"], folderID: "INBOX", account: account)
+        #expect(restored.count == 2)
+        #expect(restored.last?.isRead == false)
+        #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.nextPageToken == "before:1")
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "first") == [3])
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "before:3") == [1])
     }
 }
