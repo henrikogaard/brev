@@ -34,19 +34,29 @@ enum AboutSectionPresentation {
     }
 }
 
-struct AboutSection: View {
-    @Environment(\.brevTheme) private var theme
-    @Binding private var showDeveloperSettings: Bool
-
-    init(showDeveloperSettings: Binding<Bool> = .constant(false)) {
-        _showDeveloperSettings = showDeveloperSettings
-    }
-
-    private var version: String {
+private struct SettingsAboutVersionKey: EnvironmentKey {
+    static var defaultValue: String {
         let info = Bundle.main.infoDictionary
         let short = info?["CFBundleShortVersionString"] as? String ?? "0.0"
         let build = info?["CFBundleVersion"] as? String ?? "0"
         return "\(short) (\(build))"
+    }
+}
+
+extension EnvironmentValues {
+    var settingsAboutVersion: String {
+        get { self[SettingsAboutVersionKey.self] }
+        set { self[SettingsAboutVersionKey.self] = newValue }
+    }
+}
+
+struct AboutSection: View {
+    @Environment(\.brevTheme) private var theme
+    @Environment(\.settingsAboutVersion) private var version
+    @Binding private var showDeveloperSettings: Bool
+
+    init(showDeveloperSettings: Binding<Bool> = .constant(false)) {
+        _showDeveloperSettings = showDeveloperSettings
     }
 
     var body: some View {

@@ -56,14 +56,27 @@ enum WindowTransparencySelection: CaseIterable, Identifiable {
     }
 }
 
+private struct SettingsReduceTransparencyKey: EnvironmentKey {
+    static let defaultValue: Bool? = nil
+}
+
+extension EnvironmentValues {
+    var settingsReduceTransparency: Bool? {
+        get { self[SettingsReduceTransparencyKey.self] }
+        set { self[SettingsReduceTransparencyKey.self] = newValue }
+    }
+}
+
 struct WindowAppearanceControls: View {
     @Environment(\.brevTheme) private var theme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
+    @Environment(\.accessibilityReduceTransparency) private var systemReduceTransparency
+    @Environment(\.settingsReduceTransparency) private var reduceTransparencyOverride
     @Binding var preferences: WindowAppearancePreferences
     @Binding var unifiedTitlebar: Bool
     @Binding var showsAdvanced: Bool
     let onChange: () -> Void
 
+    private var reduceTransparency: Bool { reduceTransparencyOverride ?? systemReduceTransparency }
     private var selection: WindowTransparencySelection { WindowTransparencySelection(preferences) }
 
     var body: some View {
@@ -86,7 +99,7 @@ struct WindowAppearanceControls: View {
                 }
                 .id(String(localized: "Transparency", bundle: .module))
 
-                WindowTransparencyPreview(preferences: preferences)
+                WindowTransparencyPreview(preferences: preferences, reduceTransparency: reduceTransparency)
 
                 if selection != .off {
                     SettingsRowStack {
@@ -175,8 +188,8 @@ struct WindowAppearanceControls: View {
 
 private struct WindowTransparencyPreview: View {
     @Environment(\.brevTheme) private var theme
-    @Environment(\.accessibilityReduceTransparency) private var reduceTransparency
     let preferences: WindowAppearancePreferences
+    let reduceTransparency: Bool
 
     var body: some View {
         HStack(alignment: .top, spacing: BrevSpacing.lg) {
