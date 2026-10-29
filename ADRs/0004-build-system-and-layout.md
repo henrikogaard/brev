@@ -225,6 +225,14 @@ GitHub Actions. Workflows:
   an accompanying ADR (ADR-0005).
 - **`provider-review.yml`** — Weekly scheduled run that produces an
   provider change report (ADR-0005).
+- **`selection-profile.yml`** — Synthetic navigation workload in an
+  optimized SwiftPM test bundle. Build tests with `swift build -c release
+  --build-tests -Xswiftc -enable-testing` to support `@testable` imports, then
+  execute with `swift test -c release --skip-build`.
+  The capture budget includes process discovery, attachment delay and the
+  measured workload. Harness failures preserve their exit status and print
+  build/test/tracer logs; credential-free shell self-tests cover this contract.
+  Raw traces remain private and are not SwiftUI frame or app-memory evidence.
 
 No Xcode Cloud (provider uses both; we use only GitHub Actions to
 keep CI in one place and observable).

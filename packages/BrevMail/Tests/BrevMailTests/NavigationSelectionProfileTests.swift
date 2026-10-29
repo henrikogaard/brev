@@ -54,7 +54,9 @@ struct NavigationSelectionProfileTests {
             #expect(resolved?.id == selected.id)
             iterations += 1
         }
-        print("PERF navigation.selection rows=10000 iterations=\(iterations) build=release projection_total_ms=\(ms(projectionTime)) selection_total_ms=\(ms(selectionTime))")
+        print(
+            "PERF navigation.selection rows=10000 iterations=\(iterations) build=release projection_total_ms=\(ms(projectionTime)) selection_total_ms=\(ms(selectionTime))"
+        )
         #expect(iterations > 0)
         #endif
     }

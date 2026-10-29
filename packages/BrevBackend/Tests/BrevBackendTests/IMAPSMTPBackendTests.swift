@@ -8484,8 +8484,8 @@ struct IMAPSMTPBackendTests {
         await idleRecorder.finish()
     }
 
-    @Test("IDLE watches selected folder after folder load")
-    func idleWatchesSelectedFolderAfterFolderLoad() async throws {
+    @Test("IDLE watches selected folder after folder load", arguments: [false, true])
+    func idleWatchesSelectedFolderAfterFolderLoad(delaysStreamInstallation: Bool) async throws {
         let recorder = MessageListingRecorder(messages: [
             Self.messageListing(uid: 7, subject: "Existing archive"),
         ])
@@ -8522,16 +8522,21 @@ struct IMAPSMTPBackendTests {
             },
             idleEvents: { _, _, folderID in
                 await subscriptionRecorder.record(folderID)
+                if folderID == "Archive", delaysStreamInstallation {
+                    try? await Task.sleep(nanoseconds: 100_000_000)
+                }
                 return await idleRecorder.stream()
             }
         )
         try await backend.connect()
         let stream = backend.subscribeToChanges()
         try await subscriptionRecorder.waitUntilFolderIDs(["INBOX"])
+        try await idleRecorder.waitUntilSubscriptionCount(1)
 
         let archive = Folder(id: "Archive", name: "Archive", role: .archive)
         _ = try await backend.messages(in: archive, pageToken: nil)
         try await subscriptionRecorder.waitUntilFolderIDs(["INBOX", "Archive"])
+        try await idleRecorder.waitUntilSubscriptionCount(2)
 
         await recorder.setMessages([
             Self.messageListing(uid: 8, subject: "New archive"),
