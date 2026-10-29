@@ -41,6 +41,9 @@ struct MessageBodyStyle: Equatable, Sendable {
 
     static let defaultLineHeight = 1.5
 
+    /// Roughly 72 average-width characters, scaled with the reader's resolved font size.
+    var maximumReadingWidth: CGFloat { bodyPointSize * 36 }
+
     static func resolve(
         theme: BrevTheme,
         fontFamily: MailboxFontFamily,
@@ -141,6 +144,7 @@ struct MessageBodyStyle: Equatable, Sendable {
         font:\(Int(bodyPointSize))px \(fontFamily.cssFamily);\
         line-height:\(lineHeight);-webkit-text-size-adjust:100%;}\
         body{box-sizing:border-box;padding:\(inset)px;}\
+        .brev-plain-text{max-width:72ch;overflow-wrap:anywhere;}\
         img,video{max-width:100%;height:auto}\
         p{margin:0 0 .85em}p:last-child{margin-bottom:0}\
         blockquote{border-left:3px solid \(borderColorCSS);\
@@ -192,5 +196,15 @@ struct MessageBodyStyle: Equatable, Sendable {
         }
         let luminance = (0.2126 * Double(red) + 0.7152 * Double(green) + 0.0722 * Double(blue)) / 255
         return luminance > 0.6
+    }
+}
+
+/// Keeps native plain-text readers on the same leading-aligned readable column.
+struct MessageReadingColumn: ViewModifier {
+    let style: MessageBodyStyle
+
+    func body(content: Content) -> some View {
+        content.frame(maxWidth: style.maximumReadingWidth, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
     }
 }

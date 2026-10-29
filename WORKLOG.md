@@ -1,5 +1,11 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 reader measure and default-theme review coverage
+
+- Slice 7 on `feature/reader-visual-consistency`, based on #276, targeting `feature/navigation-projection`, eventual main. Added one shared native plain-text measure, Detail quoted-text/Thread alignment, and a scoped bare-text HTML wrapper. Sender HTML, print blocks and compose remain unchanged.
+- Added style/HTML ownership assertions, four reader snapshots and Mono Grey unread/selected/inactive/disabled variants. Existing contrast contracts remain authoritative; no arbitrary palette change. Added macOS-26 review-image recording CI and the required older-mac skip/dedicated snapshot-suite registration. Recorded images are review candidates, not accepted baselines.
+- Diff/ADR checks before push. Compilation, lint/format, snapshot recording and image review pending the requested all-PR review pass. No host-native test, locally observed red run or rendered-pass claim. No icons/new external calls. Design and CHANGELOG updated; privacy/README/AGENTS need no change.
+
 ## 2026-10-29 — Agent — #269 navigation projection candidate
 
 - Slice 6 draft on `feature/navigation-projection`, based on #275; target `feature/selection-profiling`, eventual main. Staged per the request to open all implementation PRs before review, not as a measured performance claim.

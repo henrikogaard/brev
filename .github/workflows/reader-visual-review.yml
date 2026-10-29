@@ -1,0 +1,40 @@
+name: Reader visual review
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/reader-visual-review.yml'
+      - 'packages/BrevMail/Sources/BrevMail/MessageBodyStyle.swift'
+      - 'packages/BrevMail/Sources/BrevMail/MessageDetailView.swift'
+      - 'packages/BrevMail/Sources/BrevMail/ThreadMessageCard.swift'
+      - 'packages/BrevMail/Tests/BrevMailTests/ReaderMeasureSnapshotTests.swift'
+      - 'packages/BrevMail/Tests/BrevMailTests/MessageListRowSnapshotTests.swift'
+permissions:
+  contents: read
+concurrency:
+  group: reader-visual-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  record-review-images:
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Record synthetic reader and row images
+        working-directory: packages/BrevMail
+        env:
+          RECORD_SNAPSHOTS: 'YES'
+        run: |
+          xcodebuild -scheme BrevMail -destination 'platform=macOS,arch=arm64' \
+            -derivedDataPath "$RUNNER_TEMP/reader-visual-review" -skipMacroValidation \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:BrevMailTests/ReaderMeasureSnapshotTests \
+            -only-testing:BrevMailTests/MessageListRowSnapshotTests test
+      - name: Upload images for review, not automatic acceptance
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: reader-review-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            packages/BrevMail/Tests/BrevMailTests/__Snapshots__/ReaderMeasureSnapshotTests/*.png
+            packages/BrevMail/Tests/BrevMailTests/__Snapshots__/MessageListRowSnapshotTests/*mono-grey*.png
