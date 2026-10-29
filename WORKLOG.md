@@ -1,5 +1,22 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 recovery integration review
+
+- Reviewed ADR-0090 and the complete isolated recovery patch, then integrated
+  its ADR-first commits into the existing #274 branch; #273 remains paired.
+- Independently passed 1,163 backend tests, 78 XCTest + 53 Swift Testing sync
+  tests (excluding the expensive header-read baseline), pinned full lint/format,
+  privacy audit/coverage, public-source-marker and telemetry self-tests. The
+  build/run environment harness initially failed its autodiscovery check;
+  the standalone matrix and complete harness passed on retry.
+- Cascade the owned #275–#277 stack without changing measured workloads or UI.
+  Hosted CI/review settlement follows the push. Native/UI/live-account and
+  cutover performance acceptance remain unrun; no install or merge authorized
+  by this policy decision. Built-app telemetry scans skipped: no app build.
+- Board access remains denied; intended implementation status is In review,
+  while #269 stays open for remaining acceptance. README/setup and network
+  endpoints are unchanged; ADR, privacy lifecycle and changelog cover the policy.
+
 ## 2026-10-29 — Agent — Paired IMAP recovery implementation
 
 - Implemented approved ADR-0090 atop the pinned #274/schema-v9 base. Schema
