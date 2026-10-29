@@ -1,0 +1,48 @@
+name: Native Settings review
+on:
+  push:
+    branches: [fix/macos-settings-native-form]
+  pull_request:
+    paths:
+      - '.github/workflows/settings-native-review.yml'
+      - 'packages/BrevSettings/**'
+permissions:
+  contents: read
+concurrency:
+  group: settings-native-review-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  record-settings:
+    runs-on: macos-26
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [macOS, iPhone]
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Record changed Settings panes with synthetic fixtures
+        env:
+          RECORD_SNAPSHOTS: 'YES'
+        run: |
+          if [[ '${{ matrix.platform }}' == 'macOS' ]]; then
+            destination='platform=macOS,arch=arm64'
+            suite='BrevSettingsTests/AIWriterSectionMacSnapshotTests'
+          else
+            destination="$(bash scripts/ios-simulator-destination.sh)"
+            suite='BrevSettingsTests/SettingsFormSnapshotTests'
+          fi
+          cd packages/BrevSettings
+          xcodebuild -scheme BrevSettings -destination "$destination" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$suite" test
+      - name: Upload candidates for visual review
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-review-${{ matrix.platform }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/BrevSettingsSnapshotTests/*.png
+            packages/BrevSettings/Tests/BrevSettingsTests/__Snapshots__/SettingsFormSnapshotTests/*.png

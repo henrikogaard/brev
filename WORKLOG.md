@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 / #265 native Settings review slice
+
+- Continued the existing `fix/macos-settings-native-form` branch at `4904353b` in a clean dedicated worktree. #265 remains the native Settings outcome, targets main and is draft. No duplicate Settings PR or unrelated branch rewrite.
+- Added isolated macOS-26 and iPhone snapshot recording for the existing changed Settings/Appearance suites, with synthetic PNG artifacts for the subsequent review/fix pass. Existing native grouped forms/compact root implementation is preserved.
+- Verification: workflow/diff/ADR checks before push; actual CI capture/image inspection pending. This PR conflicts with current main, so head-only recording cannot prove combined consent/Appearance rendering; conflict resolution remains explicit review work. No host-native tests, merge/rebase, release or accepted-baseline claim.
+- The approved shared plan in #268/#277 maps slice 8 and the full PR stack. Instrumentation-only addition needs no CHANGELOG/privacy/README/ADR architecture update. No versioned QA report without fresh native evidence.
+
 ## 2026-10-28 — Agent — PR #265 integration review
 
 - Integrated main and preserved the native grouped forms plus the already-merged equal-width Appearance controls. The mail preview stays in its own section; no duplicate preview was retained.
