@@ -37,7 +37,8 @@ if [[ "$*" == *--build-tests* ]]; then
   [[ "$PROFILE_TEST_CASE" != existing-output ]] || exit 23
 else
   echo test-log
-  sleep 0.2
+  echo "$$" > "$fixture_root/test-pid"
+  sleep 0.5
   [[ "$PROFILE_TEST_CASE" != test-failure ]] || exit 42
   echo 'PERF navigation.selection rows=10000 iterations=1 build=release'
 fi
@@ -46,7 +47,36 @@ cat > "$TMP/bin/pgrep" <<'STUB'
 #!/usr/bin/env bash
 source "$(dirname "$0")/../fixture.sh"
 [[ "$PROFILE_TEST_CASE" != missing-process ]] || exit 1
+for attempt in {1..50}; do
+  [[ ! -s "$fixture_root/test-pid" ]] || break
+  sleep 0.01
+done
+if [[ "$PROFILE_TEST_CASE" == unrelated-only ]]; then
+  echo 99999
+  exit 0
+fi
+if [[ "$PROFILE_TEST_CASE" == unrelated-newer ]]; then
+  echo 99999
+  [[ "$1" != -n ]] || exit 0
+fi
 echo 12345
+STUB
+cat > "$TMP/bin/ps" <<'STUB'
+#!/usr/bin/env bash
+source "$(dirname "$0")/../fixture.sh"
+case "$2" in
+  12345)
+    if [[ "$PROFILE_TEST_CASE" == ownership-lost && -f "$fixture_root/ownership-checked" ]]; then
+      echo 1
+    else
+      touch "$fixture_root/ownership-checked"
+      echo 12344
+    fi
+    ;;
+  12344) cat "$fixture_root/test-pid" ;;
+  99999) echo 1 ;;
+  *) exit 1 ;;
+esac
 STUB
 cat > "$TMP/bin/xcrun" <<'STUB'
 #!/usr/bin/env bash
@@ -67,6 +97,7 @@ run_case() {
   PROFILE_TEST_CASE="$1"
   PROFILE_TEST_CALLS="$TMP/$1.calls"
   printf '%s' "$1" > "$TMP/case"
+  rm -f "$TMP/test-pid" "$TMP/ownership-checked"
   : > "$PROFILE_TEST_CALLS"
   : > "$TMP/$1.env"
   local status=0
@@ -105,6 +136,14 @@ check grep -q tracer-log "$TMP/tracer-failure.log"
 run_case missing-process 1
 check grep -q build-log "$TMP/missing-process.log"
 check grep -q test-log "$TMP/missing-process.log"
+
+run_case unrelated-newer 0
+check grep -q '^xcrun xctrace record .*--attach 12345 ' "$PROFILE_TEST_CALLS"
+check test "$(grep -c -- '--attach 99999 ' "$PROFILE_TEST_CALLS" || true)" -eq 0
+run_case unrelated-only 1
+check test "$(grep -c '^xcrun ' "$PROFILE_TEST_CALLS" || true)" -eq 0
+run_case ownership-lost 1
+check test "$(grep -c '^xcrun ' "$PROFILE_TEST_CALLS" || true)" -eq 0
 
 mkdir "$TMP/existing-output output"
 echo stale-sensitive-content > "$TMP/existing-output output/test.log"
