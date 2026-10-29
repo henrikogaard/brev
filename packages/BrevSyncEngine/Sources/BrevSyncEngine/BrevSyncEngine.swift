@@ -282,6 +282,30 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         try await store.storeIMAPPage(page, accountID: account.id)
     }
 
+    /// Returns paging metadata without decoding the folder's headers.
+    public func imapHeaderMetadata(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPHeaderMetadata? {
+        guard let state = try await store.imapPageState(accountID: account.id, folderID: folderID) else { return nil }
+        return IMAPHeaderMetadata(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                                  nextPageToken: state.nextPageToken)
+    }
+
+    /// Looks up explicitly requested IDs within their account and folder.
+    public func imapHeaders(ids: [MessageHeader.ID], folderID: Folder.ID, account: BrevAccount) async throws -> [MessageHeader] {
+        try await store.headersByID(ids, accountID: account.id, folderID: folderID)
+    }
+
+    /// Compatibility snapshot for off-critical-path consumers during the staged migration.
+    public func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot? {
+        try await store.imapSnapshot(accountID: account.id, folderID: folderID)
+    }
+
+    /// Atomically imports or updates rows, metadata and windows.
+    public func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
+                                 account: BrevAccount, importingLegacy: Bool) async throws {
+        try await store.ensureAccount(id: account.id)
+        try await store.storeIMAPSnapshot(snapshot, accountID: account.id, folderID: folderID, importingLegacy: importingLegacy)
+    }
+
     private func markFoldersCached(_ folderIDs: Set<Folder.ID>, account: BrevAccount) async {
         for folderID in folderIDs {
             guard await store.syncState(accountID: account.id, folderID: folderID) == nil else {

@@ -455,8 +455,15 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         let state: IMAPPageState
     }
 
-    private func upsertHeaders(_ headers: [MessageHeader], accountID: String, imapPage: IMAPPageWrite?) throws {
-        guard !headers.isEmpty || imapPage != nil else { return }
+    private struct IMAPSnapshotWrite {
+        let snapshot: IMAPMailboxHeaderCacheSnapshot
+        let folderID: String
+        let importingLegacy: Bool
+    }
+
+    private func upsertHeaders(_ headers: [MessageHeader], accountID: String, imapPage: IMAPPageWrite?,
+                               imapSnapshot: IMAPSnapshotWrite? = nil) throws {
+        guard !headers.isEmpty || imapPage != nil || imapSnapshot != nil else { return }
         try lock.withLock {
             let links = try prepareConversationStatements()
             defer { sqlite3_finalize(links.delete); sqlite3_finalize(links.insert) }
@@ -485,6 +492,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapPage {
                     try writeIMAPPageState(imapPage, accountID: accountID)
                 }
+                if let imapSnapshot {
+                    let snapshot = imapSnapshot.snapshot
+                    let previous = try readIMAPPageState(accountID: accountID, folderID: imapSnapshot.folderID)
+                    if let old = previous?.uidValidity, let new = snapshot.uidValidity, old != new {
+                        throw SyncStoreError.imapGenerationMismatch
+                    }
+                    if !imapSnapshot.importingLegacy || previous?.uidValidity == nil {
+                        try writeIMAPPageState(IMAPPageWrite(folderID: imapSnapshot.folderID, pageKey: "first",
+                                                            state: IMAPPageState(uidValidity: snapshot.uidValidity,
+                                                                                 highestModSeq: snapshot.highestModSeq,
+                                                                                 nextPageToken: snapshot.nextPageToken)),
+                                               accountID: accountID)
+                    }
+                }
                 for header in headers {
                     let uid = Self.uid(from: header.id)
                     let previous = storedHeaderRow(
@@ -492,6 +513,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                         folderID: header.folderID,
                         uid: uid
                     )
+                    if imapSnapshot?.importingLegacy == true, previous != nil { continue }
                     var header = header
                     let storedHeader = previous?.headerJSON
                         .flatMap { try? Self.decoder.decode(MessageHeader.self, from: $0) }
@@ -568,6 +590,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapPage {
                     try replaceIMAPWindow(imapPage, headers: headers, accountID: accountID)
                 }
+                if let imapSnapshot { try writeSnapshotWindows(imapSnapshot, accountID: accountID) }
                 try execSQL("COMMIT;")
             } catch {
                 try? execSQL("ROLLBACK;")
@@ -579,6 +602,73 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     /// Reads folder paging metadata without materializing any headers.
     func imapPageState(accountID: String, folderID: String) throws -> IMAPPageState? {
         try lock.withLock { try readIMAPPageState(accountID: accountID, folderID: folderID) }
+    }
+
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) throws {
+        guard snapshot.headers.allSatisfy({ $0.folderID == folderID && Self.uid(from: $0.id) > 0 }) else {
+            throw SyncStoreError.invalidIMAPPage
+        }
+        try upsertHeaders(snapshot.headers, accountID: accountID, imapPage: nil,
+                          imapSnapshot: IMAPSnapshotWrite(snapshot: snapshot, folderID: folderID,
+                                                         importingLegacy: importingLegacy))
+    }
+
+    func headersByID(_ ids: [String], accountID: String, folderID: String) throws -> [MessageHeader] {
+        try lock.withLock {
+            try ids.compactMap { id in
+                guard let row = storedHeaderRow(accountID: accountID, folderID: folderID, uid: Self.uid(from: id)),
+                      row.messageID == id, let data = row.headerJSON else { return nil }
+                return try Self.decoder.decode(MessageHeader.self, from: data)
+            }
+        }
+    }
+
+    func imapSnapshot(accountID: String, folderID: String) throws -> IMAPMailboxHeaderCacheSnapshot? {
+        try lock.withLock {
+            guard let state = try readIMAPPageState(accountID: accountID, folderID: folderID) else { return nil }
+            var stmt: OpaquePointer?
+            let sql = "SELECT page_key, uid FROM imap_page_windows WHERE account_id = ? AND folder_id = ?;"
+            guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else {
+                throw SyncStoreError.prepareFailed(errMsg())
+            }
+            defer { sqlite3_finalize(stmt) }
+            sqlite3_bind_text(stmt, 1, accountID, -1, Self.transient)
+            sqlite3_bind_text(stmt, 2, folderID, -1, Self.transient)
+            var windows: [String: Set<String>] = [:]
+            var step = sqlite3_step(stmt)
+            while step == SQLITE_ROW {
+                let key = String(cString: sqlite3_column_text(stmt, 0))
+                windows[key, default: []].insert("\(folderID):\(sqlite3_column_int64(stmt, 1))")
+                step = sqlite3_step(stmt)
+            }
+            guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
+            return IMAPMailboxHeaderCacheSnapshot(
+                headers: headersUnlocked(accountID: accountID, folderID: folderID, limit: Int.max, offset: 0),
+                uidValidity: state.uidValidity, highestModSeq: state.highestModSeq, nextPageToken: state.nextPageToken,
+                firstPageHeaderIDs: windows["first"], pageHeaderIDsByToken: windows.filter { $0.key != "first" }
+            )
+        }
+    }
+
+    private func writeSnapshotWindows(_ write: IMAPSnapshotWrite, accountID: String) throws {
+        if !write.importingLegacy {
+            try execStmt("DELETE FROM imap_page_windows WHERE account_id = ? AND folder_id = ?;",
+                         bindings: [.text(accountID), .text(write.folderID)])
+        }
+        var windows = write.snapshot.pageHeaderIDsByToken
+        if let first = write.snapshot.firstPageHeaderIDs { windows["first"] = first }
+        for (key, ids) in windows {
+            if write.importingLegacy,
+               countRows("SELECT COUNT(*) FROM imap_page_windows WHERE account_id = ? AND folder_id = ? AND page_key = ?;",
+                         bindings: [.text(accountID), .text(write.folderID), .text(key)]) > 0 { continue }
+            for id in ids {
+                let uid = Self.uid(from: id)
+                guard uid > 0, storedHeaderRow(accountID: accountID, folderID: write.folderID, uid: uid) != nil else { continue }
+                try execStmt("INSERT OR IGNORE INTO imap_page_windows VALUES (?, ?, ?, ?);",
+                             bindings: [.text(accountID), .text(write.folderID), .text(key), .int64(Int64(uid))])
+            }
+        }
     }
 
     private func readIMAPPageState(accountID: String, folderID: String) throws -> IMAPPageState? {
