@@ -6756,3 +6756,9 @@ buttons, and package-aware localization.
 - Handoff: parent owns schema-v8 migration replay and shared threading, restack,
   original-PR push, CI/review settlement and merge. This patch neither changes the
   schema nor adds a new index test conformer; no parent fix was duplicated.
+
+## 2026-10-29 — Agent — PR #273/#274 combined verification
+
+- Restacked the selective-cache slice and its review repair onto the durable-import/page-threading parent. Resolved only adjacent additions, formatter overlap and append-only documentation conflicts; retained both regression sets.
+- Combined checks passed: 78 XCTest and 34 Swift Testing sync tests (excluding the expensive header-read baseline), all 1,163 backend tests, pinned repository lint/format, and repository self-tests including the production-seam local IMAP/SMTP smoke. Query-plan coverage confirms indexed attachment/body candidates and exact header-key reads.
+- Hosted CI, four unaccepted storage snapshot differences, native/runtime acceptance and merge access remain open. No real-account migration, app installation, release, or performance acceptance is claimed. Keep the storage slices paired and issue #269 open.
