@@ -29,6 +29,11 @@ public actor FileBackedIMAPMessageSourceCache: IMAPMessageSourceCache {
 
     private let inner: FileIMAPMessageSourceCache
 
+    /// Lists IDs through the underlying account/folder-scoped file cache.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) async -> Set<MessageHeader.ID> {
+        await inner.cachedMessageIDs(accountID: accountID, folderID: folderID)
+    }
+
     /// Creates a cache in `Application Support/Brev/Cache` with a 50 MiB cap.
     public init() {
         let base = FileManager.default

@@ -40,11 +40,11 @@ struct IMAPPageState: Equatable {
 
 /// Persistent SQLite-backed implementation of `SyncStoreProtocol` (ADR-0030).
 ///
-/// Schema version 6. All writes use WAL journal mode for concurrent-read safety.
+/// Schema version 9. All writes use WAL journal mode for concurrent-read safety.
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 8
+    let currentSchemaVersion = 9
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -1598,6 +1598,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 8;")
                 }
             }
+            if version < 9 {
+                try inTransaction {
+                    try createIMAPAttachmentHeaderIndex()
+                    try execSQL("PRAGMA user_version = 9;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -1626,6 +1632,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             try createAttachmentSearchSchema()
             try createIMAPPageSchema()
             try createIMAPLegacyImportSchema()
+            try createIMAPAttachmentHeaderIndex()
         }
     }
 
@@ -1704,6 +1711,11 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         );
         CREATE INDEX IF NOT EXISTS idx_imap_window_header
             ON imap_page_windows(account_id, folder_id, uid);
+        """)
+    }
+
+    private func createIMAPAttachmentHeaderIndex() throws {
+        try execSQL("""
         CREATE INDEX IF NOT EXISTS idx_imap_attachment_headers
             ON message_headers(account_id, folder_id, json_extract(CAST(header_json AS TEXT), '$.hasAttachments'));
         """)

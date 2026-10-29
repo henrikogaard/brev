@@ -13,6 +13,8 @@
 import Foundation
 
 public protocol IMAPMessageSourceCache: Sendable {
+    /// Lists cached message IDs in one account/folder without loading MIME payloads.
+    func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) async -> Set<MessageHeader.ID>
     func source(accountID: BrevAccount.ID, messageID: MessageHeader.ID) async -> IMAPMessageSource?
     func setSource(_ source: IMAPMessageSource, accountID: BrevAccount.ID, messageID: MessageHeader.ID) async
     func removeSource(accountID: BrevAccount.ID, messageID: MessageHeader.ID) async
@@ -54,6 +56,11 @@ public actor InMemoryIMAPMessageSourceCache: IMAPMessageSourceCache {
 
     public init(sourcesByMessageByAccount: [BrevAccount.ID: [MessageHeader.ID: IMAPMessageSource]] = [:]) {
         self.sourcesByMessageByAccount = sourcesByMessageByAccount
+    }
+
+    /// Lists keys in the requested folder without reading source payloads.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) -> Set<MessageHeader.ID> {
+        Set((sourcesByMessageByAccount[accountID] ?? [:]).keys.filter { Self.messageID($0, belongsToFolder: folderID) })
     }
 
     public func source(
@@ -131,6 +138,20 @@ public actor FileIMAPMessageSourceCache: IMAPMessageSourceCache {
     private let rootDirectory: URL
     private let maximumAccountSizeBytes: Int?
     private var knownSizeBytesByAccountID: [BrevAccount.ID: Int] = [:]
+
+    /// Reads scoped cache filenames only; payload decoding remains on demand.
+    public func cachedMessageIDs(accountID: BrevAccount.ID, folderID: Folder.ID) -> Set<MessageHeader.ID> {
+        let urls = (try? FileManager.default.contentsOfDirectory(
+            at: accountDirectory(accountID: accountID), includingPropertiesForKeys: [.isRegularFileKey]
+        )) ?? []
+        return Set(urls.compactMap { url in
+            guard url.pathExtension == "json",
+                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  let id = Self.messageID(fromFileKey: url.deletingPathExtension().lastPathComponent),
+                  Self.messageID(id, belongsToFolder: folderID) else { return nil }
+            return id
+        })
+    }
 
     public init(
         rootDirectory: URL,
