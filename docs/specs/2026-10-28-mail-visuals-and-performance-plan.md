@@ -228,6 +228,10 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 
 ## 10. Verification
 
+### Slice 5 implementation contract
+
+Add an opt-in optimized synthetic selection workload exercising the real navigation projection and selection model at 10k headers. Separate signposts/timings for projection and selected-header access identify whether rebuilding navigation inputs or model lookup dominates this path. A dedicated macOS CI job builds Release, attaches Time Profiler only to the synthetic test process and emits content-free timing logs and a trace table of contents. Raw traces remain ephemeral and are not committed/uploaded. This is a selection-pipeline trace, not an end-to-end SwiftUI frame/memory acceptance run. The latter remains an explicit gate. Existing local Space command access was recovered on 2026-10-29, but it still has CLT rather than Xcode. No host testing is authorized by this harness.
+
 ### Slice 2b implementation contract
 
 The caller requested opening implementation PRs for every slice before the review/fix pass on 2026-10-29. Continue coding in dependent draft PRs rather than stopping after each CI run. This changes delivery order, not the measurement/merge gates.
