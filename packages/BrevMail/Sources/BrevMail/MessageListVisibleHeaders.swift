@@ -55,7 +55,7 @@ final class MessageListPresentationSnapshotCache {
         let calendarIdentifier: Calendar.Identifier
         let calendarTimeZoneIdentifier: String
         let localeIdentifier: String
-        var supportsThreadGrouping = true
+        let supportsThreadGrouping: Bool
     }
 
     private var key: Key?
