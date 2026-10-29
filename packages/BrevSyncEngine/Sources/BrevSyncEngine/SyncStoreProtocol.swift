@@ -368,7 +368,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             switch selection {
             case .window(let token): return imapWindows[key]?[token]?.contains(Self.uid(from: header.id)) == true
             case .olderThan(let date): return header.date < date
-            case .invalidDates: return header.date.timeIntervalSince1970 <= 0
+            case .invalidDates: return header.date == .distantPast
             case .attachmentsOrCachedBodies: return header.hasAttachments || bodies["\(accountID)|\(header.id)"] != nil
             case .excludingIDs(let ids): return !ids.contains(header.id)
             }

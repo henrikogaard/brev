@@ -6727,3 +6727,39 @@ buttons, and package-aware localization.
 - Changes: preflight every source folder before server/cache mutation for move/undo, trash/permanent deletion, remote-draft cleanup, folder deletion/flush and junk training. Local migration errors propagate rather than reporting successful offline enqueueing; cancellation is preserved. No schema or import-filter change. ADR-0087 and CHANGELOG distinguish this fix from unresolved historical absence ambiguity; no network, privacy policy, setup, UI-string or release change.
 - Verification: red-green SQLite regressions cover eight entry points, multi-folder batch failure, reopening with retained stale JSON, undo-source migration and preservation of a newer legacy-only UID. Initial tests failed with 36 assertions; adding an offline queue exposed 12 further swallowed-error/queued assertions before error classification was fixed. Final four parameterized tests (17 cases) pass, as do 1,163 backend tests, 78 XCTest plus 32 Swift Testing sync tests (excluding IMAPHeaderReadBaselineTests), pinned repository lint/format and focused final lint/format. Privacy-audit coverage, public-source markers, OpenPGP-retirement and telemetry-artifact self-tests pass; non-executable self-test scripts were invoked with bash. Telemetry bundle checks skip absent app builds.
 - Handoff: isolated repair based on `8ba8154fa827a8d7d0025a96bc571b7bb95e62df`; parent owns integration into existing PR #273, stacked validation, review replies and hosted CI. No native/live tests or new header-read performance run requested. Review 4413521103 remains unresolved for already-shipped ambiguous histories; no quarantine or authoritative-source policy is implemented, and newer legacy-only rows remain recoverable. No new PR, merge, issue change or original-branch push.
+
+## 2026-10-29 — Devin — PR #274 selective-cache review repair
+
+- Goal: repair comment 6498247342 on the pinned selective-cache slice, using
+  `fix/pr-274-review-16784` only. Original parent/base: `4bf1d31f1c78748b0b49a5eb5dfd9dd34b2f595f`;
+  original PR head/repair starting point: `08535128a46fc38dec5946229214cab411f9dfb5`.
+- Changes: prepare unopened legacy folders before account/folder/set-scoped
+  cache-only search and saved-view enumeration; select exactly `Date.distantPast`;
+  preserve fractional retention cutoffs using integer candidates plus exact-date
+  filtering; gate background repair on invalid dates in the returned page.
+  Attachment/body selection unions indexed candidates before primary-key reads.
+  The local smoke now uses production SQLite/legacy-reader/memory seams.
+- Regression evidence: new date/search tests failed before implementation;
+  the page-repair regression fails with the old unconditional scheduling guard
+  and passes with the fix. Query-plan coverage rejected a folder-wide date-index
+  read, then passed with expression-index/body-primary-key candidates and exact
+  header-key lookup. Final focused sync run: 15 tests passed.
+- Verification: pinned SwiftFormat 0.58.7 on assigned files and `scripts/lint.sh`
+  (SwiftLint 0.63.0) passed; `scripts/imap-smtp-local-smoke.sh` and
+  `scripts/test.sh --self-tests-only` passed. BrevBackend: 1,163 tests passed.
+  BrevSyncEngine excluding `IMAPHeaderReadBaselineTests`: 78 XCTest + 31 Swift
+  Testing tests passed. Settings storage behavior: 23 passed; mailbox storage: 9 passed.
+  Standalone `swift build` for BrevSyncEngine and BrevBackend passed on macOS.
+- Storage review: legacy JSON files intentionally count once as objects, not as
+  messages; indexed counts are separate, and legacy bytes remain included.
+  Existing object/header copy stays accurate. ADR-0087 and CHANGELOG updated;
+  README, PRIVACY and ADR-0006 need no change (no setup or network-policy change).
+- Remaining: four existing Settings storage snapshots mismatch this host's
+  current rendering; UI sources and baselines were not changed. Current light/dark
+  PNGs and a light baseline were visually inspected and supplied in the session
+  to show the layout mismatch, not populated-cache acceptance. Full app/iOS builds,
+  live-provider/UI testing and header-read performance acceptance were not run in
+  this repair lane. No daily-driver app was replaced.
+- Handoff: parent owns schema-v8 migration replay and shared threading, restack,
+  original-PR push, CI/review settlement and merge. This patch neither changes the
+  schema nor adds a new index test conformer; no parent fix was duplicated.
