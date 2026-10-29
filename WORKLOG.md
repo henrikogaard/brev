@@ -1,5 +1,20 @@
 # Worklog
 
+## 2026-10-28 — Agent — #269 approved design and baseline slice
+
+- Henrik approved the three-outcome design and requested work to start. Created tracking issue #269 and moved its card to In progress; integration remains main, with design PR #268 and a genuinely dependent baseline slice.
+- Marked the design approved/building and wrote slice 1's detailed design before code: one synthetic JSON-versus-SQLite read suite at 10k/50k, alternating fresh readers, explicit open/query timings, functional parity assertions and no CI speed inequalities.
+- Plan adjustment: keep the cross-store comparison in BrevSyncEngine tests, whose existing dependency direction permits both stores, rather than add a reverse dependency to BrevBackend. Existing baseline suites remain unchanged.
+- Verification: document links, references and diff checks before push; no app, benchmark or snapshot run in this design update. Runtime profiling/host tests remain deferred under Q-1; no schema change, migration, merge or release performed.
+
+## 2026-10-28 — Agent — Visuals/performance implementation design
+
+- Goal: plan all three selected recommendations: ADR-0087 storage work, measured UI responsiveness and visual consistency. Branch `chore/visual-performance-plan` in its own worktree, based on `origin/main` `5ad74c0b`; target `main`. No existing PR covers this combined plan; Settings continues through #265 rather than a duplicate implementation.
+- Changes: one Draft design in `docs/specs/2026-10-28-mail-visuals-and-performance-plan.md`, with requirements, ownership/contracts, staged rollout, decision proposals, verification gates and unresolved runtime-environment permission.
+- Verification: all eight document links, explicit requirement/decision/question references, Draft status, conflict-marker check, `scripts/check-adr-required.sh`, and staged diff checks passed. Swift lint/format, benchmarks, package tests, builds, app launch and snapshots were not run locally because this slice changes Markdown only; TDD is not applicable. Host native testing remains deferred, and no new runtime evidence is claimed.
+- Documentation sweep: README, CHANGELOG, PRIVACY, ADRs, release/QA reports and AGENTS need no change for a Draft coordination plan that preserves existing accepted decisions and changes no behavior. Later slices update their actual changed contracts and evidence.
+- Handoff: publish the docs-only PR for review and stop for design approval before Phase 2. No merge, release, app-version change, data deletion or issue closure is authorized by this plan.
+
 ## 2026-10-28 — Agent — PR #256 integration review
 
 - Reviewed per-account capability resolution, independent default-off consent switches and device-local persistence. No backend advertises the capability and the controller remains unconnected.
