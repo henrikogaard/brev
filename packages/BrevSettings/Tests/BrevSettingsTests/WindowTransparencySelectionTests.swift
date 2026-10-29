@@ -12,10 +12,16 @@
 
 import BrevDesign
 @testable import BrevSettings
+import SwiftUI
 import Testing
 
 @Suite("Window transparency choices")
 struct WindowTransparencySelectionTests {
+    @Test("Settings controls defer to system accessibility by default")
+    func systemAccessibilityIsNotOverridden() {
+        #expect(EnvironmentValues().settingsReduceTransparency == nil)
+    }
+
     @Test("coverage choices preserve opacity and material while selecting the correct windows")
     func selectionPreservesTuning() {
         var preferences = WindowAppearancePreferences(mode: .frosted, scope: .mainWindow,

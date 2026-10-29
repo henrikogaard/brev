@@ -258,6 +258,35 @@ import Testing
 @Suite("AI Writer macOS snapshots")
 @MainActor
 struct AIWriterSectionMacSnapshotTests {
+    @Test("Settings snapshots isolate host version and accessibility", arguments: [false, true])
+    func snapshotEnvironmentIsIsolated(reduceTransparency: Bool) {
+        let theme = BrevTheme.brevMonoLight
+        let size = CGSize(width: 680, height: 900)
+        let content = VStack {
+            AboutSection()
+            WindowAppearanceControls(preferences: .constant(.defaults), unifiedTitlebar: .constant(true),
+                                     showsAdvanced: .constant(false), onChange: {})
+        }
+        .frame(width: size.width, height: size.height)
+        .brevTheme(theme)
+        let expected = NSHostingController(rootView: content
+            .environment(\.settingsAboutVersion, "0.0 (0)")
+            .environment(\.settingsReduceTransparency, false))
+        let actual = NSHostingController(rootView: snapshotFixture(content)
+            .environment(\.settingsAboutVersion, "16.0 (24904)")
+            .environment(\.settingsReduceTransparency, reduceTransparency))
+        let difference = Snapshotting<NSImage, NSImage>.image.diffing.diffV2(
+            Self.retinaImage(of: expected, size: size),
+            Self.retinaImage(of: actual, size: size)
+        )
+        #expect(difference?.0 == nil)
+    }
+
+    private func snapshotFixture<V: View>(_ view: V) -> some View {
+        view.environment(\.settingsAboutVersion, "0.0 (0)")
+            .environment(\.settingsReduceTransparency, false)
+    }
+
     @Test("reorganised settings preserve compact task navigation", arguments: ["light", "dark"])
     func navigationPolish(_ mode: String) throws {
         let theme = mode == "dark" ? BrevTheme.brevMonoDark : .brevMonoLight
@@ -282,7 +311,7 @@ struct AIWriterSectionMacSnapshotTests {
                                             showsAdvanced: .constant(false), onChange: {})
             .padding(24).frame(width: 680, height: 470, alignment: .topLeading)
             .background(theme.bgPrimary.color).brevTheme(theme)
-        let host = NSHostingController(rootView: view)
+        let host = NSHostingController(rootView: snapshotFixture(view))
         host.view.appearance = NSAppearance(named: .darkAqua)
         assertSnapshot(of: host, as: .image(size: CGSize(width: 680, height: 470)), named: String(describing: selection),
                        record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil)
@@ -401,7 +430,8 @@ struct AIWriterSectionMacSnapshotTests {
     }
 
     private func capture<V: View>(_ view: V, theme: BrevTheme, name: String, size: CGSize) {
-        let host = NSHostingController(rootView: view.frame(width: size.width, height: size.height).brevTheme(theme)
+        let host = NSHostingController(rootView: snapshotFixture(view).frame(width: size.width, height: size.height)
+            .brevTheme(theme)
             .tint(theme.accent.color).environment(
                 \.colorScheme,
                 theme.mode.colorScheme
