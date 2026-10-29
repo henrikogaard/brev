@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- IMAP cache maintenance uses selective header queries and row-level updates.
+  The historical JSON header writer is now test-only; production keeps a
+  read-only migration reader and a memory-only fallback when the index is unavailable.
+
 - Indexed IMAP accounts migrate legacy header caches on first folder access.
   Cached page cursors and individual header lookups use bounded index reads;
   legacy files are removed only after a successful import.

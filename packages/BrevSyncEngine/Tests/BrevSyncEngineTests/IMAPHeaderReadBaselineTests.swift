@@ -115,9 +115,12 @@ struct IMAPHeaderReadBaselineTests {
             firstPageHeaderIDs: Set(firstPage.map(\.id))
         )
         let cacheRoot = root.appendingPathComponent("legacy", isDirectory: true)
-        let cache = FileBackedIMAPMailboxHeaderCache(rootDirectory: cacheRoot)
-        await cache.setSnapshot(snapshot, accountID: accountID, folderID: folderID)
-        await cache.flushPendingWrites()
+        let legacyDirectory = cacheRoot.appendingPathComponent(MailCacheKeyNaming.hexKey(accountID))
+            .appendingPathComponent("headers", isDirectory: true)
+        try FileManager.default.createDirectory(at: legacyDirectory, withIntermediateDirectories: true)
+        try JSONEncoder().encode(snapshot).write(
+            to: legacyDirectory.appendingPathComponent("\(MailCacheKeyNaming.hexKey(folderID)).json"), options: .atomic
+        )
         let databaseURL = root.appendingPathComponent("headers.sqlite")
         do {
             let store = try SQLiteSyncStore(databaseURL: databaseURL)
@@ -137,7 +140,7 @@ struct IMAPHeaderReadBaselineTests {
     private static func readJSON(fixture: Fixture) async throws -> JSONRead {
         let clock = ContinuousClock()
         let start = clock.now
-        let cache = FileBackedIMAPMailboxHeaderCache(rootDirectory: fixture.cacheRoot)
+        let cache = LegacyIMAPMailboxHeaderCache(rootDirectory: fixture.cacheRoot)
         let result = await cache.snapshot(accountID: accountID, folderID: folderID)
         let duration = clock.now - start
         let snapshot = try #require(result)

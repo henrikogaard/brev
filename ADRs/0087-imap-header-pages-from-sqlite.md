@@ -225,6 +225,16 @@ Each step is its own PR with tests.
 
 ## References
 
+### Implementation review, 2026-10-29
+
+The #269 draft stack prepares schema/window writes, transactional legacy
+imports and selective maintenance reads. Storage counters no longer decode
+legacy header JSON; existing backend index metrics supply indexed record
+counts. The historical file cache writer is moved to test fixtures; production
+keeps only a read-only legacy migration reader. No-index production fallback
+is memory-only. No cutover performance or native
+acceptance result is implied by these draft changes.
+
 - ADR-0029: IMAP/SMTP backend foundation (header cache semantics)
 - ADR-0030: Full IMAP sync and cache engine (migration path)
 - ADR-0082: Encryption at rest (§3 Layer A/B coverage)
