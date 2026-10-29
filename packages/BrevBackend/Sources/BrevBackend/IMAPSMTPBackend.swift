@@ -337,7 +337,11 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         self.relatedConversationConsent = relatedConversationConsent
         disconnectSessionOperation = disconnectSession
         self.folderCache = folderCache
-        self.headerCache = headerCache
+        if let index = localSearchIndex as? any IMAPHeaderPageIndex {
+            self.headerCache = IndexedIMAPMailboxHeaderCache(index: index, account: account, legacy: headerCache)
+        } else {
+            self.headerCache = headerCache
+        }
         self.sourceCache = sourceCache
         self.bodyCache = bodyCache
         self.localSearchIndex = localSearchIndex
@@ -746,7 +750,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         // CONDSTORE delta-sync: if we have a modseq watermark and a delta-sync
         // operation, check whether anything changed before doing a full fetch.
         if condstoreSyncOperation != nil,
-           let cachedModSeq = await cachedHeaderSnapshot(folderID: folder.id)?.highestModSeq {
+           let cachedModSeq = await cachedHeaderMetadata(folderID: folder.id)?.highestModSeq {
             if let result = try? await condstoreSyncWithAuthenticatedOAuthRetry(
                 folderID: folder.id,
                 sinceModSeq: cachedModSeq
@@ -981,7 +985,22 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         guard headers.contains(where: { $0.inReplyTo != nil }) || headers.count > 1 else {
             return headers
         }
-        let cached = await cachedHeaderSnapshot(folderID: folderID)?.headers ?? []
+        let cached: [MessageHeader]
+        if headerCache is IndexedIMAPMailboxHeaderCache, let index = localSearchIndex as? any MailConversationIndex {
+            var related: [MessageHeader.ID: MessageHeader] = [:]
+            let source = MailSourceID(accountID: account.id, mailboxID: account.id)
+            for header in headers {
+                let anchor = ConversationMember(sourceID: source, header: header)
+                if let conversation = try? await index.cachedConversation(around: anchor, excludingFolderIDs: []) {
+                    for member in conversation.members where member.header.folderID == folderID {
+                        related[member.header.id] = member.header
+                    }
+                }
+            }
+            cached = Array(related.values)
+        } else {
+            cached = await cachedHeaderSnapshot(folderID: folderID)?.headers ?? []
+        }
         guard !cached.isEmpty else {
             return MessageThreadResolver.resolved(headers)
         }
@@ -1286,6 +1305,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     offset: offset
                 )
             case .snapshot(let offset):
+                if headerCache is IndexedIMAPMailboxHeaderCache {
+                    return await cachedLocalIndexPage(in: folder, indexPageToken: nil, offset: 0)
+                }
                 return await cachedHeaderSnapshotPage(in: folder, offset: offset)
             }
         }
@@ -1298,6 +1320,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         ) {
             return indexedPage
         }
+        guard !(headerCache is IndexedIMAPMailboxHeaderCache) else { return nil }
         return await cachedHeaderSnapshotPage(in: folder, offset: 0)
     }
 
@@ -1306,6 +1329,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         indexPageToken: String?,
         offset: Int
     ) async -> (headers: [MessageHeader], nextPageToken: String?)? {
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
+            do { try await indexed.prepare(folderID: folder.id) } catch { return nil }
+        }
         guard let indexedPage = await localSearchIndex?.cachedHeaders(
             for: folder,
             account: account,
@@ -1320,6 +1346,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 offset: offset + indexedPage.headers.count,
                 indexPageToken: nextIndexPageToken
             )
+        } else if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
+            do { nextPageToken = try await indexed.metadata(folderID: folder.id)?.nextPageToken } catch { return nil }
         } else if let snapshot = await cachedHeaderSnapshot(folderID: folder.id),
                   snapshot.headers.count > offset + indexedPage.headers.count {
             nextPageToken = CachedMessagePageToken.snapshot(
@@ -3495,7 +3523,13 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         messageID: MessageHeader.ID,
         folderID: Folder.ID
     ) async -> MessageHeader? {
-        await cachedHeaders(folderID: folderID)?.first { $0.id == messageID }
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
+            do {
+                try await indexed.prepare(folderID: folderID)
+                return try await indexed.index.imapHeaders(ids: [messageID], folderID: folderID, account: account).first
+            } catch { return nil }
+        }
+        return await cachedHeaders(folderID: folderID)?.first { $0.id == messageID }
     }
 
     /// Apply an offline-retention window to one folder by evicting cached
@@ -3823,6 +3857,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         mergingWithExisting: Bool = false,
         loadedPageToken: String? = nil
     ) async {
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
+            do { try await indexed.prepare(folderID: folderID) } catch { return }
+        }
         let uniqueHeaders = Self.deduplicatedByID(headers)
         if let pageIndex = localSearchIndex as? any IMAPHeaderPageIndex,
            !mergingWithExisting || loadedPageToken != nil {
@@ -3831,6 +3868,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                     folderID: folderID, pageToken: loadedPageToken, headers: uniqueHeaders,
                     uidValidity: uidValidity, highestModSeq: highestModSeq, nextPageToken: nextPageToken
                 ), account: account)
+                if headerCache is IndexedIMAPMailboxHeaderCache { return }
             } catch {
                 // Dual-write stage: the legacy cache remains authoritative on failure.
                 await localSearchIndex?.storeHeaders(uniqueHeaders, account: account)
@@ -3913,7 +3951,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     @discardableResult
     private func reconcileUIDValidity(_ uidValidity: Int?, folderID: Folder.ID) async -> Bool {
         guard let uidValidity else { return false }
-        let cachedUIDValidity = await cachedHeaderSnapshot(folderID: folderID)?.uidValidity
+        let cachedUIDValidity = await cachedHeaderMetadata(folderID: folderID)?.uidValidity
         let didCachedUIDValidityChange = cachedUIDValidity.map { $0 != uidValidity } ?? false
         let didRecordedUIDValidityChange = await state.recordUIDValidity(uidValidity, folderID: folderID)
         guard didRecordedUIDValidityChange || didCachedUIDValidityChange else { return false }
@@ -4229,6 +4267,15 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
 
     private func cachedHeaderSnapshot(folderID: Folder.ID) async -> IMAPMailboxHeaderCacheSnapshot? {
         await headerCache?.snapshot(accountID: account.id, folderID: folderID)
+    }
+
+    private func cachedHeaderMetadata(folderID: Folder.ID) async -> IMAPHeaderMetadata? {
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
+            return try? await indexed.metadata(folderID: folderID)
+        }
+        guard let snapshot = await cachedHeaderSnapshot(folderID: folderID) else { return nil }
+        return IMAPHeaderMetadata(uidValidity: snapshot.uidValidity, highestModSeq: snapshot.highestModSeq,
+                                  nextPageToken: snapshot.nextPageToken)
     }
 
     private func updateCachedHeaders(

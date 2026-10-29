@@ -65,6 +65,10 @@ protocol SyncStoreProtocol: Sendable {
     func storeIMAPPage(_ page: IMAPHeaderPageWrite, accountID: String) async throws
     func imapPageState(accountID: String, folderID: String) async throws -> IMAPPageState?
     func imapPageUIDs(accountID: String, folderID: String, pageKey: String) async throws -> [Int]
+    func imapSnapshot(accountID: String, folderID: String) async throws -> IMAPMailboxHeaderCacheSnapshot?
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) async throws
+    func headersByID(_ ids: [String], accountID: String, folderID: String) async throws -> [MessageHeader]
 
     /// Deletes headers whose `MessageHeader.ID` is in `messageIDs`.
     func deleteHeaders(messageIDs: [MessageHeader.ID], accountID: String) async throws
@@ -340,6 +344,52 @@ actor InMemorySyncStore: SyncStoreProtocol {
 
     func imapPageUIDs(accountID: String, folderID: String, pageKey: String) -> [Int] {
         (imapWindows[folderKey(accountID, folderID)]?[pageKey] ?? []).sorted()
+    }
+
+    func headersByID(_ ids: [String], accountID: String, folderID: String) -> [MessageHeader] {
+        let stored = headersByFolder[folderKey(accountID, folderID)] ?? [:]
+        return ids.compactMap { stored[$0] }
+    }
+
+    func imapSnapshot(accountID: String, folderID: String) -> IMAPMailboxHeaderCacheSnapshot? {
+        let key = folderKey(accountID, folderID)
+        guard let metadata = imapPageState(accountID: accountID, folderID: folderID) else { return nil }
+        let windows = (imapWindows[key] ?? [:]).mapValues { Set($0.map { "\(folderID):\($0)" }) }
+        return IMAPMailboxHeaderCacheSnapshot(headers: headers(accountID: accountID, folderID: folderID,
+                                                              limit: Int.max, offset: 0),
+                                              uidValidity: metadata.uidValidity, highestModSeq: metadata.highestModSeq,
+                                              nextPageToken: metadata.nextPageToken, firstPageHeaderIDs: windows["first"],
+                                              pageHeaderIDsByToken: windows.filter { $0.key != "first" })
+    }
+
+    func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, accountID: String,
+                           folderID: String, importingLegacy: Bool) throws {
+        let key = folderKey(accountID, folderID)
+        if let old = syncStates[key]?.uidValidity, let new = snapshot.uidValidity, old != new {
+            throw SyncStoreError.imapGenerationMismatch
+        }
+        guard snapshot.headers.allSatisfy({ $0.folderID == folderID && Self.uid(from: $0.id) > 0 }) else {
+            throw SyncStoreError.invalidIMAPPage
+        }
+        let incoming = importingLegacy ? snapshot.headers.filter { headersByFolder[key]?[$0.id] == nil } : snapshot.headers
+        try upsertHeaders(incoming, accountID: accountID)
+        let hasPaging = syncStates[key]?.uidValidity != nil
+        if !importingLegacy || !hasPaging {
+            var state = syncStates[key] ?? FolderSyncState(folderID: folderID, accountID: accountID)
+            state.uidValidity = snapshot.uidValidity ?? state.uidValidity
+            state.highestModSeq = snapshot.highestModSeq ?? state.highestModSeq
+            syncStates[key] = state
+            imapPageStates[key] = IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
+                                               nextPageToken: snapshot.nextPageToken)
+        }
+        if !importingLegacy { imapWindows[key] = [:] }
+        var windows = snapshot.pageHeaderIDsByToken
+        if let first = snapshot.firstPageHeaderIDs { windows["first"] = first }
+        for (token, ids) in windows where !importingLegacy || imapWindows[key]?[token] == nil {
+            imapWindows[key, default: [:]][token] = Set(ids.compactMap { id in
+                headersByFolder[key]?[id].map { Self.uid(from: $0.id) }
+            })
+        }
     }
 
     func clearHeaders(accountID: String, folderID: String) throws {

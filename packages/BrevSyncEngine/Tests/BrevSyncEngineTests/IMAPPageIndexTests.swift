@@ -10,7 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
-import BrevBackend
+@testable import BrevBackend
 @testable import BrevSyncEngine
 import Foundation
 import Testing
@@ -54,5 +54,37 @@ struct IMAPPageIndexTests {
                           from: Correspondent(email: "sender@example.test"), subject: "Synthetic \($0)", snippet: "",
                           date: Date(timeIntervalSince1970: TimeInterval($0)))
         }, uidValidity: 777, highestModSeq: 888, nextPageToken: "before:1")
+    }
+
+    @Test("legacy import preserves newer rows and only removes the source after success", arguments: [false, true])
+    func legacyImport(sqlite: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-import-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let engine = BrevSyncEngine(store: store)
+        let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
+        try await engine.storeIMAPPage(page([3], token: nil), account: account)
+        var stale = page([1, 3], token: nil).headers
+        stale[1].isRead = true
+        let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 777, highestModSeq: 1,
+                                                       nextPageToken: "stale", firstPageHeaderIDs: ["INBOX:1", "INBOX:3"],
+                                                       pageHeaderIDsByToken: ["before:3": ["INBOX:1"]])
+        let legacy = InMemoryIMAPMailboxHeaderCache()
+        await legacy.setSnapshot(snapshot, accountID: account.id, folderID: "INBOX")
+        let adapter = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)
+        try await adapter.prepare(folderID: "INBOX")
+        #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") == nil)
+        let restored = try await engine.imapHeaders(ids: ["INBOX:1", "INBOX:3"], folderID: "INBOX", account: account)
+        #expect(restored.count == 2)
+        #expect(restored.last?.isRead == false)
+        #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.nextPageToken == "before:1")
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "first") == [3])
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "before:3") == [1])
+        let wrongGeneration = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 999)
+        await legacy.setSnapshot(wrongGeneration, accountID: account.id, folderID: "INBOX")
+        let retry = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)
+        await #expect(throws: (any Error).self) { try await retry.prepare(folderID: "INBOX") }
+        #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") != nil)
     }
 }

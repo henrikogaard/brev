@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 indexed IMAP read/migration slice
+
+- Branch `feature/imap-sqlite-reads`, based on #272; target immediate parent `feature/imap-page-dual-write`, eventual main. Continuing all implementation PRs before the requested review/fix pass.
+- Added account-bound indexed cache adapter, transactional missing-row legacy import and metadata/ID projections. Page cursors and indexed thread inputs no longer require a whole-folder snapshot; cached header lookup is bounded. Legacy data is retained when import fails. Compatibility SQL snapshots remain for the consumers replaced in slice 4.
+- Added both-store import tests for newer-row preservation, migrated windows, generation rejection and source cleanup. Checks: diff/ADR before push; focused formatting reports outstanding indentation/loop-wrap issues, deferred to the requested review/fix pass. Package compilation/execution pending CI. No locally observed red run, host app test or real cache migration.
+- Updated approved design and CHANGELOG. Privacy posture/network behavior unchanged; local lifecycle remains governed by ADR-0087. Runtime/cutover gates stay open; draft code is not a verified or shipped migration.
+
 ## 2026-10-29 — Agent — #269 IMAP page dual-write
 
 - Continued slice 2b on `feature/imap-page-dual-write`, based on #271 at `652242e6`; target immediate parent `feature/imap-page-window-store`, eventual main. Henrik requested implementation PRs for all slices before the review/fix pass; work continues without waiting for each CI run.

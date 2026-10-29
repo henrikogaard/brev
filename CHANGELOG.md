@@ -6,6 +6,10 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Indexed IMAP accounts migrate legacy header caches on first folder access.
+  Cached page cursors and individual header lookups use bounded index reads;
+  legacy files are removed only after a successful import.
+
 - IMAP pages dual-write their headers and paging metadata transactionally to
   the local index while retaining the legacy cache during the staged rollout.
 
