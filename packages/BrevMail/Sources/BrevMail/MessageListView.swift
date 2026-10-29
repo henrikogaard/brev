@@ -1944,13 +1944,15 @@ public struct MessageListView: View {
             calendarDay: calendar.startOfDay(for: now),
             calendarIdentifier: calendar.identifier,
             calendarTimeZoneIdentifier: calendar.timeZone.identifier,
-            localeIdentifier: locale.identifier
+            localeIdentifier: locale.identifier,
+            supportsThreadGrouping: backend.groupsMessagesIntoThreads
         )
         return presentationSnapshotCache.snapshot(for: key, headers: headers) {
             let interval = MailUIPerformanceDiagnostics.beginInterval("Message List Presentation Build")
             defer { MailUIPerformanceDiagnostics.endInterval(interval) }
+            let workflowHeaders = workflowVisibleHeaders(from: headers, now: now, calendar: calendar)
             let presentationHeaders = MessageListSortPolicy.sorted(
-                visibleHeaders(for: workflowVisibleHeaders(from: headers, now: now, calendar: calendar)),
+                visibleHeaders(for: workflowHeaders),
                 by: mailboxSortOrder,
                 pinnedIDs: pinnedMessageIDs
             )
@@ -1961,7 +1963,12 @@ public struct MessageListView: View {
                 collapsedDateSectionIDs: collapsedDateSectionIDs,
                 referenceDate: now,
                 calendar: calendar,
-                sourceHeaders: headers
+                sourceHeaders: headers,
+                navigationHeaders: MessageListNavigationHeaders.headers(
+                    from: workflowHeaders,
+                    threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
+                    pinnedIDs: pinnedMessageIDs
+                )
             )
         }
     }
@@ -3545,7 +3552,12 @@ public struct MessageListView: View {
     }
 
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
-        MessageListNavigationHeaders.headers(
+        if headers.sharesRetainedBuffer(with: self.headers) {
+            // Re-enter the getter at selection time: a retained source buffer
+            // does not imply unchanged snooze, calendar-day, or workflow inputs.
+            return presentationSnapshot.navigationHeaders
+        }
+        return MessageListNavigationHeaders.headers(
             from: workflowVisibleHeaders(from: headers),
             threadContext: groupByThread && backend.groupsMessagesIntoThreads ? headers : [],
             pinnedIDs: pinnedMessageIDs
