@@ -145,7 +145,7 @@ struct IMAPSelectiveCacheRegressionTests {
         await backend.disconnect()
     }
 
-    @Test("cache-only search migrates unopened legacy folders offline", arguments: ["account", "folderID", "folderIDs"])
+    @Test("cache-only search quarantines unopened legacy folders offline", arguments: ["account", "folderID", "folderIDs"])
     func unopenedFolderSearch(scope: String) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-unopened-\(UUID())")
         defer { try? FileManager.default.removeItem(at: root) }
@@ -156,12 +156,13 @@ struct IMAPSelectiveCacheRegressionTests {
         var query = SearchQuery(text: "Needle", folderID: scope == "folderID" ? "Archive" : nil, execution: .cacheOnly)
         if scope == "folderIDs" { query.folderIDs = ["Archive"] }
         let results = try await backend.search(query)
-        #expect(Set(results.map(\.id)) == Set(scoped ? ["Archive:1"] : ["INBOX:1", "Archive:1"]))
+        #expect(results.isEmpty)
+        #expect(try await engine.hasPendingIMAPRecovery(folderID: "Archive", account: Self.account))
         #expect(await legacy.snapshot(accountID: Self.account.id, folderID: "Archive") == nil)
         if scoped {
             #expect(await legacy.snapshot(accountID: Self.account.id, folderID: "INBOX") != nil)
         }
-        #expect(await engine.metrics(for: Self.account)?.indexedHeaderCount == (scoped ? 1 : 2))
+        #expect(await engine.metrics(for: Self.account)?.indexedHeaderCount == 0)
     }
 
     @Test("saved-view enumeration migrates its unopened folder without a connection")
@@ -172,8 +173,9 @@ struct IMAPSelectiveCacheRegressionTests {
         let legacy = try seedLegacy(root: root)
         let backend = backend(index: engine, legacy: legacy)
         let results = try await backend.cachedMessageHeaders(in: Self.folders[1], sourceID: Self.source)
-        #expect(results.map(\.id) == ["Archive:1"])
-        #expect(await engine.metrics(for: Self.account)?.indexedHeaderCount == 1)
+        #expect(results.isEmpty)
+        #expect(try await engine.hasPendingIMAPRecovery(folderID: "Archive", account: Self.account))
+        #expect(await engine.metrics(for: Self.account)?.indexedHeaderCount == 0)
         #expect(await legacy.snapshot(accountID: Self.account.id, folderID: "INBOX") != nil)
     }
 

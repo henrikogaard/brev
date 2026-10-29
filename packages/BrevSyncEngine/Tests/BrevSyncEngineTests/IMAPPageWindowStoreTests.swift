@@ -32,8 +32,8 @@ struct IMAPPageWindowStoreTests {
             if version == 7 { try sql(url, "DROP TABLE imap_legacy_imports;") }
             for _ in 0 ..< 2 {
                 let store = try SQLiteSyncStore(databaseURL: url)
-                #expect(store.currentSchemaVersion == 9)
-                #expect(try count(url, "PRAGMA user_version;") == 9)
+                #expect(store.currentSchemaVersion == 10)
+                #expect(try count(url, "PRAGMA user_version;") == 10)
                 #expect(try store.selectIMAPHeaders(.attachmentsOrCachedBodies, accountID: "a", folderID: "INBOX")
                     .map(\.id) == ["INBOX:2", "INBOX:1"])
                 #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 2000, offset: 0).count == 1000)
@@ -71,8 +71,8 @@ struct IMAPPageWindowStoreTests {
             ) == 0)
             try sql(url, "DROP TABLE idx_imap_attachment_headers;")
             let reopened = try SQLiteSyncStore(databaseURL: url)
-            #expect(reopened.currentSchemaVersion == 9)
-            #expect(try count(url, "PRAGMA user_version;") == 9)
+            #expect(reopened.currentSchemaVersion == 10)
+            #expect(try count(url, "PRAGMA user_version;") == 10)
             #expect(try reopened.imapPageUIDs(accountID: "a", folderID: "INBOX", pageKey: "first") == [1])
             #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 1)
         }
@@ -176,7 +176,7 @@ struct IMAPPageWindowStoreTests {
             }
             try sql(url, "DROP TABLE imap_legacy_imports; PRAGMA user_version = 7;")
             let store = try SQLiteSyncStore(databaseURL: url)
-            #expect(try count(url, "PRAGMA user_version;") == 9)
+            #expect(try count(url, "PRAGMA user_version;") == 10)
             let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: [header(1, folder: "INBOX")],
                                                           uidValidity: 777, firstPageHeaderIDs: ["INBOX:1"])
             try sql(url, """
@@ -213,7 +213,7 @@ struct IMAPPageWindowStoreTests {
             """)
             do {
                 let store = try SQLiteSyncStore(databaseURL: url)
-                #expect(store.currentSchemaVersion == 9)
+                #expect(store.currentSchemaVersion == 10)
                 #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 20, offset: 0).map(\.id) == ["INBOX:1"])
                 #expect(try store.imapPageState(accountID: "a", folderID: "INBOX") == nil)
                 try write([2], to: store)

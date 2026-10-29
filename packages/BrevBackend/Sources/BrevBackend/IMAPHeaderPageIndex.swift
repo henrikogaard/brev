@@ -35,6 +35,14 @@ public struct IMAPHeaderPageWrite: Sendable {
 
 /// Optional index capability for atomic IMAP page/header persistence, without SQL in the backend.
 public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
+    /// Whether an unconfirmed legacy header remains in this folder's recovery archive.
+    func hasPendingIMAPRecovery(folderID: Folder.ID, account: BrevAccount) async throws -> Bool
+    /// Whether this message's cached content must use recovery-aware index reads, not external caches.
+    func hasIMAPRecoveryRecord(messageID: MessageHeader.ID, account: BrevAccount) async throws -> Bool
+    /// Persists a freshly fetched server source and its recovery provenance atomically.
+    func storeConfirmedIMAPSource(_ source: IMAPMessageSource, messageID: MessageHeader.ID, account: BrevAccount) async throws
+    /// Clears cached payload while retaining suppression/import markers; account removal uses clearAccount.
+    func clearIMAPCache(account: BrevAccount) async
     /// Commits a page or throws; a failed write must not report durable paging state.
     func storeIMAPPage(_ page: IMAPHeaderPageWrite, account: BrevAccount) async throws
     /// Reads only the folder generation and paging cursor, never its header array.
@@ -46,7 +54,7 @@ public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
         -> [MessageHeader]
     /// Compatibility read for consumers being replaced by selective queries in the next slice.
     func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot?
-    /// Writes a compatibility snapshot or imports missing legacy rows atomically.
+    /// Writes a compatibility snapshot or quarantines missing legacy rows atomically.
     func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
                            account: BrevAccount, importingLegacy: Bool) async throws
     /// Selects only rows needed by a cache consumer.
@@ -54,6 +62,23 @@ public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
                            account: BrevAccount) async throws -> [MessageHeader]
     /// Changes the folder watermark without touching header rows or the paging cursor.
     func updateIMAPModSeq(_ modSeq: UInt64, folderID: Folder.ID, account: BrevAccount) async throws
+}
+
+public extension IMAPHeaderPageIndex {
+    /// Index implementations without quarantine can use their ordinary account clear.
+    func clearIMAPCache(account: BrevAccount) async { await clearAccount(account) }
+    /// Index implementations without quarantine have no pending recovery.
+    func hasPendingIMAPRecovery(folderID _: Folder.ID, account _: BrevAccount) async throws -> Bool { false }
+    /// Index implementations without quarantine can keep existing content-cache reads.
+    func hasIMAPRecoveryRecord(messageID _: MessageHeader.ID, account _: BrevAccount) async throws -> Bool { false }
+    /// Persists fresh source normally when no separate recovery provenance is implemented.
+    func storeConfirmedIMAPSource(_ source: IMAPMessageSource, messageID: MessageHeader.ID, account: BrevAccount) async throws {
+        if let data = source.rawMessageData {
+            await storeOriginalRawMessage(data, for: messageID, account: account)
+        } else {
+            await storeRawMessage(Data(source.rawMessage.utf8), for: messageID, account: account)
+        }
+    }
 }
 
 /// Explicit local query shapes used by cache maintenance and reconciliation.

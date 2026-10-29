@@ -342,6 +342,28 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         try await store.selectIMAPHeaders(selection, accountID: account.id, folderID: folderID)
     }
 
+    /// Checks whether retained legacy headers still need an ordinary server page fetch.
+    public func hasPendingIMAPRecovery(folderID: Folder.ID, account: BrevAccount) async throws -> Bool {
+        try await store.hasPendingIMAPRecovery(accountID: account.id, folderID: folderID)
+    }
+
+    /// Selects recovery-aware content reads without requiring a normal header row.
+    public func hasIMAPRecoveryRecord(messageID: MessageHeader.ID, account: BrevAccount) async throws -> Bool {
+        try await store.hasIMAPRecoveryRecord(accountID: account.id, messageID: messageID)
+    }
+
+    /// Commits freshly fetched source bytes together with their confirmation.
+    public func storeConfirmedIMAPSource(
+        _ source: IMAPMessageSource,
+        messageID: MessageHeader.ID,
+        account: BrevAccount
+    ) async throws {
+        try await store.ensureAccount(id: account.id)
+        try await store.storeConfirmedIMAPSource(source.rawMessageData ?? Data(source.rawMessage.utf8),
+                                                 isOriginal: source.rawMessageData != nil, accountID: account.id,
+                                                 messageID: messageID)
+    }
+
     /// Advances only the persisted folder watermark.
     public func updateIMAPModSeq(_ modSeq: UInt64, folderID: Folder.ID, account: BrevAccount) async throws {
         try await store.updateIMAPModSeq(modSeq, accountID: account.id, folderID: folderID)
@@ -411,6 +433,11 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
 
     public func clearAccount(_ account: BrevAccount) async {
         try? await store.clearAccount(id: account.id)
+    }
+
+    /// Clears cached payloads without reopening historical import or external-source recovery.
+    public func clearIMAPCache(account: BrevAccount) async {
+        try? await store.clearIMAPCache(accountID: account.id)
     }
 
     public func metrics(for account: BrevAccount) async -> LocalSearchIndexMetrics? {

@@ -74,7 +74,7 @@ actor IndexedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
         for migration in migrations.values {
             _ = try? await migration.value
         }
-        await index.clearAccount(account)
+        await index.clearIMAPCache(account: account)
         await legacy?.clear(accountID: accountID)
         migrations.removeAll()
     }

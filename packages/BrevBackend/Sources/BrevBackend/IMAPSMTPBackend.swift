@@ -750,6 +750,9 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private func refreshConnectedFolderFirstPage(_ folder: Folder) async throws {
         guard listMessagesOperation != nil else { return }
         try Task.checkCancellation()
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache { try await indexed.prepare(folderID: folder.id) }
+        let pendingRecovery = try await (localSearchIndex as? any IMAPHeaderPageIndex)?
+            .hasPendingIMAPRecovery(folderID: folder.id, account: account) ?? false
 
         // CONDSTORE delta-sync: if we have a modseq watermark and a delta-sync
         // operation, check whether anything changed before doing a full fetch.
@@ -764,7 +767,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 // it first and never take the "nothing changed" early-return when it
                 // changed — fall through to a full refetch instead.
                 let uidValidityChanged = await reconcileUIDValidity(result.uidValidity, folderID: folder.id)
-                if !uidValidityChanged, let newModSeq = result.highestModSeq, newModSeq == cachedModSeq {
+                if !pendingRecovery, !uidValidityChanged, let newModSeq = result.highestModSeq, newModSeq == cachedModSeq {
                     // Nothing changed — skip the full header fetch entirely.
                     await state.clearBackgroundSyncFailure()
                     return
@@ -1492,7 +1495,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 endForegroundIMAPRead()
             }
         }
-        if let cached = await bodyCache?.body(accountID: account.id, messageID: messageID) {
+        if let cached = await cachedParsedBody(messageID: messageID) {
             return cached
         }
         if let source = await cachedMessageSource(messageID: messageID) {
@@ -1588,10 +1591,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                 // attachment-enumeration pass. Keep the source-cache fallback
                 // for older stores/accounts that predate the body cache.
                 let body: MessageBody?
-                if let cachedBody = await bodyCache?.body(
-                    accountID: account.id,
-                    messageID: header.id
-                ) {
+                if let cachedBody = await cachedParsedBody(messageID: header.id) {
                     body = cachedBody
                 } else if let source = await cachedMessageSource(messageID: header.id) {
                     body = parser.parse(messageID: header.id, rawMessage: source.rawMessage)
@@ -4680,14 +4680,17 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         _ source: IMAPMessageSource,
         messageID: MessageHeader.ID
     ) async {
-        await sourceCache?.setSource(
-            source,
-            accountID: account.id,
-            messageID: messageID
-        )
-        if let data = source.rawMessageData {
+        if let index = localSearchIndex as? any IMAPHeaderPageIndex {
+            do {
+                let recovery = try await usesRecoveryIndex(messageID: messageID)
+                try await index.storeConfirmedIMAPSource(source, messageID: messageID, account: account)
+                if !recovery { await sourceCache?.setSource(source, accountID: account.id, messageID: messageID) }
+            } catch { return }
+        } else if let data = source.rawMessageData {
+            await sourceCache?.setSource(source, accountID: account.id, messageID: messageID)
             await localSearchIndex?.storeOriginalRawMessage(data, for: messageID, account: account)
         } else {
+            await sourceCache?.setSource(source, accountID: account.id, messageID: messageID)
             await localSearchIndex?.storeRawMessage(Data(source.rawMessage.utf8), for: messageID, account: account)
         }
         // A freshly cached source may now carry a parseable date, so allow the
@@ -4706,8 +4709,10 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
                                      requiresOriginalBytes: Bool = false) async -> IMAPMessageSource? {
         let interval = MailPerformanceDiagnostics.beginInterval("IMAP Body Cache Read")
         defer { MailPerformanceDiagnostics.endInterval(interval) }
+        let recovery: Bool
+        do { recovery = try await usesRecoveryIndex(messageID: messageID) } catch { return nil }
         let source: IMAPMessageSource?
-        if let cached = await sourceCache?.source(accountID: account.id, messageID: messageID),
+        if !recovery, let cached = await sourceCache?.source(accountID: account.id, messageID: messageID),
            !requiresOriginalBytes || cached.rawMessageData != nil {
             source = cached
         } else if let original = await localSearchIndex?.cachedOriginalRawMessage(for: messageID, account: account),
@@ -4731,6 +4736,20 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         return source
     }
 
+    private func usesRecoveryIndex(messageID: MessageHeader.ID) async throws -> Bool {
+        guard let index = localSearchIndex as? any IMAPHeaderPageIndex else { return false }
+        let reference = try Self.messageReference(from: messageID)
+        if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache { try await indexed.prepare(folderID: reference.folderID) }
+        return try await index.hasIMAPRecoveryRecord(messageID: messageID, account: account)
+    }
+
+    private func cachedParsedBody(messageID: MessageHeader.ID) async -> MessageBody? {
+        do {
+            guard try await !usesRecoveryIndex(messageID: messageID) else { return nil }
+            return await bodyCache?.body(accountID: account.id, messageID: messageID)
+        } catch { return nil }
+    }
+
     private func removeCachedMessageSources(folderID: Folder.ID, uids: [Int]) async {
         let messageIDs = Self.messageIDs(folderID: folderID, uids: uids)
         await localSearchIndex?.deleteRawMessages(messageIDs, account: account)
@@ -4751,7 +4770,11 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         await headerCache?.clear(accountID: account.id)
         await sourceCache?.clear(accountID: account.id)
         await bodyCache?.clear(accountID: account.id)
-        await localSearchIndex?.clearAccount(account)
+        if let index = localSearchIndex as? any IMAPHeaderPageIndex {
+            await index.clearIMAPCache(account: account)
+        } else {
+            await localSearchIndex?.clearAccount(account)
+        }
     }
 
     private func pendingMutationCount() async -> (count: Int, errorDescription: String?) {

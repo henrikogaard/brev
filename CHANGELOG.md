@@ -6,6 +6,12 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Ambiguous historical IMAP cache records are retained locally for recovery
+  but hidden until ordinary server fetches confirm them. Temporary offline
+  gaps replace potentially resurrected deleted mail. Clear Cache discards
+  recovery payloads while retaining minimal anti-replay identifiers; account
+  removal deletes those identifiers too.
+
 - IMAP cache maintenance uses selective header queries and row-level updates.
   The historical JSON header writer is now test-only; production keeps a
   read-only migration reader and a memory-only fallback when the index is unavailable.
@@ -26,8 +32,8 @@ All notable changes to Brev are documented here.
 - Destructive IMAP actions now complete legacy-cache migration before
   changing server messages. Migration failure stops the action instead of
   silently queueing it, and headers deleted by these actions cannot return
-  through a later first import. Previously ambiguous cache histories remain
-  unresolved.
+  through a later first import. Pre-marker historical ambiguity is handled
+  by the recovery quarantine; already-completed imports are not reclassified.
 
 - Cached attachment enumeration retains messages whose attachments exist only
   in raw-source or parsed-body caches, even when the header flag is false.

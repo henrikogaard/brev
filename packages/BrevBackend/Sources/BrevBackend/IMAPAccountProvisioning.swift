@@ -1165,14 +1165,17 @@ public struct IMAPAccountConnector: Sendable {
     }
 
     public func removeAccount(_ accountID: String) async {
+        let account = await accountStore.accounts.first { $0.id == accountID }
         await provisioner.removeAccount(accountID)
         await clearLocalStores(accountID: accountID)
+        if let account { await localSearchIndex?(accountID)?.clearAccount(account) }
     }
 
     private func clearLocalStores(accountID: String) async {
         await folderCache?.clear(accountID: accountID)
         await headerCache?.clear(accountID: accountID)
         await sourceCache?.clear(accountID: accountID)
+        await bodyCache?.clear(accountID: accountID)
         await draftStagingStore?.clear(accountID: accountID)
         try? await offlineMutationQueue?(accountID).removeAll()
         try? await offlineMutationConflictStore?(accountID).removeAll()

@@ -23,7 +23,7 @@ struct IMAPPageIndexTests {
         defer { try? FileManager.default.removeItem(at: root) }
         let store: any SyncStoreProtocol = sqlite
             ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
-        #expect(store.currentSchemaVersion == 9)
+        #expect(store.currentSchemaVersion == 10)
         let engine = BrevSyncEngine(store: store)
         let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
         let first = page([3, 4], token: nil)
@@ -68,7 +68,8 @@ struct IMAPPageIndexTests {
         try await IndexedIMAPMailboxHeaderCache(index: BrevSyncEngine(store: store), account: account, legacy: legacy)
             .prepare(folderID: "INBOX")
         #expect(try await store.headersByID(["INBOX:1"], accountID: "synthetic", folderID: "INBOX").isEmpty)
-        #expect(try await store.imapPageUIDs(accountID: "synthetic", folderID: "INBOX", pageKey: "first") == [2])
+        #expect(try await store.imapPageUIDs(accountID: "synthetic", folderID: "INBOX", pageKey: "first").isEmpty)
+        #expect(try await store.hasPendingIMAPRecovery(accountID: "synthetic", folderID: "INBOX"))
         try await store.clearFolder(accountID: "synthetic", folderID: "INBOX")
         try await store.storeIMAPPage(IMAPHeaderPageWrite(folderID: "INBOX", pageToken: nil, headers: [],
                                                           uidValidity: 999, highestModSeq: nil, nextPageToken: nil),
@@ -167,8 +168,11 @@ struct IMAPPageIndexTests {
         var stale = page([1, 3], token: nil).headers
         stale[1].isRead = true
         let legacy = InMemoryIMAPMailboxHeaderCache()
-        let wrongGeneration = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 999)
-        await legacy.setSnapshot(wrongGeneration, accountID: account.id, folderID: "INBOX")
+        let wrongFolder = IMAPMailboxHeaderCacheSnapshot(headers: [MessageHeader(
+            id: "Other:1", threadID: "t", folderID: "Other", from: Correspondent(email: "sender@example.test"),
+            subject: "Malformed", snippet: "", date: Date(timeIntervalSince1970: 1)
+        )])
+        await legacy.setSnapshot(wrongFolder, accountID: account.id, folderID: "INBOX")
         let retry = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)
         await #expect(throws: (any Error).self) { try await retry.prepare(folderID: "INBOX") }
         #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") != nil)
@@ -180,10 +184,11 @@ struct IMAPPageIndexTests {
         try await adapter.prepare(folderID: "INBOX")
         #expect(await legacy.snapshot(accountID: account.id, folderID: "INBOX") == nil)
         let restored = try await engine.imapHeaders(ids: ["INBOX:1", "INBOX:3"], folderID: "INBOX", account: account)
-        #expect(restored.count == 2)
+        #expect(restored.count == 1)
+        #expect(try await engine.hasPendingIMAPRecovery(folderID: "INBOX", account: account))
         #expect(restored.last?.isRead == false)
         #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.nextPageToken == "before:1")
         #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "first") == [3])
-        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "before:3") == [1])
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "before:3").isEmpty)
     }
 }

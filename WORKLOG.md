@@ -1,5 +1,41 @@
 # Worklog
 
+## 2026-10-29 — Agent — Paired IMAP recovery implementation
+
+- Implemented approved ADR-0090 atop the pinned #274/schema-v9 base. Schema
+  v10 archives missing pre-marker legacy headers atomically with the import
+  marker; only server pages confirm headers, and successful fresh-source
+  persistence confirms content. Generic local writes and stale external
+  caches cannot release quarantine. Existing indexed metadata stays intact.
+- Public cache reset retains only payload-free suppression/import markers;
+  actual connector removal clears the real account index and parsed-body
+  cache as well as existing external stores. Deletion is logical, not a
+  claim of database/WAL/SHM or physical disk erasure. Other accounts survive.
+- Red-green evidence: 22 initial policy assertions, 3 indexed-text/attachment
+  assertions, 11 direct-reader/reset assertions and 2 connector-removal
+  assertions failed before their fixes. Twelve focused recovery tests now
+  pass, including memory/SQLite parity, transaction retry/restart, source-write
+  failure, legacy JSON retention/removal, generation changes, generic-write
+  suppression and public refresh/pagination/rebuild/reset/removal paths.
+- Request counts prove two page requests for first/older recovery, and one
+  existing first-page request per ordinary refresh while an absent legacy UID
+  remains pending. This conservative repeated-refresh cost is documented;
+  no new sweep, network endpoint, consent path or cursor heuristic was added.
+- Verification: 1,163 backend tests; 78 XCTest + 53 Swift Testing sync tests
+  (expensive IMAPHeaderReadBaselineTests excluded); pinned full SwiftFormat
+  and strict SwiftLint; privacy audit and coverage; SwiftLint coverage,
+  build/run environment, public-source-marker and telemetry-artifact self-tests;
+  git diff --check. All passed. Built-app telemetry inspection was skipped
+  because no native app bundle was built in this lane.
+- Documentation: successor ADR, CHANGELOG and PRIVACY updated. README/setup,
+  UI, AGENTS and network-call table are unchanged: no setup/UI/workflow/new
+  endpoint change. Existing completed imports are explicitly outside this
+  pre-marker policy. No new QA report or snapshot baseline was created.
+- Handoff: parent integrates into paired #273/#274, settles hosted CI/review,
+  updates the board to In review if permitted, and owns merge decisions.
+  Native/iOS/live UI and cutover performance acceptance remain unrun and
+  required; this lane neither installs an app nor requests live credentials.
+
 ## 2026-10-29 — Agent — Paired IMAP storage recovery policy
 
 - Goal: implement the approved pre-marker historical-cache recovery policy

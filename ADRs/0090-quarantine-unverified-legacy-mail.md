@@ -52,10 +52,13 @@ cannot be retroactively classified; this policy applies before the marker.
 6. Recovery data is local cache, not a backup: it stays until explicit cache
    clearing/account removal or targeted deletion. Generation invalidation
    must not expose retained content under reused UIDs. Clear Cache discards
-   recovery data as well as normal headers and content; folder import
-   markers survive folder clearing so leftover JSON cannot replay. Account
-   removal removes all account metadata and files. No automatic expiry,
-   export, recovery UI or new storage counter is introduced.
+   payloads as well as normal headers and content; account/folder/message
+   suppression IDs and folder import markers survive clearing so leftover
+   JSON or source files cannot replay. Account removal deletes the account's
+   indexed rows, including these markers, and requests external-cache cleanup.
+   This is logical SQLite deletion, not verified erasure of database/WAL/SHM
+   files or recoverable disk bytes. No automatic expiry, export, recovery UI
+   or new storage counter is introduced.
 
 ## Rationale
 
@@ -80,6 +83,10 @@ cannot be retroactively classified; this policy applies before the marker.
   encryption-at-rest posture from ADR-0082.
 - SQLite and in-memory behavior must match; migration rollback, restart,
   consumer exclusion and cleanup are regression-tested.
+- Pending records that never reappear on the server keep the unchanged
+  CONDSTORE fast path disabled: each ordinary folder refresh can issue its
+  existing first-page request again, without a new sweep or recovery task.
+  Explicit cache clearing discards the pending payloads and ends this cost.
 
 ### Risks
 
