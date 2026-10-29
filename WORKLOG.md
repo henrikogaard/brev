@@ -64,6 +64,11 @@
 - No native/UI/live-provider tests or application installation authorized.
   Parent owns integration, board status, hosted CI, review and merge decisions.
 
+## 2026-10-29 — Agent — #269 full implementation PR map
+
+- All planned slice outcomes now have open PRs: #270 baseline, #271/#272 transactional storage/dual-write, #273 reads/migration, #274 selective maintenance/retirement, #275 profiling harness, #276 navigation candidate, #277 reader visuals, and existing #265 Settings. Updated the shared plan's states and detailed slice-8 contract.
+- Review/fix pass remains separate from implementation delivery. Profiling harness is not a captured trace, candidate is not a demonstrated optimization, recorded PNGs are not accepted baselines, and #265 still conflicts with main. Host testing remains deferred; no merge/release/issue closure.
+- Documentation-only check: diff and local links before push. No rerun of unchanged app suites is claimed as new evidence.
 ## 2026-10-29 — Agent — #269 reader measure and default-theme review coverage
 
 - Slice 7 on `feature/reader-visual-consistency`, based on #276, targeting `feature/navigation-projection`, eventual main. Added one shared native plain-text measure, Detail quoted-text/Thread alignment, and a scoped bare-text HTML wrapper. Sender HTML, print blocks and compose remain unchanged.
