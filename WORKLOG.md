@@ -64,6 +64,12 @@
 - No native/UI/live-provider tests or application installation authorized.
   Parent owns integration, board status, hosted CI, review and merge decisions.
 
+## 2026-10-29 — Agent — #269 navigation projection candidate
+
+- Slice 6 draft on `feature/navigation-projection`, based on #275; target `feature/selection-profiling`, eventual main. Staged per the request to open all implementation PRs before review, not as a measured performance claim.
+- Existing presentation cache now owns reader navigation context too; its key includes backend grouping support. Asynchronous non-current buffers keep their prior derivation. Repeated selection with an unchanged retained buffer preserves the lazy ID index and avoids observable collection reassignment. Existing source, child/parent, generation and cancellation semantics remain unchanged.
+- Added selection/buffer-refresh assertions and updated the opt-in workload to exercise the retained projection. Compilation, trace comparison, frame/RSS and rendered checks remain pending. No locally observed TDD red run or host-native test. The fresh optimized trace must support this candidate before acceptance; revise it if it does not.
+- Updated design and CHANGELOG. No provider/network/privacy/package/public-design-system change; other docs do not need changes. Review/fix and CI follow after all PRs are open; no merge/release.
 ## 2026-10-29 — Agent — #269 synthetic optimized selection profiling
 
 - Slice 5 on `feature/selection-profiling`, based on #274, targeting `feature/imap-selective-cache`, eventual main. Added an opt-in Release-only workload over the real navigation projection/selection model, separate signposts/timings and a CI Time Profiler capture script/job.
