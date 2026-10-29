@@ -36,7 +36,8 @@ cleanup() {
       for (level = 32; level > 0; level--)
         for (pid in depth) if (depth[pid] == level) print pid
     }')
-  for pid in "${descendants[@]}"; do
+  # Bash 3.2 treats an empty array as unset under nounset.
+  for pid in ${descendants[@]+"${descendants[@]}"}; do
     kill -TERM "$pid" 2>/dev/null || true
   done
   for pid in "$test_pid" "$tracer_pid"; do
@@ -47,13 +48,13 @@ cleanup() {
     for pid in "$test_pid" "$tracer_pid"; do
       if [[ -n "$pid" ]] && kill -0 -- "-$pid" 2>/dev/null; then alive=true; fi
     done
-    for pid in "${descendants[@]}"; do
+    for pid in ${descendants[@]+"${descendants[@]}"}; do
       if kill -0 "$pid" 2>/dev/null; then alive=true; fi
     done
     "$alive" || break
     sleep 0.1
   done
-  for pid in "${descendants[@]}"; do
+  for pid in ${descendants[@]+"${descendants[@]}"}; do
     kill -KILL "$pid" 2>/dev/null || true
   done
   for pid in "$test_pid" "$tracer_pid"; do

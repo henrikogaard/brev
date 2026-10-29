@@ -169,9 +169,10 @@ run_case() {
   : > "$PROFILE_TEST_CALLS"
   : > "$TMP/$1.env"
   local status=0
+  # Exercise the system Bash used by hosted macOS workflows, not a newer PATH shell.
   HOME="$TMP/home" PATH="$TMP/bin:$PATH" TMPDIR="$TMP/tmp" DEVELOPER_DIR="$TMP/Developer" \
     PROFILE_SENTINEL_SECRET=not-a-real-secret \
-    bash "$ROOT/scripts/profile-navigation-selection.sh" "$TMP/$1 output" \
+    /bin/bash "$ROOT/scripts/profile-navigation-selection.sh" "$TMP/$1 output" \
     > "$TMP/$1.log" 2>&1 &
   local harness_pid=$! attempt
   if [[ "$1" == interrupted ]]; then
