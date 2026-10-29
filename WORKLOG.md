@@ -1,5 +1,26 @@
 # Worklog
 
+## 2026-10-29 — Agent — #271 legacy migration fixtures
+
+- Fresh CI at `c8a681e8`, run `40781250508`, compiled successfully and passed all seven transactional page-window tests. BrevSyncEngine still failed three existing v4/v5 migration tests because they rewound the current database version without removing the v7 paging column. Other Build jobs passed.
+- Corrected those synthetic fixtures to remove `imap_page_windows` and `next_page_token` before stamping the older version. Kept production migration strict; no duplicate-column suppression or data deletion outside disposable test stores.
+- Pinned SwiftFormat lint passed for both changed test files; strict SwiftLint passed for AttachmentSearchIndexTests but reported the pre-existing optional-array `references == []` assertion in ConversationIndexTests at line 133. Left that unrelated assertion unchanged. Diff/ADR checks before push; fresh package CI remains required. No host/native tests or real-account operations. Scope remains partial slice 2a, with the runtime measurement gate unresolved.
+
+## 2026-10-28 — Agent — #271 CI compilation correction
+
+- CI at `d9795bb7`, run `40778430918`, failed BrevSyncEngine test compilation because the throwing `imapPageState` expression inside `#require` lacked an inner `try`; the other 20 checks passed. The new tests did not execute in that run.
+- Separated the throwing metadata read from the optional requirement so Swift Testing's macro receives a nonthrowing value. No production code or acceptance criterion changed.
+- Focused pinned formatting/lint and diff checks are repeated before push; package compilation and all seven page-store tests require fresh CI. Earlier app-build/other-package passes do not override this failed compilation. Host testing remains deferred.
+
+## 2026-10-28 — Agent — #269 transactional page-store foundation
+
+- Continued the approved plan on `feature/imap-page-window-store` in its own worktree, based on #270 at `208960eb`; the dependent PR targets `feature/imap-cache-baselines`, eventual integration main. #269 stays In progress. #270's BrevSyncEngine CI passed at `208960eb`, job `123114265373`, run `40772828311`.
+- Detailed slice 2a before code, then added tests for transaction rollback, restart, page replacement, source isolation, cascaded cleanup and v6 migration/retry. Implemented internal schema-v7/page-write/read primitives using the existing header/FTS/conversation transaction. This is groundwork only; backend dual-writing, legacy migration and read cutover remain unfinished. Do not ship schema changes ahead of the outstanding live baseline.
+- Verification: focused pinned formatting/lint and diff/ADR checks before commit; Swift package execution goes to CI. Tests were written before implementation, but no compatible permitted local runner was available to observe a red run. No red/green claim is made.
+- Retried existing `local:mac-12gb` without creating a Space. Start reported running, but the command tool refused with no cua-spacesd support. Host native testing remains deferred. Usual connection recovery is `cua daemon stop && cua daemon start`; no daemon/security change was made.
+- Documentation sweep: CHANGELOG records the schema preparation, and the shared design records the incremental boundary and evidence. No new network/data-deletion path or shipped read behavior means README/privacy docs/QA reports/AGENTS need no change. ADR-0087 already governs this schema and transactional ownership.
+- Remaining work: verify CI, wire dual-writes in the next part of slice 2, collect the authorized runtime baseline before cutover, and retain the reader/UI gates. No merge, release, account migration or issue closure performed.
+
 ## 2026-10-28 — Agent — #269 synthetic header baseline implementation
 
 - Goal: slice 1 of the approved storage/UI plan. Worktree `imap-cache-baselines`, branch `feature/imap-cache-baselines`, based on design commit `83b0fceb`; dependent PR targets `chore/visual-performance-plan`, whose PR #268 targets main. Issue #269 remains In progress because later slices and runtime gates are unfinished.

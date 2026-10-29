@@ -1,7 +1,7 @@
 # Mail visuals and performance
 
 Size: Full, spanning persistence, backend queries and shared UI.
-Status: Building, slice 1 of 8
+Status: Building, slice 2 of 8; slice 1 runtime gate remains open
 Owner: Henrik · Started: 2026-10-28 · Approved: 2026-10-28, Henrik
 Tracking: [#269](https://github.com/henrikogaard/brev/issues/269).
 Baseline: `origin/main` at `5ad74c0b388466a5f842dcb43b8834f74cc413ee`.
@@ -168,7 +168,7 @@ Each numbered slice is a coherent PR. Independent outcomes target `main`; only g
 | Slice | Deliverable and verification target | Requirements | State |
 |---|---|---|---|
 | 1 | Add cold JSON-versus-SQLite synthetic benchmarks at 10k/50k, preserve the existing 10k tests, and collect an authorized cold-folder/selection baseline. No production behavior change. | NFR-1/2, FR-4 | Building synthetic suite; runtime part waits on Q-1. |
-| 2 | Detail schema/page-window contracts, add migration/transaction/restart tests first, then implement the ADR-0087 metadata/window write slice. Use actual schema version at implementation time, not a stale constant. | FR-1–3, NFR-3 | Planned. |
+| 2 | Detail schema/page-window contracts, add migration/transaction/restart tests first, then implement the ADR-0087 metadata/window write slice. Use actual schema version at implementation time, not a stale constant. | FR-1–3, NFR-3 | Store foundation implemented; CI pending. Backend dual-writes still pending. |
 | 3 | Migrate per folder and switch bounded read/lookup/thread paths, proving old/new parity, token/generation behavior and measured query targets before cutover. | FR-1–3, NFR-1 | Planned; measurement gate required. |
 | 4 | Replace remaining full-folder consumers and storage-UI reads, verify retention/removal/flag paths, then retire the duplicate file-backed cache and validate cleanup/recovery. | FR-2/3, NFR-1/3 | Planned. |
 | 5 | Repeat the optimized selection/scroll trace after the storage slices and identify one expensive UI boundary. | FR-4, NFR-2 | Planned; no guessed refactor. |
@@ -215,13 +215,25 @@ Q-2 resolved: Henrik approved the design on 2026-10-28 and requested implementat
 
 **Budget and rollout.** Test instrumentation only. Read 50 SQL rows per measured query versus a complete 10k/50k legacy snapshot. Report both SQLite open and query cost so neither is hidden. No production rollout, data migration or performance-budget threshold changes occur. TDD red/green is not applicable to this record-only measurement addition; correctness assertions validate existing behavior. CI will supply automated verification while local long-running work/native tests remain constrained.
 
+### Slice 2a: transactional store foundation
+
+Prepare schema v7 and the internal SQLite transaction seam before wiring backend dual-writes. This is the first reviewable part of slice 2, not the read cutover or a completed migration. The PR must not ship ahead of the outstanding live baseline. Existing UI/backend read paths remain untouched.
+
+- `storeIMAPPage(_:accountID:folderID:pageKey:uidValidity:highestModSeq:nextPageToken:)` writes headers, sync metadata and exactly one page's UID membership under the existing lock and one transaction. Example: page `first`, UIDs 51–100, generation 777, MODSEQ 888 and cursor `before:51`.
+- Share the current header upsert/FTS/conversation code by adding a private optional page-write context to its transaction. Ordinary `upsertHeaders` calls keep their semantics. Empty pages still commit metadata/window replacement. Validate the folder/positive UID membership before writing. Generation changes must be explicitly cleared by the caller, not silently reconciled inside a write.
+- Schema v7 adds the accepted `next_page_token` and `imap_page_windows` table. Composite foreign keys to folder state and header rows cascade window cleanup on folder/account/message deletion. Existing sync-state writes preserve `next_page_token` because they update named columns only. Unknown future schemas continue to fail closed.
+- `imapPageState(accountID:folderID:)` and `imapPageUIDs(accountID:folderID:pageKey:)` are internal throwing readers for metadata and one window only, not whole-folder snapshot APIs. They distinguish SQL errors from a missing folder. Keep these SQLite-specific interfaces internal until the provider-neutral bridge is implemented in slice 2b.
+- Tests first cover page replacement preserving other windows, full-width MODSEQ and nil cursor persistence after reopen, empty pages, account/folder isolation, removal cascade, v6 upgrade preserving headers, and rollback injected after header insertion but before window commit. No migration deletes legacy files in this part.
+- Package tests execute in CI because host testing remains deferred. Record the absence of a locally observed red run rather than claiming TDD red/green evidence. Do not change production read defaults or claim cutover latency from these tests.
+
 ## 10. Verification
 
 | Criterion | Check | Result | Change |
 |---|---|---|---|
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |
-| Synthetic read comparison | `IMAPHeaderReadBaselineTests`, 10k/50k | Implemented; package CI pending | Slice 1 |
+| Synthetic read comparison | `IMAPHeaderReadBaselineTests`, 10k/50k | Passed package CI at `208960eb`, run `40772828311`, BrevSyncEngine job `123114265373`; no runtime/cutover claim | #270 |
 | Formatting and lint of new suite | Pinned SwiftFormat lint and SwiftLint strict on the test file | Passed | Slice 1 |
+| Transactional page-store foundation | `IMAPPageWindowStoreTests`, upgrade and existing store tests | All seven new tests passed at `c8a681e8`, run `40781250508`; three existing migration fixtures failed due to retained v7 columns. Fixture corrections await fresh CI. | #271 |
 | Runtime baseline and UI measurements | Authorized optimized native run | Blocked on Q-1 | Not claimed |
 
 ## Codebase deltas and change log
@@ -233,3 +245,4 @@ Q-2 resolved: Henrik approved the design on 2026-10-28 and requested implementat
 - 2026-10-28: Drafted after Henrik selected all three recommendations. No behavior, runtime test, baseline or speedup is claimed by this document.
 - 2026-10-28: Henrik approved the design. Recorded slice 1's detailed design and tracking issue #269 before implementation. Runtime permission remains unresolved.
 - 2026-10-28: Added the synthetic comparison and its run instructions. Existing baseline suites and production paths remain unchanged. Package execution is delegated to existing CI, not run on the host; slice 1 stays open for CI and its separately blocked runtime baseline.
+- 2026-10-28: Baseline package CI passed at `208960eb`. Prepared slice 2a's schema-v7 transaction primitives and seven focused tests; no backend wiring/read cutover or legacy-cache deletion. Existing Space remains unavailable, so runtime gates stay open.

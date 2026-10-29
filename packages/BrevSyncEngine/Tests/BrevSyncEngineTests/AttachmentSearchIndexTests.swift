@@ -63,13 +63,18 @@ struct AttachmentSearchIndexTests {
         try store.ensureAccount(id: account.id)
         try store.upsertHeaders([header], accountID: account.id)
 
-        // Simulate a v5 database: drop the FTS table and rewind user_version.
+        // Reconstruct v5, including removal of the later IMAP paging schema.
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
         #expect(
             sqlite3_exec(
                 database,
-                "DROP TABLE attachment_search; PRAGMA user_version = 5;",
+                """
+                DROP TABLE attachment_search;
+                DROP TABLE imap_page_windows;
+                ALTER TABLE folder_sync_state DROP COLUMN next_page_token;
+                PRAGMA user_version = 5;
+                """,
                 nil, nil, nil
             ) == SQLITE_OK
         )

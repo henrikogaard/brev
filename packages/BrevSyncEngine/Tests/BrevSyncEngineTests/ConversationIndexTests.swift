@@ -41,7 +41,12 @@ struct ConversationIndexTests {
         // Simulate the existing v4 cache: headers/bodies remain, relationship index does not.
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
-        #expect(sqlite3_exec(database, "DROP TABLE conversation_links; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(database, """
+        DROP TABLE conversation_links;
+        DROP TABLE imap_page_windows;
+        ALTER TABLE folder_sync_state DROP COLUMN next_page_token;
+        PRAGMA user_version = 4;
+        """, nil, nil, nil) == SQLITE_OK)
         sqlite3_close(database)
         let reopened = try BrevSyncEngine(databaseURL: url)
         #expect(await reopened.cachedOriginalRawMessage(for: root.id, account: account) == original)
@@ -87,7 +92,12 @@ struct ConversationIndexTests {
         // schema migration path, so the chain also survives a dropped index.
         var database: OpaquePointer?
         #expect(sqlite3_open(url.path, &database) == SQLITE_OK)
-        #expect(sqlite3_exec(database, "DROP TABLE conversation_links; PRAGMA user_version = 4;", nil, nil, nil) == SQLITE_OK)
+        #expect(sqlite3_exec(database, """
+        DROP TABLE conversation_links;
+        DROP TABLE imap_page_windows;
+        ALTER TABLE folder_sync_state DROP COLUMN next_page_token;
+        PRAGMA user_version = 4;
+        """, nil, nil, nil) == SQLITE_OK)
         sqlite3_close(database)
         let rebuilt = try BrevSyncEngine(databaseURL: url)
         let afterRebuild = try await rebuilt.cachedConversation(around: anchor, excludingFolderIDs: [])
