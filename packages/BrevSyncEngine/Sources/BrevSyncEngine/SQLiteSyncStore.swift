@@ -428,6 +428,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     /// Writes one page and its membership atomically without changing other visited windows.
+    func storeIMAPPage(_ page: IMAPHeaderPageWrite, accountID: String) throws {
+        try storeIMAPPage(page.headers, accountID: accountID, folderID: page.folderID,
+                          pageKey: page.pageToken ?? "first", uidValidity: page.uidValidity,
+                          highestModSeq: page.highestModSeq, nextPageToken: page.nextPageToken)
+    }
+
+    /// Writes one page and its membership atomically without changing other visited windows.
     func storeIMAPPage(
         _ headers: [MessageHeader], accountID: String, folderID: String, pageKey: String,
         uidValidity: Int?, highestModSeq: UInt64?, nextPageToken: String?

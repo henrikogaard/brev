@@ -49,7 +49,7 @@ import Foundation
 /// `cachedBody` reads raw RFC 5322 source bytes stored via `storeBody(_:for:account:)`,
 /// which is a public method on the concrete type (not part of `SyncEngineProtocol`).
 /// `IMAPSMTPBackend` can call it after fetching a message body to populate the cache.
-public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConversationIndex {
+public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConversationIndex, IMAPHeaderPageIndex {
     private static let pageSize = 50
 
     let store: any SyncStoreProtocol
@@ -274,6 +274,12 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         } catch {
             return
         }
+    }
+
+    /// Persists one server page atomically, propagating errors instead of reporting a false cache hit.
+    public func storeIMAPPage(_ page: IMAPHeaderPageWrite, account: BrevAccount) async throws {
+        try await store.ensureAccount(id: account.id)
+        try await store.storeIMAPPage(page, accountID: account.id)
     }
 
     private func markFoldersCached(_ folderIDs: Set<Folder.ID>, account: BrevAccount) async {
