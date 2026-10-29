@@ -229,14 +229,26 @@ GitHub Actions. Workflows:
   optimized SwiftPM test bundle. Build tests with `swift build -c release
   --build-tests -Xswiftc -enable-testing` to support `@testable` imports, then
   execute with `swift test -c release --skip-build`.
-  The capture budget includes process discovery, attachment delay and the
-  measured workload. Harness failures preserve their exit status and print
+  The actual workload registers a unique per-run Darwin notification, drains
+  its initial changed state, then atomically publishes its PID in the private
+  output directory. The harness waits up to 30 seconds for this announcement;
+  it does not discover a target by executable name. Both sides bound tracer
+  startup at 120 seconds. The workload starts its measured loop only after
+  xctrace's supported `--notify-tracing-started` signal, acknowledging that
+  signal in a separate file. The 75-second recording budget covers the
+  25-second measured loop independently of startup time.
+  Harness failures preserve their exit status and print
   build/test/tracer logs; credential-free shell self-tests cover this contract.
   Build, workload and tracing commands run with an allowlisted environment
-  (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, and the workload opt-in).
-  Matching test processes are eligible only when a bounded parent-PID walk
+  (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, the workload opt-in,
+  private handshake directory and unique notification name).
+  Announced workload processes are eligible only when a bounded parent-PID walk
   reaches this invocation's SwiftPM test PID; ownership is rechecked directly
-  before tracer attachment. A globally newer matching process is not trusted.
+  before tracer attachment. An early runner or unrelated matching process is
+  never selected. Background test/tracer jobs own separate process groups;
+  cleanup also snapshots their descendants because SwiftPM helpers create
+  separate groups. It terminates owned descendants/groups and reaps leaders
+  on success, failure or interruption, escalating after a bounded grace period.
   Each run requires a new owner-only output directory so failure reporting
   cannot reuse old logs. Trace exports may include process environments;
   inspect only allowlisted aggregate fields, never print or upload raw exports.

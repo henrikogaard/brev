@@ -31,8 +31,7 @@ struct NavigationSelectionProfileTests {
                           date: Date(timeIntervalSince1970: TimeInterval(index)))
         }
         let navigation = MailNavigationState(selectedFolderID: "synthetic")
-        // Give the isolated CI tracer time to attach before the measured workload starts.
-        try await Task.sleep(for: .seconds(10))
+        try await NavigationSelectionProfileHandshake.awaitTracer()
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(25))
         var projectionTime = Duration.zero
