@@ -655,7 +655,8 @@ enum HTMLBodyDocument {
         guard !containsHTMLMarkup(normalized) else {
             return cleanQuotedMetadataHTML(normalized)
         }
-        return escapeHTML(normalized).replacingOccurrences(of: "\n", with: "<br>")
+        let escaped = escapeHTML(normalized).replacingOccurrences(of: "\n", with: "<br>")
+        return #"<div class="brev-plain-text">"# + escaped + "</div>"
     }
 
     private static func cleanQuotedMetadataHTML(_ html: String) -> String {

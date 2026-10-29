@@ -505,7 +505,7 @@ public struct MessageDetailView: View {
         return "\(sourceID.accountID):\(sourceID.mailboxID)"
     }
 
-    private var messageBodyFont: Font {
+    private var messageBodyStyle: MessageBodyStyle {
         MessageBodyStyle.resolve(
             theme: theme,
             fontFamily: mailboxFontFamily,
@@ -513,8 +513,10 @@ public struct MessageDetailView: View {
             renderingMode: .original,
             bodyInsetPoints: 0,
             bodyScale: messageBodyScale
-        ).swiftUIBodyFont
+        )
     }
+
+    private var messageBodyFont: Font { messageBodyStyle.swiftUIBodyFont }
 
     private var messageBodyScale: CGFloat {
         #if os(iOS)
@@ -2556,6 +2558,7 @@ public struct MessageDetailView: View {
     @ViewBuilder
     private func quotedPlainBody(_ text: String) -> some View {
         let segments = PlainBodyQuoteSegmentation.segments(of: text)
+        Group {
         if segments.count == 1, case .text(let only) = segments[0] {
             Text(only)
                 .font(messageBodyFont)
@@ -2585,6 +2588,8 @@ public struct MessageDetailView: View {
                 }
             }
         }
+        }
+        .modifier(MessageReadingColumn(style: messageBodyStyle))
     }
 
     @ViewBuilder
