@@ -228,6 +228,10 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 
 ## 10. Verification
 
+### Slice 7 implementation contract
+
+Shared body style supplies a roughly 72-character native measure, 36 times the resolved point size, via an internal reading-column modifier. Detail plain/quoted text and Thread plain text use the same leading-aligned constraint; narrower proposals stay at available width and accessibility scaling increases the point measure. Brev-generated bare-text HTML receives an owned wrapper capped at 72ch; arbitrary sender HTML, print blocks and compose remain unconstrained. Add native snapshots for narrow/wide/light/dark/accessibility variants and Mono Grey row selection/unread/inactive/disabled states without inventing theme changes where existing contrast contracts already hold. A macOS-26 CI recording job produces review artifacts; recording is not approval and baselines must be inspected before normal comparison acceptance. No host-native tests or icons.
+
 ### Slice 6 implementation contract
 
 Stage a candidate for the repeated navigation-input work visible in `MessageListView.selectMessage`: filtering/thread expansion currently repeats on each click, and reassigning the same navigation buffer discards the ID index. Reuse the existing presentation snapshot/cache for a derived navigation-header array. Include backend grouping support in its key; preserve the ungrouped filtered reply context and use the old derivation for asynchronous arrays that are not the current retained source buffer. Preserve the navigation model's ID index and avoid reassigning the observable collection when the retained buffer is unchanged. Tests cover changed rows, shared buffers, child-message selection and cache-key inputs. This is a draft candidate opened before the requested review/fix pass, not a measured optimization claim. Slice 5's fresh optimized trace must support this boundary or the candidate is revised before acceptance; no older Debug trace is reused as proof.

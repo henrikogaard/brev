@@ -90,4 +90,20 @@ struct MessageBodyStyleTests {
         if stripped.hasPrefix("#") { stripped.removeFirst() }
         return "#\(stripped)"
     }
+
+    @Test("reading measure scales with typography without constraining sender HTML")
+    func readingMeasure() {
+        let normal = MessageBodyStyle.resolve(theme: .brevMonoGrey, fontFamily: .system, textSize: .medium,
+                                              renderingMode: .original, bodyInsetPoints: 0)
+        let large = MessageBodyStyle.resolve(theme: .brevMonoGrey, fontFamily: .system, textSize: .medium,
+                                             renderingMode: .original, bodyInsetPoints: 0, bodyScale: 2)
+        #expect(normal.maximumReadingWidth == 540)
+        #expect(large.maximumReadingWidth == 1080)
+        let plain = HTMLBodyDocument.wrap("Synthetic plain text", style: normal)
+        #expect(plain.contains(#"<div class="brev-plain-text">Synthetic plain text</div>"#))
+        let sender = #"<table width="1100"><tr><td>Sender HTML</td></tr></table>"#
+        let rich = HTMLBodyDocument.wrap(sender, style: normal)
+        #expect(rich.contains(sender))
+        #expect(!rich.contains(#"<div class="brev-plain-text">"#))
+    }
 }

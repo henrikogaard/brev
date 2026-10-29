@@ -335,8 +335,14 @@ struct MessageListRowSnapshotTests {
         )
     }
 
-    private func assertRow(named name: String, isRead: Bool, isSelected: Bool) {
-        let theme = BrevTheme.brevSlate
+    @Test("Mono Grey selection, unread and disabled states remain distinct", arguments: [0, 1, 2, 3])
+    func monoGreyStates(variant: Int) {
+        assertRow(named: "mono-grey-\(variant)", isRead: variant != 0, isSelected: variant != 0,
+                  theme: .brevMonoGrey, active: variant != 2, enabled: variant != 3)
+    }
+
+    private func assertRow(named name: String, isRead: Bool, isSelected: Bool,
+                           theme: BrevTheme = .brevSlate, active: Bool = true, enabled: Bool = true) {
         let header = MessageHeader(
             id: "inbox:\(name)",
             threadID: "thread-\(name)",
@@ -371,6 +377,8 @@ struct MessageListRowSnapshotTests {
         .frame(width: 360, height: 84)
         .background(theme.bgPrimary.color)
         .brevTheme(theme)
+        .environment(\.controlActiveState, active ? .active : .inactive)
+        .disabled(!enabled)
 
         let host = NSHostingController(rootView: view)
         host.view.frame = CGRect(x: 0, y: 0, width: 360, height: 84)
