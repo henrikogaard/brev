@@ -3553,6 +3553,8 @@ public struct MessageListView: View {
 
     private func navigationHeaders(for headers: [MessageHeader]) -> [MessageHeader] {
         if headers.sharesRetainedBuffer(with: self.headers) {
+            // Re-enter the getter at selection time: a retained source buffer
+            // does not imply unchanged snooze, calendar-day, or workflow inputs.
             return presentationSnapshot.navigationHeaders
         }
         return MessageListNavigationHeaders.headers(
