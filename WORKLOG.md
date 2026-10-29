@@ -1,5 +1,14 @@
 # Worklog
 
+## 2026-10-29 — Agent — PR #265 review repair
+
+- Goal: address review comment 6498243627 on isolated `fix/pr-265-review-16784`, based on original head `8cfee2b75b6c4c368399a617e4f347c0cc505fb0`; leave the original branch and final integration to the parent.
+- Changes: split committed-reference verification from explicit candidate recording, forward `TEST_RUNNER_RECORD_SNAPSHOTS`, preserve failing exit status, and upload logs/result bundles even on failure. Recording remains fail-closed, not acceptance. Update only the inspected macOS provider-setup reference for the intended native Form. Preserve both WORKLOG histories with an additive patch; no local merge/rebase or source changes.
+- Verified: provider snapshot failed before and passed after the reference update; repeated candidate captures were byte-identical. iPhone PIM sources passed light/dark/AX3 without reference changes. Focused navigation/developer/provider run passed 46 tests. Pinned lint/format, actionlint, workflow structural/failure-pipeline assertions and diff checks passed.
+- Baseline: pristine main `5ad74c0b388466a5f842dcb43b8834f74cc413ee` on the same macOS 26.5.2 host passed all 18 iPhone form variants; this head has 12 mismatches. macOS AI Writer suite has 30 head versus 35 main mismatches, with 28 shared. All four MailStorage mismatches reported by PR #274 also reproduce on main; host causality is not established.
+- Remaining: root drawer search visibility, quieter Accounts/Notifications layouts and Appearance snapshots require native/design acceptance; no blanket rebaseline. Search placement/timing experiments did not validate a safe fix and were reverted. Failing iOS runs can leave unfinished xcresults on this host; logs are diagnostic evidence, not successful result bundles. Combined-main CI and native UI are not run here (integration/approval pending). No live provider actions or daily-driver app changes.
+- Handoff: parent integrates this coherent repair, preserves main's consent/Appearance additions, checks the combined merge ref, and settles CI/review before any merge. Documentation sweep: no new architecture, user behavior, privacy, release or setup change; existing ADR-0002/changelog cover native Forms, so only this worklog needs updating.
+
 ## 2026-10-29 — Agent — #269 / #265 native Settings review slice
 
 - Continued the existing `fix/macos-settings-native-form` branch at `4904353b` in a clean dedicated worktree. #265 remains the native Settings outcome, targets main and is draft. No duplicate Settings PR or unrelated branch rewrite.
@@ -13,6 +22,119 @@
 - Resolved additive worklog conflict and retained native-form Appearance snapshot references pending a rendered check of the combined layout.
 - Verification pending: compatible macOS snapshot run and updated-head CI. The previous BrevMail failure is the rich-text bold serializer assertion, not evidence of a Settings regression; it must not be ignored without a clean updated run or a reproduced fix.
 - Documentation sweep: existing ADR-0002 amendment and changelog cover the behavior. No new network, privacy or release changes.
+
+## 2026-10-28 — Agent — PR #256 integration review
+
+- Reviewed per-account capability resolution, independent default-off consent switches and device-local persistence. No backend advertises the capability and the controller remains unconnected.
+- Integrated the arrival-controller parent, preserving both ADR implementation-status sections, worklog histories, all consent strings and the main Calendar/Contacts/Tasks translations.
+- Verification: structured catalog comparison and duplicate-key validation, targeted format and diff checks; updated CI required before merge. Existing iOS snapshots are earlier evidence, not a new runtime run. The Space is unavailable and no host test permission is assumed.
+- Documentation sweep: added an Unreleased note for the explanatory Notifications section. No feature activation, new reachable network call, privacy-table change, release or issue closure.
+
+## 2026-10-17 — Devin — #239 consent settings
+
+- Goal: ADR-0088 slice 4 UI: per-account codes/links opt-ins.
+- Changed: `SignInCodeSettingsGroup` (BrevSettings) appended to the
+  Notifications pane; `NotificationSection` gains
+  `signInAssessmentAvailable`, fed by `SettingsView` from the backend's
+  extended capabilities; eight new strings with nb translations.
+- Verified: iOS `SettingsFormSnapshotTests` 5/5 with new
+  `forms.signin-codes-{light,dark,ax3}`; BrevSettings SignInCode /
+  Notification / navigation / search suites 69 green; lint/format clean.
+- Not changed: no AppSession wiring of `onChange`; PRIVACY.md waits for
+  the first enabled provider.
+
+## 2026-10-28 — Agent — PR #255 arrival corrections
+
+- Recheck the specific code/link consent after asynchronous sender lookup, rather than accepting either consent. Already-cancelled work stops before folder/provider reads.
+- Remove completed task handles so the controller does not retain every past inspection. Added empty-pending assertions and retained the lock-protected test recorder.
+- Verification: targeted format and diff checks before push; updated CI remains mandatory. Regression assertions were added first, but compatible local execution is blocked by the Space toolchain and later network failure; no assertion-level red or local green is claimed.
+- No production owner/caller or advertised provider capability is added. Existing ADR-0088 documents the disabled slice; no user-facing/network activation or additional privacy change.
+
+## 2026-10-28 — Agent — PR #255 consent regression
+
+- Review found that withdrawing code consent during sender lookup can still present a code when link consent remains enabled. Added a regression at that await boundary before changing production behavior.
+- Protected the test double's concurrent body-read recording with a lock; the burst test previously mutated the same array from nonisolated async calls.
+- Verification: diff check; regression execution pending CI. Space CommandLineTools cannot compile Swift Testing/SwiftUI macro dependencies, so no local test pass is claimed.
+- Capability remains disabled and no production controller caller exists. No mail sent, account settings changed or live evidence claimed.
+
+## 2026-10-17 — Devin — #239 arrival controller
+
+- Goal: ADR-0088 slices 2 and 3 wiring without UI: a controller that turns
+  `.messagesAdded` into memory-only sign-in presentations under every gate.
+- Changed: `SignInCodeArrivalController`, `SignInCodePresenting`,
+  `SignInCodePresentation` in BrevMail; ADR-0088 status subsection.
+- Verified: `swift test --package-path packages/BrevMail --filter
+  SignInCodeArrivalController` 9 green (consent before any work,
+  capability gate, folder/trust gates, link vs code consent, consent
+  recheck mid-flight, cancel/dismiss, burst cap, redaction, plain-text
+  only); lint/format clean.
+- Not changed: no AppSession owner, root-view caller, panel, settings UI,
+  PRIVACY.md (nothing reachable while the capability is off).
+
+## 2026-10-28 — Agent — PR #250 trust corrections
+
+- Excluded initial/reconnect reconciliation from fresh-delivery recording, cleared provenance on connect/disconnect and checked connection generation before returning an assessment.
+- Rejected duplicate DMARC tokens and duplicate header.from properties, including duplicates within the same segment.
+- Regression tests were written first. Their first CI attempt exposed a test-call compilation error, corrected separately. Assertion-level red evidence was not obtained before correction: CI remains queued, and the Space became unreachable after its incompatible-toolchain failures. Do not count that attempt as red-green verification.
+- Verification pending updated CI; targeted format and diff checks are run before push. No capability advertisement, production caller, mail send, privacy/network activation, release or issue closure.
+- Documentation sweep: these are corrections to the disabled ADR-0088 implementation, not new user-facing behavior; no additional changelog or privacy-table change is needed.
+
+## 2026-10-28 — Agent — PR #250 trust regression tests
+
+- Review found reconnect catch-up admitted as fresh delivery and duplicate DMARC/header.from tokens accepted inside one segment, contrary to ADR-0088.
+- Added regression assertions for both header cases, connect/reconnect exclusion and disconnect invalidation; existing label/time checks now run after a live refresh.
+- Local test attempt in local:mac-12gb is blocked: CommandLineTools lacks the Testing module. Regression execution is delegated to CI, not reported as a red pass. Capability activation remains disabled and no mail was sent.
+- Next: verify the expected CI failure, make the narrow correction, and require a green rerun before merging.
+- First CI attempt did not reach assertions: the new refresh calls omitted the required folder argument. Corrected the test call sites; this compilation failure is not the expected regression evidence.
+
+## 2026-10-16 — Devin — #239 ADR-0088 Gmail trust gates
+
+- Goal: implement the provider-dependent gates of integration slice 1 for
+  Gmail API accounts only (ADR-0088 amendment 2026-10-16), stacked on
+  `docs/adr-0088-gmail-trust` in worktree `brev-signin-trust`
+  (`feature/gmail-signin-trust`, uncommitted).
+- Changed: `SignInTrustFailure`/`SignInTrustAssessment`/`SignInTrustAssessing`
+  + `.trustedSignInAssessment` (extended capability bit 17, never advertised)
+  in BrevBackend; `GmailSignInTrustAssessor`, `GmailFreshDeliveryRegistry`
+  (200-entry, 10-minute, in-memory) and `GmailSyncOutcome`/`syncWithProvenance()`
+  in BrevGmail; `GmailAPIBackend` conforms to `SignInTrustAssessing` with
+  account → registry → label → `internalDate` → metadata-header gates.
+  `correspondents` widened to internal for the assessor's mailbox parse.
+- No panel, detector caller, settings UI, notification, advertised
+  capability, or body fetch; the method is test-reachable only, so
+  `PRIVACY.md` and the ADR-0006 network table intentionally unchanged.
+- Verified: BrevGmail suite + BrevBackend filtered tests green;
+  `scripts/lint.sh`, `scripts/format.sh` (no changes), `git diff --check`,
+  `scripts/privacy-audit.sh` — see counts in the session report.
+- Next: record E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval — they send real mail), then flip the capability on in
+  a later slice.
+
+## 2026-10-28 — Agent — PR #248 integration review
+
+- Reviewed the scoped Gmail proposal and its explicit E1-E5 activation gate under Henrik's request to prepare and merge the open PRs.
+- Integrated main and preserved both worklog histories. The amendment does not enable Gmail trust, change account settings or authorize sending test mail.
+- Verification: diff and conflict-marker checks; updated-head CI required before merge. Live mailbox evidence is not available and remains required before capability activation.
+- Documentation sweep: ADR-only integration; no product or network behavior changed, so no changelog or privacy update is needed for this PR.
+
+## 2026-10-16 — Devin — #239 ADR-0088 scoped Gmail trust
+
+- Goal: record Henrik's 2026-10-16 choice of a scoped Gmail trust model
+  for the sign-in panel instead of parking #239.
+- Changed: ADR-0088 gains "Amendment 2026-10-16: scoped Gmail trust" with
+  the topmost `mx.google.com` trust rule, the Gmail fresh-delivery rule and
+  the E1-E5 synthetic evidence table. Generic IMAP stays unsupported.
+- Verified: docs-only; `git diff --check` clean. No code touched.
+- Next: implement ordered header preservation and the assessment with unit
+  fixtures; run E1-E5 in the disposable Gmail mailbox (E2/E3 need Henrik's
+  per-run approval because they send mail).
+
+## 2026-10-28 — Agent — PR #264 integration review
+
+- Reviewed no-source presentation, settings handoff, source-change visibility, localized copy and snapshot coverage.
+- Integrated main; preserved both sets of changelog and worklog additions. Settings source merged automatically.
+- Verification: diff and conflict-marker checks; updated-head CI must pass before merging. Existing native UI evidence is earlier evidence; no additional local app run for this documentation-only conflict resolution.
+- Documentation sweep: existing changelog covers the behavior; no new privacy, network or architectural decision. No issue closure or branch cleanup.
 
 ## 2026-10-28 — Agent — PR #261 integration review
 
@@ -6432,6 +6554,35 @@ buttons, and package-aware localization.
 - Evidence: refreshed Light captures for Accounts, About with the developer toggle visible, Notifications, Folder Sync, and Preferences in `/Users/devin/evidence/settings-form/`.
 - Limits: Appearance Dark/Accounts Dark and Norwegian Appearance captures were not refreshed in this handoff. Host appearance remains Light. No commit or push was made.
 - Handoff: source and evidence are ready for review; no PR was opened and #264 was not changed.
+
+## 2026-10-25 — Devin — PR #264
+
+- Goal: finish the Calendar, Contacts and Tasks no-sources empty-state pass on
+  `fix/pim-empty-states`.
+- Changes: wired macOS actions to open Calendar & Contacts Settings at the
+  requested pane; hide the middle/list and search chrome when no sources exist;
+  paint the theme background on all surfaces; keep the iOS action at a 44-point
+  minimum. The English/Norwegian Bokmål catalog and CHANGELOG entries are
+  included. No split-view restructuring was needed.
+- Verification: `scripts/format.sh` and `scripts/lint.sh` passed after the last
+  code change. `PIMNativeChromePresentationTests` passed 18/18. The six changed
+  iOS no-source baselines were limited to three Calendar native-chrome variants
+  (Light, Dark, AX3) and three compact PIM root covers (Calendar, Contacts,
+  Tasks). `ios-pim-root-after-record.xcresult` passed 3/3; the native-chrome
+  rerun passed its dynamic test across three variants. The mock app and required
+  screenshots are saved under `~/evidence/pim-empty/` (macOS
+  Calendar/Contacts/Tasks in Light and Dark, iOS Calendar in Light and Dark,
+  Settings on Calendar & Contacts, and Norwegian Calendar).
+- Localization: the requested `open -n` launch left the Calendar empty-state
+  copy in English. The direct test-binary launch with `-AppleLanguages "(nb)"`
+  rendered `Ingen kalendere` with the translated message and action.
+- Skips/limits: no full suites or CI watch per scope; live iOS accessibility
+  frame measurement remains unavailable, though `.frame(minHeight: 44)` and the
+  presentation test cover the target. The optional `origin/main` comparison
+  screenshot was not taken. No board transition was made because the PR
+  description has no issue ID; intended status is In review.
+- Handoff: PR #264 description, CI and merge decision stay with the lead and
+  Henrik.
 
 ## 2026-10-22 — Agent — Mail-list selection CPU
 

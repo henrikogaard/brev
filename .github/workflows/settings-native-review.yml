@@ -1,5 +1,11 @@
 name: Native Settings review
 on:
+  workflow_dispatch:
+    inputs:
+      record:
+        description: 'Record candidate images only (not visual acceptance)'
+        type: boolean
+        default: false
   push:
     branches: [fix/macos-settings-native-form]
   pull_request:
@@ -8,11 +14,14 @@ on:
       - 'packages/BrevSettings/**'
 permissions:
   contents: read
+defaults:
+  run:
+    shell: bash
 concurrency:
   group: settings-native-review-${{ github.ref }}
   cancel-in-progress: true
 jobs:
-  record-settings:
+  settings-snapshots:
     runs-on: macos-26
     timeout-minutes: 45
     strategy:
@@ -21,9 +30,8 @@ jobs:
         platform: [macOS, iPhone]
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-      - name: Record changed Settings panes with synthetic fixtures
-        env:
-          RECORD_SNAPSHOTS: 'YES'
+      - name: Prepare synthetic Settings snapshot tests
+        id: prepare
         run: |
           if [[ '${{ matrix.platform }}' == 'macOS' ]]; then
             destination='platform=macOS,arch=arm64'
@@ -32,12 +40,54 @@ jobs:
             destination="$(bash scripts/ios-simulator-destination.sh)"
             suite='BrevSettingsTests/SettingsFormSnapshotTests'
           fi
+          echo "destination=$destination" >> "$GITHUB_OUTPUT"
+          echo "suite=$suite" >> "$GITHUB_OUTPUT"
           cd packages/BrevSettings
           xcodebuild -scheme BrevSettings -destination "$destination" \
             -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
             -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
-            -only-testing:"$suite" test
-      - name: Upload candidates for visual review
+            -only-testing:"$suite" build-for-testing \
+            2>&1 | tee "$RUNNER_TEMP/settings-build.log"
+      - name: Verify committed Settings references
+        if: ${{ !inputs.record }}
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'NO'
+          DESTINATION: ${{ steps.prepare.outputs.destination }}
+          SUITE: ${{ steps.prepare.outputs.suite }}
+        run: |
+          cd packages/BrevSettings
+          xcodebuild -scheme BrevSettings -destination "$DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/settings-verify.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$SUITE" test-without-building \
+            2>&1 | tee "$RUNNER_TEMP/settings-verify.log"
+      - name: Record Settings candidates for review
+        if: ${{ inputs.record }}
+        env:
+          TEST_RUNNER_RECORD_SNAPSHOTS: 'YES'
+          DESTINATION: ${{ steps.prepare.outputs.destination }}
+          SUITE: ${{ steps.prepare.outputs.suite }}
+        run: |
+          cd packages/BrevSettings
+          xcodebuild -scheme BrevSettings -destination "$DESTINATION" \
+            -derivedDataPath "$RUNNER_TEMP/settings-review" -skipMacroValidation \
+            -resultBundlePath "$RUNNER_TEMP/settings-record.xcresult" \
+            -testLanguage en -testRegion en_US -parallel-testing-enabled NO \
+            -only-testing:"$SUITE" test-without-building \
+            2>&1 | tee "$RUNNER_TEMP/settings-record.log"
+      - name: Upload diagnostics even when tests fail
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-diagnostics-${{ matrix.platform }}-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/settings-*.log
+            ${{ runner.temp }}/settings-*.xcresult
+      - name: Upload candidate references for visual review (not acceptance)
+        if: ${{ always() && inputs.record && steps.prepare.outcome == 'success' }}
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: settings-review-${{ matrix.platform }}-${{ github.sha }}
