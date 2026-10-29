@@ -328,7 +328,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         state.highestModSeq = page.highestModSeq ?? state.highestModSeq
         syncStates[key] = state
         imapPageStates[key] = IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
-                                           nextPageToken: page.nextPageToken)
+                                            nextPageToken: page.nextPageToken)
         imapWindows[key, default: [:]][page.pageToken ?? "first"] = Set(page.headers.map { Self.uid(from: $0.id) })
     }
 
