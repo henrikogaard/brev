@@ -1,5 +1,76 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 recovery integration review
+
+- Reviewed ADR-0090 and the complete isolated recovery patch, then integrated
+  its ADR-first commits into the existing #274 branch; #273 remains paired.
+- Independently passed 1,163 backend tests, 78 XCTest + 53 Swift Testing sync
+  tests (excluding the expensive header-read baseline), pinned full lint/format,
+  privacy audit/coverage, public-source-marker and telemetry self-tests. The
+  build/run environment harness initially failed its autodiscovery check;
+  the standalone matrix and complete harness passed on retry.
+- Cascade the owned #275–#277 stack without changing measured workloads or UI.
+  Hosted CI/review settlement follows the push. Native/UI/live-account and
+  cutover performance acceptance remain unrun; no install or merge authorized
+  by this policy decision. Built-app telemetry scans skipped: no app build.
+- Board access remains denied; intended implementation status is In review,
+  while #269 stays open for remaining acceptance. README/setup and network
+  endpoints are unchanged; ADR, privacy lifecycle and changelog cover the policy.
+
+## 2026-10-29 — Agent — Paired IMAP recovery implementation
+
+- Implemented approved ADR-0090 atop the pinned #274/schema-v9 base. Schema
+  v10 archives missing pre-marker legacy headers atomically with the import
+  marker; only server pages confirm headers, and successful fresh-source
+  persistence confirms content. Generic local writes and stale external
+  caches cannot release quarantine. Existing indexed metadata stays intact.
+- Public cache reset retains only payload-free suppression/import markers;
+  actual connector removal clears the real account index and parsed-body
+  cache as well as existing external stores. Deletion is logical, not a
+  claim of database/WAL/SHM or physical disk erasure. Other accounts survive.
+- Red-green evidence: 22 initial policy assertions, 3 indexed-text/attachment
+  assertions, 11 direct-reader/reset assertions and 2 connector-removal
+  assertions failed before their fixes. Twelve focused recovery tests now
+  pass, including memory/SQLite parity, transaction retry/restart, source-write
+  failure, legacy JSON retention/removal, generation changes, generic-write
+  suppression and public refresh/pagination/rebuild/reset/removal paths.
+- Request counts prove two page requests for first/older recovery, and one
+  existing first-page request per ordinary refresh while an absent legacy UID
+  remains pending. This conservative repeated-refresh cost is documented;
+  no new sweep, network endpoint, consent path or cursor heuristic was added.
+- Verification: 1,163 backend tests; 78 XCTest + 53 Swift Testing sync tests
+  (expensive IMAPHeaderReadBaselineTests excluded); pinned full SwiftFormat
+  and strict SwiftLint; privacy audit and coverage; SwiftLint coverage,
+  build/run environment, public-source-marker and telemetry-artifact self-tests;
+  git diff --check. All passed. Built-app telemetry inspection was skipped
+  because no native app bundle was built in this lane.
+- Documentation: successor ADR, CHANGELOG and PRIVACY updated. README/setup,
+  UI, AGENTS and network-call table are unchanged: no setup/UI/workflow/new
+  endpoint change. Existing completed imports are explicitly outside this
+  pre-marker policy. No new QA report or snapshot baseline was created.
+- Handoff: parent integrates into paired #273/#274, settles hosted CI/review,
+  updates the board to In review if permitted, and owns merge decisions.
+  Native/iOS/live UI and cutover performance acceptance remain unrun and
+  required; this lane neither installs an app nor requests live credentials.
+
+## 2026-10-29 — Agent — Paired IMAP storage recovery policy
+
+- Goal: implement the approved pre-marker historical-cache recovery policy
+  for #269 in the paired #273/#274 stack, preserving reviewed schema v9.
+- Decision: ADR-0090 supersedes only ADR-0087's missing-row import policy;
+  retain ambiguous headers outside normal consumers until server confirmation.
+- Design reviewed before implementation; ADR committed first on isolated
+  repair branch based on #274. Implementation and shell verification follow.
+- No native/UI/live-provider tests or application installation authorized.
+  Parent owns integration, board status, hosted CI, review and merge decisions.
+
+## 2026-10-29 — Agent — #269 selective cache consumers and writer retirement
+
+- Branch `feature/imap-selective-cache`, based on #273; target `feature/imap-sqlite-reads`, eventual main. Implementation-first draft stack continues per Henrik's instruction.
+- Added selective windows/date/attachment/body query shapes and targeted flag/label/CONDSTORE/date-repair updates. Reconciliation reads affected rows; no-index production caching is memory-only. Moved the historical JSON writer into backend test fixtures and added a production read-only migration reader. Existing cross-store benchmarks seed historical JSON directly.
+- Storage helpers no longer decode header JSON to count objects; existing backend metrics report indexed records. Updated fixture counts, lifecycle privacy documentation, accepted ADR implementation note, design and CHANGELOG.
+- Added both-store selection and row/window-isolation tests. Diff/ADR checks before push; package/lint/native verification pending the requested review/fix pass. Known inherited formatting issues remain. No host-native test or real-account migration occurred. No performance or merge-ready claim.
+
 ## 2026-10-29 — Agent — #269 indexed IMAP read/migration slice
 
 - Branch `feature/imap-sqlite-reads`, based on #272; target immediate parent `feature/imap-page-dual-write`, eventual main. Continuing all implementation PRs before the requested review/fix pass.
@@ -6720,3 +6791,90 @@ buttons, and package-aware localization.
 - Changes: preflight every source folder before server/cache mutation for move/undo, trash/permanent deletion, remote-draft cleanup, folder deletion/flush and junk training. Local migration errors propagate rather than reporting successful offline enqueueing; cancellation is preserved. No schema or import-filter change. ADR-0087 and CHANGELOG distinguish this fix from unresolved historical absence ambiguity; no network, privacy policy, setup, UI-string or release change.
 - Verification: red-green SQLite regressions cover eight entry points, multi-folder batch failure, reopening with retained stale JSON, undo-source migration and preservation of a newer legacy-only UID. Initial tests failed with 36 assertions; adding an offline queue exposed 12 further swallowed-error/queued assertions before error classification was fixed. Final four parameterized tests (17 cases) pass, as do 1,163 backend tests, 78 XCTest plus 32 Swift Testing sync tests (excluding IMAPHeaderReadBaselineTests), pinned repository lint/format and focused final lint/format. Privacy-audit coverage, public-source markers, OpenPGP-retirement and telemetry-artifact self-tests pass; non-executable self-test scripts were invoked with bash. Telemetry bundle checks skip absent app builds.
 - Handoff: isolated repair based on `8ba8154fa827a8d7d0025a96bc571b7bb95e62df`; parent owns integration into existing PR #273, stacked validation, review replies and hosted CI. No native/live tests or new header-read performance run requested. Review 4413521103 remains unresolved for already-shipped ambiguous histories; no quarantine or authoritative-source policy is implemented, and newer legacy-only rows remain recoverable. No new PR, merge, issue change or original-branch push.
+
+## 2026-10-29 — Devin — PR #274 selective-cache review repair
+
+- Goal: repair comment 6498247342 on the pinned selective-cache slice, using
+  `fix/pr-274-review-16784` only. Original parent/base: `4bf1d31f1c78748b0b49a5eb5dfd9dd34b2f595f`;
+  original PR head/repair starting point: `08535128a46fc38dec5946229214cab411f9dfb5`.
+- Changes: prepare unopened legacy folders before account/folder/set-scoped
+  cache-only search and saved-view enumeration; select exactly `Date.distantPast`;
+  preserve fractional retention cutoffs using integer candidates plus exact-date
+  filtering; gate background repair on invalid dates in the returned page.
+  Attachment/body selection unions indexed candidates before primary-key reads.
+  The local smoke now uses production SQLite/legacy-reader/memory seams.
+- Regression evidence: new date/search tests failed before implementation;
+  the page-repair regression fails with the old unconditional scheduling guard
+  and passes with the fix. Query-plan coverage rejected a folder-wide date-index
+  read, then passed with expression-index/body-primary-key candidates and exact
+  header-key lookup. Final focused sync run: 15 tests passed.
+- Verification: pinned SwiftFormat 0.58.7 on assigned files and `scripts/lint.sh`
+  (SwiftLint 0.63.0) passed; `scripts/imap-smtp-local-smoke.sh` and
+  `scripts/test.sh --self-tests-only` passed. BrevBackend: 1,163 tests passed.
+  BrevSyncEngine excluding `IMAPHeaderReadBaselineTests`: 78 XCTest + 31 Swift
+  Testing tests passed. Settings storage behavior: 23 passed; mailbox storage: 9 passed.
+  Standalone `swift build` for BrevSyncEngine and BrevBackend passed on macOS.
+- Storage review: legacy JSON files intentionally count once as objects, not as
+  messages; indexed counts are separate, and legacy bytes remain included.
+  Existing object/header copy stays accurate. ADR-0087 and CHANGELOG updated;
+  README, PRIVACY and ADR-0006 need no change (no setup or network-policy change).
+- Remaining: four existing Settings storage snapshots mismatch this host's
+  current rendering; UI sources and baselines were not changed. Current light/dark
+  PNGs and a light baseline were visually inspected and supplied in the session
+  to show the layout mismatch, not populated-cache acceptance. Full app/iOS builds,
+  live-provider/UI testing and header-read performance acceptance were not run in
+  this repair lane. No daily-driver app was replaced.
+- Handoff: parent owns schema-v8 migration replay and shared threading, restack,
+  original-PR push, CI/review settlement and merge. This patch neither changes the
+  schema nor adds a new index test conformer; no parent fix was duplicated.
+
+## 2026-10-29 — Agent — PR #273/#274 combined verification
+
+- Restacked the selective-cache slice and its review repair onto the durable-import/page-threading parent. Resolved only adjacent additions, formatter overlap and append-only documentation conflicts; retained both regression sets.
+- Combined checks passed: 78 XCTest and 34 Swift Testing sync tests (excluding the expensive header-read baseline), all 1,163 backend tests, pinned repository lint/format, and repository self-tests including the production-seam local IMAP/SMTP smoke. Query-plan coverage confirms indexed attachment/body candidates and exact header-key reads.
+- Hosted CI, four unaccepted storage snapshot differences, native/runtime acceptance and merge access remain open. No real-account migration, app installation, release, or performance acceptance is claimed. Keep the storage slices paired and issue #269 open.
+
+## 2026-10-29 — Devin — PR #274 attachment follow-up
+
+- Goal: repair reviews 4413512120/4413512356 from pinned integrated head
+  `6d725f8661ad4989b6e3c2196b966af93f5d09d7` on `fix/pr-274-followup-16784` only.
+- Changes: source/parsed-body caches enumerate account/folder-scoped IDs without
+  decoding payloads; attachment enumeration unions those IDs with indexed
+  candidates and fetches missing headers in batches of at most 256. No whole-folder
+  header fallback, network fetch, or cache rewrite was introduced. Schema v9
+  transactionally installs the attachment expression index on existing v7/v8
+  stores; fresh databases share its DDL, and in-memory schema expectations match.
+- Red-green: new tests first returned only 2 of 265 cached attachments, lacked
+  the upgraded expression index, and failed the migration-error expectation.
+  They now pass for memory and reopened file caches, including parsed/MIME-only
+  attachments, duplicate/orphan IDs, body precedence and account/folder isolation.
+  v7/v8 upgrade/reopen EXPLAIN uses the expression index; failed creation preserves
+  v8 data/windows/import markers and succeeds on retry after removing the fault.
+- Verification: 1,163 backend tests; 78 XCTest + 37 Swift Testing sync tests
+  (excluding the expensive header-read baseline); pinned full lint/format;
+  repository self-tests; standalone backend/sync package builds all passed.
+- Docs: ADR-0087/CHANGELOG updated. README, PRIVACY, ADR-0006 and UI snapshots
+  need no changes: no setup, external network, privacy policy or UI change.
+- Handoff: parent owns first-import coverage filtering, integration/restack,
+  original-PR push and review/CI settlement. No patch to that migration logic.
+  No native app/iOS build, live/UI test or performance acceptance run here.
+  Settings lane separately reproduced all four storage snapshot mismatches on
+  pristine main on the same host; no baseline changed in this follow-up.
+
+## 2026-10-29 — Devin — #269 / #274 recovery index initialization
+
+- Independent review found that a configured SQLite factory returning nil
+  could leave external body/source caches readable without recovery state.
+  The connector now resolves the factory once and withholds those caches
+  when initialization fails; intentionally index-free connectors are unchanged.
+- Red-green: a real unsupported-schema reopen with retained suppression
+  records reproduced four stale-content assertions across offline and fresh
+  server-read cases. Both cases now pass; unverified files and markers remain
+  intact, while fresh requests return only their server result.
+- Verified 1,163 backend tests, 78 XCTest + 54 Swift Testing sync tests,
+  pinned full lint/format, privacy audit/coverage and diff checks. The costly
+  header-read baseline remains excluded. No UI/native build/live account run.
+- ADR-0090, PRIVACY and CHANGELOG updated. No setup, UI, external-call or
+  workflow change warrants README, ADR-0006, AGENTS or new QA-report updates.
+- Next: restack the existing dependent PRs, settle hosted CI/review, retain
+  paired #273/#274 and all native/runtime acceptance gates; no merge here.

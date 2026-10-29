@@ -18,6 +18,92 @@ import Testing
 
 @Suite("Transactional IMAP page windows")
 struct IMAPPageWindowStoreTests {
+    @Test("v7 and v8 upgrade creates the selective attachment index and survives reopen", arguments: [7, 8])
+    func attachmentIndexUpgrade(version: Int) throws {
+        try withDatabase { url in
+            do {
+                let store = try SQLiteSyncStore(databaseURL: url)
+                try store.ensureAccount(id: "a")
+                try store.upsertHeaders((1 ... 1000).map { header($0, folder: "INBOX", hasAttachments: $0 == 1) },
+                                        accountID: "a")
+                try store.storeBody(Data("Synthetic".utf8), accountID: "a", messageID: "INBOX:2")
+            }
+            try sql(url, "DROP INDEX idx_imap_attachment_headers; PRAGMA user_version = \(version);")
+            if version == 7 { try sql(url, "DROP TABLE imap_legacy_imports;") }
+            for _ in 0 ..< 2 {
+                let store = try SQLiteSyncStore(databaseURL: url)
+                #expect(store.currentSchemaVersion == 10)
+                #expect(try count(url, "PRAGMA user_version;") == 10)
+                #expect(try store.selectIMAPHeaders(.attachmentsOrCachedBodies, accountID: "a", folderID: "INBOX")
+                    .map(\.id) == ["INBOX:2", "INBOX:1"])
+                #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 2000, offset: 0).count == 1000)
+                let plan = try queryPlan(url, SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL)
+                #expect(plan.contains { $0.contains("idx_imap_attachment_headers") && $0.contains("<expr>=?") })
+                #expect(!plan.contains { $0.hasPrefix("SCAN h") || $0.hasPrefix("SCAN message_headers") })
+                print("v\(version) upgraded attachment plan: \(plan.joined(separator: "; "))")
+            }
+        }
+    }
+
+    @Test("failed attachment index migration retains v8 data and can reopen after repair")
+    func attachmentIndexMigrationRollback() throws {
+        try withDatabase { url in
+            do {
+                let store = try SQLiteSyncStore(databaseURL: url)
+                try store.ensureAccount(id: "a")
+                try write([1], to: store)
+                try store.storeIMAPSnapshot(IMAPMailboxHeaderCacheSnapshot(headers: [], uidValidity: 777),
+                                            accountID: "a", folderID: "INBOX", importingLegacy: true)
+            }
+            try sql(url, """
+            DROP INDEX idx_imap_attachment_headers;
+            PRAGMA user_version = 8;
+            CREATE TABLE idx_imap_attachment_headers (blocked TEXT);
+            """)
+            #expect(throws: SyncStoreError.self) { _ = try SQLiteSyncStore(databaseURL: url) }
+            #expect(try count(url, "PRAGMA user_version;") == 8)
+            #expect(try count(url, "SELECT COUNT(*) FROM message_headers;") == 1)
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_page_windows;") == 1)
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 1)
+            #expect(try count(
+                url,
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='index' AND name='idx_imap_attachment_headers';"
+            ) == 0)
+            try sql(url, "DROP TABLE idx_imap_attachment_headers;")
+            let reopened = try SQLiteSyncStore(databaseURL: url)
+            #expect(reopened.currentSchemaVersion == 10)
+            #expect(try count(url, "PRAGMA user_version;") == 10)
+            #expect(try reopened.imapPageUIDs(accountID: "a", folderID: "INBOX", pageKey: "first") == [1])
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 1)
+        }
+    }
+
+    @Test("attachment and cached-body selection uses indexed candidates without folder scans")
+    func attachmentSelectionPlan() throws {
+        try withDatabase { url in
+            let store = try SQLiteSyncStore(databaseURL: url)
+            for account in ["a", "other"] {
+                try store.ensureAccount(id: account)
+                for folder in ["INBOX", "Archive"] {
+                    let headers = (1 ... 1000).map { header($0, folder: folder, hasAttachments: $0 == 1 || $0 == 3) }
+                    try store.upsertHeaders(headers, accountID: account)
+                    for uid in [2, 3, 2000] {
+                        try store.storeBody(Data("Synthetic".utf8), accountID: account, messageID: "\(folder):\(uid)")
+                    }
+                }
+            }
+            let selected = try store.selectIMAPHeaders(.attachmentsOrCachedBodies, accountID: "a", folderID: "INBOX")
+            #expect(selected.map(\.id) == ["INBOX:3", "INBOX:2", "INBOX:1"])
+            let plan = try queryPlan(url, SQLiteSyncStore.attachmentOrCachedBodyHeadersSQL)
+            #expect(plan.contains { $0.contains("idx_imap_attachment_headers") && $0.contains("<expr>=?") })
+            #expect(plan.contains { $0.contains("sqlite_autoindex_message_bodies_1") && $0.contains("account_id=?") })
+            #expect(plan.contains { $0.contains("idx_msg_message_id") && $0.contains("message_id=?") })
+            #expect(plan.contains { $0.contains("sqlite_autoindex_message_headers_1") && $0.contains("uid=?") })
+            #expect(!plan.contains { $0.hasPrefix("SCAN h") || $0.hasPrefix("SCAN message_headers") || $0.hasPrefix("SCAN b") })
+            print("IMAP attachment selection EXPLAIN QUERY PLAN: \(plan.joined(separator: "; "))")
+        }
+    }
+
     @Test("replacing first window preserves older windows and survives reopen")
     func replacementAndRestart() throws {
         try withDatabase { url in
@@ -90,7 +176,7 @@ struct IMAPPageWindowStoreTests {
             }
             try sql(url, "DROP TABLE imap_legacy_imports; PRAGMA user_version = 7;")
             let store = try SQLiteSyncStore(databaseURL: url)
-            #expect(try count(url, "PRAGMA user_version;") == 8)
+            #expect(try count(url, "PRAGMA user_version;") == 10)
             let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: [header(1, folder: "INBOX")],
                                                           uidValidity: 777, firstPageHeaderIDs: ["INBOX:1"])
             try sql(url, """
@@ -127,14 +213,14 @@ struct IMAPPageWindowStoreTests {
             """)
             do {
                 let store = try SQLiteSyncStore(databaseURL: url)
-                #expect(store.currentSchemaVersion == 8)
+                #expect(store.currentSchemaVersion == 10)
                 #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 20, offset: 0).map(\.id) == ["INBOX:1"])
                 #expect(try store.imapPageState(accountID: "a", folderID: "INBOX") == nil)
                 try write([2], to: store)
             }
             try sql(url, "PRAGMA user_version = 99;")
             #expect(throws: SyncStoreError.self) { _ = try SQLiteSyncStore(databaseURL: url) }
-            try sql(url, "PRAGMA user_version = 8;")
+            try sql(url, "PRAGMA user_version = 9;")
             let reopened = try SQLiteSyncStore(databaseURL: url)
             #expect(reopened.headers(accountID: "a", folderID: "INBOX", limit: 20, offset: 0).count == 2)
         }
@@ -206,10 +292,10 @@ struct IMAPPageWindowStoreTests {
                                 pageKey: key, uidValidity: 777, highestModSeq: UInt64.max, nextPageToken: next)
     }
 
-    private func header(_ uid: Int, folder: String) -> MessageHeader {
+    private func header(_ uid: Int, folder: String, hasAttachments: Bool = false) -> MessageHeader {
         MessageHeader(id: "\(folder):\(uid)", threadID: "thread-\(uid)", folderID: folder,
                       from: Correspondent(email: "sender@example.test"), subject: "Synthetic \(uid)", snippet: "",
-                      date: Date(timeIntervalSince1970: TimeInterval(uid)))
+                      date: Date(timeIntervalSince1970: TimeInterval(uid)), hasAttachments: hasAttachments)
     }
 
     private func withDatabase(_ body: (URL) throws -> Void) throws {
@@ -234,5 +320,20 @@ struct IMAPPageWindowStoreTests {
         defer { sqlite3_finalize(stmt) }
         try #require(sqlite3_step(stmt) == SQLITE_ROW)
         return Int(sqlite3_column_int64(stmt, 0))
+    }
+
+    private func queryPlan(_ url: URL, _ sql: String) throws -> [String] {
+        var db: OpaquePointer?
+        try #require(sqlite3_open(url.path, &db) == SQLITE_OK)
+        defer { sqlite3_close(db) }
+        var stmt: OpaquePointer?
+        try #require(sqlite3_prepare_v2(db, "EXPLAIN QUERY PLAN " + sql, -1, &stmt, nil) == SQLITE_OK)
+        defer { sqlite3_finalize(stmt) }
+        var details: [String] = []
+        while sqlite3_step(stmt) == SQLITE_ROW {
+            let text = try #require(sqlite3_column_text(stmt, 3))
+            details.append(String(cString: text))
+        }
+        return details
     }
 }

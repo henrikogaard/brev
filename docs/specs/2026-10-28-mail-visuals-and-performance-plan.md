@@ -238,6 +238,10 @@ Add a BrevBackend-owned `IMAPHeaderPageWrite` value and `IMAPHeaderPageIndex` wr
 
 Add an account-bound index cache adapter at the backend boundary. It imports a legacy snapshot transactionally, filling missing rows without overwriting newer indexed headers, and deletes the legacy source only after success. Failed import keeps the source and retries on later access. The index capability exposes metadata-only reads and bounded ID lookups; cold page cursors and page-thread inputs use those instead of whole snapshots. Existing mutation consumers temporarily retain a compatibility SQL snapshot until slice 4 replaces them. The adapter never writes JSON. Header rows, metadata and all migrated windows commit together; generation disagreement fails closed. Synthetic tests cover migration/retry, newer-row preservation and metadata/lookup reads. This PR remains draft until the outstanding runtime cutover gates are met.
 
+### Slice 4 implementation contract
+
+Add explicit selective index queries for server windows, old/invalid dates and attachment-bearing or cached-body rows. Update mutation/reconciliation/date-repair paths to read only affected IDs and persist only changed rows. Metadata-only MODSEQ updates preserve the cursor. Storage accounting counts legacy files without decoding their header arrays and uses the existing index metrics for indexed records. No-index production fallback is memory-only; the legacy file cache remains only as a migration/test compatibility reader while its writer is retired from production paths. Tests compare both stores' selected IDs and mutation isolation. Keep performance/native acceptance pending rather than claiming that query shape proves timings.
+
 | Criterion | Check | Result | Change |
 |---|---|---|---|
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |

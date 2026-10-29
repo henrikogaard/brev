@@ -225,6 +225,48 @@ Each step is its own PR with tests.
 
 ## References
 
+### Implementation review, 2026-10-29
+
+The #269 draft stack prepares schema/window writes, transactional legacy
+imports and selective maintenance reads. Storage counters no longer decode
+legacy header JSON; existing backend index metrics supply indexed record
+counts. The historical file cache writer is moved to test fixtures; production
+keeps only a read-only legacy migration reader. No-index production fallback
+is memory-only. No cutover performance or native
+acceptance result is implied by these draft changes.
+
+### Selective-query review corrections
+
+- Cache-only search and saved-view enumeration prepare all relevant legacy
+  folders before querying the index, including folders never opened in the UI.
+- Missing dates mean exactly `Date.distantPast`, not every pre-epoch date.
+  Retention selects candidates using the stored truncation-toward-zero seconds
+  and filters decoded dates against the exact cutoff. Repair work starts only
+  when a returned cached page contains a repairable sentinel.
+- Attachment enumeration unions expression-index attachment candidates with
+  account-scoped cached-body candidates, then fetches headers by primary key.
+  A regression checks `EXPLAIN QUERY PLAN` for the attachment expression index,
+  body primary key, message-ID index and exact header primary-key lookups.
+  Sorting the candidate set is acceptable; scanning the entire folder is not.
+  Source and parsed-body caches also expose account/folder-scoped message IDs;
+  file caches enumerate regular-file names without decoding payloads. IDs absent
+  from the SQLite candidate set are fetched in batches of at most 256 headers.
+  This preserves attachments discovered only in cached MIME or parsed bodies
+  despite a false header flag, with no whole-folder header fallback or network.
+- Schema v9 installs `idx_imap_attachment_headers` independently of the v7 page
+  tables. Existing v7/v8 databases create the index and advance `user_version`
+  in one transaction; failed creation leaves the prior version/data intact for
+  retry. Fresh databases use the same index DDL. Upgrade/reopen regressions
+  verify indexed query plans and preserve headers, bodies, windows and import
+  markers. In-memory stores advertise the same schema version.
+- Storage's **Mail cache** object count includes each unmigrated legacy header
+  file once; it is not a message count. **Search index database** reports only
+  indexed headers/bodies/documents. Legacy bytes remain included before import,
+  and migrate to the database afterward. Existing Settings/Mailbox object copy
+  stays accurate without decoding every legacy file just to count messages.
+- The synthetic local smoke uses the production sync engine, read-only legacy
+  reader and memory-only fallback, never the test-only legacy writer.
+
 - ADR-0029: IMAP/SMTP backend foundation (header cache semantics)
 - ADR-0030: Full IMAP sync and cache engine (migration path)
 - ADR-0082: Encryption at rest (§3 Layer A/B coverage)
