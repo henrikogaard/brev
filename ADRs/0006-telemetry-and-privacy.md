@@ -198,6 +198,10 @@ deliberate user submission. Never via direct phone-home.
 - BYOK provider metadata (endpoint/model/provider name) is stored in local
   app settings storage; only API keys are secret-backed.
 - Local providers such as Ollama do not require an API key by default.
+- Synthetic profiling tools launch build, workload and tracer children with
+  an allowlisted, credential-free environment. Traces and exports remain
+  private in new owner-only directories; share only reviewed aggregate fields,
+  because tracing tools can capture target process environments.
 
 ## Rationale
 
