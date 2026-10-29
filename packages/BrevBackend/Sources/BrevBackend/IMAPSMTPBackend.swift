@@ -986,18 +986,8 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
             return headers
         }
         let cached: [MessageHeader]
-        if headerCache is IndexedIMAPMailboxHeaderCache, let index = localSearchIndex as? any MailConversationIndex {
-            var related: [MessageHeader.ID: MessageHeader] = [:]
-            let source = MailSourceID(accountID: account.id, mailboxID: account.id)
-            for header in headers {
-                let anchor = ConversationMember(sourceID: source, header: header)
-                if let conversation = try? await index.cachedConversation(around: anchor, excludingFolderIDs: []) {
-                    for member in conversation.members where member.header.folderID == folderID {
-                        related[member.header.id] = member.header
-                    }
-                }
-            }
-            cached = Array(related.values)
+        if headerCache is IndexedIMAPMailboxHeaderCache, let index = localSearchIndex as? any IMAPHeaderPageIndex {
+            cached = await (try? index.imapThreadingHeaders(for: headers, folderID: folderID, account: account)) ?? []
         } else {
             cached = await cachedHeaderSnapshot(folderID: folderID)?.headers ?? []
         }

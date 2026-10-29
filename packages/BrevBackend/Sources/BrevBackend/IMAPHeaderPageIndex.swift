@@ -41,11 +41,14 @@ public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
     func imapHeaderMetadata(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPHeaderMetadata?
     /// Reads only explicitly requested headers from one folder.
     func imapHeaders(ids: [MessageHeader.ID], folderID: Folder.ID, account: BrevAccount) async throws -> [MessageHeader]
+    /// Reads linked candidates for a page in one shared, bounded traversal.
+    func imapThreadingHeaders(for headers: [MessageHeader], folderID: Folder.ID, account: BrevAccount) async throws
+        -> [MessageHeader]
     /// Compatibility read for consumers being replaced by selective queries in the next slice.
     func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot?
     /// Writes a compatibility snapshot or imports missing legacy rows atomically.
     func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
-                          account: BrevAccount, importingLegacy: Bool) async throws
+                           account: BrevAccount, importingLegacy: Bool) async throws
 }
 
 /// Small metadata projection for a cached IMAP folder.

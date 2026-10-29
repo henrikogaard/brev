@@ -71,7 +71,9 @@ actor IndexedIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
 
     func clear(accountID: BrevAccount.ID) async {
         guard accountID == account.id else { return }
-        for migration in migrations.values { _ = try? await migration.value }
+        for migration in migrations.values {
+            _ = try? await migration.value
+        }
         await index.clearAccount(account)
         await legacy?.clear(accountID: accountID)
         migrations.removeAll()
