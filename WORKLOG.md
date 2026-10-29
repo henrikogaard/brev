@@ -64,6 +64,11 @@
 - No native/UI/live-provider tests or application installation authorized.
   Parent owns integration, board status, hosted CI, review and merge decisions.
 
+## 2026-10-29 — Agent — #269 synthetic optimized selection profiling
+
+- Slice 5 on `feature/selection-profiling`, based on #274, targeting `feature/imap-selective-cache`, eventual main. Added an opt-in Release-only workload over the real navigation projection/selection model, separate signposts/timings and a CI Time Profiler capture script/job.
+- Raw traces stay in ephemeral runner storage; only synthetic aggregate timings enter logs. This does not claim full SwiftUI frame/idle-memory acceptance. Space commands recovered, but local:mac-12gb still lacks Xcode; host tests remain deferred.
+- Verification before push: shell syntax and diff/ADR checks. Swift compilation and actual profile capture await CI; no profile result or bottleneck claim yet. Instrumentation-only change, no TDD red/green claim. No application defaults, external calls, release, account data or versions changed; README/CHANGELOG/privacy docs need no update. Shared design updated.
 ## 2026-10-29 — Agent — #269 selective cache consumers and writer retirement
 
 - Branch `feature/imap-selective-cache`, based on #273; target `feature/imap-sqlite-reads`, eventual main. Implementation-first draft stack continues per Henrik's instruction.
