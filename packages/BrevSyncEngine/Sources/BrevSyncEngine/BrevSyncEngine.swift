@@ -294,6 +294,36 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         try await store.headersByID(ids, accountID: account.id, folderID: folderID)
     }
 
+    /// Shares indexed reply-link traversal across every member of a cached page.
+    public func imapThreadingHeaders(for headers: [MessageHeader], folderID: Folder.ID,
+                                     account: BrevAccount) async throws -> [MessageHeader] {
+        let source = MailSourceID(accountID: account.id, mailboxID: account.id)
+        let maximumCandidates = 10000
+        var pending = Set(headers.flatMap { ConversationMembershipResolver.cachedLinkIdentifiers(for: $0) ?? [] })
+        var visited = Set<String>()
+        var candidates: [ConversationLocation: ConversationMember] = [:]
+        while !pending.isEmpty, candidates.count < maximumCandidates, visited.count < maximumCandidates {
+            try Task.checkCancellation()
+            let batch = Array(pending.sorted().prefix(min(400, maximumCandidates - visited.count)))
+            pending.subtract(batch)
+            visited.formUnion(batch)
+            let matches = try await store.conversationCandidates(identifiers: batch, source: source, limit: maximumCandidates)
+            for member in matches where candidates[member.location] == nil {
+                guard candidates.count < maximumCandidates else { break }
+                candidates[member.location] = member
+                for identifier in ConversationMembershipResolver.cachedLinkIdentifiers(for: member.header) ?? []
+                    where !visited.contains(identifier) && pending.count + visited.count < maximumCandidates {
+                    pending.insert(identifier)
+                }
+            }
+        }
+        var checkedFolders = Set<Folder.ID>()
+        for member in candidates.values where checkedFolders.insert(member.header.folderID).inserted {
+            try await validateConversationGeneration(member)
+        }
+        return candidates.values.filter { $0.header.folderID == folderID }.map(\.header).sorted { $0.id < $1.id }
+    }
+
     /// Compatibility snapshot for off-critical-path consumers during the staged migration.
     public func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot? {
         try await store.imapSnapshot(accountID: account.id, folderID: folderID)
@@ -301,7 +331,7 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
 
     /// Atomically imports or updates rows, metadata and windows.
     public func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
-                                 account: BrevAccount, importingLegacy: Bool) async throws {
+                                  account: BrevAccount, importingLegacy: Bool) async throws {
         try await store.ensureAccount(id: account.id)
         try await store.storeIMAPSnapshot(snapshot, accountID: account.id, folderID: folderID, importingLegacy: importingLegacy)
     }

@@ -81,6 +81,36 @@ struct IMAPPageWindowStoreTests {
         }
     }
 
+    @Test("v7 upgrade creates transactional legacy import markers and rollback permits retry")
+    func legacyImportUpgrade() throws {
+        try withDatabase { url in
+            do {
+                let store = try SQLiteSyncStore(databaseURL: url)
+                try store.ensureAccount(id: "a")
+            }
+            try sql(url, "DROP TABLE imap_legacy_imports; PRAGMA user_version = 7;")
+            let store = try SQLiteSyncStore(databaseURL: url)
+            #expect(try count(url, "PRAGMA user_version;") == 8)
+            let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: [header(1, folder: "INBOX")],
+                                                          uidValidity: 777, firstPageHeaderIDs: ["INBOX:1"])
+            try sql(url, """
+            CREATE TRIGGER reject_import BEFORE INSERT ON imap_legacy_imports
+            BEGIN SELECT RAISE(ABORT, 'injected import failure'); END;
+            """)
+            #expect(throws: (any Error).self) {
+                try store.storeIMAPSnapshot(snapshot, accountID: "a", folderID: "INBOX", importingLegacy: true)
+            }
+            #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 10, offset: 0).isEmpty)
+            #expect(try store.imapPageState(accountID: "a", folderID: "INBOX") == nil)
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 0)
+            try sql(url, "DROP TRIGGER reject_import;")
+            try store.storeIMAPSnapshot(snapshot, accountID: "a", folderID: "INBOX", importingLegacy: true)
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 1)
+            try store.clearAccount(id: "a")
+            #expect(try count(url, "SELECT COUNT(*) FROM imap_legacy_imports;") == 0)
+        }
+    }
+
     @Test("v6 upgrade preserves header rows and unknown future schema is not wiped")
     func upgrade() throws {
         try withDatabase { url in
@@ -97,14 +127,14 @@ struct IMAPPageWindowStoreTests {
             """)
             do {
                 let store = try SQLiteSyncStore(databaseURL: url)
-                #expect(store.currentSchemaVersion == 7)
+                #expect(store.currentSchemaVersion == 8)
                 #expect(store.headers(accountID: "a", folderID: "INBOX", limit: 20, offset: 0).map(\.id) == ["INBOX:1"])
                 #expect(try store.imapPageState(accountID: "a", folderID: "INBOX") == nil)
                 try write([2], to: store)
             }
             try sql(url, "PRAGMA user_version = 99;")
             #expect(throws: SyncStoreError.self) { _ = try SQLiteSyncStore(databaseURL: url) }
-            try sql(url, "PRAGMA user_version = 7;")
+            try sql(url, "PRAGMA user_version = 8;")
             let reopened = try SQLiteSyncStore(databaseURL: url)
             #expect(reopened.headers(accountID: "a", folderID: "INBOX", limit: 20, offset: 0).count == 2)
         }

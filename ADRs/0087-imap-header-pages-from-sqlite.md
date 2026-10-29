@@ -89,6 +89,11 @@ shipped. Henrik asked for faster folder switching on 2026-10-09.
    Thread resolution stays client-side per ADR-0052. Only its input
    narrows from "every cached header" to "headers linked to this page".
 
+   Page threading shares one bounded traversal of reply identifiers across
+   all page members. Each lookup batches up to 400 identifiers through
+   `conversation_links`, deduplicates headers, and retains cross-folder
+   linking while returning only candidates in the requested folder.
+
    Attachment enumeration (ADR-0044) is the one consumer whose current
    SQLite path is itself a whole-folder scan: `allIndexedHeaders` pages
    every row into memory and the caller keeps the ones with attachments.
@@ -107,6 +112,12 @@ shipped. Henrik asked for faster folder switching on 2026-10-09.
    never opened again is cleaned up with the account directory on the
    next "Clear cache" or account removal. Persisted `.snapshot(offset)`
    page tokens fall back to a fresh first page.
+
+   Schema v8 adds an account/folder import-completion marker, committed in
+   the same transaction as the imported rows and windows. Retrying cleanup
+   after a restart must not reinsert deleted headers from a surviving JSON
+   file. Markers survive folder-cache clearing and generation invalidation;
+   account deletion removes them with the account's other metadata.
 
 6. **Storage UI reads SQLite.** `MailboxStorageInfo` and
    `MailStorageSection` stop decoding JSON files. They use per-folder

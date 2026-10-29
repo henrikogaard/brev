@@ -19,6 +19,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Retrying a legacy IMAP cache import after failed file cleanup no longer
+  restores messages already removed from the index. Cached-page threading
+  shares bounded reply-link lookups instead of traversing once per message.
+
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an
   account.

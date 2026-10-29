@@ -44,7 +44,7 @@ struct IMAPPageState: Equatable {
 /// The NSLock serialises access from the BrevSyncEngine actor, which is the sole
 /// owner of this store in production.
 final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
-    let currentSchemaVersion = 7
+    let currentSchemaVersion = 8
 
     private let lock = NSLock()
     private let db: OpaquePointer?
@@ -297,14 +297,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
     }
 
     func conversationCandidates(identifier: String, source: MailSourceID, limit: Int) throws -> [ConversationMember] {
-        guard limit > 0 else { return [] }
+        try conversationCandidates(identifiers: [identifier], source: source, limit: limit)
+    }
+
+    func conversationCandidates(identifiers: [String], source: MailSourceID, limit: Int) throws -> [ConversationMember] {
+        guard limit > 0, !identifiers.isEmpty else { return [] }
         return try lock.withLock {
             var statement: OpaquePointer?
+            let placeholders = Array(repeating: "?", count: identifiers.count).joined(separator: ",")
             let sql = """
             SELECT h.header_json, s.uid_validity FROM conversation_links c
             JOIN message_headers h USING (account_id, folder_id, uid)
             LEFT JOIN folder_sync_state s ON s.account_id = h.account_id AND s.folder_id = h.folder_id
-            WHERE c.account_id = ? AND c.identifier = ?
+            WHERE c.account_id = ? AND c.identifier IN (\(placeholders))
+            GROUP BY c.folder_id, c.uid
             ORDER BY c.folder_id, c.uid LIMIT ?;
             """
             guard sqlite3_prepare_v2(db, sql, -1, &statement, nil) == SQLITE_OK else {
@@ -312,8 +318,10 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             }
             defer { sqlite3_finalize(statement) }
             sqlite3_bind_text(statement, 1, source.accountID, -1, Self.transient)
-            sqlite3_bind_text(statement, 2, identifier, -1, Self.transient)
-            sqlite3_bind_int64(statement, 3, Int64(limit))
+            for (offset, identifier) in identifiers.enumerated() {
+                sqlite3_bind_text(statement, Int32(offset + 2), identifier, -1, Self.transient)
+            }
+            sqlite3_bind_int64(statement, Int32(identifiers.count + 2), Int64(limit))
             var result: [ConversationMember] = []
             var step = sqlite3_step(statement)
             while step == SQLITE_ROW {
@@ -495,14 +503,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapSnapshot {
                     let snapshot = imapSnapshot.snapshot
                     let previous = try readIMAPPageState(accountID: accountID, folderID: imapSnapshot.folderID)
+                    if imapSnapshot.importingLegacy,
+                       countRows("SELECT COUNT(*) FROM imap_legacy_imports WHERE account_id = ? AND folder_id = ?;",
+                                 bindings: [.text(accountID), .text(imapSnapshot.folderID)]) > 0 {
+                        try execSQL("COMMIT;")
+                        return
+                    }
                     if let old = previous?.uidValidity, let new = snapshot.uidValidity, old != new {
                         throw SyncStoreError.imapGenerationMismatch
                     }
                     if !imapSnapshot.importingLegacy || previous?.uidValidity == nil {
                         try writeIMAPPageState(IMAPPageWrite(folderID: imapSnapshot.folderID, pageKey: "first",
-                                                            state: IMAPPageState(uidValidity: snapshot.uidValidity,
-                                                                                 highestModSeq: snapshot.highestModSeq,
-                                                                                 nextPageToken: snapshot.nextPageToken)),
+                                                             state: IMAPPageState(uidValidity: snapshot.uidValidity,
+                                                                                  highestModSeq: snapshot.highestModSeq,
+                                                                                  nextPageToken: snapshot.nextPageToken)),
                                                accountID: accountID)
                     }
                 }
@@ -590,7 +604,13 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                 if let imapPage {
                     try replaceIMAPWindow(imapPage, headers: headers, accountID: accountID)
                 }
-                if let imapSnapshot { try writeSnapshotWindows(imapSnapshot, accountID: accountID) }
+                if let imapSnapshot {
+                    try writeSnapshotWindows(imapSnapshot, accountID: accountID)
+                    if imapSnapshot.importingLegacy {
+                        try execStmt("INSERT INTO imap_legacy_imports (account_id, folder_id) VALUES (?, ?);",
+                                     bindings: [.text(accountID), .text(imapSnapshot.folderID)])
+                    }
+                }
                 try execSQL("COMMIT;")
             } catch {
                 try? execSQL("ROLLBACK;")
@@ -611,7 +631,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         }
         try upsertHeaders(snapshot.headers, accountID: accountID, imapPage: nil,
                           imapSnapshot: IMAPSnapshotWrite(snapshot: snapshot, folderID: folderID,
-                                                         importingLegacy: importingLegacy))
+                                                          importingLegacy: importingLegacy))
     }
 
     func headersByID(_ ids: [String], accountID: String, folderID: String) throws -> [MessageHeader] {
@@ -1495,6 +1515,12 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     try execSQL("PRAGMA user_version = 7;")
                 }
             }
+            if version < 8 {
+                try inTransaction {
+                    try createIMAPLegacyImportSchema()
+                    try execSQL("PRAGMA user_version = 8;")
+                }
+            }
         default:
             // version > currentSchemaVersion: written by a newer build.
             throw SyncStoreError.unknownSchemaVersion(
@@ -1522,6 +1548,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             try createConversationSchema()
             try createAttachmentSearchSchema()
             try createIMAPPageSchema()
+            try createIMAPLegacyImportSchema()
         }
     }
 
@@ -1600,6 +1627,16 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         );
         CREATE INDEX IF NOT EXISTS idx_imap_window_header
             ON imap_page_windows(account_id, folder_id, uid);
+        """)
+    }
+
+    private func createIMAPLegacyImportSchema() throws {
+        try execSQL("""
+        CREATE TABLE IF NOT EXISTS imap_legacy_imports (
+            account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+            folder_id TEXT NOT NULL,
+            PRIMARY KEY (account_id, folder_id)
+        );
         """)
     }
 
