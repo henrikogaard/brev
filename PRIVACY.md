@@ -732,7 +732,10 @@ import markers, and requests external-cache cleanup. SQLite deletion is
 logical: physical destruction of database, WAL, SHM or disk bytes is not
 guaranteed. Other accounts are unaffected. Already-completed historical
 imports cannot be retroactively classified by this policy. If the index
-cannot open, new header caching remains memory-only.
+cannot open, new header caching remains memory-only and the connector does
+not read or write persisted source/body caches whose recovery state cannot
+be checked. Fresh server reads remain available; offline reads cannot fall
+back to those unverified files.
 
 ## Local mail folders
 

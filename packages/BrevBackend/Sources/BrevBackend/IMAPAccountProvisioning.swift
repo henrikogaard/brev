@@ -1106,6 +1106,9 @@ public struct IMAPAccountConnector: Sendable {
             refreshOAuthCredential = nil
         }
 
+        let index = includeLocalStores ? localSearchIndex?(account.id) : nil
+        // An unavailable recovery index cannot authorize persisted content reads.
+        let includeContentCaches = includeLocalStores && (localSearchIndex == nil || index != nil)
         return IMAPSMTPBackend(
             account: account,
             configuration: configuration,
@@ -1139,9 +1142,9 @@ public struct IMAPAccountConnector: Sendable {
             disconnectSession: disconnectSession,
             folderCache: includeLocalStores ? folderCache : nil,
             headerCache: includeLocalStores ? headerCache : nil,
-            sourceCache: includeLocalStores ? sourceCache : nil,
-            bodyCache: includeLocalStores ? bodyCache : nil,
-            localSearchIndex: includeLocalStores ? localSearchIndex?(account.id) : nil,
+            sourceCache: includeContentCaches ? sourceCache : nil,
+            bodyCache: includeContentCaches ? bodyCache : nil,
+            localSearchIndex: index,
             draftStagingStore: includeLocalStores ? draftStagingStore : nil,
             offlineMutationQueue: offlineMutationQueue?(account.id),
             offlineMutationConflictStore: offlineMutationConflictStore?(account.id),

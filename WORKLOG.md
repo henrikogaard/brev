@@ -6860,3 +6860,21 @@ buttons, and package-aware localization.
   No native app/iOS build, live/UI test or performance acceptance run here.
   Settings lane separately reproduced all four storage snapshot mismatches on
   pristine main on the same host; no baseline changed in this follow-up.
+
+## 2026-10-29 — Devin — #269 / #274 recovery index initialization
+
+- Independent review found that a configured SQLite factory returning nil
+  could leave external body/source caches readable without recovery state.
+  The connector now resolves the factory once and withholds those caches
+  when initialization fails; intentionally index-free connectors are unchanged.
+- Red-green: a real unsupported-schema reopen with retained suppression
+  records reproduced four stale-content assertions across offline and fresh
+  server-read cases. Both cases now pass; unverified files and markers remain
+  intact, while fresh requests return only their server result.
+- Verified 1,163 backend tests, 78 XCTest + 54 Swift Testing sync tests,
+  pinned full lint/format, privacy audit/coverage and diff checks. The costly
+  header-read baseline remains excluded. No UI/native build/live account run.
+- ADR-0090, PRIVACY and CHANGELOG updated. No setup, UI, external-call or
+  workflow change warrants README, ADR-0006, AGENTS or new QA-report updates.
+- Next: restack the existing dependent PRs, settle hosted CI/review, retain
+  paired #273/#274 and all native/runtime acceptance gates; no merge here.

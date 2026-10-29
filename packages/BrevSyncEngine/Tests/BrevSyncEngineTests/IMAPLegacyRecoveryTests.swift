@@ -289,6 +289,60 @@ struct IMAPLegacyRecoveryTests {
         #expect(try await engine.imapHeaders(ids: [id], folderID: "INBOX", account: Self.account).count == 1)
     }
 
+    @Test("failed index initialization never unlocks external content", arguments: [false, true])
+    func unavailableIndex(online: Bool) async throws {
+        let fixture = try Fixture(sqlite: true)
+        defer { fixture.cleanUp() }
+        let engine = BrevSyncEngine(store: fixture.store)
+        let id = "INBOX:99"
+        try await engine.storeIMAPSnapshot(snapshot([header(99)]), folderID: "INBOX", account: Self.account,
+                                           importingLegacy: true)
+        let sources = FileIMAPMessageSourceCache(rootDirectory: fixture.root.appendingPathComponent("sources"))
+        let bodies = FileIMAPMessageBodyCache(rootDirectory: fixture.root.appendingPathComponent("bodies"))
+        await sources.setSource(IMAPMessageSource(uid: 99, rawMessage: "old secret"), accountID: Self.account.id, messageID: id)
+        await bodies.setBody(MessageBody(messageID: id, plainText: "old secret"), accountID: Self.account.id, messageID: id)
+        try sql(fixture.databaseURL, "PRAGMA user_version = \(fixture.store.currentSchemaVersion + 1);")
+        #expect(throws: (any Error).self) { _ = try BrevSyncEngine(databaseURL: fixture.databaseURL) }
+
+        let accounts = InMemoryAccountStore()
+        let configurations = InMemoryIMAPAccountConfigurationStore()
+        let credentials = InMemoryMailCredentialStore()
+        await accounts.add(Self.account)
+        await configurations.setConfiguration(IMAPAccountConfiguration(
+            accountID: Self.account.id, emailAddress: Self.account.emailAddress, displayName: Self.account.displayName,
+            incoming: MailServerSettings(kind: .imap, host: "imap.example.test", port: 993, tlsMode: .implicit,
+                                         authentication: .password),
+            outgoing: MailServerSettings(kind: .smtp, host: "smtp.example.test", port: 587, tlsMode: .startTLS,
+                                         authentication: .password), credentialID: Self.account.id
+        ))
+        try await credentials.setCredential(MailAccountCredential(incomingUsername: "synthetic", outgoingUsername: "synthetic",
+                                                                  secret: "fixture", authentication: .password),
+                                            for: Self.account.id)
+        let fresh = "Content-Type: text/plain\r\n\r\nFresh server body"
+        let connector = IMAPAccountConnector(
+            accountStore: accounts, configurationStore: configurations, credentialStore: credentials,
+            listFolders: { _, _ in [] },
+            fetchMessageSource: { _, _, _, uid in
+                guard online else { throw MailBackendError.notFound(id: id) }
+                return IMAPMessageSource(uid: uid, rawMessage: fresh)
+            }, sourceCache: sources, bodyCache: bodies,
+            localSearchIndex: { _ in try? BrevSyncEngine(databaseURL: fixture.databaseURL) }
+        )
+        let restored = try await connector.restore(Self.account)
+        let backend = try #require(restored)
+        if online {
+            #expect(try await backend.body(for: id).plainText?.contains("Fresh server body") == true)
+            #expect(try await backend.rawSource(for: id) == fresh)
+        } else {
+            await #expect(throws: (any Error).self) { _ = try await backend.body(for: id) }
+            await #expect(throws: (any Error).self) { _ = try await backend.rawSource(for: id) }
+        }
+        await backend.disconnect()
+        #expect(try scalar(fixture.databaseURL,
+                           "SELECT COUNT(*) FROM imap_legacy_recovery WHERE source_confirmed = 0;") == 1)
+        #expect(await sources.source(accountID: Self.account.id, messageID: id)?.rawMessage == "old secret")
+    }
+
     @Test("connector removal erases quarantine and external content only for the removed account")
     func connectorRemoval() async throws {
         let fixture = try Fixture(sqlite: true)

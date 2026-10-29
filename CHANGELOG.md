@@ -29,6 +29,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- If an IMAP recovery index cannot open, stale external body/source caches
+  stay unavailable rather than bypassing recovery checks. Fresh server reads
+  remain available.
+
 - Destructive IMAP actions now complete legacy-cache migration before
   changing server messages. Migration failure stops the action instead of
   silently queueing it, and headers deleted by these actions cannot return

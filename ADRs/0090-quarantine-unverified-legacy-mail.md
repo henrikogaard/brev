@@ -48,7 +48,11 @@ cannot be retroactively classified; this policy applies before the marker.
    server source is persisted atomically with its source confirmation; a
    failed write remains suppressed. Fresh structured-body requests may
    return their result without confirming an old raw source. Standalone
-   cache entries unrelated to quarantine keep their existing behavior.
+   cache entries unrelated to quarantine keep their existing behavior. If a
+   configured index factory cannot initialize the index, the connector does
+   not inject persisted source/body caches: unavailable provenance is not
+   proof that no recovery marker exists. Fresh server reads still work;
+   deliberately index-free connectors retain their standalone cache behavior.
 6. Recovery data is local cache, not a backup: it stays until explicit cache
    clearing/account removal or targeted deletion. Generation invalidation
    must not expose retained content under reused UIDs. Clear Cache discards
