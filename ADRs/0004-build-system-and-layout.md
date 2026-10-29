@@ -239,6 +239,8 @@ GitHub Actions. Workflows:
   25-second measured loop independently of startup time.
   Harness failures preserve their exit status and print
   build/test/tracer logs; credential-free shell self-tests cover this contract.
+  Those tests invoke the harness with the system `/bin/bash`, including
+  Bash 3.2's empty-array behavior under `nounset`, rather than a newer PATH shell.
   Build, workload and tracing commands run with an allowlisted environment
   (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, the workload opt-in,
   private handshake directory and unique notification name).
