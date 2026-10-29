@@ -92,6 +92,36 @@ struct IMAPPageIndexTests {
         func clear(accountID _: BrevAccount.ID) async {}
     }
 
+    @Test("selective maintenance reads and row writes preserve unrelated rows and windows", arguments: [false, true])
+    func selectiveMaintenance(sqlite: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-selective-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let account = BrevAccount(id: "synthetic", displayName: "Synthetic", emailAddress: "reader@example.test")
+        let engine = BrevSyncEngine(store: store)
+        let headers = (1 ... 3).map { uid in
+            MessageHeader(id: "INBOX:\(uid)", threadID: "thread-\(uid)", folderID: "INBOX",
+                          from: Correspondent(email: "sender@example.test"), subject: "Synthetic", snippet: "",
+                          date: Date(timeIntervalSince1970: uid == 1 ? -1 : TimeInterval(uid)), hasAttachments: uid == 3)
+        }
+        try await engine.storeIMAPPage(IMAPHeaderPageWrite(folderID: "INBOX", pageToken: nil, headers: headers,
+                                                          uidValidity: 777, highestModSeq: 888, nextPageToken: "saved"), account: account)
+        await engine.storeRawMessage(Data("Synthetic body".utf8), for: "INBOX:2", account: account)
+        #expect(try await engine.selectIMAPHeaders(.attachmentsOrCachedBodies, folderID: "INBOX", account: account).map(\.id) == ["INBOX:3", "INBOX:2"])
+        #expect(try await engine.selectIMAPHeaders(.invalidDates, folderID: "INBOX", account: account).map(\.id) == ["INBOX:1"])
+        #expect(try await engine.selectIMAPHeaders(.olderThan(Date(timeIntervalSince1970: 2.5)), folderID: "INBOX", account: account).map(\.id) == ["INBOX:2", "INBOX:1"])
+        #expect(try await engine.selectIMAPHeaders(.excludingIDs(["INBOX:1", "INBOX:3"]), folderID: "INBOX", account: account).map(\.id) == ["INBOX:2"])
+        var changed = headers[1]
+        changed.isRead = true
+        await engine.storeHeaders([changed], account: account)
+        try await engine.updateIMAPModSeq(999, folderID: "INBOX", account: account)
+        #expect(try await engine.imapHeaders(ids: ["INBOX:1"], folderID: "INBOX", account: account).first?.isRead == false)
+        #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "first") == [1, 2, 3])
+        #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.nextPageToken == "saved")
+        #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.highestModSeq == 999)
+    }
+
     @Test("legacy import preserves newer rows and only removes the source after success", arguments: [false, true])
     func legacyImport(sqlite: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-import-\(UUID())")

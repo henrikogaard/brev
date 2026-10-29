@@ -336,6 +336,17 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
         try await store.storeIMAPSnapshot(snapshot, accountID: account.id, folderID: folderID, importingLegacy: importingLegacy)
     }
 
+    /// Reads a selective cache-maintenance projection without decoding unrelated headers.
+    public func selectIMAPHeaders(_ selection: IMAPHeaderSelection, folderID: Folder.ID,
+                                  account: BrevAccount) async throws -> [MessageHeader] {
+        try await store.selectIMAPHeaders(selection, accountID: account.id, folderID: folderID)
+    }
+
+    /// Advances only the persisted folder watermark.
+    public func updateIMAPModSeq(_ modSeq: UInt64, folderID: Folder.ID, account: BrevAccount) async throws {
+        try await store.updateIMAPModSeq(modSeq, accountID: account.id, folderID: folderID)
+    }
+
     private func markFoldersCached(_ folderIDs: Set<Folder.ID>, account: BrevAccount) async {
         for folderID in folderIDs {
             guard await store.syncState(accountID: account.id, folderID: folderID) == nil else {
