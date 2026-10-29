@@ -1,5 +1,16 @@
 # Worklog
 
+## 2026-10-29 — Agent — Paired IMAP storage recovery policy
+
+- Goal: implement the approved pre-marker historical-cache recovery policy
+  for #269 in the paired #273/#274 stack, preserving reviewed schema v9.
+- Decision: ADR-0090 supersedes only ADR-0087's missing-row import policy;
+  retain ambiguous headers outside normal consumers until server confirmation.
+- Design reviewed before implementation; ADR committed first on isolated
+  repair branch based on #274. Implementation and shell verification follow.
+- No native/UI/live-provider tests or application installation authorized.
+  Parent owns integration, board status, hosted CI, review and merge decisions.
+
 ## 2026-10-29 — Agent — #269 selective cache consumers and writer retirement
 
 - Branch `feature/imap-selective-cache`, based on #273; target `feature/imap-sqlite-reads`, eventual main. Implementation-first draft stack continues per Henrik's instruction.
