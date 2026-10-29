@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Changed
 
+- Reuse the current list presentation's reader navigation context during
+  repeated selection, preserving reply visibility and refreshing changed headers.
+
 - IMAP cache maintenance uses selective header queries and row-level updates.
   The historical JSON header writer is now test-only; production keeps a
   read-only migration reader and a memory-only fallback when the index is unavailable.
