@@ -228,6 +228,12 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 
 ## 10. Verification
 
+### Slice 2b implementation contract
+
+The caller requested opening implementation PRs for every slice before the review/fix pass on 2026-10-29. Continue coding in dependent draft PRs rather than stopping after each CI run. This changes delivery order, not the measurement/merge gates.
+
+Add a BrevBackend-owned `IMAPHeaderPageWrite` value and `IMAPHeaderPageIndex` write capability. The engine forwards one page to its store transaction and propagates errors. The in-memory store follows the same membership/generation semantics for fixtures. `IMAPSMTPBackend.cacheHeaders` prefers this capability for first or explicitly identified older pages, while continuing its existing JSON write unchanged. Unidentified merges keep ordinary header writes rather than accidentally replacing the first window. On a page-write failure retain best-effort header indexing and the legacy cache; do not acknowledge migration/readiness or switch reads. Verify engine forwarding, empty pages, page replacement and fallback using synthetic stores. No live-provider sends or host-native tests.
+
 | Criterion | Check | Result | Change |
 |---|---|---|---|
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |

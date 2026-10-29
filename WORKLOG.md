@@ -1,5 +1,12 @@
 # Worklog
 
+## 2026-10-29 — Agent — #269 IMAP page dual-write
+
+- Continued slice 2b on `feature/imap-page-dual-write`, based on #271 at `652242e6`; target immediate parent `feature/imap-page-window-store`, eventual main. Henrik requested implementation PRs for all slices before the review/fix pass; work continues without waiting for each CI run.
+- Added the backend-owned page-write capability and engine/store forwarding, with in-memory transaction parity. First and identified older pages use the atomic write; unidentified merges keep ordinary indexing. Legacy JSON remains authoritative and is still written; failed page writes keep the prior fallback.
+- Synthetic engine/store tests cover first/older/empty windows, generation rejection and cleanup for both stores. Focused format/lint/diff checks before commit; package execution via CI. No locally observed red run because host native testing remains deferred. No real-account access, read cutover, merge or release.
+- Documentation: design detailed contract and CHANGELOG updated. Existing ADR-0087 governs this seam; no new network/privacy behavior, QA evidence report, README or workflow change.
+
 ## 2026-10-29 — Agent — #271 legacy migration fixtures
 
 - Fresh CI at `c8a681e8`, run `40781250508`, compiled successfully and passed all seven transactional page-window tests. BrevSyncEngine still failed three existing v4/v5 migration tests because they rewound the current database version without removing the v7 paging column. Other Build jobs passed.

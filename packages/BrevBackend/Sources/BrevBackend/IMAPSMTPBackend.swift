@@ -3823,7 +3823,21 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         mergingWithExisting: Bool = false,
         loadedPageToken: String? = nil
     ) async {
-        await localSearchIndex?.storeHeaders(Self.deduplicatedByID(headers), account: account)
+        let uniqueHeaders = Self.deduplicatedByID(headers)
+        if let pageIndex = localSearchIndex as? any IMAPHeaderPageIndex,
+           !mergingWithExisting || loadedPageToken != nil {
+            do {
+                try await pageIndex.storeIMAPPage(IMAPHeaderPageWrite(
+                    folderID: folderID, pageToken: loadedPageToken, headers: uniqueHeaders,
+                    uidValidity: uidValidity, highestModSeq: highestModSeq, nextPageToken: nextPageToken
+                ), account: account)
+            } catch {
+                // Dual-write stage: the legacy cache remains authoritative on failure.
+                await localSearchIndex?.storeHeaders(uniqueHeaders, account: account)
+            }
+        } else {
+            await localSearchIndex?.storeHeaders(uniqueHeaders, account: account)
+        }
         let firstPageHeaderIDs = Set(headers.map(\.id))
         if let cachedSnapshot = await cachedHeaderSnapshot(folderID: folderID) {
             if !mergingWithExisting,
