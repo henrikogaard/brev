@@ -35,6 +35,7 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
     private static let serverSearchPageSize = 50
     private static let legacySearchCandidateLimit = 200
     private static let cachedMessagePageSize = 50
+    private static let cachedAttachmentHeaderBatchSize = 256
 
     public typealias FolderListingOperation =
         @Sendable (IMAPAccountConfiguration, MailAccountCredential) async throws
@@ -1611,11 +1612,22 @@ public final class IMAPSMTPBackend: DeferredStartupWorking, MailBackend, Mutatio
         if let indexed = headerCache as? IndexedIMAPMailboxHeaderCache {
             do {
                 try await indexed.prepare(folderID: folder.id)
-                return try await indexed.index.selectIMAPHeaders(
+                var headers = try await indexed.index.selectIMAPHeaders(
                     .attachmentsOrCachedBodies,
                     folderID: folder.id,
                     account: account
                 )
+                let sourceIDs = await sourceCache?.cachedMessageIDs(accountID: account.id, folderID: folder.id) ?? []
+                let bodyIDs = await bodyCache?.cachedMessageIDs(accountID: account.id, folderID: folder.id) ?? []
+                let missingIDs = Array(sourceIDs.union(bodyIDs).subtracting(headers.map(\.id))).sorted()
+                for offset in stride(from: 0, to: missingIDs.count, by: Self.cachedAttachmentHeaderBatchSize) {
+                    if Task.isCancelled { return [] }
+                    let end = min(offset + Self.cachedAttachmentHeaderBatchSize, missingIDs.count)
+                    headers += try await indexed.index.imapHeaders(
+                        ids: Array(missingIDs[offset ..< end]), folderID: folder.id, account: account
+                    )
+                }
+                return headers.sorted { $0.date == $1.date ? $0.id > $1.id : $0.date > $1.date }
             } catch { return [] }
         }
         if let snapshot = await headerCache?.snapshot(accountID: account.id, folderID: folder.id) {
