@@ -6720,3 +6720,39 @@ buttons, and package-aware localization.
 - Changes: schema v8 persists account/folder import-completion markers in the import transaction. Markers survive folder clearing and generation changes and cascade on account deletion. Both stores share retry behavior. Page threading batches indexed reply identifiers across the page, preserving cross-folder links and account isolation; inherited formatting findings are fixed. ADR-0087 and CHANGELOG updated; no new network calls, opt-ins, UI strings, or privacy-policy changes.
 - Verification: reproduced the resurrection failure before the fix. The final BrevSyncEngine run passed 78 XCTest and 28 Swift Testing tests, excluding the expensive header-read baseline; new coverage exercises failed cleanup, reopen/deletion/retry, generation reset, schema-v7 upgrade, transaction rollback and page graph isolation/deduplication. The focused IMAP backend cache/thread run passed 73 tests. Pinned repository lint/format, focused lint on the final schema expectations, and diff checks passed.
 - Limits: the original full Debug run was cancelled during the 50k-header baseline after revealing stale schema expectations; no complete new cold-header baseline, native app acceptance, live-mailbox migration, or Release performance claim. CI/review settlement and combined validation with PR #274 are still required. The merge credential currently cannot merge PRs; no merge performed.
+
+## 2026-10-29 — Devin — PR #274 selective-cache review repair
+
+- Goal: repair comment 6498247342 on the pinned selective-cache slice, using
+  `fix/pr-274-review-16784` only. Original parent/base: `4bf1d31f1c78748b0b49a5eb5dfd9dd34b2f595f`;
+  original PR head/repair starting point: `08535128a46fc38dec5946229214cab411f9dfb5`.
+- Changes: prepare unopened legacy folders before account/folder/set-scoped
+  cache-only search and saved-view enumeration; select exactly `Date.distantPast`;
+  preserve fractional retention cutoffs using integer candidates plus exact-date
+  filtering; gate background repair on invalid dates in the returned page.
+  Attachment/body selection unions indexed candidates before primary-key reads.
+  The local smoke now uses production SQLite/legacy-reader/memory seams.
+- Regression evidence: new date/search tests failed before implementation;
+  the page-repair regression fails with the old unconditional scheduling guard
+  and passes with the fix. Query-plan coverage rejected a folder-wide date-index
+  read, then passed with expression-index/body-primary-key candidates and exact
+  header-key lookup. Final focused sync run: 15 tests passed.
+- Verification: pinned SwiftFormat 0.58.7 on assigned files and `scripts/lint.sh`
+  (SwiftLint 0.63.0) passed; `scripts/imap-smtp-local-smoke.sh` and
+  `scripts/test.sh --self-tests-only` passed. BrevBackend: 1,163 tests passed.
+  BrevSyncEngine excluding `IMAPHeaderReadBaselineTests`: 78 XCTest + 31 Swift
+  Testing tests passed. Settings storage behavior: 23 passed; mailbox storage: 9 passed.
+  Standalone `swift build` for BrevSyncEngine and BrevBackend passed on macOS.
+- Storage review: legacy JSON files intentionally count once as objects, not as
+  messages; indexed counts are separate, and legacy bytes remain included.
+  Existing object/header copy stays accurate. ADR-0087 and CHANGELOG updated;
+  README, PRIVACY and ADR-0006 need no change (no setup or network-policy change).
+- Remaining: four existing Settings storage snapshots mismatch this host's
+  current rendering; UI sources and baselines were not changed. Current light/dark
+  PNGs and a light baseline were visually inspected and supplied in the session
+  to show the layout mismatch, not populated-cache acceptance. Full app/iOS builds,
+  live-provider/UI testing and header-read performance acceptance were not run in
+  this repair lane. No daily-driver app was replaced.
+- Handoff: parent owns schema-v8 migration replay and shared threading, restack,
+  original-PR push, CI/review settlement and merge. This patch neither changes the
+  schema nor adds a new index test conformer; no parent fix was duplicated.
