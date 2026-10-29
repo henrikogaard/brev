@@ -702,6 +702,15 @@ Import adds messages to the chosen mailbox. A provider-backed import can upload
 the imported messages to that provider. Current import availability depends on
 the account's importer support.
 
+## Local IMAP header cache
+
+IMAP header rows and paging metadata are stored in the account's local
+SQLite index. Legacy per-folder JSON header files are imported on first
+folder access and removed only after a successful transaction; failed
+imports leave the legacy source intact. Unvisited legacy files are removed
+with explicit cache clearing or account removal. If the index cannot open,
+new header caching is memory-only. This migration adds no network requests.
+
 ## Local mail folders
 
 Brev can keep mail in local folders ("On My Mac" / "On My iPhone"), stored as
