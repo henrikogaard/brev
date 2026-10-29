@@ -23,6 +23,11 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Cached attachment enumeration retains messages whose attachments exist only
+  in raw-source or parsed-body caches, even when the header flag is false.
+  Cache schema v9 adds the selective attachment index to existing v7/v8 stores
+  transactionally instead of limiting it to fresh databases.
+
 - Retrying a legacy IMAP cache import after failed file cleanup no longer
   restores messages already removed from the index. Cached-page threading
   shares bounded reply-link lookups instead of traversing once per message.

@@ -6762,3 +6762,30 @@ buttons, and package-aware localization.
 - Restacked the selective-cache slice and its review repair onto the durable-import/page-threading parent. Resolved only adjacent additions, formatter overlap and append-only documentation conflicts; retained both regression sets.
 - Combined checks passed: 78 XCTest and 34 Swift Testing sync tests (excluding the expensive header-read baseline), all 1,163 backend tests, pinned repository lint/format, and repository self-tests including the production-seam local IMAP/SMTP smoke. Query-plan coverage confirms indexed attachment/body candidates and exact header-key reads.
 - Hosted CI, four unaccepted storage snapshot differences, native/runtime acceptance and merge access remain open. No real-account migration, app installation, release, or performance acceptance is claimed. Keep the storage slices paired and issue #269 open.
+
+## 2026-10-29 — Devin — PR #274 attachment follow-up
+
+- Goal: repair reviews 4413512120/4413512356 from pinned integrated head
+  `6d725f8661ad4989b6e3c2196b966af93f5d09d7` on `fix/pr-274-followup-16784` only.
+- Changes: source/parsed-body caches enumerate account/folder-scoped IDs without
+  decoding payloads; attachment enumeration unions those IDs with indexed
+  candidates and fetches missing headers in batches of at most 256. No whole-folder
+  header fallback, network fetch, or cache rewrite was introduced. Schema v9
+  transactionally installs the attachment expression index on existing v7/v8
+  stores; fresh databases share its DDL, and in-memory schema expectations match.
+- Red-green: new tests first returned only 2 of 265 cached attachments, lacked
+  the upgraded expression index, and failed the migration-error expectation.
+  They now pass for memory and reopened file caches, including parsed/MIME-only
+  attachments, duplicate/orphan IDs, body precedence and account/folder isolation.
+  v7/v8 upgrade/reopen EXPLAIN uses the expression index; failed creation preserves
+  v8 data/windows/import markers and succeeds on retry after removing the fault.
+- Verification: 1,163 backend tests; 78 XCTest + 37 Swift Testing sync tests
+  (excluding the expensive header-read baseline); pinned full lint/format;
+  repository self-tests; standalone backend/sync package builds all passed.
+- Docs: ADR-0087/CHANGELOG updated. README, PRIVACY, ADR-0006 and UI snapshots
+  need no changes: no setup, external network, privacy policy or UI change.
+- Handoff: parent owns first-import coverage filtering, integration/restack,
+  original-PR push and review/CI settlement. No patch to that migration logic.
+  No native app/iOS build, live/UI test or performance acceptance run here.
+  Settings lane separately reproduced all four storage snapshot mismatches on
+  pristine main on the same host; no baseline changed in this follow-up.

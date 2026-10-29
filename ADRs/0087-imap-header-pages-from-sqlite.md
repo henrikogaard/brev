@@ -227,6 +227,17 @@ acceptance result is implied by these draft changes.
   A regression checks `EXPLAIN QUERY PLAN` for the attachment expression index,
   body primary key, message-ID index and exact header primary-key lookups.
   Sorting the candidate set is acceptable; scanning the entire folder is not.
+  Source and parsed-body caches also expose account/folder-scoped message IDs;
+  file caches enumerate regular-file names without decoding payloads. IDs absent
+  from the SQLite candidate set are fetched in batches of at most 256 headers.
+  This preserves attachments discovered only in cached MIME or parsed bodies
+  despite a false header flag, with no whole-folder header fallback or network.
+- Schema v9 installs `idx_imap_attachment_headers` independently of the v7 page
+  tables. Existing v7/v8 databases create the index and advance `user_version`
+  in one transaction; failed creation leaves the prior version/data intact for
+  retry. Fresh databases use the same index DDL. Upgrade/reopen regressions
+  verify indexed query plans and preserve headers, bodies, windows and import
+  markers. In-memory stores advertise the same schema version.
 - Storage's **Mail cache** object count includes each unmigrated legacy header
   file once; it is not a message count. **Search index database** reports only
   indexed headers/bodies/documents. Legacy bytes remain included before import,

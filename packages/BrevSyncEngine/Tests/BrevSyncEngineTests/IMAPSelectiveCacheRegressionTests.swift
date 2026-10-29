@@ -17,6 +17,75 @@ import Testing
 
 @Suite("IMAP selective cache regressions")
 struct IMAPSelectiveCacheRegressionTests {
+    @Test("indexed attachments include source-only and parsed-only caches without crossing scope", arguments: [false, true])
+    func indexedAttachmentCaches(onDisk: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-attachment-candidates-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let engine = try BrevSyncEngine(databaseURL: root.appendingPathComponent("index.sqlite"))
+        let sources: any IMAPMessageSourceCache = onDisk
+            ? FileIMAPMessageSourceCache(rootDirectory: root.appendingPathComponent("sources"))
+            : InMemoryIMAPMessageSourceCache()
+        let bodies: any IMAPMessageBodyCache = onDisk
+            ? FileIMAPMessageBodyCache(rootDirectory: root.appendingPathComponent("bodies"))
+            : InMemoryIMAPMessageBodyCache()
+        let other = BrevAccount(id: "other", displayName: "Other", emailAddress: "other@example.test")
+        for account in [Self.account, other] {
+            for folderID in ["INBOX", "INBOX:Child", "Archive"] {
+                let headers = (1 ... 275).map { uid in
+                    MessageHeader(id: "\(folderID):\(uid)", threadID: "t\(uid)", folderID: folderID,
+                                  from: Correspondent(email: "sender@example.test"), subject: "Synthetic", snippet: "",
+                                  date: Date(timeIntervalSince1970: TimeInterval(uid)), hasAttachments: uid == 3)
+                }
+                await engine.storeHeaders(headers, account: account)
+            }
+        }
+        let attachment = Attachment(id: "cached", name: "cached.pdf", mimeType: "application/pdf", sizeBytes: 4)
+        let parsedIDs = Set(([1, 3] + Array(10 ... 270)).map { "INBOX:\($0)" })
+        for id in parsedIDs.union(["INBOX:999", "INBOX:Child:1", "Archive:1"]) {
+            await bodies.setBody(MessageBody(messageID: id, attachments: [attachment]),
+                                 accountID: Self.account.id, messageID: id)
+        }
+        await bodies.setBody(MessageBody(messageID: "INBOX:4", attachments: [attachment]),
+                             accountID: other.id, messageID: "INBOX:4")
+        for (accountID, id) in [(Self.account.id, "INBOX:2"), (Self.account.id, "Archive:2"),
+                                (Self.account.id, "INBOX:Child:2"), (other.id, "INBOX:6")] {
+            await sources.setSource(IMAPMessageSource(uid: 2, rawMessage: Self.attachmentMIME),
+                                    accountID: accountID, messageID: id)
+        }
+        await sources.setSource(IMAPMessageSource(uid: 3, rawMessage: "Content-Type: text/plain\r\n\r\nNo attachments"),
+                                accountID: Self.account.id, messageID: "INBOX:3")
+        await engine.storeRawMessage(Data(Self.attachmentMIME.utf8), for: "INBOX:5", account: Self.account)
+        #expect(await engine.metrics(for: Self.account)?.cachedBodyCount == 1)
+        let readerSources: any IMAPMessageSourceCache = onDisk
+            ? FileBackedIMAPMessageSourceCache(rootDirectory: root.appendingPathComponent("sources")) : sources
+        let readerBodies: any IMAPMessageBodyCache = onDisk
+            ? FileIMAPMessageBodyCache(rootDirectory: root.appendingPathComponent("bodies")) : bodies
+        #expect(await readerSources.cachedMessageIDs(accountID: Self.account.id, folderID: "INBOX") == ["INBOX:2", "INBOX:3"])
+        #expect(await readerBodies.cachedMessageIDs(accountID: Self.account.id, folderID: "INBOX") == parsedIDs
+            .union(["INBOX:999"]))
+        let backend = backend(index: engine, legacy: LegacyIMAPMailboxHeaderCache(rootDirectory: root),
+                              sourceCache: readerSources, bodyCache: readerBodies)
+        let messages = await backend.cachedAttachmentMessages(in: [Self.folders[0]])
+        let expected = parsedIDs.union(["INBOX:2", "INBOX:5"])
+        #expect(Set(messages.map(\.header.id)) == expected)
+        #expect(messages.count == expected.count)
+        #expect(messages.first { $0.header.id == "INBOX:3" }?.body.attachments.first?.name == "cached.pdf")
+        #expect(messages.first { $0.header.id == "INBOX:2" }?.body.attachments.first?.name == "source.pdf")
+        #expect(await engine.metrics(for: Self.account)?.cachedBodyCount == 1)
+    }
+
+    private static let attachmentMIME = """
+    Content-Type: multipart/mixed; boundary="part"
+
+    --part
+    Content-Type: application/pdf; name="source.pdf"
+    Content-Disposition: attachment; filename="source.pdf"
+    Content-Transfer-Encoding: base64
+
+    UERG
+    --part--
+    """
+
     @Test("indexed date repair starts only when the returned page has a sentinel", arguments: [false, true])
     func pageGatedDateRepair(invalidOnPage: Bool) async throws {
         let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-page-repair-\(UUID())")
@@ -131,7 +200,8 @@ struct IMAPSelectiveCacheRegressionTests {
     ]
 
     private func backend(index: BrevSyncEngine, legacy: LegacyIMAPMailboxHeaderCache,
-                         sourceCache: (any IMAPMessageSourceCache)? = nil) -> IMAPSMTPBackend {
+                         sourceCache: (any IMAPMessageSourceCache)? = nil,
+                         bodyCache: (any IMAPMessageBodyCache)? = nil) -> IMAPSMTPBackend {
         let configuration = IMAPAccountConfiguration(
             accountID: Self.account.id, emailAddress: Self.account.emailAddress, displayName: Self.account.displayName,
             incoming: MailServerSettings(
@@ -162,6 +232,7 @@ struct IMAPSelectiveCacheRegressionTests {
                                listFolders: { _, _ in
                                    Issue.record("Cache-only reads must not connect")
                                    return []
-                               }, folderCache: folders, headerCache: legacy, sourceCache: sourceCache, localSearchIndex: index)
+                               }, folderCache: folders, headerCache: legacy, sourceCache: sourceCache,
+                               bodyCache: bodyCache, localSearchIndex: index)
     }
 }
