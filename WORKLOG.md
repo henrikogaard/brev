@@ -6802,7 +6802,6 @@ buttons, and package-aware localization.
   No native app/iOS build, live/UI test or performance acceptance run here.
   Settings lane separately reproduced all four storage snapshot mismatches on
   pristine main on the same host; no baseline changed in this follow-up.
-||||||| parent of 8ca6d83 (fix(perf): repair Release profiling and IDLE fixture readiness)
 
 ## 2026-10-29 — Devin — PR #275 profiling and IDLE review repair
 
