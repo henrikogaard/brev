@@ -234,6 +234,9 @@ GitHub Actions. Workflows:
   build/test/tracer logs; credential-free shell self-tests cover this contract.
   Build, workload and tracing commands run with an allowlisted environment
   (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, and the workload opt-in).
+  Matching test processes are eligible only when a bounded parent-PID walk
+  reaches this invocation's SwiftPM test PID; ownership is rechecked directly
+  before tracer attachment. A globally newer matching process is not trusted.
   Each run requires a new owner-only output directory so failure reporting
   cannot reuse old logs. Trace exports may include process environments;
   inspect only allowlisted aggregate fields, never print or upload raw exports.
