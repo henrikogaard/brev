@@ -232,6 +232,11 @@ GitHub Actions. Workflows:
   The capture budget includes process discovery, attachment delay and the
   measured workload. Harness failures preserve their exit status and print
   build/test/tracer logs; credential-free shell self-tests cover this contract.
+  Build, workload and tracing commands run with an allowlisted environment
+  (`HOME`, `PATH`, `TMPDIR`, optional `DEVELOPER_DIR`, and the workload opt-in).
+  Each run requires a new owner-only output directory so failure reporting
+  cannot reuse old logs. Trace exports may include process environments;
+  inspect only allowlisted aggregate fields, never print or upload raw exports.
   Raw traces remain private and are not SwiftUI frame or app-memory evidence.
 
 No Xcode Cloud (provider uses both; we use only GitHub Actions to
