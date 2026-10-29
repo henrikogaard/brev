@@ -1,0 +1,25 @@
+name: Synthetic selection profile
+on:
+  pull_request:
+    paths:
+      - '.github/workflows/selection-profile.yml'
+      - 'scripts/profile-navigation-selection.sh'
+      - 'packages/BrevMail/Tests/BrevMailTests/NavigationSelectionProfileTests.swift'
+      - 'packages/BrevMail/Sources/BrevMail/MessageListView.swift'
+      - 'packages/BrevMail/Sources/BrevMail/MessageListVisibleHeaders.swift'
+      - 'packages/BrevMail/Sources/BrevMail/MailNavigationState.swift'
+permissions:
+  contents: read
+concurrency:
+  group: selection-profile-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  selection-profile:
+    runs-on: macos-15
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+      - name: Profile synthetic navigation
+        run: bash scripts/profile-navigation-selection.sh "$RUNNER_TEMP/brev-selection-profile"
