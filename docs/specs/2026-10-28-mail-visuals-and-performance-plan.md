@@ -220,7 +220,8 @@ Q-2 resolved: Henrik approved the design on 2026-10-28 and requested implementat
 | Criterion | Check | Result | Change |
 |---|---|---|---|
 | Design approved before code | Henrik's approval, 2026-10-28 | Approved | #268 / #269 |
-| Synthetic read comparison | Focused BrevSyncEngine suite and package CI | Pending implementation | Slice 1 |
+| Synthetic read comparison | `IMAPHeaderReadBaselineTests`, 10k/50k | Implemented; package CI pending | Slice 1 |
+| Formatting and lint of new suite | Pinned SwiftFormat lint and SwiftLint strict on the test file | Passed | Slice 1 |
 | Runtime baseline and UI measurements | Authorized optimized native run | Blocked on Q-1 | Not claimed |
 
 ## Codebase deltas and change log
@@ -231,3 +232,4 @@ Q-2 resolved: Henrik approved the design on 2026-10-28 and requested implementat
 - The accepted body-parity design remains authoritative. This adds readable-measure/state checks, not a second body renderer or compose redesign.
 - 2026-10-28: Drafted after Henrik selected all three recommendations. No behavior, runtime test, baseline or speedup is claimed by this document.
 - 2026-10-28: Henrik approved the design. Recorded slice 1's detailed design and tracking issue #269 before implementation. Runtime permission remains unresolved.
+- 2026-10-28: Added the synthetic comparison and its run instructions. Existing baseline suites and production paths remain unchanged. Package execution is delegated to existing CI, not run on the host; slice 1 stays open for CI and its separately blocked runtime baseline.

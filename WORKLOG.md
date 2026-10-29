@@ -1,5 +1,13 @@
 # Worklog
 
+## 2026-10-28 — Agent — #269 synthetic header baseline implementation
+
+- Goal: slice 1 of the approved storage/UI plan. Worktree `imap-cache-baselines`, branch `feature/imap-cache-baselines`, based on design commit `83b0fceb`; dependent PR targets `chore/visual-performance-plan`, whose PR #268 targets main. Issue #269 remains In progress because later slices and runtime gates are unfinished.
+- Changes: synthetic 10k/50k JSON-versus-SQLite read suite, fresh readers, four alternating samples, explicit SQLite open/query/total timings and page/metadata parity assertions. Timing assertions are deliberately absent. Existing baseline suites and production behavior are unchanged. Added run/interpretation instructions to performance budgets and updated the shared design.
+- Verification: pinned SwiftFormat lint and SwiftLint strict passed for the new suite; diff and ADR gates are checked before commit. Package compilation/execution will run in existing CI. No long host job, app/native test, snapshot or personal-cache access is performed. This instrumentation-only addition skips TDD, as stated in its detailed design.
+- Documentation sweep: README, CHANGELOG, PRIVACY, ADRs and AGENTS need no changes because this adds test instrumentation only, with no shipped behavior, privacy or architectural change. Updated existing QA run instructions, not a new QA evidence report.
+- Handoff: collect package CI before claiming the suite passes. Slice 1 remains open for the authorized runtime baseline under Q-1. No speedup, migration, merge, release, version change or issue closure is claimed.
+
 ## 2026-10-28 — Agent — #269 approved design and baseline slice
 
 - Henrik approved the three-outcome design and requested work to start. Created tracking issue #269 and moved its card to In progress; integration remains main, with design PR #268 and a genuinely dependent baseline slice.
