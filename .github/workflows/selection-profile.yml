@@ -4,6 +4,7 @@ on:
     paths:
       - '.github/workflows/selection-profile.yml'
       - 'scripts/profile-navigation-selection.sh'
+      - 'scripts/test-profile-navigation-selection.sh'
       - 'packages/BrevMail/Tests/BrevMailTests/NavigationSelectionProfileTests.swift'
       - 'packages/BrevMail/Sources/BrevMail/MessageListView.swift'
       - 'packages/BrevMail/Sources/BrevMail/MessageListVisibleHeaders.swift'
