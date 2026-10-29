@@ -55,6 +55,7 @@ final class MessageListPresentationSnapshotCache {
         let calendarIdentifier: Calendar.Identifier
         let calendarTimeZoneIdentifier: String
         let localeIdentifier: String
+        var supportsThreadGrouping = true
     }
 
     private var key: Key?
@@ -83,6 +84,8 @@ final class MessageListPresentationSnapshotCache {
 /// Fully derived data needed to render one folder's list.
 struct MessageListPresentationSnapshot {
     let headers: [MessageHeader]
+    /// Ungrouped filtered reader/navigation context, derived once with the list projection.
+    let navigationHeaders: [MessageHeader]
     let dateSections: [MessageListVisibleDateSection]
     /// Unread/pinned tallies over the *source* header list, not the visible
     /// projection. The folder-stats footer reads them every body evaluation;
@@ -103,9 +106,11 @@ struct MessageListPresentationSnapshot {
         collapsedDateSectionIDs: Set<MessageListDateSection.ID>,
         referenceDate: Date = Date(),
         calendar: Calendar = .current,
-        sourceHeaders: [MessageHeader]? = nil
+        sourceHeaders: [MessageHeader]? = nil,
+        navigationHeaders: [MessageHeader]? = nil
     ) {
         self.headers = headers
+        self.navigationHeaders = navigationHeaders ?? headers
         let sourceHeaders = sourceHeaders ?? headers
         unreadHeaderCount = sourceHeaders.reduce(into: 0) { count, header in
             count += header.isRead ? 0 : 1

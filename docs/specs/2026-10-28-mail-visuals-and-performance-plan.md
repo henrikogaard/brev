@@ -228,6 +228,10 @@ Prepare schema v7 and the internal SQLite transaction seam before wiring backend
 
 ## 10. Verification
 
+### Slice 6 implementation contract
+
+Stage a candidate for the repeated navigation-input work visible in `MessageListView.selectMessage`: filtering/thread expansion currently repeats on each click, and reassigning the same navigation buffer discards the ID index. Reuse the existing presentation snapshot/cache for a derived navigation-header array. Include backend grouping support in its key; preserve the ungrouped filtered reply context and use the old derivation for asynchronous arrays that are not the current retained source buffer. Preserve the navigation model's ID index and avoid reassigning the observable collection when the retained buffer is unchanged. Tests cover changed rows, shared buffers, child-message selection and cache-key inputs. This is a draft candidate opened before the requested review/fix pass, not a measured optimization claim. Slice 5's fresh optimized trace must support this boundary or the candidate is revised before acceptance; no older Debug trace is reused as proof.
+
 ### Slice 5 implementation contract
 
 Add an opt-in optimized synthetic selection workload exercising the real navigation projection and selection model at 10k headers. Separate signposts/timings for projection and selected-header access identify whether rebuilding navigation inputs or model lookup dominates this path. A dedicated macOS CI job builds Release, attaches Time Profiler only to the synthetic test process and emits content-free timing logs and a trace table of contents. Raw traces remain ephemeral and are not committed/uploaded. This is a selection-pipeline trace, not an end-to-end SwiftUI frame/memory acceptance run. The latter remains an explicit gate. Existing local Space command access was recovered on 2026-10-29, but it still has CLT rather than Xcode. No host testing is authorized by this harness.

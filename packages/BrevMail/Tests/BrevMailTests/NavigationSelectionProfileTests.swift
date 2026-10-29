@@ -31,6 +31,9 @@ struct NavigationSelectionProfileTests {
                           date: Date(timeIntervalSince1970: TimeInterval(index)))
         }
         let navigation = MailNavigationState(selectedFolderID: "synthetic")
+        let context = MessageListNavigationHeaders.headers(from: headers, threadContext: headers)
+        let presentation = MessageListPresentationSnapshot(headers: headers, pinnedMessageIDs: [], groupByDate: false,
+                                                           collapsedDateSectionIDs: [], navigationHeaders: context)
         try await NavigationSelectionProfileHandshake.awaitTracer()
         let clock = ContinuousClock()
         let deadline = clock.now.advanced(by: .seconds(25))
@@ -40,7 +43,7 @@ struct NavigationSelectionProfileTests {
         while clock.now < deadline {
             let projectionSpan = MailUIPerformanceDiagnostics.beginInterval("Selection Navigation Projection")
             let start = clock.now
-            let projected = MessageListNavigationHeaders.headers(from: headers, threadContext: headers)
+            let projected = presentation.navigationHeaders
             projectionTime += clock.now - start
             MailUIPerformanceDiagnostics.endInterval(projectionSpan)
             let selectionSpan = MailUIPerformanceDiagnostics.beginInterval("Selection Model Lookup")
