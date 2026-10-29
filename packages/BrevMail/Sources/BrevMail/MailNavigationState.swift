@@ -209,7 +209,9 @@ public final class MailNavigationState {
     /// up the selected message and thread peers without re-fetching
     /// headers from the backend. Cleared when the folder changes.
     public var currentFolderHeaders: [MessageHeader] {
-        didSet { headerIndexByIDCache = nil }
+        didSet {
+            if !currentFolderHeaders.sharesRetainedBuffer(with: oldValue) { headerIndexByIDCache = nil }
+        }
     }
 
     /// Lazily built position of each header ID (first occurrence wins, as
@@ -482,7 +484,7 @@ public final class MailNavigationState {
         expandsSelectedMessage: Bool = true
     ) {
         restoredSelectionHeader = nil
-        currentFolderHeaders = headers
+        if !headers.sharesRetainedBuffer(with: currentFolderHeaders) { currentFolderHeaders = headers }
         readerExpansionSelectionID = expandsSelectedMessage ? header.id : nil
         selectedMessageID = header.id
         endSelection()
@@ -501,7 +503,7 @@ public final class MailNavigationState {
         selectedFolderID = header.folderID
         readerExpansionSelectionID = expandsSelectedMessage ? header.id : nil
         selectedMessageID = header.id
-        currentFolderHeaders = headers
+        if !headers.sharesRetainedBuffer(with: currentFolderHeaders) { currentFolderHeaders = headers }
         endSelection()
     }
 
