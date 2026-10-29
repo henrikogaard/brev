@@ -2559,35 +2559,35 @@ public struct MessageDetailView: View {
     private func quotedPlainBody(_ text: String) -> some View {
         let segments = PlainBodyQuoteSegmentation.segments(of: text)
         Group {
-        if segments.count == 1, case .text(let only) = segments[0] {
-            Text(only)
-                .font(messageBodyFont)
-                .foregroundStyle(theme.textPrimary.color)
-                .textSelection(.enabled)
-        } else {
-            VStack(alignment: .leading, spacing: BrevSpacing.xs) {
-                ForEach(segments.indices, id: \.self) { index in
-                    switch segments[index] {
-                    case .text(let run):
-                        Text(run)
-                            .font(messageBodyFont)
-                            .foregroundStyle(theme.textPrimary.color)
-                            .textSelection(.enabled)
-                    case .quote(let run):
-                        HStack(spacing: BrevSpacing.sm) {
-                            RoundedRectangle(cornerRadius: 1.5)
-                                .fill(theme.textTertiary.color)
-                                .frame(width: 3)
+            if segments.count == 1, case .text(let only) = segments[0] {
+                Text(only)
+                    .font(messageBodyFont)
+                    .foregroundStyle(theme.textPrimary.color)
+                    .textSelection(.enabled)
+            } else {
+                VStack(alignment: .leading, spacing: BrevSpacing.xs) {
+                    ForEach(segments.indices, id: \.self) { index in
+                        switch segments[index] {
+                        case .text(let run):
                             Text(run)
                                 .font(messageBodyFont)
-                                .foregroundStyle(theme.textSecondary.color)
+                                .foregroundStyle(theme.textPrimary.color)
                                 .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
+                        case .quote(let run):
+                            HStack(spacing: BrevSpacing.sm) {
+                                RoundedRectangle(cornerRadius: 1.5)
+                                    .fill(theme.textTertiary.color)
+                                    .frame(width: 3)
+                                Text(run)
+                                    .font(messageBodyFont)
+                                    .foregroundStyle(theme.textSecondary.color)
+                                    .textSelection(.enabled)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                            }
                         }
                     }
                 }
             }
-        }
         }
         .modifier(MessageReadingColumn(style: messageBodyStyle))
     }
