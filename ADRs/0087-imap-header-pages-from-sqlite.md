@@ -203,6 +203,27 @@ keeps only a read-only legacy migration reader. No-index production fallback
 is memory-only. No cutover performance or native
 acceptance result is implied by these draft changes.
 
+### Selective-query review corrections
+
+- Cache-only search and saved-view enumeration prepare all relevant legacy
+  folders before querying the index, including folders never opened in the UI.
+- Missing dates mean exactly `Date.distantPast`, not every pre-epoch date.
+  Retention selects candidates using the stored truncation-toward-zero seconds
+  and filters decoded dates against the exact cutoff. Repair work starts only
+  when a returned cached page contains a repairable sentinel.
+- Attachment enumeration unions expression-index attachment candidates with
+  account-scoped cached-body candidates, then fetches headers by primary key.
+  A regression checks `EXPLAIN QUERY PLAN` for the attachment expression index,
+  body primary key, message-ID index and exact header primary-key lookups.
+  Sorting the candidate set is acceptable; scanning the entire folder is not.
+- Storage's **Mail cache** object count includes each unmigrated legacy header
+  file once; it is not a message count. **Search index database** reports only
+  indexed headers/bodies/documents. Legacy bytes remain included before import,
+  and migrate to the database afterward. Existing Settings/Mailbox object copy
+  stays accurate without decoding every legacy file just to count messages.
+- The synthetic local smoke uses the production sync engine, read-only legacy
+  reader and memory-only fallback, never the test-only legacy writer.
+
 - ADR-0029: IMAP/SMTP backend foundation (header cache semantics)
 - ADR-0030: Full IMAP sync and cache engine (migration path)
 - ADR-0082: Encryption at rest (§3 Layer A/B coverage)

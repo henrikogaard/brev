@@ -67,15 +67,25 @@ struct IMAPPageIndexTests {
         let headers = (1 ... 3).map { uid in
             MessageHeader(id: "INBOX:\(uid)", threadID: "thread-\(uid)", folderID: "INBOX",
                           from: Correspondent(email: "sender@example.test"), subject: "Synthetic", snippet: "",
-                          date: Date(timeIntervalSince1970: uid == 1 ? -1 : TimeInterval(uid)), hasAttachments: uid == 3)
+                          date: uid == 1 ? .distantPast : Date(timeIntervalSince1970: TimeInterval(uid)),
+                          hasAttachments: uid == 3)
         }
         try await engine.storeIMAPPage(IMAPHeaderPageWrite(folderID: "INBOX", pageToken: nil, headers: headers,
-                                                          uidValidity: 777, highestModSeq: 888, nextPageToken: "saved"), account: account)
+                                                           uidValidity: 777, highestModSeq: 888, nextPageToken: "saved"),
+                                       account: account)
         await engine.storeRawMessage(Data("Synthetic body".utf8), for: "INBOX:2", account: account)
-        #expect(try await engine.selectIMAPHeaders(.attachmentsOrCachedBodies, folderID: "INBOX", account: account).map(\.id) == ["INBOX:3", "INBOX:2"])
+        #expect(try await engine.selectIMAPHeaders(.attachmentsOrCachedBodies, folderID: "INBOX", account: account).map(\.id) == [
+            "INBOX:3",
+            "INBOX:2"
+        ])
         #expect(try await engine.selectIMAPHeaders(.invalidDates, folderID: "INBOX", account: account).map(\.id) == ["INBOX:1"])
-        #expect(try await engine.selectIMAPHeaders(.olderThan(Date(timeIntervalSince1970: 2.5)), folderID: "INBOX", account: account).map(\.id) == ["INBOX:2", "INBOX:1"])
-        #expect(try await engine.selectIMAPHeaders(.excludingIDs(["INBOX:1", "INBOX:3"]), folderID: "INBOX", account: account).map(\.id) == ["INBOX:2"])
+        #expect(try await engine.selectIMAPHeaders(
+            .olderThan(Date(timeIntervalSince1970: 2.5)),
+            folderID: "INBOX",
+            account: account
+        ).map(\.id) == ["INBOX:2", "INBOX:1"])
+        #expect(try await engine.selectIMAPHeaders(.excludingIDs(["INBOX:1", "INBOX:3"]), folderID: "INBOX", account: account)
+            .map(\.id) == ["INBOX:2"])
         var changed = headers[1]
         changed.isRead = true
         await engine.storeHeaders([changed], account: account)
@@ -84,6 +94,28 @@ struct IMAPPageIndexTests {
         #expect(try await store.imapPageUIDs(accountID: account.id, folderID: "INBOX", pageKey: "first") == [1, 2, 3])
         #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.nextPageToken == "saved")
         #expect(try await engine.imapHeaderMetadata(folderID: "INBOX", account: account)?.highestModSeq == 999)
+    }
+
+    @Test("date selections preserve sentinel and fractional retention semantics", arguments: [false, true])
+    func exactDateSelections(sqlite: Bool) async throws {
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("brev-exact-dates-\(UUID())")
+        defer { try? FileManager.default.removeItem(at: root) }
+        let store: any SyncStoreProtocol = sqlite
+            ? try SQLiteSyncStore(databaseURL: root.appendingPathComponent("index.sqlite")) : InMemorySyncStore()
+        let dates = [Date.distantPast, Date.distantPast.addingTimeInterval(0.5)]
+            + [-2.8, -2.5, -2.2, -0.5, 0, 0.5, 2.2, 2.5, 2.8].map { Date(timeIntervalSince1970: $0) }
+        let headers = dates.enumerated().map { offset, date in
+            MessageHeader(id: "INBOX:\(offset + 1)", threadID: "t", folderID: "INBOX",
+                          from: Correspondent(email: "sender@example.test"), subject: "Synthetic", snippet: "", date: date)
+        }
+        try await store.ensureAccount(id: "synthetic")
+        try await store.upsertHeaders(headers, accountID: "synthetic")
+        #expect(try await store.selectIMAPHeaders(.invalidDates, accountID: "synthetic", folderID: "INBOX")
+            .map(\.id) == ["INBOX:1"])
+        for cutoff in [-2.5, -2.0, 0, 0.5, 2.5, 3.0].map({ Date(timeIntervalSince1970: $0) }) {
+            let selected = try await store.selectIMAPHeaders(.olderThan(cutoff), accountID: "synthetic", folderID: "INBOX")
+            #expect(Set(selected.map(\.id)) == Set(headers.filter { $0.date < cutoff }.map(\.id)))
+        }
     }
 
     @Test("legacy import preserves newer rows and only removes the source after success", arguments: [false, true])
@@ -98,8 +130,8 @@ struct IMAPPageIndexTests {
         var stale = page([1, 3], token: nil).headers
         stale[1].isRead = true
         let snapshot = IMAPMailboxHeaderCacheSnapshot(headers: stale, uidValidity: 777, highestModSeq: 1,
-                                                       nextPageToken: "stale", firstPageHeaderIDs: ["INBOX:1", "INBOX:3"],
-                                                       pageHeaderIDsByToken: ["before:3": ["INBOX:1"]])
+                                                      nextPageToken: "stale", firstPageHeaderIDs: ["INBOX:1", "INBOX:3"],
+                                                      pageHeaderIDsByToken: ["before:3": ["INBOX:1"]])
         let legacy = InMemoryIMAPMailboxHeaderCache()
         await legacy.setSnapshot(snapshot, accountID: account.id, folderID: "INBOX")
         let adapter = IndexedIMAPMailboxHeaderCache(index: engine, account: account, legacy: legacy)

@@ -500,9 +500,9 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
                     }
                     if !imapSnapshot.importingLegacy || previous?.uidValidity == nil {
                         try writeIMAPPageState(IMAPPageWrite(folderID: imapSnapshot.folderID, pageKey: "first",
-                                                            state: IMAPPageState(uidValidity: snapshot.uidValidity,
-                                                                                 highestModSeq: snapshot.highestModSeq,
-                                                                                 nextPageToken: snapshot.nextPageToken)),
+                                                             state: IMAPPageState(uidValidity: snapshot.uidValidity,
+                                                                                  highestModSeq: snapshot.highestModSeq,
+                                                                                  nextPageToken: snapshot.nextPageToken)),
                                                accountID: accountID)
                     }
                 }
@@ -611,7 +611,7 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
         }
         try upsertHeaders(snapshot.headers, accountID: accountID, imapPage: nil,
                           imapSnapshot: IMAPSnapshotWrite(snapshot: snapshot, folderID: folderID,
-                                                         importingLegacy: importingLegacy))
+                                                          importingLegacy: importingLegacy))
     }
 
     func headersByID(_ ids: [String], accountID: String, folderID: String) throws -> [MessageHeader] {
@@ -632,15 +632,20 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             case .window(let token):
                 predicate = "EXISTS (SELECT 1 FROM imap_page_windows w WHERE w.account_id = h.account_id AND w.folder_id = h.folder_id AND w.uid = h.uid AND w.page_key = ?)"
                 extra = .text(token)
-            case .olderThan(let date): predicate = "h.date_ts < ?"; extra = .int64(Int64(ceil(date.timeIntervalSince1970)))
-            case .invalidDates: predicate = "h.date_ts <= 0"
+            case .olderThan(let date): predicate = "h.date_ts <= ?"; extra = .int64(Int64(date.timeIntervalSince1970))
+            case .invalidDates: predicate = "h.date_ts = ?"; extra = .int64(Int64(Date.distantPast.timeIntervalSince1970))
             case .attachmentsOrCachedBodies:
-                predicate = "(json_extract(CAST(h.header_json AS TEXT), '$.hasAttachments') = 1 OR EXISTS (SELECT 1 FROM message_bodies b WHERE b.account_id = h.account_id AND b.message_id = h.message_id))"
+                predicate = ""
             case .excludingIDs(let ids):
                 predicate = "h.message_id NOT IN (SELECT value FROM json_each(?))"
-                extra = .text(String(decoding: try JSONEncoder().encode(ids), as: UTF8.self))
+                extra = try .text(String(decoding: JSONEncoder().encode(ids), as: UTF8.self))
             }
-            let sql = "SELECT h.header_json FROM message_headers h WHERE h.account_id = ? AND h.folder_id = ? AND \(predicate) ORDER BY h.date_ts DESC, h.uid DESC;"
+            let sql: String
+            if case .attachmentsOrCachedBodies = selection {
+                sql = Self.attachmentOrCachedBodyHeadersSQL
+            } else {
+                sql = "SELECT h.header_json FROM message_headers h WHERE h.account_id = ? AND h.folder_id = ? AND \(predicate) ORDER BY h.date_ts DESC, h.uid DESC;"
+            }
             var stmt: OpaquePointer?
             guard sqlite3_prepare_v2(db, sql, -1, &stmt, nil) == SQLITE_OK else { throw SyncStoreError.prepareFailed(errMsg()) }
             defer { sqlite3_finalize(stmt) }
@@ -656,13 +661,38 @@ final class SQLiteSyncStore: SyncStoreProtocol, @unchecked Sendable {
             while step == SQLITE_ROW {
                 guard let bytes = sqlite3_column_blob(stmt, 0) else { throw SyncStoreError.executeFailed("Missing header bytes") }
                 let data = Data(bytes: bytes, count: Int(sqlite3_column_bytes(stmt, 0)))
-                result.append(try Self.decoder.decode(MessageHeader.self, from: data))
+                let header = try Self.decoder.decode(MessageHeader.self, from: data)
+                // date_ts truncates toward zero; filter boundary candidates with the original date.
+                switch selection {
+                case .olderThan(let cutoff):
+                    if header.date < cutoff { result.append(header) }
+                case .invalidDates:
+                    if header.date == .distantPast { result.append(header) }
+                default: result.append(header)
+                }
                 step = sqlite3_step(stmt)
             }
             guard step == SQLITE_DONE else { throw SyncStoreError.executeFailed(errMsg()) }
             return result
         }
     }
+
+    // CROSS JOIN keeps the selective candidates outermost instead of scanning the folder for ORDER BY.
+    static let attachmentOrCachedBodyHeadersSQL = """
+    SELECT h.header_json FROM (
+        SELECT uid FROM message_headers
+        WHERE account_id = ?1 AND folder_id = ?2
+          AND json_extract(CAST(header_json AS TEXT), '$.hasAttachments') = 1
+        UNION
+        SELECT h.uid FROM message_bodies b
+        CROSS JOIN message_headers h INDEXED BY idx_msg_message_id
+        WHERE b.account_id = ?1 AND h.account_id = b.account_id
+          AND h.message_id = b.message_id AND h.folder_id = ?2
+    ) candidates
+    CROSS JOIN message_headers h
+    WHERE h.account_id = ?1 AND h.folder_id = ?2 AND h.uid = candidates.uid
+    ORDER BY h.date_ts DESC, h.uid DESC;
+    """
 
     func updateIMAPModSeq(_ modSeq: UInt64, accountID: String, folderID: String) throws {
         try lock.withLock {

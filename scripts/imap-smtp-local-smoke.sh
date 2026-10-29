@@ -23,13 +23,15 @@ let package = Package(
         .macOS(.v14)
     ],
     dependencies: [
-        .package(path: "$ROOT/packages/BrevBackend")
+        .package(path: "$ROOT/packages/BrevBackend"),
+        .package(path: "$ROOT/packages/BrevSyncEngine")
     ],
     targets: [
         .executableTarget(
             name: "BrevIMAPSMTPLocalSmoke",
             dependencies: [
-                .product(name: "BrevBackend", package: "BrevBackend")
+                .product(name: "BrevBackend", package: "BrevBackend"),
+                .product(name: "BrevSyncEngine", package: "BrevSyncEngine")
             ]
         )
     ]
@@ -38,6 +40,7 @@ EOF
 
 cat >"$WORK_DIR/Sources/BrevIMAPSMTPLocalSmoke/main.swift" <<'EOF'
 import BrevBackend
+import BrevSyncEngine
 import Foundation
 
 enum LocalSmokeError: Error, LocalizedError {
@@ -112,8 +115,12 @@ struct BrevIMAPSMTPLocalSmoke {
         func makeConnector(
             failFolderListing: Bool = false,
             failMessageListing: Bool = false,
-            failSourceFetch: Bool = false
-        ) -> IMAPAccountConnector {
+            failSourceFetch: Bool = false,
+            useIndex: Bool = true
+        ) throws -> IMAPAccountConnector {
+            let index: BrevSyncEngine? = useIndex
+                ? try BrevSyncEngine(databaseURL: persistentSmokeRoot.appendingPathComponent("index.sqlite"))
+                : nil
             let restoredCredentialStore = KeychainMailCredentialStore(
                 service: persistentSmokeCredentialService
             )
@@ -128,9 +135,9 @@ struct BrevIMAPSMTPLocalSmoke {
             let restoredFolderCache = FileBackedIMAPFolderSnapshotCache(
                 rootDirectory: persistentSmokeRoot.appendingPathComponent("folders")
             )
-            let restoredHeaderCache = FileBackedIMAPMailboxHeaderCache(
-                rootDirectory: persistentSmokeRoot.appendingPathComponent("headers")
-            )
+            let restoredHeaderCache: any IMAPMailboxHeaderCache = useIndex
+                ? LegacyIMAPMailboxHeaderCache(rootDirectory: persistentSmokeRoot.appendingPathComponent("headers"))
+                : InMemoryIMAPMailboxHeaderCache()
             let restoredSourceCache = FileIMAPMessageSourceCache(
                 rootDirectory: persistentSmokeRoot.appendingPathComponent("sources")
             )
@@ -305,11 +312,12 @@ struct BrevIMAPSMTPLocalSmoke {
             folderCache: restoredFolderCache,
             headerCache: restoredHeaderCache,
             sourceCache: restoredSourceCache,
+            localSearchIndex: { _ in index },
             draftStagingStore: restoredDraftStagingStore
             )
         }
 
-        let connector = makeConnector()
+        let connector = try makeConnector()
 
         let request = IMAPAccountSetupRequest(
             emailAddress: "person@example.org",
@@ -346,7 +354,7 @@ struct BrevIMAPSMTPLocalSmoke {
             throw LocalSmokeError.unexpected("Expected one SMTP setup credential validation.")
         }
         await connected.backend.disconnect()
-        let freshConnector = makeConnector()
+        let freshConnector = try makeConnector()
         guard let freshConnectorRestoredBackend = try await freshConnector.restore(connected.account) else {
             throw LocalSmokeError.unexpected("Expected provisioned IMAP account to restore from stored credentials through a fresh connector.")
         }
@@ -356,7 +364,7 @@ struct BrevIMAPSMTPLocalSmoke {
         guard sourceScopedFolders.map(\.id) == folders.map(\.id) else {
             throw LocalSmokeError.unexpected("Expected source-scoped folders to match restored folder list.")
         }
-        let listingOutageConnector = makeConnector(failFolderListing: true)
+        let listingOutageConnector = try makeConnector(failFolderListing: true)
         guard let cachedFolderRestoreBackend = try await listingOutageConnector.restore(connected.account) else {
             throw LocalSmokeError.unexpected("Expected cached folder restore when folder listing is temporarily unavailable.")
         }
@@ -385,10 +393,20 @@ struct BrevIMAPSMTPLocalSmoke {
         else {
             throw LocalSmokeError.unexpected("Expected source-scoped first page to match unscoped first page.")
         }
-        // Header-cache writes are coalesced (ADR-0030 perf pass); a relaunch
-        // sees them only after the lifecycle flush the app performs on quit.
+        let memoryConnector = try makeConnector(useIndex: false)
+        guard let memoryBackend = try await memoryConnector.restore(connected.account) else {
+            throw LocalSmokeError.unexpected("Expected no-index restore.")
+        }
+        let memoryPage = try await memoryBackend.messages(in: inbox, pageToken: nil)
+        await memoryBackend.disconnect()
+        let offlineMemoryPage = try await memoryBackend.messages(in: inbox, pageToken: nil)
+        guard memoryPage.headers.map(\.id) == page.headers.map(\.id),
+              offlineMemoryPage.headers.map(\.id) == memoryPage.headers.map(\.id) else {
+            throw LocalSmokeError.unexpected("Expected the no-index fallback to keep headers in memory.")
+        }
+        // Indexed page writes are durable before returning; also exercise the lifecycle flush.
         await backend.flushLocalCaches()
-        let messageListingOutageConnector = makeConnector(failMessageListing: true)
+        let messageListingOutageConnector = try makeConnector(failMessageListing: true)
         guard let cachedMessagePageBackend = try await messageListingOutageConnector.restore(connected.account) else {
             throw LocalSmokeError.unexpected("Expected cached message-page restore when message listing is temporarily unavailable.")
         }
@@ -539,7 +557,7 @@ struct BrevIMAPSMTPLocalSmoke {
         guard sourceScopedAttachmentData == attachmentData else {
             throw LocalSmokeError.unexpected("Expected source-scoped attachment bytes to match unscoped download.")
         }
-        let sourceFetchOutageConnector = makeConnector(failSourceFetch: true)
+        let sourceFetchOutageConnector = try makeConnector(failSourceFetch: true)
         guard let cachedSourceBackend = try await sourceFetchOutageConnector.restore(connected.account) else {
             throw LocalSmokeError.unexpected("Expected cached source restore when message source fetch is temporarily unavailable.")
         }

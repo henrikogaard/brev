@@ -45,7 +45,7 @@ public protocol IMAPHeaderPageIndex: MailLocalSearchIndex {
     func imapHeaderSnapshot(folderID: Folder.ID, account: BrevAccount) async throws -> IMAPMailboxHeaderCacheSnapshot?
     /// Writes a compatibility snapshot or imports missing legacy rows atomically.
     func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
-                          account: BrevAccount, importingLegacy: Bool) async throws
+                           account: BrevAccount, importingLegacy: Bool) async throws
     /// Selects only rows needed by a cache consumer.
     func selectIMAPHeaders(_ selection: IMAPHeaderSelection, folderID: Folder.ID,
                            account: BrevAccount) async throws -> [MessageHeader]

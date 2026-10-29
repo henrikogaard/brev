@@ -359,7 +359,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             switch selection {
             case .window(let token): return imapWindows[key]?[token]?.contains(Self.uid(from: header.id)) == true
             case .olderThan(let date): return header.date < date
-            case .invalidDates: return header.date.timeIntervalSince1970 <= 0
+            case .invalidDates: return header.date == .distantPast
             case .attachmentsOrCachedBodies: return header.hasAttachments || bodies["\(accountID)|\(header.id)"] != nil
             case .excludingIDs(let ids): return !ids.contains(header.id)
             }
@@ -378,7 +378,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
         guard let metadata = imapPageState(accountID: accountID, folderID: folderID) else { return nil }
         let windows = (imapWindows[key] ?? [:]).mapValues { Set($0.map { "\(folderID):\($0)" }) }
         return IMAPMailboxHeaderCacheSnapshot(headers: headers(accountID: accountID, folderID: folderID,
-                                                              limit: Int.max, offset: 0),
+                                                               limit: Int.max, offset: 0),
                                               uidValidity: metadata.uidValidity, highestModSeq: metadata.highestModSeq,
                                               nextPageToken: metadata.nextPageToken, firstPageHeaderIDs: windows["first"],
                                               pageHeaderIDsByToken: windows.filter { $0.key != "first" })
@@ -402,7 +402,7 @@ actor InMemorySyncStore: SyncStoreProtocol {
             state.highestModSeq = snapshot.highestModSeq ?? state.highestModSeq
             syncStates[key] = state
             imapPageStates[key] = IMAPPageState(uidValidity: state.uidValidity, highestModSeq: state.highestModSeq,
-                                               nextPageToken: snapshot.nextPageToken)
+                                                nextPageToken: snapshot.nextPageToken)
         }
         if !importingLegacy { imapWindows[key] = [:] }
         var windows = snapshot.pageHeaderIDsByToken

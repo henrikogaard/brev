@@ -36,7 +36,8 @@ public actor LegacyIMAPMailboxHeaderCache: IMAPMailboxHeaderCache {
 
     /// Removes only a successfully migrated folder's legacy source.
     public func clear(accountID: BrevAccount.ID, folderID: Folder.ID) {
-        try? FileManager.default.removeItem(at: directory(accountID).appendingPathComponent("\(MailCacheKeyNaming.hexKey(folderID)).json"))
+        try? FileManager.default
+            .removeItem(at: directory(accountID).appendingPathComponent("\(MailCacheKeyNaming.hexKey(folderID)).json"))
     }
 
     /// Removes unvisited legacy header files as part of explicit account-cache cleanup.

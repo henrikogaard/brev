@@ -23,6 +23,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Cache-only IMAP search includes legacy folders before their first open.
+  Date repair now targets only missing-date sentinels and starts only from
+  cached pages that need it; retention preserves exact fractional-date cutoffs.
+
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an
   account.

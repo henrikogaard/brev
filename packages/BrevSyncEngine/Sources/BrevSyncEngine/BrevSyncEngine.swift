@@ -301,7 +301,7 @@ public actor BrevSyncEngine: SyncEngineProtocol, MailLocalSearchIndex, MailConve
 
     /// Atomically imports or updates rows, metadata and windows.
     public func storeIMAPSnapshot(_ snapshot: IMAPMailboxHeaderCacheSnapshot, folderID: Folder.ID,
-                                 account: BrevAccount, importingLegacy: Bool) async throws {
+                                  account: BrevAccount, importingLegacy: Bool) async throws {
         try await store.ensureAccount(id: account.id)
         try await store.storeIMAPSnapshot(snapshot, accountID: account.id, folderID: folderID, importingLegacy: importingLegacy)
     }
