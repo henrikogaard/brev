@@ -1,5 +1,11 @@
 <?xml version="1.0" encoding="utf-8"?>
-<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261028</title><pubDate>Thu, 29 Oct 2026 00:07:37 GMT</pubDate><sparkle:version>2026102823</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261028</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at 5ad74c0b388466a5f842dcb43b8834f74cc413ee.
+<rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0"><channel><title>Brev Nightly changelog</title><link>https://henrikogaard.github.io/brev/</link><description>Brev update feed</description><language>en</language><item><title>0.2.8-nightly.20261029</title><pubDate>Fri, 30 Oct 2026 00:16:00 GMT</pubDate><sparkle:version>2026102923</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261029</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description><![CDATA[<pre>Nightly build of main at e476096e27cb603479e63e92e218d8d48d53543e.
+
+- test(sync): merge reviewed cache-read baselines (#270) (e476096)
+- docs: merge approved mail storage and visual plan (#268) (3bb0ee8)
+- test(sync): compare reopened JSON and SQLite header reads (208960e)
+- docs: record approval and detail IMAP baseline slice (83b0fce)
+- docs: plan mail storage responsiveness and visual improvements (3d0521b)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261029.dmg" length="27099220" type="application/octet-stream" sparkle:edSignature="sYnzasl0ZbrlgU7BqPlH8myX8Il75titk1DN9iJfbXGdcJlxhRIHqDtlk8XrPrUb6n9nYXcB2lzLJ6PCqU79Bg==" /></item><item><title>0.2.8-nightly.20261028</title><pubDate>Thu, 29 Oct 2026 00:07:37 GMT</pubDate><sparkle:version>2026102823</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261028</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 5ad74c0b388466a5f842dcb43b8834f74cc413ee.
 
 - feat(settings): integrate per-account sign-in consent controls (#256) (5ad74c0)
 - feat(mail): integrate consent-gated sign-in arrival controller (#255) (dd3a7c3)
@@ -55,7 +61,7 @@
 - feat(settings): add per-account sign-in code and link consent (ADR-0088) (d8573b8)
 - feat(mail): add the consent-gated sign-in arrival controller (ADR-0088) (36c7371)
 - feat(gmail): add scoped sign-in trust and fresh-delivery gates (ADR-0088) (5dd2a6f)
-- docs(adr): amend ADR-0088 with scoped Gmail trust for #239 (42f0b75)</pre>]]></description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261028.dmg" length="27142363" type="application/octet-stream" sparkle:edSignature="hZ8BK93Rx07tE+AL0vQktUwxL8GHcq8TqlnNilpFLKB+cOVhLuh3HPVXytKxibN05WyCddpTSegkp2I5mMBHDg==" /></item><item><title>0.2.8-nightly.20261018</title><pubDate>Sun, 18 Oct 2026 01:48:23 GMT</pubDate><sparkle:version>2026101801</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261018</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 06c7b194733c73a2b86a03be486cc998cb1a23d6.
+- docs(adr): amend ADR-0088 with scoped Gmail trust for #239 (42f0b75)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261028.dmg" length="27142363" type="application/octet-stream" sparkle:edSignature="hZ8BK93Rx07tE+AL0vQktUwxL8GHcq8TqlnNilpFLKB+cOVhLuh3HPVXytKxibN05WyCddpTSegkp2I5mMBHDg==" /></item><item><title>0.2.8-nightly.20261018</title><pubDate>Sun, 18 Oct 2026 01:48:23 GMT</pubDate><sparkle:version>2026101801</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261018</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 06c7b194733c73a2b86a03be486cc998cb1a23d6.
 
 - docs(qa): record live CalDAV recurrence evidence v8 for #11 (#253) (06c7b19)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20261018.dmg" length="26996500" type="application/octet-stream" sparkle:edSignature="VqaLpR/h/Jx8tTL6iQl/90+DLvLUo+xhfHEv5TR+KA6Un8EUiCN+Xf5/Kza7C25kePAKcST549om9AxYb8IXAA==" /></item><item><title>0.2.8-nightly.20261017</title><pubDate>Sat, 17 Oct 2026 01:51:49 GMT</pubDate><sparkle:version>2026101701</sparkle:version><sparkle:shortVersionString>0.2.8-nightly.20261017</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 609a91f599d24df31b392e43a33b66f040cc3697.
 
@@ -301,19 +307,4 @@
 - perf(app): defer launch work, gate fetch backoff, narrow settings invalidation (230c25b)
 - perf(mail): memoize per-row lookups and pool thread renderers (24aadf6)
 - perf(gmail): materialize sync columns and batch refresh work (5c89aa9)
-- perf(sync): bound local search scans and skip flag-only index rewrites (66f4a55)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260921.dmg" length="29517569" type="application/octet-stream" sparkle:edSignature="lrQZP0DaOozrIAgBjpuSxs0zJeoga6T3qUPpHq/vlDM9ovE+wun/aS1Y1ZX7YHTJukwLdrfsoc6GLCRG84aTCQ==" /></item><item><title>0.1.0-nightly.20260919</title><pubDate>Sat, 19 Sep 2026 01:30:39 GMT</pubDate><sparkle:version>2026091901</sparkle:version><sparkle:shortVersionString>0.1.0-nightly.20260919</sparkle:shortVersionString><sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion><description>&lt;pre&gt;Nightly build of main at 703f42fd5fedf70fc4c22b2a57f881c5cd5be669.
-
-- Merge pull request #44 from henrikogaard/feature/ios-daily-driver (703f42f)
-- test(ios): add BrevIOSTests target for app-shell logic (e85d62d)
-- feat(mail): enable local folder writes on iOS (8b2b1ad)
-- feat(settings): backup and restore on iOS via document picker (cd2746e)
-- Merge pull request #42 from henrikogaard/fix/macos-review-findings (db941af)
-- fix(macos): address remaining macOS app review findings (6ac20a9)
-- fix(macos): allow Maildir folder selection in the import panel (7135ffa)
-- Merge pull request #43 from henrikogaard/fix/ios-review-findings (4e8c093)
-- docs: record iOS review fixes in changelog and worklog (29b2ae0)
-- chore(ios): drop unused processing mode, enforce extension-API-only builds (0b6aab9)
-- fix(ios): cap share-extension text handoff at 256 KB (ae00eed)
-- fix(ios): rich notification preview for reply-enabled notifications (0d2fd3e)
-- fix(ios): surface restore errors when no account remains visible (24d666b)
-- fix(ios): declare UserDefaults required-reason API in privacy manifest (e97783d)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260919.dmg" length="26680765" type="application/octet-stream" sparkle:edSignature="T4drYKEyayfxi4cvgzu72PkxhomjUFNg1khshQBAC7t69micMcQ1BKxMdEa0AX3P3ayIqGxanZiu/GRqF7FvAQ==" /></item></channel></rss>
+- perf(sync): bound local search scans and skip flag-only index rewrites (66f4a55)&lt;/pre&gt;</description><enclosure url="https://github.com/henrikogaard/brev/releases/download/nightly/Brev-Nightly-20260921.dmg" length="29517569" type="application/octet-stream" sparkle:edSignature="lrQZP0DaOozrIAgBjpuSxs0zJeoga6T3qUPpHq/vlDM9ovE+wun/aS1Y1ZX7YHTJukwLdrfsoc6GLCRG84aTCQ==" /></item></channel></rss>
