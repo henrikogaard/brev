@@ -45,6 +45,18 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    diagnostic attachments, never over committed references. All reference
    changes still require separate visual acceptance. No production control,
    macOS capture strategy or existing precision is changed by this decision.
+6. Compile the same seeded pane fixtures into the synthetic host and tests.
+   An explicit review-only launch selects Appearance, Notifications, consent
+   or PIM and a light/dark/accessibility variant; invalid selections fail closed.
+   Use isolated resettable defaults and in-memory account, PIM and credential
+   stores, with no provider authorization or network-capable fixture clients.
+   This host still pins appearance and does not validate production System mode.
+7. Preserve the existing top-of-pane geometry, names and references. Add
+   bottom-of-form diagnostic captures for icon cards and lower Notifications
+   content. Locate one outer scroll view, enforce its current bottom offset
+   through layout settling, and retain the existing draw/stability guards.
+   These supplemental attachments are review coverage, not approved references
+   or a substitute for native inspection of the requested content.
 
 ## Rationale
 
