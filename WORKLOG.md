@@ -6850,3 +6850,32 @@ buttons, and package-aware localization.
   red before the resource repair. Repository self-tests, format/lint/privacy
   and the focused cleanup checks pass. README covers the artifact route;
   existing CHANGELOG/ADR entries cover the harness. No privacy/network change.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: shared review coverage
+
+- Continue the existing Settings branch against main under Henrik's approved
+  coverage/visual-review follow-up. ADR-0092 was amended before implementation.
+  Compile the same Appearance, Notifications, two-account consent and seeded
+  PIM panes into the host and test bundle, including their environment styling.
+  Explicit native review flags fail closed; defaults reset within the synthetic
+  identity. PIM stores are in memory and all fixture transports reject requests.
+- Preserve the 18 original reference names, geometry and pixels. Add nine
+  bottom-of-pane candidate attachments for icon artwork and Notifications with
+  quiet hours disabled/enabled across Light, Dark and AX3. Scroll selection
+  rejects missing/ambiguous views and follows layout changes until three stable
+  frames agree at the bottom. Geometry accompanies each candidate. These are
+  review artifacts, not accepted new baselines or whole-image equality claims.
+- Add selection, defaults-isolation, PIM seed/network-denial, ambiguous-scroll
+  and growing-content/bottom-control guards. Source parsing, project generation,
+  six provenance tests, repository self-tests, privacy audit, pinned format/lint
+  and diff checks pass locally. Local resource compilation retains the known
+  SDK/runtime incompatibility; hosted compilation/runtime guards and native
+  comparison are pending. Guard tests were written before the scroll repair,
+  but no executable local red/green run is claimed under that toolchain limit.
+  Both host and test sources also typecheck with Xcode 26.6/17F113 against the
+  unchanged cached package modules, using the toolchain's Testing macro plugin;
+  this does not substitute for the complete hosted resource build.
+- README/CHANGELOG document review flags and candidate coverage. No shipping
+  view, provider integration, network/privacy policy, macOS renderer or reference
+  file changed. Keep #265 draft and #269 open, intended status In review (board
+  access unavailable). No reference acceptance, production data or merge.

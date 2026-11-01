@@ -8,6 +8,8 @@ All notable changes to Brev are documented here.
 
 - iPhone Settings snapshot tooling uses a dedicated scene-hosted capture path
   with explicit runtime provenance instead of unhosted native-control rendering.
+  Shared synthetic review fixtures and lower-page captures include icon artwork,
+  quiet-hours content and seeded consent/PIM panes without changing references.
 
 - The macOS Appearance font-menu label follows light/dark theme changes without
   requiring the pane to reopen.

@@ -22,13 +22,15 @@ enum SceneSnapshotCapture {
         case drawingFailed
         case unstableImage
         case displayTimeout
+        case ambiguousScrollView
     }
 
     static func image(
         of controller: UIViewController,
         size: CGSize,
         traits: UITraitCollection,
-        name: String
+        name: String,
+        scrollToBottom: Bool = false
     ) async throws -> UIImage {
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
             throw CaptureError.invalidSize
@@ -73,14 +75,24 @@ enum SceneSnapshotCapture {
             throw CaptureError.missingScene
         }
 
+        let scrollView = scrollToBottom ? try outerScrollView(in: controller.view) : nil
+        positionAtBottom(scrollView)
         var previous = try #require(draw(controller.view, traits: traits).pngData())
         var identicalFrames = 1
         for _ in 0 ..< 60 {
             try await DisplayBoundary.wait()
+            controller.view.layoutIfNeeded()
+            positionAtBottom(scrollView)
             let image = try draw(controller.view, traits: traits)
             let data = try #require(image.pngData())
-            identicalFrames = data == previous ? identicalFrames + 1 : 1
+            let atBottom = scrollView.map { abs($0.contentOffset.y - bottomOffset($0)) < 0.5 } ?? true
+            identicalFrames = data == previous && atBottom ? identicalFrames + 1 : 1
             if identicalFrames == 3 {
+                if let scrollView {
+                    let geometry = "offset=\(scrollView.contentOffset), content=\(scrollView.contentSize), "
+                        + "viewport=\(scrollView.bounds.size), insets=\(scrollView.adjustedContentInset)"
+                    Attachment.record(Data(geometry.utf8), named: "\(name)-scroll.txt")
+                }
                 try Attachment.record(data, named: "\(name)-hierarchy.png")
                 return image
             }
@@ -88,6 +100,28 @@ enum SceneSnapshotCapture {
         }
         try Attachment.record(previous, named: "\(name)-unstable.png")
         throw CaptureError.unstableImage
+    }
+
+    private static func outerScrollView(in view: UIView) throws -> UIScrollView {
+        func candidates(in view: UIView) -> [UIScrollView] {
+            if let scrollView = view as? UIScrollView { return [scrollView] }
+            return view.subviews.flatMap { candidates(in: $0) }
+        }
+        let matches = candidates(in: view)
+        guard matches.count == 1, let scrollView = matches.first else { throw CaptureError.ambiguousScrollView }
+        return scrollView
+    }
+
+    private static func bottomOffset(_ scrollView: UIScrollView) -> CGFloat {
+        max(-scrollView.adjustedContentInset.top,
+            scrollView.contentSize.height - scrollView.bounds.height + scrollView.adjustedContentInset.bottom)
+    }
+
+    private static func positionAtBottom(_ scrollView: UIScrollView?) {
+        guard let scrollView else { return }
+        scrollView.layoutIfNeeded()
+        scrollView.setContentOffset(CGPoint(x: scrollView.contentOffset.x, y: bottomOffset(scrollView)), animated: false)
+        scrollView.layoutIfNeeded()
     }
 
     private static func draw(_ view: UIView, traits: UITraitCollection) throws -> UIImage {

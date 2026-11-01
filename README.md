@@ -619,6 +619,24 @@ metadata. A native diagnostic may use that artifact when local asset compilation
 is unavailable, after checking its source identity and on a fresh owned simulator;
 a different runtime build still does not count as pinned reference acceptance.
 
+Native fixture review can launch that synthetic bundle with both
+`BREV_SETTINGS_REVIEW_PANE` (`appearance`, `notifications`,
+`notifications-quiet-hours`, `signin-codes`, or `pim-sources`) and
+`BREV_SETTINGS_REVIEW_VARIANT` (`light`, `dark`, or `ax3`). Invalid or incomplete
+selections fail closed. With neither flag, the ordinary synthetic Settings root
+remains available. The pane source, account/PIM seeds, theme, locale and text
+size are shared with the capture tests; review defaults reset on launch. PIM
+stores/credentials are in memory and all fixture network transports reject
+requests. This pins appearance, not production System-follow behavior.
+
+Supplemental `*-bottom-*-hierarchy.png` attachments cover the icon cards and
+lower Notifications with quiet hours both disabled and enabled. Their scroll
+geometry is attached separately; capture requires one outer scroll view and
+three stable frames at its current bottom. These images are review candidates,
+not approved baselines. Existing top-of-pane names, dimensions and references
+remain unchanged. Native screen size/scale and safe areas still differ from
+the capture canvas; shared fixtures do not imply whole-image pixel equality.
+
 ```sh
 # Run the required iOS snapshot lane. The helper selects the newest installed
 # runtime/device; CI pins the pair below while refreshing the supported

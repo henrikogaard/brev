@@ -10,9 +10,11 @@
 		123B3FDB40E9AC1F5A29D720 /* SceneSnapshotCaptureTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 67F295C091DCCA9092FB8912 /* SceneSnapshotCaptureTests.swift */; };
 		5912436AADC02FBD194C86C3 /* BrevThemes in Frameworks */ = {isa = PBXBuildFile; productRef = CD2823D2DF1395A1314B332A /* BrevThemes */; };
 		598BD86A8B8E47CE804EDF34 /* BrevCalendar in Frameworks */ = {isa = PBXBuildFile; productRef = 7EFF4EE949A1370C79A034C9 /* BrevCalendar */; };
+		668F8E3511281885C8DC526D /* SettingsReviewFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5AB91AA598FA3A34B0B7E2 /* SettingsReviewFixture.swift */; };
 		69BDF3D6BCCF05660C6DA0F3 /* BrevBackend in Frameworks */ = {isa = PBXBuildFile; productRef = 0D5DD5F805BA141F726C5678 /* BrevBackend */; };
 		939D2069A25FA6AAFFCBEED6 /* BrevSettings in Frameworks */ = {isa = PBXBuildFile; productRef = B41EC7558BFBA8C57DEF3AAE /* BrevSettings */; };
 		9615C2374C37E5EFBDC22546 /* SnapshotTesting in Frameworks */ = {isa = PBXBuildFile; productRef = 248348CC58987731E2DF524D /* SnapshotTesting */; };
+		99D95A8E95896CA7EDBAF0B5 /* SettingsReviewFixture.swift in Sources */ = {isa = PBXBuildFile; fileRef = FF5AB91AA598FA3A34B0B7E2 /* SettingsReviewFixture.swift */; };
 		9BE217EF6E53303FAEF11CC0 /* BrevBackend in Frameworks */ = {isa = PBXBuildFile; productRef = 3F6ED33180937DA3007AEE5F /* BrevBackend */; };
 		A5CB331FB1BC00FCF0A913E2 /* SnapshotHost.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0426529BC5D3212E6CC52EB /* SnapshotHost.swift */; };
 		BF1978050722236154488B94 /* SceneSnapshotCapture.swift in Sources */ = {isa = PBXBuildFile; fileRef = 459B9858D36E14FF3D7E85EF /* SceneSnapshotCapture.swift */; };
@@ -70,6 +72,7 @@
 		B5729AAD54F2423348E555EA /* BrevSettingsSnapshotHost.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BrevSettingsSnapshotHost.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B7553915965AD8F8B7DAD95C /* BrevSettingsSnapshotHost-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "BrevSettingsSnapshotHost-Info.plist"; sourceTree = "<group>"; };
 		F0426529BC5D3212E6CC52EB /* SnapshotHost.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SnapshotHost.swift; sourceTree = "<group>"; };
+		FF5AB91AA598FA3A34B0B7E2 /* SettingsReviewFixture.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsReviewFixture.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -148,6 +151,7 @@
 		978795141ED28BEB0A0C8739 /* Sources */ = {
 			isa = PBXGroup;
 			children = (
+				FF5AB91AA598FA3A34B0B7E2 /* SettingsReviewFixture.swift */,
 				F0426529BC5D3212E6CC52EB /* SnapshotHost.swift */,
 			);
 			path = Sources;
@@ -340,6 +344,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				99D95A8E95896CA7EDBAF0B5 /* SettingsReviewFixture.swift in Sources */,
 				BF1978050722236154488B94 /* SceneSnapshotCapture.swift in Sources */,
 				123B3FDB40E9AC1F5A29D720 /* SceneSnapshotCaptureTests.swift in Sources */,
 				D933CC0047FC7A77DB15BD69 /* SettingsFormSnapshotTests.swift in Sources */,
@@ -350,6 +355,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				668F8E3511281885C8DC526D /* SettingsReviewFixture.swift in Sources */,
 				A5CB331FB1BC00FCF0A913E2 /* SnapshotHost.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;

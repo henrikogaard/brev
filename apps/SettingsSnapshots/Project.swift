@@ -62,6 +62,7 @@ let project = Project(
             infoPlist: .default,
             sources: [
                 "Tests/**",
+                "Sources/SettingsReviewFixture.swift",
                 "../../packages/BrevSettings/Tests/BrevSettingsTests/SettingsFormSnapshotTests.swift"
             ],
             dependencies: [

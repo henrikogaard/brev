@@ -18,6 +18,98 @@ extension SettingsFormSnapshotTests {
     @Suite("Scene snapshot capture guards", .serialized)
     @MainActor
     struct SceneSnapshotCaptureTests {
+        @Test("review launch selections are explicit and fail closed")
+        func reviewSelection() throws {
+            #expect(try SettingsReviewSelection.parse([:]) == nil)
+            for pane in SettingsReviewPane.allCases {
+                for variant in SettingsReviewVariant.allCases {
+                    #expect(try SettingsReviewSelection.parse([
+                        "BREV_SETTINGS_REVIEW_PANE": pane.rawValue,
+                        "BREV_SETTINGS_REVIEW_VARIANT": variant.rawValue
+                    ]) == SettingsReviewSelection(pane: pane, variant: variant))
+                }
+            }
+            for environment in [
+                ["BREV_SETTINGS_REVIEW_PANE": "appearance"],
+                ["BREV_SETTINGS_REVIEW_VARIANT": "light"],
+                ["BREV_SETTINGS_REVIEW_PANE": "unknown", "BREV_SETTINGS_REVIEW_VARIANT": "light"],
+                ["BREV_SETTINGS_REVIEW_PANE": "appearance", "BREV_SETTINGS_REVIEW_VARIANT": "unknown"]
+            ] {
+                #expect(throws: SettingsReviewSelection.SelectionError.self) {
+                    try SettingsReviewSelection.parse(environment)
+                }
+            }
+        }
+
+        @Test("native review defaults reset without touching another fixture")
+        func fixtureIsolation() throws {
+            let first = try SettingsReviewFixture(variant: .dark)
+            let other = try SettingsReviewFixture(variant: .light)
+            defer { first.cleanUp(); other.cleanUp() }
+            first.defaults.set(true, forKey: "fixture-marker")
+            other.defaults.set(true, forKey: "fixture-marker")
+            let reopened = try SettingsReviewFixture(variant: .light, suite: first.suite)
+            #expect(reopened.defaults.object(forKey: "fixture-marker") == nil)
+            #expect(other.defaults.bool(forKey: "fixture-marker"))
+            #expect(reopened.account.emailAddress == "henrik@ogard.example")
+        }
+
+        @Test("quiet-hours review does not alter the canonical default")
+        func quietHoursFixture() throws {
+            let canonical = try SettingsReviewFixture(variant: .ax3)
+            let enabled = try SettingsReviewFixture(variant: .ax3, quietHoursEnabled: true)
+            defer { canonical.cleanUp(); enabled.cleanUp() }
+            #expect(!canonical.defaults.bool(forKey: "notifications.quietHoursEnabled"))
+            #expect(enabled.defaults.bool(forKey: "notifications.quietHoursEnabled"))
+        }
+
+        @Test("PIM review data is seeded and network transport is denied")
+        func pimFixture() async throws {
+            let model = try await PIMSourcesFixture.model()
+            #expect(Set(model.sources.map(\.id)) == ["g-cal", "g-con", "dav"])
+            #expect(model.collectionsBySource["g-con"]?.count == 8)
+            #expect(model.collectionsBySource["dav"]?.first?.displayName == "QA Calendar")
+            #expect(!model.canEnableGoogleFeatures)
+            for source in model.sources {
+                #expect(!model.canSyncNow(sourceID: source.id))
+            }
+            let url = try #require(URL(string: "https://dav.example.com/"))
+            await #expect(throws: URLError.self) {
+                try await PIMSourcesFixture.DeniedTransport().send(URLRequest(url: url))
+            }
+        }
+
+        @Test("bottom capture rejects missing and ambiguous scroll views", arguments: [0, 2])
+        func missingScrollView(count: Int) async {
+            let controller = UIViewController()
+            for _ in 0 ..< count {
+                controller.view.addSubview(UIScrollView())
+            }
+            await #expect(throws: SceneSnapshotCapture.CaptureError.ambiguousScrollView) {
+                try await SceneSnapshotCapture.image(
+                    of: controller, size: CGSize(width: 375, height: 812),
+                    traits: UITraitCollection(displayScale: 2), name: "invalid-scroll", scrollToBottom: true
+                )
+            }
+        }
+
+        @Test("bottom capture includes the last control after content grows")
+        func bottomCapture() async throws {
+            let controller = UIViewController()
+            let view = GrowingScrollDrawingView()
+            controller.view = view
+            let image = try await SceneSnapshotCapture.image(
+                of: controller, size: CGSize(width: 375, height: 812),
+                traits: UITraitCollection(traitsFrom: [
+                    UITraitCollection(displayScale: 2), UITraitCollection(userInterfaceStyle: .light)
+                ]), name: "bottom-control", scrollToBottom: true
+            )
+            #expect(view.scroll.contentOffset.y == 2000 - 812)
+            let frame = view.control.convert(view.control.bounds, to: view)
+            #expect(view.bounds.contains(frame))
+            #expect(try hasThumb(view.control, in: image, frame: frame))
+        }
+
         @Test("host includes every app icon preview", arguments: AppIconVariant.allCases)
         func iconPreviews(variant: AppIconVariant) throws {
             let image = try #require(UIImage(named: variant.previewAssetName, in: .main, compatibleWith: nil))
@@ -81,11 +173,12 @@ extension SettingsFormSnapshotTests {
             #expect(try !hasThumb(disabled, in: blank))
         }
 
-        private func hasThumb(_ control: UISwitch, in image: UIImage) throws -> Bool {
-            let thumbX = control.frame.minX + control.frame.width * (control.isOn ? 0.75 : 0.25)
-            let trackX = control.frame.minX + control.frame.width * (control.isOn ? 0.25 : 0.75)
-            let thumb = try brightness(image, at: CGPoint(x: thumbX, y: control.frame.midY))
-            let track = try brightness(image, at: CGPoint(x: trackX, y: control.frame.midY))
+        private func hasThumb(_ control: UISwitch, in image: UIImage, frame: CGRect? = nil) throws -> Bool {
+            let frame = frame ?? control.frame
+            let thumbX = frame.minX + frame.width * (control.isOn ? 0.75 : 0.25)
+            let trackX = frame.minX + frame.width * (control.isOn ? 0.25 : 0.75)
+            let thumb = try brightness(image, at: CGPoint(x: thumbX, y: frame.midY))
+            let track = try brightness(image, at: CGPoint(x: trackX, y: frame.midY))
             return thumb > 0.8 && thumb - track > 0.1
         }
 
@@ -133,6 +226,38 @@ extension SettingsFormSnapshotTests {
                 )
             }
         }
+    }
+}
+
+@MainActor
+private final class GrowingScrollDrawingView: UIView {
+    let scroll = UIScrollView()
+    let control = UISwitch()
+
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        backgroundColor = .systemBackground
+        scroll.contentInsetAdjustmentBehavior = .never
+        scroll.contentSize = CGSize(width: 375, height: 1800)
+        control.isOn = true
+        control.sizeToFit()
+        control.frame.origin = CGPoint(x: 24, y: 1700)
+        scroll.addSubview(control)
+        addSubview(scroll)
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        scroll.frame = bounds
+    }
+
+    override func drawHierarchy(in rect: CGRect, afterScreenUpdates afterUpdates: Bool) -> Bool {
+        scroll.contentSize.height = 2000
+        control.frame.origin.y = 1900
+        return super.drawHierarchy(in: rect, afterScreenUpdates: afterUpdates)
     }
 }
 

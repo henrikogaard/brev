@@ -31,13 +31,62 @@ final class SnapshotHost: UIResponder, UIApplicationDelegate {
 
 final class SnapshotScene: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
+    private var reviewFixture: SettingsReviewFixture?
 
     func scene(_ scene: UIScene, willConnectTo _: UISceneSession, options _: UIScene.ConnectionOptions) {
         guard let scene = scene as? UIWindowScene else { return }
         let window = UIWindow(windowScene: scene)
-        window.rootViewController = UIHostingController(rootView: SyntheticSettings())
+        do {
+            if let selection = try SettingsReviewSelection.parse(ProcessInfo.processInfo.environment) {
+                let fixture = try SettingsReviewFixture(
+                    variant: selection.variant, suite: "SettingsNativeReview",
+                    quietHoursEnabled: selection.pane == .notificationsQuietHours
+                )
+                reviewFixture = fixture
+                let controller = UIHostingController(rootView: SeededSettingsReview(fixture: fixture, selection: selection))
+                controller.traitOverrides.preferredContentSizeCategory = selection.variant == .ax3
+                    ? .accessibilityExtraLarge : .large
+                window.overrideUserInterfaceStyle = selection.variant.isDark ? .dark : .light
+                window.rootViewController = controller
+            } else {
+                window.rootViewController = UIHostingController(rootView: SyntheticSettings())
+            }
+        } catch {
+            preconditionFailure("Invalid synthetic Settings review configuration: \(error)")
+        }
         self.window = window
         window.makeKeyAndVisible()
+    }
+
+    func sceneDidDisconnect(_: UIScene) {
+        reviewFixture?.cleanUp()
+        reviewFixture = nil
+    }
+}
+
+private struct SeededSettingsReview: View {
+    let fixture: SettingsReviewFixture
+    let selection: SettingsReviewSelection
+    @State private var pimModel: PIMSourceSettingsModel?
+
+    var body: some View {
+        fixture.styled(pane, variant: selection.variant)
+            .task {
+                guard selection.pane == .pimSources else { return }
+                do { pimModel = try await PIMSourcesFixture.model() }
+                catch { preconditionFailure("Unable to load synthetic PIM fixtures: \(error)") }
+            }
+    }
+
+    @ViewBuilder private var pane: some View {
+        switch selection.pane {
+        case .appearance: fixture.appearance
+        case .notifications, .notificationsQuietHours: fixture.notifications
+        case .signInCodes: fixture.signInCodes
+        case .pimSources:
+            if let pimModel { fixture.pimSources(pimModel) }
+            else { ProgressView() }
+        }
     }
 }
 
