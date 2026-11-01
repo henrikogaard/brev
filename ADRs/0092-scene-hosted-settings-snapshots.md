@@ -53,7 +53,8 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    This host still pins appearance and does not validate production System mode.
 7. Preserve the existing top-of-pane geometry, names and references. Add
    bottom-of-form diagnostic captures for icon cards, lower Notifications
-   content and lower PIM sources/collections. Locate one outer scroll view, enforce its current bottom offset
+   content and lower PIM sources/collections. Locate one outer scroll view,
+   enforce its current bottom offset
    through layout settling, and retain the existing draw/stability guards.
    These supplemental attachments are review coverage, not approved references
    or a substitute for native inspection of the requested content.

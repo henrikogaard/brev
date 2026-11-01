@@ -6889,3 +6889,36 @@ buttons, and package-aware localization.
   with an explicitly CGFloat expected value. Fix only that expected type; retain
   exact equality, thumb-pixel checks, image precision and three-frame stability.
   Hosted rerun and native visual acceptance remain outstanding.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: lower PIM review coverage
+
+- The corrected scroll-geometry guard passes in pinned run41348344305.
+  All scene/resource/fixture guards and nine lower captures pass; CI settles
+  at21 passed and two Settings jobs failing18 iPhone/31 macOS strict reference
+  comparisons. All18 canonical images are pixel-identical to04dccc6. No
+  references accepted or changed. Six bottom images match across two runs;
+  three Notifications cases vary only within the top135–140pt navigation/
+  scroll-edge region, despite identical geometry and three stable frames per
+  run. Cross-run compositing reproducibility remains unproven.
+- Native review atba9a257 used the complete CI host (artifact13100910952,
+  packaged mergebcdab19/tree6e176f0) and a fresh owned iPhone16e on23F73.
+  All five seeded panes in Light/Dark/AX3 were reviewed with real scrolling;
+  artwork, quiet-hours states/times/footers, assessed/unassessed consent,
+  three PIM sources/eight contact collections, defaults reset and invalid-flag
+  rejection pass. One annotated72-second recording is retained. AX3 consent
+  email and several PIM labels ellipsize; no new source regression is claimed.
+- Native inspection reached CalDAV/QA Calendar/final footer beyond the PIM
+  canonical captures. Amend ADR-0092 first, then add three diagnostic-only PIM
+  bottom cases using the same fixture and capture guards. Leave production
+  views and their explicit single-line collection policy unchanged. README
+  records coverage and limitations; the existing CHANGELOG entry already
+  covers seeded PIM tooling. No privacy, release, provider or AGENTS change.
+- Verification: syntax parsing, six provenance checks, repository self-tests,
+  privacy audit, pinned format/lint and diff checks pass. New PIM captures need
+  hosted execution/image inspection; local full resource build remains blocked
+  by the documented runtime/actool mismatch. No new product behavior warrants
+  a unit red/green cycle; this adds diagnostic coverage itself. Native evidence
+  is still23F73/390pt/3x, not exact23F77/375pt/2x acceptance or System-follow.
+- Keep the existing branch/PR draft, no merge or baseline acceptance. Issue269
+  remains open, intended In review; board access remains unavailable. Product
+  acceptance of AX3 truncation versus an accessibility layout repair is open.

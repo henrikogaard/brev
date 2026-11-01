@@ -122,6 +122,13 @@ struct SettingsFormSnapshotTests {
             }
         }
     }
+
+    @Test("lower PIM sources and collections remain visible in review captures", arguments: Variant.allCases)
+    func pimSourcesBottom(variant: Variant) async throws {
+        let model = try await PIMSourcesFixture.model()
+        try await snapshot("pim-sources-bottom", variant: variant,
+                           scrollToBottom: true, compareReference: false) { $0.pimSources(model) }
+    }
 }
 
 private struct SettingsRootHost: View {
