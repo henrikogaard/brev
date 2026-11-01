@@ -298,6 +298,17 @@ original designs.
 
 ## Consequences
 
+### 2026-11-01 — macOS Settings font-menu contrast
+
+The macOS “Use One Font Everywhere” menu label consumes the active theme's
+`textPrimary` token explicitly. Native validation found its automatic title
+color retained the preceding mode after in-app light/dark changes. Updating
+the label through the theme environment preserves the native menu and font
+actions without rebuilding the whole pane or changing stored preferences.
+iOS retains its existing menu treatment. Verify both transition directions
+while the Appearance pane stays open; static launch snapshots do not cover
+this regression.
+
 ### Accepted
 
 - View code is gated behind the "no literal colors" rule from day one.
