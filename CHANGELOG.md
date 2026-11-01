@@ -6,6 +6,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The macOS Appearance font-menu label follows light/dark theme changes without
+  requiring the pane to reopen.
 - macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
   sandbox with no production App Group or live-account access.
 - The iPhone Mailboxes menu opens Settings again; macOS keeps its app-menu command.

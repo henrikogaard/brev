@@ -16,6 +16,7 @@ import SwiftUI
 
 /// Appearance group with one font family picker per window section (ADR-0086).
 struct FontSectionSettings: View {
+    @Environment(\.brevTheme) private var theme
     @SectionFontFamily private var sidebarFamily: MailboxFontFamily
     @SectionFontFamily private var listFamily: MailboxFontFamily
     @SectionFontFamily private var readerFamily: MailboxFontFamily
@@ -60,12 +61,17 @@ struct FontSectionSettings: View {
 
                 HStack {
                     Spacer(minLength: 0)
-                    Menu(String(localized: "Use One Font Everywhere", bundle: .module)) {
+                    Menu {
                         ForEach(MailboxFontFamily.allCases) { family in
                             Button(family.title) {
                                 Self.applyToAll(family, in: defaults)
                             }
                         }
+                    } label: {
+                        Text("Use One Font Everywhere", bundle: .module)
+                        #if os(macOS)
+                            .foregroundStyle(theme.textPrimary.color)
+                        #endif
                     }
                 }
                 .frame(maxWidth: .infinity)
