@@ -6769,3 +6769,8 @@ buttons, and package-aware localization.
 
 - The existing font menu now supplies an explicit localized Text label, with the macOS foreground bound to `theme.textPrimary`. iOS keeps its inherited label style; popup choices and the existing apply-to-all implementation are unchanged. No pane-wide identity/state reset or arbitrary redraw delay.
 - TDD red evidence is the approved native Light → Dark → Light recording; the focused existing font/theme/navigation checks and pinned lint/format pass after the change. The agent must retest the dynamic transition and menu actions at the new clean pushed head before this repair is accepted. No snapshot references updated. Documentation sweep: ADR-0002/CHANGELOG/WORKLOG updated; no new privacy, network, setup or localization change. Hosted snapshot acceptance and other stack gates remain separate; no merge.
+
+## 2026-11-01 — Devin — PR #265 whole-menu contrast follow-up
+
+- Targeted native retest at b4d7a87 passed the explicit text foreground and menu actions/persistence regressions, but its native disclosure chevron retained the preceding mode's color. Whole-control acceptance failed; the agent stopped and retained the UUID artifact/evidence. No production data or snapshot changes.
+- ADR-first extension recreates only the stateless font menu when the resolved theme mode changes. The pane and font preference state stay mounted. Both label and chevron must pass repeated in-pane mode transitions on a new clean pushed isolated build; no broader native/snapshot acceptance inferred.

@@ -309,6 +309,13 @@ iOS retains its existing menu treatment. Verify both transition directions
 while the Appearance pane stays open; static launch snapshots do not cover
 this regression.
 
+The native menu's identity also follows the resolved light/dark theme mode.
+The targeted native retest proved that an explicit text foreground alone did
+not update AppKit's disclosure chevron. Recreating only this stateless menu
+refreshes that native appearance; the pane, pickers and stored preferences
+retain their identities. This is a whole-control contrast check, not just a
+text-label check.
+
 ### Accepted
 
 - View code is gated behind the "no literal colors" rule from day one.
