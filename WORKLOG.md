@@ -6779,3 +6779,8 @@ buttons, and package-aware localization.
 
 - Native test at 7ee642c again failed the dark disclosure chevron despite readable text; testing stopped before later regressions. Full-window evidence confirms the native indicator retains the wrong foreground. Mode-keyed reconstruction is ineffective and will be removed.
 - ADR-first revision retains the native menu and actions, but gives the macOS label an explicit themed SF Symbol disclosure and hides the native indicator, following the existing borderless menu pattern. No global AppKit appearance changes, delays, pane recreation, new localization keys or iOS styling changes. Both glyph and text require a new isolated native retest; snapshot references stay untouched.
+
+## 2026-11-01 — Devin — PR #265 scene-hosted snapshot decision
+
+- Approved synthetic diagnostic reproduced all four missing UIKit/SwiftUI switch thumbs with the existing unhosted strategy; scene-hosted hierarchy drawing retained them in Light and Dark. Six draws succeeded; three repeats per mode/method were stable. Actual runtime was iOS 26.5/23F73, not CI's 23F77; content traits were 2× while the native screen was 3×. No exact hosted reproduction, reference acceptance or macOS inference.
+- ADR-0092 precedes a dedicated synthetic host and provenance-pinned iOS harness repair. Actual Settings and tall accessibility captures require verification before acceptance. No references, production controls or other stack gates change. #269 remains open; board access is unavailable, intended status In progress.
