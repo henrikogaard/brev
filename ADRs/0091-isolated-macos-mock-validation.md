@@ -47,6 +47,10 @@ not resolve any App Group in this mode; iCloud preference activation is skipped.
 
 ## Consequences
 
+The generated macOS Xcode project must track `BrevAppMain.swift` in its Sources
+phase. A clean checkout must link the guard entry point without relying on an
+uncommitted workspace regeneration; CI's generated-project diff enforces this.
+
 ### Accepted
 
 - This mode validates native Settings/navigation/reader interactions with
