@@ -6,6 +6,8 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
+  sandbox with no production App Group or live-account access.
 - The iPhone Mailboxes menu opens Settings again; macOS keeps its app-menu command.
 - The iPhone theme selector stacks its label and selected names at accessibility text sizes instead of squeezing the label between columns.
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state

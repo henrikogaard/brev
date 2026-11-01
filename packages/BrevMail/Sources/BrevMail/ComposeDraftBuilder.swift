@@ -11,6 +11,7 @@
  */
 
 import BrevBackend
+import BrevWidgets
 import Foundation
 
 public struct ComposePrefill: Equatable, Sendable {
@@ -148,14 +149,10 @@ public enum SharedComposePayload {
         return prefill.isEmpty ? nil : prefill
     }
 
-    /// App group shared with the iOS share extension.
-    private static let shareHandoffAppGroupIdentifier = "group.eu.brevmail.brev"
-
     /// The share extension's app-group handoff directory, or `nil` if the
     /// container can't be resolved (then no attachment is accepted — fail safe).
     private static func shareHandoffRoot() -> URL? {
-        FileManager.default
-            .containerURL(forSecurityApplicationGroupIdentifier: shareHandoffAppGroupIdentifier)?
+        WidgetSnapshotStore.defaultDirectory()?
             .appendingPathComponent("ShareHandoff", isDirectory: true)
     }
 

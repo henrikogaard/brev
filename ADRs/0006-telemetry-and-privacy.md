@@ -272,3 +272,15 @@ is under Writing. Connections are under Accounts & Connections, rules under
 Rules & Organisation, and updates under About & Updates. These are navigation
 changes only; no endpoint, payload, default, consent requirement, or retention
 policy in the table above changes.
+
+### 2026-11-01 isolated macOS mock validation
+
+ADR-0091 adds an explicitly selected development-only profile: a fresh UUID
+sandbox identity, in-memory mock account/token stores, no live provider wiring,
+and no App Group resolution or embedded extensions. Its only entitlement is
+App Sandbox, excluding direct network, system Contacts/Calendar, iCloud and
+shared-group access. Preferences and generated products remain local to that
+test identity until explicitly cleaned up. The signed bundle forces mock mode
+before SwiftUI initialization; invalid signatures, identity/home combinations
+and Release builds fail closed. No network destination or release default in
+the table above changes. External-app actions are outside this bounded test.
