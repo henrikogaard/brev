@@ -73,6 +73,9 @@ struct FontSectionSettings: View {
                             .foregroundStyle(theme.textPrimary.color)
                         #endif
                     }
+                    #if os(macOS)
+                    .id(theme.mode)
+                    #endif
                 }
                 .frame(maxWidth: .infinity)
             }
