@@ -88,3 +88,25 @@ BREV_PERF_RESULTS_JSON=/tmp/brev-perf-results.json scripts/performance-budget-ga
 ```
 
 A sample/template harness lives at `scripts/performance-measure-template.sh`.
+
+## Synthetic header storage comparison
+
+The ADR-0087 baseline suite compares a full JSON snapshot read with a bounded
+50-header SQLite query over identical synthetic 10k/50k fixtures:
+
+```sh
+swift test --package-path packages/BrevSyncEngine --filter IMAPHeaderReadBaselineTests
+```
+
+Use `-c release` for an optimized comparison on an authorized test machine.
+The suite prints four alternating-order `PERF header-read.sample` records
+and one median summary per fixture. Fixture creation is excluded. SQLite
+open, query and combined times are separate; JSON time includes construction
+of a fresh cache and its complete snapshot read.
+
+`cold=store-reopen` means fresh cache objects and database connections. The
+OS page cache is uncontrolled. This is not a process-cold app launch, a live
+folder-open trace or a test of migration overhead. Assertions verify page
+contents and legacy metadata, not speed inequalities on shared CI runners.
+Keep the commit, build mode, environment and complete samples with any timing
+comparison. These results do not replace the live measurement gate above.

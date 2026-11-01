@@ -109,48 +109,56 @@ public struct TasksRootView: View {
             isEnabled: showsSearch
         ))
         .task { await model.load() }
-        .task { await editing?.load() }
-        .task { await model.observeSourceChanges() }
-        .task { await editing?.observeSourceChanges() }
-        .onChange(of: model.selectedTaskID) { _, newValue in
-            if newValue != nil {
-                preferredCompactColumn = .detail
+        #if os(macOS)
+            .onChange(of: shouldShowNoSourcesInDetail, initial: true) { _, shouldShow in
+                columnVisibility = shouldShow ? .detailOnly : .doubleColumn
             }
-        }
-        .sheet(item: $editorRequest) { request in
-            if let editing {
-                editorSheet(for: request, editing: editing)
-                    .pimEditorSheetAppearance(theme)
-            }
-        }
-        #if os(iOS)
-        .alert(
-            String(localized: "Delete this task?", bundle: .module),
-            isPresented: Binding(
-                get: { taskPendingDeletion != nil },
-                set: { if !$0 { taskPendingDeletion = nil } }
-            )
-        ) {
-            Button(String(localized: "Delete", bundle: .module), role: .destructive) {
-                if let task = taskPendingDeletion {
-                    Task { await delete(task) }
+        #endif
+            .task { await editing?.load() }
+            .task { await model.observeSourceChanges() }
+            .task { await editing?.observeSourceChanges() }
+            .onChange(of: model.selectedTaskID) { _, newValue in
+                if newValue != nil {
+                    preferredCompactColumn = .detail
                 }
-                taskPendingDeletion = nil
             }
-            Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
-                taskPendingDeletion = nil
+            .sheet(item: $editorRequest) { request in
+                if let editing {
+                    editorSheet(for: request, editing: editing)
+                        .pimEditorSheetAppearance(theme)
+                }
             }
-        }
+        #if os(iOS)
+            .alert(
+                String(localized: "Delete this task?", bundle: .module),
+                isPresented: Binding(
+                    get: { taskPendingDeletion != nil },
+                    set: { if !$0 { taskPendingDeletion = nil } }
+                )
+            ) {
+                Button(String(localized: "Delete", bundle: .module), role: .destructive) {
+                    if let task = taskPendingDeletion {
+                        Task { await delete(task) }
+                    }
+                    taskPendingDeletion = nil
+                }
+                Button(String(localized: "Cancel", bundle: .module), role: .cancel) {
+                    taskPendingDeletion = nil
+                }
+            }
         #endif
     }
 
-    /// The search field needs tasks to search; with no source connected
-    /// it is hidden on iOS.
+    /// Search is available only while a source can provide tasks.
     private var showsSearch: Bool {
-        #if os(iOS)
         model.hasSources
+    }
+
+    private var shouldShowNoSourcesInDetail: Bool {
+        #if os(macOS)
+        !model.isLoading && !model.hasSources
         #else
-        true
+        false
         #endif
     }
 
@@ -188,11 +196,15 @@ public struct TasksRootView: View {
                     String(localized: "Loading tasks", bundle: .module)
                 )
         } else if !model.hasSources {
+            #if os(macOS)
+            EmptyView()
+            #else
             PIMNoSourcesView(
                 kind: .tasks,
                 symbol: "checklist",
                 onOpenSettings: onOpenSettings
             )
+            #endif
         } else if model.sections.isEmpty {
             emptyState(
                 symbol: "checklist",
@@ -243,7 +255,13 @@ public struct TasksRootView: View {
 
     @ViewBuilder
     private var detailColumn: some View {
-        if let task = model.task(id: model.selectedTaskID) {
+        if shouldShowNoSourcesInDetail {
+            PIMNoSourcesView(
+                kind: .tasks,
+                symbol: "checklist",
+                onOpenSettings: onOpenSettings
+            )
+        } else if let task = model.task(id: model.selectedTaskID) {
             TaskDetailView(
                 task: task,
                 collection: model.collection(for: task),

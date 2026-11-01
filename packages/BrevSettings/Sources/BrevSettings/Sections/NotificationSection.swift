@@ -35,6 +35,9 @@ struct NotificationSection: View {
 
     private let settingsStore: SettingsPersistenceStore
     private let accounts: [BrevAccount]
+    /// Whether an account's backend can make a trusted sign-in assessment
+    /// (ADR-0088); false hides the consent switches.
+    private let signInAssessmentAvailable: (BrevAccount.ID) -> Bool
     private let authorizationStatusProvider: () async -> BrevSettingsNotificationAuthStatus
 
     /// - Parameter authorizationStatus: Reads the system permission; tests inject a fixed status
@@ -42,6 +45,7 @@ struct NotificationSection: View {
     init(
         settingsStore: SettingsPersistenceStore = .standard,
         accounts: [BrevAccount] = [],
+        signInAssessmentAvailable: @escaping (BrevAccount.ID) -> Bool = { _ in false },
         authorizationStatus: @escaping () async -> BrevSettingsNotificationAuthStatus = {
             let systemSettings = await UNUserNotificationCenter.current().notificationSettings()
             return BrevSettingsNotificationAuthStatus.map(systemSettings.authorizationStatus)
@@ -49,6 +53,7 @@ struct NotificationSection: View {
     ) {
         self.settingsStore = settingsStore
         self.accounts = accounts
+        self.signInAssessmentAvailable = signInAssessmentAvailable
         authorizationStatusProvider = authorizationStatus
         _settings = State(initialValue: settingsStore.notificationSettings())
     }
@@ -65,6 +70,11 @@ struct NotificationSection: View {
                 #endif
                 accountScopeGroup
                 quietHoursGroup
+                SignInCodeSettingsGroup(
+                    accounts: accounts,
+                    settingsStore: settingsStore,
+                    isAvailable: signInAssessmentAvailable
+                )
             }
         }
         .task { await refreshAuthorizationStatus() }

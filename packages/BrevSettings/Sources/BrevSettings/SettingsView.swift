@@ -30,6 +30,7 @@ public struct SettingsView: View {
     #if os(iOS)
     @Environment(\.horizontalSizeClass) private var horizontalSizeClass
     #endif
+    @Binding private var sectionRequest: SettingsSection?
     @State private var navigation: SettingsNavigationState
     @State private var developerSettings: DeveloperSettings
     /// The pane the compact stack pushes on first appearance (deep link).
@@ -76,6 +77,7 @@ public struct SettingsView: View {
         activeTheme: Binding<BrevTheme>,
         activeAppIcon: Binding<AppIconVariant> = .constant(AppIconVariant.defaultVariant),
         sectionAvailability: SettingsSectionAvailability = .v1Default,
+        sectionRequest: Binding<SettingsSection?> = .constant(nil),
         initialSection: SettingsSection = .accounts,
         pushesInitialSection: Bool = false,
         initialAccounts: [BrevAccount] = [],
@@ -118,6 +120,7 @@ public struct SettingsView: View {
         self.developerActions = developerActions
         _activeTheme = activeTheme
         _activeAppIcon = activeAppIcon
+        _sectionRequest = sectionRequest
         _accounts = State(initialValue: initialAccounts)
         _currentAccountID = State(
             initialValue: SettingsInitialAccountSelection.currentAccountID(
@@ -192,6 +195,11 @@ public struct SettingsView: View {
             }
             .onChange(of: mailboxContext) { previous, next in
                 selectedSourceID = next.selection(replacing: previous, current: selectedSourceID)
+            }
+            .onChange(of: sectionRequest, initial: true) { _, section in
+                guard let section else { return }
+                navigation.select(section)
+                sectionRequest = nil
             }
             .task {
                 accounts = await accountStore.accounts
@@ -665,7 +673,14 @@ public struct SettingsView: View {
         case .privacy:
             PrivacySection(settingsStore: settingsStore)
         case .notifications:
-            NotificationSection(settingsStore: settingsStore, accounts: accounts)
+            NotificationSection(
+                settingsStore: settingsStore,
+                accounts: accounts,
+                signInAssessmentAvailable: { accountID in
+                    backendProvider(accountID)?.extendedCapabilities
+                        .contains(.trustedSignInAssessment) ?? false
+                }
+            )
         case .updates:
             UpdatesSection(
                 settingsStore: settingsStore,

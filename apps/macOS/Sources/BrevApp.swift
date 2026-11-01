@@ -40,6 +40,7 @@ struct BrevApp: App {
     @State private var networkMonitor = NetworkReachabilityMonitor()
     @State private var sessionRestoreAttempted = false
     @State private var settingsMailboxContext = SettingsMailboxContext()
+    @State private var settingsSectionRequest: SettingsSection?
     @State private var isShowingAddAccountSheet = false
     /// Email handed to the add-account sheet when signing in a restored account.
     @State private var addAccountPrefillEmail = ""
@@ -296,7 +297,11 @@ struct BrevApp: App {
                     coordinator: session.pimSourceCoordinator,
                     collectionService: session.pimCollectionService,
                     driveFeature: session.googleDriveFeature
-                )
+                ),
+                onOpenSettings: { section in
+                    settingsSectionRequest = section
+                    openWindow(id: BrevWindowID.settings)
+                }
             )
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
@@ -314,7 +319,11 @@ struct BrevApp: App {
                     writeService: session.pimContactWriteService,
                     coordinator: session.pimSourceCoordinator,
                     collectionService: session.pimCollectionService
-                )
+                ),
+                onOpenSettings: { section in
+                    settingsSectionRequest = section
+                    openWindow(id: BrevWindowID.settings)
+                }
             )
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
@@ -332,7 +341,11 @@ struct BrevApp: App {
                     writeService: session.pimTaskWriteService,
                     coordinator: session.pimSourceCoordinator,
                     collectionService: session.pimCollectionService
-                )
+                ),
+                onOpenSettings: { section in
+                    settingsSectionRequest = section
+                    openWindow(id: BrevWindowID.settings)
+                }
             )
             .brevWindowTranslucency(windowRole: .settings)
             .brevTransparentWindowToolbarBackground(theme: session.theme)
@@ -349,6 +362,7 @@ struct BrevApp: App {
                 activeTheme: $session.theme,
                 activeAppIcon: appIconBinding,
                 sectionAvailability: settingsSectionAvailability,
+                sectionRequest: $settingsSectionRequest,
                 initialAccounts: session.visibleBackends.map(\.account),
                 initialCurrentAccountID: session.backend?.account.id,
                 mailboxContext: settingsMailboxContext,

@@ -295,6 +295,71 @@ The sources reviewed below do not establish Gmail's forged-header removal
 contract or an authoritative per-message delivery-origin field. This remains
 an evidence blocker, not an assumption to encode in a provider adapter.
 
+## Amendment 2026-10-16: scoped Gmail trust
+
+Henrik chose a scoped Gmail trust model on 2026-10-16 instead of parking
+the feature. The audit above showed that a documented Gmail forged-header
+removal contract is unlikely to exist, so the gate becomes a concrete rule
+plus synthetic evidence from a disposable Gmail mailbox. Generic IMAP stays
+unsupported. Decisions 1-12 still apply; this section narrows decisions 3
+and 4 for Gmail API accounts only.
+
+### Trust rule (Gmail API accounts)
+
+1. The adapter preserves every `Authentication-Results` header from the
+   Gmail Message API `payload.headers` list in received order. The current
+   first-value `headerMap` is not used for this assessment.
+2. The assessment reads only the topmost `Authentication-Results` header.
+   Its `authserv-id` must be exactly `mx.google.com`. Google's receiving MX
+   prepends this header at SMTP receipt, so a sender-supplied copy sits
+   below it.
+3. Any other `Authentication-Results` header in the message that also claims
+   `mx.google.com` fails closed, whether or not Google stripped it. A forged
+   copy therefore blocks the panel instead of being silently ignored.
+4. The topmost header must contain exactly one `dmarc=` result, equal to
+   `pass`, whose `header.from` domain equals the domain of the message's
+   single `From` address (case-insensitive, no organizational-domain
+   relaxation). Missing, duplicate, malformed or non-pass results fail closed.
+   There is no DKIM-only fallback.
+5. The outcome crosses the backend seam only as a provider-neutral trusted
+   assessment (`pass` or `unavailable`) behind a capability. Views never see
+   raw headers or check the backend type.
+
+### Fresh-delivery rule (Gmail API accounts)
+
+A message is a fresh delivery only when all of these hold:
+
+- it arrived through an incremental `history.list` `messageAdded` record,
+  never through the `fullSyncRequired` fallback, the initial listing, or a
+  reconnect backfill;
+- it carries the `INBOX` label and none of `SPAM`, `TRASH`, `SENT`, `DRAFT`;
+- its `internalDate` is within 10 minutes of the local clock;
+- the trust rule above found a topmost `mx.google.com` header, which Gmail
+  adds only on SMTP receipt.
+
+Messages the account owner imports or inserts through the API are outside
+the threat model (the owner already controls the mailbox), but they must
+still fail the rule when they lack a fresh topmost `mx.google.com` header.
+
+### Evidence required before enabling Gmail
+
+Run in a disposable Gmail mailbox with synthetic content only. Record
+sanitized header order and the assessment result, never real sign-in codes,
+addresses beyond the test domains, or tokens:
+
+| Case | Message | Expected |
+| --- | --- | --- |
+| E1 | Genuine mail from a domain publishing DMARC, aligned From | `pass` |
+| E2 | Sender inserts `Authentication-Results: mx.google.com; dmarc=pass header.from=<that domain>` | `unavailable` (rule 3), and record whether Google stripped it |
+| E3 | Sender inserts a forged result with a different `authserv-id` | Result decided by the topmost Google header only |
+| E4 | From a domain without DMARC, or DMARC fail | `unavailable` |
+| E5 | Old message surfaced by full-sync fallback | not fresh; no assessment |
+
+Unit fixtures cover the same cases plus duplicate `dmarc=` entries,
+mismatched `header.from`, multiple `From` addresses and malformed headers.
+Sending E2 and E3 needs Henrik's approval for each run, because it sends
+real mail. Until E1-E5 are recorded, the Gmail capability stays off.
+
 ## Implementation slices
 
 ### Isolated detector status (2026-10-15)
@@ -349,6 +414,60 @@ account-lifecycle caller is added. Consent is not provider eligibility. No
 detector invocation, candidate persistence, body read, network call, UI, panel,
 notification or AppSession wiring is added; both providers remain unsupported.
 The consent explanation and integration-time privacy updates remain unshipped.
+
+### Gmail trust gates status (2026-10-16)
+
+The provider-dependent gates of integration slice 1 are implemented for
+Gmail API accounts only: provider-neutral `SignInTrustFailure`,
+`SignInTrustAssessment` and `SignInTrustAssessing` in BrevBackend; the pure
+`GmailSignInTrustAssessor` (topmost `mx.google.com` `Authentication-Results`
+rule, forged-copy fail-closed, exact-domain `header.from` match) and the
+fresh-delivery provenance path (`GmailSyncOutcome.freshDeliveryIDs` from
+`messagesAdded` history records, in-memory registry capped at 200 entries
+expiring after 10 minutes) in BrevGmail. `GmailAPIBackend` conforms to
+`SignInTrustAssessing` with the registry, label, and `internalDate` gates
+before the metadata header fetch.
+
+The `.trustedSignInAssessment` capability exists but stays off — no backend
+advertises it — pending the E1-E5 evidence recorded in a disposable Gmail
+mailbox. No panel, detector caller, settings UI, notification, capability
+advertisement, or body fetch is added; the assessment method is reachable
+only from tests. Generic IMAP remains unsupported.
+
+### Consent settings status (2026-10-17)
+
+`SignInCodeSettingsGroup` sits at the end of Settings → Notifications. Each
+account shows its name and address; accounts whose backend advertises
+`.trustedSignInAssessment` get two independent switches ("Show one-time
+codes", "Show sign-in links"), both off by default, saved through
+`SignInCodeSettings` into the local defaults only. Other accounts show "Not
+available for this account yet" instead of a dead switch. The group footer
+is the in-context explanation from decision 11: eligible new messages may
+cause a body read over the account's own connection, and codes may appear
+over other apps. Because no backend advertises the capability, every account
+currently shows the unavailable note. The `onChange` hook exists for the
+arrival controller's `cancel(accountID:)` but is not wired until an
+`AppSession` owner lands.
+
+### Arrival controller status (2026-10-17)
+
+`SignInCodeArrivalController` in BrevMail implements the gate order of
+decisions 3, 5 and 11 for `.messagesAdded`: per-account consent (codes or
+links) first, then the account's `.trustedSignInAssessment` capability and
+`SignInTrustAssessing` conformance, then an Inbox-role folder, then the
+provider assessment, a consent recheck, one `body(for:)` read of the
+plain-text part only (never flattened HTML), the detector, the per-kind
+consent check, the sender name from the folder's first page, and a final
+consent recheck before `SignInCodePresenting.present`. `cancel(accountID:)`
+drops pending work and dismisses. At most five messages per event are
+inspected. `SignInCodePresentation` carries the code or link in memory
+only, with redacted description, debug description and mirror.
+
+Not yet connected: no `AppSession` owner, no caller from
+`BrevMailRootView` and no panel. The consent settings above remain unavailable
+for every production account. Because no backend advertises
+the capability, the controller cannot read a body in any shipped
+configuration. `PRIVACY.md` and ADR-0006 are still untouched for that reason.
 
 ### Remaining integration slices
 

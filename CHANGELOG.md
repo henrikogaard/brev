@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Calendar, Contacts and Tasks now show a centered, per-surface empty state
+  with a single action to open Calendar & Contacts settings and connect an
+  account.
 - Thread readers open on the newest message by default, and message-list counts no longer repeat.
 - On iPad and Mac, quick reply follows the conversation; on iPhone, Reply offers Reply All and Forward on long press.
 - Unread messages use dots instead of bars, thread cards no longer show accent bars, and Compose has its own iPhone toolbar button.
@@ -50,6 +53,8 @@ All notable changes to Brev are documented here.
 
 ### Added
 
+- Notifications settings explains sign-in code and link availability per account.
+  The feature remains unavailable until provider trust evidence and panel wiring are complete.
 - Calendar event attachments backed by Google Drive can be saved as a
   copy to a folder you choose. The event keeps its original link.
 - README shows demo screenshots of the macOS and iOS apps in light and dark

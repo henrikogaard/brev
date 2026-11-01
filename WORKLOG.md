@@ -1,5 +1,28 @@
 # Worklog
 
+## 2026-10-28 — Agent — #269 synthetic header baseline implementation
+
+- Goal: slice 1 of the approved storage/UI plan. Worktree `imap-cache-baselines`, branch `feature/imap-cache-baselines`, based on design commit `83b0fceb`; dependent PR targets `chore/visual-performance-plan`, whose PR #268 targets main. Issue #269 remains In progress because later slices and runtime gates are unfinished.
+- Changes: synthetic 10k/50k JSON-versus-SQLite read suite, fresh readers, four alternating samples, explicit SQLite open/query/total timings and page/metadata parity assertions. Timing assertions are deliberately absent. Existing baseline suites and production behavior are unchanged. Added run/interpretation instructions to performance budgets and updated the shared design.
+- Verification: pinned SwiftFormat lint and SwiftLint strict passed for the new suite; diff and ADR gates are checked before commit. Package compilation/execution will run in existing CI. No long host job, app/native test, snapshot or personal-cache access is performed. This instrumentation-only addition skips TDD, as stated in its detailed design.
+- Documentation sweep: README, CHANGELOG, PRIVACY, ADRs and AGENTS need no changes because this adds test instrumentation only, with no shipped behavior, privacy or architectural change. Updated existing QA run instructions, not a new QA evidence report.
+- Handoff: collect package CI before claiming the suite passes. Slice 1 remains open for the authorized runtime baseline under Q-1. No speedup, migration, merge, release, version change or issue closure is claimed.
+
+## 2026-10-28 — Agent — #269 approved design and baseline slice
+
+- Henrik approved the three-outcome design and requested work to start. Created tracking issue #269 and moved its card to In progress; integration remains main, with design PR #268 and a genuinely dependent baseline slice.
+- Marked the design approved/building and wrote slice 1's detailed design before code: one synthetic JSON-versus-SQLite read suite at 10k/50k, alternating fresh readers, explicit open/query timings, functional parity assertions and no CI speed inequalities.
+- Plan adjustment: keep the cross-store comparison in BrevSyncEngine tests, whose existing dependency direction permits both stores, rather than add a reverse dependency to BrevBackend. Existing baseline suites remain unchanged.
+- Verification: document links, references and diff checks before push; no app, benchmark or snapshot run in this design update. Runtime profiling/host tests remain deferred under Q-1; no schema change, migration, merge or release performed.
+
+## 2026-10-28 — Agent — Visuals/performance implementation design
+
+- Goal: plan all three selected recommendations: ADR-0087 storage work, measured UI responsiveness and visual consistency. Branch `chore/visual-performance-plan` in its own worktree, based on `origin/main` `5ad74c0b`; target `main`. No existing PR covers this combined plan; Settings continues through #265 rather than a duplicate implementation.
+- Changes: one Draft design in `docs/specs/2026-10-28-mail-visuals-and-performance-plan.md`, with requirements, ownership/contracts, staged rollout, decision proposals, verification gates and unresolved runtime-environment permission.
+- Verification: all eight document links, explicit requirement/decision/question references, Draft status, conflict-marker check, `scripts/check-adr-required.sh`, and staged diff checks passed. Swift lint/format, benchmarks, package tests, builds, app launch and snapshots were not run locally because this slice changes Markdown only; TDD is not applicable. Host native testing remains deferred, and no new runtime evidence is claimed.
+- Documentation sweep: README, CHANGELOG, PRIVACY, ADRs, release/QA reports and AGENTS need no change for a Draft coordination plan that preserves existing accepted decisions and changes no behavior. Later slices update their actual changed contracts and evidence.
+- Handoff: publish the docs-only PR for review and stop for design approval before Phase 2. No merge, release, app-version change, data deletion or issue closure is authorized by this plan.
+
 ## 2026-10-29 — Agent — PR #265 review repair
 
 - Goal: address review comment 6498243627 on isolated `fix/pr-265-review-16784`, based on original head `8cfee2b75b6c4c368399a617e4f347c0cc505fb0`; leave the original branch and final integration to the parent.
@@ -6698,3 +6721,11 @@ buttons, and package-aware localization.
 - iOS verification: Xcode 27.0 (27A266a), iPhone 18 Pro / iOS 27.0 (24A434) build, five metadata/transparency tests and all three PIM variants passed. The three root snapshots still failed and are pixel-identical to the saved pre-follow-up PR candidates; this is not the hosted iOS 26.5 result, where root passed.
 - Hosted evidence: full xcresult export supplied all reference/failure/difference PNGs for 33 macOS and 12 iPhone mismatches. Hosted macOS was 26.6.2 (25G83), Xcode path 26.6, iPhone 17 Pro / iOS 26.5 (23F77). Twenty-three macOS candidates exactly matched local PR pixels; About leaked runner version `16.0 (24904)` and transparency inherited host accessibility. PIM candidates lacked switch thumbs on the hosted runtime; no production PIM regression was established.
 - Handoff: parent integrates this repair branch and reruns hosted CI. Remaining layout/runtime mismatches still require comparison and native/design acceptance, not blanket recording. No UI-driven testing, merge/rebase, original-branch push or app installation occurred. Documentation sweep: no README, CHANGELOG, privacy, ADR or accepted-baseline changes are needed because production defaults, architecture and user-facing behavior are unchanged.
+
+## 2026-11-01 — Devin — PR #265 approved main integration
+
+- Henrik approved isolated native tests and `git merge origin/main`. Integrated main `e476096` into the existing Settings branch in a separate worktree, leaving the reader stack unchanged. The only textual conflict was additive WORKLOG history; every entry from both parents is preserved without duplicating the shared entries.
+- Main's per-account sign-in consent capability gating and Settings deep-link binding merged with the grouped-form changes. Appearance source is unchanged from the pre-integration Settings head. The localization catalog preserves every entry from both parents; no reference images were re-recorded or accepted.
+- Verification: 93 focused Settings tests across nine suites pass with Xcode 26.6 (17F113), covering consent, navigation/search, notification and Appearance policies, About defaults and transparency. Pinned full SwiftFormat/SwiftLint, coverage self-test and diff checks pass. The named Xcode directory was absent; the installed `/Applications/Xcode.app` supplies that same verified toolchain.
+- Remaining: fresh combined-head hosted CI and native Settings acceptance. macOS app launch is paused because the dated test identity still resolves the shared App Group; no shared data or daily-driver app was touched. Isolated simulator testing proceeds separately. No PR merge, release, issue closure or blanket snapshot acceptance.
+- Documentation sweep: existing ADR-0002, ADR-0088 and CHANGELOG cover the integrated behavior. No new architecture, privacy, setup or release policy was introduced; only this integration record is needed.
