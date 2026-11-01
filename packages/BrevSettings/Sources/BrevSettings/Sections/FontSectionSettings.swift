@@ -68,13 +68,21 @@ struct FontSectionSettings: View {
                             }
                         }
                     } label: {
-                        Text("Use One Font Everywhere", bundle: .module)
                         #if os(macOS)
-                            .foregroundStyle(theme.textPrimary.color)
+                        HStack(spacing: BrevSpacing.xs) {
+                            Text("Use One Font Everywhere", bundle: .module)
+                            Image(systemName: "chevron.down")
+                                .imageScale(.small)
+                                .accessibilityHidden(true)
+                        }
+                        .foregroundStyle(theme.textPrimary.color)
+                        #else
+                        Text("Use One Font Everywhere", bundle: .module)
                         #endif
                     }
                     #if os(macOS)
-                    .id(theme.mode)
+                    .menuStyle(.borderlessButton)
+                    .menuIndicator(.hidden)
                     #endif
                 }
                 .frame(maxWidth: .infinity)
