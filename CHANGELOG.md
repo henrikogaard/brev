@@ -6,6 +6,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- iPhone Settings snapshot tooling uses a dedicated scene-hosted capture path
+  with explicit runtime provenance instead of unhosted native-control rendering.
+
 - The macOS Appearance font-menu label follows light/dark theme changes without
   requiring the pane to reopen.
 - macOS native UI validation can use `--isolated-mock` for a fresh, mock-only

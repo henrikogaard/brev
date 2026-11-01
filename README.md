@@ -588,6 +588,30 @@ primitives with [`swift-snapshot-testing`](https://github.com/pointfreeco/swift-
 UIKit snapshots run on iOS and AppKit snapshots run on macOS; references live
 next to the test file under `__Snapshots__/`.
 
+The iPhone Settings form suite is an exception to unhosted package capture:
+`BrevSettingsSnapshots` uses the dedicated synthetic app in
+`apps/SettingsSnapshots` (ADR-0092). Run
+`python3 scripts/settings-snapshot-environment.py` first with
+`DEVELOPER_DIR` set to Xcode 26.6/17F113, then
+`scripts/prepare-xcode-workspace.sh`. Its pinned profile requires simulator SDK
+26.5/23F81a, iOS 26.5/23F77 and a freshly owned iPhone 16e simulator. Do not use a
+personal simulator or select the newest available runtime implicitly.
+The Native Settings review workflow records the complete profile.
+
+Run the generated `BrevSettingsSnapshots` scheme with an explicit simulator
+UDID, `-testLanguage en -testRegion en_US -parallel-testing-enabled NO`, and
+`TEST_RUNNER_BREV_SETTINGS_EXPECTED_RUNTIME_BUILD=23F77`. The host has its own
+bundle identity, synthetic in-memory account and no shipping-app initialization,
+extensions or App Group entitlement. Individual form tests remain in their
+original source location and use their unchanged reference directory.
+Hierarchy draws must succeed and repeat identically; candidate PNGs are retained
+as test attachments. An explicit local preflight
+`--diagnostic-runtime-build <build>` labels a noncanonical runtime and is
+rejected in CI. It is diagnostic evidence, not pinned reference acceptance.
+`TEST_RUNNER_BREV_SETTINGS_SNAPSHOT_CANDIDATES=YES` records attachments without
+comparing or overwriting references. Ordinary verification never records them.
+The independent macOS capture path is unchanged.
+
 ```sh
 # Run the required iOS snapshot lane. The helper selects the newest installed
 # runtime/device; CI pins the pair below while refreshing the supported

@@ -6784,3 +6784,45 @@ buttons, and package-aware localization.
 
 - Approved synthetic diagnostic reproduced all four missing UIKit/SwiftUI switch thumbs with the existing unhosted strategy; scene-hosted hierarchy drawing retained them in Light and Dark. Six draws succeeded; three repeats per mode/method were stable. Actual runtime was iOS 26.5/23F73, not CI's 23F77; content traits were 2× while the native screen was 3×. No exact hosted reproduction, reference acceptance or macOS inference.
 - ADR-0092 precedes a dedicated synthetic host and provenance-pinned iOS harness repair. Actual Settings and tall accessibility captures require verification before acceptance. No references, production controls or other stack gates change. #269 remains open; board access is unavailable, intended status In progress.
+
+## 2026-11-01 — Devin — PR #265 scene-hosted Settings capture
+
+- Added the dedicated synthetic `BrevSettingsSnapshots` app/test project and
+  routed the existing iPhone form fixtures through a real foreground scene and
+  key window. Kept fixture source/reference paths, strict comparison and all
+  production controls unchanged. Candidate mode writes only test attachments.
+  The package target no longer compiles this scene-dependent suite; the separate
+  native Settings CI gate owns it. The macOS renderer is unchanged.
+- Two initial root captures changed between adjacent display frames. Capture now
+  requires three identical consecutive frames within a bounded display budget,
+  with explicit failed-draw, invalid-size, settling, never-settling and
+  ordinary/tall canvas tests. No timer delay or weaker pixel precision is used.
+- Xcode 26.6/17F113 and simulator SDK 26.5/23F81a compiled both targets.
+  Local scheme destination resolution incorrectly reported the installed iOS
+  platform unavailable; direct target builds with common SYMROOT/OBJROOT and an
+  official-format xctestrun exercised the same artifacts/toolchain on an owned
+  iPhone 16e, iOS 26.5/23F73. Candidate execution passed 11 test methods,
+  24 executions: 18 pane variants plus six guard/canvas cases. The ordinary
+  reference comparison reports 18 differences, all unaccepted. No references
+  were modified. This is explicitly not the pinned CI runtime 23F77.
+- All 461 non-snapshot Settings Swift tests, provenance self-tests, repository
+  self-tests, pinned format/lint, privacy audit, built-host telemetry scan and
+  diff checks pass. README, CHANGELOG and ADR-0092 cover the new capture setup.
+  No new external calls or production data lifecycle changes require PRIVACY
+  or ADR-0006 edits. Generator/configuration changes are not TDD; runtime
+  capture instability was reproduced before its repair.
+- Independent review, a native comparison of actual Settings and the hosted
+  23F77 run remain pending. Snapshot acceptance is separate. PR #265 stays a
+  draft; no remaining stack PR is merged or accepted by this change.
+  #269 stays open; board access remains unavailable, intended status In review.
+- Independent read-only review found a replacement CI path-filter gap; the
+  dedicated gate now includes shared package and toolchain/generator inputs.
+  Strengthened the canvas guard with top/bottom switch-thumb contrast and blank
+  image rejection. The original dimensions-only guard did not prove thumbs.
+  Local reference verification completed with the expected failure exit after
+  disabling verbose system diagnostics; image attachments and test failures are
+  retained. The iPhone CI route uses the same diagnostic setting; macOS is
+  unchanged.
+- The strengthened final capture run passes all 11 methods/24 executions,
+  including both top/bottom thumb checks and blank-image rejection on both
+  canvas heights. Repository self-tests, privacy and lint pass again.

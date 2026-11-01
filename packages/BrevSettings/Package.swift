@@ -44,7 +44,7 @@ let package = Package(
                 .product(name: "SnapshotTesting", package: "swift-snapshot-testing")
             ],
             path: "Tests/BrevSettingsTests",
-            exclude: ["__Snapshots__"]
+            exclude: ["__Snapshots__", "SettingsFormSnapshotTests.swift"]
         )
     ]
 )

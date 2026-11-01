@@ -25,13 +25,19 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    display completion, then require successful hierarchy drawing. Do not fall
    back to layer rendering. Preserve strict image comparison and restore the
    previous window after capture, including on errors.
-3. Verify repeated captures and exercise ordinary and tall accessibility
-   canvases. A working small synthetic probe alone is not acceptance of actual
+3. Require three pixel-identical consecutive display frames within a bounded
+   60-frame budget, failing on display timeout or continued pixel changes.
+   Exercise ordinary and tall accessibility canvases, checking switch-thumb
+   contrast at their top and bottom rather than dimensions alone.
+   A working small synthetic probe alone is not acceptance of actual
    Settings panes or off-screen portions of tall fixtures.
 4. Pin and log Xcode, SDK, runtime build, device and renderer for the dedicated
    iOS job. Fail closed when those prerequisites differ. Local diagnostics may
    explicitly select another runtime build, but must identify that deviation
    and cannot stand in for the pinned CI run.
+   The initial CI profile is Xcode 26.6/17F113, SDK 26.5/23F81a,
+   runtime 26.5/23F77, and iPhone 16e. The device is deliberately aligned with
+   the synthetic diagnostic, not silently inferred from old reference names.
 5. Keep candidate recording separate from verification. Candidates go only to
    diagnostic attachments, never over committed references. All reference
    changes still require separate visual acceptance. No production control,

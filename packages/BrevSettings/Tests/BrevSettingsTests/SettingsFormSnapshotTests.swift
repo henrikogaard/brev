@@ -57,7 +57,13 @@ struct SettingsFormSnapshotTests {
         func cleanUp() { defaults.removePersistentDomain(forName: suite) }
     }
 
-    private func snapshot(_ name: String, variant: Variant, _ content: (Fixture) -> some View) throws {
+    private func snapshot(_ name: String, variant: Variant, _ content: (Fixture) -> some View) async throws {
+        try #require(Bundle.main.bundleIdentifier == "eu.brevmail.brev.settings-snapshots")
+        try #require(Bundle.main.object(forInfoDictionaryKey: "DTXcodeBuild") as? String == "17F113")
+        try #require(Bundle.main.object(forInfoDictionaryKey: "DTSDKName") as? String == "iphonesimulator26.5")
+        try #require(UIDevice.current.systemVersion == "26.5")
+        let runtimeBuild = try #require(ProcessInfo.processInfo.environment["BREV_SETTINGS_EXPECTED_RUNTIME_BUILD"])
+        try #require(ProcessInfo.processInfo.operatingSystemVersionString.contains("Build \(runtimeBuild)"))
         let fixture = try Fixture(variant: variant)
         defer { fixture.cleanUp() }
         let theme = fixture.theme
@@ -66,31 +72,39 @@ struct SettingsFormSnapshotTests {
             .tint(theme.accent.color)
             .environment(\.colorScheme, variant.isDark ? .dark : .light)
             .environment(\.dynamicTypeSize, variant == .ax3 ? .accessibility3 : .large)
+            .environment(\.locale, Locale(identifier: "en_US"))
         let host = UIHostingController(rootView: view)
+        host.safeAreaRegions = []
         let traits = UITraitCollection(traitsFrom: [
             UITraitCollection(displayScale: 2),
             UITraitCollection(horizontalSizeClass: .compact),
-            UITraitCollection(userInterfaceStyle: variant.isDark ? .dark : .light)
+            UITraitCollection(userInterfaceStyle: variant.isDark ? .dark : .light),
+            UITraitCollection(preferredContentSizeCategory: variant == .ax3 ? .accessibilityExtraLarge : .large)
         ])
+        let image = try await SceneSnapshotCapture.image(
+            of: host, size: CGSize(width: 375, height: variant.height),
+            traits: traits, name: "\(name)-\(variant.rawValue)"
+        )
+        if ProcessInfo.processInfo.environment["BREV_SETTINGS_SNAPSHOT_CANDIDATES"] == "YES" { return }
         assertSnapshot(
-            of: host,
-            as: .image(size: CGSize(width: 375, height: variant.height), traits: traits),
+            of: image,
+            as: .image,
             named: "\(name)-\(variant.rawValue)",
-            record: ProcessInfo.processInfo.environment["RECORD_SNAPSHOTS"] == "YES" ? .all : nil,
+            record: .never,
             testName: "forms"
         )
     }
 
     @Test("settings root is one grouped list", arguments: Variant.allCases)
-    func root(variant: Variant) throws {
-        try snapshot("root", variant: variant) { fixture in
+    func root(variant: Variant) async throws {
+        try await snapshot("root", variant: variant) { fixture in
             SettingsRootHost(accountStore: fixture.accountStore, settingsStore: fixture.store)
         }
     }
 
     @Test("accounts pane is a form", arguments: Variant.allCases)
-    func accounts(variant: Variant) throws {
-        try snapshot("accounts", variant: variant) { fixture in
+    func accounts(variant: Variant) async throws {
+        try await snapshot("accounts", variant: variant) { fixture in
             NavigationStack {
                 AccountsSection(
                     accounts: [fixture.account],
@@ -107,8 +121,8 @@ struct SettingsFormSnapshotTests {
     }
 
     @Test("notifications pane is a form", arguments: Variant.allCases)
-    func notifications(variant: Variant) throws {
-        try snapshot("notifications", variant: variant) { fixture in
+    func notifications(variant: Variant) async throws {
+        try await snapshot("notifications", variant: variant) { fixture in
             NavigationStack {
                 NotificationSection(
                     settingsStore: fixture.store,
@@ -121,8 +135,8 @@ struct SettingsFormSnapshotTests {
     }
 
     @Test("sign-in code consent shows switches only for assessed accounts", arguments: Variant.allCases)
-    func signInCodes(variant: Variant) throws {
-        try snapshot("signin-codes", variant: variant) { fixture in
+    func signInCodes(variant: Variant) async throws {
+        try await snapshot("signin-codes", variant: variant) { fixture in
             let other = BrevAccount(id: "imap", displayName: "Work IMAP", emailAddress: "work@ogard.example")
             return NavigationStack {
                 Form {
@@ -138,8 +152,8 @@ struct SettingsFormSnapshotTests {
     }
 
     @Test("appearance pane is a form", arguments: Variant.allCases)
-    func appearance(variant: Variant) throws {
-        try snapshot("appearance", variant: variant) { fixture in
+    func appearance(variant: Variant) async throws {
+        try await snapshot("appearance", variant: variant) { fixture in
             NavigationStack {
                 AppearanceSection(
                     activeTheme: .constant(fixture.theme),
@@ -154,7 +168,7 @@ struct SettingsFormSnapshotTests {
     @Test("calendar & contacts sources list one line per collection", arguments: Variant.allCases)
     func pimSources(variant: Variant) async throws {
         let model = try await PIMSourcesFixture.model()
-        try snapshot("pim-sources", variant: variant) { _ in
+        try await snapshot("pim-sources", variant: variant) { _ in
             NavigationStack {
                 Form {
                     PIMSourcesSettingsView(model: model, googleAccounts: [])

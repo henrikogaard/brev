@@ -57,6 +57,9 @@ cd "$ROOT"
 echo "── build/run env ──"
 scripts/test-build-run-env.sh
 
+echo "==> Settings snapshot provenance self-tests"
+python3 scripts/test-settings-snapshot-environment.py
+
 echo "── isolated macOS mock profile ──"
 /bin/bash scripts/test-isolated-mock.sh
 
