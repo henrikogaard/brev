@@ -20,6 +20,9 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    separate from the shipping app and its startup, entitlements, account stores,
    extensions and provider integrations. Keep the fixture source and committed
    references in place; remove this suite from the unhosted package target.
+   Reuse the shipping iOS static asset catalog so Settings' main-bundle icon
+   previews are available; this shares artwork, not app initialization or
+   entitlements. Require every icon preview to resolve in the host bundle.
 2. Attach each fixture to a real foreground scene/key window. Fix dimensions,
    scale, size class, content size, language and appearance. Wait for layout and
    display completion, then require successful hierarchy drawing. Do not fall
