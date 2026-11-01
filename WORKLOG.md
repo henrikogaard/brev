@@ -6774,3 +6774,8 @@ buttons, and package-aware localization.
 
 - Targeted native retest at b4d7a87 passed the explicit text foreground and menu actions/persistence regressions, but its native disclosure chevron retained the preceding mode's color. Whole-control acceptance failed; the agent stopped and retained the UUID artifact/evidence. No production data or snapshot changes.
 - ADR-first extension recreates only the stateless font menu when the resolved theme mode changes. The pane and font preference state stay mounted. Both label and chevron must pass repeated in-pane mode transitions on a new clean pushed isolated build; no broader native/snapshot acceptance inferred.
+
+## 2026-11-01 — Devin — PR #265 theme-driven menu disclosure
+
+- Native test at 7ee642c again failed the dark disclosure chevron despite readable text; testing stopped before later regressions. Full-window evidence confirms the native indicator retains the wrong foreground. Mode-keyed reconstruction is ineffective and will be removed.
+- ADR-first revision retains the native menu and actions, but gives the macOS label an explicit themed SF Symbol disclosure and hides the native indicator, following the existing borderless menu pattern. No global AppKit appearance changes, delays, pane recreation, new localization keys or iOS styling changes. Both glyph and text require a new isolated native retest; snapshot references stay untouched.

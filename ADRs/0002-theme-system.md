@@ -309,12 +309,14 @@ iOS retains its existing menu treatment. Verify both transition directions
 while the Appearance pane stays open; static launch snapshots do not cover
 this regression.
 
-The native menu's identity also follows the resolved light/dark theme mode.
-The targeted native retest proved that an explicit text foreground alone did
-not update AppKit's disclosure chevron. Recreating only this stateless menu
-refreshes that native appearance; the pane, pickers and stored preferences
-retain their identities. This is a whole-control contrast check, not just a
-text-label check.
+Native retests proved that an explicit text foreground and then mode-keyed
+menu reconstruction did not refresh AppKit's disclosure chevron. The macOS
+menu therefore uses a themed text-and-SF-Symbol label and hides the framework
+indicator, following the existing borderless native-menu pattern. Its menu
+actions, keyboard behavior and localized accessible label remain native;
+the decorative glyph is accessibility-hidden. No identity reset, pane rebuild
+or delayed redraw remains. Verify the complete label and disclosure glyph,
+including repeated transitions and opening the menu in both modes.
 
 ### Accepted
 
