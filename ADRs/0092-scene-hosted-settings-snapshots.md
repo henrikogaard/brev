@@ -52,11 +52,14 @@ explanation of hosted reference differences. The hosted runtime was 23F77.
    stores, with no provider authorization or network-capable fixture clients.
    This host still pins appearance and does not validate production System mode.
 7. Preserve the existing top-of-pane geometry, names and references. Add
-   bottom-of-form diagnostic captures for icon cards and lower Notifications
-   content. Locate one outer scroll view, enforce its current bottom offset
+   bottom-of-form diagnostic captures for icon cards, lower Notifications
+   content and lower PIM sources/collections. Locate one outer scroll view, enforce its current bottom offset
    through layout settling, and retain the existing draw/stability guards.
    These supplemental attachments are review coverage, not approved references
    or a substitute for native inspection of the requested content.
+   Native review reached the final CalDAV source, calendar and footer outside
+   the canonical PIM viewport; include these in supplemental coverage without
+   changing the single-line collection layout or accepting its AX3 truncation.
 
 ## Rationale
 
