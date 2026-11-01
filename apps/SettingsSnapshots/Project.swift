@@ -15,6 +15,7 @@ import ProjectDescription
 let project = Project(
     name: "BrevSettingsSnapshots",
     organizationName: "Brev",
+    options: .options(disableBundleAccessors: true, disableSynthesizedResourceAccessors: true),
     packages: [
         .package(path: "../../packages/BrevSettings"),
         .package(path: "../../packages/BrevBackend"),
@@ -44,6 +45,7 @@ let project = Project(
                 ]
             ]),
             sources: ["Sources/**"],
+            resources: ["../iOS/Resources/Assets.xcassets"],
             dependencies: [
                 .package(product: "BrevSettings"),
                 .package(product: "BrevBackend"),

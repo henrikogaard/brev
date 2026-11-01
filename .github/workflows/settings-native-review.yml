@@ -13,6 +13,7 @@ on:
       - '.github/workflows/settings-native-review.yml'
       - 'packages/**'
       - 'apps/SettingsSnapshots/**'
+      - 'apps/iOS/Resources/Assets.xcassets/**'
       - 'Brev.xcworkspace/**'
       - 'Tuist/**'
       - 'Tuist.swift'
@@ -126,7 +127,42 @@ jobs:
             2>&1 | tee "$RUNNER_TEMP/settings-record.log"
       - name: Shut down only the owned snapshot simulator
         if: ${{ always() && matrix.platform == 'iPhone' && env.SETTINGS_SIMULATOR_UDID != '' }}
-        run: xcrun simctl shutdown "$SETTINGS_SIMULATOR_UDID"
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          identifier = os.environ["SETTINGS_SIMULATOR_UDID"]
+          devices = json.loads(subprocess.check_output(["xcrun", "simctl", "list", "devices", "--json"]))
+          matches = [
+              device for group in devices["devices"].values() for device in group
+              if device["udid"] == identifier
+          ]
+          if len(matches) != 1:
+              raise SystemExit("Owned snapshot simulator is missing or ambiguous")
+          if matches[0]["state"] != "Shutdown":
+              subprocess.run(["xcrun", "simctl", "shutdown", identifier], check=True)
+          PY
+      - name: Package the synthetic iPhone host for native comparison
+        if: ${{ always() && matrix.platform == 'iPhone' && steps.prepare.outcome == 'success' }}
+        run: |
+          git rev-parse HEAD > "$RUNNER_TEMP/settings-host-source.txt"
+          git rev-parse HEAD^{tree} >> "$RUNNER_TEMP/settings-host-source.txt"
+          ditto -c -k --keepParent \
+            "$RUNNER_TEMP/settings-review/Build/Products/Debug-iphonesimulator/BrevSettingsSnapshotHost.app" \
+            "$RUNNER_TEMP/settings-synthetic-host.zip"
+      - name: Upload the synthetic iPhone host
+        if: ${{ always() && matrix.platform == 'iPhone' && steps.prepare.outcome == 'success' }}
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: settings-synthetic-host-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/settings-synthetic-host.zip
+            ${{ runner.temp }}/settings-host-source.txt
+            ${{ runner.temp }}/settings-environment.json
       - name: Upload diagnostics even when tests fail
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

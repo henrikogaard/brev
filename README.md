@@ -612,6 +612,13 @@ rejected in CI. It is diagnostic evidence, not pinned reference acceptance.
 comparing or overwriting references. Ordinary verification never records them.
 The independent macOS capture path is unchanged.
 
+The host reuses the shipping iOS static asset catalog for main-bundle icon
+previews, without shipping-app startup or entitlements. The review workflow also
+uploads the synthetic host with its source commit/tree and capture-environment
+metadata. A native diagnostic may use that artifact when local asset compilation
+is unavailable, after checking its source identity and on a fresh owned simulator;
+a different runtime build still does not count as pinned reference acceptance.
+
 ```sh
 # Run the required iOS snapshot lane. The helper selects the newest installed
 # runtime/device; CI pins the pair below while refreshing the supported

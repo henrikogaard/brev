@@ -10,6 +10,7 @@
  furnished to do so, subject to the conditions in the LICENSE file.
  */
 
+import BrevSettings
 import Testing
 import UIKit
 
@@ -17,6 +18,12 @@ extension SettingsFormSnapshotTests {
     @Suite("Scene snapshot capture guards", .serialized)
     @MainActor
     struct SceneSnapshotCaptureTests {
+        @Test("host includes every app icon preview", arguments: AppIconVariant.allCases)
+        func iconPreviews(variant: AppIconVariant) throws {
+            let image = try #require(UIImage(named: variant.previewAssetName, in: .main, compatibleWith: nil))
+            #expect(image.size.width > 0 && image.size.height > 0)
+        }
+
         @Test("invalid dimensions cannot produce a baseline")
         func invalidSize() async {
             await #expect(throws: SceneSnapshotCapture.CaptureError.invalidSize) {

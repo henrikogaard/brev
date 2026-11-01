@@ -6826,3 +6826,27 @@ buttons, and package-aware localization.
 - The strengthened final capture run passes all 11 methods/24 executions,
   including both top/bottom thumb checks and blank-image rejection on both
   canvas heights. Repository self-tests, privacy and lint pass again.
+
+## 2026-11-01 — Devin — PR #265 / issue #269: host artwork and cleanup
+
+- Native testing of the synthetic host found blank icon artwork. All three
+  preview lookups reproduce the missing main-bundle resources in a new guard.
+  ADR-0092 was amended first. Reuse the shipping static iOS asset catalog without
+  shipping startup, entitlements or provider wiring, and trigger the gate for
+  artwork changes. No production view, fixture or reference pixels changed.
+- The first hosted canonical scheme run passes the exact Xcode/SDK/23F77
+  preflight, build, draw/stability and switch guards. All18 strict comparisons
+  fail against unchanged references. Cleanup additionally failed because Xcode
+  had already shut down the owned simulator; make that state idempotent without
+  hiding other failures. A focused mock check covers shutdown/booted/missing/
+  duplicate identities and preserves an unrelated device.
+- Local source/test compilation and the red asset test ran under26.6; resource
+  compilation is blocked by actool rejecting installed runtimes23F73/24A434
+  for SDK23F81a. Do not use the partial failed-build artifact as green evidence.
+  Hosted CI now preserves its complete synthetic app plus source/provenance
+  metadata for a native diagnostic. Fresh hosted tests and a clean native
+  resource/actual-pane retest remain pending; no rebaseline or merge.
+- Generator/configuration changes are outside TDD; the artwork regression is
+  red before the resource repair. Repository self-tests, format/lint/privacy
+  and the focused cleanup checks pass. README covers the artifact route;
+  existing CHANGELOG/ADR entries cover the harness. No privacy/network change.
