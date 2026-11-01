@@ -6,6 +6,7 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- The iPhone Mailboxes menu opens Settings again; macOS keeps its app-menu command.
 - Calendar, Contacts and Tasks now show a centered, per-surface empty state
   with a single action to open Calendar & Contacts settings and connect an
   account.

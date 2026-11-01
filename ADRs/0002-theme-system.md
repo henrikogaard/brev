@@ -215,6 +215,11 @@ unchanged" above. Inside a macOS Settings pane:
 - **Sheets and pushed detail panes** opened from Settings (account details,
   rule editors, source connection) follow the same rules.
 
+**Settings access.** The iOS sidebar menu forwards the application's existing
+Settings action through the mail root's sheet-presentation guard. Omitting
+duplicate toolbar items must not remove that entry point. macOS continues to
+use the app-menu command and does not add Settings to the sidebar chrome.
+
 ### Theme distribution
 
 Three tiers:
