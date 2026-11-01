@@ -474,16 +474,17 @@ struct AppearanceSection: View {
             isThemePickerPresented = true
         } label: {
             HStack(spacing: BrevSpacing.md) {
-                Text("Themes", bundle: .module)
-                    .brevFont(.body)
-                    .foregroundStyle(theme.textPrimary.color)
-                Spacer(minLength: BrevSpacing.sm)
-                VStack(alignment: .trailing, spacing: BrevSpacing.xxs) {
-                    Text(themeSettings.selectedTheme(for: .light).name)
-                    Text(themeSettings.selectedTheme(for: .dark).name)
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: BrevSpacing.sm) {
+                        iOSThemePairTitle
+                        iOSThemePairNames
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    iOSThemePairTitle
+                    Spacer(minLength: BrevSpacing.sm)
+                    iOSThemePairNames
                 }
-                .brevFont(.footnote)
-                .foregroundStyle(theme.textSecondary.color)
                 Image(systemName: "chevron.right")
                     .imageScale(.small)
                     .foregroundStyle(theme.textTertiary.color)
@@ -498,6 +499,23 @@ struct AppearanceSection: View {
                 bundle: .module
             )
         )
+    }
+
+    private var iOSThemePairTitle: some View {
+        Text("Themes", bundle: .module)
+            .brevFont(.body)
+            .foregroundStyle(theme.textPrimary.color)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var iOSThemePairNames: some View {
+        VStack(alignment: dynamicTypeSize.isAccessibilitySize ? .leading : .trailing, spacing: BrevSpacing.xxs) {
+            Text(themeSettings.selectedTheme(for: .light).name)
+            Text(themeSettings.selectedTheme(for: .dark).name)
+        }
+        .brevFont(.footnote)
+        .foregroundStyle(theme.textSecondary.color)
+        .fixedSize(horizontal: false, vertical: true)
     }
     #endif
 

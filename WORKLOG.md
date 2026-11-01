@@ -6736,3 +6736,9 @@ buttons, and package-aware localization.
 - Restored the existing guarded Settings action only for iOS when an application Settings callback is available. macOS keeps its app-menu command, and no new sheet, route, string or persistence mechanism was introduced. ADR-0002 and CHANGELOG record the entry-point contract and user-visible repair.
 - Verification: the native reproduction is the red case. Ten existing Settings-toolbar/sheet-policy tests and full BrevMail compilation pass; full pinned lint/format, coverage and diff checks pass. Combined-head simulator retest is still required for the green UI case and remaining Settings behavior.
 - Separate findings remain open: landscape compose toolbar clipping and an unmeasured initial thread-body delay. Neither was changed by this narrowly scoped repair. No live accounts, daily-driver changes, snapshot rebaselining, release or PR merge.
+
+## 2026-11-01 — Devin — PR #265 accessible theme-pair row
+
+- Native combined-head iPhone retest confirmed Settings access, search navigation, theme/text-size selection persistence across closing Settings, Developer visibility and unsupported-provider consent explanations. At genuine accessibility-extra-large, the theme row compressed its label into `Theme` and `s`.
+- The iOS theme row now places selected names below the label at accessibility sizes; ordinary-size trailing layout and the existing picker action remain. macOS is unchanged. ADR-0002 and CHANGELOG record the layout repair. No snapshot reference was updated.
+- Verification: all 93 focused Settings tests and pinned full lint/format pass. Native iOS retest remains pending; no claim is made for macOS, trusted-provider consent, process-relaunch persistence or existing snapshot acceptance. The native failed rendering supplies the red case; host package tests cannot exercise the iOS-only layout.

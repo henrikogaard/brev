@@ -219,6 +219,8 @@ unchanged" above. Inside a macOS Settings pane:
 Settings action through the mail root's sheet-presentation guard. Omitting
 duplicate toolbar items must not remove that entry point. macOS continues to
 use the app-menu command and does not add Settings to the sidebar chrome.
+At accessibility text sizes, the iOS theme-pair row places the selected names
+below its label rather than compressing the label beside a trailing column.
 
 ### Theme distribution
 
