@@ -104,7 +104,7 @@ extension SettingsFormSnapshotTests {
                     UITraitCollection(displayScale: 2), UITraitCollection(userInterfaceStyle: .light)
                 ]), name: "bottom-control", scrollToBottom: true
             )
-            #expect(view.scroll.contentOffset.y == 2000 - 812)
+            #expect(view.scroll.contentOffset.y == CGFloat(2000 - 812))
             let frame = view.control.convert(view.control.bounds, to: view)
             #expect(view.bounds.contains(frame))
             #expect(try hasThumb(view.control, in: image, frame: frame))

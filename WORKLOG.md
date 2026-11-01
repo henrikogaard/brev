@@ -6879,3 +6879,13 @@ buttons, and package-aware localization.
   view, provider integration, network/privacy policy, macOS renderer or reference
   file changed. Keep #265 draft and #269 open, intended status In review (board
   access unavailable). No reference acceptance, production data or merge.
+
+### Hosted capture follow-up
+
+- The pinned 23F77 run built the shared host and produced all nine stable lower
+  captures. Native fixture guards passed. One synthetic geometry assertion
+  failed because the Testing macro compared CGFloat with an inferred integer;
+  a standalone macOS reproduction failed at exactly 1188 versus 1188 and passed
+  with an explicitly CGFloat expected value. Fix only that expected type; retain
+  exact equality, thumb-pixel checks, image precision and three-frame stability.
+  Hosted rerun and native visual acceptance remain outstanding.
