@@ -6742,3 +6742,8 @@ buttons, and package-aware localization.
 - Native combined-head iPhone retest confirmed Settings access, search navigation, theme/text-size selection persistence across closing Settings, Developer visibility and unsupported-provider consent explanations. At genuine accessibility-extra-large, the theme row compressed its label into `Theme` and `s`.
 - The iOS theme row now places selected names below the label at accessibility sizes; ordinary-size trailing layout and the existing picker action remain. macOS is unchanged. ADR-0002 and CHANGELOG record the layout repair. No snapshot reference was updated.
 - Verification: all 93 focused Settings tests and pinned full lint/format pass. Native iOS retest remains pending; no claim is made for macOS, trusted-provider consent, process-relaunch persistence or existing snapshot acceptance. The native failed rendering supplies the red case; host package tests cannot exercise the iOS-only layout.
+
+## 2026-11-01 — Devin — PR #265 mock-only macOS isolation decision
+
+- Henrik approved mock-only macOS isolation after the shared production App Group blocked native testing. ADR-0091 records a fresh sandbox identity, no shared-group/extension access, restricted entitlements and in-memory mock-only wiring; production storage/signing stay unchanged.
+- This ADR-first commit precedes implementation and negative regression tests. Native validation, signed-artifact checks and hosted CI remain outstanding. No app launch, existing-data access, snapshot rebaseline or merge. #269 remains open; board access is unavailable and implementation status is In progress.
