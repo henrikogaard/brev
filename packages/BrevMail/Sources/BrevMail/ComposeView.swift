@@ -180,9 +180,10 @@ public struct ComposeView: View {
     private let prefill: ComposePrefill?
     private let recoveredDraft: ComposeDraftRecoverySnapshot?
     /// The already-saved draft this compose session re-opened, when present.
-    /// Server-side fields compose state cannot express (attachment ids,
-    /// threading metadata, scheduled send) are carried forward on save.
+    /// Threading metadata and scheduled send are carried forward on save;
+    /// restored attachment rows own their staging IDs and explicit removals.
     private let restoredDraft: Draft?
+    private let draftRestorationError: String?
     private let aiBackend: (any AIBackend)?
     private let backendSupportsAIWriter: Bool
     private let defaultSenderOptionID: String
@@ -329,6 +330,7 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -350,6 +352,7 @@ public struct ComposeView: View {
             prefill: prefill,
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
+            existingDraftAttachments: existingDraftAttachments,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -373,6 +376,7 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         existingDraft: Draft? = nil,
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -397,6 +401,7 @@ public struct ComposeView: View {
             prefill: prefill,
             recoveredDraft: recoveredDraft,
             existingDraft: existingDraft,
+            existingDraftAttachments: existingDraftAttachments,
             aiBackend: aiBackend,
             backendSupportsAIWriter: backendSupportsAIWriter,
             signatureContext: signatureContext,
@@ -423,10 +428,11 @@ public struct ComposeView: View {
         prefill: ComposePrefill? = nil,
         recoveredDraft: ComposeDraftRecoverySnapshot? = nil,
         /// An already-saved draft being re-opened for editing (activating a
-        /// message inside the Drafts folder). Carried in `restoredDraft` so
-        /// saves keep the draft's server-side attachments, threading, and
-        /// scheduled-send state that compose state cannot express.
+        /// message inside the Drafts folder). Retains threading and scheduled
+        /// send state; attachment payloads must be resolved before presentation.
         existingDraft: Draft? = nil,
+        /// Complete, source-owned local payloads in the draft's staging-ID order.
+        existingDraftAttachments: [MIMEMessageAttachment] = [],
         aiBackend: (any AIBackend)? = nil,
         backendSupportsAIWriter: Bool? = nil,
         signatureContext: ComposeSignatureContext? = nil,
@@ -460,6 +466,12 @@ public struct ComposeView: View {
         self.prefill = prefill
         self.recoveredDraft = recoveredDraft
         restoredDraft = existingDraft
+        draftRestorationError = existingDraft.flatMap {
+            ComposeDraftRestoration.validationError(draft: $0, attachments: existingDraftAttachments)
+        }
+        _pendingAttachments = State(initialValue: draftRestorationError == nil && existingDraft != nil
+            ? ComposeDraftRestoration.pendingAttachments(from: existingDraftAttachments) : [])
+        _errorMessage = State(initialValue: draftRestorationError)
         self.aiBackend = aiBackend
         self.backendSupportsAIWriter = backendSupportsAIWriter ?? backend.capabilities.contains(.aiWriter)
         self.signatureContext = signatureContext
@@ -1957,6 +1969,11 @@ public struct ComposeView: View {
                         isSelected: selectedSenderOption.id == option.id
                     )
                 }
+                .disabled(!ComposeDraftRestoration.allowsSender(
+                    option,
+                    current: selectedSenderOption,
+                    isRestored: restoredDraft != nil
+                ))
             }
         }
 
@@ -3155,7 +3172,7 @@ public struct ComposeView: View {
     }
 
     private var isInteractionBlocked: Bool {
-        isBusy || isWorkBlocked
+        isBusy || isWorkBlocked || draftRestorationError != nil
     }
 
     private var bodyTextExcludingManagedSignature: String {
@@ -3273,7 +3290,7 @@ public struct ComposeView: View {
         ComposeOperationStartPolicy.canStartOperation(
             requestedKind: kind,
             isInteractionBusy: isBusy,
-            isBlocked: isWorkBlocked,
+            isBlocked: isWorkBlocked || draftRestorationError != nil,
             activeRequest: activeComposeOperationRequest
         )
     }
@@ -3336,7 +3353,7 @@ public struct ComposeView: View {
         // available in `currentDraft()`.
         try await stageInlineImages()
         guard ComposeSendDraftPersistencePolicy.shouldPersistDraftBeforeSend(
-            hasPendingAttachments: !pendingAttachments.isEmpty
+            hasPendingAttachments: pendingAttachments.contains { restoredDraft == nil || $0.uploadedAttachmentID == nil }
         ) else {
             return currentDraft()
         }
@@ -3347,12 +3364,26 @@ public struct ComposeView: View {
     /// then stages any images whose Content-IDs are absent from
     /// `stagedInlineAttachments` with the backend.
     private func stageInlineImages() async throws {
+        if let draftRestorationError {
+            throw MailBackendError.backendSpecific(message: draftRestorationError)
+        }
         let html = composeBodyFormat == .richTextHTML ? (bodyHTML ?? bodyText) : bodyText
         let images = ComposeDraftBuilder.inlineAttachments(
             fromRegistry: inlineImageRegistry,
             draftID: draftID,
             bodyHTML: html
         )
+        if restoredDraft != nil {
+            var remaining = ComposeAttachmentImport.maxAttachmentByteCount
+            let sizes = pendingAttachments.map { ($0.filename, $0.data.count) } + images.map { ($0.filename, $0.data.count) }
+            for (filename, count) in sizes {
+                guard count <= remaining else {
+                    throw MailBackendError
+                        .backendSpecific(message: ComposeAttachmentImport.attachmentBudgetExceededMessage(filename: filename))
+                }
+                remaining -= count
+            }
+        }
         let stagingSourceID = activeComposeSourceID
         let backend = selectedComposeBackend
         let sourceID = selectedComposeSourceID
@@ -3434,12 +3465,7 @@ public struct ComposeView: View {
             // Set (not append) the full uploaded set — currentDraft() already
             // carries forward previously-uploaded IDs, so appending would
             // duplicate them.
-            let reconciledAttachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
-                inline: currentInlineAttachmentIDs,
-                regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(
-                    from: pendingAttachments
-                )
-            )
+            let reconciledAttachmentIDs = currentAttachmentIDs
             if ComposeAttachmentUploadState.requiresDraftResave(
                 savedAttachmentIDs: saved.attachmentIDs,
                 reconciledAttachmentIDs: reconciledAttachmentIDs
@@ -3462,20 +3488,14 @@ public struct ComposeView: View {
         )
     }
 
-    private func currentDraft() -> Draft {
-        // Already-staged inline image IDs come first so `stagedAttachments(for:)`
-        // finds them alongside regular file attachments. Regular attachments are
-        // appended after so ordering is stable across retries.
-        var attachmentIDs = ComposeAttachmentUploadState.mergedAttachmentIDs(
+    private var currentAttachmentIDs: [String] {
+        ComposeAttachmentUploadState.mergedAttachmentIDs(
             inline: currentInlineAttachmentIDs,
             regular: ComposeAttachmentUploadState.uploadedAttachmentIDs(from: pendingAttachments)
         )
-        // A draft reopened from the Drafts folder references attachments that
-        // were already uploaded to the backend staging store; they are not in
-        // `pendingAttachments`, so carry their ids forward explicitly.
-        for id in restoredDraft?.attachmentIDs ?? [] where !attachmentIDs.contains(id) {
-            attachmentIDs.append(id)
-        }
+    }
+
+    private func currentDraft() -> Draft {
         var draft = ComposeDraftBuilder.draft(
             id: draftID,
             remoteID: savedDraftRemoteID,
@@ -3493,7 +3513,7 @@ public struct ComposeView: View {
             // Carry forward already-uploaded attachments so every save —
             // including autosave, which never re-uploads — preserves them
             // instead of persisting a draft with no attachments.
-            attachmentIDs: attachmentIDs,
+            attachmentIDs: currentAttachmentIDs,
             scheduledFor: scheduledSendDate,
             readReceiptNotificationTo: requestReadReceipt ? currentFromEmail : nil,
             securityMode: OutboundMessageSecurityMode(
@@ -3838,7 +3858,8 @@ public struct ComposeView: View {
                     filename = pick.name
                     mimeType = pick.mimeType
                 }
-                guard data.count <= ComposeAttachmentImport.maxAttachmentByteCount else {
+                guard data.count <= ComposeAttachmentImport.maxAttachmentByteCount
+                    - (restoredDraft == nil ? 0 : pendingAttachments.reduce(0) { $0 + $1.data.count }) else {
                     errorMessage = ComposeAttachmentImport.attachmentBudgetExceededMessage(
                         filename: filename
                     )
@@ -3946,6 +3967,10 @@ public struct ComposeView: View {
     }
 
     private func selectSender(_ option: ComposeSenderOption) {
+        guard ComposeDraftRestoration.allowsSender(option, current: selectedSenderOption, isRestored: restoredDraft != nil) else {
+            errorMessage = String(localized: "A reopened draft must stay in its original account and mailbox.", bundle: .module)
+            return
+        }
         guard option.id != selectedSenderID else { return }
         selectedSenderID = option.id
         selectedAliasID = nil

@@ -3732,52 +3732,22 @@ public struct BrevMailRootView: View {
         guard canPresentCompose() else { return }
         let resolvedSourceID = sourceID ?? navigation.selectedSourceID
         let draftBackend = backend(for: resolvedSourceID)
+        let presentationID = navigation.composePresentationID
+        let selectedSourceID = navigation.selectedSourceID
         Task {
-            let draft = await composeDraftSource(
-                for: header,
-                backend: draftBackend,
-                sourceID: resolvedSourceID
-            )
-            guard let draft, canPresentCompose() else { return }
-            navigation.presentDraft(draft, sourceID: resolvedSourceID)
+            do {
+                let restored = try await ComposeDraftRestoration.resolve(
+                    header: header, backend: draftBackend, sourceID: resolvedSourceID
+                )
+                guard canPresentCompose(), presentationID == navigation.composePresentationID,
+                      selectedSourceID == navigation.selectedSourceID else { return }
+                navigation.presentDraft(restored.draft, sourceID: resolvedSourceID, attachments: restored.attachments)
+            } catch {
+                guard canPresentCompose(), presentationID == navigation.composePresentationID,
+                      selectedSourceID == navigation.selectedSourceID else { return }
+                rootStatus = MessageCommandPresentation.mutationErrorStatus(for: error)
+            }
         }
-    }
-
-    /// The draft to reopen for `header`. The backend's locally staged copy
-    /// (kept when the draft was saved on this device) preserves attachment
-    /// ids and threading metadata, so it is preferred. When there is no
-    /// staged copy — the draft was composed elsewhere — one is rebuilt from
-    /// the header and cached body; `remoteID = header.id` makes the next
-    /// save supersede the same server-side draft.
-    private func composeDraftSource(
-        for header: MessageHeader,
-        backend: any MailBackend,
-        sourceID: MailSourceID?
-    ) async -> Draft? {
-        let staged: Draft?
-        if let sourceID {
-            staged = try? await backend.draft(for: header.id, sourceID: sourceID)
-        } else {
-            staged = try? await backend.draft(for: header.id)
-        }
-        if let staged { return staged }
-        let body: MessageBody?
-        if let sourceID {
-            body = try? await backend.body(for: header.id, sourceID: sourceID)
-        } else {
-            body = try? await backend.body(for: header.id)
-        }
-        return Draft(
-            id: UUID().uuidString,
-            remoteID: header.id,
-            threadID: header.threadID,
-            inReplyToMessageID: header.inReplyTo,
-            to: header.to,
-            cc: header.cc,
-            bcc: header.bcc,
-            subject: header.subject,
-            htmlBody: body?.html ?? ComposeHTMLBodyPolicy.html(fromEditorText: body?.plainText ?? "")
-        )
     }
 
     #if os(iOS)
@@ -4328,6 +4298,7 @@ public struct BrevMailRootView: View {
                 prefill: navigation.composePrefill,
                 recoveredDraft: recoveredDraft,
                 existingDraft: navigation.composeDraft,
+                existingDraftAttachments: navigation.composeDraftAttachments,
                 aiBackend: aiBackend(for: composeBackend.account),
                 signatureContext: signatureContextProvider?(composeBackend.account),
                 composeSecurityDefaults: composeSecurityDefaultsProvider?(composeBackend.account) ?? .disabled,
