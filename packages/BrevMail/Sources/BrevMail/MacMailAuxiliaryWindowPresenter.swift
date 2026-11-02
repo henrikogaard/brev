@@ -318,7 +318,7 @@ final class MacMailAuxiliaryWindow: NSWindow {
     override func performKeyEquivalent(with event: NSEvent) -> Bool {
         guard event.type == .keyDown,
               event.keyCode == 36,
-              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask).subtracting(.capsLock) == .command,
               event.windowNumber == windowNumber,
               let delegate = toolbar?.delegate as? MacComposeToolbarDelegate else {
             return super.performKeyEquivalent(with: event)
