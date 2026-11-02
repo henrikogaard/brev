@@ -6952,3 +6952,31 @@ buttons, and package-aware localization.
   interactions. Do not accept references or merge. Cross-run scroll-edge
   reproducibility, exact hosted-runtime acceptance and separate stack gates
   remain open. Issue269 stays open, intended In review; board access unavailable.
+
+### Same-day capture follow-up — PIM connect label
+
+- Pinned head run41410575515 at d05e2e6 passes all guards and all15 diagnostic
+  bottom cases; 18 canonical reference issues remain. Against5ad2cd7, decoded
+  common captures change only for consent AX3 and PIM AX3 top/bottom. All shared
+  ordinary-size captures are pixel-identical. Names/status text and moved badges
+  now wrap, but the lower PIM image still truncates Add DAV Source. The button
+  implementation was unchanged at5ad2cd7; this is remaining accessibility scope,
+  not an introduced normal-size regression. Bounded source review found no
+  actionable issue, without claiming runtime/pixel acceptance.
+- Stop the native run before changing its revision. Its verified CI host on the
+  retained owned iPhone16e/23F73 confirms full consent names/emails and an eligible
+  switch off/on/off; remaining panes/scrolling were not completed and that partial
+  recording is not acceptance. Synthetic-host-only reset and absent app/data
+  were verified before reinstalling; no live or production data was touched.
+- Extend ADR-0002 first, then give the existing native Add DAV Source label the
+  same accessibility-only full-height sizing. Keep its string, plus icon, action,
+  style, hint and normal-size layout. Reuse the three lower PIM diagnostics for
+  this regression without reference changes. Fresh hosted output and native
+  retest on the new artifact remain required.
+- Local follow-up checks: format (zero edits), strict lint/hooks, Swift syntax
+  parsing and diff checks pass. Do not rebuild the unchanged model suites after
+  freeing their session-owned cache for the low-disk native run: their40 passing
+  tests above remain scoped to d05e2e6. Complete type/build/package verification
+  for the one-line label follow-up belongs to fresh hosted CI. Existing README,
+  CHANGELOG, privacy and environment guidance already cover this layout-only
+  change; no new setup or network/data behavior.

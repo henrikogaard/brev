@@ -176,6 +176,7 @@ struct PIMSourcesSettingsView: View {
                             String(localized: "Add DAV Source…", bundle: .module),
                             systemImage: "plus"
                         )
+                        .fixedSize(horizontal: false, vertical: dynamicTypeSize.isAccessibilitySize)
                     }
                     .settingsButtonStyle()
                     .accessibilityHint(String(
