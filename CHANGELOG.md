@@ -12,6 +12,9 @@ All notable changes to Brev are documented here.
   recovery payloads while retaining minimal anti-replay identifiers; account
   removal deletes those identifiers too.
 
+- Reuse the current list presentation's reader navigation context during
+  repeated selection, preserving reply visibility and refreshing changed headers.
+
 - IMAP cache maintenance uses selective header queries and row-level updates.
   The historical JSON header writer is now test-only; production keeps a
   read-only migration reader and a memory-only fallback when the index is unavailable.
@@ -28,6 +31,13 @@ All notable changes to Brev are documented here.
   gated on performance measurements.
 
 ### Fixed
+
+- Clicking a conversation's disclosure chevron now preserves its hit target
+  through adaptive row layout instead of activating the parent message.
+
+- Collapsed conversations keep their visible row highlighted when a hidden
+  reply is selected, and keyboard/menu navigation scrolls to that row. Expanded
+  conversations highlight only the selected reply; the reader target is unchanged.
 
 - If an IMAP recovery index cannot open, stale external body/source caches
   stay unavailable rather than bypassing recovery checks. Fresh server reads
