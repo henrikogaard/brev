@@ -12,11 +12,31 @@
 
 @testable import BrevMail
 import CoreGraphics
+import Foundation
 import Testing
 
 @Suite("MessageListRowTapRouting")
 struct MessageListRowTapRoutingTests {
     private static let chevron = CGRect(x: 120, y: 8, width: 18, height: 18)
+
+    @Test("source contract: Drafts double-click skips detachment without reopening the composer")
+    func draftDoubleClickDoesNotOpenASecondWindow() throws {
+        // Gesture recognition needs native window testing; this checks the production handler wiring.
+        let sourceURL = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .appendingPathComponent("Sources/BrevMail/MessageListView.swift")
+        let source = try String(contentsOf: sourceURL, encoding: .utf8)
+        let start = try #require(source.range(of: "TapGesture(count: 2).onEnded {"))
+        let end = try #require(source.range(of: ".swipeActions", range: start.upperBound ..< source.endIndex))
+        let handler = source[start.lowerBound ..< end.lowerBound]
+            .split(whereSeparator: \.isWhitespace).joined(separator: " ")
+
+        #expect(handler == """
+        TapGesture(count: 2).onEnded { guard folder?.role != .drafts else { return } onOpenInNewWindow?(header) } )
+        """)
+    }
 
     @Test("a tap inside the thread chevron toggles the thread")
     func tapInsideChevronTogglesThread() {

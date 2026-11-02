@@ -1121,13 +1121,15 @@ public struct MessageListView: View {
         .listRowInsets(EdgeInsets())
         .listRowSeparator(rowSeparatorVisibility)
         .messageListThemedRowBackground()
-        // Double-click opens the message in its own window. A simultaneous
+        // Double-click opens non-drafts in their own window; drafts already
+        // activate the composer on the first click. A simultaneous
         // high-count tap gesture (rather than a second `onTapGesture(count:)`)
         // keeps single-click selection instant while still recognizing the
         // double-click — stacked tap gestures of differing counts do not
         // disambiguate reliably on macOS List rows.
         .simultaneousGesture(
             TapGesture(count: 2).onEnded {
+                guard folder?.role != .drafts else { return }
                 onOpenInNewWindow?(header)
             }
         )
