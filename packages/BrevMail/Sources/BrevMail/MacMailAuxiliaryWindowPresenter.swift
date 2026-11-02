@@ -259,6 +259,7 @@ enum MacComposeToolbarItemIdentifier {
 @MainActor
 final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
     private var contentViews: [NSToolbarItem.Identifier: AnyView] = [:]
+    var sendAction: (() -> Void)?
 
     func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
         MacComposeToolbarItemIdentifier.defaultOrder
@@ -309,6 +310,26 @@ final class MacComposeToolbarDelegate: NSObject, NSToolbarDelegate {
         default:
             nil
         }
+    }
+}
+
+@MainActor
+final class MacMailAuxiliaryWindow: NSWindow {
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.type == .keyDown,
+              event.keyCode == 36,
+              event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+              event.windowNumber == windowNumber,
+              let delegate = toolbar?.delegate as? MacComposeToolbarDelegate else {
+            return super.performKeyEquivalent(with: event)
+        }
+
+        // The toolbar's separate SwiftUI host does not receive the content editor's shortcuts.
+        // Consume repeats and disabled actions too, without falling through to a second handler.
+        if !event.isARepeat, attachedSheet == nil {
+            delegate.sendAction?()
+        }
+        return true
     }
 }
 
@@ -424,6 +445,7 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
         }
 
         func closeWindow(updateBinding: Bool) {
+            composeToolbarDelegate?.sendAction = nil
             if updateBinding {
                 sheet.wrappedValue = nil
             }
@@ -443,6 +465,7 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
 
         func windowWillClose(_ notification: Notification) {
             guard notification.object as? NSWindow === window else { return }
+            composeToolbarDelegate?.sendAction = nil
             sheet.wrappedValue = nil
             window?.delegate = nil
             window = nil
@@ -481,7 +504,7 @@ struct MacMailAuxiliaryWindowPresenter: NSViewRepresentable {
         ) {
             let configuration = MacMailAuxiliaryWindowConfiguration.configuration(for: sheet)
             let hostingController = NSHostingController(rootView: rootView)
-            let window = NSWindow(
+            let window = MacMailAuxiliaryWindow(
                 contentRect: NSRect(origin: .zero, size: configuration.defaultSize),
                 styleMask: configuration.styleMask,
                 backing: .buffered,
