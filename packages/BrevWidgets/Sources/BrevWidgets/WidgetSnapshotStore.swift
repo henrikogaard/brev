@@ -37,7 +37,14 @@ public struct WidgetSnapshotStore: Sendable {
     /// Resolves the App Group container directory, or nil when the
     /// entitlement/container isn't available in this process.
     public static func defaultDirectory() -> URL? {
-        FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
+        resolveDirectory(isolatedMock: IsolatedMockConfiguration.isRequested()) {
+            FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupID)
+        }
+    }
+
+    static func resolveDirectory(isolatedMock: Bool, container: () -> URL?) -> URL? {
+        guard !isolatedMock else { return nil }
+        return container()
     }
 
     /// Decodes the snapshot, returning nil on any read/parse/version

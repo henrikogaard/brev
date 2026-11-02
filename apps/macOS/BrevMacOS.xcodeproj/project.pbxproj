@@ -9,6 +9,7 @@
 /* Begin PBXBuildFile section */
 		01EA5C72AB5521FAA7B21CD1 /* BrevWidgets in Frameworks */ = {isa = PBXBuildFile; productRef = 9B59BBFCB0AE3438679DF4E6 /* BrevWidgets */; };
 		09999122328B4AE0E441276E /* TuistAssets+BrevMacOS.swift in Sources */ = {isa = PBXBuildFile; fileRef = B3784797F461CA8C6E729A41 /* TuistAssets+BrevMacOS.swift */; };
+		0D3484B7C1F55760BE6D7720 /* BrevAppMain.swift in Sources */ = {isa = PBXBuildFile; fileRef = 772458985CDF19647CF4CD37 /* BrevAppMain.swift */; };
 		1B227327213BA6AF141B6E18 /* BrevThemes in Frameworks */ = {isa = PBXBuildFile; productRef = CEC74C5E12C0DEA5F70E1017 /* BrevThemes */; };
 		1CC15A1FC98AB1E104EE86F2 /* BrevAppIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = C7BC6E48FA4543B47D64BFD8 /* BrevAppIntents.swift */; };
 		24F14ED373419E0FF50DF302 /* Sparkle.xcframework in Embed Frameworks */ = {isa = PBXBuildFile; fileRef = 88F5CCF3B6AF123315A0D124 /* Sparkle.xcframework */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
@@ -101,6 +102,7 @@
 		59D7E25498D8CC3403906C19 /* BrevGmail */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevGmail; path = ../../packages/BrevGmail; sourceTree = "<group>"; };
 		59D8F2F8140B9B5EB742F9EC /* BrevDesign */ = {isa = PBXFileReference; lastKnownFileType = folder; name = BrevDesign; path = ../../packages/BrevDesign; sourceTree = "<group>"; };
 		5F10040F8AF74B8133E19027 /* BrevMacWidgets.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = BrevMacWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		772458985CDF19647CF4CD37 /* BrevAppMain.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BrevAppMain.swift; sourceTree = "<group>"; };
 		78A6A7876826C01FD6F25FDF /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		7C5F321BA57F726FFD840716 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		84AF628C718DF07468F97693 /* BrevMacWidgets.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = BrevMacWidgets.entitlements; sourceTree = "<group>"; };
@@ -219,6 +221,7 @@
 			children = (
 				A04559043094C5DC20D223D5 /* BrevApp.swift */,
 				C7BC6E48FA4543B47D64BFD8 /* BrevAppIntents.swift */,
+				772458985CDF19647CF4CD37 /* BrevAppMain.swift */,
 				560B23745A8AF4A38B3E9DFF /* BrevMailCommands.swift */,
 				3F1A98A883F9A00B2588885A /* MacUpdateController.swift */,
 				87C638BA4D5498459078A85E /* MailFilePanels.swift */,
@@ -440,6 +443,7 @@
 				AA95D3410F47800B1378A07E /* TuistBundle+BrevMacOS.swift in Sources */,
 				D24E52D25AE576239CC2C9C3 /* BrevApp.swift in Sources */,
 				1CC15A1FC98AB1E104EE86F2 /* BrevAppIntents.swift in Sources */,
+				0D3484B7C1F55760BE6D7720 /* BrevAppMain.swift in Sources */,
 				D65183A5C51272DFA4651F88 /* BrevMailCommands.swift in Sources */,
 				2BC90DA3635FF0B50788CE3C /* MacUpdateController.swift in Sources */,
 				FC54ACA1146BC15CD092299F /* MailFilePanels.swift in Sources */,

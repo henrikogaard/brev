@@ -35,6 +35,9 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- macOS native UI validation can use `--isolated-mock` for a fresh, mock-only
+  sandbox with no production App Group or live-account access.
+
 - If an IMAP recovery index cannot open, stale external body/source caches
   stay unavailable rather than bypassing recovery checks. Fresh server reads
   remain available.
