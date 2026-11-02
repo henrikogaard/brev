@@ -357,6 +357,12 @@ so one Gmail message is not duplicated for every label. The cache can contain
 headers, bodies, raw source, attachment metadata, labels, and sync cursors, but
 never OAuth access or refresh tokens.
 
+Brev also keeps a new-message recovery snapshot in local app preferences,
+scoped by account and mailbox source: draft identifiers, recipients, subject
+and editor text. A successful send completion or discard removes only a
+matching snapshot, not another draft's recovery. Failed or cancelled sends do
+not clear it. This uses the existing local store and adds no network request.
+
 Gmail compose drafts and staged attachment bytes are also stored locally in
 that database until send/discard cleanup or account removal. They are separate
 from the evictable message cache, so clearing downloaded mail or synchronizing
