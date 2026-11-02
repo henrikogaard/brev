@@ -336,6 +336,7 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
             height: .greatestFiniteMagnitude
         )
         textView.autoresizingMask = [.width]
+        applyAppearance(to: scrollView, textView: textView)
         textView.string = text
         textView.setAccessibilityLabel(String(localized: "Message body", bundle: .module))
         if bodyFormat == .richTextHTML {
@@ -343,7 +344,6 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         }
 
         scrollView.documentView = textView
-        applyAppearance(to: scrollView, textView: textView)
         applyQuoteStyling(to: textView)
         applyTextChecking(to: textView)
         context.coordinator.textView = textView
@@ -398,12 +398,19 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         textView.backgroundColor = .clear
         let font = ComposeEditorTypography.nsFont(family: fontFamily, textSize: textSize)
         let textColor = NSColor(appearance.editorTheme.textPrimary.color)
-        textView.font = font
-        textView.textColor = textColor
+        // Global setters replace attributed runs; rich content owns its formatting.
+        if !textView.isRichText || textView.string.isEmpty {
+            textView.font = font
+            textView.textColor = textColor
+        }
         textView.insertionPointColor = NSColor(appearance.editorTheme.accent.color)
         var typing = textView.typingAttributes
-        typing[.font] = font
-        typing[.foregroundColor] = textColor
+        if typing[.font] == nil || !textView.isRichText {
+            typing[.font] = font
+        }
+        if typing[.foregroundColor] == nil || !textView.isRichText {
+            typing[.foregroundColor] = textColor
+        }
         textView.typingAttributes = typing
     }
 
