@@ -10,8 +10,9 @@ All notable changes to Brev are documented here.
 ### Changed
 
 - macOS rich compose no longer resets bold, italic or typing emphasis during
-  editor updates. Existing rich text keeps its authored formatting when reader
-  typography changes; new, empty and plain-text editors follow reader defaults.
+  editor updates, including pending emphasis before the first character.
+  Existing rich text and authored typing fonts keep their formatting when reader
+  typography changes; new, untouched empty and plain-text editors follow reader defaults.
 
 - Message bodies with rich rendering disabled now follow the selected reader
   font and text size, retaining bold, italic and links. Font changes also apply

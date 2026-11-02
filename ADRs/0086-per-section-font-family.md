@@ -50,10 +50,12 @@ Constraints:
    system design.
 
    Reader typography initializes new compose bodies and updates plain-text or
-   empty editors. Nonempty rich compose bodies retain their authored run and
+   untouched empty editors. Nonempty rich compose bodies retain their authored run and
    typing attributes across native view updates, including preference changes;
-   changing the reader font does not rebase existing rich content. macOS and
-   iOS use this same preservation policy.
+   changing the reader font does not rebase existing rich content on macOS or
+   iOS. macOS also preserves an authored typing font before the first character,
+   distinguishing it from the previous appearance default so untouched empty
+   editors can still follow reader preferences.
 
 2. **Same four families.** Sections offer the existing `MailboxFontFamily`
    cases only. No installed-font picker in this ADR.
