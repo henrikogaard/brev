@@ -404,20 +404,18 @@ private struct PlatformComposeBodyEditor: NSViewRepresentable {
         let typingFont = textView.typingAttributes[.font] as? NSFont
         let usesDefaultTypingFont = textView.lastAppearanceFont == nil || typingFont == nil
             || typingFont == textView.lastAppearanceFont
-        // Global setters replace attributed runs; rich content owns its formatting.
+        // Setting the font replaces attributed fonts; rich content owns its typography.
         if !textView.isRichText || (textView.string.isEmpty && usesDefaultTypingFont) {
             textView.font = font
-            textView.textColor = textColor
         }
+        textView.textColor = textColor
         textView.lastAppearanceFont = font
         textView.insertionPointColor = NSColor(appearance.editorTheme.accent.color)
         var typing = textView.typingAttributes
         if typing[.font] == nil || !textView.isRichText {
             typing[.font] = font
         }
-        if typing[.foregroundColor] == nil || !textView.isRichText {
-            typing[.foregroundColor] = textColor
-        }
+        typing[.foregroundColor] = textColor
         textView.typingAttributes = typing
     }
 
