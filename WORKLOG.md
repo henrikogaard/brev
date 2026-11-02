@@ -6878,3 +6878,36 @@ buttons, and package-aware localization.
   workflow change warrants README, ADR-0006, AGENTS or new QA-report updates.
 - Next: restack the existing dependent PRs, settle hosted CI/review, retain
   paired #273/#274 and all native/runtime acceptance gates; no merge here.
+
+## 2026-11-02 — Agent — PR #273/#274 scaled storage acceptance
+
+- Goal: close the skipped synthetic storage baseline and persistent recovery
+  evidence gaps on pinned `7dbd2fd`, without live data or native app installation.
+- Added a 10k-header persistent lifecycle case: interrupted archive rolls back
+  and preserves JSON; retry quarantines 9,950 historical-only rows while keeping
+  50 newer indexed headers/metadata; reopened search/thread/attachment/body/source
+  consumers hide unverified content. Public refresh, fresh-source confirmation,
+  flag/move/undo, cache clear, stale-file replay, account removal and isolation pass.
+  Exactly three ordinary first-page calls and three mutations are asserted.
+- Original Release 10k/50k baseline passed. JSON versus reopened SQLite first-50
+  medians: 62.956/1.642 ms at 10k and 288.909/1.322 ms at 50k. Extended the fixture
+  with cross-page reply links, public backend first-page reads and six durable
+  flag flips. A missing-file migration probe is counted separately from a JSON
+  decode; the first draft incorrectly equated them, not a production defect.
+- Focused recovery/preflight/selective/page suites: 26 tests passed. No production
+  code changed, so no new ADR, CHANGELOG, PRIVACY, README, release/QA artifact or
+  AGENTS update is needed. The new acceptance tests do not introduce new behavior.
+- Final extended Release run: two tests (10k/50k benchmark cases plus lifecycle)
+  pass in 562.034 s. At 50k, JSON/SQLite first-page medians are 292.858/1.159 ms;
+  JSON/indexed threading 102.773/8.204 ms; reopened public backend first-page
+  median 9.301 ms. At 10k, six flag writes persist in 0.623 ms median/4.644 ms
+  maximum (under ADR-0087's 5 ms target); at 50k they take 8.783/14.401 ms, not
+  a constant-time claim. Migrated public paths decode/write zero legacy snapshots
+  after one missing-file probe. Lifecycle retry archive: 325.640 ms; test: 0.877 s.
+  Pinned targeted SwiftFormat/SwiftLint, protected-path and diff checks pass.
+- Limits: Release store reopens with uncontrolled OS cache are not native cold
+  launches, idle RSS, scroll, real-mailbox migration or live-provider evidence.
+  Fixture seeding dominates the roughly ten-minute benchmark. Parent separately
+  verified the credential-free app-facing local smoke on `0d63050`; not rerun here.
+  Four storage snapshots were already reproduced on pristine main by the Settings
+  lane; no rebaseline. Parent owns integration, CI/reviews, issue status and merge.
