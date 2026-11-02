@@ -3927,7 +3927,10 @@ struct MessageListThreadTogglePreference: PreferenceKey {
     static var defaultValue: CGRect = .zero
 
     static func reduce(value: inout CGRect, nextValue: () -> CGRect) {
-        value = nextValue()
+        let next = nextValue()
+        if !next.isEmpty {
+            value = next
+        }
     }
 }
 
