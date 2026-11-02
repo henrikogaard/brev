@@ -73,7 +73,7 @@ echo "── live smoke provider flag ──"
 scripts/test-live-smoke-provider-flag.sh
 
 echo "── synthetic selection profiling harness ──"
-bash scripts/test-profile-navigation-selection.sh
+/bin/bash scripts/test-profile-navigation-selection.sh
 
 echo "── public source markers ──"
 scripts/test-public-source-markers.sh
