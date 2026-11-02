@@ -157,6 +157,11 @@ recorded decision, not a silent omission. Follow-up work will close them.
   recovered-draft appeared after sending) but did not restore a snapshot on
   open, nor wire AI Writer, encryption defaults, or alias sender selection —
   those remained available only in the sheet-based compose.
+  Recovery cleanup is distinct from presentation feedback: a successful send
+  completion removes only matching local/remote draft identity within its
+  account and source even if the root request already ended. Stale root saves
+  remain presentation-gated. Successful discard uses the same matching cleanup;
+  unrelated recovery and failed-operation recovery are retained.
 - **Detached reader `.toolbar` actions.** *Resolved 2026-06-14.*
   `DetachedReaderWindowView` now wraps its hosted `MessageDetailView` in a
   `NavigationStack`, supplying the toolbar host the scene root previously

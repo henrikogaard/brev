@@ -208,6 +208,16 @@ deliberate user submission. Never via direct phone-home.
   private in new owner-only directories; share only reviewed aggregate fields,
   because tracing tools can capture target process environments.
 
+### Compose recovery lifecycle
+
+The existing account/mailbox-scoped recovery snapshot in local preferences
+contains new-message draft identifiers, recipients, subject and editor text.
+Successful send completion and successful discard remove recovery only when
+the local draft ID or non-nil remote draft ID matches. Presentation teardown
+must not prevent that cleanup; stale saved-draft callbacks must not overwrite
+current recovery. This correction introduces no new key, migration, payload,
+external call or consent boundary. Failed/cancelled sends preserve recovery.
+
 ## Rationale
 
 **Why zero telemetry, not opt-in telemetry.** Opt-in telemetry sounds

@@ -35,6 +35,10 @@ All notable changes to Brev are documented here.
 
 ### Fixed
 
+- Opening a new composer no longer recovers already-sent content when an
+  earlier autosave consumed the compose presentation request. Send and successful
+  discard clear only the matching draft's recovery entry, preserving other drafts.
+
 - Command-Return in a detached macOS composer now reaches Send while a message
   field or body editor has focus, using the same validation and undo-send action
   as the toolbar button, including when Caps Lock is on. Holding the keys does
